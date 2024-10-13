@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * <p>Note that the older version has a half life on the influence of any given report without
  * taking into account the fact that reports persist and accumulate. :)
  */
-public final class TimeDecayingRunningAverage implements RunningAverage {
+public final class TimeDecayingRunningAverage implements RunningAverage, Cloneable {
   private static final Logger LOG = LoggerFactory.getLogger(TimeDecayingRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
@@ -31,6 +31,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   final double halfLife;
   long lastReportTime;
   long createdTime;
+  long lastMonotonicNanos;
   long totalReports;
   boolean started;
   double defaultValue;
@@ -38,10 +39,12 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   double maxReport;
 
   private final TimeSkewDetectorCallback timeSkewCallback;
+  private final java.util.function.LongSupplier wallClockTimeSourceMillis;
+  private final java.util.function.LongSupplier monotonicTimeSourceNanos;
 
   @Override
   public String toString() {
-    long now = System.currentTimeMillis();
+    long now = wallClockTimeSourceMillis == null ? System.currentTimeMillis() : wallClockTimeSourceMillis.getAsLong();
     synchronized (this) {
       return super.toString()
           + ": currentValue="
@@ -82,7 +85,10 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.defaultValue = defaultValue;
     started = false;
     this.halfLife = halfLife;
-    createdTime = lastReportTime = System.currentTimeMillis();
+    this.wallClockTimeSourceMillis = System::currentTimeMillis;
+    this.monotonicTimeSourceNanos = System::nanoTime;
+    createdTime = lastReportTime = wallClockTimeSourceMillis.getAsLong();
+    lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
@@ -110,8 +116,11 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.defaultValue = defaultValue;
     started = false;
     this.halfLife = halfLife;
-    createdTime = System.currentTimeMillis();
+    this.wallClockTimeSourceMillis = System::currentTimeMillis;
+    this.monotonicTimeSourceNanos = System::nanoTime;
+    createdTime = wallClockTimeSourceMillis.getAsLong();
     this.lastReportTime = -1; // long warm-up may skew results, so lets wait for the first report
+    this.lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
@@ -124,11 +133,53 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
         if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
           curValue = defaultValue;
           totalReports = 0;
-          createdTime = System.currentTimeMillis();
+          createdTime = wallClockTimeSourceMillis.getAsLong();
         } else {
           totalReports = fs.getLong("TotalReports", 0);
           long uptime = fs.getLong("Uptime", 0);
-          createdTime = System.currentTimeMillis() - uptime;
+          createdTime = wallClockTimeSourceMillis.getAsLong() - uptime;
+        }
+      }
+    }
+    this.timeSkewCallback = callback;
+  }
+
+  /** Test-friendly constructor with injected time sources. */
+  public TimeDecayingRunningAverage(
+      double defaultValue,
+      long halfLife,
+      double min,
+      double max,
+      SimpleFieldSet fs,
+      TimeSkewDetectorCallback callback,
+      java.util.function.LongSupplier wallClockTimeSourceMillis,
+      java.util.function.LongSupplier monotonicTimeSourceNanos) {
+    curValue = defaultValue;
+    this.defaultValue = defaultValue;
+    started = false;
+    this.halfLife = halfLife;
+    this.wallClockTimeSourceMillis = wallClockTimeSourceMillis;
+    this.monotonicTimeSourceNanos = monotonicTimeSourceNanos;
+    createdTime = this.wallClockTimeSourceMillis.getAsLong();
+    this.lastReportTime = -1; // wait for first report
+    this.lastMonotonicNanos = this.monotonicTimeSourceNanos.getAsLong();
+    this.minReport = min;
+    this.maxReport = max;
+    totalReports = 0;
+
+    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
+    if (fs != null) {
+      started = fs.getBoolean("Started", false);
+      if (started) {
+        curValue = fs.getDouble("CurrentValue", curValue);
+        if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
+          curValue = defaultValue;
+          totalReports = 0;
+          createdTime = this.wallClockTimeSourceMillis.getAsLong();
+        } else {
+          totalReports = fs.getLong("TotalReports", 0);
+          long uptime = fs.getLong("Uptime", 0);
+          createdTime = this.wallClockTimeSourceMillis.getAsLong() - uptime;
         }
       }
     }
@@ -168,8 +219,11 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.maxReport = max;
     this.defaultValue = defaultValue;
 
+    this.wallClockTimeSourceMillis = System::currentTimeMillis;
+    this.monotonicTimeSourceNanos = System::nanoTime;
     lastReportTime = -1;
-    createdTime = System.currentTimeMillis() - priorExperienceTime;
+    createdTime = wallClockTimeSourceMillis.getAsLong() - priorExperienceTime;
+    lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
     totalReports = dis.readLong();
     this.timeSkewCallback = callback;
   }
@@ -206,8 +260,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   @Override
   public void report(double d) {
     synchronized (this) {
-      // Must synchronize first to achieve serialization.
-      long now = System.currentTimeMillis();
+      long wall = wallClockTimeSourceMillis.getAsLong();
+      long monoNanos = monotonicTimeSourceNanos.getAsLong();
       if (d < minReport) {
         LOG.error("Impossible: {} on {}", d, this);
         return;
@@ -224,28 +278,30 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       if (!started) {
         curValue = d;
         started = true;
+        lastReportTime = wall;
+        lastMonotonicNanos = monoNanos;
         if (LOG.isTraceEnabled()) LOG.trace("Reported " + d + " on " + this + " when just started");
       } else if (lastReportTime != -1) { // might be just serialized in
-        long thisInterval = now - lastReportTime;
-        long uptime = now - createdTime;
-        if (thisInterval < 0) {
+        long clockDelta = wall - lastReportTime;
+        if (clockDelta < 0) {
           LOG.error(
               "Clock (reporting) went back in time, ignoring report: "
-                  + now
+                  + wall
                   + " was "
                   + lastReportTime
                   + " (back "
-                  + (-thisInterval)
+                  + (-clockDelta)
                   + "ms)");
-          lastReportTime = now;
+          lastReportTime = wall;
           if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
           return;
         }
+        long uptime = wall - createdTime;
         double thisHalfLife = halfLife;
         if (uptime < 0) {
           LOG.error(
               "Clock (uptime) went back in time, ignoring report: "
-                  + now
+                  + wall
                   + " was "
                   + createdTime
                   + " (back "
@@ -263,9 +319,9 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
           // double oneFourthOfUptime = uptime / 4D;
           // if(oneFourthOfUptime < thisHalfLife) thisHalfLife = oneFourthOfUptime;
         }
-
         if (thisHalfLife == 0) thisHalfLife = 1;
-        double changeFactor = Math.pow(0.5, (thisInterval) / thisHalfLife);
+        long monoDeltaMillis = Math.max(0L, (monoNanos - lastMonotonicNanos) / 1_000_000L);
+        double changeFactor = Math.pow(0.5, (monoDeltaMillis) / thisHalfLife);
         double oldCurValue = curValue;
         curValue =
             curValue
@@ -296,8 +352,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
                   + oldCurValue
                   + ", currentValue="
                   + currentValue()
-                  + ", thisInterval="
-                  + thisInterval
+                  + ", monoDeltaMillis="
+                  + monoDeltaMillis
                   + ", thisHalfLife="
                   + thisHalfLife
                   + ", uptime="
@@ -305,7 +361,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
                   + ", changeFactor="
                   + changeFactor);
       }
-      lastReportTime = now;
+      lastReportTime = wall;
+      lastMonotonicNanos = monoNanos;
     }
   }
 
@@ -327,7 +384,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
    * @throws IOException
    */
   public void writeDataTo(DataOutputStream out) throws IOException {
-    long now = System.currentTimeMillis();
+    long now = wallClockTimeSourceMillis.getAsLong();
     synchronized (this) {
       out.writeInt(MAGIC);
       out.writeInt(1);
@@ -367,7 +424,12 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     fs.put("CurrentValue", curValue);
     fs.put("Started", started);
     fs.put("TotalReports", totalReports);
-    fs.put("Uptime", System.currentTimeMillis() - createdTime);
+    fs.put("Uptime", wallClockTimeSourceMillis.getAsLong() - createdTime);
     return fs;
+  }
+
+  /** Returns an independent snapshot copy. */
+  public TimeDecayingRunningAverage clone() {
+    return new TimeDecayingRunningAverage(this);
   }
 }

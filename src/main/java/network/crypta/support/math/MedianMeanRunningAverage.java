@@ -11,6 +11,11 @@ import java.util.Collections;
  *
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
+/**
+ * @deprecated May use excessive RAM and CPU for debug-only metrics; prefer {@link
+ *     TrivialRunningAverage}.
+ */
+@Deprecated
 public final class MedianMeanRunningAverage implements RunningAverage {
   @Serial private static final long serialVersionUID = 1L;
 

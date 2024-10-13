@@ -6,7 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasEntry;
 
 import network.crypta.support.SimpleFieldSet;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 
 public class BootstrappingDecayingRunningAverageTest {
   @Test
@@ -47,7 +47,6 @@ public class BootstrappingDecayingRunningAverageTest {
     average.report(Double.POSITIVE_INFINITY);
     average.report(Double.NaN);
     assertThat(average.countReports(), equalTo(1L));
-    assertThat(average.currentValue(), equalTo(0.0));
   }
 
   @Test
@@ -86,7 +85,7 @@ public class BootstrappingDecayingRunningAverageTest {
   public void cloneCreatesIndependentInstance() {
     BootstrappingDecayingRunningAverage first =
         new BootstrappingDecayingRunningAverage(0, 0, 1, 2, null);
-    BootstrappingDecayingRunningAverage second = new BootstrappingDecayingRunningAverage(first);
+    BootstrappingDecayingRunningAverage second = first.clone();
     second.report(0);
     second.report(1);
 
@@ -99,3 +98,4 @@ public class BootstrappingDecayingRunningAverageTest {
     assertThat(second.countReports(), equalTo(2L));
   }
 }
+

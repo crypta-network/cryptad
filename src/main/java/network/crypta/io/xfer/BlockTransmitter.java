@@ -28,7 +28,8 @@ import network.crypta.support.Executor;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
-import network.crypta.support.math.MedianMeanRunningAverage;
+import network.crypta.support.math.RunningAverage;
+import network.crypta.support.math.TrivialRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -503,16 +504,14 @@ public class BlockTransmitter {
           if (LOG.isDebugEnabled()) {
             long endTime = System.currentTimeMillis();
             long transferTime = (endTime - startTime);
-            synchronized (avgTimeTaken) {
-              avgTimeTaken.report(transferTime);
-              LOG.debug(
-                  "Block send took "
-                      + transferTime
-                      + " : "
-                      + avgTimeTaken
-                      + " on "
-                      + BlockTransmitter.this);
-            }
+            avgTimeTaken.report(transferTime);
+            LOG.debug(
+                "Block send took "
+                    + transferTime
+                    + " : average "
+                    + avgTimeTaken.currentValue()
+                    + " on "
+                    + BlockTransmitter.this);
           }
           synchronized (_senderThread) {
             _receivedSendCompletion = true;
@@ -881,7 +880,7 @@ public class BlockTransmitter {
 
   private long lastSentPacket = -1;
 
-  private static final MedianMeanRunningAverage avgTimeTaken = new MedianMeanRunningAverage();
+  private static final RunningAverage avgTimeTaken = new TrivialRunningAverage();
 
   /** LOCKING: Must be called with _senderThread held. */
   private int getNumSent() {
