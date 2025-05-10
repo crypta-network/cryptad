@@ -10,7 +10,6 @@ import network.crypta.support.Logger;
 
 public class MultiHashInputStream extends FilterInputStream {
 
-  // Bit flags for generateHashes
   private Digester[] digesters;
   private long readBytes;
 
@@ -82,6 +81,20 @@ public class MultiHashInputStream extends FilterInputStream {
       length -= x;
     }
     return skipped;
+  }
+
+  @Override
+  public boolean markSupported() {
+    return false;
+  }
+
+  @Override
+  public void reset() throws IOException {
+    throw new IOException("mark/reset not supported");
+  }
+
+  @Override
+  public void mark(int readlimit) {
   }
 
   public HashResult[] getResults() {
