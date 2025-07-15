@@ -34,7 +34,7 @@ public final class FileUtil {
 
   public static final int BUFFER_SIZE = 32 * 1024;
   private static final Random SEED_GENERATOR =
-      new MersenneTwister(NodeStarter.getGlobalSecureRandom().generateSeed(32));
+      MersenneTwister.createSynchronized(NodeStarter.getGlobalSecureRandom().generateSeed(32));
 
   /**
    * Returns a line reading stream for the content of <code>logfile</code>. The stream will contain
@@ -727,7 +727,7 @@ public final class FileUtil {
     synchronized (SEED_GENERATOR) {
       seed = SEED_GENERATOR.nextLong();
     }
-    writeRandomBytes(os, new MersenneTwister(seed), length);
+    writeRandomBytes(os, MersenneTwister.createUnsynchronized(seed), length);
   }
 
   /**

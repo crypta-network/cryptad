@@ -428,7 +428,7 @@ public class SplitFileInserterStorage {
     if (crossCheckBlocks != 0) {
       byte[] seed = Metadata.getCrossSegmentSeed(hashes, hashThisLayerOnly);
       if (logMINOR) Logger.minor(this, "Cross-segment seed: " + HexUtil.bytesToHex(seed));
-      Random xsRandom = new MersenneTwister(seed);
+      Random xsRandom = MersenneTwister.createUnsynchronized(seed);
       // Cross segment redundancy: Allocate the blocks.
       crossSegments = new SplitFileInserterCrossSegmentStorage[segs];
       int segLen = segmentSize;

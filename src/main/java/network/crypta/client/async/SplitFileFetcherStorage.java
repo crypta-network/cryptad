@@ -627,7 +627,7 @@ public class SplitFileFetcherStorage {
 
     if (crossCheckBlocks != 0) {
       Random crossSegmentRandom =
-          new MersenneTwister(
+          MersenneTwister.createUnsynchronized(
               Metadata.getCrossSegmentSeed(metadata.getHashes(), metadata.getHashThisLayerOnly()));
       // Cross segment redundancy: Allocate the blocks.
       crossSegments = new SplitFileFetcherCrossSegmentStorage[segments.length];

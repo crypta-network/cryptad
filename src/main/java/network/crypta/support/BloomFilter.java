@@ -141,7 +141,7 @@ public abstract class BloomFilter implements AutoCloseable {
   }
 
   protected Random getHashes(byte[] key) {
-    return new MersenneTwister(key);
+    return MersenneTwister.createUnsynchronized(key);
   }
 
   // -- Fork & Merge

@@ -65,7 +65,7 @@ public class BootstrapPullTest {
           NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
       byte[] seed = new byte[64];
       random.nextBytes(seed);
-      MersenneTwister fastRandom = new MersenneTwister(seed);
+      MersenneTwister fastRandom = MersenneTwister.createUnsynchronized(seed);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");

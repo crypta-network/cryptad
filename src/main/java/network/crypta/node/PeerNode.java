@@ -869,7 +869,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     byte[] buffer = new byte[16];
     node.getRandom().nextBytes(buffer);
-    paddingGen = new MersenneTwister(buffer);
+    paddingGen = MersenneTwister.createSynchronized(buffer);
 
     if (fromLocal) {
       SimpleFieldSet f = fs.subset("full");
