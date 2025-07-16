@@ -48,7 +48,7 @@ public class MultiHashInputStream extends SkipShieldingInputStream {
   public void mark(int readlimit) {}
 
   public HashResult[] getResults() {
-    return digester.getResults();
+    return digester.getResults().toArray(new HashResult[0]);
   }
 
   public long getReadBytes() {
