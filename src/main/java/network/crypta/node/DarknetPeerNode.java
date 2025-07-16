@@ -1526,7 +1526,7 @@ public class DarknetPeerNode extends PeerNode {
 
   public int sendTextFeed(String message) {
     long now = System.currentTimeMillis();
-    long msgid = Math.abs(node.getRandom().nextLong());
+    long msgid = Math.abs(random.nextLong());
     // split large messages
     int requiredN2nCount = 1 + ((message.length() - 1) / 1024);
     String messagePart;
@@ -1578,7 +1578,7 @@ public class DarknetPeerNode extends PeerNode {
 
   private int sendFileOffer(String fnam, String mime, String message, RandomAccessBuffer data)
       throws IOException {
-    long uid = node.getRandom().nextLong();
+    long uid = random.nextLong();
     long now = System.currentTimeMillis();
     FileOffer fo = new FileOffer(uid, data, fnam, mime, message);
     synchronized (this) {
@@ -2074,7 +2074,7 @@ public class DarknetPeerNode extends PeerNode {
         return;
       }
       byte[] data = baos.toByteArray();
-      long uid = node.getFastWeakRandom().nextLong();
+      long uid = random.nextLong();
       RandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(data);
       PartiallyReceivedBulk prb =
           new PartiallyReceivedBulk(node.getUSM(), data.length, Node.PACKET_SIZE, raf, true);
