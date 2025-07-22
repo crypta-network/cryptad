@@ -33,3 +33,4 @@ debhelper-build-stamp
 .gradle
 gradle
 debian/seednodes.fref
+.idea
