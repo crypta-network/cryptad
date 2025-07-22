@@ -33,7 +33,6 @@ import javax.xml.transform.stream.StreamResult;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
-import com.sun.org.apache.xml.internal.serializer.OutputPropertiesFactory;
 import freenet.clients.fcp.FCPConnectionHandler;
 import freenet.l10n.NodeL10n;
 import freenet.node.NodeClientCore;
@@ -537,7 +536,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
 				documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 				transformer = transformerFactory.newTransformer();
 				transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-				transformer.setOutputProperty(OutputPropertiesFactory.S_KEY_INDENT_AMOUNT, "2");
+				transformer.setOutputProperty("{http://xml.apache.org/xalan}indent-amount", "2");
 			} catch (ParserConfigurationException | TransformerConfigurationException e) {
 				throw new RuntimeException(e);
 			}
