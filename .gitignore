@@ -18,7 +18,6 @@
 *~
 \#*\#
 /override.properties
-/gradle.properties
 debhelper-build-stamp
 .debhelper
 *.deb
