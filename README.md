@@ -61,7 +61,7 @@ To test your version of Freenet, build it with ,./gradlew jar`,
 stop your node, replace `freenet.jar` in your
 Freenet directory with `build/libs/freenet.jar`, and start your node again.
 
-To override values set in `build.gradle` put them into [the file](https://docs.gradle.org/8.11/userguide/build_environment.html)
+To override values set in `build.gradle.kts` put them into [the file](https://docs.gradle.org/8.11/userguide/build_environment.html)
 `gradle.properties` in the format `variable = value`. For instance:
 
     org.gradle.parallel = true
@@ -89,7 +89,7 @@ See our [contributor guidelines](CONTRIBUTING.md).
 All dependencies must be available via Freenet, so it must be added to
 dependencies.properties.
 
-- Add it to build.gradle dependencies *and* dependencyVerification.
+- Add it to build.gradle.kts dependencies *and* dependencyVerification.
   Run `./gradlew jar --debug` to find files that fail the
   verification.
 - fcpupload {dependencyfile.jar}
