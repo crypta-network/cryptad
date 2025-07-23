@@ -8,6 +8,11 @@ plugins {
     kotlin("jvm") version "2.2.0"
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -31,16 +36,21 @@ repositories {
 sourceSets {
     val main by getting {
         java.srcDir("src/")
+        kotlin.srcDir("src/")
         compileClasspath += configurations["provided"]
     }
     val test by getting {
         java.srcDir("test/")
+        kotlin.srcDir("test/")
         compileClasspath += configurations["provided"]
     }
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 tasks.withType<Javadoc> { options.encoding = "UTF-8" }
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+    compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+}
 
 val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
 val versionSrc = "freenet/node/Version.java"
