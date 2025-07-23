@@ -1,4 +1,3 @@
-import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 
@@ -81,13 +80,22 @@ val compileVersion by tasks.registering(JavaCompile::class) {
 }
 
 val buildJar by tasks.registering(Jar::class) {
-    dependsOn(compileVersion, tasks.processResources)
-    from(tasks.processResources)
-    from(tasks.compileJava.get().destinationDirectory) {
+    // Ensure both Java and Kotlin compilation have run
+    dependsOn(
+        compileVersion,
+        tasks.processResources,
+        tasks.compileJava,
+        tasks.named("compileKotlin")
+    )
+
+    // Include all compiled classes (Java + Kotlin) and processed resources
+    from(sourceSets.main.get().output) {
         exclude("freenet/node/Version.class")
         exclude("freenet/node/Version$1.class")
     }
+
     from(compileVersion.get().destinationDirectory)
+
     archiveBaseName.set("freenet")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
@@ -122,6 +130,7 @@ gradle.addListener(object : TaskExecutionListener {
             jars.add(task.outputs.files.singleFile)
         }
     }
+
     override fun beforeExecute(task: Task) {}
 })
 
@@ -260,7 +269,10 @@ val tar by tasks.registering(Tar::class) {
     destinationDirectory.set(file("${'$'}{project.buildDir}"))
     archiveFileName.set("${'$'}{archiveBaseName.get()}.tgz")
     doLast {
-        ant.invokeMethod("checksum", mapOf("file" to "${'$'}{destinationDirectory.get()}/${'$'}{archiveFileName.get()}"))
+        ant.invokeMethod(
+            "checksum",
+            mapOf("file" to "${'$'}{destinationDirectory.get()}/${'$'}{archiveFileName.get()}")
+        )
     }
 }
 
