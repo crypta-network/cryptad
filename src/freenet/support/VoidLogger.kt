@@ -1,77 +1,21 @@
-/*
- * Created on Mar 18, 2004
- */
-package freenet.support;
+package freenet.support
 
 /**
- * @author Iakin
- * A LoggerHook implementation that just passes any supplied log messages on to /dev/null 
+ * A Logger implementation that discards all messages.
  */
-public class VoidLogger extends Logger
-{
-
-	@Override
-	public void log(Object o, Class<?> source, String message, Throwable e, LogLevel priority) {
-	}
-
-	@Override
-	public void log(Object source, String message, LogLevel priority) {
-	}
-
-	@Override
-	public void log(Object o, String message, Throwable e, LogLevel priority) {
-	}
-
-	@Override
-	public void log(Class<?> c, String message, LogLevel priority) {
-	}
-
-	@Override
-	public void log(Class<?> c, String message, Throwable e, LogLevel priority) {
-	}
-
-	public long minFlags() {
-		return 0;
-	}
-
-	public long notFlags() {
-		return 0;
-	}
-
-	public long anyFlags() {
-		return 0;
-	}
-
-	@Override
-	public boolean instanceShouldLog(LogLevel priority, Class<?> c) {
-		return false;
-	}
-
-	@Override
-	public boolean instanceShouldLog(LogLevel prio, Object o) {
-		return false;
-	}
-
-	@Override
-	public void setThreshold(LogLevel thresh) {
-	}
-
-	@Override
-	public LogLevel getThresholdNew() {
-		return LogLevel.NONE;
-	}
-
-	@Override
-	public void setThreshold(String symbolicThreshold) {
-	}
-
-	@Override
-	public void setDetailedThresholds(String details) {
-	}
-
-	@Override
-	public final void instanceRegisterLogThresholdCallback(LogThresholdCallback ltc) {}
-	
-	@Override
-	public final void instanceUnregisterLogThresholdCallback(LogThresholdCallback ltc) {}
+class VoidLogger : Logger() {
+    override fun log(o: Any?, source: Class<*>?, message: String?, e: Throwable?, priority: LogLevel) {}
+    override fun log(source: Any?, message: String?, priority: LogLevel) {}
+    override fun log(o: Any?, message: String?, e: Throwable?, priority: LogLevel) {}
+    override fun log(c: Class<*>, message: String?, priority: LogLevel) {}
+    override fun log(c: Class<*>, message: String?, e: Throwable?, priority: LogLevel) {}
+    override fun instanceShouldLog(priority: LogLevel, c: Class<*>?): Boolean = false
+    override fun instanceShouldLog(prio: LogLevel, o: Any?): Boolean = false
+    override fun setThreshold(thresh: LogLevel) {}
+    override fun getThresholdNew(): LogLevel = LogLevel.NONE
+    override fun setThreshold(symbolicThreshold: String) {}
+    override fun setDetailedThresholds(details: String?) {}
+    override fun instanceRegisterLogThresholdCallback(ltc: LogThresholdCallback) {}
+    override fun instanceUnregisterLogThresholdCallback(ltc: LogThresholdCallback) {}
 }
+

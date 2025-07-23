@@ -1,230 +1,132 @@
-package freenet.support;
+package freenet.support
 
-import java.util.ArrayList;
-import java.util.StringTokenizer;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList
+import java.util.StringTokenizer
+import java.util.concurrent.CopyOnWriteArrayList
 
-public abstract class LoggerHook extends Logger {
+abstract class LoggerHook : Logger {
+    protected lateinit var thresholdValue: LogLevel
 
-	protected LogLevel threshold;
+    class DetailedThreshold(val section: String, val dThreshold: LogLevel)
 
-	public static final class DetailedThreshold {
-		final String section;
-		final LogLevel dThreshold;
-		public DetailedThreshold(String section, LogLevel thresh) {
-			this.section = section;
-			this.dThreshold = thresh;
-		}
-	}
+    protected constructor(thresh: LogLevel) : super() { this.thresholdValue = thresh }
+    constructor(thresh: String) : super() {
+        this.thresholdValue = parseThreshold(thresh.uppercase())
+    }
 
-	protected LoggerHook(LogLevel thresh){
-		this.threshold = thresh;
-	}
+    @JvmField
+    var detailedThresholds: Array<DetailedThreshold> = emptyArray()
+    private val thresholdsCallbacks = CopyOnWriteArrayList<LogThresholdCallback>()
 
-	LoggerHook(String thresh) throws InvalidThresholdException{
-		this.threshold = parseThreshold(thresh.toUpperCase());
-	}
+    abstract override fun log(o: Any?, source: Class<*>?, message: String?, e: Throwable?, priority: LogLevel)
 
-	public DetailedThreshold[] detailedThresholds = new DetailedThreshold[0];
-	private CopyOnWriteArrayList<LogThresholdCallback> thresholdsCallbacks = new CopyOnWriteArrayList<LogThresholdCallback>();
+    override fun log(source: Any?, message: String?, priority: LogLevel) {
+        if (!instanceShouldLog(priority, source)) return
+        log(source, source?.javaClass, message, null, priority)
+    }
 
-	/**
-	 * Log a message
-	 * 
-	 * @param o
-	 *            The object where this message was generated.
-	 * @param source
-	 *            The class where this message was generated.
-	 * @param message
-	 *            A clear and verbose message describing the event
-	 * @param e
-	 *            Logs this exception with the message.
-	 * @param priority
-	 *            The priority of the mesage, one of LogLevel.ERROR,
-	 *            LogLevel.NORMAL, LogLevel.MINOR, or LogLevel.DEBUG.
-	 */
-	@Override
-	public abstract void log(
-			Object o,
-			Class<?> source,
-			String message,
-			Throwable e,
-			LogLevel priority);
+    override fun log(o: Any?, message: String?, e: Throwable?, priority: LogLevel) {
+        if (!instanceShouldLog(priority, o)) return
+        log(o, o?.javaClass, message, e, priority)
+    }
 
-	/**
-	 * Log a message.
-	 * @param source        The source object where this message was generated
-	 * @param message A clear and verbose message describing the event
-	 * @param priority The priority of the mesage, one of LogLevel.ERROR,
-	 *                 LogLevel.NORMAL, LogLevel.MINOR, or LogLevel.DEBUG.
-	 **/
-	@Override
-	public void log(Object source, String message, LogLevel priority) {
-		if (!instanceShouldLog(priority,source)) return;
-		log(source, source == null ? null : source.getClass(), 
-				message, null, priority);
-	}
+    override fun log(c: Class<*>, message: String?, priority: LogLevel) {
+        if (!instanceShouldLog(priority, c)) return
+        log(null, c, message, null, priority)
+    }
 
-	/** 
-	 * Log a message with an exception.
-	 * @param o   The source object where this message was generated.
-	 * @param message  A clear and verbose message describing the event.
-	 * @param e        Logs this exception with the message.
-	 * @param priority The priority of the mesage, one of LogLevel.ERROR,
-	 *                 LogLevel.NORMAL, LogLevel.MINOR, or LogLevel.DEBUG.
-	 * @see #log(Object o, String message, int priority)
-	 */
-	@Override
-	public void log(Object o, String message, Throwable e, 
-			LogLevel priority) {
-		if (!instanceShouldLog(priority,o)) return;
-		log(o, o == null ? null : o.getClass(), message, e, priority);
-	}
+    override fun log(c: Class<*>, message: String?, e: Throwable?, priority: LogLevel) {
+        if (!instanceShouldLog(priority, c)) return
+        log(null, c, message, e, priority)
+    }
 
-	/**
-	 * Log a message from static code.
-	 * @param c        The class where this message was generated.
-	 * @param message  A clear and verbose message describing the event
-	 * @param priority The priority of the mesage, one of LogLevel.ERROR,
-	 *                 LogLevel.NORMAL, LogLevel.MINOR, or LogLevel.DEBUG.
-	 */
-	@Override
-	public void log(Class<?> c, String message, LogLevel priority) {
-		if (!instanceShouldLog(priority,c)) return;
-		log(null, c, message, null, priority);
-	}
+    fun acceptPriority(prio: LogLevel) = prio.matchesThreshold(thresholdValue)
 
+    override fun setThreshold(thresh: LogLevel) {
+        thresholdValue = thresh
+        notifyLogThresholdCallbacks()
+    }
 
-	@Override
-	public void log(Class<?> c, String message, Throwable e, LogLevel priority) {
-		if (!instanceShouldLog(priority, c))
-			return;
-		log(null, c, message, e, priority);
-	}
+    override fun getThresholdNew(): LogLevel = thresholdValue
 
-	public boolean acceptPriority(LogLevel prio) {
-		return prio.matchesThreshold(threshold);
-	}
+    @Throws(InvalidThresholdException::class)
+    private fun parseThreshold(threshold: String?): LogLevel {
+        if (threshold == null) throw InvalidThresholdException(threshold)
+        return try {
+            LogLevel.valueOf(threshold.uppercase())
+        } catch (e: IllegalArgumentException) {
+            throw InvalidThresholdException(threshold)
+        }
+    }
 
-	@Override
-	public void setThreshold(LogLevel thresh) {
-		this.threshold = thresh;
-		notifyLogThresholdCallbacks();
-	}
+    @Throws(InvalidThresholdException::class)
+    override fun setThreshold(symbolicThreshold: String) {
+        setThreshold(parseThreshold(symbolicThreshold))
+    }
 
-	@Override
-	public LogLevel getThresholdNew() {
-		return threshold;
-	}
-	
-	private LogLevel parseThreshold(String threshold) throws InvalidThresholdException {
-		if(threshold == null) throw new InvalidThresholdException(threshold);
-		try {
-			return LogLevel.valueOf(threshold.toUpperCase());
-		} catch (IllegalArgumentException e) {
-			throw new InvalidThresholdException(threshold);
-		}
-	}
+    @Throws(InvalidThresholdException::class)
+    override fun setDetailedThresholds(details: String?) {
+        if (details == null) return
+        val st = StringTokenizer(details, ",", false)
+        val stuff = ArrayList<DetailedThreshold>()
+        while (st.hasMoreTokens()) {
+            val token = st.nextToken()
+            if (token.isEmpty()) continue
+            val x = token.indexOf(':')
+            if (x < 0 || x == token.length - 1) continue
+            val section = token.substring(0, x)
+            val value = token.substring(x + 1)
+            stuff.add(DetailedThreshold(section, parseThreshold(value.uppercase())))
+        }
+        val newThresholds = stuff.toTypedArray()
+        synchronized(this) { detailedThresholds = newThresholds }
+        notifyLogThresholdCallbacks()
+    }
 
-	@Override
-	public void setThreshold(String symbolicThreshold) throws InvalidThresholdException {
-		setThreshold(parseThreshold(symbolicThreshold));
-	}
+    fun getDetailedThresholds(): String {
+        val thresh: Array<DetailedThreshold>
+        synchronized(this) { thresh = detailedThresholds }
+        if (thresh.isEmpty()) return ""
+        val sb = StringBuilder()
+        for (t in thresh) {
+            sb.append(t.section).append(':').append(t.dThreshold).append(',')
+        }
+        sb.deleteCharAt(sb.length - 1)
+        return sb.toString()
+    }
 
-	@Override
-	public void setDetailedThresholds(String details) throws InvalidThresholdException {
-		if (details == null)
-			return;
-		StringTokenizer st = new StringTokenizer(details, ",", false);
-		ArrayList<DetailedThreshold> stuff = new ArrayList<DetailedThreshold>();
-		while (st.hasMoreTokens()) {
-			String token = st.nextToken();
-			if (token.isEmpty())
-				continue;
-			int x = token.indexOf(':');
-			if (x < 0)
-				continue;
-			if (x == token.length() - 1)
-				continue;
-			String section = token.substring(0, x);
-			String value = token.substring(x + 1, token.length());
-			stuff.add(new DetailedThreshold(section, parseThreshold(value.toUpperCase())));
-		}
-		DetailedThreshold[] newThresholds = new DetailedThreshold[stuff.size()];
-		stuff.toArray(newThresholds);
-		synchronized(this) {
-			detailedThresholds = newThresholds;
-		}
-		notifyLogThresholdCallbacks();
-	}
+    class InvalidThresholdException(msg: String?) : Exception(msg)
 
-	public String getDetailedThresholds() {
-		DetailedThreshold[] thresh = null;
-		synchronized(this) {
-			thresh = detailedThresholds;
-		}
-		if (thresh.length == 0)
-			return "";
-		StringBuilder sb = new StringBuilder();
-		for(DetailedThreshold t: thresh) {
-			sb.append(t.section);
-			sb.append(':');
-			sb.append(t.dThreshold);
-			sb.append(',');
-		}
-		// assert(sb.length() > 0); -- always true as thresh.length != 0
-		// remove last ','
-		sb.deleteCharAt(sb.length() - 1);
-		return sb.toString();
-	}
+    override fun instanceShouldLog(priority: LogLevel, c: Class<*>?): Boolean {
+        val thresholds: Array<DetailedThreshold>
+        var thresh: LogLevel
+        synchronized(this) {
+            thresholds = detailedThresholds
+            thresh = thresholdValue
+        }
+        if (c != null && thresholds.isNotEmpty()) {
+            val cname = c.name
+            for (dt in thresholds) {
+                if (cname.startsWith(dt.section)) thresh = dt.dThreshold
+            }
+        }
+        return priority.matchesThreshold(thresh)
+    }
 
-	public static class InvalidThresholdException extends Exception {
-		private static final long serialVersionUID = -1;
+    final override fun instanceShouldLog(prio: LogLevel, o: Any?): Boolean =
+        instanceShouldLog(prio, o?.javaClass)
 
-		InvalidThresholdException(String msg) {
-			super(msg);
-		}
-	}
+    final override fun instanceRegisterLogThresholdCallback(ltc: LogThresholdCallback) {
+        thresholdsCallbacks.add(ltc)
+        ltc.shouldUpdate()
+    }
 
-	@Override
-	public boolean instanceShouldLog(LogLevel priority, Class<?> c) {
-		DetailedThreshold[] thresholds;
-		LogLevel thresh;
-		synchronized(this) {
-			thresholds = detailedThresholds;
-			thresh = threshold;
-		}
-		if ((c != null) && (thresholds.length > 0)) {
-			String cname = c.getName();
-				for(DetailedThreshold dt : thresholds) {
-					if(cname.startsWith(dt.section))
-						thresh = dt.dThreshold;
-				}
-		}
-		return priority.matchesThreshold(thresh);
-	}
+    final override fun instanceUnregisterLogThresholdCallback(ltc: LogThresholdCallback) {
+        thresholdsCallbacks.remove(ltc)
+    }
 
-	@Override
-	public final boolean instanceShouldLog(LogLevel prio, Object o) {
-		return instanceShouldLog(prio, o == null ? null : o.getClass());
-	}
-
-	@Override
-	public final void instanceRegisterLogThresholdCallback(LogThresholdCallback ltc) {
-		thresholdsCallbacks.add(ltc);
-
-		// Call the new callback to avoid code duplication
-		ltc.shouldUpdate();
-	}
-	
-	@Override
-	public final void instanceUnregisterLogThresholdCallback(LogThresholdCallback ltc) {
-		thresholdsCallbacks.remove(ltc);
-	}
-
-	private void notifyLogThresholdCallbacks() {
-		for(LogThresholdCallback ltc : thresholdsCallbacks)
-			ltc.shouldUpdate();
-	}
-
+    private fun notifyLogThresholdCallbacks() {
+        for (ltc in thresholdsCallbacks) ltc.shouldUpdate()
+    }
 }
+
