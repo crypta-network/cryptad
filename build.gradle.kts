@@ -52,7 +52,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEa
 }
 
 val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
-val versionSrc = "freenet/node/Version.java"
+val versionSrc = "network/crypta/node/Version.java"
 
 val gitrev: String = try {
     val cmd = "git describe --always --abbrev=4 --dirty"
@@ -75,8 +75,8 @@ val compileVersion by tasks.registering(JavaCompile::class) {
     include(versionSrc)
     classpath = files(sourceSets["main"].compileClasspath, sourceSets["main"].output.classesDirs)
     destinationDirectory.set(layout.buildDirectory.dir("java/version/"))
-    sourceCompatibility = "1.8"
-    targetCompatibility = "1.8"
+    sourceCompatibility = "21"
+    targetCompatibility = "21"
 }
 
 val buildJar by tasks.registering(Jar::class) {
@@ -90,8 +90,8 @@ val buildJar by tasks.registering(Jar::class) {
 
     // Include all compiled classes (Java + Kotlin) and processed resources
     from(sourceSets.main.get().output) {
-        exclude("freenet/node/Version.class")
-        exclude("freenet/node/Version$1.class")
+        exclude("network/crypta/node/Version.class")
+        exclude("network/crypta/node/Version$1.class")
     }
 
     from(compileVersion.get().destinationDirectory)
@@ -103,16 +103,16 @@ val buildJar by tasks.registering(Jar::class) {
     manifest {
         attributes(
             "Permissions" to "all-permissions",
-            "Application-Name" to "Freenet REference Daemon",
+            "Application-Name" to "Crypta Daemon",
             "Required-Ext-Version" to 29,
             "Recommended-Ext-Version" to 29,
             "Compiled-With" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
-            "Specification-Title" to "Freenet",
+            "Specification-Title" to "Crypta",
             "Specification-Version" to "0.7.5",
-            "Specification-Vendor" to "freenetproject.org",
-            "Implementation-Title" to "Freenet",
+            "Specification-Vendor" to "crypta.network",
+            "Implementation-Title" to "Crypta",
             "Implementation-Version" to "0.7.5 $gitrev",
-            "Implementation-Vendor" to "freenetproject.org"
+            "Implementation-Vendor" to "crypta.network"
         )
     }
 }
@@ -161,10 +161,10 @@ val copyResourcesToClasses2 by tasks.registering {
         copy {
             from(sourceSets["main"].allSource)
             into(layout.buildDirectory.dir("classes/java/main/"))
-            include("freenet/l10n/*properties")
-            include("freenet/l10n/iso-*.tab")
-            include("freenet/clients/http/staticfiles/**")
-            include("freenet/clients/http/templates/**")
+            include("network/crypta/l10n/*properties")
+            include("network/crypta/l10n/iso-*.tab")
+            include("network/crypta/clients/http/staticfiles/**")
+            include("network/crypta/clients/http/templates/**")
             include("../dependencies.properties")
         }
         copy {
@@ -185,10 +185,10 @@ val copyTestResourcesToClasses2 by tasks.registering {
         copy {
             from(sourceSets["test"].allSource)
             into(layout.buildDirectory.dir("classes/java/test/"))
-            include("freenet/client/filter/*/**")
-            include("freenet/crypt/ciphers/rijndael-gladman-test-data/**")
-            include("freenet/l10n/*properties")
-            include("freenet/clients/http/templates/**")
+            include("network/crypta/client/filter/*/**")
+            include("network/crypta/crypt/ciphers/rijndael-gladman-test-data/**")
+            include("network/crypta/l10n/*properties")
+            include("network/crypta/clients/http/templates/**")
         }
     }
 }
@@ -204,8 +204,8 @@ tasks.test {
     }
     minHeapSize = "128m"
     maxHeapSize = "512m"
-    include("freenet/**/*Test.class")
-    exclude("freenet/**/*${'$'}*Test.class")
+    include("network/crypta/**/*Test.class")
+    exclude("network/crypta/**/*${'$'}*Test.class")
     systemProperties.putAll(mapOf<String, Any>())
 }
 
