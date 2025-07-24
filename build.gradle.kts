@@ -96,7 +96,7 @@ val buildJar by tasks.registering(Jar::class) {
 
     from(compileVersion.get().destinationDirectory)
 
-    archiveBaseName.set("freenet")
+    archiveBaseName.set("cryptad")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
