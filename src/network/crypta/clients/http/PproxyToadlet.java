@@ -585,11 +585,11 @@ public class PproxyToadlet extends Toadlet {
     private void showFreenetPluginLoader(ToadletContext toadletContext, HTMLNode contentNode) {
         /* box for freenet plugins. */
         HTMLNode addFreenetPluginBox = contentNode.addChild("div", "class", "infobox infobox-normal");
-        addFreenetPluginBox.addChild("div", "class", "infobox-header", l10n("loadFreenetPlugin"));
+        addFreenetPluginBox.addChild("div", "class", "infobox-header", l10n("loadCryptaPlugin"));
         HTMLNode addFreenetPluginContent = addFreenetPluginBox.addChild("div", "class", "infobox-content");
         HTMLNode addFreenetForm = toadletContext.addFormChild(addFreenetPluginContent, ".", "addFreenetPluginForm");
-        addFreenetForm.addChild("div", l10n("loadFreenetPluginText"));
-        addFreenetForm.addChild("#", (l10n("loadFreenetURLLabel") + ": "));
+        addFreenetForm.addChild("div", l10n("loadCryptaPluginText"));
+        addFreenetForm.addChild("#", (l10n("loadCryptaURLLabel") + ": "));
         addFreenetForm.addChild("input", new String[]{"type", "name", "size"}, new String[]{"text", "plugin-uri", "80"});
         addFreenetForm.addChild("#", " ");
         addFreenetForm.addChild("input", new String[]{"type", "name", "value"}, new String[]{"submit", "submit-freenet", l10n("Load")});
