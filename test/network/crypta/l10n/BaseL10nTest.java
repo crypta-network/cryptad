@@ -1,30 +1,30 @@
 package network.crypta.l10n;
 
-import static org.junit.Assert.*;
-
-import java.io.File;
-import java.util.Iterator;
-
-import org.junit.Test;
-
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TestProperty;
+import org.junit.Test;
+
+import java.io.File;
+import java.util.Iterator;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public class BaseL10nTest {
 
     public static final BaseL10n createL10n(LANGUAGE lang) {
         File overrideFile =
-            new File(TestProperty.L10nPath_main, "freenet.l10n.${lang}.override.properties");
-        return new BaseL10n("network/crypta/l10n/", "freenet.l10n.${lang}.properties",
+            new File(TestProperty.L10nPath_main, "crypta.l10n.${lang}.override.properties");
+        return new BaseL10n("network/crypta/l10n/", "crypta.l10n.${lang}.properties",
                             overrideFile.getPath(), lang);
     }
 
     public static final BaseL10n createTestL10n(LANGUAGE lang) {
         File overrideFile =
-            new File(TestProperty.L10nPath_test, "freenet.l10n.${lang}.override.properties");
-        return new BaseL10n("network/crypta/l10n/", "freenet.l10n.${lang}.test.properties",
+            new File(TestProperty.L10nPath_test, "crypta.l10n.${lang}.override.properties");
+        return new BaseL10n("network/crypta/l10n/", "crypta.l10n.${lang}.test.properties",
                             overrideFile.getPath(), lang);
     }
 

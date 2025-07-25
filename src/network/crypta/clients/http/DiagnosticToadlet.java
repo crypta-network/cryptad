@@ -50,9 +50,9 @@ public class DiagnosticToadlet extends Toadlet {
         stats = node.getNodeStats();
         peers = node.getPeers();
         /* copied from NodeL10n constructor. */
-        baseL10n = new BaseL10n("network/crypta/l10n/", "freenet.l10n.${lang}.properties",
+        baseL10n = new BaseL10n("network/crypta/l10n/", "crypta.l10n.${lang}.properties",
                                 new File(".").getPath() + File.separator +
-                                "freenet.l10n.${lang}.override.properties", BaseL10n.LANGUAGE.ENGLISH);
+                                "crypta.l10n.${lang}.override.properties", BaseL10n.LANGUAGE.ENGLISH);
     }
 
     public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
@@ -70,13 +70,13 @@ public class DiagnosticToadlet extends Toadlet {
         // Synchronize to avoid problems with DecimalFormat.
         synchronized (this) {
             // drawNodeVersionBox
-            textBuilder.append("Freenet Version:\n");
+            textBuilder.append("Crypta Version:\n");
             textBuilder.append(
                            baseL10n.getString("WelcomeToadlet.version", new String[]{"fullVersion",
-												  "build", "rev"},
+                                                  "build", "rev"},
                                               new String[]{Version.publicVersion(),
                                                   Integer.toString(Version.buildNumber()),
-												  Version.cvsRevision()}))
+                                                  Version.cvsRevision()}))
                        .append("\n");
             textBuilder.append(
                 baseL10n.getString("WelcomeToadlet.extVersion", new String[]{"build", "rev"},
@@ -198,16 +198,14 @@ public class DiagnosticToadlet extends Toadlet {
                         l10n("activityInserts", new String[]{"CHKhandlers", "SSKhandlers", "local"},
                              new String[]{Integer.toString(numCHKInserts),
                                  Integer.toString(numSSKInserts),
-                                     numLocalCHKInserts + "/" +
-                                         numLocalSSKInserts}) + "\n");
+                                 numLocalCHKInserts + "/" + numLocalSSKInserts}) + "\n");
                 }
                 if (numCHKRequests > 0 || numSSKRequests > 0) {
                     textBuilder.append(
                         l10n("activityRequests", new String[]{"CHKhandlers", "SSKhandlers", "local"},
                              new String[]{Integer.toString(numCHKRequests),
                                  Integer.toString(numSSKRequests),
-                                     numLocalCHKRequests + "/" +
-                                         numLocalSSKRequests}) + "\n");
+                                 numLocalCHKRequests + "/" + numLocalSSKRequests}) + "\n");
                 }
                 if (numTransferringRequests > 0 || numTransferringRequestHandlers > 0) {
                     textBuilder.append(
@@ -465,14 +463,14 @@ public class DiagnosticToadlet extends Toadlet {
                            .append("\n");
                 textBuilder.append(
                                l10n("swapOutput", "total",
-									SizeUtil.formatSize(totalBytesSentSwapOutput, true)))
+                                    SizeUtil.formatSize(totalBytesSentSwapOutput, true)))
                            .append("\n");
                 textBuilder.append(
                                l10n("authBytes", "total", SizeUtil.formatSize(totalBytesSentAuth, true)))
                            .append("\n");
                 textBuilder.append(
                                l10n("ackOnlyBytes", "total", SizeUtil.formatSize(totalBytesSentAckOnly
-								   , true)))
+                                   , true)))
                            .append("\n");
                 textBuilder.append(l10n("resendBytes", new String[]{"total", "percent"},
                                         new String[]{SizeUtil.formatSize(totalBytesSentResends, true),

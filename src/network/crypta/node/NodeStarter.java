@@ -47,6 +47,7 @@ public class NodeStarter implements WrapperListener {
         extBuildNumber = ExtVersion.extBuildNumber();
         extRevisionNumber = ExtVersion.extRevisionNumber();
     }
+
     /*---------------------------------------------------------------
      * Constructors
      *-------------------------------------------------------------*/
@@ -59,11 +60,11 @@ public class NodeStarter implements WrapperListener {
      * If false, this is some sort of multi-node testing VM
      */
     public synchronized static boolean isTestingVM() {
-		if (isStarted) {
-			return isTestingVM;
-		} else {
-			throw new IllegalStateException();
-		}
+        if (isStarted) {
+            return isTestingVM;
+        } else {
+            throw new IllegalStateException();
+        }
     }
 
     /*---------------------------------------------------------------
@@ -117,15 +118,13 @@ public class NodeStarter implements WrapperListener {
      * {@link Yarrow} is returned.
      */
     public static RandomSource globalTestInit(
-        File baseDirectory, boolean enablePlug,
-        LogLevel logThreshold, String details, boolean noDNS,
-        RandomSource randomSource)
-        throws InvalidThresholdException {
+        File baseDirectory, boolean enablePlug, LogLevel logThreshold, String details, boolean noDNS,
+        RandomSource randomSource) throws InvalidThresholdException {
 
         synchronized (NodeStarter.class) {
-			if (isStarted) {
-				throw new IllegalStateException();
-			}
+            if (isStarted) {
+                throw new IllegalStateException();
+            }
             isStarted = true;
             isTestingVM = true;
         }
@@ -260,9 +259,9 @@ public class NodeStarter implements WrapperListener {
     public static Node createTestNode(TestNodeParameters params) throws NodeInitException {
 
         synchronized (NodeStarter.class) {
-			if ((!isStarted) || (!isTestingVM)) {
-				throw new IllegalStateException("Call globalTestInit() first!");
-			}
+            if ((!isStarted) || (!isTestingVM)) {
+                throw new IllegalStateException("Call globalTestInit() first!");
+            }
         }
 
         File baseDir = params.baseDirectory;
@@ -308,9 +307,9 @@ public class NodeStarter implements WrapperListener {
         configFS.put("node.includeLocalAddressesInNoderefs", true);
         configFS.put("node.enableARKs", false);
         configFS.put("node.load.threadLimit", params.threadLimit);
-		if (params.ramStore) {
-			configFS.putSingle("node.storeType", "ram");
-		}
+        if (params.ramStore) {
+            configFS.putSingle("node.storeType", "ram");
+        }
         configFS.put("node.storeSize", params.storeSize);
         configFS.put("node.disableHangCheckers", true);
         configFS.put("node.enableSwapping", params.enableSwapping);
@@ -330,9 +329,9 @@ public class NodeStarter implements WrapperListener {
         configFS.put("node.encryptTempBuckets", false);
         configFS.put("node.encryptPersistentTempBuckets", false);
         configFS.put("node.enableRoutedPing", true);
-		if (params.ipAddressOverride != null) {
-			configFS.putSingle("node.ipAddressOverride", params.ipAddressOverride);
-		}
+        if (params.ipAddressOverride != null) {
+            configFS.putSingle("node.ipAddressOverride", params.ipAddressOverride);
+        }
         if (params.longPingTimes) {
             configFS.put("node.maxPingTime", 100000);
             configFS.put("node.subMaxPingTime", 50000);
@@ -350,7 +349,7 @@ public class NodeStarter implements WrapperListener {
         Node node = new Node(config, params.random, params.random, null, null, params.executor);
 
         //All testing environments connect the nodes as they want, even if the old setup is restored,
-		// it is not desired.
+        // it is not desired.
         node.getPeers().removeAllPeers();
 
         return node;
@@ -377,16 +376,16 @@ public class NodeStarter implements WrapperListener {
      */
     public static long getMemoryLimitMB() {
         long limit = getMemoryLimitBytes();
-		if (limit <= 0) {
-			return limit;
-		}
-		if (limit == Long.MAX_VALUE) {
-			return -2;
-		}
+        if (limit <= 0) {
+            return limit;
+        }
+        if (limit == Long.MAX_VALUE) {
+            return -2;
+        }
         limit /= (1024 * 1024);
-		if (limit > Integer.MAX_VALUE) {
-			return -1; // Seems unlikely. FIXME 2TB limit!
-		}
+        if (limit > Integer.MAX_VALUE) {
+            return -1; // Seems unlikely. FIXME 2TB limit!
+        }
         return limit;
     }
 
@@ -395,17 +394,17 @@ public class NodeStarter implements WrapperListener {
      */
     public static long getMemoryLimitBytes() {
         long maxMemory = Runtime.getRuntime().maxMemory();
-		if (maxMemory == Long.MAX_VALUE) {
-			return maxMemory;
-		} else if (maxMemory <= 0) {
-			return -1;
-		} else {
-			if (maxMemory < (1024 * 1024)) {
-				// Some weird buggy JVMs provide this number in MB IIRC?
-				return maxMemory * 1024 * 1024;
-			}
-			return maxMemory;
-		}
+        if (maxMemory == Long.MAX_VALUE) {
+            return maxMemory;
+        } else if (maxMemory <= 0) {
+            return -1;
+        } else {
+            if (maxMemory < (1024 * 1024)) {
+                // Some weird buggy JVMs provide this number in MB IIRC?
+                return maxMemory * 1024 * 1024;
+            }
+            return maxMemory;
+        }
     }
 
     /**
@@ -444,23 +443,23 @@ public class NodeStarter implements WrapperListener {
     @Override
     public Integer start(String[] args) {
         synchronized (NodeStarter.class) {
-			if (isStarted) {
-				throw new IllegalStateException();
-			}
+            if (isStarted) {
+                throw new IllegalStateException();
+            }
             isStarted = true;
             isTestingVM = false;
         }
         if (args.length > 1) {
-            System.out.println("Usage: $ java freenet.node.Node <configFile>");
+            System.out.println("Usage: $ java network.crypta.node.Node <configFile>");
             return -1;
         }
         File configFilename;
-		if (args.length == 0) {
-			System.out.println("Using default config filename freenet.ini");
-			configFilename = new File("freenet.ini");
-		} else {
-			configFilename = new File(args[0]);
-		}
+        if (args.length == 0) {
+            System.out.println("Using default config filename freenet.ini");
+            configFilename = new File("cryptad.ini");
+        } else {
+            configFilename = new File(args[0]);
+        }
 
         // set Java's DNS cache not to cache forever, since many people
         // use dyndns hostnames
@@ -491,7 +490,7 @@ public class NodeStarter implements WrapperListener {
         }
 
         String builtWithMessage =
-            "freenet.jar built with freenet-ext.jar Build #" + ExtVersion.buildNumber + " r" +
+            "cryptad.jar built with freenet-ext.jar Build #" + ExtVersion.buildNumber + " r" +
             ExtVersion.cvsRevision + " running with ext build " + extBuildNumber + " r" +
             extRevisionNumber;
         Logger.normal(this, builtWithMessage);
@@ -502,7 +501,7 @@ public class NodeStarter implements WrapperListener {
         executor.start();
 
         // Prevent timeouts for a while. The DiffieHellman init for example could take some time on a
-		// very slow system.
+        // very slow system.
         WrapperManager.signalStarting(500000);
 
         // Thread to keep the node up.
@@ -580,8 +579,8 @@ public class NodeStarter implements WrapperListener {
     }
 
     /**
-     * Called whenever the native wrapper code traps a system control signal against the Java process.
-     * It is up to the callback to take any actions necessary.  Possible values are:
+     * Called whenever the native wrapper code traps a system control signal against the Java process. It
+     * is up to the callback to take any actions necessary.  Possible values are:
      * WrapperManager.WRAPPER_CTRL_C_EVENT, WRAPPER_CTRL_CLOSE_EVENT, WRAPPER_CTRL_LOGOFF_EVENT, or
      * WRAPPER_CTRL_SHUTDOWN_EVENT
      *
@@ -594,10 +593,11 @@ public class NodeStarter implements WrapperListener {
         } else
             // We are not being controlled by the Wrapper, so
             //  handle the event ourselves.
-			if ((event == WrapperManager.WRAPPER_CTRL_C_EVENT) || (event == WrapperManager.WRAPPER_CTRL_CLOSE_EVENT) ||
-				(event == WrapperManager.WRAPPER_CTRL_SHUTDOWN_EVENT)) {
-				WrapperManager.stop(0);
-			}
+            if ((event == WrapperManager.WRAPPER_CTRL_C_EVENT) ||
+                (event == WrapperManager.WRAPPER_CTRL_CLOSE_EVENT) ||
+                (event == WrapperManager.WRAPPER_CTRL_SHUTDOWN_EVENT)) {
+                WrapperManager.stop(0);
+            }
     }
 
     /**
@@ -624,7 +624,7 @@ public class NodeStarter implements WrapperListener {
          * (which you have to do once for each Java VM): Each one will start with a fresh empty
          * subdirectory for as long as each of them uses a unique port number.
          */
-        public File baseDirectory = new File("freenet-test-node-" + UUID.randomUUID());
+        public File baseDirectory = new File("crypta-test-node-" + UUID.randomUUID());
         public boolean disableProbabilisticHTLs;
         public short maxHTL;
         public int dropProb;
@@ -648,6 +648,7 @@ public class NodeStarter implements WrapperListener {
         public boolean enableFCP;
         public boolean enablePlugins;
     }
+
     static SemiOrderedShutdownHook shutdownHook;
     private static LoggingConfigHandler logConfigHandler;
     // experimental osgi support
