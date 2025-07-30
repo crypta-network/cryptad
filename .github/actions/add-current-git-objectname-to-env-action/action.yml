@@ -1,0 +1,17 @@
+name: 'Add Current Git Object Name to GITHUB_ENV'
+inputs:
+  abbrev:
+    required: true
+    default: '4'
+    description: --abbrev value of git describe
+outputs:
+  object-name:
+    description: Current git object name
+    value: ${{ steps.git-object-name-computer.outputs.git-object-name }}
+runs:
+  using: composite
+  steps:
+    - name: Compute git object name
+      id: git-object-name-computer
+      run: echo "git-object-name=$(describe --always --abbrev=4 --dirty)" >> $GITHUB_OUTPUT
+      shell: bash
