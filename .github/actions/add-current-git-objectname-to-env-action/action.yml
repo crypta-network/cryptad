@@ -13,5 +13,5 @@ runs:
   steps:
     - name: Compute git object name
       id: git-object-name-computer
-      run: echo "git-object-name=$(describe --always --abbrev=4 --dirty)" >> $GITHUB_OUTPUT
+      run: echo "git-object-name=$(git describe --always --abbrev=4 --dirty)" >> $GITHUB_OUTPUT
       shell: bash
