@@ -2,11 +2,9 @@ on:
   workflow_call:
     inputs:
       git_ref:
-        required: true
         type: string
         default: next
       jdk_version:
-        required: true
         type: string
         default: '21'
 jobs:
