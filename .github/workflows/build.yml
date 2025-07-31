@@ -1,3 +1,5 @@
+name: Build cryptad.jar
+
 on:
   workflow_call:
     inputs:
