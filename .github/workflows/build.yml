@@ -9,12 +9,19 @@ on:
       jdk_version:
         type: string
         default: '21'
+    outputs:
+      artifact-id:
+        description: The artifact-id for built cryptad.jar
+        value: ${{ jobs.build.outputs.artifact-id }}
 jobs:
   build:
 
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
+    outputs:
+      artifact-id: ${{ steps.upload-artifact.outputs.artifact-id}}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +44,7 @@ jobs:
         run: ./gradlew jar --no-daemon
 
       - name: Upload build artifacts
+        id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
           path: build/libs/cryptad.jar
