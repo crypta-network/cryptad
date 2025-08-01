@@ -3,10 +3,10 @@ name: Build cryptad.jar
 on:
   workflow_call:
     inputs:
-      git_ref:
+      git-ref:
         type: string
         default: next
-      jdk_version:
+      jdk-version:
         type: string
         default: '21'
     outputs:
