@@ -38,7 +38,6 @@ public class PNGFilter implements ContentDataFilter {
     "iCCP", // FIXME Embedded ICC profile: could this conceivably cause a web lookup?
     "sBIT", // https://www.w3.org/TR/png/#11sBIT
     "gAMA", // https://www.w3.org/TR/png/#11gAMA
-    "mDCV", // https://www.w3.org/TR/png/#mDCV-chunk
     "cLLI", // https://www.w3.org/TR/png/#cLLI-chunk
     "sRGB",
     "bKGD",
@@ -106,6 +105,8 @@ public class PNGFilter implements ContentDataFilter {
     boolean hasSeenIEND = false;
     boolean hasSeenIDAT = false;
     boolean hasSeenPLTE = false;
+    boolean hasSeenCICP = false;
+    boolean hasSeenMDCV = false;
     try {
       long offset = 0;
       dis = new DataInputStream(input);
@@ -287,6 +288,9 @@ public class PNGFilter implements ContentDataFilter {
 
         if (!skip && "PLTE".equalsIgnoreCase(chunkTypeString)) {
           if (hasSeenIDAT) throwError("PLTE must be before IDAT", "PLTE must be before IDAT");
+          if (hasSeenMDCV && !hasSeenCICP) {
+            throwError("mDCV requires cICP", "mDCV requires cICP");
+          }
           validChunkType = true;
           hasSeenPLTE = true;
         }
@@ -296,12 +300,21 @@ public class PNGFilter implements ContentDataFilter {
             throwError(
                 "Multiple IDAT chunks must be consecutive!",
                 "Multiple IDAT chunks must be consecutive!");
+          if (hasSeenMDCV && !hasSeenCICP) {
+            throwError("mDCV requires cICP", "mDCV requires cICP");
+          }
           hasSeenIDAT = true;
           validChunkType = true;
         }
 
         if (!skip && "cICP".equals(chunkTypeString)) {
           validChunkType = !(hasSeenPLTE || hasSeenIDAT);
+          hasSeenCICP = true;
+        }
+
+        if (!skip && "mDCV".equals(chunkTypeString)) {
+          validChunkType = !(hasSeenPLTE || hasSeenIDAT);
+          hasSeenMDCV = true;
         }
 
         if (!validChunkType) {
