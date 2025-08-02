@@ -1,13 +1,23 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
+import static java.util.Arrays.asList;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.NullBucket;
+import network.crypta.test.PngUtil;
+import network.crypta.test.PngUtil.Chunk;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 public class PNGFilterTest {
   protected static Object[][] testImages = {
@@ -122,4 +132,33 @@ public class PNGFilterTest {
       }
     }
   }
+
+  @Test
+  public void cICPChunkIsNotFiltered() throws IOException {
+    verifyChunkIsNotRemoved(new Chunk("cICP", new byte[0]));
+  }
+
+  @Test
+  public void mDCVChunkIsNotFiltered() throws IOException {
+    verifyChunkIsNotRemoved(new Chunk("mDCV", new byte[0]));
+  }
+
+  @Test
+  public void cLLIChunkIsNotFiltered() throws IOException {
+    verifyChunkIsNotRemoved(new Chunk("cLLI", new byte[0]));
+  }
+
+  private void verifyChunkIsNotRemoved(Chunk chunk) throws IOException {
+    PNGFilter filter = new PNGFilter(false, false, true);
+    File pngFile = temporaryFolder.newFile();
+    PngUtil.createPngFile(pngFile, asList(chunk));
+    File filteredPngFile = temporaryFolder.newFile();
+    Bucket bucket = new FileBucket(pngFile, true, false, false, false);
+    try (FileOutputStream outputStream = new FileOutputStream(filteredPngFile)) {
+      filter.readFilter(bucket.getInputStream(), outputStream, "", null, null, null);
+    }
+    assertThat(PngUtil.getChunks(filteredPngFile), hasItem(chunk));
+  }
+
+  @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
 }
