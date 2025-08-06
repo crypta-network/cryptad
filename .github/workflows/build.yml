@@ -5,7 +5,7 @@ on:
     inputs:
       git-ref:
         type: string
-        default: next
+        default: main
       jdk-version:
         type: string
         default: '21'
@@ -41,7 +41,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build with Gradle Wrapper
-        run: ./gradlew jar --no-daemon
+        run: ./gradlew devSnapshot jar
 
       - name: Upload build artifacts
         id: upload-artifact
