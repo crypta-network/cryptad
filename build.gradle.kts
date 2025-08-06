@@ -5,6 +5,7 @@ plugins {
     java
     `maven-publish`
     kotlin("jvm") version "2.2.0"
+    id("nebula.release") version "21.0.0"
 }
 
 java {
