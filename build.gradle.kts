@@ -148,7 +148,7 @@ gradle.addBuildListener(object : BuildAdapter() {
                         sha256.update(buffer, 0, read)
                     }
                 }
-                println("SHA-256 of ${'$'}{file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) })
+                println("SHA-256 of ${file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) })
             }
             jars.forEach { hash(it) }
         }
