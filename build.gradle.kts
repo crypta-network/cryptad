@@ -41,8 +41,8 @@ sourceSets {
     val main by getting {
         java.srcDir("src/")
         kotlin.srcDir("src/")
-        kotlin.srcDir(versionBuildDir)
-        kotlin.exclude("network/crypta/node/Version.kt")
+        java.exclude("network/crypta/node/Version.kt")
+        kotlin.exclude("**/Version.kt")
         compileClasspath += configurations["provided"]
     }
     val test by getting {
@@ -129,6 +129,7 @@ val generateVersionSource by tasks.registering(Copy::class) {
 
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn(generateVersionSource)
+    source(versionBuildDir)
 }
 
 val buildJar by tasks.registering(Jar::class) {
