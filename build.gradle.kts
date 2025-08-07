@@ -1,4 +1,4 @@
-import org.apache.tools.ant.filters.ReplaceTokens
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.IOException
 import java.security.MessageDigest
 
@@ -26,6 +26,9 @@ buildscript {
 val provided by configurations.creating
 val compile by configurations.creating
 
+val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
+val versionSrc = "network/crypta/node/Version.kt"
+
 repositories {
     flatDir { dirs(uri("${projectDir}/lib")) }
     maven(url = "https://mvn.freenetproject.org") {
@@ -38,6 +41,8 @@ sourceSets {
     val main by getting {
         java.srcDir("src/")
         kotlin.srcDir("src/")
+        kotlin.srcDir(versionBuildDir)
+        kotlin.exclude("network/crypta/node/Version.kt")
         compileClasspath += configurations["provided"]
     }
     val test by getting {
@@ -49,12 +54,9 @@ sourceSets {
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 tasks.withType<Javadoc> { options.encoding = "UTF-8" }
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 }
-
-val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
-val versionSrc = "network/crypta/node/Version.java"
 
 val gitrev: String = try {
     val cmd = "git describe --always --abbrev=4 --dirty"
@@ -116,43 +118,29 @@ fun convertYyiToPublic(version: String): String {
 val generateVersionSource by tasks.registering(Copy::class) {
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
-        filter<ReplaceTokens>(
-            "tokens" to mapOf(
-                "node_ver" to project.version.toString(),
-                "pub_ver" to convertYyiToPublic(project.version.toString()),
-                "git_rev" to gitrev,
-            )
-        )
+        filter { line: String ->
+            line.replace("@node_ver@", project.version.toString())
+                .replace("@pub_ver@", convertYyiToPublic(project.version.toString()))
+                .replace("@git_rev@", gitrev)
+        }
     }
     into(versionBuildDir)
 }
 
-val compileVersion by tasks.registering(JavaCompile::class) {
-    dependsOn(generateVersionSource, tasks.compileJava)
-    setSource(versionBuildDir)
-    include(versionSrc)
-    classpath = files(sourceSets["main"].compileClasspath, sourceSets["main"].output.classesDirs)
-    destinationDirectory.set(layout.buildDirectory.dir("java/version/"))
-    sourceCompatibility = "21"
-    targetCompatibility = "21"
+tasks.named<KotlinCompile>("compileKotlin") {
+    dependsOn(generateVersionSource)
 }
 
 val buildJar by tasks.registering(Jar::class) {
     // Ensure both Java and Kotlin compilation have run
     dependsOn(
-        compileVersion,
         tasks.processResources,
         tasks.compileJava,
         tasks.named("compileKotlin")
     )
 
     // Include all compiled classes (Java + Kotlin) and processed resources
-    from(sourceSets.main.get().output) {
-        exclude("network/crypta/node/Version.class")
-        exclude("network/crypta/node/Version$1.class")
-    }
-
-    from(compileVersion.get().destinationDirectory)
+    from(sourceSets.main.get().output)
 
     archiveFileName.set("cryptad.jar")
     isPreserveFileTimestamps = false
@@ -215,6 +203,7 @@ gradle.addBuildListener(object : BuildAdapter() {
 val copyResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["main"].allSource)
     outputs.dir(layout.buildDirectory.dir("classes/java/main/"))
+    dependsOn(generateVersionSource)
     doLast {
         copy {
             from(sourceSets["main"].allSource)
@@ -234,7 +223,6 @@ val copyResourcesToClasses2 by tasks.registering {
 }
 
 tasks.processResources { dependsOn(copyResourcesToClasses2) }
-compileVersion { dependsOn(copyResourcesToClasses2) }
 
 val copyTestResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["test"].allSource)
