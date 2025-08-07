@@ -1,3 +1,4 @@
+import org.apache.tools.ant.filters.ReplaceTokens
 import java.io.IOException
 import java.security.MessageDigest
 
@@ -62,10 +63,66 @@ val gitrev: String = try {
     "@unknown@"
 }
 
+/**
+ * Converts a version string from the internal "YYI+SemVer" format to a
+ * consumer-friendly version string.
+ *
+ * The conversion follows these rules:
+ * 1. The YYI major version (e.g., `251`) is always converted to a four-digit
+ *    year and an index (e.g., `2025.1`).
+ * 2. If the original minor version is `0`, it is omitted from the output.
+ * 3. If the minor version is not `0`, it is included.
+ * 4. If the patch version is `0` or if the minor version was `0`, the patch
+ *    version is omitted from the output. Otherwise, it is included.
+ *
+ * @param version The source version string in "YYI.minor.patch" format (e.g., "251.1.0").
+ * @return The converted, consumer-friendly version string.
+ *         Returns the original input string if it cannot be parsed.
+ */
+fun convertYyiToPublic(version: String): String {
+    try {
+        val parts = version.split('.')
+        if (parts.size != 3) {
+            return version // Not a valid SemVer format
+        }
+
+        val yyiStr = parts[0]
+        val minor = parts[1].toInt()
+        val patch = parts[2].toInt()
+
+        if (yyiStr.length < 3) {
+            return version // YYI string is too short
+        }
+
+        // Extract YY (e.g., "25") and I (e.g., "1") from YYI ("251")
+        val yy = yyiStr.substring(0, 2).toInt()
+        val i = yyiStr.substring(2).toInt()
+
+        val year = 2000 + yy
+        val baseVersion = "$year.$i"
+
+        // Apply the final, refined rules
+        return when {
+            minor == 0 -> baseVersion // If minor is 0, ignore minor and patch
+            patch == 0 -> "$baseVersion.$minor" // If minor != 0 but patch is 0, ignore patch
+            else -> "$baseVersion.$minor.$patch" // If neither are 0, include everything
+        }
+    } catch (e: Exception) {
+        // Catch parsing errors (NumberFormatException, IndexOutOfBoundsException)
+        return version
+    }
+}
+
 val generateVersionSource by tasks.registering(Copy::class) {
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
-        filter { it.replace("@custom@", gitrev) }
+        filter<ReplaceTokens>(
+            "tokens" to mapOf(
+                "node_ver" to project.version.toString(),
+                "pub_ver" to convertYyiToPublic(project.version.toString()),
+                "git_rev" to gitrev,
+            )
+        )
     }
     into(versionBuildDir)
 }
@@ -97,7 +154,7 @@ val buildJar by tasks.registering(Jar::class) {
 
     from(compileVersion.get().destinationDirectory)
 
-    archiveBaseName.set("cryptad")
+    archiveFileName.set("cryptad.jar")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -109,10 +166,10 @@ val buildJar by tasks.registering(Jar::class) {
             "Recommended-Ext-Version" to 29,
             "Compiled-With" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
             "Specification-Title" to "Crypta",
-            "Specification-Version" to "0.7.5",
+            "Specification-Version" to project.version.toString(),
             "Specification-Vendor" to "crypta.network",
             "Implementation-Title" to "Crypta",
-            "Implementation-Version" to "0.7.5 $gitrev",
+            "Implementation-Version" to "${project.version} $gitrev",
             "Implementation-Vendor" to "crypta.network"
         )
     }
