@@ -7,8 +7,6 @@ import network.crypta.support.Fields
 import network.crypta.support.LogThresholdCallback
 import network.crypta.support.Logger
 import network.crypta.support.Logger.LogLevel
-import java.util.Calendar
-import java.util.TimeZone
 
 /**
  * Central spot for stuff related to the versioning of the codebase.
@@ -48,13 +46,8 @@ object Version {
     /** The build number of the current revision */
     private const val buildNumber = 1503
 
-    /** Oldest build of fred we will talk to *before* _cal */
-    private const val oldLastGoodBuild = 1474
-
-    /** Oldest build of fred we will talk to *after* _cal */
-    private const val newLastGoodBuild = 1475
-
-    val transitionTime: Long
+    /** Oldest build of fred we will talk to */
+    private const val lastGoodBuildNumber = 1475
 
     @Volatile
     private var logMINOR: Boolean = false
@@ -62,11 +55,6 @@ object Version {
     private var logDEBUG: Boolean = false
 
     init {
-        val _cal = Calendar.getInstance(TimeZone.getTimeZone("GMT"))
-        // year, month - 1 (or constant), day, hour, minute, second
-        _cal.set(2016, Calendar.JULY, 15, 0, 0, 0)
-        transitionTime = _cal.timeInMillis
-
         Logger.registerLogThresholdCallback(object : LogThresholdCallback() {
             override fun shouldUpdate() {
                 logMINOR = Logger.shouldLog(LogLevel.MINOR, this)
@@ -93,17 +81,12 @@ object Version {
     @JvmStatic
     fun publicVersion(): String = publicVersion
 
-    /** Analogous to [buildNumber] but for [transitionTime]. */
-    @JvmStatic
-    fun transitionTime(): Long = transitionTime
-
     /**
      * @return The lowest build number with which the node will connect and exchange
      * data normally.
      */
     @JvmStatic
-    fun lastGoodBuild(): Int =
-        if (System.currentTimeMillis() >= transitionTime) newLastGoodBuild else oldLastGoodBuild
+    fun lastGoodBuild(): Int = lastGoodBuildNumber
 
     /** The highest reported build of fred */
     private var highestSeenBuild = buildNumber

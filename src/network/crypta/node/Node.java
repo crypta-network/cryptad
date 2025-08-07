@@ -3413,7 +3413,6 @@ public class Node implements TimeSkewDetectorCallback {
             opennet.start();
         ps.start(nodeStats);
         ticker.start();
-        scheduleVersionTransition();
         usm.start(ticker);
 
         if (isUsingWrapper()) {
@@ -3472,21 +3471,6 @@ public class Node implements TimeSkewDetectorCallback {
         Logger.normal(this, "Started node");
 
         hasStarted = true;
-    }
-
-    private void scheduleVersionTransition() {
-        long now = System.currentTimeMillis();
-        long transition = Version.transitionTime();
-        if (now < transition)
-            ticker.queueTimedJob(new Runnable() {
-
-                @Override
-                public void run() {
-                    for (PeerNode pn : peers.myPeers()) {
-                        pn.updateVersionRoutablity();
-                    }
-                }
-            }, transition - now);
     }
 
     private void warnIfNotUsingWrapper() {
