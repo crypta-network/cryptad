@@ -374,7 +374,7 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 			/*Not really the state's fault*/
 		} catch(URISyntaxException e) {
 			//Impossible
-			Logger.error(this, "URISyntaxException converting a FreenetURI to a URI!: "+e, e);
+			Logger.error(this, "URISyntaxException converting a Crypta URI to a URI!: "+e, e);
 			ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
 			/*Not really the state's fault*/
 		} catch(CompressionOutputSizeException e) {

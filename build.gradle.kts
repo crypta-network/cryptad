@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.IOException
 import java.security.MessageDigest
 
@@ -25,6 +26,9 @@ buildscript {
 val provided by configurations.creating
 val compile by configurations.creating
 
+val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
+val versionSrc = "network/crypta/node/Version.kt"
+
 repositories {
     flatDir { dirs(uri("${projectDir}/lib")) }
     maven(url = "https://mvn.freenetproject.org") {
@@ -37,6 +41,8 @@ sourceSets {
     val main by getting {
         java.srcDir("src/")
         kotlin.srcDir("src/")
+        java.exclude("network/crypta/node/Version.kt")
+        kotlin.exclude("**/Version.kt")
         compileClasspath += configurations["provided"]
     }
     val test by getting {
@@ -48,12 +54,9 @@ sourceSets {
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 tasks.withType<Javadoc> { options.encoding = "UTF-8" }
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 }
-
-val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
-val versionSrc = "network/crypta/node/Version.java"
 
 val gitrev: String = try {
     val cmd = "git describe --always --abbrev=4 --dirty"
@@ -62,42 +65,85 @@ val gitrev: String = try {
     "@unknown@"
 }
 
+/**
+ * Converts a version string from the internal "YYI+SemVer" format to a
+ * consumer-friendly version string.
+ *
+ * The conversion follows these rules:
+ * 1. The YYI major version (e.g., `251`) is always converted to a four-digit
+ *    year and an index (e.g., `2025.1`).
+ * 2. If the original minor version is `0`, it is omitted from the output.
+ * 3. If the minor version is not `0`, it is included.
+ * 4. If the patch version is `0` or if the minor version was `0`, the patch
+ *    version is omitted from the output. Otherwise, it is included.
+ *
+ * @param version The source version string in "YYI.minor.patch" format (e.g., "251.1.0").
+ * @return The converted, consumer-friendly version string.
+ *         Returns the original input string if it cannot be parsed.
+ */
+fun convertYyiToPublic(version: String): String {
+    try {
+        val parts = version.split('.')
+        if (parts.size != 3) {
+            return version // Not a valid SemVer format
+        }
+
+        val yyiStr = parts[0]
+        val minor = parts[1].toInt()
+        val patch = parts[2].toInt()
+
+        if (yyiStr.length < 3) {
+            return version // YYI string is too short
+        }
+
+        // Extract YY (e.g., "25") and I (e.g., "1") from YYI ("251")
+        val yy = yyiStr.substring(0, 2).toInt()
+        val i = yyiStr.substring(2).toInt()
+
+        val year = 2000 + yy
+        val baseVersion = "$year.$i"
+
+        // Apply the final, refined rules
+        return when {
+            minor == 0 -> baseVersion // If minor is 0, ignore minor and patch
+            patch == 0 -> "$baseVersion.$minor" // If minor != 0 but patch is 0, ignore patch
+            else -> "$baseVersion.$minor.$patch" // If neither are 0, include everything
+        }
+    } catch (e: Exception) {
+        // Catch parsing errors (NumberFormatException, IndexOutOfBoundsException)
+        return version
+    }
+}
+
 val generateVersionSource by tasks.registering(Copy::class) {
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
-        filter { it.replace("@custom@", gitrev) }
+        filter { line: String ->
+            line.replace("@node_ver@", project.version.toString())
+                .replace("@pub_ver@", convertYyiToPublic(project.version.toString()))
+                .replace("@git_rev@", gitrev)
+        }
     }
     into(versionBuildDir)
 }
 
-val compileVersion by tasks.registering(JavaCompile::class) {
-    dependsOn(generateVersionSource, tasks.compileJava)
-    setSource(versionBuildDir)
-    include(versionSrc)
-    classpath = files(sourceSets["main"].compileClasspath, sourceSets["main"].output.classesDirs)
-    destinationDirectory.set(layout.buildDirectory.dir("java/version/"))
-    sourceCompatibility = "21"
-    targetCompatibility = "21"
+tasks.named<KotlinCompile>("compileKotlin") {
+    dependsOn(generateVersionSource)
+    source(versionBuildDir)
 }
 
 val buildJar by tasks.registering(Jar::class) {
     // Ensure both Java and Kotlin compilation have run
     dependsOn(
-        compileVersion,
         tasks.processResources,
         tasks.compileJava,
         tasks.named("compileKotlin")
     )
 
     // Include all compiled classes (Java + Kotlin) and processed resources
-    from(sourceSets.main.get().output) {
-        exclude("network/crypta/node/Version.class")
-        exclude("network/crypta/node/Version$1.class")
-    }
+    from(sourceSets.main.get().output)
 
-    from(compileVersion.get().destinationDirectory)
-
-    archiveBaseName.set("cryptad")
+    archiveFileName.set("cryptad.jar")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
     duplicatesStrategy = DuplicatesStrategy.FAIL
@@ -109,10 +155,10 @@ val buildJar by tasks.registering(Jar::class) {
             "Recommended-Ext-Version" to 29,
             "Compiled-With" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
             "Specification-Title" to "Crypta",
-            "Specification-Version" to "0.7.5",
+            "Specification-Version" to project.version.toString(),
             "Specification-Vendor" to "crypta.network",
             "Implementation-Title" to "Crypta",
-            "Implementation-Version" to "0.7.5 $gitrev",
+            "Implementation-Version" to "${project.version} $gitrev",
             "Implementation-Vendor" to "crypta.network"
         )
     }
@@ -158,6 +204,7 @@ gradle.addBuildListener(object : BuildAdapter() {
 val copyResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["main"].allSource)
     outputs.dir(layout.buildDirectory.dir("classes/java/main/"))
+    dependsOn(generateVersionSource)
     doLast {
         copy {
             from(sourceSets["main"].allSource)
@@ -177,7 +224,6 @@ val copyResourcesToClasses2 by tasks.registering {
 }
 
 tasks.processResources { dependsOn(copyResourcesToClasses2) }
-compileVersion { dependsOn(copyResourcesToClasses2) }
 
 val copyTestResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["test"].allSource)
