@@ -12,44 +12,45 @@ import network.crypta.support.Logger
 import network.crypta.support.Logger.LogLevel
 
 /**
- * Central spot for stuff related to the versioning of the codebase.
+ * Version information and helpers for the Cryptad node.
  *
- * Note: when using the fields of this class, you must note that the Java
- * compiler compiles **constant final static** fields into the class
- * definitions of classes that use them. This might not be the most appropriate
- * behaviour when, eg. creating a class that reports statistics.
+ * This object centralizes everything related to versioning: human‑readable
+ * versions, protocol versions, build numbers, compatibility checks, and
+ * utilities for constructing and parsing version strings.
  *
- * A final static field can be made "non-constant" in the eyes of the compiler
- * by initialising it with the results of a method, eg `T identity(T o) { T o; }`;
- * however the "constant" behaviour might be required in some cases. A more
- * flexible solution is to add a method that returns the field, eg
- * [publicVersion], and choose between the method and the field as necessary.
+ * Constants declared as `const val` are inlined by the Kotlin compiler at
+ * call sites. To retrieve values at runtime (e.g., after a hot swap or when
+ * only this file is recompiled), prefer calling the provided accessor
+ * functions such as [buildNumber], [publicVersion], and [cvsRevision] rather
+ * than reading the constants directly.
+ *
+ * Version string format used for peer communication is a comma‑separated list:
+ * "<name>,<series>,<protocol>,<build>". In compatibility checks we retain the
+ * historical identifiers from upstream Freenet (e.g., "Fred" as the name and
+ * series identifiers) to interoperate with those nodes where applicable.
  */
 object Version {
 
-    /** Crypta Daemon */
+    /** Human‑readable product name of the node. */
     const val nodeName = "Cryptad"
 
     /**
-     * The current tree version.
-     * FIXME: This is part of the node compatibility computations, so cannot be
-     * safely changed!!! Hence publicVersion ...
+     * Internal series (tree) version used for compatibility calculations.
+     * Changing this affects wire‑compatibility; see [publicVersion] for
+     * the human‑facing release version.
      */
     const val nodeVersion = "@node_ver@"
 
-    /**
-     * The version for publicity purposes i.e. the version of the node that has
-     * been released.
-     */
+    /** Human‑facing release version used for display and logging. */
     const val publicVersion = "@pub_ver@"
 
-    /** The protocol version supported */
+    /** Protocol version the node speaks on the wire. */
     const val protocolVersion = "1.0"
 
-    /** The build number of the current revision */
+    /** Sequential build number identifying this binary. */
     private const val buildNumber = 1503
 
-    /** Oldest build of fred we will talk to */
+    /** Minimum acceptable build number for peers in our series. */
     private const val lastGoodBuildNumber = 1475
 
     @Volatile
@@ -68,47 +69,40 @@ object Version {
     }
 
     /**
-     * Use this method when you want the value returned to be the run-time
-     * version, not the build-time version.
-     *
-     * For example, if you compile your class, then modify this class and
-     * compile it (the build script does this automatically), but don't
-     * re-compile your original class, then that will still have the old
-     * version compiled into it, since it is a static constant.
-     *
-     * @return The build number (not SVN revision number) of this node.
+     * Returns the build number at runtime (not inlined).
+     * Use this instead of reading the `const val` to avoid inlining.
      */
     @JvmStatic
     fun buildNumber(): Int = buildNumber
 
-    /** Analogous to [buildNumber] but for [publicVersion]. */
+    /** Runtime accessor for [publicVersion] to avoid inlining. */
     @JvmStatic
     fun publicVersion(): String = publicVersion
 
-    /**
-     * @return The lowest build number with which the node will connect and exchange
-     * data normally.
-     */
+    /** Minimum build number we accept from peers in our series. */
     @JvmStatic
     fun lastGoodBuild(): Int = lastGoodBuildNumber
 
-    /** The highest reported build of fred */
+    /** Highest peer build observed during this process lifetime. */
     private var highestSeenBuild = buildNumber
 
-    /** The current stable tree version */
+    /** Current stable series identifier (historical compatibility with Freenet). */
     const val stableNodeVersion = "0.7"
 
-    /** Oldest stable build of Fred we will talk to */
+    /** Series identifier used when comparing with peers (historical "Fred"). */
+    private const val fredSeries = "0.7"
+
+    /** Minimum acceptable build for stable series peers. */
     const val lastGoodStableBuild = 1
 
-    /** Revision number of Version.java as read from CVS */
+    /** Git revision (historically called CVS revision) embedded at build time. */
     const val cvsRevision = "@git_rev@"
 
-    /** Analogous to [buildNumber] but for [cvsRevision]. */
+    /** Runtime accessor for [cvsRevision] to avoid inlining. */
     @JvmStatic
     fun cvsRevision(): String = cvsRevision
 
-    /** @return the node's version designators as an array */
+    /** Returns version components as `[name, series, protocol, build]`. */
     @JvmStatic
     fun getVersion(): Array<String> =
         arrayOf(nodeName, nodeVersion, protocolVersion, buildNumber.toString())
@@ -117,15 +111,15 @@ object Version {
     fun getLastGoodVersion(): Array<String> =
         arrayOf(nodeName, nodeVersion, protocolVersion, lastGoodBuild().toString())
 
-    /** @return the version string that should be presented in the NodeReference */
+    /** Returns the comma‑separated version string for NodeReference. */
     @JvmStatic
     fun getVersionString(): String = Fields.commaList(getVersion())
 
-    /** @return is needed for the freeviz */
+    /** Returns the comma‑separated minimum acceptable version (used by tooling like Freeviz). */
     @JvmStatic
     fun getLastGoodVersionString(): String = Fields.commaList(getLastGoodVersion())
 
-    /** @return true if requests should be accepted from nodes brandishing this protocol version string */
+    /** True if the provided protocol identifier is acceptable. */
     private fun goodProtocol(prot: String): Boolean {
         // uncomment next line to accept stable, see also explainBadVersion() below
         //                      || prot.equals(stableProtocolVersion)
@@ -133,11 +127,15 @@ object Version {
     }
 
     /**
-     * @return true if requests should be accepted from nodes brandishing this
-     * version string
+     * Checks whether a peer version string is compatible.
+     *
+     * Requirements:
+     * - protocol must match [protocolVersion]
+     * - if peer is in our series, its build must be >= [lastGoodBuild]
+     * - if peer is stable series, its build must be >= [lastGoodStableBuild]
      */
     @JvmStatic
-    fun checkGoodVersion(version: String?): Boolean {
+    fun isCompatibleFredVersion(version: String?): Boolean {
         if (version == null) {
             Logger.error(Version::class.java, "version == null!", Exception("error"))
             return false
@@ -146,7 +144,7 @@ object Version {
         if (v == null || v.size < 3 || !goodProtocol(v[2])) {
             return false
         }
-        if (sameVersion(v)) {
+        if (sameSeriesAsUs(v)) {
             try {
                 val build = v[3].toInt()
                 val req = lastGoodBuild()
@@ -190,11 +188,14 @@ object Version {
     }
 
     /**
-     * @return true if requests should be accepted from nodes brandishing this
-     * version string, given an arbitrary lastGoodVersion
+     * Checks compatibility using a peer‑provided minimum acceptable version.
+     *
+     * Both [version] and [lastGoodVersion] must have matching protocol; if the
+     * series also matches, the peer build must be at least the minimum build in
+     * [lastGoodVersion]. Stable series rules apply as in [isCompatibleFredVersion].
      */
     @JvmStatic
-    fun checkArbitraryGoodVersion(version: String?, lastGoodVersion: String?): Boolean {
+    fun isCompatibleFredVersionWithMinimum(version: String?, lastGoodVersion: String?): Boolean {
         if (version == null) {
             Logger.error(Version::class.java, "version == null!", Exception("error"))
             return false
@@ -212,7 +213,7 @@ object Version {
         if (lgv == null || lgv.size < 3 || !goodProtocol(lgv[2])) {
             return false
         }
-        if (sameArbitraryVersion(v, lgv)) {
+        if (sameSeries(v, lgv)) {
             try {
                 val build = v[3].toInt()
                 val minBuild = lgv[3].toInt()
@@ -255,9 +256,7 @@ object Version {
         return true
     }
 
-    /**
-     * @return string explaining why a version string is rejected
-     */
+    /** Returns a human‑readable reason why [version] would be rejected, or null if acceptable. */
     @JvmStatic
     fun explainBadVersion(version: String): String? {
         val v = Fields.commaList(version)
@@ -268,7 +267,7 @@ object Version {
             // uncomment next line if accepting stable, see also goodProtocol() above
             // + " or " + stableProtocolVersion
         }
-        if (sameVersion(v)) {
+        if (sameSeriesAsUs(v)) {
             return try {
                 val build = v[3].toInt()
                 val req = lastGoodBuild()
@@ -292,9 +291,7 @@ object Version {
         return null
     }
 
-    /**
-     * @return the build number of an arbitrary version string
-     */
+    /** Parses an arbitrary version string and returns its build number. */
     @JvmStatic
     @Throws(VersionParseException::class)
     fun getArbitraryBuildNumber(version: String?): Int {
@@ -325,10 +322,7 @@ object Version {
         }
     }
 
-    /**
-     * Update static variable highestSeenBuild anytime we encounter
-     * a new node with a higher version than we've seen before
-     */
+    /** Records the highest build number observed among compatible peers. */
     @JvmStatic
     fun seenVersion(version: String?) {
         val v = Fields.commaList(version)
@@ -336,7 +330,7 @@ object Version {
         if (v == null || v.size < 3)
             return  // bad, but that will be discovered elsewhere
 
-        if (sameVersion(v)) {
+        if (sameSeriesAsUs(v)) {
             val buildNo = try {
                 v[3].toInt()
             } catch (e: NumberFormatException) {
@@ -357,32 +351,24 @@ object Version {
     @JvmStatic
     fun getHighestSeenBuild(): Int = highestSeenBuild
 
-    /**
-     * @return true if the string describes the same node version as ours.
-     * Note that the build number may be different, and is ignored.
-     */
+    /** True if [v] refers to our series (build is ignored). */
     @JvmStatic
-    fun sameVersion(v: Array<String>): Boolean {
+    fun sameSeriesAsUs(v: Array<String>): Boolean {
         return v[0] == "Fred" &&
-                v[1] == "0.7" &&
+                v[1] == fredSeries &&
                 v.size >= 4
     }
 
-    /**
-     * @return true if the string describes the same node version as an arbitrary one.
-     * Note that the build number may be different, and is ignored.
-     */
+    /** True if [v] and [lgv] are the same series (builds are ignored). */
     @JvmStatic
-    fun sameArbitraryVersion(v: Array<String>, lgv: Array<String>): Boolean {
+    fun sameSeries(v: Array<String>, lgv: Array<String>): Boolean {
         return v[0] == lgv[0] &&
                 v[1] == lgv[1] &&
                 v.size >= 4 &&
                 lgv.size >= 4
     }
 
-    /**
-     * @return true if the string describes a stable node version
-     */
+    /** True if [v] refers to the stable series. */
     private fun stableVersion(v: Array<String>): Boolean {
         return v[0] == "Fred" &&
                 v[1] == stableNodeVersion &&

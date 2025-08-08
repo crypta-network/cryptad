@@ -2308,14 +2308,14 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 		return bogusNoderef || forwardInvalidVersion() || reverseInvalidVersion();
 	}
 
-	private synchronized boolean forwardInvalidVersion() {
-		return !Version.checkGoodVersion(version);
-	}
+    private synchronized boolean forwardInvalidVersion() {
+        return !Version.isCompatibleFredVersion(version);
+    }
 
-	private synchronized boolean reverseInvalidVersion() {
-		if(ignoreLastGoodVersion()) return false;
-		return !Version.checkArbitraryGoodVersion(Version.getVersionString(), lastGoodVersion);
-	}
+    private synchronized boolean reverseInvalidVersion() {
+        if(ignoreLastGoodVersion()) return false;
+        return !Version.isCompatibleFredVersionWithMinimum(Version.getVersionString(), lastGoodVersion);
+    }
 
 	/**
 	 * The same as isUnroutableOlderVersion, but not synchronized.
