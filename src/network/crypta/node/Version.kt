@@ -3,6 +3,9 @@
  * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.node
 
+import network.crypta.node.Version.buildNumber
+import network.crypta.node.Version.cvsRevision
+import network.crypta.node.Version.publicVersion
 import network.crypta.support.Fields
 import network.crypta.support.LogThresholdCallback
 import network.crypta.support.Logger
@@ -51,6 +54,7 @@ object Version {
 
     @Volatile
     private var logMINOR: Boolean = false
+
     @Volatile
     private var logDEBUG: Boolean = false
 
@@ -93,9 +97,6 @@ object Version {
 
     /** The current stable tree version */
     const val stableNodeVersion = "0.7"
-
-    /** The stable protocol version supported */
-    const val stableProtocolVersion = "STABLE-0.7"
 
     /** Oldest stable build of Fred we will talk to */
     const val lastGoodStableBuild = 1
@@ -152,14 +153,16 @@ object Version {
                 if (build < req) {
                     if (logDEBUG) Logger.debug(
                         Version::class.java,
-                        "Not accepting unstable from version: " + version + "(lastGoodBuild=" + req + ')'
+                        "Not accepting unstable from version: $version(lastGoodBuild=$req)"
                     )
                     return false
                 }
             } catch (e: NumberFormatException) {
                 if (logMINOR)
-                    Logger.minor(Version::class.java,
-                        "Not accepting (" + e + ") from " + version)
+                    Logger.minor(
+                        Version::class.java,
+                        "Not accepting ($e) from $version"
+                    )
                 return false
             }
         }
@@ -169,20 +172,20 @@ object Version {
                 if (build < lastGoodStableBuild) {
                     if (logDEBUG) Logger.debug(
                         Version::class.java,
-                        "Not accepting stable from version" + version + "(lastGoodStableBuild=" + lastGoodStableBuild + ')'
+                        "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
                     )
                     return false
                 }
             } catch (e: NumberFormatException) {
                 Logger.minor(
                     Version::class.java,
-                    "Not accepting (" + e + ") from " + version
+                    "Not accepting ($e) from $version"
                 )
                 return false
             }
         }
         if (logDEBUG)
-            Logger.minor(Version::class.java, "Accepting: " + version)
+            Logger.minor(Version::class.java, "Accepting: $version")
         return true
     }
 
@@ -216,7 +219,7 @@ object Version {
                 if (build < minBuild) {
                     if (logDEBUG) Logger.debug(
                         Version::class.java,
-                        "Not accepting unstable from version: " + version + "(lastGoodVersion=" + lastGoodVersion + ')'
+                        "Not accepting unstable from version: $version(lastGoodVersion=$lastGoodVersion)"
                     )
                     return false
                 }
@@ -224,7 +227,7 @@ object Version {
                 if (logMINOR)
                     Logger.minor(
                         Version::class.java,
-                        "Not accepting (" + e + ") from " + version + " and/or " + lastGoodVersion
+                        "Not accepting ($e) from $version and/or $lastGoodVersion"
                     )
                 return false
             }
@@ -235,20 +238,20 @@ object Version {
                 if (build < lastGoodStableBuild) {
                     if (logDEBUG) Logger.debug(
                         Version::class.java,
-                        "Not accepting stable from version" + version + "(lastGoodStableBuild=" + lastGoodStableBuild + ')'
+                        "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
                     )
                     return false
                 }
             } catch (e: NumberFormatException) {
                 Logger.minor(
                     Version::class.java,
-                    "Not accepting (" + e + ") from " + version
+                    "Not accepting ($e) from $version"
                 )
                 return false
             }
         }
         if (logDEBUG)
-            Logger.minor(Version::class.java, "Accepting: " + version)
+            Logger.minor(Version::class.java, "Accepting: $version")
         return true
     }
 
@@ -261,7 +264,7 @@ object Version {
 
         if (v == null || v.size < 3 || !goodProtocol(v[2])) {
             return "Required protocol version is " +
-                protocolVersion
+                    protocolVersion
             // uncomment next line if accepting stable, see also goodProtocol() above
             // + " or " + stableProtocolVersion
         }
@@ -270,7 +273,7 @@ object Version {
                 val build = v[3].toInt()
                 val req = lastGoodBuild()
                 if (build < req)
-                    "Build older than last good build " + req
+                    "Build older than last good build $req"
                 else null
             } catch (e: NumberFormatException) {
                 "Build number not numeric."
@@ -280,7 +283,7 @@ object Version {
             return try {
                 val build = v[3].toInt()
                 if (build < lastGoodStableBuild)
-                    "Build older than last good stable build " + lastGoodStableBuild
+                    "Build older than last good stable build $lastGoodStableBuild"
                 else null
             } catch (e: NumberFormatException) {
                 "Build number not numeric."
@@ -302,12 +305,14 @@ object Version {
         val v = Fields.commaList(version)
 
         if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-            throw VersionParseException("not long enough or bad protocol: " + version)
+            throw VersionParseException("not long enough or bad protocol: $version")
         }
         try {
             return v[3].toInt()
         } catch (e: NumberFormatException) {
-            throw VersionParseException("Got NumberFormatException on " + v[3] + " : " + e + " for " + version).initCause(e) as VersionParseException
+            throw VersionParseException("Got NumberFormatException on " + v[3] + " : " + e + " for " + version).initCause(
+                e
+            ) as VersionParseException
         }
     }
 
@@ -341,7 +346,7 @@ object Version {
                 if (logMINOR) {
                     Logger.minor(
                         Version::class.java,
-                        "New highest seen build: " + buildNo
+                        "New highest seen build: $buildNo"
                     )
                 }
                 highestSeenBuild = buildNo
@@ -359,8 +364,8 @@ object Version {
     @JvmStatic
     fun sameVersion(v: Array<String>): Boolean {
         return v[0] == "Fred" &&
-            v[1] == "0.7" &&
-            v.size >= 4
+                v[1] == "0.7" &&
+                v.size >= 4
     }
 
     /**
@@ -370,9 +375,9 @@ object Version {
     @JvmStatic
     fun sameArbitraryVersion(v: Array<String>, lgv: Array<String>): Boolean {
         return v[0] == lgv[0] &&
-            v[1] == lgv[1] &&
-            v.size >= 4 &&
-            lgv.size >= 4
+                v[1] == lgv[1] &&
+                v.size >= 4 &&
+                lgv.size >= 4
     }
 
     /**
@@ -380,7 +385,7 @@ object Version {
      */
     private fun stableVersion(v: Array<String>): Boolean {
         return v[0] == "Fred" &&
-            v[1] == stableNodeVersion &&
-            v.size >= 4
+                v[1] == stableNodeVersion &&
+                v.size >= 4
     }
 }
