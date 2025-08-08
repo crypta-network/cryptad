@@ -11,6 +11,8 @@
 - After editing a Java or Kotlin file, please check for any missing or poorly written JavaDoc/KDoc comments. Add or
   improve them as needed.
 - Do not use "--no-daemon" for Gradle
+- If the Java Runtime cannot be located, or if any other errors occur when running a command, request approval to
+  proceed. Do not skip the command.
 
 ## Repository Etiquette
 
