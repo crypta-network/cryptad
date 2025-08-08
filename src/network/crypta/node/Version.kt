@@ -20,7 +20,7 @@ import network.crypta.support.Logger.LogLevel
  * Constants declared as `const val` are inlined by the Kotlin compiler at
  * call sites. To retrieve values at runtime (e.g., after a hot swap or when
  * only this file is recompiled), prefer calling the provided accessor
- * functions such as [buildNumber], [publicVersion], and [cvsRevision] rather
+ * functions such as [buildNumber], [publicVersion], and [gitRevision] rather
  * than reading the constants directly.
  *
  * Version string format used for peer communication is a comma‑separated list:
@@ -106,10 +106,10 @@ private const val fredSeries: String = "0.7"
 const val lastGoodStableBuild: Int = 1
 
 /** Git revision (historically called CVS revision) embedded at build time. */
-const val cvsRevision: String = "@git_rev@"
+const val gitRevision: String = "@git_rev@"
 
-/** Runtime accessor for [cvsRevision] to avoid inlining. */
-fun cvsRevision(): String = cvsRevision
+/** Runtime accessor for [gitRevision] to avoid inlining. */
+fun gitRevision(): String = gitRevision
 
 /** Returns version components as `[name, series, protocol, build]`. */
 fun getVersion(): Array<String> =

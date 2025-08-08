@@ -4,6 +4,17 @@
 /* Freenet 0.7 node. */
 package network.crypta.node;
 
+import static java.util.concurrent.TimeUnit.*;
+import static network.crypta.node.stats.DataStoreKeyType.*;
+import static network.crypta.node.stats.DataStoreType.*;
+import static network.crypta.support.io.DatastoreUtil.oneGiB;
+
+import java.io.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.*;
 import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
@@ -48,18 +59,6 @@ import network.crypta.support.io.*;
 import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import org.tanukisoftware.wrapper.WrapperManager;
-
-import java.io.*;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.*;
-
-import static java.util.concurrent.TimeUnit.*;
-import static network.crypta.node.stats.DataStoreKeyType.*;
-import static network.crypta.node.stats.DataStoreType.*;
-import static network.crypta.support.io.DatastoreUtil.oneGiB;
 
 /**
  * @author amphibian
@@ -1247,7 +1246,7 @@ public class Node implements TimeSkewDetectorCallback {
     Node(PersistentConfig config, RandomSource r, RandomSource weakRandom, LoggingConfigHandler lc, NodeStarter ns, Executor executor) throws NodeInitException {
         this.shutdownHook = SemiOrderedShutdownHook.get();
         // Easy stuff
-        String tmp = "Initializing Node using Crypta Build #" + Version.cvsRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
+        String tmp = "Initializing Node using Crypta Build #" + Version.gitRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
         Logger.normal(this, tmp);
         System.out.println(tmp);
         collector = new IOStatisticCollector();
@@ -3422,8 +3421,8 @@ public class Node implements TimeSkewDetectorCallback {
             Logger.error(this, "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
             System.out.println("NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
         }
-        Logger.normal(this, "Crypta " + Version.publicVersion() + " Build #" + Version.cvsRevision());
-        System.out.println("Crypta " + Version.publicVersion() + " Build #" + Version.cvsRevision());
+        Logger.normal(this, "Crypta " + Version.publicVersion() + " Build #" + Version.gitRevision());
+        System.out.println("Crypta " + Version.publicVersion() + " Build #" + Version.gitRevision());
         Logger.normal(this, "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         System.out.println("FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         // Start services

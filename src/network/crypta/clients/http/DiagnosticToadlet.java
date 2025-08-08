@@ -1,5 +1,15 @@
 package network.crypta.clients.http;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.clients.fcp.*;
@@ -20,17 +30,6 @@ import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.BandwidthStatsContainer;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
-
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 public class DiagnosticToadlet extends Toadlet {
 
@@ -76,7 +75,7 @@ public class DiagnosticToadlet extends Toadlet {
                                                   "build", "rev"},
                                               new String[]{Version.publicVersion(),
                                                   Integer.toString(Version.buildNumber()),
-                                                  Version.cvsRevision()}))
+                                                  Version.gitRevision()}))
                        .append("\n");
             textBuilder.append(
                 baseL10n.getString("WelcomeToadlet.extVersion", new String[]{"build", "rev"},

@@ -26,7 +26,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.HashMap;
-
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchContext;
@@ -159,7 +158,7 @@ public class TextModeClientInterface implements Runnable {
         sb.append("Crypta ")
           .append(Version.publicVersion())
           .append(" Build #")
-          .append(Version.cvsRevision())
+          .append(Version.gitRevision())
           .append("\r\n");
         sb.append("Enter one of the following commands:\r\n");
         sb.append("GET:<Crypta key> - Fetch a key\r\n");

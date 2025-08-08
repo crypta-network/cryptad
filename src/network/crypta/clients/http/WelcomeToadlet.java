@@ -3,6 +3,12 @@
  * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.clients.http;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
@@ -27,13 +33,6 @@ import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
 import org.tanukisoftware.wrapper.WrapperManager;
-
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 
 public class WelcomeToadlet extends Toadlet {
 
@@ -548,7 +547,7 @@ public class WelcomeToadlet extends Toadlet {
         versionContent.addChild("span", "class", "freenet-full-version",
                 NodeL10n.getBase().getString("WelcomeToadlet.version", new String[]{"fullVersion", "build", "rev"},
                         new String[]{
-                                Version.publicVersion(), Integer.toString(Version.buildNumber()), Version.cvsRevision()}));
+                                Version.publicVersion(), Integer.toString(Version.buildNumber()), Version.gitRevision()}));
         versionContent.addChild("br");
         versionContent.addChild("span", "class", "freenet-ext-version",
                 NodeL10n.getBase().getString("WelcomeToadlet.extVersion", new String[]{"build", "rev"},
