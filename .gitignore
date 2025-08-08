@@ -36,3 +36,4 @@ debian/seednodes.fref
 .idea
 output.*
 /split-file-inserter-storage-test
+.DS_Store

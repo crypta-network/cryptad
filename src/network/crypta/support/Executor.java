@@ -1,9 +1,3 @@
-/**
- * @author toad
- * To the extent that this is copyrightable, it's part of Freenet and licensed
- * under GPL2 or later. However, it's a trivial interface taken from Sun/Oracle JDK 1.5,
- * and we will use that when we migrate to 1.5.
- */
 package network.crypta.support;
 
 /**
