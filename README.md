@@ -1,8 +1,9 @@
 # Crypta
 
-Crypta is a platform for censorship-resistant communication and publishing. It is a peer‑to‑peer network that provides a
-distributed, encrypted, and decentralized datastore. Applications such as forums, chat, micro‑blogs, and websites run on
-top of Crypta without central servers.
+Crypta is a platform for censorship-resistant communication and publishing. It is a fork of Hyphanet (formerly known as
+Freenet), building upon its principles and technology. It is a peer‑to‑peer network that provides a distributed,
+encrypted, and decentralized datastore. Applications such as forums, chat, micro‑blogs, and websites run on top of
+Crypta without central servers.
 
 Inspired by the goals of Hyphanet, Crypta focuses on privacy, resilience, and free expression:
 
@@ -10,6 +11,9 @@ Inspired by the goals of Hyphanet, Crypta focuses on privacy, resilience, and fr
 - Decentralized and censorship‑resistant: no central point of control or failure.
 - Publishing and discovery: content is addressed by keys and can be versioned and replicated across the network.
 - Extensible platform: build apps that leverage the content store and routing to deliver interactive experiences.
+
+Crypta plans to evolve with new technologies such as Kotlin Multiplatform, a modern frontend stack, improved
+scalability, enhanced security measures, better developer tooling, and significantly improved user experiences.
 
 This repository contains the reference node (the "Crypta reference daemon") that participates in the network, stores
 data, and serves applications.
