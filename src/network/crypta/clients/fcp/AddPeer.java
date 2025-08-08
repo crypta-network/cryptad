@@ -128,7 +128,7 @@ public class AddPeer extends FCPMessage {
 							true);
 					ref = AddPeer.getReferenceFromFreenetURI(refUri, client);
 				} catch (MalformedURLException | FetchException e) {
-					Logger.warning(this, "Url cannot be used as Freenet URI, trying to fetch as URL: " + urlString);
+					Logger.warning(this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urlString);
 					URL url = new URL(urlString);
 					ref = AddPeer.getReferenceFromURL(url);
 				}

@@ -758,7 +758,7 @@ public class MainJarDependenciesChecker {
             }
             if (validFile(filename, expectedHash, size, executable)) {
                 // Nothing to do. Yay!
-                System.out.println("Found file required by the new Freenet version: " + filename);
+                System.out.println("Found file required by the new Crypta version: " + filename);
                 // Use it.
                 if (type == DEPENDENCY_TYPE.CLASSPATH) {
                     dependencies.add(new Dependency(currentFile, filename, p, order));
@@ -1463,7 +1463,7 @@ public class MainJarDependenciesChecker {
                 for (AtomicDependency dep : deps) {
                     if (!dep.revertFromBackup()) {
                         System.err.println(
-                            "Restoring file from backup failed. Freenet may fail to start on next " +
+                            "Restoring file from backup failed. Crypta may fail to start on next " +
                             "restart! You should move " + dep.backupFilename + " to " + dep.filename);
                         // FIXME useralert???
                     }
@@ -1857,7 +1857,7 @@ public class MainJarDependenciesChecker {
                     return false;
                 }
                 System.out.println(
-                    "Shutting down Freenet for hard restart after deploying multi-file update for " +
+                    "Shutting down Crypta for hard restart after deploying multi-file update for " +
                     name + ". The script " + restartScript + " should start it back up.");
                 WrapperManager.stop(0);
                 return true;

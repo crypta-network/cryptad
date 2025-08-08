@@ -125,19 +125,19 @@ public class PluginStores {
         } catch (IOException e) {
             // Hence, if close() throws, we DO need to catch it here.
             System.err.println("Unable to load plugin data for "+storeIdentifier+" : "+e);
-            System.err.println("This could be caused by data corruption or bugs in Freenet.");
+            System.err.println("This could be caused by data corruption or bugs in Crypta.");
             // FIXME crypto - possible it's caused by attack while offline.
             return null;
         } catch (IllegalBase64Exception e) {
             // Hence, if close() throws, we DO need to catch it here.
             System.err.println("Unable to load plugin data for "+storeIdentifier+" : "+e);
-            System.err.println("This could be caused by data corruption or bugs in Freenet.");
+            System.err.println("This could be caused by data corruption or bugs in Crypta.");
             // FIXME crypto - possible it's caused by attack while offline.
             return null;
         } catch (FSParseException e) {
             // Hence, if close() throws, we DO need to catch it here.
             System.err.println("Unable to load plugin data for "+storeIdentifier+" : "+e);
-            System.err.println("This could be caused by data corruption or bugs in Freenet.");
+            System.err.println("This could be caused by data corruption or bugs in Crypta.");
             // FIXME crypto - possible it's caused by attack while offline.
             return null;
         }

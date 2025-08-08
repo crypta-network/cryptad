@@ -358,7 +358,7 @@ public class Metadata implements Cloneable, Serializable {
 			        maxCompatMode = CompatibilityMode.COMPAT_1416;
 			} else {
 			    if(CompatibilityMode.maybeFutureCode(code)) {
-                    Logger.warning(this, "Content may have been inserted with a newer version of Freenet?");
+                    Logger.warning(this, "Content may have been inserted with a newer version of Crypta?");
                     topCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
 			    } else {
 			        throw new MetadataParseException("Bad compatibility mode "+code);

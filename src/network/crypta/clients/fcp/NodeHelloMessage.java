@@ -33,7 +33,7 @@ public class NodeHelloMessage extends FCPMessage {
 		SimpleFieldSet sfs = new SimpleFieldSet(true);
 		// FIXME
 		sfs.putSingle("FCPVersion", "2.0");
-		sfs.putSingle("Node", "Fred");
+        sfs.putSingle("Node", "Cryptad");
 		sfs.putSingle("Version", Version.getVersionString());
 		sfs.put("Build", Version.buildNumber());
 		sfs.putSingle("Revision", Version.cvsRevision());

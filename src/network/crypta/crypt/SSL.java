@@ -63,9 +63,9 @@ public class SSL {
 	private static final String SIG_ALGORITHM = "SHA256WithECDSA";
 
 	private static final long CERTIFICATE_LIFETIME = 10 * 365 * 24 * 60 * 60; // 10 years
-	private static final String CERTIFICATE_CN = "Freenet";
-	private static final String CERTIFICATE_OU = "Freenet";
-	private static final String CERTIFICATE_ON = "Freenet";
+    private static final String CERTIFICATE_CN = "Crypta";
+    private static final String CERTIFICATE_OU = "Crypta";
+    private static final String CERTIFICATE_ON = "Crypta";
 
 	private static final String CHAIN_ALIAS = "freenet";
 

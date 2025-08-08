@@ -208,7 +208,7 @@ public class Node implements TimeSkewDetectorCallback {
             synchronized (this) {
                 name = myName;
             }
-            if (name.startsWith("Node id|") || name.equals("MyFirstFreenetNode") || name.startsWith("Freenet node with no name #")) {
+            if (name.startsWith("Node id|") || name.equals("MyFirstCryptaNode") || name.startsWith("Crypta node with no name #")) {
                 clientCore.getAlerts().register(nodeNameUserAlert);
             } else {
                 clientCore.getAlerts().unregister(nodeNameUserAlert);
@@ -1167,7 +1167,7 @@ public class Node implements TimeSkewDetectorCallback {
 
 
     private String newName() {
-        return "Freenet node with no name #" + random.nextLong();
+        return "Crypta node with no name #" + random.nextLong();
     }
 
     private final Object writeNodeFileSync = new Object();
@@ -1247,7 +1247,7 @@ public class Node implements TimeSkewDetectorCallback {
     Node(PersistentConfig config, RandomSource r, RandomSource weakRandom, LoggingConfigHandler lc, NodeStarter ns, Executor executor) throws NodeInitException {
         this.shutdownHook = SemiOrderedShutdownHook.get();
         // Easy stuff
-        String tmp = "Initializing Node using Freenet Build #" + Version.buildNumber() + " r" + Version.cvsRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
+        String tmp = "Initializing Node using Crypta Build #" + Version.cvsRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
         Logger.normal(this, tmp);
         System.out.println(tmp);
         collector = new IOStatisticCollector();
@@ -1972,7 +1972,7 @@ public class Node implements TimeSkewDetectorCallback {
         throttleLocalData = nodeConfig.getBoolean("throttleLocalTraffic");
 
         String s = "Testnet mode DISABLED. You may have some level of anonymity. :)\n" +
-                "Note that this version of Freenet is still a very early alpha, and may well have numerous bugs and design flaws.\n" +
+                "Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.\n" +
                 "In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).";
         Logger.normal(this, s);
         System.err.println(s);
@@ -3422,8 +3422,8 @@ public class Node implements TimeSkewDetectorCallback {
             Logger.error(this, "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
             System.out.println("NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
         }
-        Logger.normal(this, "Freenet 0.7.5 Build #" + Version.buildNumber() + " r" + Version.cvsRevision());
-        System.out.println("Freenet 0.7.5 Build #" + Version.buildNumber() + " r" + Version.cvsRevision());
+        Logger.normal(this, "Crypta " + Version.publicVersion() + " Build #" + Version.cvsRevision());
+        System.out.println("Crypta " + Version.publicVersion() + " Build #" + Version.cvsRevision());
         Logger.normal(this, "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         System.out.println("FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         // Start services

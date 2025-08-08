@@ -156,10 +156,14 @@ public class TextModeClientInterface implements Runnable {
 
         sb.append("Trivial Text Mode Client Interface\r\n");
         sb.append("---------------------------------------\r\n");
-        sb.append("Freenet 0.7.5 Build #").append(Version.buildNumber()).append(" r" + Version.cvsRevision() + "\r\n");
+        sb.append("Crypta ")
+          .append(Version.publicVersion())
+          .append(" Build #")
+          .append(Version.cvsRevision())
+          .append("\r\n");
         sb.append("Enter one of the following commands:\r\n");
-        sb.append("GET:<Freenet key> - Fetch a key\r\n");
-        sb.append("DUMP:<Freenet key> - Dump metadata for a key\r\n");
+        sb.append("GET:<Crypta key> - Fetch a key\r\n");
+        sb.append("DUMP:<Crypta key> - Dump metadata for a key\r\n");
         sb.append("PUT:\\r\\n<text, until a . on a line by itself> - Insert the document and return the key.\r\n");
         sb.append("PUT:<text> - Put a single line of text to a CHK and return the key.\r\n");
         sb.append("GETCHK:\\r\\n<text, until a . on a line by itself> - Get the key that would be returned if the document was inserted.\r\n");

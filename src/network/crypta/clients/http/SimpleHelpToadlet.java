@@ -28,7 +28,7 @@ public class SimpleHelpToadlet extends Toadlet {
 	public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx) throws ToadletContextClosedException, IOException {
 
 		
-		PageNode page = ctx.getPageMaker().getPageNode("Freenet " + NodeL10n.getBase().getString("FProxyToadlet.help"), ctx);
+		PageNode page = ctx.getPageMaker().getPageNode("Crypta " + NodeL10n.getBase().getString("FProxyToadlet.help"), ctx);
 		HTMLNode contentNode = page.getContentNode();
 		
 		if(ctx.isAllowedFullAccess())
