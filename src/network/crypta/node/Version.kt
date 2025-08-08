@@ -1,11 +1,9 @@
 /* This code is part of Freenet. It is distributed under the GNU General
  * Public License, version 2 (or at your option any later version). See
  * http://www.gnu.org/ for further details of the GPL. */
+@file:JvmName("Version")
 package network.crypta.node
 
-import network.crypta.node.Version.buildNumber
-import network.crypta.node.Version.cvsRevision
-import network.crypta.node.Version.publicVersion
 import network.crypta.support.Fields
 import network.crypta.support.LogThresholdCallback
 import network.crypta.support.Logger
@@ -14,7 +12,7 @@ import network.crypta.support.Logger.LogLevel
 /**
  * Version information and helpers for the Cryptad node.
  *
- * This object centralizes everything related to versioning: human‑readable
+ * This file centralizes everything related to versioning: human‑readable
  * versions, protocol versions, build numbers, compatibility checks, and
  * utilities for constructing and parsing version strings.
  *
@@ -29,349 +27,344 @@ import network.crypta.support.Logger.LogLevel
  * historical identifiers from upstream Freenet (e.g., "Fred" as the name and
  * series identifiers) to interoperate with those nodes where applicable.
  */
-object Version {
 
-    /** Human‑readable product name of the node. */
-    const val nodeName = "Cryptad"
+/** Human‑readable product name of the node. */
+const val nodeName: String = "Cryptad"
 
-    /**
-     * Internal series (tree) version used for compatibility calculations.
-     * Changing this affects wire‑compatibility; see [publicVersion] for
-     * the human‑facing release version.
-     */
-    const val nodeVersion = "@node_ver@"
+/**
+ * Historical wire identifier used in version strings for compatibility with
+ * upstream Freenet nodes. Many peers and tools expect the first component of
+ * the comma‑separated Version field to be exactly "Fred". We therefore keep
+ * using this value on the wire while retaining [nodeName] for human‑readable
+ * contexts (logs, UI, etc.).
+ */
+private const val wireName: String = "Fred"
 
-    /** Human‑facing release version used for display and logging. */
-    const val publicVersion = "@pub_ver@"
+/**
+ * Internal series (tree) version used for compatibility calculations.
+ * Changing this affects wire‑compatibility; see [publicVersion] for
+ * the human‑facing release version.
+ */
+const val nodeVersion: String = "@node_ver@"
 
-    /** Protocol version the node speaks on the wire. */
-    const val protocolVersion = "1.0"
+/** Human‑facing release version used for display and logging. */
+const val publicVersion: String = "@pub_ver@"
 
-    /** Sequential build number identifying this binary. */
-    private const val buildNumber = 1503
+/** Protocol version the node speaks on the wire. */
+const val protocolVersion: String = "1.0"
 
-    /** Minimum acceptable build number for peers in our series. */
-    private const val lastGoodBuildNumber = 1475
+/** Sequential build number identifying this binary. */
+private const val buildNumberConst: Int = 1503
 
-    @Volatile
-    private var logMINOR: Boolean = false
+/** Minimum acceptable build number for peers in our series. */
+private const val lastGoodBuildNumber: Int = 1475
 
-    @Volatile
-    private var logDEBUG: Boolean = false
+@Volatile
+private var logMINOR: Boolean = false
 
-    init {
-        Logger.registerLogThresholdCallback(object : LogThresholdCallback() {
-            override fun shouldUpdate() {
-                logMINOR = Logger.shouldLog(LogLevel.MINOR, this)
-                logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this)
-            }
-        })
-    }
+@Volatile
+private var logDEBUG: Boolean = false
 
-    /**
-     * Returns the build number at runtime (not inlined).
-     * Use this instead of reading the `const val` to avoid inlining.
-     */
-    @JvmStatic
-    fun buildNumber(): Int = buildNumber
+// Ensure logger thresholds are tracked at runtime.
+@Suppress("ObjectPropertyName")
+private val _logInit: Unit = run {
+    Logger.registerLogThresholdCallback(object : LogThresholdCallback() {
+        override fun shouldUpdate() {
+            logMINOR = Logger.shouldLog(LogLevel.MINOR, this)
+            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this)
+        }
+    })
+}
 
-    /** Runtime accessor for [publicVersion] to avoid inlining. */
-    @JvmStatic
-    fun publicVersion(): String = publicVersion
+private object VersionLogTag
+private val LOG_TAG: Class<*> = VersionLogTag::class.java
 
-    /** Minimum build number we accept from peers in our series. */
-    @JvmStatic
-    fun lastGoodBuild(): Int = lastGoodBuildNumber
+/**
+ * Returns the build number at runtime (not inlined).
+ * Use this instead of reading the `const val` to avoid inlining.
+ */
+fun buildNumber(): Int = buildNumberConst
 
-    /** Highest peer build observed during this process lifetime. */
-    private var highestSeenBuild = buildNumber
+/** Runtime accessor for [publicVersion] to avoid inlining. */
+fun publicVersion(): String = publicVersion
 
-    /** Current stable series identifier (historical compatibility with Freenet). */
-    const val stableNodeVersion = "0.7"
+/** Minimum build number we accept from peers in our series. */
+fun lastGoodBuild(): Int = lastGoodBuildNumber
 
-    /** Series identifier used when comparing with peers (historical "Fred"). */
-    private const val fredSeries = "0.7"
+/** Highest peer build observed during this process lifetime. */
+private var highestSeenBuild: Int = buildNumberConst
 
-    /** Minimum acceptable build for stable series peers. */
-    const val lastGoodStableBuild = 1
+/** Current stable series identifier (historical compatibility with Freenet). */
+const val stableNodeVersion: String = "0.7"
 
-    /** Git revision (historically called CVS revision) embedded at build time. */
-    const val cvsRevision = "@git_rev@"
+/** Series identifier used when comparing with peers (historical "Fred"). */
+private const val fredSeries: String = "0.7"
 
-    /** Runtime accessor for [cvsRevision] to avoid inlining. */
-    @JvmStatic
-    fun cvsRevision(): String = cvsRevision
+/** Minimum acceptable build for stable series peers. */
+const val lastGoodStableBuild: Int = 1
 
-    /** Returns version components as `[name, series, protocol, build]`. */
-    @JvmStatic
-    fun getVersion(): Array<String> =
-        arrayOf(nodeName, nodeVersion, protocolVersion, buildNumber.toString())
+/** Git revision (historically called CVS revision) embedded at build time. */
+const val cvsRevision: String = "@git_rev@"
 
-    @JvmStatic
-    fun getLastGoodVersion(): Array<String> =
-        arrayOf(nodeName, nodeVersion, protocolVersion, lastGoodBuild().toString())
+/** Runtime accessor for [cvsRevision] to avoid inlining. */
+fun cvsRevision(): String = cvsRevision
 
-    /** Returns the comma‑separated version string for NodeReference. */
-    @JvmStatic
-    fun getVersionString(): String = Fields.commaList(getVersion())
+/** Returns version components as `[name, series, protocol, build]`. */
+fun getVersion(): Array<String> =
+    arrayOf(wireName, nodeVersion, protocolVersion, buildNumber().toString())
 
-    /** Returns the comma‑separated minimum acceptable version (used by tooling like Freeviz). */
-    @JvmStatic
-    fun getLastGoodVersionString(): String = Fields.commaList(getLastGoodVersion())
+fun getLastGoodVersion(): Array<String> =
+    arrayOf(wireName, nodeVersion, protocolVersion, lastGoodBuild().toString())
+
+/** Returns the comma‑separated version string for NodeReference. */
+fun getVersionString(): String = Fields.commaList(getVersion())
+
+/** Returns the comma‑separated minimum acceptable version (used by tooling like Freeviz). */
+fun getLastGoodVersionString(): String = Fields.commaList(getLastGoodVersion())
 
     /** True if the provided protocol identifier is acceptable. */
-    private fun goodProtocol(prot: String): Boolean {
+private fun goodProtocol(prot: String): Boolean {
         // uncomment next line to accept stable, see also explainBadVersion() below
         //                      || prot.equals(stableProtocolVersion)
         return prot == protocolVersion
     }
 
-    /**
-     * Checks whether a peer version string is compatible.
-     *
-     * Requirements:
-     * - protocol must match [protocolVersion]
-     * - if peer is in our series, its build must be >= [lastGoodBuild]
-     * - if peer is stable series, its build must be >= [lastGoodStableBuild]
-     */
-    @JvmStatic
-    fun isCompatibleFredVersion(version: String?): Boolean {
-        if (version == null) {
-            Logger.error(Version::class.java, "version == null!", Exception("error"))
-            return false
-        }
-        val v = Fields.commaList(version)
-        if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-            return false
-        }
-        if (sameSeriesAsUs(v)) {
-            try {
-                val build = v[3].toInt()
-                val req = lastGoodBuild()
-                if (build < req) {
-                    if (logDEBUG) Logger.debug(
-                        Version::class.java,
-                        "Not accepting unstable from version: $version(lastGoodBuild=$req)"
-                    )
-                    return false
-                }
-            } catch (e: NumberFormatException) {
-                if (logMINOR)
-                    Logger.minor(
-                        Version::class.java,
-                        "Not accepting ($e) from $version"
-                    )
-                return false
-            }
-        }
-        if (stableVersion(v)) {
-            try {
-                val build = v[3].toInt()
-                if (build < lastGoodStableBuild) {
-                    if (logDEBUG) Logger.debug(
-                        Version::class.java,
-                        "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
-                    )
-                    return false
-                }
-            } catch (e: NumberFormatException) {
-                Logger.minor(
-                    Version::class.java,
-                    "Not accepting ($e) from $version"
-                )
-                return false
-            }
-        }
-        if (logDEBUG)
-            Logger.minor(Version::class.java, "Accepting: $version")
-        return true
+/**
+ * Checks whether a peer version string is compatible.
+ *
+ * Requirements:
+ * - protocol must match [protocolVersion]
+ * - if peer is in our series, its build must be >= [lastGoodBuild]
+ * - if peer is stable series, its build must be >= [lastGoodStableBuild]
+ */
+fun isCompatibleFredVersion(version: String?): Boolean {
+    if (version == null) {
+        Logger.error(LOG_TAG, "version == null!", Exception("error"))
+        return false
     }
-
-    /**
-     * Checks compatibility using a peer‑provided minimum acceptable version.
-     *
-     * Both [version] and [lastGoodVersion] must have matching protocol; if the
-     * series also matches, the peer build must be at least the minimum build in
-     * [lastGoodVersion]. Stable series rules apply as in [isCompatibleFredVersion].
-     */
-    @JvmStatic
-    fun isCompatibleFredVersionWithMinimum(version: String?, lastGoodVersion: String?): Boolean {
-        if (version == null) {
-            Logger.error(Version::class.java, "version == null!", Exception("error"))
-            return false
-        }
-        if (lastGoodVersion == null) {
-            Logger.error(Version::class.java, "lastGoodVersion == null!", Exception("error"))
-            return false
-        }
-        val v = Fields.commaList(version)
-        val lgv = Fields.commaList(lastGoodVersion)
-
-        if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-            return false
-        }
-        if (lgv == null || lgv.size < 3 || !goodProtocol(lgv[2])) {
-            return false
-        }
-        if (sameSeries(v, lgv)) {
-            try {
-                val build = v[3].toInt()
-                val minBuild = lgv[3].toInt()
-                if (build < minBuild) {
-                    if (logDEBUG) Logger.debug(
-                        Version::class.java,
-                        "Not accepting unstable from version: $version(lastGoodVersion=$lastGoodVersion)"
-                    )
-                    return false
-                }
-            } catch (e: NumberFormatException) {
-                if (logMINOR)
-                    Logger.minor(
-                        Version::class.java,
-                        "Not accepting ($e) from $version and/or $lastGoodVersion"
-                    )
-                return false
-            }
-        }
-        if (stableVersion(v)) {
-            try {
-                val build = v[3].toInt()
-                if (build < lastGoodStableBuild) {
-                    if (logDEBUG) Logger.debug(
-                        Version::class.java,
-                        "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
-                    )
-                    return false
-                }
-            } catch (e: NumberFormatException) {
-                Logger.minor(
-                    Version::class.java,
-                    "Not accepting ($e) from $version"
-                )
-                return false
-            }
-        }
-        if (logDEBUG)
-            Logger.minor(Version::class.java, "Accepting: $version")
-        return true
+    val v = Fields.commaList(version)
+    if (v == null || v.size < 3 || !goodProtocol(v[2])) {
+        return false
     }
-
-    /** Returns a human‑readable reason why [version] would be rejected, or null if acceptable. */
-    @JvmStatic
-    fun explainBadVersion(version: String): String? {
-        val v = Fields.commaList(version)
-
-        if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-            return "Required protocol version is " +
-                    protocolVersion
-            // uncomment next line if accepting stable, see also goodProtocol() above
-            // + " or " + stableProtocolVersion
-        }
-        if (sameSeriesAsUs(v)) {
-            return try {
-                val build = v[3].toInt()
-                val req = lastGoodBuild()
-                if (build < req)
-                    "Build older than last good build $req"
-                else null
-            } catch (e: NumberFormatException) {
-                "Build number not numeric."
-            }
-        }
-        if (stableVersion(v)) {
-            return try {
-                val build = v[3].toInt()
-                if (build < lastGoodStableBuild)
-                    "Build older than last good stable build $lastGoodStableBuild"
-                else null
-            } catch (e: NumberFormatException) {
-                "Build number not numeric."
-            }
-        }
-        return null
-    }
-
-    /** Parses an arbitrary version string and returns its build number. */
-    @JvmStatic
-    @Throws(VersionParseException::class)
-    fun getArbitraryBuildNumber(version: String?): Int {
-        if (version == null) {
-            Logger.error(Version::class.java, "version == null!", Exception("error"))
-            throw VersionParseException("version == null")
-        }
-        val v = Fields.commaList(version)
-
-        if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-            throw VersionParseException("not long enough or bad protocol: $version")
-        }
+    if (sameSeriesAsUs(v)) {
         try {
-            return v[3].toInt()
+            val build = v[3].toInt()
+            val req = lastGoodBuild()
+            if (build < req) {
+                if (logDEBUG) Logger.debug(
+                    LOG_TAG,
+                    "Not accepting unstable from version: $version(lastGoodBuild=$req)"
+                )
+                return false
+            }
         } catch (e: NumberFormatException) {
-            throw VersionParseException("Got NumberFormatException on " + v[3] + " : " + e + " for " + version).initCause(
-                e
-            ) as VersionParseException
+            if (logMINOR)
+                Logger.minor(
+                    LOG_TAG,
+                    "Not accepting ($e) from $version"
+                )
+            return false
         }
     }
+    if (stableVersion(v)) {
+        try {
+            val build = v[3].toInt()
+            if (build < lastGoodStableBuild) {
+                if (logDEBUG) Logger.debug(
+                    LOG_TAG,
+                    "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
+                )
+                return false
+            }
+        } catch (e: NumberFormatException) {
+            Logger.minor(
+                LOG_TAG,
+                "Not accepting ($e) from $version"
+            )
+            return false
+        }
+    }
+    if (logDEBUG)
+        Logger.minor(LOG_TAG, "Accepting: $version")
+    return true
+}
 
-    @JvmStatic
-    fun getArbitraryBuildNumber(version: String?, defaultValue: Int): Int {
+/**
+ * Checks compatibility using a peer‑provided minimum acceptable version.
+ *
+ * Both [version] and [lastGoodVersion] must have matching protocol; if the
+ * series also matches, the peer build must be at least the minimum build in
+ * [lastGoodVersion]. Stable series rules apply as in [isCompatibleFredVersion].
+ */
+fun isCompatibleFredVersionWithMinimum(version: String?, lastGoodVersion: String?): Boolean {
+    if (version == null) {
+        Logger.error(LOG_TAG, "version == null!", Exception("error"))
+        return false
+    }
+    if (lastGoodVersion == null) {
+        Logger.error(LOG_TAG, "lastGoodVersion == null!", Exception("error"))
+        return false
+    }
+    val v = Fields.commaList(version)
+    val lgv = Fields.commaList(lastGoodVersion)
+
+    if (v == null || v.size < 3 || !goodProtocol(v[2])) {
+        return false
+    }
+    if (lgv == null || lgv.size < 3 || !goodProtocol(lgv[2])) {
+        return false
+    }
+    if (sameSeries(v, lgv)) {
+        try {
+            val build = v[3].toInt()
+            val minBuild = lgv[3].toInt()
+            if (build < minBuild) {
+                if (logDEBUG) Logger.debug(
+                    LOG_TAG,
+                    "Not accepting unstable from version: $version(lastGoodVersion=$lastGoodVersion)"
+                )
+                return false
+            }
+        } catch (e: NumberFormatException) {
+            if (logMINOR)
+                Logger.minor(
+                    LOG_TAG,
+                    "Not accepting ($e) from $version and/or $lastGoodVersion"
+                )
+            return false
+        }
+    }
+    if (stableVersion(v)) {
+        try {
+            val build = v[3].toInt()
+            if (build < lastGoodStableBuild) {
+                if (logDEBUG) Logger.debug(
+                    LOG_TAG,
+                    "Not accepting stable from version$version(lastGoodStableBuild=$lastGoodStableBuild)"
+                )
+                return false
+            }
+        } catch (e: NumberFormatException) {
+            Logger.minor(
+                LOG_TAG,
+                "Not accepting ($e) from $version"
+            )
+            return false
+        }
+    }
+    if (logDEBUG)
+        Logger.minor(LOG_TAG, "Accepting: $version")
+    return true
+}
+
+/** Returns a human‑readable reason why [version] would be rejected, or null if acceptable. */
+fun explainBadVersion(version: String): String? {
+    val v = Fields.commaList(version)
+
+    if (v == null || v.size < 3 || !goodProtocol(v[2])) {
+        return "Required protocol version is " +
+                protocolVersion
+        // uncomment next line if accepting stable, see also goodProtocol() above
+        // + " or " + stableProtocolVersion
+    }
+    if (sameSeriesAsUs(v)) {
         return try {
-            getArbitraryBuildNumber(version)
-        } catch (e: VersionParseException) {
-            defaultValue
+            val build = v[3].toInt()
+            val req = lastGoodBuild()
+            if (build < req)
+                "Build older than last good build $req"
+            else null
+        } catch (e: NumberFormatException) {
+            "Build number not numeric."
         }
     }
-
-    /** Records the highest build number observed among compatible peers. */
-    @JvmStatic
-    fun seenVersion(version: String?) {
-        val v = Fields.commaList(version)
-
-        if (v == null || v.size < 3)
-            return  // bad, but that will be discovered elsewhere
-
-        if (sameSeriesAsUs(v)) {
-            val buildNo = try {
-                v[3].toInt()
-            } catch (e: NumberFormatException) {
-                return
-            }
-            if (buildNo > highestSeenBuild) {
-                if (logMINOR) {
-                    Logger.minor(
-                        Version::class.java,
-                        "New highest seen build: $buildNo"
-                    )
-                }
-                highestSeenBuild = buildNo
-            }
+    if (stableVersion(v)) {
+        return try {
+            val build = v[3].toInt()
+            if (build < lastGoodStableBuild)
+                "Build older than last good stable build $lastGoodStableBuild"
+            else null
+        } catch (e: NumberFormatException) {
+            "Build number not numeric."
         }
     }
+    return null
+}
 
-    @JvmStatic
-    fun getHighestSeenBuild(): Int = highestSeenBuild
-
-    /** True if [v] refers to our series (build is ignored). */
-    @JvmStatic
-    fun sameSeriesAsUs(v: Array<String>): Boolean {
-        return v[0] == "Fred" &&
-                v[1] == fredSeries &&
-                v.size >= 4
+/** Parses an arbitrary version string and returns its build number. */
+@Throws(VersionParseException::class)
+fun getArbitraryBuildNumber(version: String?): Int {
+    if (version == null) {
+        Logger.error(LOG_TAG, "version == null!", Exception("error"))
+        throw VersionParseException("version == null")
     }
+    val v = Fields.commaList(version)
 
-    /** True if [v] and [lgv] are the same series (builds are ignored). */
-    @JvmStatic
-    fun sameSeries(v: Array<String>, lgv: Array<String>): Boolean {
-        return v[0] == lgv[0] &&
-                v[1] == lgv[1] &&
-                v.size >= 4 &&
-                lgv.size >= 4
+    if (v == null || v.size < 3 || !goodProtocol(v[2])) {
+        throw VersionParseException("not long enough or bad protocol: $version")
     }
+    try {
+        return v[3].toInt()
+    } catch (e: NumberFormatException) {
+        throw VersionParseException("Got NumberFormatException on " + v[3] + " : " + e + " for " + version).initCause(
+            e
+        ) as VersionParseException
+    }
+}
 
-    /** True if [v] refers to the stable series. */
-    private fun stableVersion(v: Array<String>): Boolean {
-        return v[0] == "Fred" &&
-                v[1] == stableNodeVersion &&
-                v.size >= 4
+fun getArbitraryBuildNumber(version: String?, defaultValue: Int): Int {
+    return try {
+        getArbitraryBuildNumber(version)
+    } catch (e: VersionParseException) {
+        defaultValue
     }
+}
+
+/** Records the highest build number observed among compatible peers. */
+fun seenVersion(version: String?) {
+    val v = Fields.commaList(version)
+
+    if (v == null || v.size < 3)
+        return  // bad, but that will be discovered elsewhere
+
+    if (sameSeriesAsUs(v)) {
+        val buildNo = try {
+            v[3].toInt()
+        } catch (e: NumberFormatException) {
+            return
+        }
+        if (buildNo > highestSeenBuild) {
+            if (logMINOR) {
+                Logger.minor(
+                    LOG_TAG,
+                    "New highest seen build: $buildNo"
+                )
+            }
+            highestSeenBuild = buildNo
+        }
+    }
+}
+
+fun getHighestSeenBuild(): Int = highestSeenBuild
+
+/** True if [v] refers to our series (build is ignored). */
+fun sameSeriesAsUs(v: Array<String>): Boolean {
+    return v[0] == wireName &&
+            v[1] == fredSeries &&
+            v.size >= 4
+}
+
+/** True if [v] and [lgv] are the same series (builds are ignored). */
+fun sameSeries(v: Array<String>, lgv: Array<String>): Boolean {
+    return v[0] == lgv[0] &&
+            v[1] == lgv[1] &&
+            v.size >= 4 &&
+            lgv.size >= 4
+}
+
+/** True if [v] refers to the stable series. */
+private fun stableVersion(v: Array<String>): Boolean {
+    return v[0] == wireName &&
+            v[1] == stableNodeVersion &&
+            v.size >= 4
 }
