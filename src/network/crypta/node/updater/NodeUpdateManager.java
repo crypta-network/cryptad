@@ -470,7 +470,7 @@ public class NodeUpdateManager {
 						System.out
 								.println("Failed to rename " + temp + " to "
 										+ filename
-										+ " after fetching it from Crypta.");
+										+ " after fetching it from Freenet.");
 						try {
 							Thread.sleep(SECONDS.toMillis(1) + node.getFastWeakRandom().nextInt((int) SECONDS.toMillis((long) Math.min(Math.pow(2, i), MINUTES.toSeconds(15)))));
 						} catch (InterruptedException e) {
@@ -1357,11 +1357,11 @@ public class NodeUpdateManager {
 				}
 				// Try the hard way
 			} else {
-				System.err.println("Completed writing new Crypta jar to "+mainJar+".");
+				System.err.println("Completed writing new Freenet jar to "+mainJar+".");
 				return false;
 			}
 		}
-		System.err.println("Rewriting wrapper.conf to point to "+newMainJar+" rather than "+mainJar+" (if Crypta fails to start after the update you could try changing wrapper.conf to use the old jar)");
+		System.err.println("Rewriting wrapper.conf to point to "+newMainJar+" rather than "+mainJar+" (if Freenet fails to start after the update you could try changing wrapper.conf to use the old jar)");
 		return true;
 	}
 

@@ -493,7 +493,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 					return;
 				}
 
-				if(logMINOR) Logger.minor(this, "Redirecting to Crypta URI: "+newURI);
+				if(logMINOR) Logger.minor(this, "Redirecting to FreenetURI: "+newURI);
 				String requestedMimeType = httprequest.getParam("type");
 				String location = getLink(newURI, requestedMimeType, maxSize, httprequest.getParam("force", null), httprequest.isParameterSet("forcedownload"), maxRetries, overrideSize);
 				writeTemporaryRedirect(ctx, null, location);

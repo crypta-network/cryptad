@@ -77,10 +77,10 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
         FreenetURI uri, File downloadTo, long expectedLength, byte[] expectedHash, JarFetcherCallback cb,
         int build, boolean essential, boolean executable) throws FetchException {
 		if (essential) {
-			System.out.println("Fetching " + downloadTo + " needed for new Crypta update " + build);
+			System.out.println("Fetching " + downloadTo + " needed for new Freenet update " + build);
 		} else if (build != 0) // build 0 means it's a preload or a multi-file update.
 		{
-			System.out.println("Preloading " + downloadTo + " needed for new Crypta update " + build);
+			System.out.println("Preloading " + downloadTo + " needed for new Freenet update " + build);
 		}
 		if (logMINOR) {
 			Logger.minor(this, "Fetching " + uri + " to " + downloadTo + " for next update");

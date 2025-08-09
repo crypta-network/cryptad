@@ -677,7 +677,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
 						FreenetURI refUri = new FreenetURI(urltext);
 					  ref = AddPeer.getReferenceFromFreenetURI(refUri, client);
 					} catch (MalformedURLException | FetchException e) {
-						Logger.warning(this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urltext);
+						Logger.warning(this, "Url cannot be used as Freenet URI, trying to fetch as URL: " + urltext);
 						URL url = new URL(urltext);
 					  ref = AddPeer.getReferenceFromURL(url);
 					}

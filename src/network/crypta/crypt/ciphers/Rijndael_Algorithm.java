@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 1997, 1998 Systemics Ltd on behalf of
+ * the Cryptix Development Team. All rights reserved.
+ */
 package network.crypta.crypt.ciphers;
 
 import java.security.InvalidKeyException;
