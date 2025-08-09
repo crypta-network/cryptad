@@ -279,6 +279,7 @@ copyRuntimeLibs { dependsOn(tasks.jar) }
 
 dependencies {
     implementation(libs.bcprov)
+    implementation(libs.bcpkix)
     implementation(libs.jna)
     implementation(libs.jnaPlatform)
     implementation(libs.freenetExt)

@@ -24,13 +24,17 @@ import java.util.Date;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
-import javax.security.auth.x500.X500Principal;
 
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
-import org.bouncycastle.asn1.x509.X509Extensions;
-import org.bouncycastle.asn1.x509.X509Name;
-import org.bouncycastle.x509.X509V3CertificateGenerator;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.operator.OperatorCreationException;
 
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
@@ -268,7 +272,7 @@ public class SSL {
 	/**
 	 * Load key store from file and create a self-signed certificate when the file does not exist.
 	 */
-	private static void loadKeyStoreAndCreateCertificate() throws NoSuchAlgorithmException, CertificateException, IOException, IllegalArgumentException, KeyStoreException, UnrecoverableKeyException, KeyManagementException, InvalidKeyException, NoSuchProviderException, SignatureException {
+    private static void loadKeyStoreAndCreateCertificate() throws NoSuchAlgorithmException, CertificateException, IOException, IllegalArgumentException, KeyStoreException, UnrecoverableKeyException, KeyManagementException, InvalidKeyException, NoSuchProviderException, SignatureException, OperatorCreationException {
 		if(enable) {
 			// A keystore is where keys and certificates are kept
 			// Both the keystore and individual private keys should be password protected
@@ -280,8 +284,11 @@ public class SSL {
 		}
 	}
 	
-	private static void createSelfSignedCertificate() throws NoSuchAlgorithmException, CertificateException, IOException, IllegalArgumentException, KeyStoreException, UnrecoverableKeyException, KeyManagementException, InvalidKeyException, NoSuchProviderException, SignatureException {
-		// If keystore not exist, create keystore and server certificate
+    /**
+     * Create a self-signed certificate and store it in the current key store.
+     */
+    private static void createSelfSignedCertificate() throws NoSuchAlgorithmException, CertificateException, IOException, IllegalArgumentException, KeyStoreException, UnrecoverableKeyException, KeyManagementException, InvalidKeyException, NoSuchProviderException, SignatureException, OperatorCreationException {
+                // If keystore not exist, create keystore and server certificate
 		keystore.load(null, keyStorePass.toCharArray());
 		// Based on https://stackoverflow.com/questions/29852290/self-signed-x509-certificate-with-bouncy-castle-in-java
 
@@ -290,25 +297,19 @@ public class SSL {
 		keyPairGenerator.initialize(KEY_SIZE, NodeStarter.getGlobalSecureRandom());
 		KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
-		// build a certificate generator
-		X509V3CertificateGenerator certGen = new X509V3CertificateGenerator();
-		X500Principal dnName = new X500Principal("CN=" + CERTIFICATE_CN + ", OU=" + CERTIFICATE_OU);
+                // build a certificate
+                X500Name issuer = new X500Name("CN=" + CERTIFICATE_CN + ", OU=" + CERTIFICATE_OU);
+                BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
+                Date notBefore = new Date(System.currentTimeMillis());
+                Date notAfter = new Date(System.currentTimeMillis() + CERTIFICATE_LIFETIME * 1000);
+                JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+                                issuer, serial, notBefore, notAfter, issuer, keyPair.getPublic());
+                certBuilder.addExtension(Extension.extendedKeyUsage, true,
+                                new ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping));
 
-		// add some options
-		certGen.setSerialNumber(BigInteger.valueOf(System.currentTimeMillis()));
-		certGen.setSubjectDN(new X509Name("dc=" + CERTIFICATE_CN));
-		certGen.setIssuerDN(dnName); // use the same
-		// now
-		certGen.setNotBefore(new Date(System.currentTimeMillis()));
-		// CERTIFICATE_LIFETIME
-		certGen.setNotAfter(new Date(System.currentTimeMillis() + CERTIFICATE_LIFETIME * 1000));
-		certGen.setPublicKey(keyPair.getPublic());
-		certGen.setSignatureAlgorithm(SIG_ALGORITHM);
-		certGen.addExtension(X509Extensions.ExtendedKeyUsage, true,
-				new ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping));
-
-		// finally, sign the certificate with the private key of the same KeyPair
-		X509Certificate cert = certGen.generate(keyPair.getPrivate(), "BC");
+                ContentSigner signer = new JcaContentSignerBuilder(SIG_ALGORITHM).build(keyPair.getPrivate());
+                X509CertificateHolder certHolder = certBuilder.build(signer);
+                X509Certificate cert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(certHolder);
 		PrivateKey privKey = keyPair.getPrivate();
 		Certificate[] chain = new Certificate[1];
 		chain[0] = cert;
