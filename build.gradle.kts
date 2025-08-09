@@ -5,22 +5,13 @@ import java.security.MessageDigest
 plugins {
     java
     `maven-publish`
-    kotlin("jvm") version "2.2.0"
-    id("nebula.release") version "21.0.0"
+    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.nebulaRelease)
 }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
-}
-
-buildscript {
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.android.tools.build:gradle:0.9.+")
-    }
 }
 
 val provided by configurations.creating
@@ -287,18 +278,19 @@ val copyRuntimeLibs by tasks.registering(Copy::class) {
 copyRuntimeLibs { dependsOn(tasks.jar) }
 
 dependencies {
-    implementation("org.bouncycastle:bcprov-jdk15on:1.59")
-    implementation("net.java.dev.jna:jna:5.17.0")
-    implementation("net.java.dev.jna:jna-platform:5.17.0")
-    implementation("org.freenetproject:freenet-ext:29")
-    implementation("io.pebbletemplates:pebble:3.1.5")
-    implementation("org.unbescape:unbescape:1.1.6.RELEASE")
-    implementation("org.slf4j:slf4j-api:1.7.25")
+    implementation(libs.bcprov)
+    implementation(libs.bcpkix)
+    implementation(libs.jna)
+    implementation(libs.jnaPlatform)
+    implementation(libs.freenetExt)
+    implementation(libs.pebble)
+    implementation(libs.unbescape)
+    implementation(libs.slf4jApi)
 
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.mockito:mockito-core:1.9.5")
-    testImplementation("org.hamcrest:hamcrest:3.0")
-    testImplementation("org.objenesis:objenesis:1.0")
+    testImplementation(libs.junit4)
+    testImplementation(libs.mockitoCore)
+    testImplementation(libs.hamcrest)
+    testImplementation(libs.objenesis)
 }
 
 val tar by tasks.registering(Tar::class) {

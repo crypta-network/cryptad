@@ -1,0 +1,31 @@
+[versions]
+kotlin = "2.2.0"
+nebulaRelease = "21.0.0"
+bcprov = "2.73.7"
+jna = "5.17.0"
+freenetExt = "29"
+pebble = "3.2.4"
+unbescape = "1.1.6.RELEASE"
+slf4j = "2.0.17"
+junit4 = "4.13.2"
+mockito = "5.18.0"
+hamcrest = "3.0"
+objenesis = "3.4"
+
+[libraries]
+bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
+bcpkix = { group = "org.bouncycastle", name = "bcpkix-lts8on", version.ref = "bcprov" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+jnaPlatform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
+freenetExt = { group = "org.freenetproject", name = "freenet-ext", version.ref = "freenetExt" }
+pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
+unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
+slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
+objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
+
+[plugins]
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+nebulaRelease = { id = "nebula.release", version.ref = "nebulaRelease" }
