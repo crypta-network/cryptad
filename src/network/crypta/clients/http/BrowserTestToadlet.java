@@ -180,7 +180,7 @@ public class BrowserTestToadlet extends Toadlet {
 		// Yes, we need that in order to test the browser (number of connections per server)
 		if (request.isParameterSet("wontload")) return;
 
-		PageNode page = ctx.getPageMaker().getPageNode("Crypta browser testing tool", ctx);
+		PageNode page = ctx.getPageMaker().getPageNode("Freenet browser testing tool", ctx);
 		HTMLNode contentNode = page.getContentNode();
 
 		if(ctx.isAllowedFullAccess())

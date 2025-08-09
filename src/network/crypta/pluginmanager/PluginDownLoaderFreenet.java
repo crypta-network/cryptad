@@ -1,3 +1,6 @@
+/* This code is part of Freenet. It is distributed under the GNU General
+ * Public License, version 2 (or at your option any later version). See
+ * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.pluginmanager;
 
 import java.io.IOException;
@@ -47,7 +50,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
 	@Override
 	InputStream getInputStream(final PluginProgress progress) throws IOException, PluginNotFoundException {
 		FreenetURI uri = getSource();
-		System.out.println("Downloading plugin from Crypta: "+uri);
+		System.out.println("Downloading plugin from Freenet: "+uri);
 		while (true) {
 			try {
 				progress.setDownloading();

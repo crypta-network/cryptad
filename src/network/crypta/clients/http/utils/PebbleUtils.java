@@ -8,10 +8,10 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.util.Map;
 
-import io.pebbletemplates.pebble.PebbleEngine;
-import io.pebbletemplates.pebble.loader.ClasspathLoader;
-import io.pebbletemplates.pebble.loader.Loader;
-import io.pebbletemplates.pebble.template.PebbleTemplate;
+import com.mitchellbosecke.pebble.PebbleEngine;
+import com.mitchellbosecke.pebble.loader.ClasspathLoader;
+import com.mitchellbosecke.pebble.loader.Loader;
+import com.mitchellbosecke.pebble.template.PebbleTemplate;
 
 import network.crypta.support.HTMLNode;
 

@@ -31,9 +31,5 @@ debhelper-build-stamp
 /debian/freenet/*
 .gradle
 gradle
-/.gradle-user-home
 debian/seednodes.fref
 .idea
-output.*
-/split-file-inserter-storage-test
-.DS_Store

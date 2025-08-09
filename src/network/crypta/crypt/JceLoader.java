@@ -38,7 +38,7 @@ public class JceLoader {
             } catch (Throwable e) {
                 // FIXME what about Windows/MacOSX/etc?
                 final String msg = "Unable to load SunPKCS11-NSScrypto provider. " +
-                                   "This is NOT fatal error, Crypta will work, but some performance " +
+                                   "This is NOT fatal error, Freenet will work, but some performance " +
                                    "degradation possible. Consider installing libnss3 package.";
                 Logger.warning(NSSLoader.class, msg, e);
             }

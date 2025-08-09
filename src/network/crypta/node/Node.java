@@ -1,17 +1,9 @@
+/* This code is part of Freenet. It is distributed under the GNU General
+ * Public License, version 2 (or at your option any later version). See
+ * http://www.gnu.org/ for further details of the GPL. */
 /* Freenet 0.7 node. */
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.*;
-import static network.crypta.node.stats.DataStoreKeyType.*;
-import static network.crypta.node.stats.DataStoreType.*;
-import static network.crypta.support.io.DatastoreUtil.oneGiB;
-
-import java.io.*;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.*;
 import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
@@ -56,6 +48,18 @@ import network.crypta.support.io.*;
 import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import org.tanukisoftware.wrapper.WrapperManager;
+
+import java.io.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.*;
+
+import static java.util.concurrent.TimeUnit.*;
+import static network.crypta.node.stats.DataStoreKeyType.*;
+import static network.crypta.node.stats.DataStoreType.*;
+import static network.crypta.support.io.DatastoreUtil.oneGiB;
 
 /**
  * @author amphibian
@@ -204,7 +208,7 @@ public class Node implements TimeSkewDetectorCallback {
             synchronized (this) {
                 name = myName;
             }
-            if (name.startsWith("Node id|") || name.equals("MyFirstCryptaNode") || name.startsWith("Crypta node with no name #")) {
+            if (name.startsWith("Node id|") || name.equals("MyFirstFreenetNode") || name.startsWith("Freenet node with no name #")) {
                 clientCore.getAlerts().register(nodeNameUserAlert);
             } else {
                 clientCore.getAlerts().unregister(nodeNameUserAlert);
@@ -1163,7 +1167,7 @@ public class Node implements TimeSkewDetectorCallback {
 
 
     private String newName() {
-        return "Crypta node with no name #" + random.nextLong();
+        return "Freenet node with no name #" + random.nextLong();
     }
 
     private final Object writeNodeFileSync = new Object();
@@ -1243,7 +1247,7 @@ public class Node implements TimeSkewDetectorCallback {
     Node(PersistentConfig config, RandomSource r, RandomSource weakRandom, LoggingConfigHandler lc, NodeStarter ns, Executor executor) throws NodeInitException {
         this.shutdownHook = SemiOrderedShutdownHook.get();
         // Easy stuff
-        String tmp = "Initializing Node using Crypta Build #" + Version.gitRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
+        String tmp = "Initializing Node using Freenet Build #" + Version.buildNumber() + " r" + Version.cvsRevision() + " and freenet-ext Build #" + NodeStarter.extBuildNumber + " r" + NodeStarter.extRevisionNumber + " with " + System.getProperty("java.vendor") + " JVM version " + System.getProperty("java.version") + " running on " + System.getProperty("os.arch") + ' ' + System.getProperty("os.name") + ' ' + System.getProperty("os.version");
         Logger.normal(this, tmp);
         System.out.println(tmp);
         collector = new IOStatisticCollector();
@@ -1968,7 +1972,7 @@ public class Node implements TimeSkewDetectorCallback {
         throttleLocalData = nodeConfig.getBoolean("throttleLocalTraffic");
 
         String s = "Testnet mode DISABLED. You may have some level of anonymity. :)\n" +
-                "Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.\n" +
+                "Note that this version of Freenet is still a very early alpha, and may well have numerous bugs and design flaws.\n" +
                 "In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).";
         Logger.normal(this, s);
         System.err.println(s);
@@ -3409,6 +3413,7 @@ public class Node implements TimeSkewDetectorCallback {
             opennet.start();
         ps.start(nodeStats);
         ticker.start();
+        scheduleVersionTransition();
         usm.start(ticker);
 
         if (isUsingWrapper()) {
@@ -3418,8 +3423,8 @@ public class Node implements TimeSkewDetectorCallback {
             Logger.error(this, "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
             System.out.println("NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
         }
-        Logger.normal(this, "Crypta " + Version.publicVersion() + " Build #" + Version.gitRevision());
-        System.out.println("Crypta " + Version.publicVersion() + " Build #" + Version.gitRevision());
+        Logger.normal(this, "Freenet 0.7.5 Build #" + Version.buildNumber() + " r" + Version.cvsRevision());
+        System.out.println("Freenet 0.7.5 Build #" + Version.buildNumber() + " r" + Version.cvsRevision());
         Logger.normal(this, "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         System.out.println("FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
         // Start services
@@ -3467,6 +3472,21 @@ public class Node implements TimeSkewDetectorCallback {
         Logger.normal(this, "Started node");
 
         hasStarted = true;
+    }
+
+    private void scheduleVersionTransition() {
+        long now = System.currentTimeMillis();
+        long transition = Version.transitionTime();
+        if (now < transition)
+            ticker.queueTimedJob(new Runnable() {
+
+                @Override
+                public void run() {
+                    for (PeerNode pn : peers.myPeers()) {
+                        pn.updateVersionRoutablity();
+                    }
+                }
+            }, transition - now);
     }
 
     private void warnIfNotUsingWrapper() {
