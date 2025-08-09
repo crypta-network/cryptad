@@ -1,7 +1,7 @@
 package network.crypta.clients.http.utils;
 
-import com.mitchellbosecke.pebble.extension.Function;
-import com.mitchellbosecke.pebble.template.EvaluationContext;
+import io.pebbletemplates.pebble.extension.Function;
+import io.pebbletemplates.pebble.template.EvaluationContext;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.BaseL10nTest;
 import org.junit.Test;

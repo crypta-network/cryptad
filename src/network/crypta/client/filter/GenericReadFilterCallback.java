@@ -1,6 +1,3 @@
-/* This code is part of Freenet. It is distributed under the GNU General
- * Public License, version 2 (or at your option any later version). See
- * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.client.filter;
 
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
@@ -451,7 +448,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
             bookmark_key = furi.toString();
             bookmark_desc = URLEncoder.encode(bookmark_desc, StandardCharsets.UTF_8);
         } catch (MalformedURLException e) {
-            throw new CommentException("Invalid Freenet URI: " + e);
+            throw new CommentException("Invalid Crypta URI: " + e);
         }
 
         String url = "/?newbookmark=" + bookmark_key + "&desc=" + bookmark_desc;

@@ -1,6 +1,3 @@
-/* This code is part of Freenet. It is distributed under the GNU General
- * Public License, version 2 (or at your option any later version). See
- * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.clients.fcp;
 
 import java.io.IOException;
@@ -763,7 +760,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                     // Notice that this is not normal mode of operation: Instead of throwing,
                     // the JavaDoc requests message handlers to return a reply with success=false.
                     
-                    String errorMessage = "FredPluginFCPMessageHandler threw."
+                    String errorMessage = "CryptadPluginFCPMessageHandler threw."
                         + " See JavaDoc of its member interfaces for how signal errors properly."
                         + " connection = " + FCPPluginConnectionImpl.this
                         + "; SendDirection = " + direction
@@ -785,7 +782,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                 if(reply != null) {
                     // TODO: Performance: The below checks might be converted to assert() or
                     // be prefixed with if(logMINOR).
-                    // Not doing this now since the FredPluginFCPMessageHandler API which specifies
+                    // Not doing this now since the CryptadPluginFCPMessageHandler API which specifies
                     // those requirements is new and thus quite a few client applications might be
                     // converted to it soon, and do those beginners mistakes.
                     // After everyone has gotten used to it, we can move to the more lax checking.
@@ -795,7 +792,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
                     // Replying to replies is disallowed to prevent infinite bouncing.
                     if(message.isReplyMessage()) {
-                        Logger.error(messageHandler, "FredPluginFCPMessageHandler tried to send a"
+                        Logger.error(messageHandler, "CryptadPluginFCPMessageHandler tried to send a"
                             + " reply to a reply. Discarding it. See JavaDoc of its member"
                             + " interfaces for how to do this properly."
                             + " connection = " + FCPPluginConnectionImpl.this
@@ -805,7 +802,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                         
                         reply = null;
                     } else if(!reply.isReplyMessage()) {
-                        Logger.error(messageHandler, "FredPluginFCPMessageHandler tried to send a"
+                        Logger.error(messageHandler, "CryptadPluginFCPMessageHandler tried to send a"
                             + " non-reply message as reply. See JavaDoc of its member interfaces"
                             + " for how to do this properly."
                             + " connection = " + FCPPluginConnectionImpl.this
@@ -815,7 +812,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
                         reply = null;
                     } else if(!reply.identifier.equals(message.identifier)) {
-                        Logger.error(messageHandler, "FredPluginFCPMessageHandler tried to send a"
+                        Logger.error(messageHandler, "CryptadPluginFCPMessageHandler tried to send a"
                             + " reply with with different identifier than original message."
                             + " See JavaDoc of its member interfaces for how to do this properly."
                             + " connection = " + FCPPluginConnectionImpl.this
@@ -832,7 +829,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                         // This shouldn't be done: Not sending a success reply at least will cause
                         // sendSynchronous() threads to keep waiting for the reply until timeout.
                         Logger.warning(
-                            messageHandler, "Fred did not receive a reply from the message "
+                            messageHandler, "Cryptad did not receive a reply from the message "
                                           + "handler even though it was allowed to reply. "
                                           + "This would cause sendSynchronous() to timeout! "
                                           + " connection = " + FCPPluginConnectionImpl.this
@@ -863,7 +860,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                     // from a class contained in it. So there is a chance that the developer
                     // has logging enabled for that class, and thus we log it marked as from that.
                     
-                    Logger.warning(messageHandler, "Sending reply from FredPluginFCPMessageHandler"
+                    Logger.warning(messageHandler, "Sending reply from CryptadPluginFCPMessageHandler"
                         + " failed, the connection was closed already."
                         + " connection = " + FCPPluginConnectionImpl.this
                         + "; original message SendDirection = " + direction

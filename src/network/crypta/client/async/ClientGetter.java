@@ -1,6 +1,3 @@
-/* This code is part of Freenet. It is distributed under the GNU General
- * Public License, version 2 (or at your option any later version). See
- * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.client.async;
 
 import java.io.BufferedInputStream;
@@ -374,7 +371,7 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 			/*Not really the state's fault*/
 		} catch(URISyntaxException e) {
 			//Impossible
-			Logger.error(this, "URISyntaxException converting a FreenetURI to a URI!: "+e, e);
+			Logger.error(this, "URISyntaxException converting a Crypta URI to a URI!: "+e, e);
 			ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
 			/*Not really the state's fault*/
 		} catch(CompressionOutputSizeException e) {

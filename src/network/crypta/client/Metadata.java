@@ -1,6 +1,3 @@
-/* This code is part of Freenet. It is distributed under the GNU General
- * Public License, version 2 (or at your option any later version). See
- * http://www.gnu.org/ for further details of the GPL. */
 package network.crypta.client;
 
 import java.io.ByteArrayInputStream;
@@ -358,7 +355,7 @@ public class Metadata implements Cloneable, Serializable {
 			        maxCompatMode = CompatibilityMode.COMPAT_1416;
 			} else {
 			    if(CompatibilityMode.maybeFutureCode(code)) {
-                    Logger.warning(this, "Content may have been inserted with a newer version of Freenet?");
+                    Logger.warning(this, "Content may have been inserted with a newer version of Crypta?");
                     topCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
 			    } else {
 			        throw new MetadataParseException("Bad compatibility mode "+code);

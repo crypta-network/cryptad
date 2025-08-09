@@ -364,7 +364,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 		Logger.minor(this, "Memory is "+memoryLimit+"MB");
 		if(memoryLimit > 0 && memoryLimit < 100) {
 			defaultThreadLimit = 200;
-			Logger.minor(this, "Severe memory pressure, setting 200 thread limit. Freenet may not work well!");
+			Logger.minor(this, "Severe memory pressure, setting 200 thread limit. Crypta may not work well!");
 		} else if(memoryLimit > 0 && memoryLimit < 128) {
 			defaultThreadLimit = 300;
 			Logger.minor(this, "Moderate memory pressure, setting 300 thread limit. Increase your memory limit in wrapper.conf if possible.");
