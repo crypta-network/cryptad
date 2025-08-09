@@ -14,16 +14,6 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
-buildscript {
-    repositories {
-        mavenCentral()
-        gradlePluginPortal()
-    }
-    dependencies {
-        classpath(libs.androidGradle)
-    }
-}
-
 val provided by configurations.creating
 val compile by configurations.creating
 
