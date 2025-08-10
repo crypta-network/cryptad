@@ -30,15 +30,15 @@ repositories {
 
 sourceSets {
     val main by getting {
-        java.srcDir("src/")
-        kotlin.srcDir("src/")
+        // Rely on Gradle's default directories (src/main/java, src/main/resources)
+        // Exclude the templated Version.kt from direct compilation
         java.exclude("network/crypta/node/Version.kt")
         kotlin.exclude("**/Version.kt")
+        // Preserve provided configuration on classpaths
         compileClasspath += configurations["provided"]
     }
     val test by getting {
-        java.srcDir("test/")
-        kotlin.srcDir("test/")
+        // Rely on Gradle's default directories (src/test/java, src/test/resources)
         compileClasspath += configurations["provided"]
     }
 }
@@ -131,13 +131,15 @@ val buildJar by tasks.registering(Jar::class) {
         tasks.named("compileKotlin")
     )
 
-    // Include all compiled classes (Java + Kotlin) and processed resources
-    from(sourceSets.main.get().output)
+    // Include compiled classes (Java + Kotlin) and resources explicitly to avoid duplicates
+    from(sourceSets.main.get().output.classesDirs)
+    from(sourceSets.main.get().resources)
 
     archiveFileName.set("cryptad.jar")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
-    duplicatesStrategy = DuplicatesStrategy.FAIL
+    // Some resources may appear in multiple outputs; exclude duplicates deterministically
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes(
             "Permissions" to "all-permissions",
@@ -191,6 +193,12 @@ gradle.addBuildListener(object : BuildAdapter() {
         }
     }
 })
+
+tasks.test {
+    // Point tests expecting old layout to new standard resource locations
+    systemProperty("test.l10npath_test", "src/test/resources/network/crypta/l10n/")
+    systemProperty("test.l10npath_main", "src/main/resources/network/crypta/l10n/")
+}
 
 val copyResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["main"].allSource)
