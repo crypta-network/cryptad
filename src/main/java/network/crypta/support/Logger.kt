@@ -11,25 +11,32 @@ abstract class Logger {
     class OSThread {
         companion object {
             @Deprecated("always returns -1")
-            @JvmStatic fun getPID(o: Any?): Int = -1
+            @JvmStatic
+            fun getPID(o: Any?): Int = -1
 
             @Deprecated("always returns -1")
-            @JvmStatic fun getPPID(o: Any?): Int = -1
+            @JvmStatic
+            fun getPPID(o: Any?): Int = -1
 
             @Deprecated("always returns null")
-            @JvmStatic fun getFieldFromProcSelfStat(fieldNumber: Int, o: Any?): String? = null
+            @JvmStatic
+            fun getFieldFromProcSelfStat(fieldNumber: Int, o: Any?): String? = null
 
             @Deprecated("always returns -1")
-            @JvmStatic fun getPIDFromProcSelfStat(o: Any?): Int = -1
+            @JvmStatic
+            fun getPIDFromProcSelfStat(o: Any?): Int = -1
 
             @Deprecated("always returns -1")
-            @JvmStatic fun getPPIDFromProcSelfStat(o: Any?): Int = -1
+            @JvmStatic
+            fun getPPIDFromProcSelfStat(o: Any?): Int = -1
 
             @Deprecated("always returns -1")
-            @JvmStatic fun logPID(o: Any?): Int = -1
+            @JvmStatic
+            fun logPID(o: Any?): Int = -1
 
             @Deprecated("always returns -1")
-            @JvmStatic fun logPPID(o: Any?): Int = -1
+            @JvmStatic
+            fun logPPID(o: Any?): Int = -1
         }
     }
 
@@ -46,7 +53,8 @@ abstract class Logger {
 
         companion object {
             @Deprecated("use enum constant")
-            @JvmStatic fun fromOrdinal(ordinal: Int): LogLevel {
+            @JvmStatic
+            fun fromOrdinal(ordinal: Int): LogLevel {
                 for (level in values()) {
                     if (level.ordinal == ordinal) return level
                 }
@@ -122,7 +130,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun debug(c: Class<*>, s: String, t: Throwable) {
+        fun debug(c: Class<*>, s: String, t: Throwable?) {
             logger.log(c, s, t, LogLevel.DEBUG)
         }
 
@@ -134,7 +142,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun debug(o: Any, s: String, t: Throwable) {
+        fun debug(o: Any, s: String, t: Throwable?) {
             logger.log(o, s, t, LogLevel.DEBUG)
         }
 
@@ -146,7 +154,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun error(c: Class<*>, s: String, t: Throwable) {
+        fun error(c: Class<*>, s: String, t: Throwable?) {
             logger.log(c, s, t, LogLevel.ERROR)
         }
 
@@ -158,7 +166,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun error(o: Any, s: String, e: Throwable) {
+        fun error(o: Any, s: String, e: Throwable?) {
             logger.log(o, s, e, LogLevel.ERROR)
         }
 
@@ -176,13 +184,13 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun minor(o: Any, s: String, t: Throwable) {
+        fun minor(o: Any, s: String, t: Throwable?) {
             logger.log(o, s, t, LogLevel.MINOR)
         }
 
         @Synchronized
         @JvmStatic
-        fun minor(c: Class<*>, s: String, t: Throwable) {
+        fun minor(c: Class<*>, s: String, t: Throwable?) {
             logger.log(c, s, t, LogLevel.MINOR)
         }
 
@@ -194,7 +202,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun normal(o: Any, s: String, t: Throwable) {
+        fun normal(o: Any, s: String, t: Throwable?) {
             logger.log(o, s, t, LogLevel.NORMAL)
         }
 
@@ -206,7 +214,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun normal(c: Class<*>, s: String, t: Throwable) {
+        fun normal(c: Class<*>, s: String, t: Throwable?) {
             logger.log(c, s, t, LogLevel.NORMAL)
         }
 
@@ -218,7 +226,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun warning(c: Class<*>, s: String, t: Throwable) {
+        fun warning(c: Class<*>, s: String, t: Throwable?) {
             logger.log(c, s, t, LogLevel.WARNING)
         }
 
@@ -230,7 +238,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun warning(o: Any, s: String, e: Throwable) {
+        fun warning(o: Any, s: String, e: Throwable?) {
             logger.log(o, s, e, LogLevel.WARNING)
         }
 
@@ -242,7 +250,7 @@ abstract class Logger {
 
         @Synchronized
         @JvmStatic
-        fun logStatic(o: Any, s: String, e: Throwable, prio: LogLevel) {
+        fun logStatic(o: Any, s: String, e: Throwable?, prio: LogLevel) {
             logger.log(o, s, e, prio)
         }
 
@@ -254,18 +262,18 @@ abstract class Logger {
         }
 
         @JvmStatic
-        fun shouldLog(priority: LogLevel, c: Class<*>): Boolean = logger.instanceShouldLog(priority, c)
+        fun shouldLog(priority: LogLevel, c: Class<*>?): Boolean = logger.instanceShouldLog(priority, c)
 
         @Deprecated("use LogLevel version")
         @JvmStatic
-        fun shouldLog(priority: Int, c: Class<*>): Boolean = shouldLog(LogLevel.fromOrdinal(priority), c)
+        fun shouldLog(priority: Int, c: Class<*>?): Boolean = shouldLog(LogLevel.fromOrdinal(priority), c)
 
         @JvmStatic
-        fun shouldLog(priority: LogLevel, o: Any): Boolean = shouldLog(priority, o.javaClass)
+        fun shouldLog(priority: LogLevel, o: Any?): Boolean = shouldLog(priority, o?.javaClass)
 
         @Deprecated("use LogLevel version")
         @JvmStatic
-        fun shouldLog(priority: Int, o: Any): Boolean = shouldLog(LogLevel.fromOrdinal(priority), o)
+        fun shouldLog(priority: Int, o: Any?): Boolean = shouldLog(LogLevel.fromOrdinal(priority), o)
 
         @JvmStatic
         fun registerLogThresholdCallback(ltc: LogThresholdCallback) {
@@ -294,7 +302,8 @@ abstract class Logger {
                             field.set(null, shouldLog(LogLevel.MINOR, c))
                         }
                         done = true
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                     try {
                         val field: Field = c.getDeclaredField("logDEBUG")
                         if (Modifier.isStatic(field.modifiers)) {
@@ -302,7 +311,8 @@ abstract class Logger {
                             field.set(null, shouldLog(LogLevel.DEBUG, c))
                         }
                         done = true
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                     if (!done) error(this, "No log level field for " + c)
                 }
             }
@@ -386,9 +396,11 @@ abstract class Logger {
     abstract fun instanceShouldLog(priority: LogLevel, c: Class<*>?): Boolean
     abstract fun instanceShouldLog(prio: LogLevel, o: Any?): Boolean
     abstract fun setThreshold(thresh: LogLevel)
+
     @Throws(InvalidThresholdException::class)
     abstract fun setThreshold(symbolicThreshold: String)
     abstract fun getThresholdNew(): LogLevel
+
     @Throws(InvalidThresholdException::class)
     abstract fun setDetailedThresholds(details: String?)
     abstract fun instanceRegisterLogThresholdCallback(ltc: LogThresholdCallback)
