@@ -1,5 +1,10 @@
 package network.crypta.node.updater;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashSet;
+import java.util.Properties;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -31,12 +36,6 @@ import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.InsufficientDiskSpaceException;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashSet;
-import java.util.Properties;
 
 public class MainJarUpdater extends NodeUpdater implements Deployer {
 
@@ -160,8 +159,7 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
 
     @Override
     public void reannounce() {
-        this.manager.broadcastUOMAnnouncesNew();
-        this.manager.broadcastUOMAnnouncesOld();
+        this.manager.broadcastUOMAnnounces();
     }
 
     @Override

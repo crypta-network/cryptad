@@ -1177,15 +1177,15 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		File data;
 		int version;
 		FreenetURI uri;
+		// Legacy support removed - only serve current version
 		if (source.getVersionNumber() < NodeUpdateManager.TRANSITION_VERSION) {
-		    data = updateManager.getTransitionMainBlob();
-		    version = NodeUpdateManager.TRANSITION_VERSION;
-		    uri = NodeUpdateManager.previousMainJarUSK;
-		} else {
-		    data = updateManager.getCurrentVersionBlobFile();
-		    version = Version.buildNumber();
-            uri = updateManager.getURI();
+		    // Don't serve updates to very old nodes
+		    Logger.normal(this, "Peer " + source + " is too old (version < " + NodeUpdateManager.TRANSITION_VERSION + "), not serving update");
+		    return;
 		}
+		data = updateManager.getCurrentVersionBlobFile();
+		version = Version.buildNumber();
+		uri = updateManager.getURI();
 		
 		if(data == null) {
 			Logger.normal(this, "Peer " + source + " asked us for the blob file for the "+name+" jar but we don't have it!");

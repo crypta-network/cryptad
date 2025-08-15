@@ -48,7 +48,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.JVMVersion;
 import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
@@ -82,20 +81,9 @@ public class NodeUpdateManager {
 	 */
 	public final static int TRANSITION_VERSION = 1481;
 
-	/** The URI for post-TRANSITION_VERSION builds' freenet.jar on modern JVMs. */
+	/** The URI for post-TRANSITION_VERSION builds' freenet.jar. */
 	public final static String UPDATE_URI = "USK@vCKGjQtKuticcaZ-dwOgmkYPVLj~N1dm9mb3j3Smg4Y,-wz5IYtd7PlhI2Kx4cAwpUu13fW~XBglPyOn8wABn60,AQACAAE/jar/"
 			+ Version.buildNumber();
-
-	/** The URI for post-TRANSITION_VERSION builds' freenet.jar on EoL JVMs. */
-	public final static String LEGACY_UPDATE_URI = "SSK@ugWS2VICgMcQ5ptmEE1mAvHgUn2OSCOogJIUAvbL090,ZKO1pZRI9oaBuBQuWFL4bK3K0blvmEdqYgiIJF5GcjQ,AQACAAE/jar-"
-			+ TRANSITION_VERSION;
-
-	/**
-	 * The URI for freenet.jar before the updater was rekeyed. Unless both the EoL and modern keys rekey this is
-	 * LEGACY_UPDATE_URI.
-	 */
-	public final static String PREVIOUS_UPDATE_URI = "SSK@O~UmMwTeDcyDIW-NsobFBoEicdQcogw7yrLO2H-sJ5Y,JVU4L7m9mNppkd21UNOCzRHKuiTucd6Ldw8vylBOe5o,AQACAAE/jar-"
-			+ TRANSITION_VERSION;
 
 	public final static String REVOCATION_URI = "SSK@tHlY8BK2KFB7JiO2bgeAw~e4sWU43YdJ6kmn73gjrIw,DnQzl0BYed15V8WQn~eRJxxIA-yADuI8XW7mnzEbut8,AQACAAE/revoked";
 	// These are necessary to prevent DoS.
@@ -108,32 +96,9 @@ public class NodeUpdateManager {
 	public static final long MAX_IP_TO_COUNTRY_LENGTH = 24 * 1024 * 1024;
 	public static final long MAX_SEEDNODES_LENGTH = 3 * 1024 * 1024;
 
-	static final FreenetURI legacyMainJarSSK;
-	static final FreenetURI legacyMainJarUSK;
-
-	static final FreenetURI previousMainJarSSK;
-	static final FreenetURI previousMainJarUSK;
-
-	public static final String transitionMainJarFilename = "legacy-freenet-jar-"
-			+ TRANSITION_VERSION + ".fblob";
-
-	public final File transitionMainJarFile;
-
-	static {
-		try {
-			legacyMainJarSSK = new FreenetURI(LEGACY_UPDATE_URI);
-			legacyMainJarUSK = legacyMainJarSSK.uskForSSK();
-			previousMainJarSSK = new FreenetURI(PREVIOUS_UPDATE_URI);
-			previousMainJarUSK = previousMainJarSSK.uskForSSK();
-		} catch (MalformedURLException e) {
-			throw new Error(e);
-		}
-	}
 
 	private FreenetURI updateURI;
 	private FreenetURI revocationURI;
-
-	private final LegacyJarFetcher transitionMainJarFetcher;
 
 	private MainJarUpdater mainUpdater;
 
@@ -151,8 +116,7 @@ public class NodeUpdateManager {
 	 * case, so that we can try again with another build. */
 	private boolean isDeployingUpdate;
 	private final Object broadcastUOMAnnouncesSync = new Object();
-	private boolean broadcastUOMAnnouncesOld = false;
-	private boolean broadcastUOMAnnouncesNew = false;
+	private boolean broadcastUOMAnnounces = false;
 
 	/**
 	 * @deprecated Use {@link #getNode()} instead of accessing this directly.
@@ -250,9 +214,9 @@ public class NodeUpdateManager {
 				new AutoUpdateAllowedCallback());
 		isAutoUpdateAllowed = updaterConfig.getBoolean("autoupdate");
 
-		// Set default update URI for new nodes depending on JVM version.
+		// Set default update URI for new nodes.
 		updaterConfig
-				.register("URI", JVMVersion.needsLegacyUpdater() ? legacyMainJarUSK.toString() : UPDATE_URI,
+				.register("URI", UPDATE_URI,
 				          3, true, true,
 						"NodeUpdateManager.updateURI",
 						"NodeUpdateManager.updateURILong",
@@ -265,19 +229,6 @@ public class NodeUpdateManager {
 					"error", e.getLocalizedMessage()));
 		}
 
-		/*
-		 * The update URI is always written, so override the existing key depending on JVM version.
-		 * Only override official URIs to avoid interfering with unofficial update keys.
-		 *
-		 * An up-to-date JVM must update the legacy URI (in addition to the previous URI) in case a node was
-		 * run with an EoL JVM that was subsequently upgraded.
-		 */
-		if (JVMVersion.needsLegacyUpdater()) {
-			transitionKey(updaterConfig, previousMainJarSSK, legacyMainJarUSK.toString());
-		} else {
-			transitionKey(updaterConfig, previousMainJarSSK, UPDATE_URI);
-			transitionKey(updaterConfig, legacyMainJarSSK, UPDATE_URI);
-		}
 
 		updateURI = updateURI.setSuggestedEdition(Version.buildNumber());
 		if(updateURI.hasMetaStrings())
@@ -298,37 +249,6 @@ public class NodeUpdateManager {
 					"error", e.getLocalizedMessage()));
 		}
 
-		LegacyJarFetcher.LegacyFetchCallback legacyFetcherCallback = new LegacyJarFetcher.LegacyFetchCallback() {
-
-			@Override
-			public void onSuccess(LegacyJarFetcher fetcher) {
-				if (transitionMainJarFetcher.fetched()) {
-					System.out.println("Got legacy jar, announcing...");
-					broadcastUOMAnnouncesOld();
-				}
-			}
-
-			@Override
-			public void onFailure(FetchException e, LegacyJarFetcher fetcher) {
-				Logger.error(
-						this,
-						"Failed to fetch "
-								+ fetcher.saveTo
-								+ " : UPDATE OVER MANDATORY WILL NOT WORK WITH OLDER NODES THAN "
-								+ TRANSITION_VERSION + " : " + e, e);
-				System.err
-						.println("Failed to fetch "
-								+ fetcher.saveTo
-								+ " : UPDATE OVER MANDATORY WILL NOT WORK WITH OLDER NODES THAN "
-								+ TRANSITION_VERSION + " : " + e);
-			}
-
-		};
-
-		transitionMainJarFile = new File(node.getClientCore().getPersistentTempDir(), transitionMainJarFilename);
-		transitionMainJarFetcher = new LegacyJarFetcher(previousMainJarSSK,
-				transitionMainJarFile, node.getClientCore(),
-				legacyFetcherCallback);
 
 		updaterConfig.register("updateSeednodes", wasEnabledOnStartup, 6, true,
 				true, "NodeUpdateManager.updateSeednodes",
@@ -396,18 +316,6 @@ public class NodeUpdateManager {
 		this.uom.removeOldTempFiles();
 	}
 
-	private void transitionKey(SubConfig updaterConfig, FreenetURI from, String to)
-			throws InvalidConfigValueException {
-
-		if (updateURI.equalsKeypair(from)) {
-			try {
-				updaterConfig.set("URI", to);
-			} catch (NodeNeedRestartException e) {
-				// UpdateURICallback.set() does not throw NodeNeedRestartException.
-				Logger.warning(this, "Unexpected failure setting update URI", e);
-			}
-		}
-	}
 
 	class SimplePuller implements ClientGetCallback {
 
@@ -581,29 +489,17 @@ public class NodeUpdateManager {
 
 	}
 
-	void broadcastUOMAnnouncesOld() {
-		boolean mainJarAvailable = transitionMainJarFetcher != null && transitionMainJarFetcher.fetched();
-		Message msg;
-		if(!mainJarAvailable) return;
-		synchronized (broadcastUOMAnnouncesSync) {
-			if(broadcastUOMAnnouncesOld && !hasBeenBlown) return;
-			broadcastUOMAnnouncesOld = true;
-			msg = getOldUOMAnnouncement();
-		}
-		node.getPeers().localBroadcast(msg, true, true, ctr, 0, TRANSITION_VERSION-1);
-	}
-
-	void broadcastUOMAnnouncesNew() {
-		if(logMINOR) Logger.minor(this, "Broadcast UOM announcements (new)");
+	void broadcastUOMAnnounces() {
+		if(logMINOR) Logger.minor(this, "Broadcast UOM announcements");
 		long size = canAnnounceUOMNew();
 		Message msg;
 		if(size <= 0 && !hasBeenBlown) return;
 		synchronized (broadcastUOMAnnouncesSync) {
-			if(broadcastUOMAnnouncesNew && !hasBeenBlown) return;
-			broadcastUOMAnnouncesNew = true;
+			if(broadcastUOMAnnounces && !hasBeenBlown) return;
+			broadcastUOMAnnounces = true;
 			msg = getNewUOMAnnouncement(size);
 		}
-		if(logMINOR) Logger.minor(this, "Broadcasting UOM announcements (new)");
+		if(logMINOR) Logger.minor(this, "Broadcasting UOM announcements");
 		node.getPeers().localBroadcast(msg, true, true, ctr, TRANSITION_VERSION, Integer.MAX_VALUE);
 	}
 
@@ -629,18 +525,6 @@ public class NodeUpdateManager {
 		return data.size();
 	}
 
-	private Message getOldUOMAnnouncement() {
-		boolean mainJarAvailable = transitionMainJarFetcher != null && transitionMainJarFetcher.fetched();
-        return DMT.createUOMAnnouncement(previousMainJarUSK.toString(), revocationURI
-                .toString(), revocationChecker.hasBlown(),
-                mainJarAvailable ? TRANSITION_VERSION : -1,
-                revocationChecker.lastSucceededDelta(), revocationChecker
-                .getRevocationDNFCounter(), revocationChecker
-                .getBlobSize(),
-                mainJarAvailable ? transitionMainJarFetcher.getBlobSize() : -1,
-                (int) node.getNodeStats().getNodeAveragePingTime(),
-                (int) node.getNodeStats().getBwlimitDelayTime());
-	}
 
 	private Message getNewUOMAnnouncement(long blobSize) {
 		int fetchedVersion = blobSize <= 0 ? -1 : Version.buildNumber();
@@ -656,16 +540,15 @@ public class NodeUpdateManager {
 	}
 
 	public void maybeSendUOMAnnounce(PeerNode peer) {
-		boolean sendOld, sendNew;
+		boolean shouldSend;
 		synchronized (broadcastUOMAnnouncesSync) {
-			if (!(broadcastUOMAnnouncesOld || broadcastUOMAnnouncesNew)) {
+			if (!broadcastUOMAnnounces) {
 				if (logMINOR)
 					Logger.minor(this,
-							"Not sending UOM (any) on connect: Nothing worth announcing yet");
+							"Not sending UOM on connect: Nothing worth announcing yet");
 				return; // nothing worth announcing yet
 			}
-			sendOld = broadcastUOMAnnouncesOld;
-			sendNew = broadcastUOMAnnouncesNew;
+			shouldSend = broadcastUOMAnnounces;
 		}
 		if (hasBeenBlown && !revocationChecker.hasBlown()) {
 			if (logMINOR)
@@ -676,11 +559,8 @@ public class NodeUpdateManager {
 		}
 		long size = canAnnounceUOMNew();
 		try {
-		    if(peer.getVersionNumber() < TRANSITION_VERSION) {
-		        if (sendOld || hasBeenBlown)
-		            peer.sendAsync(getOldUOMAnnouncement(), null, ctr);
-		    } else {
-		        if (sendNew || hasBeenBlown)
+		    if (peer.getVersionNumber() >= TRANSITION_VERSION) {
+		        if (shouldSend || hasBeenBlown)
 		            peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
 		    }
 		} catch (NotConnectedException e) {
@@ -750,7 +630,6 @@ public class NodeUpdateManager {
 			if (main != null)
 				main.kill();
 			stopPluginUpdaters(oldPluginUpdaters);
-			transitionMainJarFetcher.stop();
 		} else {
 			// FIXME copy it, dodgy locking.
 			try {
@@ -764,7 +643,6 @@ public class NodeUpdateManager {
 			}
 			mainUpdater.start();
 			startPluginUpdaters();
-			transitionMainJarFetcher.start();
 		}
 	}
 
@@ -1542,8 +1420,7 @@ public class NodeUpdateManager {
 			killUpdateAlerts();
 		}
 		uom.killAlert();
-		broadcastUOMAnnouncesOld();
-		broadcastUOMAnnouncesNew();
+		broadcastUOMAnnounces();
 	}
 
 	/**
@@ -1558,7 +1435,7 @@ public class NodeUpdateManager {
 		deployUpdate(); // May have been waiting for the revocation.
 		deployPluginUpdates();
 		// If we're still here, we didn't update.
-		broadcastUOMAnnouncesNew();
+		broadcastUOMAnnounces();
 		node.getTicker().queueTimedJob(new Runnable() {
 			@Override
 			public void run() {
@@ -1606,7 +1483,7 @@ public class NodeUpdateManager {
 			@Override
 			public void run() {
 				if(announce)
-					maybeBroadcastUOMAnnouncesNew();
+					maybeBroadcastUOMAnnounces();
 				if (logMINOR)
 					Logger.minor(this, "Running deployOffThread");
 				deployUpdate();
@@ -1616,15 +1493,15 @@ public class NodeUpdateManager {
 		}, delay);
 	}
 
-	protected void maybeBroadcastUOMAnnouncesNew() {
-		if(logMINOR) Logger.minor(this, "Maybe broadcast UOM announces new");
+	protected void maybeBroadcastUOMAnnounces() {
+		if(logMINOR) Logger.minor(this, "Maybe broadcast UOM announces");
 		synchronized(NodeUpdateManager.this) {
 			if(hasBeenBlown) return;
 			if(peersSayBlown) return;
 		}
-		if(logMINOR) Logger.minor(this, "Maybe broadcast UOM announces new (2)");
+		if(logMINOR) Logger.minor(this, "Maybe broadcast UOM announces (2)");
 		// If the node has no peers, noRevocationFound will never be called.
-		broadcastUOMAnnouncesNew();
+		broadcastUOMAnnounces();
 	}
 
 	/**
@@ -1812,7 +1689,7 @@ public class NodeUpdateManager {
 
 			@Override
 			public void run() {
-				maybeBroadcastUOMAnnouncesNew();
+				maybeBroadcastUOMAnnounces();
 			}
 
 		}, REVOCATION_FETCH_TIMEOUT);
@@ -1938,9 +1815,6 @@ public class NodeUpdateManager {
 		deployOffThread(0, true);
 	}
 
-	public File getTransitionMainBlob() {
-		return transitionMainJarFetcher.getBlobFile();
-	}
 
 	/** Show the progress of individual dependencies if possible */
 	public void renderProgress(HTMLNode alertNode) {
