@@ -54,8 +54,8 @@ const val GIT_REVISION: String = "@git_rev@"
  * Single integer build number for this binary.
  *
  * This is the canonical build number that uniquely identifies this
- * version. The token @build_number@ is replaced during build; fallback to 0 if
- * not replaced.
+ * version. The token @build_number@ is replaced during build; fallback to
+ * 0 if not replaced.
  */
 private const val BUILD_NUMBER_STRING: String = "@build_number@"
 
@@ -137,7 +137,6 @@ private fun ensureLoggerInitialized() {
 fun currentBuildNumber(): Long = buildNumber
 
 
-
 /** Runtime accessor for [GIT_REVISION] to avoid inlining. */
 fun gitRevision(): String = GIT_REVISION
 
@@ -203,8 +202,10 @@ fun getMinAcceptableVersionString(): String = Fields.commaList(getMinAcceptableV
  *
  * Compatibility requirements:
  * - Protocol must match [LAST_GOOD_FRED_PROTOCOL_VERSION]
- * - For Cryptad peers: build number must be >= [MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER]
- * - For Fred peers: build number must be >= [MIN_ACCEPTABLE_FRED_BUILD_NUMBER]
+ * - For Cryptad peers: build number must
+ *   be >= [MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER]
+ * - For Fred peers: build number must
+ *   be >= [MIN_ACCEPTABLE_FRED_BUILD_NUMBER]
  *
  * @param version The version string to check
  * @return true if the version is compatible, false otherwise
