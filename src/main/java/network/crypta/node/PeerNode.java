@@ -4687,13 +4687,13 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     return countSelectionsSinceConnected / (double) timeSinceConnected;
   }
 
-  private volatile long offeredMainJarVersion;
+  private volatile int offeredMainJarVersion;
 
-  public void setMainJarOfferedVersion(long mainJarVersion) {
+  public void setMainJarOfferedVersion(int mainJarVersion) {
     offeredMainJarVersion = mainJarVersion;
   }
 
-  public long getMainJarOfferedVersion() {
+  public int getMainJarOfferedVersion() {
     return offeredMainJarVersion;
   }
 

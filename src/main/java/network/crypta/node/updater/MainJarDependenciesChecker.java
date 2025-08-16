@@ -1526,7 +1526,7 @@ public class MainJarDependenciesChecker {
                     dependencies.add(dep);
                     toDeploy = ready();
                 } else {
-                    forCurrentVersion = (forBuild == (int)Version.currentBuildNumber());
+                    forCurrentVersion = (forBuild == Version.currentBuildNumber());
                 }
             }
             if (toDeploy) {

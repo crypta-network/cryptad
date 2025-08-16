@@ -71,7 +71,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 		logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
 		this.manager = manager;
 		this.node = manager.getNode();
-		this.URI = URI.setSuggestedEdition((int)Version.currentBuildNumber() + 1);
+		this.URI = URI.setSuggestedEdition(Version.currentBuildNumber() + 1);
 		this.ticker = node.getTicker();
 		this.core = node.getClientCore();
 		this.currentVersion = current;

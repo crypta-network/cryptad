@@ -1759,7 +1759,7 @@ public class DMT {
           addField(MAIN_JAR_KEY, String.class);
           addField(REVOCATION_KEY, String.class);
           addField(HAVE_REVOCATION_KEY, Boolean.class);
-          addField(MAIN_JAR_VERSION, Long.class);
+          addField(MAIN_JAR_VERSION, Integer.class);
           // Last time (ms ago) we had 3 DNFs in a row on the revocation checker.
           addField(REVOCATION_KEY_TIME_LAST_TRIED, Long.class);
           // Number of DNFs so far this time.
@@ -1776,7 +1776,7 @@ public class DMT {
       String mainKey,
       String revocationKey,
       boolean haveRevocation,
-      long mainJarVersion,
+      int mainJarVersion,
       long timeLastTriedRevocationFetch,
       int revocationDNFCount,
       long revocationKeyLength,
@@ -1852,11 +1852,11 @@ public class DMT {
           addField(UID, Long.class);
           addField(FILE_LENGTH, Long.class);
           addField(MAIN_JAR_KEY, String.class);
-          addField(MAIN_JAR_VERSION, Long.class);
+          addField(MAIN_JAR_VERSION, Integer.class);
         }
       };
 
-  public static Message createUOMSendingMainJar(long uid, long length, String key, long version) {
+  public static Message createUOMSendingMainJar(long uid, long length, String key, int version) {
     Message msg = new Message(CryptadUOMSendingMainJar);
     msg.set(UID, uid);
     msg.set(FILE_LENGTH, length);

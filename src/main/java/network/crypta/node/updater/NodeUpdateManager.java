@@ -83,7 +83,7 @@ public class NodeUpdateManager {
 
 	/** The URI for post-TRANSITION_VERSION builds' freenet.jar. */
 	public final static String UPDATE_URI = "USK@vCKGjQtKuticcaZ-dwOgmkYPVLj~N1dm9mb3j3Smg4Y,-wz5IYtd7PlhI2Kx4cAwpUu13fW~XBglPyOn8wABn60,AQACAAE/jar/"
-			+ (int)Version.currentBuildNumber();
+			+ Version.currentBuildNumber();
 
 	public final static String REVOCATION_URI = "SSK@tHlY8BK2KFB7JiO2bgeAw~e4sWU43YdJ6kmn73gjrIw,DnQzl0BYed15V8WQn~eRJxxIA-yADuI8XW7mnzEbut8,AQACAAE/revoked";
 	// These are necessary to prevent DoS.
@@ -230,7 +230,7 @@ public class NodeUpdateManager {
 		}
 
 
-		updateURI = updateURI.setSuggestedEdition((int)Version.currentBuildNumber());
+		updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
 		if(updateURI.hasMetaStrings())
 			throw new InvalidConfigValueException(l10n("updateURIMustHaveNoMetaStrings"));
 		if(!updateURI.isUSK())
@@ -372,7 +372,7 @@ public class NodeUpdateManager {
 					// FIXME add a callback in case it's being used on Windows.
 					if (FileUtil.moveTo(temp, directory.file(filename))) {
 						System.out.println("Successfully fetched " + filename
-								+ " for version " + (int)Version.currentBuildNumber());
+								+ " for version " + Version.currentBuildNumber());
 						break;
 					} else {
 						System.out
@@ -432,22 +432,22 @@ public class NodeUpdateManager {
 
 	public FreenetURI getSeednodesURI() {
 		return updateURI.sskForUSK().setDocName(
-				"seednodes-" + (int)Version.currentBuildNumber());
+				"seednodes-" + Version.currentBuildNumber());
 	}
 
 	public FreenetURI getInstallerNonWindowsURI() {
 		return updateURI.sskForUSK().setDocName(
-				"installer-" + (int)Version.currentBuildNumber());
+				"installer-" + Version.currentBuildNumber());
 	}
 
 	public FreenetURI getInstallerWindowsURI() {
 		return updateURI.sskForUSK().setDocName(
-				"wininstaller-" + (int)Version.currentBuildNumber());
+				"wininstaller-" + Version.currentBuildNumber());
 	}
 
 	public FreenetURI getIPv4ToCountryURI() {
 		return updateURI.sskForUSK().setDocName(
-				"iptocountryv4-" + (int)Version.currentBuildNumber());
+				"iptocountryv4-" + Version.currentBuildNumber());
 	}
 
 	public void start() throws InvalidConfigValueException {
@@ -514,7 +514,7 @@ public class NodeUpdateManager {
 			if(fetchedMainJarVersion <= 0) {
 				if(logMINOR) Logger.minor(this, "Not fetched yet");
 				return -1;
-			} else if(fetchedMainJarVersion != (int)Version.currentBuildNumber()) {
+			} else if(fetchedMainJarVersion != Version.currentBuildNumber()) {
 				// Don't announce UOM unless we've successfully started the jar.
 				if(logMINOR) Logger.minor(this, "Downloaded a different version than the one we are running, not offering UOM.");
 				return -1;
@@ -527,7 +527,7 @@ public class NodeUpdateManager {
 
 
 	private Message getNewUOMAnnouncement(long blobSize) {
-		int fetchedVersion = blobSize <= 0 ? -1 : (int)Version.currentBuildNumber();
+		int fetchedVersion = blobSize <= 0 ? -1 : Version.currentBuildNumber();
 		if(blobSize <= 0) fetchedVersion = -1;
 		return DMT.createUOMAnnouncement(updateURI.toString(), revocationURI
 				.toString(), revocationChecker.hasBlown(), fetchedVersion,
@@ -621,7 +621,7 @@ public class NodeUpdateManager {
 				// }
 				// Start it
 				mainUpdater = new MainJarUpdater(this, updateURI,
-						(int)Version.currentBuildNumber(), -1, Integer.MAX_VALUE,
+						Version.currentBuildNumber(), -1, Integer.MAX_VALUE,
 						"main-jar-");
 				pluginUpdaters = new HashMap<String, PluginJarUpdater>();
 			}
@@ -794,7 +794,7 @@ public class NodeUpdateManager {
 			if (updateURI.equals(uri))
 				return;
 			updateURI = uri;
-			updateURI = updateURI.setSuggestedEdition((int)Version.currentBuildNumber());
+			updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
 			updater = mainUpdater;
 			oldPluginUpdaters = pluginUpdaters;
 			pluginUpdaters = new HashMap<String, PluginJarUpdater>();
@@ -1317,7 +1317,7 @@ public class NodeUpdateManager {
 		Bucket delete1 = null;
 		Bucket delete2 = null;
 		synchronized (this) {
-			if (fetched > (int)Version.currentBuildNumber()) {
+			if (fetched > Version.currentBuildNumber()) {
 				hasNewMainJar = true;
 				startedFetchingNextMainJar = -1;
 				gotJarTime = System.currentTimeMillis();
@@ -1328,7 +1328,7 @@ public class NodeUpdateManager {
 				delete1 = fetchedMainJarData;
 				fetchedMainJarVersion = fetched;
 				fetchedMainJarData = result;
-				if(fetched == (int)Version.currentBuildNumber()) {
+				if(fetched == Version.currentBuildNumber()) {
 					if(savedBlob != null)
 						currentVersionBlobFile = savedBlob;
 					else
@@ -1549,7 +1549,7 @@ public class NodeUpdateManager {
 	 * What version is the node currently running?
 	 */
 	public int getMainVersion() {
-		return (int)Version.currentBuildNumber();
+		return Version.currentBuildNumber();
 	}
 
 	public int getExtVersion() {
@@ -1848,7 +1848,7 @@ public class NodeUpdateManager {
 	public synchronized File getCurrentVersionBlobFile() {
 		if(hasNewMainJar) return null;
 		if(isDeployingUpdate) return null;
-		if(fetchedMainJarVersion != (int)Version.currentBuildNumber()) return null;
+		if(fetchedMainJarVersion != Version.currentBuildNumber()) return null;
 		return currentVersionBlobFile;
 	}
 

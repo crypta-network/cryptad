@@ -147,7 +147,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		String mainJarKey = m.getString(DMT.MAIN_JAR_KEY);
 		String revocationKey = m.getString(DMT.REVOCATION_KEY);
 		boolean haveRevocationKey = m.getBoolean(DMT.HAVE_REVOCATION_KEY);
-		long mainJarVersion = m.getLong(DMT.MAIN_JAR_VERSION);
+		int mainJarVersion = m.getInt(DMT.MAIN_JAR_VERSION);
 		long revocationKeyLastTried = m.getLong(DMT.REVOCATION_KEY_TIME_LAST_TRIED);
 		int revocationKeyDNFs = m.getInt(DMT.REVOCATION_KEY_DNF_COUNT);
 		long revocationKeyFileLength = m.getLong(DMT.REVOCATION_KEY_FILE_LENGTH);
@@ -305,7 +305,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
 	}
 
-	private void handleMainJarOffer(long now, long mainJarFileLength, long mainJarVersion, PeerNode source, String jarKey) {
+	private void handleMainJarOffer(long now, long mainJarFileLength, int mainJarVersion, PeerNode source, String jarKey) {
 		
 		long started = updateManager.getStartedFetchingNextMainJarTimestamp();
 		long whenToTakeOverTheNormalUpdater;
@@ -316,7 +316,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		boolean isOutdated = updateManager.getNode().isOudated();
 		// if the new build is self-mandatory or if the "normal" updater has been trying to update for more than one hour
 		Logger.normal(this, "We received a valid UOMAnnouncement (main) : (isOutdated=" + isOutdated + " version=" + mainJarVersion + " whenToTakeOverTheNormalUpdater=" + TimeUtil.formatTime(whenToTakeOverTheNormalUpdater - now) + ") file length " + mainJarFileLength + " updateManager version " + updateManager.newMainJarVersion());
-		if(mainJarVersion > (int)Version.currentBuildNumber() && mainJarFileLength > 0 &&
+		if(mainJarVersion > Version.currentBuildNumber() && mainJarFileLength > 0 &&
 			mainJarVersion > updateManager.newMainJarVersion()) {
 			source.setMainJarOfferedVersion(mainJarVersion);
 			// Offer is valid.
@@ -396,8 +396,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		final HashSet<PeerNode> askedSendJar = nodesAskedSendMainJar;
 		boolean wasFetchingUOM = false;
 		synchronized(this) {
-			long offeredVersion = source.getMainJarOfferedVersion();
-			long updateVersion = updateManager.newMainJarVersion();
+			int offeredVersion = source.getMainJarOfferedVersion();
+			int updateVersion = updateManager.newMainJarVersion();
 			if(offeredVersion < updateVersion) {
 				if(offeredVersion <= 0)
 					Logger.error(this, "Not sending UOM "+lname+" request to " + source + " because it hasn't offered anything!");
@@ -1183,7 +1183,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		    return;
 		}
 		data = updateManager.getCurrentVersionBlobFile();
-		version = (int) Version.currentBuildNumber();
+		version = Version.currentBuildNumber();
 		uri = updateManager.getURI();
 		
 		if(data == null) {
@@ -1308,7 +1308,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		final long uid = m.getLong(DMT.UID);
 		final long length = m.getLong(DMT.FILE_LENGTH);
 		String key = m.getString(DMT.MAIN_JAR_KEY);
-		final long version = m.getLong(DMT.MAIN_JAR_VERSION);
+		final int version = m.getInt(DMT.MAIN_JAR_VERSION);
 		final FreenetURI jarURI;
 		try {
 			jarURI = new FreenetURI(key).setSuggestedEdition(version);

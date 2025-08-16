@@ -87,10 +87,10 @@ const val MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER: Int = 1
 const val MIN_ACCEPTABLE_FRED_BUILD_NUMBER: Int = 1475
 
 // Runtime state
-private val buildNumber: Long by lazy {
+private val buildNumber: Int by lazy {
     when {
-        BUILD_NUMBER_STRING.startsWith("@") && BUILD_NUMBER_STRING.endsWith("@") -> 0L // Fallback when token is not replaced
-        else -> BUILD_NUMBER_STRING.toLongOrNull() ?: 0L
+        BUILD_NUMBER_STRING.startsWith("@") && BUILD_NUMBER_STRING.endsWith("@") -> 0 // Fallback when token is not replaced
+        else -> BUILD_NUMBER_STRING.toIntOrNull() ?: 0
     }
 }
 
@@ -102,7 +102,7 @@ private var logDebug: Boolean = false
 
 /** Highest peer build observed during this process lifetime. */
 @Volatile
-private var highestSeenBuild: Int = buildNumber.toInt()
+private var highestSeenBuild: Int = buildNumber
 
 // Logger initialization
 private object VersionLogTag
@@ -132,9 +132,9 @@ private fun ensureLoggerInitialized() {
  * This is the primary identifier for this build. Use this instead of
  * reading the constant directly to avoid inlining.
  *
- * @return The build number as a Long integer
+ * @return The build number as an Int
  */
-fun currentBuildNumber(): Long = buildNumber
+fun currentBuildNumber(): Int = buildNumber
 
 
 /** Runtime accessor for [GIT_REVISION] to avoid inlining. */
