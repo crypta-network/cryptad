@@ -267,7 +267,7 @@ fun isCompatibleVersionWithLastGood(versionStr: String?, lastGoodVersionStr: Str
  * @throws VersionParseException if the version string is invalid
  */
 @Throws(VersionParseException::class)
-fun parseVersionNumberFromStr(version: String?): Int {
+fun parseBuildNumberFromVersionStr(version: String?): Int {
     version ?: run {
         Logger.error(logTag, "version == null!", Exception("error"))
         throw VersionParseException("version == null")
@@ -303,8 +303,8 @@ fun parseVersionNumberFromStr(version: String?): Int {
  * @param defaultValue The value to return if parsing fails
  * @return The extracted build number or defaultValue if parsing fails
  */
-fun parseVersionNumberFromStr(version: String?, defaultValue: Int): Int =
-    runCatching { parseVersionNumberFromStr(version) }.getOrElse { defaultValue }
+fun parseBuildNumberFromVersionStr(version: String?, defaultValue: Int): Int =
+    runCatching { parseBuildNumberFromVersionStr(version) }.getOrElse { defaultValue }
 
 /**
  * Records the highest build number observed among compatible peers.

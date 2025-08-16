@@ -1111,7 +1111,7 @@ public class Node implements TimeSkewDetectorCallback {
       Logger.error(this, "No version!");
       System.err.println("No version!");
     } else {
-      lastVersion = Version.parseVersionNumberFromStr(verString, -1);
+      lastVersion = Version.parseBuildNumberFromVersionStr(verString, -1);
     }
   }
 
@@ -3795,7 +3795,7 @@ public class Node implements TimeSkewDetectorCallback {
                 0,
                 true,
                 false); // Use Ticker to guarantee that this runs *after* constructors have
-                        // completed.
+        // completed.
 
       } else {
 

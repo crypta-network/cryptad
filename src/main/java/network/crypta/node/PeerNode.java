@@ -540,7 +540,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     version = fs.get("version");
     Version.seenVersion(version);
     try {
-      simpleVersion = Version.parseVersionNumberFromStr(version);
+      simpleVersion = Version.parseBuildNumberFromVersionStr(version);
     } catch (VersionParseException e2) {
       throw new FSParseException("Invalid version " + version + " : " + e2);
     }
@@ -2811,7 +2811,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       version = newVersion;
       if (version != null) {
         try {
-          simpleVersion = Version.parseVersionNumberFromStr(version);
+          simpleVersion = Version.parseBuildNumberFromVersionStr(version);
         } catch (VersionParseException e) {
           Logger.error(this, "Bad version: " + version + " : " + e, e);
         }
@@ -4059,8 +4059,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   }
 
   @Override
-  public int getVersionNumber() {
-    return Version.parseVersionNumberFromStr(getVersion(), -1);
+  public int getBuildNumber() {
+    return Version.parseBuildNumberFromVersionStr(getVersion(), -1);
   }
 
   private final PacketThrottle _lastThrottle = new PacketThrottle(Node.PACKET_SIZE);
@@ -5422,7 +5422,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
               "Accepting because no load stats from "
                   + PeerNode.this.shortToString()
                   + " ("
-                  + PeerNode.this.getVersionNumber()
+                  + PeerNode.this.getBuildNumber()
                   + ")");
           if (tag.addRoutedTo(PeerNode.this, offeredKey)) {
             // FIXME maybe wait a bit, check the other side's version first???
@@ -5969,7 +5969,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
               "Message not decoded from "
                   + PeerNode.this
                   + " ("
-                  + PeerNode.this.getVersionNumber()
+                  + PeerNode.this.getBuildNumber()
                   + ")");
         return;
       }

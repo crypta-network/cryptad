@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
-
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -559,7 +558,7 @@ public class NodeUpdateManager {
 		}
 		long size = canAnnounceUOMNew();
 		try {
-		    if (peer.getVersionNumber() >= TRANSITION_VERSION) {
+		    if (peer.getBuildNumber() >= TRANSITION_VERSION) {
 		        if (shouldSend || hasBeenBlown)
 		            peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
 		    }
