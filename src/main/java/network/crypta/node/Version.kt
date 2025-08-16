@@ -143,15 +143,17 @@ fun gitRevision(): String = GIT_REVISION
 /**
  * Returns the current node's version components as an array.
  *
- * Format: `[name, buildNumber, protocol]` where:
+ * Format: `[name, buildNumber, protocol, buildNumber]` where:
  * - name: The node name ("Cryptad")
  * - buildNumber: The current build number as string
  * - protocol: The protocol version for compatibility
+ * - buildNumber: This prevents Fred nodes from throwing an
+ *   `ArrayIndexOutOfBoundsException` when parsing the version string.
  *
  * @return Array containing version components
  */
 fun getVersionComponents(): Array<String> =
-    arrayOf(NODE_NAME, buildNumber.toString(), LAST_GOOD_FRED_PROTOCOL_VERSION)
+    arrayOf(NODE_NAME, buildNumber.toString(), LAST_GOOD_FRED_PROTOCOL_VERSION, buildNumber.toString())
 
 
 /**
