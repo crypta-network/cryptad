@@ -78,13 +78,13 @@ private const val STABLE_FRED_NODE_VERSION: String = "0.7"
  * Minimum acceptable build number for Cryptad peers when checking
  * compatibility.
  */
-private const val MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER: Int = 1
+const val MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER: Int = 1
 
 /**
  * Minimum acceptable build number for Freenet peers when checking
  * compatibility.
  */
-private const val MIN_ACCEPTABLE_FRED_BUILD_NUMBER: Int = 1475
+const val MIN_ACCEPTABLE_FRED_BUILD_NUMBER: Int = 1475
 
 // Runtime state
 private val buildNumber: Long by lazy {
@@ -136,20 +136,6 @@ private fun ensureLoggerInitialized() {
  */
 fun currentBuildNumber(): Long = buildNumber
 
-/**
- * Returns the minimum acceptable build number for Cryptad peers.
- *
- * @return The minimum build number that we consider compatible
- */
-fun minAcceptableCryptadBuildNumber(): Int = MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER
-
-
-/**
- * Returns the minimum acceptable build number for Fred/Freenet peers.
- *
- * @return The minimum Fred build number that we consider compatible
- */
-fun minAcceptableFredBuildNumber(): Int = MIN_ACCEPTABLE_FRED_BUILD_NUMBER
 
 
 /** Runtime accessor for [GIT_REVISION] to avoid inlining. */
@@ -186,7 +172,7 @@ fun getMinAcceptableVersionComponents(): Array<String> =
         WIRE_NAME,
         STABLE_FRED_NODE_VERSION,
         LAST_GOOD_FRED_PROTOCOL_VERSION,
-        minAcceptableFredBuildNumber().toString()
+        MIN_ACCEPTABLE_FRED_BUILD_NUMBER.toString()
     )
 
 
@@ -217,10 +203,8 @@ fun getMinAcceptableVersionString(): String = Fields.commaList(getMinAcceptableV
  *
  * Compatibility requirements:
  * - Protocol must match [LAST_GOOD_FRED_PROTOCOL_VERSION]
- * - For Cryptad peers: build number must
- *   be >= [MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER]
- * - For Fred peers: build number must
- *   be >= [MIN_ACCEPTABLE_FRED_BUILD_NUMBER]
+ * - For Cryptad peers: build number must be >= [MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER]
+ * - For Fred peers: build number must be >= [MIN_ACCEPTABLE_FRED_BUILD_NUMBER]
  *
  * @param version The version string to check
  * @return true if the version is compatible, false otherwise
@@ -490,7 +474,7 @@ private fun rejectIfCryptadTooOld(v: Array<String>, original: String?): Boolean 
     if (!isCryptad(v)) return false
 
     val version = v.getOrNull(1)?.toIntOrNull()
-    val req = minAcceptableCryptadBuildNumber()
+    val req = MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER
 
     if (version == null) {
         ensureLoggerInitialized()

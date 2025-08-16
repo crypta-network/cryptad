@@ -1574,7 +1574,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		boolean gotError = false;
 		File[] oldTempFiles = oldTempFilesPeerDir.listFiles(new FileFilter() {
 
-			private final int lastGoodMainBuildNumber = Version.minAcceptableCryptadBuildNumber();
+			private final int lastGoodMainBuildNumber = Version.MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER;
 
 			@Override
 			public boolean accept(File file) {
