@@ -172,16 +172,24 @@ Comprehensive test suite covering:
 
 ## Recent Code Improvements
 
-### Version.kt Refactoring
+### Version.kt Refactoring and API Modernization
 
-The `Version.kt` file has been refactored to follow idiomatic Kotlin conventions:
+The `Version.kt` file has been completely modernized:
 
+**Kotlin Best Practices:**
 - **Top-level functions**: Maintains idiomatic Kotlin approach using top-level functions instead of object wrappers
 - **Improved null safety**: Enhanced null handling using elvis operators and safe calls
 - **Better Kotlin idioms**: Uses `when` expressions, `runCatching`, and other Kotlin standard library features
 - **Performance optimizations**: Lazy initialization for expensive operations
 - **Enhanced exception handling**: More robust error handling with descriptive messages
 - **Java interoperability**: Maintains full compatibility with existing Java code via `@file:JvmName("Version")`
+
+**API Cleanup:**
+- **Removed all deprecated functions**: Eliminated legacy compatibility functions throughout the codebase
+- **Consistent naming**: Renamed all "build ID" terminology to "build number" for consistency with `MIN_ACCEPTABLE_FRED_BUILD_NUMBER`
+- **Updated build system**: Changed build tag from `@build_id@` to `@build_number@` for complete consistency
+- **Modern API**: Uses `currentBuildNumber()` and `minAcceptableCryptadBuildNumber()` as primary functions
+- **40+ replacements**: Updated all function calls across 20+ files to use the new consistent API
 
 ## Important Notes
 

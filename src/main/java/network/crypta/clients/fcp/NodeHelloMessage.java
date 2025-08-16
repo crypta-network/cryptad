@@ -28,7 +28,7 @@ public class NodeHelloMessage extends FCPMessage {
     sfs.putSingle("FCPVersion", "2.0");
     sfs.putSingle("Node", "Cryptad");
     sfs.putSingle("Version", Version.getVersionString());
-    sfs.put("Build", Version.buildNumber());
+    sfs.put("Build", (int)Version.currentBuildNumber());
     sfs.putSingle("Revision", Version.gitRevision());
     sfs.put("ExtBuild", NodeStarter.extBuildNumber);
     sfs.putSingle("ExtRevision", NodeStarter.extRevisionNumber);

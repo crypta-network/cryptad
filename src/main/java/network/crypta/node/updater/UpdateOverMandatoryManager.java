@@ -316,7 +316,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		boolean isOutdated = updateManager.getNode().isOudated();
 		// if the new build is self-mandatory or if the "normal" updater has been trying to update for more than one hour
 		Logger.normal(this, "We received a valid UOMAnnouncement (main) : (isOutdated=" + isOutdated + " version=" + mainJarVersion + " whenToTakeOverTheNormalUpdater=" + TimeUtil.formatTime(whenToTakeOverTheNormalUpdater - now) + ") file length " + mainJarFileLength + " updateManager version " + updateManager.newMainJarVersion());
-		if(mainJarVersion > Version.buildNumber() && mainJarFileLength > 0 &&
+		if(mainJarVersion > (int)Version.currentBuildNumber() && mainJarFileLength > 0 &&
 			mainJarVersion > updateManager.newMainJarVersion()) {
 			source.setMainJarOfferedVersion(mainJarVersion);
 			// Offer is valid.
@@ -1183,7 +1183,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		    return;
 		}
 		data = updateManager.getCurrentVersionBlobFile();
-		version = (int) Version.versionNumber();
+		version = (int) Version.currentBuildNumber();
 		uri = updateManager.getURI();
 		
 		if(data == null) {
@@ -1574,7 +1574,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		boolean gotError = false;
 		File[] oldTempFiles = oldTempFilesPeerDir.listFiles(new FileFilter() {
 
-			private final int lastGoodMainBuildNumber = Version.lastGoodVersionNumber();
+			private final int lastGoodMainBuildNumber = Version.minAcceptableCryptadBuildNumber();
 
 			@Override
 			public boolean accept(File file) {

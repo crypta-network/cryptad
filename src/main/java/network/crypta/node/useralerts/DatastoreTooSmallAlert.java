@@ -137,7 +137,7 @@ public class DatastoreTooSmallAlert implements UserAlert {
 		if (minSize > 25) minSize = 25;
 
 		// Check if warning has already been dismissed on this Freenet version
-		int currentVersion = Version.buildNumber();
+		int currentVersion = (int)Version.currentBuildNumber();
 		int dismissedVersion = core.getNode().getConfig().get("node").getInt("datastoreTooSmallDismissed");
 
 		return currentSize < minSize && currentVersion != dismissedVersion;
@@ -159,7 +159,7 @@ public class DatastoreTooSmallAlert implements UserAlert {
 
 	@Override
 	public void onDismiss() {
-		String currentVersion = Integer.toString(Version.buildNumber());
+		String currentVersion = Integer.toString((int)Version.currentBuildNumber());
 
 		try {
 			core.getNode().getConfig().get("node").set("datastoreTooSmallDismissed", currentVersion);

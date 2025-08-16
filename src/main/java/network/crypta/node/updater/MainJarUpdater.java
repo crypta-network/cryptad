@@ -147,7 +147,7 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
         } finally {
             Closer.close(is);
         }
-        dependencies.cleanup(props, this, Version.buildNumber());
+        dependencies.cleanup(props, this, (int)Version.currentBuildNumber());
     }
 
     @Override

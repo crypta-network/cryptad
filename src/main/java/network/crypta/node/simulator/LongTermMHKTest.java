@@ -66,8 +66,8 @@ public class LongTermMHKTest extends LongTermTest {
 		System.out.println("DATE:" + dateFormat.format(today.getTime()));
 		csvLine.add(dateFormat.format(today.getTime()));
 
-		System.out.println("Version:" + Version.buildNumber());
-		csvLine.add(String.valueOf(Version.buildNumber()));
+		System.out.println("Version:" + (int)Version.currentBuildNumber());
+		csvLine.add(String.valueOf((int)Version.currentBuildNumber()));
 
 		int exitCode = 0;
 		Node node = null;

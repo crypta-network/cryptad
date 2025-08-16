@@ -544,7 +544,7 @@ public class WelcomeToadlet extends Toadlet {
         versionContent.addChild("span", "class", "freenet-full-version",
                 NodeL10n.getBase().getString("WelcomeToadlet.version", new String[]{"fullVersion", "build", "rev"},
                         new String[]{
-                                Version.publicVersion(), Integer.toString(Version.buildNumber()), Version.gitRevision()}));
+                                Long.toString(Version.currentBuildNumber()), Integer.toString((int)Version.currentBuildNumber()), Version.gitRevision()}));
         versionContent.addChild("br");
         versionContent.addChild("span", "class", "freenet-ext-version",
                 NodeL10n.getBase().getString("WelcomeToadlet.extVersion", new String[]{"build", "rev"},

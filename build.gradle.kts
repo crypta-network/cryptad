@@ -63,7 +63,7 @@ val generateVersionSource by tasks.registering(Copy::class) {
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
-            line.replace("@build_id@", project.version.toString())
+            line.replace("@build_number@", project.version.toString())
                 .replace("@git_rev@", gitrev)
         }
     }

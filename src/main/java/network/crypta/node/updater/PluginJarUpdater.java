@@ -117,7 +117,7 @@ public class PluginJarUpdater extends NodeUpdater {
 	protected void processSuccess(int build, FetchResult result, File blob) {
 		Bucket oldResult = null;
 		synchronized(this) {
-			if(requiredNodeVersion > Version.buildNumber()) {
+			if(requiredNodeVersion > (int)Version.currentBuildNumber()) {
 				System.err.println("Found version "+fetchedVersion+" of "+pluginName+" but needs node version "+requiredNodeVersion);
 				// FIXME deploy it with the main jar
 				tempBlobFile.delete();
