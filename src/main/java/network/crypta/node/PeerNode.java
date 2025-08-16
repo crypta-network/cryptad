@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 import network.crypta.client.FetchResult;
@@ -297,6 +298,9 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   /** Version of the node */
   private String version;
+  
+  /** Cached parsed version components to avoid re-parsing */
+  private final AtomicReference<String[]> parsedVersionComponents = new AtomicReference<>();
 
   /** Total bytes received since startup */
   private long totalInputSinceStartup;
@@ -538,6 +542,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     this.myBootID = node2.getBootId();
     this.bootID = new AtomicLong();
     version = fs.get("version");
+    parsedVersionComponents.set(null); // Invalidate cache
     Version.seenVersion(version);
     try {
       simpleVersion = Version.parseBuildNumberFromVersionStr(version);
@@ -2809,6 +2814,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     } else {
       if (!newVersion.equals(version)) changedAnything = true;
       version = newVersion;
+      parsedVersionComponents.set(null); // Invalidate cache
       if (version != null) {
         try {
           simpleVersion = Version.parseBuildNumberFromVersionStr(version);
@@ -4060,7 +4066,59 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   @Override
   public int getBuildNumber() {
-    return Version.parseBuildNumberFromVersionStr(getVersion(), -1);
+    String[] components = getParsedVersionComponents();
+    if (components.length == 0) return -1;
+    try {
+      // Cryptad format: Cryptad,buildNumber,protocol,buildNumber (build number is in component 1)
+      // Fred format: Fred,series,protocol,buildNumber (build number is in component 3)
+      if ("Cryptad".equals(components[0])) {
+        return Integer.parseInt(components[1]);
+      } else if ("Fred".equals(components[0]) && components.length >= 4) {
+        return Integer.parseInt(components[3]);
+      }
+    } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+      // Fall through to return -1
+    }
+    return -1;
+  }
+
+  /**
+   * Gets the node name from the version string.
+   * 
+   * @return The node name (e.g., "Cryptad", "Fred") or null if the version is invalid
+   */
+  public String getNodeName() {
+    String[] components = getParsedVersionComponents();
+    return components.length > 0 ? components[0] : null;
+  }
+
+  /**
+   * Helper method to parse and cache version components to avoid repeated parsing.
+   * 
+   * @return Parsed version components array, or empty array if parsing fails
+   */
+  private String[] getParsedVersionComponents() {
+    String[] cached = parsedVersionComponents.get();
+    if (cached != null) {
+      return cached;
+    }
+    
+    String versionStr = getVersion();
+    if (versionStr == null) {
+      return new String[0];
+    }
+    
+    try {
+      String[] components = network.crypta.support.Fields.commaList(versionStr);
+      if (components != null && components.length >= 3) {
+        parsedVersionComponents.set(components);
+        return components;
+      }
+    } catch (Exception e) {
+      // Parsing failed, return empty array
+    }
+    
+    return new String[0];
   }
 
   private final PacketThrottle _lastThrottle = new PacketThrottle(Node.PACKET_SIZE);
