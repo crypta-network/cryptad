@@ -13,7 +13,6 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.text.DecimalFormat;
 import java.util.*;
-
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.AddPeer;
@@ -28,8 +27,8 @@ import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
+import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -119,7 +118,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
 				case "location":
 					return compareLocations(firstNode, secondNode);
 				case "version":
-					return Version.getArbitraryBuildNumber(firstNode.getVersion(), -1) - Version.getArbitraryBuildNumber(secondNode.getVersion(), -1);
+					return Version.parseVersionNumberFromStr(firstNode.getVersion(), -1) - Version.parseVersionNumberFromStr(secondNode.getVersion(), -1);
 				case "backoffRT":
 					return Double.compare(firstNode.getBackedOffPercent(true), secondNode.getBackedOffPercent(true));
 				case "backoffBulk":

@@ -20,7 +20,6 @@ import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -63,8 +62,8 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FileRandomAccessBuffer;
+import network.crypta.support.io.FileUtil;
 
 /**
  * Co-ordinates update over mandatory. Update over mandatory = updating from your peers, even
@@ -1184,7 +1183,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		    return;
 		}
 		data = updateManager.getCurrentVersionBlobFile();
-		version = Version.buildNumber();
+		version = (int) Version.versionNumber();
 		uri = updateManager.getURI();
 		
 		if(data == null) {
@@ -1309,7 +1308,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		final long uid = m.getLong(DMT.UID);
 		final long length = m.getLong(DMT.FILE_LENGTH);
 		String key = m.getString(DMT.MAIN_JAR_KEY);
-		final int version = m.getInt(DMT.MAIN_JAR_VERSION);
+		final long version = m.getLong(DMT.MAIN_JAR_VERSION);
 		final FreenetURI jarURI;
 		try {
 			jarURI = new FreenetURI(key).setSuggestedEdition(version);
@@ -1424,7 +1423,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		return true;
 	}
 
-	protected void processMainJarBlob(final File temp, final PeerNode source, final int version, FreenetURI uri) {
+	protected void processMainJarBlob(final File temp, final PeerNode source, final long version, FreenetURI uri) {
 		SimpleBlockSet blocks = new SimpleBlockSet();
 		final String toString = source == null ? "(local)" : source.userToString();
 
@@ -1515,10 +1514,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
 					System.err.println("Not updating because updater is disabled!");
 					return;
 				}
-				mainUpdater.onSuccess(result, state, cleanedBlobFile, version);
+				mainUpdater.onSuccess(result, state, cleanedBlobFile, (int) version);
 				temp.delete();
 				
-				maybeInsertMainJar(mainUpdater, source, version);
+				maybeInsertMainJar(mainUpdater, source, (int) version);
 			}
 
             @Override
@@ -1575,7 +1574,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 		boolean gotError = false;
 		File[] oldTempFiles = oldTempFilesPeerDir.listFiles(new FileFilter() {
 
-			private final int lastGoodMainBuildNumber = Version.lastGoodBuild();
+			private final int lastGoodMainBuildNumber = Version.lastGoodVersionNumber();
 
 			@Override
 			public boolean accept(File file) {

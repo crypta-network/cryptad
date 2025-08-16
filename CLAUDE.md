@@ -123,6 +123,17 @@ Multi-layered security approach:
 - Digital signatures for content authentication
 - Multiple encryption layers for data protection
 
+## Versioning System
+
+Crypta uses a single integer version number that increments by one for each release:
+
+- **Version Number**: Starting from 1504, each release increments this by 1
+- **UOM Protocol**: Uses Cryptad-specific message types for Update-over-Mandatory to prevent cross-compatibility with Freenet nodes
+- **Network Compatibility**: Only accepts connections from nodes running the same series ("cryptad")
+- **Manual Versioning**: Version is set manually in `build.gradle.kts` instead of using automated versioning plugins
+
+The new system replaces the legacy YYI+SemVer scheme with a simpler approach. Legacy `buildNumber()` and `publicVersion()` functions are available for compatibility but deprecated.
+
 ## Build System
 
 Uses Gradle with Kotlin DSL:
@@ -131,7 +142,7 @@ Uses Gradle with Kotlin DSL:
 - **Kotlin components**: Some newer components written in Kotlin
 - **Dependency verification**: Enabled to ensure supply chain security
 - **Version generation**: Automatic version file generation from Git
-- **YYI versioning**: Custom "Year-Year-Index" versioning scheme converted to public format
+- **Single integer versioning**: Uses a single incrementing integer version number instead of complex versioning schemes
 
 ## Testing Strategy
 
@@ -146,6 +157,7 @@ Comprehensive test suite covering:
 
 - Primary language: Kotlin/Java
     - New files should be always in Kotlin
+    - Prefer top-level functions over wrapping in objects/classes when appropriate (idiomatic Kotlin)
 - Code style:
     - Kotlin: Official coding convention described [here](https://kotlinlang.org/docs/coding-conventions.html)
     - Java: Google Java Style Guide described [here](https://google.github.io/styleguide/javaguide.html)
@@ -157,6 +169,19 @@ Comprehensive test suite covering:
 - Automatically use context-manager, kotlin-expert, java-pro, architect-reviewer, debugger, error-detective,
   dx-optimizer, frontend-developer, javascript-pro, performance-engineer, search-specialist, security-auditor,
   ui-ux-designer, legacy-modernizer and other subagents based on current tasks.
+
+## Recent Code Improvements
+
+### Version.kt Refactoring
+
+The `Version.kt` file has been refactored to follow idiomatic Kotlin conventions:
+
+- **Top-level functions**: Maintains idiomatic Kotlin approach using top-level functions instead of object wrappers
+- **Improved null safety**: Enhanced null handling using elvis operators and safe calls
+- **Better Kotlin idioms**: Uses `when` expressions, `runCatching`, and other Kotlin standard library features
+- **Performance optimizations**: Lazy initialization for expensive operations
+- **Enhanced exception handling**: More robust error handling with descriptive messages
+- **Java interoperability**: Maintains full compatibility with existing Java code via `@file:JvmName("Version")`
 
 ## Important Notes
 

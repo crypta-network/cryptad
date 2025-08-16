@@ -574,7 +574,7 @@ public class StatisticsToadlet extends Toadlet {
 		HTMLNode versionInfoboxContent = versionInfobox.addChild("div", "class", "infobox-content");
 		HTMLNode versionInfoboxList = versionInfoboxContent.addChild("ul");
 		versionInfoboxList.addChild("li", NodeL10n.getBase().getString("WelcomeToadlet.version", new String[] { "fullVersion", "build", "rev" },
-				new String[] { Version.publicVersion(), Integer.toString(Version.buildNumber()), Version.gitRevision() }));
+				new String[] { Long.toString(Version.versionNumber()), Long.toString(Version.versionNumber()), Version.gitRevision() }));
 		versionInfoboxList.addChild("li", NodeL10n.getBase().getString("WelcomeToadlet.extVersion", new String[] { "build", "rev" },
 				new String[] { Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber }));
 

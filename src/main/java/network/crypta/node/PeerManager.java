@@ -1,5 +1,8 @@
 package network.crypta.node;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import java.io.BufferedReader;
 import java.io.EOFException;
 import java.io.File;
@@ -16,7 +19,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -39,9 +41,6 @@ import network.crypta.support.TimeUtil;
 import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
-
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * @author amphibian
@@ -1003,7 +1002,7 @@ public class PeerManager {
 					Logger.minor(this, "Skipping (no load stats): "+p.getPeer());
 				continue;
 			}
-			if(minVersion > 0 && Version.getArbitraryBuildNumber(p.getVersion(), -1) < minVersion) {
+			if(minVersion > 0 && Version.parseVersionNumberFromStr(p.getVersion(), -1) < minVersion) {
 				if(logMINOR)
 					Logger.minor(this, "Skipping old version: " + p.getPeer());
 				continue;
