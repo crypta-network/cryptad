@@ -191,6 +191,16 @@ The `Version.kt` file has been completely modernized:
 - **Modern API**: Uses `currentBuildNumber()` and `minAcceptableCryptadBuildNumber()` as primary functions
 - **40+ replacements**: Updated all function calls across 20+ files to use the new consistent API
 
+### Version Display Format Standardization
+
+Updated all version display strings throughout the codebase to use a consistent format:
+
+**New Format:** `Crypta v[build number]+[git revision]`
+- Example: `Crypta v1504+a1b2c3d`
+- **Standardized across**: Node startup messages, client interfaces, web UI, and localization files
+- **Files Updated**: `Node.java`, `TextModeClientInterface.java`, `crypta.l10n.en.properties`
+- **Consistent branding**: Uses "Crypta" name consistently (replacing any remaining "Freenet" references in version strings)
+
 ## Important Notes
 
 - The project requires Java 21+ for compilation and runtime

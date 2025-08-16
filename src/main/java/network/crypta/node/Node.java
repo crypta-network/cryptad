@@ -1226,7 +1226,9 @@ public class Node implements TimeSkewDetectorCallback {
     this.shutdownHook = SemiOrderedShutdownHook.get();
     // Easy stuff
     String tmp =
-        "Initializing Node using Crypta Build #"
+        "Initializing Node using Crypta v"
+            + Version.currentBuildNumber()
+            + "+"
             + Version.gitRevision()
             + " and freenet-ext Build #"
             + NodeStarter.extBuildNumber
@@ -3998,8 +4000,8 @@ public class Node implements TimeSkewDetectorCallback {
       System.out.println(
           "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
     }
-    Logger.normal(this, "Crypta " + Version.currentBuildNumber() + " Build #" + Version.gitRevision());
-    System.out.println("Crypta " + Version.currentBuildNumber() + " Build #" + Version.gitRevision());
+    Logger.normal(this, "Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
+    System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
     Logger.normal(
         this, "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
     System.out.println(

@@ -155,9 +155,9 @@ public class TextModeClientInterface implements Runnable {
 
         sb.append("Trivial Text Mode Client Interface\r\n");
         sb.append("---------------------------------------\r\n");
-        sb.append("Crypta ")
+        sb.append("Crypta v")
           .append((int)Version.currentBuildNumber())
-          .append(" Build #")
+          .append("+")
           .append(Version.gitRevision())
           .append("\r\n");
         sb.append("Enter one of the following commands:\r\n");
