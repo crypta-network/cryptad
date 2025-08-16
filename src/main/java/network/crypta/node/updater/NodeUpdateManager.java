@@ -558,7 +558,7 @@ public class NodeUpdateManager {
 		}
 		long size = canAnnounceUOMNew();
 		try {
-		    if (peer.getBuildNumber() >= TRANSITION_VERSION) {
+		    if (Version.isBuildAtLeast(peer.getNodeName(), peer.getBuildNumber(), TRANSITION_VERSION)) {
 		        if (shouldSend || hasBeenBlown)
 		            peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
 		    }

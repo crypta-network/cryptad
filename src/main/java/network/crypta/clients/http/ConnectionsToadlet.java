@@ -112,8 +112,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
         case "location":
           return compareLocations(firstNode, secondNode);
         case "version":
-          return Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1)
-              - Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1);
+          return Version.compareBuildNumbers(
+              Version.parseNodeNameFromVersionStr(firstNode.getVersion()), 
+              Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
+              Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
+              Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
         case "backoffRT":
           return Double.compare(
               firstNode.getBackedOffPercent(true), secondNode.getBackedOffPercent(true));

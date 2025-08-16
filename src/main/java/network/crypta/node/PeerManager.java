@@ -1061,7 +1061,7 @@ public class PeerManager {
         continue;
       }
       if (minVersion > 0
-          && Version.parseBuildNumberFromVersionStr(p.getVersion(), -1) < minVersion) {
+          && !Version.isBuildAtLeast(p.getNodeName(), Version.parseBuildNumberFromVersionStr(p.getVersion(), -1), minVersion)) {
         if (logMINOR) Logger.minor(this, "Skipping old version: " + p.getPeer());
         continue;
       }

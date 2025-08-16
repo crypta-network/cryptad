@@ -1599,7 +1599,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     int version;
     FreenetURI uri;
     // Legacy support removed - only serve current version
-    if (source.getBuildNumber() < NodeUpdateManager.TRANSITION_VERSION) {
+    if (!Version.isBuildAtLeast(source.getNodeName(), source.getBuildNumber(), NodeUpdateManager.TRANSITION_VERSION)) {
       // Don't serve updates to very old nodes
       Logger.normal(
           this,
