@@ -1,5 +1,10 @@
 package network.crypta.node;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.concurrent.ArrayBlockingQueue;
 import network.crypta.crypt.HMAC;
 import network.crypta.io.comm.*;
 import network.crypta.keys.Key;
@@ -16,12 +21,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
-
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.concurrent.ArrayBlockingQueue;
 
 /**
  * @author amphibian
