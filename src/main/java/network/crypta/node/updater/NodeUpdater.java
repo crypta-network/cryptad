@@ -71,7 +71,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 		logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
 		this.manager = manager;
 		this.node = manager.getNode();
-		this.URI = URI.setSuggestedEdition(Version.buildNumber() + 1);
+		this.URI = URI.setSuggestedEdition(Version.currentBuildNumber() + 1);
 		this.ticker = node.getTicker();
 		this.core = node.getClientCore();
 		this.currentVersion = current;
@@ -119,7 +119,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 				FreenetURI uri = URI.setSuggestedEdition(currentVersion);
 				uri = uri.sskForUSK();
 				try {
-					manager.getUpdateOverMandatory().processMainJarBlob(temp, null, currentVersion, uri);
+					manager.getUpdateOverMandatory().processMainJarBlob(temp, null, (long) currentVersion, uri);
 				} catch (Throwable t) {
 					// Don't disrupt startup.
 					Logger.error(this, "Unable to process old blob, caught "+t, t);

@@ -1,5 +1,10 @@
 package network.crypta.node;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.concurrent.ArrayBlockingQueue;
 import network.crypta.crypt.HMAC;
 import network.crypta.io.comm.*;
 import network.crypta.keys.Key;
@@ -16,12 +21,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
-
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.concurrent.ArrayBlockingQueue;
 
 /**
  * @author amphibian
@@ -194,18 +193,18 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         } else if (spec == DMT.nodeToNodeMessage) {
             node.receivedNodeToNodeMessage(m, source);
             return true;
-        } else if (spec == DMT.UOMAnnouncement && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMAnnouncement && source.isRealConnection()) {
             return node.getNodeUpdater().getUpdateOverMandatory().handleAnnounce(m, source);
-        } else if (spec == DMT.UOMRequestRevocation && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMRequestRevocation && source.isRealConnection()) {
             return node.getNodeUpdater().getUpdateOverMandatory().handleRequestRevocation(m, source);
-        } else if (spec == DMT.UOMSendingRevocation && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMSendingRevocation && source.isRealConnection()) {
             return node.getNodeUpdater().getUpdateOverMandatory().handleSendingRevocation(m, source);
-        } else if (spec == DMT.UOMRequestMainJar && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMRequestMainJar && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
             node.getNodeUpdater().getUpdateOverMandatory().handleRequestJar(m, source);
             return true;
-        } else if (spec == DMT.UOMSendingMainJar && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMSendingMainJar && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
             return node.getNodeUpdater().getUpdateOverMandatory().handleSendingMain(m, source);
-        } else if (spec == DMT.UOMFetchDependency && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
+        } else if (spec == DMT.CryptadUOMFetchDependency && node.getNodeUpdater().isEnabled() && source.isRealConnection()) {
             node.getNodeUpdater().getUpdateOverMandatory().handleFetchDependency(m, source);
             return true;
         } else if (spec == DMT.FNPOpennetAnnounceRequest) {

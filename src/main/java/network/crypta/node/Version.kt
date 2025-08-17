@@ -10,304 +10,596 @@ import network.crypta.support.Logger.LogLevel
 /**
  * Version information and helpers for the Cryptad node.
  *
- * This file centralizes everything related to versioning: human‑readable
- * versions, protocol versions, build numbers, compatibility checks, and
- * utilities for constructing and parsing version strings.
+ * This file centralizes everything related to versioning: human-readable
+ * versions, protocol versions, build numbers, compatibility checks,
+ * and utilities for constructing and parsing version strings.
  *
+ * ## Version Terminology
+ * - **Build Number**: A single integer uniquely identifying this build
+ * - **Version Components**: Array of strings containing
+ *   [name, series/version, protocol, build]
+ * - **Version String**: Comma-separated representation of version
+ *   components for wire protocol
+ *
+ * ## Constants vs Runtime Access
  * Constants declared as `const val` are inlined by the Kotlin compiler at
- * call sites. To retrieve values at runtime (e.g., after a hot swap or when
- * only this file is recompiled), prefer calling the provided accessor
- * functions such as [buildNumber], [publicVersion], and [gitRevision] rather
- * than reading the constants directly.
+ * call sites. To retrieve values at runtime (e.g., after a hot swap or
+ * when only this file is recompiled), prefer calling the provided accessor
+ * functions rather than reading the constants directly.
  *
- * Version string format used for peer communication is a comma‑separated list:
- * "<name>,<series>,<protocol>,<build>". In compatibility checks we retain the
- * historical identifiers from upstream Freenet (e.g., "Fred" as the name and
- * series identifiers) to interoperate with those nodes where applicable.
+ * ## Wire Protocol Format
+ * Version string format used for peer communication is a comma-separated
+ * list: "<name>,<series>,<protocol>,<build>". In compatibility checks we
+ * retain the historical identifiers from upstream Freenet (e.g., "Fred" as
+ * the name and series identifiers) to interoperate with those nodes where
+ * applicable.
  */
 
-/** Human‑readable product name of the node. */
-const val nodeName: String = "Cryptad"
+// Public constants
+/** Human-readable product name of the node. */
+const val NODE_NAME: String = "Cryptad"
 
-/**
- * Historical wire identifier used in version strings for compatibility with
- * upstream Freenet nodes. Many peers and tools expect the first component of
- * the comma‑separated Version field to be exactly "Fred". We therefore keep
- * using this value on the wire while retaining [nodeName] for human‑readable
- * contexts (logs, UI, etc.).
- */
-private const val wireName: String = "Fred"
-
-/**
- * Internal series (tree) version used for compatibility calculations.
- * Changing this affects wire‑compatibility; see [publicVersion] for
- * the human‑facing release version.
- */
-const val nodeVersion: String = "@node_ver@"
-
-/** Human‑facing release version used for display and logging. */
-const val publicVersion: String = "@pub_ver@"
+/** Minimum acceptable build for stable Fred peers. */
+const val LAST_GOOD_FRED_STABLE_BUILD: Int = 1
 
 /** Protocol version the node speaks on the wire. */
-const val protocolVersion: String = "1.0"
+const val LAST_GOOD_FRED_PROTOCOL_VERSION: String = "1.0"
 
-/** Sequential build number identifying this binary. */
-private const val buildNumberConst: Int = 1503
+/** Git revision (historically called CVS revision) embedded at build time. */
+const val GIT_REVISION: String = "@git_rev@"
 
-/** Minimum acceptable build number for peers in our series. */
-private const val lastGoodBuildNumber: Int = 1475
+/**
+ * Minimum acceptable build number for Cryptad peers when checking
+ * compatibility.
+ */
+const val MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER: Int = 1
+
+/**
+ * Minimum acceptable build number for Freenet peers when checking
+ * compatibility.
+ */
+const val MIN_ACCEPTABLE_FRED_BUILD_NUMBER: Int = 1475
+
+// Private constants
+/**
+ * Single integer build number for this binary.
+ *
+ * This is the canonical build number that uniquely identifies this
+ * version. The token @build_number@ is replaced during build; fallback to
+ * 0 if not replaced.
+ */
+private const val BUILD_NUMBER_STRING: String = "@build_number@"
+
+/**
+ * Historical wire identifier used in version strings for compatibility
+ * with upstream Freenet nodes. Many peers and tools expect the first
+ * component of the comma-separated Version field to be exactly "Fred". We
+ * therefore keep using this value on the wire while retaining [NODE_NAME]
+ * for human-readable contexts (logs, UI, etc.).
+ */
+private const val WIRE_NAME: String = "Fred"
+
+/**
+ * Current stable series identifier (historical compatibility with
+ * Freenet).
+ */
+private const val STABLE_FRED_NODE_VERSION: String = "0.7"
+
+// Runtime state
+private val buildNumber: Int by lazy {
+    when {
+        BUILD_NUMBER_STRING.startsWith("@") && BUILD_NUMBER_STRING.endsWith("@") -> 0 // Fallback when token is not replaced
+        else -> BUILD_NUMBER_STRING.toIntOrNull() ?: 0
+    }
+}
 
 @Volatile
-private var logMINOR: Boolean = false
+private var logMinor: Boolean = false
 
 @Volatile
-private var logDEBUG: Boolean = false
+private var logDebug: Boolean = false
 
-// Ensure logger thresholds are tracked at runtime.
-@Suppress("ObjectPropertyName", "unused")
-private val _logInit: Unit = run {
+/** Highest peer build observed during this process lifetime. */
+@Volatile
+private var highestSeenBuild: Int = buildNumber
+
+// Cached version components to avoid repeated array creation
+private val cachedVersionComponents: Array<String> by lazy {
+    arrayOf(NODE_NAME, buildNumber.toString(), LAST_GOOD_FRED_PROTOCOL_VERSION, buildNumber.toString())
+}
+
+private val cachedMinAcceptableVersionComponents: Array<String> by lazy {
+    arrayOf(
+        WIRE_NAME,
+        STABLE_FRED_NODE_VERSION,
+        LAST_GOOD_FRED_PROTOCOL_VERSION,
+        MIN_ACCEPTABLE_FRED_BUILD_NUMBER.toString()
+    )
+}
+
+// Logger initialization
+private object VersionLogTag
+
+private val logTag: Class<*> = VersionLogTag::class.java
+
+// Initialize logging callback - using lazy to ensure proper initialization
+private val loggerCallbackInitializer by lazy {
     Logger.registerLogThresholdCallback(object : LogThresholdCallback() {
         override fun shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this)
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this)
+            logMinor = Logger.shouldLog(LogLevel.MINOR, this)
+            logDebug = Logger.shouldLog(LogLevel.DEBUG, this)
         }
     })
 }
 
-private object VersionLogTag
-
-private val LOG_TAG: Class<*> = VersionLogTag::class.java
-
-/**
- * Returns the build number at runtime (not inlined).
- * Use this instead of reading the `const val` to avoid inlining.
- */
-fun buildNumber(): Int = buildNumberConst
-
-/** Runtime accessor for [publicVersion] to avoid inlining. */
-fun publicVersion(): String = publicVersion
-
-/** Minimum build number we accept from peers in our series. */
-fun lastGoodBuild(): Int = lastGoodBuildNumber
-
-/** Highest peer build observed during this process lifetime. */
-private var highestSeenBuild: Int = buildNumberConst
-
-/** Current stable series identifier (historical compatibility with Freenet). */
-const val stableNodeVersion: String = "0.7"
-
-/** Series identifier used when comparing with peers (historical "Fred"). */
-private const val fredSeries: String = "0.7"
-
-/** Minimum acceptable build for stable series peers. */
-const val lastGoodStableBuild: Int = 1
-
-/** Git revision (historically called CVS revision) embedded at build time. */
-const val gitRevision: String = "@git_rev@"
-
-/** Runtime accessor for [gitRevision] to avoid inlining. */
-fun gitRevision(): String = gitRevision
-
-/** Returns version components as `[name, series, protocol, build]`. */
-fun getVersion(): Array<String> =
-    arrayOf(wireName, nodeVersion, protocolVersion, buildNumber().toString())
-
-fun getLastGoodVersion(): Array<String> =
-    arrayOf(wireName, nodeVersion, protocolVersion, lastGoodBuild().toString())
-
-/** Returns the comma‑separated version string for NodeReference. */
-fun getVersionString(): String = Fields.commaList(getVersion())
-
-/** Returns the comma‑separated minimum acceptable version (used by tooling like Freeviz). */
-fun getLastGoodVersionString(): String = Fields.commaList(getLastGoodVersion())
-
-/** True if the provided protocol identifier is acceptable. */
-private fun goodProtocol(prot: String): Boolean {
-    // uncomment next line to accept stable, see also explainBadVersion() below
-    //                      || prot.equals(stableProtocolVersion)
-    return prot == protocolVersion
+// Ensure logger callback is initialized when first accessed
+private fun ensureLoggerInitialized() {
+    loggerCallbackInitializer
 }
 
+// Public API functions
+
 /**
- * Checks whether a peer version string is compatible.
+ * Returns the current build number at runtime (not inlined).
  *
- * Requirements:
- * - protocol must match [protocolVersion]
- * - if peer is in our series, its build must be >= [lastGoodBuild]
- * - if peer is stable series, its build must be >= [lastGoodStableBuild]
+ * This is the primary identifier for this build. Use this instead of
+ * reading the constant directly to avoid inlining.
+ *
+ * @return The build number as an Int
  */
-fun isCompatibleFredVersion(version: String?): Boolean {
+fun currentBuildNumber(): Int = buildNumber
+
+/** Runtime accessor for [GIT_REVISION] to avoid inlining. */
+fun gitRevision(): String = GIT_REVISION
+
+/**
+ * Returns the current node's version components as an array.
+ *
+ * Format: `[name, buildNumber, protocol, buildNumber]` where:
+ * - name: The node name ("Cryptad")
+ * - buildNumber: The current build number as string
+ * - protocol: The protocol version for compatibility
+ * - buildNumber: This prevents Fred nodes from throwing an
+ *   `ArrayIndexOutOfBoundsException` when parsing the version string.
+ *
+ * @return Array containing version components
+ */
+fun getVersionComponents(): Array<String> = cachedVersionComponents.copyOf()
+
+/**
+ * Returns the minimum acceptable version components for Fred/Freenet
+ * compatibility.
+ *
+ * Format: `[name, series, protocol, buildNumber]` where:
+ * - name: "Fred" (for historical compatibility)
+ * - series: The stable Fred version series ("0.7")
+ * - protocol: The protocol version
+ * - buildNumber: The minimum acceptable Fred build number
+ *
+ * @return Array containing minimum acceptable version components
+ */
+fun getMinAcceptableVersionComponents(): Array<String> = cachedMinAcceptableVersionComponents.copyOf()
+
+/**
+ * Returns the comma-separated version string for wire protocol
+ * communication.
+ *
+ * This string is used in NodeReference and peer communication. Format:
+ * "name,buildNumber,protocol,buildNumber" for Cryptad nodes.
+ *
+ * @return Comma-separated version string
+ */
+fun getVersionString(): String = Fields.commaList(getVersionComponents())
+
+/**
+ * Returns the comma-separated minimum acceptable version string.
+ *
+ * This is used by tooling like Freeviz and for compatibility checks.
+ * Format: "Fred,0.7,<protocol>,<minBuildNumber>"
+ *
+ * @return Comma-separated minimum acceptable version string
+ */
+fun getMinAcceptableVersionString(): String = Fields.commaList(getMinAcceptableVersionComponents())
+
+
+/**
+ * Checks whether a peer version string is compatible with this node.
+ *
+ * Compatibility requirements:
+ * - Protocol must match [LAST_GOOD_FRED_PROTOCOL_VERSION]
+ * - For Cryptad peers: build number must
+ *   be >= [MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER]
+ * - For Fred peers: build number must
+ *   be >= [MIN_ACCEPTABLE_FRED_BUILD_NUMBER]
+ *
+ * @param version The version string to check
+ * @return true if the version is compatible, false otherwise
+ */
+fun isCompatibleVersion(version: String?): Boolean {
+    ensureLoggerInitialized()
     val v = parseVersionOrNull(version) ?: return false
 
-    if (rejectIfUnstableTooOld(v, version)) return false
-    if (rejectIfStableTooOld(v, version)) return false
+    if (rejectIfCryptadTooOld(v, version)) return false
+    if (rejectIfFredTooOld(v, version)) return false
 
-    if (logDEBUG) Logger.minor(LOG_TAG, "Accepting: $version")
+    if (logDebug) Logger.minor(logTag, "Accepting: $version")
     return true
 }
 
 /**
- * Checks compatibility using a peer‑provided minimum acceptable version.
+ * Checks compatibility using a peer-provided minimum acceptable version.
  *
- * Both [version] and [lastGoodVersion] must have matching protocol; if the
- * series also matches, the peer build must be at least the minimum build in
- * [lastGoodVersion]. Stable series rules apply as in [isCompatibleFredVersion].
+ * This method validates that:
+ * - Both version strings have matching protocols
+ * - If series match, the peer's build meets the minimum requirement
+ * - Stable series rules apply as in [isCompatibleVersion]
+ *
+ * @param versionStr The peer's version string
+ * @param lastGoodVersionStr The peer's minimum acceptable version string
+ * @return true if versions are mutually compatible, false otherwise
  */
-fun isCompatibleFredVersionWithMinimum(version: String?, lastGoodVersion: String?): Boolean {
-    val v = parseVersionOrNull(version) ?: return false
-    val lgv = parseVersionOrNull(lastGoodVersion, label = "lastGoodVersion") ?: return false
+fun isCompatibleVersionWithLastGood(versionStr: String?, lastGoodVersionStr: String?): Boolean {
+    ensureLoggerInitialized()
+    val v = parseVersionOrNull(versionStr) ?: return false
+    val lgv = parseVersionOrNull(lastGoodVersionStr, label = "lastGoodVersion") ?: return false
 
-    if (sameSeries(v, lgv)) {
-        val build = v.getOrNull(3)?.toIntOrNull()
-        val minBuild = lgv.getOrNull(3)?.toIntOrNull()
-        if (build == null || minBuild == null) {
-            if (logMINOR) Logger.minor(
-                LOG_TAG,
-                "Not accepting (NumberFormatException) from $version and/or $lastGoodVersion"
-            )
-            return false
-        }
-        if (build < minBuild) {
-            if (logDEBUG) Logger.debug(
-                LOG_TAG,
-                "Not accepting unstable from version: $version(lastGoodVersion=$lastGoodVersion)"
-            )
-            return false
-        }
+    // Check Cryptad-to-Cryptad compatibility
+    if (v[0] == NODE_NAME && lgv[0] == NODE_NAME &&
+        !checkCryptadCompatibility(v, lgv, versionStr, lastGoodVersionStr)
+    ) {
+        return false
+    } // else Cryptad is always compatible with Fred no matter what build it is
+
+    // Check Fred-to-Fred compatibility
+    if (v[0] == WIRE_NAME && !checkFredCompatibility(v, lgv, versionStr, lastGoodVersionStr)) {
+        return false
     }
 
-    if (rejectIfStableTooOld(v, version)) return false
-
-    if (logDEBUG) Logger.minor(LOG_TAG, "Accepting: $version")
+    if (logDebug) Logger.minor(logTag, "Accepting: $versionStr")
     return true
 }
 
 /**
- * Parses and validates a version string ensuring it has at least 3 parts and a good protocol.
- * Logs a helpful error when the input is null.
+ * Parses a version string and extracts its build number.
+ *
+ * Handles both Cryptad format (name,buildNumber,protocol) and Fred format
+ * (name,series,protocol,buildNumber).
+ *
+ * @param version The version string to parse
+ * @return The extracted build number
+ * @throws VersionParseException if the version string is invalid
+ */
+@Throws(VersionParseException::class)
+fun parseBuildNumberFromVersionStr(version: String?): Int {
+    requireNotNull(version) {
+        Logger.error(logTag, "version == null!", Exception("error"))
+        "version == null"
+    }
+
+    val v = Fields.commaList(version)
+        ?: throw VersionParseException("not long enough or bad protocol: $version")
+
+    if (v.size < 3 || !isValidProtocol(v[2])) {
+        throw VersionParseException("not long enough or bad protocol: $version")
+    }
+
+    return try {
+        when (v[0]) {
+            NODE_NAME -> v[1].toInt()
+            WIRE_NAME -> v.getOrNull(3)?.toInt()
+                ?: throw VersionParseException("Fred version missing build number: $version")
+
+            else -> throw VersionParseException("unknown node name: ${v[0]}")
+        }
+    } catch (e: NumberFormatException) {
+        throw VersionParseException("Got NumberFormatException on ${v.getOrNull(3)} : $e for $version")
+            .apply { initCause(e) }
+    }
+}
+
+/**
+ * Parses a version string and returns its build number, with a default
+ * fallback.
+ *
+ * @param version The version string to parse
+ * @param defaultValue The value to return if parsing fails
+ * @return The extracted build number or defaultValue if parsing fails
+ */
+fun parseBuildNumberFromVersionStr(version: String?, defaultValue: Int): Int =
+    runCatching { parseBuildNumberFromVersionStr(version) }.getOrElse { defaultValue }
+
+/**
+ * Records the highest build number observed among compatible peers.
+ *
+ * This tracks the maximum build number seen during this node's lifetime,
+ * useful for detecting newer versions in the network.
+ *
+ * @param versionStr The version string from a peer
+ */
+fun seenVersion(versionStr: String?) {
+    ensureLoggerInitialized()
+    val v = Fields.commaList(versionStr) ?: return
+    if (v.size < 3) return  // bad, but that will be discovered elsewhere
+
+    val version = runCatching {
+        when (v[0]) {
+            NODE_NAME -> v[1].toInt()
+            WIRE_NAME -> v.getOrNull(3)?.toInt() ?: return
+            else -> return
+        }
+    }.getOrElse { return }
+
+    if (version > highestSeenBuild) {
+        if (logMinor) {
+            Logger.minor(logTag, "New highest seen build: $version")
+        }
+        highestSeenBuild = version
+    }
+}
+
+/**
+ * Returns the highest build number observed from peers.
+ *
+ * @return The highest build number seen during this node's lifetime
+ */
+fun getHighestSeenBuild(): Int = highestSeenBuild
+
+/**
+ * Checks if the version components refer to a Cryptad node.
+ *
+ * @param v Version components array
+ * @return true if this is a Cryptad node, false otherwise
+ */
+fun isCryptad(v: Array<String>): Boolean = v.size >= 2 && v[0] == NODE_NAME
+
+/**
+ * Checks if two version component arrays represent compatible series.
+ *
+ * Currently unused but retained for potential future compatibility checks.
+ *
+ * @param v First version components array
+ * @param lgv Second version components array (often minimum acceptable
+ *    version)
+ * @return true if the versions are from compatible series, false otherwise
+ */
+@Suppress("unused")
+internal fun isCompatibleSeries(v: Array<String>, lgv: Array<String>): Boolean {
+    if (v.size < 2 || lgv.size < 2) return false
+    return when (v[0]) { // Check if the series are the same based on the node type
+        NODE_NAME -> true // Cryptad is always compatible with Fred
+        WIRE_NAME -> v[1] == lgv[1] && v.size >= 4 && lgv.size >= 4
+        else -> false
+    }
+}
+
+// Private helper functions
+
+/** True if the provided protocol identifier is acceptable. */
+private fun isValidProtocol(protocol: String): Boolean {
+    // uncomment next line to accept stable, see also explainBadVersion() below
+    //                      || prot.equals(stableProtocolVersion)
+    return protocol == LAST_GOOD_FRED_PROTOCOL_VERSION
+}
+
+/** Checks compatibility between two Cryptad nodes. */
+private fun checkCryptadCompatibility(
+    v: Array<String>,
+    lgv: Array<String>,
+    versionStr: String?,
+    lastGoodVersionStr: String?
+): Boolean {
+    val version = v.getOrNull(1)?.toIntOrNull()
+    val minVersion = lgv.getOrNull(1)?.toIntOrNull()
+
+    if (version == null || minVersion == null) {
+        ensureLoggerInitialized()
+        if (logMinor) Logger.minor(
+            logTag,
+            "Not accepting (NumberFormatException) from $versionStr and/or $lastGoodVersionStr"
+        )
+        return false
+    }
+
+    if (version < minVersion) {
+        ensureLoggerInitialized()
+        if (logDebug) Logger.debug(
+            logTag,
+            "Not accepting unstable from version: $versionStr(lastGoodVersion=$lastGoodVersionStr)"
+        )
+        return false
+    }
+
+    return true
+}
+
+/** Checks compatibility between Fred/Freenet nodes. */
+private fun checkFredCompatibility(
+    v: Array<String>,
+    lgv: Array<String>,
+    versionStr: String?,
+    lastGoodVersionStr: String?
+): Boolean {
+    // Fred is not compatible with Cryptad minimum versions
+    if (lgv.isNotEmpty() && lgv[0] == NODE_NAME) return false
+
+    // Check if Fred version is too old
+    if (rejectIfFredTooOld(v, versionStr)) return false
+
+    val build = v.getOrNull(3)?.toIntOrNull()
+    val minBuild = lgv.getOrNull(3)?.toIntOrNull()
+
+    if (build == null || minBuild == null) {
+        ensureLoggerInitialized()
+        if (logMinor) Logger.minor(
+            logTag,
+            "Not accepting (NumberFormatException) from $versionStr and/or $lastGoodVersionStr"
+        )
+        return false
+    }
+
+    if (build < minBuild) {
+        ensureLoggerInitialized()
+        if (logDebug) Logger.debug(
+            logTag,
+            "Not accepting unstable from version: $versionStr(lastGoodVersion=$lastGoodVersionStr)"
+        )
+        return false
+    }
+
+    return true
+}
+
+/**
+ * Parses and validates a version string ensuring it has at least 3 parts
+ * and a good protocol. Logs a helpful error when the input is null.
  *
  * @param version Version string like "Fred,0.7,1.0,1503".
- * @param label Optional label for logging context (e.g., "lastGoodVersion").
+ * @param label Optional label for logging context (e.g.,
+ *    "lastGoodVersion").
  * @return The split array if valid, or null if invalid.
  */
 private fun parseVersionOrNull(version: String?, label: String = "version"): Array<String>? {
-    if (version == null) {
-        Logger.error(LOG_TAG, "$label == null!", Exception("error"))
+    version ?: run {
+        Logger.error(logTag, "$label == null!", Exception("error"))
         return null
     }
-    val v = Fields.commaList(version)
-    if (v == null || v.size < 3 || !goodProtocol(v[2])) return null
-    return v
+
+    val v = Fields.commaList(version) ?: return null
+    return if (v.size < 3 || !isValidProtocol(v[2])) null else v
 }
 
-/** Returns true if the version should be rejected for being an old unstable build. */
-private fun rejectIfUnstableTooOld(v: Array<String>, original: String?): Boolean {
-    if (!sameSeriesAsUs(v)) return false
-    val build = v.getOrNull(3)?.toIntOrNull()
-    val req = lastGoodBuild()
-    if (build == null) {
-        if (logMINOR) Logger.minor(LOG_TAG, "Not accepting (NumberFormatException) from $original")
-        return true
-    }
-    if (build < req) {
-        if (logDEBUG) Logger.debug(LOG_TAG, "Not accepting unstable from version: $original(lastGoodBuild=$req)")
-        return true
-    }
-    return false
-}
+/**
+ * Checks if a Cryptad peer's version should be rejected for being too old.
+ *
+ * @param v Version components array from the peer
+ * @param original Original version string for logging
+ * @return true if the version should be rejected, false if acceptable
+ */
+private fun rejectIfCryptadTooOld(v: Array<String>, original: String?): Boolean {
+    if (!isCryptad(v)) return false
 
-/** Returns true if the version should be rejected for being an old stable build. */
-private fun rejectIfStableTooOld(v: Array<String>, original: String?): Boolean {
-    if (!stableVersion(v)) return false
-    val build = v.getOrNull(3)?.toIntOrNull()
-    if (build == null) {
-        Logger.minor(LOG_TAG, "Not accepting (NumberFormatException) from $original")
+    val version = v.getOrNull(1)?.toIntOrNull()
+    val req = MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER
+
+    if (version == null) {
+        ensureLoggerInitialized()
+        if (logMinor) Logger.minor(logTag, "Not accepting (NumberFormatException) from $original")
         return true
     }
-    if (build < lastGoodStableBuild) {
-        if (logDEBUG) Logger.debug(
-            LOG_TAG,
-            "Not accepting stable from version$original(lastGoodStableBuild=$lastGoodStableBuild)"
+
+    if (version < req) {
+        ensureLoggerInitialized()
+        if (logDebug) Logger.debug(
+            logTag,
+            "Not accepting unstable from version: $original(minAcceptableCryptadBuildNumber=$req)"
         )
         return true
     }
+
     return false
 }
 
-/** Parses an arbitrary version string and returns its build number. */
-@Throws(VersionParseException::class)
-fun getArbitraryBuildNumber(version: String?): Int {
-    if (version == null) {
-        Logger.error(LOG_TAG, "version == null!", Exception("error"))
-        throw VersionParseException("version == null")
-    }
-    val v = Fields.commaList(version)
+/**
+ * Checks if a Fred/Freenet peer's version should be rejected for being too
+ * old.
+ *
+ * @param v Version components array from the peer
+ * @param original Original version string for logging
+ * @return true if the version should be rejected, false if acceptable
+ */
+private fun rejectIfFredTooOld(v: Array<String>, original: String?): Boolean {
+    if (!isFredStableVersion(v)) return false
 
-    if (v == null || v.size < 3 || !goodProtocol(v[2])) {
-        throw VersionParseException("not long enough or bad protocol: $version")
+    val build = v.getOrNull(3)?.toIntOrNull()
+    if (build == null) {
+        Logger.minor(logTag, "Not accepting (NumberFormatException) from $original")
+        return true
     }
-    try {
-        return v[3].toInt()
-    } catch (e: NumberFormatException) {
-        throw VersionParseException("Got NumberFormatException on " + v[3] + " : " + e + " for " + version).initCause(
-            e
-        ) as VersionParseException
+
+    if (build < LAST_GOOD_FRED_STABLE_BUILD) {
+        ensureLoggerInitialized()
+        if (logDebug) Logger.debug(
+            logTag,
+            "Not accepting stable from version $original(lastGoodStableBuild=$LAST_GOOD_FRED_STABLE_BUILD)"
+        )
+        return true
+    }
+
+    return false
+}
+
+/**
+ * Checks if the version components refer to a stable Fred/Freenet node.
+ *
+ * @param v Version components array
+ * @return true if this is a stable Fred node, false otherwise
+ */
+private fun isFredStableVersion(v: Array<String>): Boolean =
+    v.size >= 4 && v[0] == WIRE_NAME && v[1] == STABLE_FRED_NODE_VERSION
+
+/**
+ * Compares two build numbers considering node names first.
+ *
+ * Comparison rules:
+ * - Cryptad nodes are always considered newer than Fred nodes regardless
+ *   of build numbers
+ * - If both nodes have the same name, compare their build numbers
+ *   numerically
+ * - For null node names, fall back to numeric comparison
+ *
+ * @param nodeName1 Node name of the first peer (e.g., "Cryptad", "Fred")
+ * @param buildNumber1 Build number of the first peer
+ * @param nodeName2 Node name of the second peer (e.g., "Cryptad", "Fred")
+ * @param buildNumber2 Build number of the second peer
+ * @return Positive if first is newer, negative if second is newer, 0 if
+ *    equal
+ */
+fun compareBuildNumbers(nodeName1: String?, buildNumber1: Int, nodeName2: String?, buildNumber2: Int): Int {
+    // Handle null node names - treat as unknown/invalid and fall back to build number comparison
+    if (nodeName1 == null || nodeName2 == null) {
+        return buildNumber1.compareTo(buildNumber2)
+    }
+
+    // Cryptad is always newer than Fred regardless of build numbers
+    return when (nodeName1) {
+        NODE_NAME if nodeName2 == WIRE_NAME -> 1 // First is newer
+        WIRE_NAME if nodeName2 == NODE_NAME -> -1 // Second is newer
+        else -> buildNumber1.compareTo(buildNumber2) // Same node type - compare build numbers
     }
 }
 
-fun getArbitraryBuildNumber(version: String?, defaultValue: Int): Int {
-    return try {
-        getArbitraryBuildNumber(version)
-    } catch (_: VersionParseException) {
-        defaultValue
+/**
+ * Checks if a peer's build is at least the specified minimum build number,
+ * considering node names.
+ *
+ * For Cryptad nodes, always returns true regardless of the minimum build
+ * number since Cryptad is considered newer than any Fred version. For Fred
+ * nodes, compares the build number against the minimum.
+ *
+ * @param nodeName The node name (e.g., "Cryptad", "Fred")
+ * @param buildNumber The build number to check
+ * @param minBuildNumber The minimum required build number (typically for
+ *    Fred nodes)
+ * @return true if the build meets the minimum requirement
+ */
+fun isBuildAtLeast(nodeName: String?, buildNumber: Int, minBuildNumber: Int): Boolean {
+    // Cryptad is always considered to meet any Fred minimum build number requirement
+    return if (nodeName == NODE_NAME) {
+        true
+    } else {
+        // For Fred nodes (or null/unknown), check the build number
+        buildNumber >= minBuildNumber
     }
 }
 
-/** Records the highest build number observed among compatible peers. */
-fun seenVersion(version: String?) {
-    val v = Fields.commaList(version)
-
-    if (v == null || v.size < 3)
-        return  // bad, but that will be discovered elsewhere
-
-    if (sameSeriesAsUs(v)) {
-        val buildNo = try {
-            v[3].toInt()
-        } catch (_: NumberFormatException) {
-            return
-        }
-        if (buildNo > highestSeenBuild) {
-            if (logMINOR) {
-                Logger.minor(
-                    LOG_TAG,
-                    "New highest seen build: $buildNo"
-                )
-            }
-            highestSeenBuild = buildNo
-        }
-    }
-}
-
-fun getHighestSeenBuild(): Int = highestSeenBuild
-
-/** True if [v] refers to our series (build is ignored). */
-fun sameSeriesAsUs(v: Array<String>): Boolean {
-    return v[0] == wireName &&
-            v[1] == fredSeries &&
-            v.size >= 4
-}
-
-/** True if [v] and [lgv] are the same series (builds are ignored). */
-fun sameSeries(v: Array<String>, lgv: Array<String>): Boolean {
-    return v[0] == lgv[0] &&
-            v[1] == lgv[1] &&
-            v.size >= 4 &&
-            lgv.size >= 4
-}
-
-/** True if [v] refers to the stable series. */
-private fun stableVersion(v: Array<String>): Boolean {
-    return v[0] == wireName &&
-            v[1] == stableNodeVersion &&
-            v.size >= 4
+/**
+ * Extracts the node name from a version string.
+ *
+ * @param version The version string to parse (e.g.,
+ *    "Cryptad,1504,1.0,1504" or "Fred,0.7,1.0,1503")
+ * @return The node name ("Cryptad", "Fred") or null if the version string
+ *    is invalid
+ */
+fun parseNodeNameFromVersionStr(version: String?): String? {
+    return version?.let { Fields.commaList(it)?.firstOrNull() }
 }

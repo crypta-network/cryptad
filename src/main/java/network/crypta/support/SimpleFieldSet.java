@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import static java.util.Collections.emptyMap;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -25,36 +27,33 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
-
 import network.crypta.node.FSParseException;
 import network.crypta.support.io.Closer;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
 
-import static java.util.Collections.emptyMap;
-
 /**
  * @author amphibian
  *
- * Simple FieldSet type thing, which uses the standard Java facilities. Should always be written as 
+ * Simple FieldSet type thing, which uses the standard Java facilities. Should always be written as
  * UTF-8. Simpler encoding than Properties.
- * 
+ *
  * All of the methods treat the data as a tree, where levels are indicated by ".". Hence e.g.:
  * DirectKey=Value
  * Subset.Key=Value
  * Subset.Subset.Key=Value
- * 
+ *
  * DETAILS:
- * <key>=<value> 
+ * <key>=<value>
  * Key is split into a tree via "."'s.
  * Value is a string.
- * Conversion methods are provided for most key types, one notable issue is arrays of string, 
+ * Conversion methods are provided for most key types, one notable issue is arrays of string,
  * which are separated by ";".
- * 
+ *
  * ALTERNATE FORMAT:
  * <key>==<standard base64 encoded value>
- * The value is encoded. We will use this later on to prevent problems when transferring noderefs 
- * (line breaks, whitespace get changes when people paste stuff etc), and to allow e.g. newlines 
+ * The value is encoded. We will use this later on to prevent problems when transferring noderefs
+ * (line breaks, whitespace get changes when people paste stuff etc), and to allow e.g. newlines
  * in strings. For now we only *read* such formats.
  */
 public class SimpleFieldSet {
@@ -74,7 +73,7 @@ public class SimpleFieldSet {
     public SimpleFieldSet(boolean shortLived) {
         this(shortLived, false);
     }
-    
+
     /**
      * Create a SimpleFieldSet.
      * @param shortLived If false, strings will be interned to ensure that they use as
@@ -93,7 +92,7 @@ public class SimpleFieldSet {
     public SimpleFieldSet(BufferedReader br, boolean allowMultiple, boolean shortLived) throws IOException {
         this(br, allowMultiple, shortLived, false, false);
     }
-    
+
     /**
      * Construct a SimpleFieldSet from reading a BufferedReader.
      * @param br
@@ -147,14 +146,14 @@ public class SimpleFieldSet {
         BufferedReader br = new BufferedReader(sr);
 	    read(Readers.fromBufferedReader(br), allowMultiple, allowBase64);
     }
-    
+
     /**
      * Construct from a {@link String} array.
      * <p>
      * Similar to {@link #SimpleFieldSet(String, boolean, boolean)},
      * but each item of array represents a single line
      * </p>
-     * @param content to be parsed 
+     * @param content to be parsed
      * @param allowMultiple If {@code true}, multiple lines with the same field name will be
      * combined; if {@code false}, the constructor will throw.
      * @param shortLived If {@code false}, strings will be interned to ensure that they use as
@@ -166,14 +165,14 @@ public class SimpleFieldSet {
     	this(shortLived);
     	read(Readers.fromStringArray(content), allowMultiple, allowBase64);
     }
-    
+
     /**
      * @see #read(LineReader, int, int, boolean, boolean)
      */
 	private void read(LineReader lr, boolean allowMultiple, boolean allowBase64) throws IOException {
 		read(lr, Integer.MAX_VALUE, 0x100, true, allowMultiple, allowBase64);
 	}
-	
+
 	/**
 	 * Read from stream. Format:
 	 *
@@ -240,10 +239,10 @@ public class SimpleFieldSet {
 		}
 	}
 
-	/** Get a value for a key as a String. This may be a top level value, or we will traverse the 
+	/** Get a value for a key as a String. This may be a top level value, or we will traverse the
 	 * tree, so can be used for any key=value or subset.subset.key=value etc.
 	 * @param key The key to look up.
-	 * @return The String value corresponding to the given key, or null if there is no such 
+	 * @return The String value corresponding to the given key, or null if there is no such
 	 * key=value pair.
 	 */
     public synchronized String get(String key) {
@@ -457,7 +456,7 @@ public class SimpleFieldSet {
 	public void put(String key, double windowSize) {
 		putSingle(key, Double.toString(windowSize));
 	}
-	
+
 	public void put(String key, byte[] bytes) {
 	    putSingle(key, Base64.encode(bytes));
 	}
@@ -477,12 +476,12 @@ public class SimpleFieldSet {
      * Write the contents of the SimpleFieldSet to a Writer.
      * Note: The caller *must* buffer the writer to avoid lousy performance!
      * (StringWriter is by definition buffered, otherwise wrap it in a BufferedWriter)
-     * 
+     *
      * @param w The Writer to write to. @warning keep in mind that a Writer is not necessarily UTF-8!!
      * @param prefix String to prefix the keys with. (E.g. when writing a tree of SFS's).
      * @param noEndMarker If true, don't write the end marker (the last line, the only one with no
      * "=" in it).
-     * @param useBase64 If true, use Base64 for any value that has control characters, whitespace, 
+     * @param useBase64 If true, use Base64 for any value that has control characters, whitespace,
      * or characters used by SimpleFieldSet in it. In this case the separator will be "==" not "=".
      * This is mainly useful for node references, which tend to lose whitespace, gain newlines etc
      * in transit. Can be overridden (to true) by alwaysUseBase64 setting.
@@ -544,14 +543,14 @@ public class SimpleFieldSet {
 	/**
 	 * Write the SimpleFieldSet to a Writer, in order.
 	 * @param w The Writer to write the SFS to.
-	 * @param prefix The prefix ("" at the top level, e.g. "something." if we are inside a sub-SFS 
+	 * @param prefix The prefix ("" at the top level, e.g. "something." if we are inside a sub-SFS
 	 * called "something").
 	 * @param noEndMarker If true, don't write the end marker (usually End). Again this is normally
 	 * set only in sub-SFS's.
 	 * @param allowOptionalBase64 If true, write fields as Base64 if they contain spaces etc. This
-	 * improves the robustness of e.g. node references, where the SFS can be written with or 
+	 * improves the robustness of e.g. node references, where the SFS can be written with or
 	 * without Base64. However, for SFS's where the values can contain <b>anything</b>, the member
-	 * flag alwaysUseBase64 will be set and we will write lines that need to be Base64 as such 
+	 * flag alwaysUseBase64 will be set and we will write lines that need to be Base64 as such
 	 * regardless of this allowOptionalBase64.
 	 * @throws IOException If an error occurs writing to the Writer.
 	 */
@@ -662,19 +661,19 @@ public class SimpleFieldSet {
 		return new KeyIterator("");
 	}
 
-	/** Iterate over all keys in the SimpleFieldSet, even if they are at lower levels. 
+	/** Iterate over all keys in the SimpleFieldSet, even if they are at lower levels.
 	 * @param prefix Add the given prefix to lower levels. This is used recursively by KeyIterator.
 	 */
 	public KeyIterator keyIterator(String prefix) {
 		return new KeyIterator(prefix);
 	}
 
-	/** Iterate over keys that are in the top level of the tree, i.e. that do not contain a ".". 
+	/** Iterate over keys that are in the top level of the tree, i.e. that do not contain a ".".
 	 * E.g. "Name=Value" is a top level key. "Subset.Name=Value" is NOT a top level key. */
 	public Iterator<String> toplevelKeyIterator() {
 	    return values.keySet().iterator();
 	}
-	
+
     public class KeyIterator implements Iterator<String> {
     	final Iterator<String> valuesIterator;
     	final Iterator<String> subsetIterator;
@@ -777,9 +776,9 @@ public class SimpleFieldSet {
 			throw new UnsupportedOperationException();
 		}
 	}
-    
-    /** Get a read-only map of direct key name:value pairs. Direct key values are things like 
-     * "Name=Value" (which would return a map containing "Name" -> "Value", NOT 
+
+    /** Get a read-only map of direct key name:value pairs. Direct key values are things like
+     * "Name=Value" (which would return a map containing "Name" -> "Value", NOT
      * "Subset.Name=Value" (which would not be returned). */
     public Map<String, String> directKeyValues() {
         return Collections.unmodifiableMap(values);
@@ -830,7 +829,7 @@ public class SimpleFieldSet {
 		subsets.put(key, fs);
 	}
 
-	/** Remove a name:value pair at any point in the tree. Will automatically traverse the tree and 
+	/** Remove a name:value pair at any point in the tree. Will automatically traverse the tree and
 	 * remove empty subsets (which are not written anyway). */
 	public synchronized void removeValue(String key) {
 		int idx;
@@ -913,14 +912,14 @@ public class SimpleFieldSet {
 		return (subsets == null) ? EMPTY_STRING_ARRAY : subsets.keySet().toArray(new String[subsets.size()]);
 	}
 
-	/** Read a SimpleFieldSet from an InputStream in the standard format, using UTF-8, and not 
+	/** Read a SimpleFieldSet from an InputStream in the standard format, using UTF-8, and not
 	 * allowing the Base64 encoding.
 	 * @param is The InputStream to read from. We will use the UTF-8 charset.
-     * @param allowMultiple Whether to allow multiple entries for each key (and automatically 
+     * @param allowMultiple Whether to allow multiple entries for each key (and automatically
      * combine them). Not usually useful except maybe in FCP.
      * @param shortLived If true, don't intern the strings.
      * @return A new SimpleFieldSet.
-     * @throws IOException If a read error occurs, including a formatting error, illegal 
+     * @throws IOException If a read error occurs, including a formatting error, illegal
      * characters etc.
 	 */
 	public static SimpleFieldSet readFrom(InputStream is, boolean allowMultiple, boolean shortLived) throws IOException {
@@ -930,15 +929,15 @@ public class SimpleFieldSet {
 	/**
 	 * Read a SimpleFieldSet from an InputStream.
 	 * @param is The InputStream to read from. We will use the UTF-8 charset.
-	 * @param allowMultiple Whether to allow multiple entries for each key (and automatically 
+	 * @param allowMultiple Whether to allow multiple entries for each key (and automatically
 	 * combine them). Not usually useful except maybe in FCP.
 	 * @param shortLived If true, don't intern the strings.
 	 * @param allowBase64 If true, allow reading Base64 encoded lines (key==base64(value)).
-	 * @param alwaysBase64 If true, the resulting SFS should have the alwaysUseBase64 flag enabled, 
-	 * i.e it can store anything in key values including newlines, special chars such as = etc. 
+	 * @param alwaysBase64 If true, the resulting SFS should have the alwaysUseBase64 flag enabled,
+	 * i.e it can store anything in key values including newlines, special chars such as = etc.
 	 * Otherwise, even if allowBase64 is enabled, invalid chars will not be.
 	 * @return A new SimpleFieldSet.
-	 * @throws IOException If a read error occurs, including a formatting error, illegal 
+	 * @throws IOException If a read error occurs, including a formatting error, illegal
 	 * characters etc.
 	 */
 	public static SimpleFieldSet readFrom(InputStream is, boolean allowMultiple, boolean shortLived, boolean allowBase64, boolean alwaysBase64) throws IOException {
@@ -974,20 +973,20 @@ public class SimpleFieldSet {
     /** Write to the given OutputStream (as UTF-8) and flush it. */
     public void writeTo(OutputStream os) throws IOException {
         writeTo(os, 4096);
-    }   
-    
+    }
+
 	/** Write to the given OutputStream and flush it. Use a big buffer, for jobs that aren't called
 	 * too often e.g. persisting a file every 10 minutes. */
     public void writeToBigBuffer(OutputStream os) throws IOException {
     	writeTo(os, 65536);
-    }	
-	
+    }
+
 	/** Write to the given OutputStream and flush it. */
     public void writeTo(OutputStream os, int bufferSize) throws IOException {
         BufferedOutputStream bos = null;
         OutputStreamWriter osw = null;
         BufferedWriter bw = null;
-        
+
         bos = new BufferedOutputStream(os, bufferSize);
         osw = new OutputStreamWriter(bos, StandardCharsets.UTF_8);
         bw = new BufferedWriter(osw);
@@ -1015,7 +1014,7 @@ public class SimpleFieldSet {
      * it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The integer value of the key, if it exists and is valid.
-     * @throws FSParseException If the key=value pair does not exist or if the value cannot be 
+     * @throws FSParseException If the key=value pair does not exist or if the value cannot be
      * parsed as an integer.
      */
 	public int getInt(String key) throws FSParseException {
@@ -1028,7 +1027,7 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a double precision value for the given key. This may be at the top level or lower in 
+    /** Get a double precision value for the given key. This may be at the top level or lower in
      * the tree, it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @param def The default value to return if the key does not exist or can't be parsed.
@@ -1044,11 +1043,11 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a double precision value for the given key. This may be at the top level or lower in 
+    /** Get a double precision value for the given key. This may be at the top level or lower in
      * the tree, it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a double, if it exists and is valid.
-     * @throws FSParseException If the key=value pair does not exist or if the value cannot be 
+     * @throws FSParseException If the key=value pair does not exist or if the value cannot be
      * parsed as a double.
      */
 	public double getDouble(String key) throws FSParseException {
@@ -1061,7 +1060,7 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a long value for the given key. This may be at the top level or lower in the tree, 
+    /** Get a long value for the given key. This may be at the top level or lower in the tree,
      * it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @param def The default value to return if the key does not exist or can't be parsed.
@@ -1077,11 +1076,11 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a long value for the given key. This may be at the top level or lower in the tree, 
+    /** Get a long value for the given key. This may be at the top level or lower in the tree,
      * it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a long, if it exists and is valid.
-     * @throws FSParseException If the key=value pair does not exist or if the value cannot be 
+     * @throws FSParseException If the key=value pair does not exist or if the value cannot be
      * parsed as a long.
      */
 	public long getLong(String key) throws FSParseException {
@@ -1094,11 +1093,11 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a short value for the given key. This may be at the top level or lower in the tree, 
+    /** Get a short value for the given key. This may be at the top level or lower in the tree,
      * it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a short, if it exists and is valid.
-     * @throws FSParseException If the key=value pair does not exist or if the value cannot be 
+     * @throws FSParseException If the key=value pair does not exist or if the value cannot be
      * parsed as a short.
      */
 	public short getShort(String key) throws FSParseException {
@@ -1111,7 +1110,7 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a short value for the given key. This may be at the top level or lower in the tree, 
+    /** Get a short value for the given key. This may be at the top level or lower in the tree,
      * it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a short, if it exists and is valid.
@@ -1126,11 +1125,11 @@ public class SimpleFieldSet {
 		}
 	}
 
-	/** Get a byte value for the given key (represented as a number in decimal). This may be at 
+	/** Get a byte value for the given key (represented as a number in decimal). This may be at
 	 * the top level or lower in the tree, it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a byte, if it exists and is valid.
-     * @throws FSParseException If the key=value pair does not exist or if the value cannot be 
+     * @throws FSParseException If the key=value pair does not exist or if the value cannot be
      * parsed as a byte.
      */
 	public byte getByte(String key) throws FSParseException {
@@ -1143,7 +1142,7 @@ public class SimpleFieldSet {
 		}
 	}
 
-    /** Get a byte value for the given key (represented as a number in decimal). This may be at 
+    /** Get a byte value for the given key (represented as a number in decimal). This may be at
      * the top level or lower in the tree, it's just key=value. (Value in decimal)
      * @param key The key to fetch.
      * @return The value of the key as a byte, if it exists and is valid, otherwise the default
@@ -1173,7 +1172,7 @@ public class SimpleFieldSet {
         }
 	}
 
-	/** Get a char for the given key (represented as a single character). The key may be at the 
+	/** Get a char for the given key (represented as a single character). The key may be at the
 	 * top level or further down the tree, so this is key=[character].
      * @param key The key to fetch.
 	 * @return The character to fetch.
@@ -1188,7 +1187,7 @@ public class SimpleFieldSet {
 				throw new FSParseException("Cannot parse "+s+" for char "+key);
 	}
 
-    /** Get a char for the given key (represented as a single character). The key may be at the 
+    /** Get a char for the given key (represented as a single character). The key may be at the
      * top level or further down the tree, so this is key=[character].
      * @param key The key to fetch.
      * @param def The default value to return if the key does not exist or can't be parsed.
@@ -1232,22 +1231,22 @@ public class SimpleFieldSet {
 		removeValue(key);
 		for (float v : value) putAppend(key, String.valueOf(v));
 	}
-	
+
     public void put(String key, short[] value) {
         removeValue(key);
         for (short v : value) putAppend(key, String.valueOf(v));
     }
-    
+
     public void put(String key, long[] value) {
         removeValue(key);
         for (long v : value) putAppend(key, String.valueOf(v));
     }
-    
+
     public void put(String key, boolean[] value) {
         removeValue(key);
         for (boolean v : value) putAppend(key, String.valueOf(v));
     }
-    
+
 	public int[] getIntArray(String key) {
 		String[] strings = getAll(key);
 		if(strings == null) return null;

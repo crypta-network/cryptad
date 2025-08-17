@@ -1,5 +1,7 @@
 package network.crypta.node;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.EOFException;
@@ -10,7 +12,6 @@ import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.l10n.NodeL10n;
@@ -27,8 +28,6 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.Closer;
 import network.crypta.support.transport.ip.IPUtil;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Decide whether to announce, and announce if necessary to a node in the
@@ -302,7 +301,7 @@ public class Announcer {
 
 	private final SimpleUserAlert announcementDisabledAlert =
 		new SimpleUserAlert(false, l10n("announceDisabledTooOldTitle"), l10n("announceDisabledTooOld"), l10n("announceDisabledTooOldShort"), UserAlert.CRITICAL_ERROR) {
-		
+
 		@Override
 		public HTMLNode getHTMLText() {
 			HTMLNode div = new HTMLNode("div");
@@ -314,7 +313,7 @@ public class Announcer {
 			// No point with !armed() or blown() because they have their own messages.
 			return div;
 		}
-		
+
 		@Override
 		public String getText() {
 			StringBuilder sb = new StringBuilder();
@@ -325,7 +324,7 @@ public class Announcer {
 			}
 			return sb.toString();
 		}
-		
+
 		@Override
 		public boolean isValid() {
 			if(node.getNodeUpdater().isEnabled()) return false;
@@ -334,10 +333,10 @@ public class Announcer {
 				return killedAnnouncementTooOld;
 			}
 		}
-		
+
 	};
 
-	
+
 	/** @return True if we have enough peers that we don't need to announce. */
 	boolean enoughPeers() {
 		if(om.stopping()) return true;
@@ -376,7 +375,7 @@ public class Announcer {
 			}
 
 		}
-		
+
 		if(killAnnouncement) {
 			node.getExecutor().execute(new Runnable() {
 
@@ -389,7 +388,7 @@ public class Announcer {
 						node.getPeers().disconnectAndRemove(pn, true, true, true);
 					}
 				}
-				
+
 			});
 			return true;
 		} else {
@@ -405,7 +404,7 @@ public class Announcer {
 				return true;
 			}
 		}
-		
+
 		synchronized(timeGotEnoughPeersLock) {
 			timeGotEnoughPeers = -1;
 		}
@@ -645,7 +644,7 @@ public class Announcer {
 				if(acceptedSomewhere)
 					System.out.println("Announcement to "+seed.userToString()+" completed ("+totalAdded+" added, "+totalNotWanted+" not wanted, "+shallow+" shallow)");
 				else
-					System.out.println("Announcement to "+seed.userToString()+" not accepted (version "+seed.getVersionNumber()+") .");
+					System.out.println("Announcement to "+seed.userToString()+" not accepted (version "+seed.getBuildNumber()+") .");
 				if(announceNow)
 					maybeSendAnnouncement();
 			}

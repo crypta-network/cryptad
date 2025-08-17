@@ -128,7 +128,7 @@ public class HourlyStatsRecord {
 		s.append("HourlyStats: Report for hour beginning with UTC ");
 		s.append(utcDateTime.format(beginTime, new StringBuffer(), new FieldPosition(0))).append("\n");
 		s.append("HourlyStats: Node uptime (ms):\t").append(node.getUptime()).append("\n");
-		s.append("HourlyStats: build:\t").append(Version.buildNumber()).append("\n");
+		s.append("HourlyStats: build:\t").append(Version.currentBuildNumber()).append("\n");
 		s.append("HourlyStats: CompleteHour: ").append(completeHour);
 		s.append("\tFinished: ").append(finishedReporting).append("\n");
 

@@ -6,8 +6,10 @@ plugins {
     java
     `maven-publish`
     alias(libs.plugins.kotlinJvm)
-    alias(libs.plugins.nebulaRelease)
 }
+
+// Set version manually instead of using Nebula Release plugin
+version = "1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -56,62 +58,20 @@ val gitrev: String = try {
     "@unknown@"
 }
 
-/**
- * Converts a version string from the internal "YYI+SemVer" format to a
- * consumer-friendly version string.
- *
- * The conversion follows these rules:
- * 1. The YYI major version (e.g., `251`) is always converted to a four-digit
- *    year and an index (e.g., `2025.1`).
- * 2. If the original minor version is `0`, it is omitted from the output.
- * 3. If the minor version is not `0`, it is included.
- * 4. If the patch version is `0` or if the minor version was `0`, the patch
- *    version is omitted from the output. Otherwise, it is included.
- *
- * @param version The source version string in "YYI.minor.patch" format (e.g., "251.1.0").
- * @return The converted, consumer-friendly version string.
- *         Returns the original input string if it cannot be parsed.
- */
-fun convertYyiToPublic(version: String): String {
-    try {
-        val parts = version.split('.')
-        if (parts.size != 3) {
-            return version // Not a valid SemVer format
-        }
-
-        val yyiStr = parts[0]
-        val minor = parts[1].toInt()
-        val patch = parts[2].toInt()
-
-        if (yyiStr.length < 3) {
-            return version // YYI string is too short
-        }
-
-        // Extract YY (e.g., "25") and I (e.g., "1") from YYI ("251")
-        val yy = yyiStr.substring(0, 2).toInt()
-        val i = yyiStr.substring(2).toInt()
-
-        val year = 2000 + yy
-        val baseVersion = "$year.$i"
-
-        // Apply the final, refined rules
-        return when {
-            minor == 0 -> baseVersion // If minor is 0, ignore minor and patch
-            patch == 0 -> "$baseVersion.$minor" // If minor != 0 but patch is 0, ignore patch
-            else -> "$baseVersion.$minor.$patch" // If neither are 0, include everything
-        }
-    } catch (e: Exception) {
-        // Catch parsing errors (NumberFormatException, IndexOutOfBoundsException)
-        return version
-    }
-}
 
 val generateVersionSource by tasks.registering(Copy::class) {
+    // Always regenerate to ensure fresh version info
+    outputs.upToDateWhen { false }
+    
+    // Delete old generated version first to ensure clean generation
+    doFirst {
+        delete(versionBuildDir)
+    }
+    
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
-            line.replace("@node_ver@", project.version.toString())
-                .replace("@pub_ver@", convertYyiToPublic(project.version.toString()))
+            line.replace("@build_number@", project.version.toString())
                 .replace("@git_rev@", gitrev)
         }
     }
@@ -121,6 +81,13 @@ val generateVersionSource by tasks.registering(Copy::class) {
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn(generateVersionSource)
     source(versionBuildDir)
+    
+    // Force recompilation of Version.kt when build number or git rev changes
+    inputs.property("buildNumber", project.version.toString())
+    inputs.property("gitRevision", gitrev)
+    
+    // Also track the generated file as an input to ensure recompilation
+    inputs.files(generateVersionSource)
 }
 
 val buildJar by tasks.registering(Jar::class) {
@@ -128,7 +95,8 @@ val buildJar by tasks.registering(Jar::class) {
     dependsOn(
         tasks.processResources,
         tasks.compileJava,
-        tasks.named("compileKotlin")
+        tasks.named("compileKotlin"),
+        generateVersionSource  // Explicitly depend on version generation
     )
 
     // Include compiled classes (Java + Kotlin) and resources explicitly to avoid duplicates

@@ -73,8 +73,8 @@ public class DiagnosticToadlet extends Toadlet {
             textBuilder.append(
                            baseL10n.getString("WelcomeToadlet.version", new String[]{"fullVersion",
                                                   "build", "rev"},
-                                              new String[]{Version.publicVersion(),
-                                                  Integer.toString(Version.buildNumber()),
+                                              new String[]{Long.toString(Version.currentBuildNumber()),
+                                                  Integer.toString((int)Version.currentBuildNumber()),
                                                   Version.gitRevision()}))
                        .append("\n");
             textBuilder.append(

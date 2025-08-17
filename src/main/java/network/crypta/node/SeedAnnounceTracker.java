@@ -6,7 +6,6 @@ import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Random;
-
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.LRUMap;
@@ -14,20 +13,20 @@ import network.crypta.support.io.InetAddressComparator;
 
 /** Tracks announcements by IP address to identify nodes that announce repeatedly. */
 public class SeedAnnounceTracker {
-	
-	private final LRUMap<InetAddress, TrackerItem> itemsByIP = 
+
+	private final LRUMap<InetAddress, TrackerItem> itemsByIP =
 		LRUMap.createSafeMap(InetAddressComparator.COMPARATOR);
-	
+
 	// This should be plenty for now and limits memory usage to something reasonable.
 	private static final int MAX_SIZE = 100*1000;
 
 	/** A single IP address's behaviour */
 	private class TrackerItem {
-		
+
 		private TrackerItem(InetAddress addr) {
 			this.addr = addr;
 		}
-		
+
 		private final InetAddress addr;
 		private int totalSeedConnects;
 		private int totalAnnounceRequests;
@@ -35,7 +34,7 @@ public class SeedAnnounceTracker {
 		private int totalCompletedAnnounceRequests;
 		private int totalSentRefs;
 		private int lastVersion;
-		
+
 		public void acceptedAnnounce() {
 			totalAnnounceRequests++;
 			totalAcceptedAnnounceRequests++;
@@ -58,9 +57,9 @@ public class SeedAnnounceTracker {
 			totalCompletedAnnounceRequests++;
 			totalSentRefs += forwardedRefs;
 		}
-		
+
 	}
-	
+
 	// Reset every 2 hours.
 	// FIXME implement something smoother.
 	static final long RESET_TIME = HOURS.toMillis(2);
@@ -71,7 +70,7 @@ public class SeedAnnounceTracker {
 	 * If the IP has had 10 noderefs, 75% chance of rejection. */
 	public boolean acceptAnnounce(SeedClientPeerNode source, Random fastRandom) {
 		InetAddress addr = source.getPeer().getAddress();
-		int ver = source.getVersionNumber();
+		int ver = source.getBuildNumber();
 		boolean badVersion = source.isUnroutableOlderVersion();
 		long now = System.currentTimeMillis();
 		synchronized(this) {
@@ -99,10 +98,10 @@ public class SeedAnnounceTracker {
 			return true;
 		}
 	}
-	
+
 	public void rejectedAnnounce(SeedClientPeerNode source) {
 		InetAddress addr = source.getPeer().getAddress();
-		int ver = source.getVersionNumber();
+		int ver = source.getBuildNumber();
 		synchronized(this) {
 			TrackerItem item = itemsByIP.get(addr);
 			if(item == null)
@@ -117,7 +116,7 @@ public class SeedAnnounceTracker {
 
 	public void onConnectSeed(SeedClientPeerNode source) {
 		InetAddress addr = source.getPeer().getAddress();
-		int ver = source.getVersionNumber();
+		int ver = source.getBuildNumber();
 		synchronized(this) {
 			TrackerItem item = itemsByIP.get(addr);
 			if(item == null)
@@ -129,10 +128,10 @@ public class SeedAnnounceTracker {
 				itemsByIP.popKey();
 		}
 	}
-	
+
 	public void completedAnnounce(SeedClientPeerNode source, int forwardedRefs) {
 		InetAddress addr = source.getPeer().getAddress();
-		int ver = source.getVersionNumber();
+		int ver = source.getBuildNumber();
 		synchronized(this) {
 			TrackerItem item = itemsByIP.get(addr);
 			if(item == null)
@@ -144,7 +143,7 @@ public class SeedAnnounceTracker {
 				itemsByIP.popKey();
 		}
 	}
-	
+
 	public void drawSeedStats(HTMLNode content) {
 		TrackerItem[] topItems = getTopTrackerItems(20);
 		if(topItems.length == 0) return;
@@ -173,7 +172,7 @@ public class SeedAnnounceTracker {
 		TrackerItem[] items = new TrackerItem[itemsByIP.size()];
 		itemsByIP.valuesToArray(items);
 		Arrays.sort(items, new Comparator<TrackerItem>() {
-			
+
 			@Override
 			public int compare(TrackerItem arg0, TrackerItem arg1) {
 				int a = Math.max(arg0.totalAnnounceRequests, arg0.totalSeedConnects);
@@ -186,7 +185,7 @@ public class SeedAnnounceTracker {
 					return -1;
 				return 0;
 			}
-			
+
 		});
 		int topLength = Math.min(count, items.length);
 		return Arrays.copyOfRange(items, items.length - topLength, items.length);

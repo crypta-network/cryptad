@@ -155,9 +155,9 @@ public class TextModeClientInterface implements Runnable {
 
         sb.append("Trivial Text Mode Client Interface\r\n");
         sb.append("---------------------------------------\r\n");
-        sb.append("Crypta ")
-          .append(Version.publicVersion())
-          .append(" Build #")
+        sb.append("Crypta v")
+          .append(Version.currentBuildNumber())
+          .append("+")
           .append(Version.gitRevision())
           .append("\r\n");
         sb.append("Enter one of the following commands:\r\n");
@@ -748,7 +748,7 @@ public class TextModeClientInterface implements Runnable {
                 outsb.append(fs.toString());
             }
             outsb.append(n.getStatus());
-            if(Version.buildNumber()<Version.getHighestSeenBuild()){
+            if(Version.currentBuildNumber()<Version.getHighestSeenBuild()){
                 outsb.append("The latest version is : ").append(Version.getHighestSeenBuild());
             }
         } else if(uline.startsWith("ADDPEER:") || uline.startsWith("CONNECT:")) {

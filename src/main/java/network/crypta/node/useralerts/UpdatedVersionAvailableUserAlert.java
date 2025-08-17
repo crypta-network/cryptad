@@ -138,7 +138,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
 				else {
 					boolean fetchingNew = updater.fetchingNewMainJar();
 					if(fetchingNew) {
-						sb.append(l10n("fetchingNewNode", "nodeVersion", Integer.toString(updater.fetchingNewMainJarVersion())));
+						sb.append(l10n("fetchingNewNode", "versionNumber", Long.toString(updater.fetchingNewMainJarVersion())));
 					}
 				}
 				sb.append(" ");
