@@ -60,6 +60,14 @@ val gitrev: String = try {
 
 
 val generateVersionSource by tasks.registering(Copy::class) {
+    // Always regenerate to ensure fresh version info
+    outputs.upToDateWhen { false }
+    
+    // Delete old generated version first to ensure clean generation
+    doFirst {
+        delete(versionBuildDir)
+    }
+    
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
@@ -73,6 +81,13 @@ val generateVersionSource by tasks.registering(Copy::class) {
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn(generateVersionSource)
     source(versionBuildDir)
+    
+    // Force recompilation of Version.kt when build number or git rev changes
+    inputs.property("buildNumber", project.version.toString())
+    inputs.property("gitRevision", gitrev)
+    
+    // Also track the generated file as an input to ensure recompilation
+    inputs.files(generateVersionSource)
 }
 
 val buildJar by tasks.registering(Jar::class) {
@@ -80,7 +95,8 @@ val buildJar by tasks.registering(Jar::class) {
     dependsOn(
         tasks.processResources,
         tasks.compileJava,
-        tasks.named("compileKotlin")
+        tasks.named("compileKotlin"),
+        generateVersionSource  // Explicitly depend on version generation
     )
 
     // Include compiled classes (Java + Kotlin) and resources explicitly to avoid duplicates

@@ -201,6 +201,19 @@ Updated all version display strings throughout the codebase to use a consistent 
 - **Files Updated**: `Node.java`, `TextModeClientInterface.java`, `crypta.l10n.en.properties`
 - **Consistent branding**: Uses "Crypta" name consistently (replacing any remaining "Freenet" references in version strings)
 
+### Build System Version Generation
+
+Enhanced the Gradle build to ensure Version.kt is always regenerated with fresh version information:
+
+**Build Improvements:**
+- **Always regenerate**: The `generateVersionSource` task always runs (never cached as up-to-date)
+- **Clean generation**: Deletes old generated version directory before regeneration to ensure clean state
+- **Proper dependency tracking**: Tracks build number and git revision as inputs to trigger recompilation
+- **Explicit dependencies**: Added version generation as explicit dependency to JAR building tasks
+- **Automatic recompilation**: Kotlin compilation detects when version info changes and recompiles accordingly
+
+This ensures that the build number and git revision in Version.kt are always current, preventing issues with stale cached versions.
+
 ## Important Notes
 
 - The project requires Java 21+ for compilation and runtime
