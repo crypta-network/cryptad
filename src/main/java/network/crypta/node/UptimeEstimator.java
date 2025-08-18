@@ -15,7 +15,6 @@ import java.text.DecimalFormat;
 import network.crypta.support.Fields;
 import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
-import network.crypta.support.io.Closer;
 
 /**
  * A class to estimate the node's average uptime. Every 5 minutes (with a fixed offset), we write
@@ -74,32 +73,24 @@ public class UptimeEstimator implements Runnable {
 	}
 
 	private void readData(File file, int base) {
-		FileInputStream fis = null;
-		try {
-			fis = new FileInputStream(file);
-			DataInputStream dis = new DataInputStream(fis);
-			try {
-				while(true) {
-					int offset = dis.readInt();
-					if(offset < base) continue;
-					int slotNo = offset - base;
-					if(slotNo == wasOnlineWeek.length)
-						break; // Reached the end, restarted within the same timeslot.
-					if(slotNo > wasOnlineWeek.length || slotNo < 0) {
-						Logger.error(this, "Corrupt data read from uptime file "+file+": 5-minutes-from-epoch is now "+(base+wasOnlineWeek.length)+" but read "+slotNo);
-						break;
-					}
-					wasOnline[slotNo % wasOnline.length] = wasOnlineWeek[slotNo] = true;
+		try (FileInputStream fis = new FileInputStream(file);
+			 DataInputStream dis = new DataInputStream(fis)) {
+			while(true) {
+				int offset = dis.readInt();
+				if(offset < base) continue;
+				int slotNo = offset - base;
+				if(slotNo == wasOnlineWeek.length)
+					break; // Reached the end, restarted within the same timeslot.
+				if(slotNo > wasOnlineWeek.length || slotNo < 0) {
+					Logger.error(this, "Corrupt data read from uptime file "+file+": 5-minutes-from-epoch is now "+(base+wasOnlineWeek.length)+" but read "+slotNo);
+					break;
 				}
-			} catch (EOFException e) {
-				// Finished
-			} finally {
-				Closer.close(dis);
+				wasOnline[slotNo % wasOnline.length] = wasOnlineWeek[slotNo] = true;
 			}
+		} catch (EOFException e) {
+			// Finished
 		} catch (IOException e) {
 			Logger.error(this, "Unable to read old uptime file: "+file+" - we will assume we weren't online during that period");
-		} finally {
-			Closer.close(fis);
 		}
 	}
 
@@ -115,20 +106,15 @@ public class UptimeEstimator implements Runnable {
 			prevFile.delete();
 			logFile.renameTo(prevFile);
 		}
-		FileOutputStream fos = null;
-		DataOutputStream dos = null;
 		int fiveMinutesSinceEpoch = (int)(now / PERIOD);
-		try {
-			fos = new FileOutputStream(logFile, true);
-			dos = new DataOutputStream(fos);
+		try (FileOutputStream fos = new FileOutputStream(logFile, true);
+			 DataOutputStream dos = new DataOutputStream(fos)) {
 			dos.writeInt(fiveMinutesSinceEpoch);
 		} catch (FileNotFoundException e) {
 			Logger.error(this, "Unable to create or access "+logFile+" : "+e, e);
 		} catch (IOException e) {
 			Logger.error(this, "Unable to write to uptime estimator log file: "+logFile);
 		} finally {
-			Closer.close(dos);
-			Closer.close(fos);
 			// Schedule next time
 			schedule(now);
 		}

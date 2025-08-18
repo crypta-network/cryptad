@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-import network.crypta.support.io.Closer;
 
 import java.io.File;
 import java.io.IOException;
@@ -38,15 +37,10 @@ public class BinaryBloomFilter extends BloomFilter {
 		if (!file.exists() || file.length() != length / 8)
 			needRebuild = true;
 
-		RandomAccessFile raf = new RandomAccessFile(file, "rw");
-		FileChannel channel = null;
-		try {
+		try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+		     FileChannel channel = raf.getChannel()) {
 			raf.setLength(length / 8);
-			channel = raf.getChannel();
 			filter = channel.map(MapMode.READ_WRITE, 0, length / 8).load();
-		} finally {
-			Closer.close(raf);
-			Closer.close(channel);
 		}
 	}
 

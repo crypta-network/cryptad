@@ -76,7 +76,6 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
@@ -2396,12 +2395,10 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 	}
 
 	private boolean readCompletedIdentifiers(File file) {
-		FileInputStream fis = null;
-		try {
-			fis = new FileInputStream(file);
-			BufferedInputStream bis = new BufferedInputStream(fis);
-			InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
-			BufferedReader br = new BufferedReader(isr);
+		try (FileInputStream fis = new FileInputStream(file);
+		     BufferedInputStream bis = new BufferedInputStream(fis);
+		     InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
+		     BufferedReader br = new BufferedReader(isr)) {
 			synchronized(completedRequestIdentifiers) {
 				completedRequestIdentifiers.clear();
 				while(true) {
@@ -2419,14 +2416,10 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 		} catch (IOException e) {
 			Logger.error(this, "Could not read completed identifiers list from "+file);
 			return false;
-		} finally {
-			Closer.close(fis);
 		}
 	}
 
 	private void saveCompletedIdentifiers() {
-		FileOutputStream fos = null;
-		BufferedWriter bw = null;
 		String dl = uploads ? "uploads" : "downloads";
 		File completedIdentifiersList = core.getNode().userDir().file("completed.list."+dl);
 		File completedIdentifiersListNew = core.getNode().userDir().file("completed.list."+dl+".bak");
@@ -2434,39 +2427,22 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 		try {
 			temp = File.createTempFile("completed.list", ".tmp", core.getNode().getUserDir());
 			temp.deleteOnExit();
-			fos = new FileOutputStream(temp);
-			OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-			bw = new BufferedWriter(osw);
-			String[] identifiers;
-			synchronized(completedRequestIdentifiers) {
-				identifiers = completedRequestIdentifiers.toArray(new String[completedRequestIdentifiers.size()]);
+			try (FileOutputStream fos = new FileOutputStream(temp);
+			     OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+			     BufferedWriter bw = new BufferedWriter(osw)) {
+				String[] identifiers;
+				synchronized(completedRequestIdentifiers) {
+					identifiers = completedRequestIdentifiers.toArray(new String[completedRequestIdentifiers.size()]);
+				}
+				for(String identifier: identifiers)
+					bw.write(identifier+'\n');
 			}
-			for(String identifier: identifiers)
-				bw.write(identifier+'\n');
 		} catch (FileNotFoundException e) {
 			Logger.error(this, "Unable to save completed requests list (can't find node directory?!!?): "+e, e);
 			return;
 		} catch (IOException e) {
 			Logger.error(this, "Unable to save completed requests list: "+e, e);
 			return;
-		} finally {
-			if(bw != null) {
-				try {
-					bw.close();
-				} catch (IOException e) {
-					try {
-						fos.close();
-					} catch (IOException e1) {
-						// Ignore
-					}
-				}
-			} else {
-				try {
-					fos.close();
-				} catch (IOException e1) {
-					// Ignore
-				}
-			}
 		}
 		completedIdentifiersListNew.delete();
 		temp.renameTo(completedIdentifiersListNew);

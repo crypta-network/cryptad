@@ -117,7 +117,7 @@ public class PluginStores {
                 SimpleFieldSet fs = SimpleFieldSet.readFrom(is, false, false, true, true);
                 return new PluginStore(fs);
             } finally {
-                // Do NOT use Closer.close().
+                // Do NOT use IOUtils.closeQuietly().
                 // We use authenticated encryption, which will throw at close() time if the file is corrupt,
                 // or has been modified while the node was offline etc.
                 if(is != null) is.close();

@@ -54,46 +54,36 @@ public class BucketTools {
 	 * @throws IOException
 	 */
 	public static void copy(Bucket src, Bucket dst) throws IOException {
-		OutputStream out = dst.getOutputStreamUnbuffered();
-		InputStream in = src.getInputStreamUnbuffered();
-		ReadableByteChannel readChannel = Channels.newChannel(in);
-		WritableByteChannel writeChannel = Channels.newChannel(out);
-		try {
+		try (OutputStream out = dst.getOutputStreamUnbuffered();
+		     InputStream in = src.getInputStreamUnbuffered();
+		     ReadableByteChannel readChannel = Channels.newChannel(in);
+		     WritableByteChannel writeChannel = Channels.newChannel(out)) {
 
-		// No benefit to allocateDirect() as we're wrapping streams anyway, and worse, it'd be a memory leak.
-		ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-		while (readChannel.read(buffer) != -1) {
-			buffer.flip();
-			while(buffer.hasRemaining())
-				writeChannel.write(buffer);
-			buffer.clear();
-		}
-
-		} finally {
-		writeChannel.close();
-		readChannel.close();
+			// No benefit to allocateDirect() as we're wrapping streams anyway, and worse, it'd be a memory leak.
+			ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+			while (readChannel.read(buffer) != -1) {
+				buffer.flip();
+				while(buffer.hasRemaining())
+					writeChannel.write(buffer);
+				buffer.clear();
+			}
 		}
 	}
 
 	public static void zeroPad(Bucket b, long size) throws IOException {
-		OutputStream out = b.getOutputStreamUnbuffered();
+		try (OutputStream out = b.getOutputStreamUnbuffered()) {
+			// Initialized to zero by default.
+			byte[] buffer = new byte[16384];
 
-		try {
-		// Initialized to zero by default.
-		byte[] buffer = new byte[16384];
-
-		long count = 0;
-		while (count < size) {
-			long nRequired = buffer.length;
-			if (nRequired > size - count) {
-				nRequired = size - count;
+			long count = 0;
+			while (count < size) {
+				long nRequired = buffer.length;
+				if (nRequired > size - count) {
+					nRequired = size - count;
+				}
+				out.write(buffer, 0, (int) nRequired);
+				count += nRequired;
 			}
-			out.write(buffer, 0, (int) nRequired);
-			count += nRequired;
-		}
-
-		} finally {
-		out.close();
 		}
 	}
 
@@ -104,14 +94,10 @@ public class BucketTools {
 			throw new IllegalArgumentException("nBytes > blockSize");
 		}
 
-		OutputStream out = null;
-		InputStream in = null;
+		try (OutputStream out = to.getOutputStreamUnbuffered();
+		     InputStream in = from.getInputStreamUnbuffered()) {
 
-		try {
-
-			out = to.getOutputStreamUnbuffered();
 			byte[] buffer = new byte[16384];
-			in = from.getInputStreamUnbuffered();
 
 			long count = 0;
 			while (count != nBytes) {
@@ -148,11 +134,6 @@ public class BucketTools {
 					count += nRequired;
 				}
 			}
-		} finally {
-			if (in != null)
-				in.close();
-			if (out != null)
-				out.close();
 		}
 	}
 
@@ -219,14 +200,9 @@ public class BucketTools {
 		long size = bucket.size();
 		if(size > Integer.MAX_VALUE) throw new OutOfMemoryError();
 		byte[] data = new byte[(int)size];
-		InputStream is = bucket.getInputStreamUnbuffered();
-		DataInputStream dis = null;
-		try {
-			dis = new DataInputStream(is);
+		try (InputStream is = bucket.getInputStreamUnbuffered();
+		     DataInputStream dis = new DataInputStream(is)) {
 			dis.readFully(data);
-		} finally {
-			Closer.close(dis);
-			Closer.close(is);
 		}
 		return data;
 	}
@@ -260,11 +236,8 @@ public class BucketTools {
 	
 	public static RandomAccessBucket makeImmutableBucket(BucketFactory bucketFactory, byte[] data, int offset, int length) throws IOException {
 		RandomAccessBucket bucket = bucketFactory.makeBucket(length);
-		OutputStream os = bucket.getOutputStreamUnbuffered();
-		try {
-		os.write(data, offset, length);
-		} finally {
-		os.close();
+		try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
+			os.write(data, offset, length);
 		}
 		bucket.setReadOnly();
 		return bucket;
@@ -331,10 +304,9 @@ public class BucketTools {
 
 	/** Copy data from an InputStream into a Bucket. */
 	public static void copyFrom(Bucket bucket, InputStream is, long truncateLength) throws IOException {
-		OutputStream os = bucket.getOutputStreamUnbuffered();
-		byte[] buf = new byte[BUFFER_SIZE];
-		if(truncateLength < 0) truncateLength = Long.MAX_VALUE;
-		try {
+		try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
+			byte[] buf = new byte[BUFFER_SIZE];
+			if(truncateLength < 0) truncateLength = Long.MAX_VALUE;
 			long moved = 0;
 			while(moved < truncateLength) {
 				// DO NOT move the (int) inside the Math.min()! big numbers truncate to negative numbers.
@@ -353,8 +325,6 @@ public class BucketTools {
 				os.write(buf, 0, bytes);
 				moved += bytes;
 			}
-		} finally {
-			os.close();
 		}
 	}
 
@@ -405,11 +375,8 @@ public class BucketTools {
 				buckets[i] = bucket;
 				dis.readFully(buf, 0, len);
 				remainingLength -= len;
-				OutputStream os = bucket.getOutputStreamUnbuffered();
-				try {
+				try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
 					os.write(buf, 0, len);
-				} finally {
-					os.close();
 				}
 			}
 		} finally {
@@ -437,8 +404,7 @@ public class BucketTools {
 		byte[] hash = BucketTools.hash(oldBucket);
 		Bucket b = bf.makeBucket(blockLength);
 		MersenneTwister mt = new MersenneTwister(hash);
-		OutputStream os = b.getOutputStreamUnbuffered();
-		try {
+		try (OutputStream os = b.getOutputStreamUnbuffered()) {
 			BucketTools.copyTo(oldBucket, os, length);
 			byte[] buf = new byte[BUFFER_SIZE];
 			for(int x=length;x<blockLength;) {
@@ -448,12 +414,10 @@ public class BucketTools {
 				os.write(buf, 0, thisCycle);
 				x += thisCycle;
 			}
-			os.close();
-			os = null;
-			if(b.size() != blockLength)
-				throw new IllegalStateException("The bucket's size is "+b.size()+" whereas it should be "+blockLength+'!');
-			return b;
-		} finally { Closer.close(os); }
+		}
+		if(b.size() != blockLength)
+			throw new IllegalStateException("The bucket's size is "+b.size()+" whereas it should be "+blockLength+'!');
+		return b;
 	}
 	
 	static final ArrayBucketFactory ARRAY_FACTORY = new ArrayBucketFactory();
@@ -481,12 +445,8 @@ public class BucketTools {
     /** @deprecated Only for unit tests */
     @Deprecated
     public static void fill(Bucket bucket, Random random, long length) throws IOException {
-        OutputStream os = null;
-        try {
-            os = bucket.getOutputStreamUnbuffered();
+        try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
             FileUtil.fill(os, random, length);
-        } finally {
-            if(os != null) os.close();
         }
     }
 
@@ -506,12 +466,8 @@ public class BucketTools {
 
     /** Fill a bucket with hard to identify random data */
     public static void fill(Bucket bucket, long length) throws IOException {
-        OutputStream os = null;
-        try {
-            os = bucket.getOutputStreamUnbuffered();
+        try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
             FileUtil.fill(os, length);
-        } finally {
-            if(os != null) os.close();
         }
     }
 

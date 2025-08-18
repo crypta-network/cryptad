@@ -18,7 +18,7 @@ import java.util.Queue;
 
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.io.Closer;
+import network.crypta.support.io.IOUtils;
 
 /** Creates and manages decompressor threads. This class is 
  * given all decompressors which should be applied to an
@@ -95,7 +95,7 @@ public class DecompressorThreadManager {
 			onFailure(t);
 			throw t;
 		} finally {
-			Closer.close(output);
+			IOUtils.closeQuietly(output);
 		}
 		return input;
 		
@@ -165,8 +165,8 @@ public class DecompressorThreadManager {
 
 		public DecompressorThread(Compressor compressor, DecompressorThreadManager manager, InputStream input, PipedOutputStream output, long maxLen) {
 			this.compressor = compressor;
-			this.input = new BufferedInputStream(input);
-			this.output = new BufferedOutputStream(output);
+			this.input = input;
+			this.output = output;
 			this.maxLen = maxLen;
 			this.manager = manager;
 		}
@@ -175,22 +175,15 @@ public class DecompressorThreadManager {
 		@Override
 		public void run() {
 			if(logMINOR) Logger.minor(this, "Decompressing...");
-			try {
+			try (BufferedInputStream bufferedInput = new BufferedInputStream(input);
+			     BufferedOutputStream bufferedOutput = new BufferedOutputStream(output)) {
 				if(manager.getError() == null) {
-					compressor.decompress(input, output, maxLen, maxLen * 4);
-					input.close();
-					output.close();
-					// Avoid relatively expensive repeated close on normal completion
-					input = null;
-					output = null;
+					compressor.decompress(bufferedInput, bufferedOutput, maxLen, maxLen * 4);
 					if(isLast) manager.onFinish();
 				}
 				if(logMINOR) Logger.minor(this, "Finished decompressing...");
 			} catch (Exception e) {
 				manager.onFailure(e);
-			} finally {
-				Closer.close(input);
-				Closer.close(output);
 			}
 		}
 

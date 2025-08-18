@@ -18,7 +18,7 @@ public class AEADInputStream extends FilterInputStream {
     private boolean finished;
     
     /** Create a decrypting, authenticating InputStream. IMPORTANT: We only authenticate when 
-     * closing the stream, so do NOT use Closer.close() etc and swallow IOException's on close(),
+     * closing the stream, so do NOT use IOUtils.closeQuietly() etc and swallow IOException's on close(),
      * as that's what we will throw if authentication fails. We will read the nonce from the 
      * stream; it functions similarly to an IV.
      * @param is The underlying InputStream. 

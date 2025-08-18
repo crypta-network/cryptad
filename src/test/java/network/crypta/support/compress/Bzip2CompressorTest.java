@@ -14,7 +14,6 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.NullBucket;
 
 /**
@@ -116,48 +115,29 @@ public class Bzip2CompressorTest {
 
         byte[] compressedData = doCompress(uncompressedData);
 
-        Bucket inBucket = new ArrayBucket(compressedData);
-        NullBucket outBucket = new NullBucket();
-        InputStream decompressorInput = null;
-        OutputStream decompressorOutput = null;
-
-        try {
-            decompressorInput = inBucket.getInputStream();
-            decompressorOutput = outBucket.getOutputStream();
+        try (Bucket inBucket = new ArrayBucket(compressedData);
+             NullBucket outBucket = new NullBucket();
+             InputStream decompressorInput = inBucket.getInputStream();
+             OutputStream decompressorOutput = outBucket.getOutputStream()) {
+            
             Compressor.COMPRESSOR_TYPE.BZIP2.decompress(decompressorInput, decompressorOutput, 4096 + 10,
                                                         4096 + 20);
-            decompressorInput.close();
-            decompressorOutput.close();
         } catch (CompressionOutputSizeException e) {
             // expect this
             return;
-        } finally {
-            Closer.close(decompressorInput);
-            Closer.close(decompressorOutput);
-            inBucket.free();
-            outBucket.free();
         }
         fail("did not throw expected CompressionOutputSizeException");
 
     }
 
     private byte[] doBucketDecompress(byte[] compressedData) throws IOException {
-        ByteArrayInputStream decompressorInput = new ByteArrayInputStream(compressedData);
-        ByteArrayOutputStream decompressorOutput = new ByteArrayOutputStream();
-
-        Compressor.COMPRESSOR_TYPE.BZIP2.decompress(decompressorInput, decompressorOutput, 32768,
-                                                    32768 * 2);
-
-        byte[] outBuf = decompressorOutput.toByteArray();
-        try {
-            decompressorInput.close();
-            decompressorOutput.close();
-        } finally {
-            Closer.close(decompressorInput);
-            Closer.close(decompressorOutput);
+        try (ByteArrayInputStream decompressorInput = new ByteArrayInputStream(compressedData);
+             ByteArrayOutputStream decompressorOutput = new ByteArrayOutputStream()) {
+            
+            Compressor.COMPRESSOR_TYPE.BZIP2.decompress(decompressorInput, decompressorOutput, 32768,
+                                                        32768 * 2);
+            return decompressorOutput.toByteArray();
         }
-
-        return outBuf;
     }
 
     private byte[] doCompress(byte[] uncompressedData) throws IOException {

@@ -44,7 +44,6 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.CompressionOutputSizeException;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.InsufficientDiskSpaceException;
@@ -296,10 +295,6 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 		// nested locking resulting in deadlocks, it also prevents long locks due to
 		// doing massive encrypted I/Os while holding a lock.
 
-		PipedOutputStream dataOutput = new PipedOutputStream();
-		PipedInputStream dataInput = new PipedInputStream();
-		OutputStream output = null;
-
 		DecompressorThreadManager decompressorManager = null;
 		ClientGetWorkerThread worker = null;
 		Bucket finalResult = null;
@@ -319,7 +314,9 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
         }
 
 		FetchException ex = null; // set on failure
-		try {
+		try (PipedOutputStream dataOutput = new PipedOutputStream();
+			 PipedInputStream dataInput = new PipedInputStream()) {
+			
 			if(returnBucket == null) finalResult = context.getBucketFactory(persistent()).makeBucket(maxLen);
 			else finalResult = returnBucket;
 			if(logMINOR) Logger.minor(this, "Writing final data to "+finalResult+" return bucket is "+returnBucket);
@@ -327,43 +324,45 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 			result = new FetchResult(clientMetadata, finalResult);
 
 			// Decompress
+			InputStream processedDataInput = dataInput;
 			if(decompressors != null) {
 				if(logMINOR) Logger.minor(this, "Decompressing...");
 				decompressorManager =  new DecompressorThreadManager(dataInput, decompressors, maxLen);
-				dataInput = decompressorManager.execute();
+				processedDataInput = decompressorManager.execute();
 			}
 
-			output = finalResult.getOutputStream();
-			if(ctx.overrideMIME != null) mimeType = ctx.overrideMIME;
-			worker = new ClientGetWorkerThread(new BufferedInputStream(dataInput), output, uri, mimeType, ctx.getSchemeHostAndPort(), hashes, ctx.filterData, ctx.charset, ctx.prefetchHook, ctx.tagReplacer, context.linkFilterExceptionProvider);
-			worker.start();
-			try {
-				streamGenerator.writeTo(dataOutput, context);
-			} catch(IOException e) {
-				//Check if the worker thread caught an exception
-				worker.getError();
-				//If not, throw the original error
-				throw e;
-			}
+			try (OutputStream output = finalResult.getOutputStream()) {
+				if(ctx.overrideMIME != null) mimeType = ctx.overrideMIME;
+				worker = new ClientGetWorkerThread(new BufferedInputStream(processedDataInput), output, uri, mimeType, ctx.getSchemeHostAndPort(), hashes, ctx.filterData, ctx.charset, ctx.prefetchHook, ctx.tagReplacer, context.linkFilterExceptionProvider);
+				worker.start();
+				try {
+					streamGenerator.writeTo(dataOutput, context);
+				} catch(IOException e) {
+					//Check if the worker thread caught an exception
+					worker.getError();
+					//If not, throw the original error
+					throw e;
+				}
 
-			// An error will propagate backwards, so wait for the worker first.
+				// An error will propagate backwards, so wait for the worker first.
 
-			if(logMINOR) Logger.minor(this, "Waiting for hashing, filtration, and writing to finish");
-			worker.waitFinished();
+				if(logMINOR) Logger.minor(this, "Waiting for hashing, filtration, and writing to finish");
+				worker.waitFinished();
 
-			if(decompressorManager != null) {
-				if(logMINOR) Logger.minor(this, "Waiting for decompression to finalize");
-				decompressorManager.waitFinished();
-			}
+				if(decompressorManager != null) {
+					if(logMINOR) Logger.minor(this, "Waiting for decompression to finalize");
+					decompressorManager.waitFinished();
+				}
 
-			if(worker.getClientMetadata() != null) {
-				clientMetadata = worker.getClientMetadata();
-				result = new FetchResult(clientMetadata, finalResult);
-			}
-			// These must be updated for ClientGet.
-			synchronized(this) {
-			    this.expectedMIME = result.getMimeType();
-			    this.expectedSize = result.size();
+				if(worker.getClientMetadata() != null) {
+					clientMetadata = worker.getClientMetadata();
+					result = new FetchResult(clientMetadata, finalResult);
+				}
+				// These must be updated for ClientGet.
+				synchronized(this) {
+				    this.expectedMIME = result.getMimeType();
+				    this.expectedSize = result.size();
+				}
 			}
 		} catch(UnsafeContentTypeException e) {
 			Logger.normal(this, "Error filtering content: will not validate", e);
@@ -388,10 +387,6 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 		} catch(Throwable t) {
 			Logger.error(this, "Caught "+t, t);
 			ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
-		} finally {
-			Closer.close(dataInput);
-			Closer.close(dataOutput);
-			Closer.close(output);
 		}
 		if(ex != null) {
 			onFailure(ex, state, context, true);

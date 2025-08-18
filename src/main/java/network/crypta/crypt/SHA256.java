@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 
-import network.crypta.support.io.Closer;
+import network.crypta.support.io.IOUtils;
 
 /**
  * @author  Jeroen C. van Gelderen (gelderen@cryptix.org)
@@ -26,9 +26,8 @@ public class SHA256 {
 				md.update(buf, 0, readBytes);
 				readBytes = is.read(buf);
 			}
-			is.close();
 		} finally {
-			Closer.close(is);
+			IOUtils.closeQuietly(is);
 		}
 	}
 

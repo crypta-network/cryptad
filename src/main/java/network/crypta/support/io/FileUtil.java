@@ -29,6 +29,7 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.StringValidityChecker;
+import network.crypta.support.io.IOUtils;
 import network.crypta.support.math.MersenneTwister;
 
 final public class FileUtil {
@@ -63,12 +64,17 @@ final public class FileUtil {
 	            lis.skip(skip);
 	            lis.readLine(100000, 200, true);
 	        }
-	    } catch (IOException e) {
-	        Closer.close(lis);
-	        Closer.close(fis);
+	        // Success - return the stream to the caller
+	        LineReadingInputStream result = lis;
+	        lis = null; // Don't close in finally block since we're returning it
+	        fis = null; // Don't close in finally block since it's wrapped by lis
+	        return result;
+	    } catch (IOException | RuntimeException e) {
+	        // Clean up resources if setup failed
+	        IOUtils.closeQuietly(lis);
+	        IOUtils.closeQuietly(fis);
 	        throw e;
 	    }
-	    return lis;
 	}
 
 	public enum OperatingSystem {
@@ -352,7 +358,7 @@ final public class FileUtil {
 			Logger.minor(FileUtil.class, "Writing to " + file + " to be renamed to " + target);
 		}
 
-		try (FileOutputStream fos = new FileOutputStream(target)) {
+		try (FileOutputStream fos = new FileOutputStream(file)) {
 			copy(input, fos, -1);
 		}
 
@@ -624,18 +630,12 @@ final public class FileUtil {
 		if(!file.exists()) return;
 		long size = file.length();
 		if(size > 0) {
-			RandomAccessFile raf = null;
-			try {
+			try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
 				System.out.println("Securely deleting "+file+" which is of length "+size+" bytes...");
-				raf = new RandomAccessFile(file, "rw");
 				// Random data first.
 				raf.seek(0);
 				fill(new RandomAccessFileOutputStream(raf), size);
 				raf.getFD().sync();
-				raf.close();
-				raf = null;
-			} finally {
-				Closer.close(raf);
 			}
 		}
 		if((!file.delete()) && file.exists())

@@ -38,7 +38,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 
@@ -249,27 +248,27 @@ public class PeerManager {
   private boolean readPeers(
       File peersFile, NodeCrypto crypto, OpennetManager opennet, boolean oldOpennetPeers) {
     boolean someBroken = false;
-    FileInputStream fis;
-    try {
-      fis = new FileInputStream(peersFile);
-    } catch (FileNotFoundException e4) {
-      Logger.normal(this, "Peers file not found: " + peersFile);
-      return false;
-    }
-    InputStreamReader ris = new InputStreamReader(fis, StandardCharsets.UTF_8);
-    BufferedReader br = new BufferedReader(ris);
     File brokenPeersFile = new File(peersFile.getPath() + ".broken");
     DroppedOldPeersUserAlert droppedOldPeers = new DroppedOldPeersUserAlert(brokenPeersFile);
     List<SimpleFieldSet> peerEntries = new ArrayList<>();
     // read the peers file
-    try {
-      while (true) {
-        peerEntries.add(new SimpleFieldSet(br, false, true));
+    try (FileInputStream fis = new FileInputStream(peersFile);
+         InputStreamReader ris = new InputStreamReader(fis, StandardCharsets.UTF_8);
+         BufferedReader br = new BufferedReader(ris)) {
+      try {
+        while (true) {
+          peerEntries.add(new SimpleFieldSet(br, false, true));
+        }
+      } catch (EOFException e) {
+        // End of file, fine
+      } catch (IOException e1) {
+        Logger.error(this, "Could not read peers file: " + e1, e1);
       }
-    } catch (EOFException e) {
-      // End of file, fine
-    } catch (IOException e1) {
-      Logger.error(this, "Could not read peers file: " + e1, e1);
+    } catch (FileNotFoundException e4) {
+      Logger.normal(this, "Peers file not found: " + peersFile);
+      return false;
+    } catch (IOException e3) {
+      Logger.error(this, "Ignoring " + e3 + " caught reading " + peersFile, e3);
     }
 
     List<PeerNode> createdNodes = new ArrayList<>();
@@ -320,19 +319,13 @@ public class PeerManager {
         addPeer(pn, true, false);
       }
     }
-    try {
-      br.close();
-    } catch (IOException e3) {
-      Logger.error(this, "Ignoring " + e3 + " caught reading " + peersFile, e3);
-    }
     if (someBroken) {
       try {
         brokenPeersFile.delete();
-        FileOutputStream fos = new FileOutputStream(brokenPeersFile);
-        fis = new FileInputStream(peersFile);
-        FileUtil.copy(fis, fos, -1);
-        fos.close();
-        fis.close();
+        try (FileOutputStream fos = new FileOutputStream(brokenPeersFile);
+             FileInputStream fis = new FileInputStream(peersFile)) {
+          FileUtil.copy(fis, fos, -1);
+        }
         System.err.println("Broken peers file copied to " + brokenPeersFile);
       } catch (IOException e) {
         System.err.println("Unable to copy broken peers file.");
@@ -1686,31 +1679,21 @@ public class PeerManager {
   private void writePeersInner(String filename, String sb, int maxBackups, boolean rotateBackups) {
     assert (maxBackups >= 1);
     synchronized (writePeerFileSync) {
-      FileOutputStream fos = null;
       File f;
       File full = new File(filename).getAbsoluteFile();
       try {
         f = File.createTempFile(full.getName() + ".", ".tmp", full.getParentFile());
       } catch (IOException e2) {
         Logger.error(this, "Cannot write peers to disk: Cannot create temp file - " + e2, e2);
-        Closer.close(fos);
         return;
       }
-      try {
-        fos = new FileOutputStream(f);
-      } catch (FileNotFoundException e2) {
-        Logger.error(this, "Cannot write peers to disk: Cannot create " + f + " - " + e2, e2);
-        Closer.close(fos);
-        f.delete();
-        return;
-      }
-      OutputStreamWriter w = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-      try {
+      
+      try (FileOutputStream fos = new FileOutputStream(f);
+           OutputStreamWriter w = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+        
         w.write(sb);
         w.flush();
         fos.getFD().sync();
-        w.close();
-        w = null;
 
         if (rotateBackups) {
           File prevFile = null;
@@ -1729,18 +1712,15 @@ public class PeerManager {
         } else {
           FileUtil.moveTo(f, getBackupFilename(filename, 0));
         }
+      } catch (FileNotFoundException e2) {
+        Logger.error(this, "Cannot write peers to disk: Cannot create " + f + " - " + e2, e2);
+        f.delete();
       } catch (IOException e) {
-        try {
-          fos.close();
-        } catch (IOException e1) {
-          Logger.error(this, "Cannot close peers file: " + e, e);
-        }
         Logger.error(this, "Cannot write file: " + e, e);
         f.delete();
         // don't overwrite old file!
       } finally {
-        Closer.close(w);
-        Closer.close(fos);
+        // Try-with-resources handles the stream cleanup
         f.delete();
       }
     }

@@ -9,7 +9,6 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /**Writes a <code>Bucket</code> to an output stream.*/
@@ -35,20 +34,19 @@ public class SingleFileStreamGenerator implements StreamGenerator {
 
 	@Override
 	public void writeTo(OutputStream os, ClientContext context) throws IOException {
-		try{
+		try (OutputStream managedOs = os;
+			 AutoCloseable managedBucket = bucket) {
 			if(logMINOR) Logger.minor(this, "Generating Stream", new Exception("debug"));
-			InputStream data = bucket.getInputStream();
-			try {
-			FileUtil.copy(data, os, -1);
-			} finally {
-			data.close();
+			try (InputStream data = bucket.getInputStream()) {
+				FileUtil.copy(data, managedOs, -1);
 			}
-			os.close();
-			bucket.free();
 			if(logMINOR) Logger.minor(this, "Stream completely generated", new Exception("debug"));
-		} finally {
-			Closer.close(bucket);
-			Closer.close(os);
+		} catch (Exception e) {
+			if (e instanceof IOException) {
+				throw (IOException) e;
+			} else {
+				throw new IOException("Error during stream generation", e);
+			}
 		}
 	}
 

@@ -117,14 +117,11 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
 		byte[] fk = new byte[fullKeySize];
 		byte[] header = new byte[headerSize];
 		byte[] data = new byte[dataSize];
-		InputStream in = block.data.getInputStream();
-		try {
-			DataInputStream dis = new DataInputStream(in);
+		try (InputStream in = block.data.getInputStream();
+		     DataInputStream dis = new DataInputStream(in)) {
 			dis.readFully(fk);
 			dis.readFully(header);
 			dis.readFully(data);
-		} finally {
-			in.close();
 		}
 		try {
 			T ret =
@@ -189,13 +186,10 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
 		byte[] fullKey = block.getFullKey();
 		
 		Bucket bucket = bf.makeBucket(fullKeySize + dataSize + headerSize);
-		OutputStream os = bucket.getOutputStream();
-		try {
-		os.write(fullKey);
-		os.write(header);
-		os.write(data);
-		} finally {
-		os.close();
+		try (OutputStream os = bucket.getOutputStream()) {
+			os.write(fullKey);
+			os.write(header);
+			os.write(data);
 		}
 		
 		DiskBlock stored = new DiskBlock();

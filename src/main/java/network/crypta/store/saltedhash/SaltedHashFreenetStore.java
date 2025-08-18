@@ -16,7 +16,6 @@ import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.store.*;
 import network.crypta.support.*;
 import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.Fallocate;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
@@ -1164,8 +1163,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         } else {
             try {
                 // try to load
-                RandomAccessFile raf = new RandomAccessFile(configFile, "r");
-                try {
+                try (RandomAccessFile raf = new RandomAccessFile(configFile, "r")) {
                     byte[] salt = new byte[0x10];
                     raf.readFully(salt);
 
@@ -1219,8 +1217,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
                     }
 
                     return false;
-                } finally {
-                    Closer.close(raf);
                 }
             } catch (IOException e) {
                 // corrupted? delete it and try again

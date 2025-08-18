@@ -38,7 +38,6 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.Closer;
 
 /**
  * Fetching a page for a browser.
@@ -198,7 +197,6 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 		if(bogusUSK(context)) return false;
 		CacheFetchResult result = context.downloadCache == null ? null : context.downloadCache.lookupInstant(uri, !fctx.filterData, false, null);
 		if(result == null) return false;
-		Bucket data = null;
 		String mimeType = null;
 		if((!fctx.filterData) && (!result.alreadyFiltered)) {
 			if(fctx.overrideMIME == null || fctx.overrideMIME.equals(result.getMimeType())) {
@@ -230,58 +228,44 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 				return false;
 			}
 		}
-		data = result.asBucket();
-		mimeType = result.getMimeType();
-		if(mimeType == null || mimeType.isEmpty()) mimeType = DefaultMIMETypes.DEFAULT_MIME_TYPE;
-		if(fctx.overrideMIME != null && !result.alreadyFiltered)
-			mimeType = fctx.overrideMIME;
-		else if(fctx.overrideMIME != null && !mimeType.equals(fctx.overrideMIME)) {
-			// Doesn't work.
-			return false;
-		}
-		String fullMimeType = mimeType;
-		mimeType = ContentFilter.stripMIMEType(mimeType);
-		FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
-		if(type == null || ((!type.safeToRead) && type.readFilter == null)) {
-			UnknownContentTypeException e = new UnknownContentTypeException(mimeType);
-			data.free();
-			onFailure(new FetchException(e.getFetchErrorCode(), data.size(), e, mimeType), null);
-			return true;
-		} else if(type.safeToRead) {
-			tracker.removeFetcher(this);
-			onSuccess(new FetchResult(new ClientMetadata(mimeType), data), null);
-			return true;
-		} else {
-			// Try to filter it.
-			Bucket output = null;
-			InputStream is = null;
-			OutputStream os = null;
-			try {
-				output = context.tempBucketFactory.makeBucket(-1);
-				is = data.getInputStream();
-				os = output.getOutputStream();
-				ContentFilter.filter(is, os, fullMimeType, uri.toURI("/"), fctx.getSchemeHostAndPort(), null, null, fctx.charset, context.linkFilterExceptionProvider);
-				is.close();
-				is = null;
-				os.close();
-				os = null;
-				// Since we are not re-using the data bucket, we can happily stay in the FProxyFetchTracker.
-				this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);
-				output = null;
+		try (Bucket data = result.asBucket()) {
+			mimeType = result.getMimeType();
+			if(mimeType == null || mimeType.isEmpty()) mimeType = DefaultMIMETypes.DEFAULT_MIME_TYPE;
+			if(fctx.overrideMIME != null && !result.alreadyFiltered)
+				mimeType = fctx.overrideMIME;
+			else if(fctx.overrideMIME != null && !mimeType.equals(fctx.overrideMIME)) {
+				// Doesn't work.
+				return false;
+			}
+			String fullMimeType = mimeType;
+			mimeType = ContentFilter.stripMIMEType(mimeType);
+			FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
+			if(type == null || ((!type.safeToRead) && type.readFilter == null)) {
+				UnknownContentTypeException e = new UnknownContentTypeException(mimeType);
+				onFailure(new FetchException(e.getFetchErrorCode(), data.size(), e, mimeType), null);
 				return true;
-			} catch (IOException e) {
-				Logger.normal(this, "Failed filtering coalesced data in fproxy");
-				// Failed. :|
-				// Let it run normally.
-				return false;
-			} catch (URISyntaxException e) {
-				Logger.error(this, "Impossible: "+e, e);
-				return false;
-			} finally {
-				Closer.close(is);
-				Closer.close(os);
-				Closer.close(output);
-				Closer.close(data);
+			} else if(type.safeToRead) {
+				tracker.removeFetcher(this);
+				onSuccess(new FetchResult(new ClientMetadata(mimeType), data), null);
+				return true;
+			} else {
+				// Try to filter it.
+				try (Bucket output = context.tempBucketFactory.makeBucket(-1);
+				     InputStream is = data.getInputStream();
+				     OutputStream os = output.getOutputStream()) {
+					ContentFilter.filter(is, os, fullMimeType, uri.toURI("/"), fctx.getSchemeHostAndPort(), null, null, fctx.charset, context.linkFilterExceptionProvider);
+					// Since we are not re-using the data bucket, we can happily stay in the FProxyFetchTracker.
+					this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);
+					return true;
+				} catch (IOException e) {
+					Logger.normal(this, "Failed filtering coalesced data in fproxy");
+					// Failed. :|
+					// Let it run normally.
+					return false;
+				} catch (URISyntaxException e) {
+					Logger.error(this, "Impossible: "+e, e);
+					return false;
+				}
 			}
 		}
 	}

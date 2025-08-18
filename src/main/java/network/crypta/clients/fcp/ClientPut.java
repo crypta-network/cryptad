@@ -31,7 +31,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.client.async.ClientRequester;
 
@@ -229,16 +228,12 @@ public class ClientPut extends ClientPutBase {
 			MessageDigest md = SHA256.getMessageDigest();
 			byte[] foundHash;
 			md.update(salt.getBytes(StandardCharsets.UTF_8));
-			InputStream is = null;
-			try {
-				is = data.getInputStream();
+			try (InputStream is = data.getInputStream()) {
 				SHA256.hash(is, md);
 			} catch (IOException e) {
 				Logger.error(this, "Got IOE: " + e.getMessage(), e);
 				throw new MessageInvalidException(ProtocolErrorMessage.COULD_NOT_READ_FILE,
 						"Unable to access file: " + e, identifier, global);
-			} finally {
-				Closer.close(is);
 			}
 			foundHash = md.digest();
 

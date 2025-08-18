@@ -54,7 +54,6 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 
 /**
  *
@@ -210,33 +209,30 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 				ClientMetadata clientMetadata,
 				List<? extends Compressor> decompressors, ClientGetState state,
 				ClientContext context) {
-			OutputStream output = null;
-			PipedInputStream pipeIn = new PipedInputStream();
-			PipedOutputStream pipeOut = new PipedOutputStream();
 			Bucket data = null;
 			long maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
 			try {
 				data = context.getBucketFactory(false).makeBucket(maxLen);
-				output = data.getOutputStream();
-				if(decompressors != null) {
-					if(logMINOR) Logger.minor(this, "decompressing...");
-					pipeOut.connect(pipeIn);
-					DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-					pipeIn = decompressorManager.execute();
-					ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(pipeIn), output, null, null,  ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-					worker.start();
-					streamGenerator.writeTo(pipeOut, context);
-					decompressorManager.waitFinished();
-					worker.waitFinished();
-				} else streamGenerator.writeTo(output, context);
-
-				output.close();
-				pipeOut.close();
-				pipeIn.close();
-				output = null;
-				pipeOut = null;
-				pipeIn = null;
-
+				try (PipedInputStream pipeIn = new PipedInputStream();
+				     PipedOutputStream pipeOut = new PipedOutputStream();
+				     OutputStream output = data.getOutputStream()) {
+					
+					if(decompressors != null) {
+						if(logMINOR) Logger.minor(this, "decompressing...");
+						pipeOut.connect(pipeIn);
+						DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
+						PipedInputStream newPipeIn = decompressorManager.execute();
+						ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null,  ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+						worker.start();
+						streamGenerator.writeTo(pipeOut, context);
+						decompressorManager.waitFinished();
+						worker.waitFinished();
+						newPipeIn.close();
+					} else {
+						streamGenerator.writeTo(output, context);
+					}
+				}
+				
 				// Run directly - we are running on some thread somewhere, don't worry about it.
 				innerSuccess(data, context);
 			} catch (Throwable t) {
@@ -249,12 +245,9 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 					if(logMINOR) Logger.minor(this, "Remaining DBR attempts: "+dbrAttempts);
 					dbrsFinished = dbrAttempts.isEmpty();
 				}
-				Closer.close(pipeOut);
-				Closer.close(pipeIn);
-				Closer.close(output);
 				if(dbrsFinished)
 					onDBRsFinished(context);
-				Closer.close(data);
+				if(data != null) data.free();
 			}
 		}
 		private void innerSuccess(Bucket bucket,

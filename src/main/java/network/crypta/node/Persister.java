@@ -10,7 +10,6 @@ import java.io.IOException;
 import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 class Persister implements Runnable {
@@ -64,18 +63,17 @@ class Persister implements Runnable {
 			Logger.minor(this, "Trying to persist throttles...");
 		}
 		SimpleFieldSet fs = persistable.persistThrottlesToFieldSet();
-		FileOutputStream fos = null;
-		try {
-			fos = new FileOutputStream(persistTemp);
+		try (FileOutputStream fos = new FileOutputStream(persistTemp)) {
 			fs.writeToBigBuffer(fos);
-			fos.close();
-			FileUtil.moveTo(persistTemp, persistTarget);
 		} catch (FileNotFoundException e) {
 			Logger.error(this, "Could not store throttle data to disk: " + e, e);
 		} catch (IOException e) {
 			persistTemp.delete();
-		} finally {
-			Closer.close(fos);
+		}
+		try {
+			FileUtil.moveTo(persistTemp, persistTarget);
+		} catch (Exception e) {
+			Logger.error(this, "Could not move temp file to target: " + e, e);
 		}
 	}
 

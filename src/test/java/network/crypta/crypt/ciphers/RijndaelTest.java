@@ -23,7 +23,6 @@ import org.junit.Test;
 
 import network.crypta.crypt.CTRBlockCipherTest;
 import network.crypta.crypt.UnsupportedCipherException;
-import network.crypta.support.io.Closer;
 
 /**
  * @author sdiz
@@ -172,13 +171,11 @@ public class RijndaelTest {
         throws UnsupportedCipherException, IOException, NoSuchAlgorithmException, NoSuchPaddingException,
                InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         for (int testNumber : GLADMAN_TEST_NUMBERS) {
-            InputStream is = null;
-            try {
-                is = getClass().getResourceAsStream(
+            try (InputStream is = getClass().getResourceAsStream(
                     "/network/crypta/crypt/ciphers/rijndael-gladman-test-data/ecbn" + type + testNumber +
                     ".txt");
-                InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
-                BufferedReader br = new BufferedReader(isr);
+                 InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
+                 BufferedReader br = new BufferedReader(isr)) {
 				for (int i = 0; i < 7; i++) {
 					br.readLine(); // Skip header
 				}
@@ -256,8 +253,6 @@ public class RijndaelTest {
                         }
                     }
                 }
-            } finally {
-                Closer.close(is);
             }
         }
     }

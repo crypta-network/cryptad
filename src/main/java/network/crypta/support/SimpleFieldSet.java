@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import network.crypta.node.FSParseException;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
 
@@ -941,32 +940,18 @@ public class SimpleFieldSet {
 	 * characters etc.
 	 */
 	public static SimpleFieldSet readFrom(InputStream is, boolean allowMultiple, boolean shortLived, boolean allowBase64, boolean alwaysBase64) throws IOException {
-		BufferedInputStream bis = null;
-		InputStreamReader isr = null;
-		BufferedReader br = null;
-
-		try {
-			bis = new BufferedInputStream(is);
-			isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
-			br = new BufferedReader(isr);
+		try (BufferedInputStream bis = new BufferedInputStream(is);
+		     InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
+		     BufferedReader br = new BufferedReader(isr)) {
 			SimpleFieldSet fs = new SimpleFieldSet(br, allowMultiple, shortLived, allowBase64, alwaysBase64);
-			br.close();
-
 			return fs;
-		} finally {
-                        Closer.close(br);
-                        Closer.close(isr);
-                        Closer.close(bis);
-                }
+		}
 	}
 
 	/** Read a SimpleFieldSet from a File. */
 	public static SimpleFieldSet readFrom(File f, boolean allowMultiple, boolean shortLived) throws IOException {
-	    FileInputStream fis = new FileInputStream(f);
-	    try {
+	    try (FileInputStream fis = new FileInputStream(f)) {
 	        return readFrom(fis, allowMultiple, shortLived);
-	    } finally {
-	        fis.close();
 	    }
 	}
 

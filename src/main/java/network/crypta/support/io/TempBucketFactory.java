@@ -143,7 +143,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 							is._maybeResetInputStream();
 						} catch(IOException e) {
 							i.remove();
-							Closer.close(is);
+							IOUtils.closeQuietly(is);
 						}
 					}
 			}
@@ -348,7 +348,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 				if(idx != osIndex)
 					close();
 				else {
-					Closer.close(currentIS);
+					IOUtils.closeQuietly(currentIS);
 					currentIS = currentBucket.getInputStreamUnbuffered();
 					long toSkip = index;
 					while(toSkip > 0) {
@@ -413,7 +413,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 			@Override
 			public final void close() throws IOException {
 				synchronized(TempBucket.this) {
-					Closer.close(currentIS);
+					IOUtils.closeQuietly(currentIS);
 					tbis.remove(this);
 				}
 			}
@@ -446,7 +446,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 		        if(hasBeenFreed) return;
 		        hasBeenFreed = true;
 		        
-		        Closer.close(os);
+		        IOUtils.closeQuietly(os);
 		        closeInputStreams(true);
 		        if(isRAMBucket()) {
 		            // If it's in memory we must free before removing from the queue.

@@ -31,7 +31,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /** Simulates MHKs. Creates 4 CHKs, inserts the first one 3 times, and inserts the
@@ -72,7 +71,6 @@ public class LongTermMHKTest extends LongTermTest {
 		int exitCode = 0;
 		Node node = null;
 		Node node2 = null;
-		FileInputStream fis = null;
 		File file = new File("mhk-test-"+uid + ".csv");
 		long t1, t2;
 
@@ -94,9 +92,9 @@ public class LongTermMHKTest extends LongTermTest {
 
 			final File innerDir = new File(dir, Integer.toString(DARKNET_PORT1));
 			innerDir.mkdir();
-			fis = new FileInputStream(seednodes);
-			FileUtil.writeTo(fis, new File(innerDir, "seednodes.fref"));
-			fis.close();
+			try (FileInputStream seedInputStream = new FileInputStream(seednodes)) {
+				FileUtil.writeTo(seedInputStream, new File(innerDir, "seednodes.fref"));
+			}
 
 			// Create one node
 			node = NodeStarter.createTestNode(DARKNET_PORT1, OPENNET_PORT1, dir.getPath(), false, Node.DEFAULT_MAX_HTL,
@@ -206,8 +204,8 @@ public class LongTermMHKTest extends LongTermTest {
 			
 			FreenetURI singleURI = null;
 			FreenetURI[] mhkURIs = new FreenetURI[3];
-			fis = new FileInputStream(file);
-			BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING));
+			try (FileInputStream fis = new FileInputStream(file);
+			     BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING))) {
 			String line = null;
 			int linesTooShort = 0, linesBroken = 0, linesNoNumber = 0, linesNoURL = 0, linesNoFetch = 0;
 			int total = 0, singleKeysSucceeded = 0, mhkSucceeded = 0;
@@ -336,8 +334,8 @@ public class LongTermMHKTest extends LongTermTest {
 			System.out.println("Success rate for individual keys (from MHK inserts): "+((double)totalSingleKeySuccesses)/((double)totalSingleKeyFetches));
 			System.out.println("Success rate for the single key triple inserted: "+((double)singleKeysSucceeded)/((double)total));
 			System.out.println("Success rate for the MHK (success = any of the 3 different keys worked): "+((double)mhkSucceeded)/((double)total));
-			fis.close();
-			fis = null;
+			
+			} // end try-with-resources for file reading
 			
 			// FETCH STUFF
 			
@@ -404,7 +402,6 @@ public class LongTermMHKTest extends LongTermTest {
 					node2.park();
 			} catch (Throwable tt) {
 			}
-			Closer.close(fis);
 
 			if(!dumpOnly) {
 				writeToStatusLog(file, csvLine);

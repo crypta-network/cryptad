@@ -55,7 +55,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.StringArrCallback;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread.PriorityLevel;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -1145,18 +1144,14 @@ public class PluginManager {
 	private void downloadPluginFile(PluginDownLoader<?> pluginDownLoader, File pluginDirectory, File pluginFile, PluginProgress pluginProgress) throws IOException, PluginNotFoundException {
 		File tempPluginFile = File.createTempFile("plugin-", ".jar", pluginDirectory);
 		tempPluginFile.deleteOnExit();
-		OutputStream pluginOutputStream = null;
-		InputStream pluginInputStream = null;
-		try {
-			pluginOutputStream = new FileOutputStream(tempPluginFile);
-			pluginInputStream = pluginDownLoader.getInputStream(pluginProgress);
+		
+		try (InputStream pluginInputStream = pluginDownLoader.getInputStream(pluginProgress);
+		     OutputStream pluginOutputStream = new FileOutputStream(tempPluginFile)) {
+			
 			FileUtil.copy(pluginInputStream, pluginOutputStream, -1);
 		} catch (IOException ioe1) {
 			tempPluginFile.delete();
 			throw ioe1;
-		} finally {
-			Closer.close(pluginInputStream);
-			Closer.close(pluginOutputStream);
 		}
 		if (tempPluginFile.length() == 0) {
 			throw new PluginNotFoundException("downloaded zero length file");
@@ -1180,9 +1175,7 @@ public class PluginManager {
 	}
 
 	private String verifyJarFileAndGetPluginMainClass(File pluginFile) throws PluginNotFoundException, PluginAlreadyLoaded {
-		JarFile pluginJarFile = null;
-		try {
-			pluginJarFile = new JarFile(pluginFile);
+		try (JarFile pluginJarFile = new JarFile(pluginFile)) {
 			Manifest manifest = pluginJarFile.getManifest();
 			if (manifest == null) {
 				throw new PluginNotFoundException("could not load manifest from plugin file");
@@ -1202,8 +1195,6 @@ public class PluginManager {
 			return pluginMainClassName;
 		} catch (IOException ioe1) {
 			throw new PluginNotFoundException("error procesesing jar file", ioe1);
-		} finally {
-			Closer.close(pluginJarFile);
 		}
 	}
 
@@ -1326,15 +1317,13 @@ public class PluginManager {
 	private String getFileDigest(File file) throws PluginNotFoundException {
 		final int BUFFERSIZE = 4096;
 		MessageDigest hash = HashType.SHA1.get();
-		FileInputStream fis = null;
-		BufferedInputStream bis = null;
 		String result;
 
-		try {
+		try (FileInputStream fis = new FileInputStream(file);
+		     BufferedInputStream bis = new BufferedInputStream(fis)) {
+			
 			// We compute the hash
 			// http://java.sun.com/developer/TechTips/1998/tt0915.html#tip2
-			fis = new FileInputStream(file);
-			bis = new BufferedInputStream(fis);
 			int len = 0;
 			byte[] buffer = new byte[BUFFERSIZE];
 			while((len = bis.read(buffer)) > -1) {
@@ -1343,9 +1332,6 @@ public class PluginManager {
 			result = HexUtil.bytesToHex(hash.digest());
 		} catch(Exception e) {
 			throw new PluginNotFoundException("Error while computing hash of the downloaded plugin: " + e, e);
-		} finally {
-			Closer.close(bis);
-			Closer.close(fis);
 		}
 		return result;
 	}

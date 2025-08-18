@@ -22,7 +22,6 @@ import network.crypta.support.compress.CompressionOutputSizeException;
 import network.crypta.support.compress.CompressionRatioException;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.NativeThread;
 
 /**
@@ -132,41 +131,37 @@ public class InsertCompressor implements CompressJob {
 						}
 					}
 
-					InputStream is = null;
-					OutputStream os = null;
 					MultiHashInputStream hasher = null;
-					try {
-						is = origData.getInputStream();
+					try (InputStream baseIs = origData.getInputStream()) {
 						result = bucketFactory.makeBucket(-1);
-						os = result.getOutputStream();
-						if(first && generateHashes != 0) {
-							if(logMINOR) Logger.minor(this, "Generating hashes: "+generateHashes);
-							is = hasher = new MultiHashInputStream(is, generateHashes);
-						}
-						try {
-							comp.compress(is, os, origSize, bestCompressedDataSize,
-									amountOfDataToCheckCompressionRatio, minimumCompressionPercentage);
-						} catch (CompressionOutputSizeException | CompressionRatioException e) {
+						try (OutputStream os = result.getOutputStream()) {
+							InputStream is = baseIs;
+							if(first && generateHashes != 0) {
+								if(logMINOR) Logger.minor(this, "Generating hashes: "+generateHashes);
+								is = hasher = new MultiHashInputStream(is, generateHashes);
+							}
+							try {
+								comp.compress(is, os, origSize, bestCompressedDataSize,
+										amountOfDataToCheckCompressionRatio, minimumCompressionPercentage);
+							} catch (CompressionOutputSizeException | CompressionRatioException e) {
+								if(hasher != null) {
+									is.skip(Long.MAX_VALUE);
+									hashes = hasher.getResults();
+									first = false;
+								}
+								continue; // try next compressor type
+							} catch (RuntimeException e) {
+								// ArithmeticException has been seen in bzip2 codec.
+								Logger.error(this, "Compression failed with codec "+comp+" : "+e, e);
+								// Try the next one
+								// RuntimeException is iffy, so lets not try the hasher.
+								continue;
+							}
 							if(hasher != null) {
-								is.skip(Long.MAX_VALUE);
 								hashes = hasher.getResults();
 								first = false;
 							}
-							continue; // try next compressor type
-						} catch (RuntimeException e) {
-							// ArithmeticException has been seen in bzip2 codec.
-							Logger.error(this, "Compression failed with codec "+comp+" : "+e, e);
-							// Try the next one
-							// RuntimeException is iffy, so lets not try the hasher.
-							continue;
 						}
-						if(hasher != null) {
-							hashes = hasher.getResults();
-							first = false;
-						}
-					} finally {
-						Closer.close(is);
-						Closer.close(os);
 					}
 					long resultSize = result.size();
 					long resultNumberOfBlocks = resultSize/CHKBlock.DATA_LENGTH;

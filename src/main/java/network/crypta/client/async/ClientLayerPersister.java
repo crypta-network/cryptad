@@ -574,11 +574,9 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     
     private boolean innerSave(boolean shutdown) {
         DelayedFree[] buckets = persistentTempFactory.grabBucketsToFree();
-        OutputStream fos = null;
-        try {
-            fos = writeToBucket.getOutputStream();
-            BufferedOutputStream bos = new BufferedOutputStream(fos);
-            ObjectOutputStream oos = new ObjectOutputStream(bos);
+        try (OutputStream fos = writeToBucket.getOutputStream();
+             BufferedOutputStream bos = new BufferedOutputStream(fos);
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
             oos.writeLong(MAGIC);
             oos.writeInt(VERSION);
             checker.writeAndChecksum(oos, salt);
@@ -614,7 +612,6 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
                     writeChecksummedObject(oos, bucket, null);
             }
             oos.close();
-            fos = null;
             Logger.normal(this, "Saved "+requests.length+" requests to "+writeToFilename);
             persistentTempFactory.finishDelayedFree(buckets);
             return true;
@@ -622,13 +619,6 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
             System.err.println("Failed to write persistent requests: "+e);
             e.printStackTrace();
             return false;
-        } finally {
-            try {
-                if(fos != null) fos.close();
-            } catch (IOException e) {
-                System.err.println("Failed to write persistent requests: "+e);
-                e.printStackTrace();
-            }
         }
     }
     

@@ -845,15 +845,14 @@ public class SplitFileInserterStorage {
     private byte[] encodeOverallStatus() {
         ArrayBucket bucket = new ArrayBucket(); // Will be small.
         try {
-            OutputStream os = bucket.getOutputStream();
-            OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
-            DataOutputStream dos = new DataOutputStream(cos);
-            synchronized(this) {
-                errors.writeFixedLengthTo(dos);
-                overallStatusDirty = false;
+            try (OutputStream os = bucket.getOutputStream();
+                 OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
+                 DataOutputStream dos = new DataOutputStream(cos)) {
+                synchronized(this) {
+                    errors.writeFixedLengthTo(dos);
+                    overallStatusDirty = false;
+                }
             }
-            dos.close();
-            os.close();
             return bucket.toByteArray();
         } catch (IOException e) {
             throw new Error(e); // Impossible
@@ -863,14 +862,13 @@ public class SplitFileInserterStorage {
     private Bucket encodeSegmentSettings() {
         ArrayBucket bucket = new ArrayBucket(); // Will be small.
         try {
-            OutputStream os = bucket.getOutputStream();
-            OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
-            DataOutputStream dos = new DataOutputStream(cos);
-            for (SplitFileInserterSegmentStorage segment : segments) {
-                segment.writeFixedSettings(dos);
+            try (OutputStream os = bucket.getOutputStream();
+                 OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
+                 DataOutputStream dos = new DataOutputStream(cos)) {
+                for (SplitFileInserterSegmentStorage segment : segments) {
+                    segment.writeFixedSettings(dos);
+                }
             }
-            dos.close();
-            os.close();
             return bucket;
         } catch (IOException e) {
             throw new Error(e); // Impossible
@@ -885,14 +883,13 @@ public class SplitFileInserterStorage {
         if (crossSegments == null)
             return new NullBucket();
         Bucket bucket = bf.makeBucket(-1);
-        OutputStream os = bucket.getOutputStream();
-        OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
-        DataOutputStream dos = new DataOutputStream(cos);
-        for (SplitFileInserterCrossSegmentStorage segment : crossSegments) {
-            segment.writeFixedSettings(dos);
+        try (OutputStream os = bucket.getOutputStream();
+             OutputStream cos = checker.checksumWriterWithLength(os, new ArrayBucketFactory());
+             DataOutputStream dos = new DataOutputStream(cos)) {
+            for (SplitFileInserterCrossSegmentStorage segment : crossSegments) {
+                segment.writeFixedSettings(dos);
+            }
         }
-        dos.close();
-        os.close();
         return bucket;
     }
 

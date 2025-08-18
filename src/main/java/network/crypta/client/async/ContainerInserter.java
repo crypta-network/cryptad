@@ -31,7 +31,6 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
@@ -168,14 +167,15 @@ public class ContainerInserter implements ClientPutState, Serializable {
 		}
 		
 		InsertBlock block;
-		OutputStream os = null;
 		try {
 		    RandomAccessBucket outputBucket = context.getBucketFactory(persistent).makeBucket(-1);
-			os = new BufferedOutputStream(outputBucket.getOutputStream());
-			String mimeType = (archiveType == ARCHIVE_TYPE.TAR ?
-				createTarBucket(os) :
-				createZipBucket(os));
-			os = null; // create*Bucket closes os
+			String mimeType;
+			try (OutputStream os = new BufferedOutputStream(outputBucket.getOutputStream())) {
+				mimeType = (archiveType == ARCHIVE_TYPE.TAR ?
+					createTarBucket(os) :
+					createZipBucket(os));
+				// create*Bucket closes os through try-with-resources
+			}
 			if(logMINOR)
 				Logger.minor(this, "Archive size is "+outputBucket.size());
 			
@@ -190,8 +190,6 @@ public class ContainerInserter implements ClientPutState, Serializable {
 		} catch (IOException e) {
 			fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null), context);
 			return;
-		} finally {
-			Closer.close(os);
 		}
 		
 		boolean dc = dontCompress;

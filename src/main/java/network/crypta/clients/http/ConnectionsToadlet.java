@@ -48,7 +48,6 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /** Base class for DarknetConnectionsToadlet and OpennetConnectionsToadlet */
@@ -943,7 +942,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
       StringBuilder ref = null;
       if (!urltext.isEmpty()) {
         // fetch reference from a URL
-        BufferedReader in = null;
         try {
           try {
             FreenetURI refUri = new FreenetURI(urltext);
@@ -966,8 +964,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
                       new String[] {urltext}),
               !isOpennet());
           return;
-        } finally {
-          Closer.close(in);
         }
       } else if (!reftext.isEmpty()) {
         // read from post data or file upload

@@ -1,7 +1,6 @@
 package network.crypta.crypt;
 
 import network.crypta.support.Logger;
-import network.crypta.support.io.Closer;
 
 import javax.crypto.KeyAgreement;
 import javax.crypto.KeyGenerator;
@@ -131,19 +130,13 @@ public class JceLoader {
             if (nssProvider == null) {
                 File nssFile = File.createTempFile("nss", ".cfg");
                 nssFile.deleteOnExit();
-                OutputStream os = null;
-                try {
+                try (OutputStream os = new FileOutputStream(nssFile);
+                     OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.ISO_8859_1);
+                     BufferedWriter bw = new BufferedWriter(osw)) {
                     // More robust than PrintWriter(file), which can hang on out of disk space.
-                    os = new FileOutputStream(nssFile);
-                    OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.ISO_8859_1);
-                    BufferedWriter bw = new BufferedWriter(osw);
                     bw.write("name=NSScrypto\n");
                     bw.write("nssDbMode=noDb\n");
                     bw.write("attributes=compatibility\n");
-                    bw.close();
-                    os = null;
-                } finally {
-                    Closer.close(os);
                 }
                 Class<?> c = Class.forName("sun.security.pkcs11.SunPKCS11");
                 Constructor<?> constructor = c.getConstructor(String.class);

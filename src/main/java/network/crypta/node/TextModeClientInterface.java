@@ -55,7 +55,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 
 /**
@@ -390,21 +389,12 @@ public class TextModeClientInterface implements Runnable {
                     outsb.append("File exists already: ").append(fnam);
                     fnam = "freenet-"+System.currentTimeMillis()+ '-' +fnam;
                 }
-                FileOutputStream fos = null;
-                try {
-                    fos = new FileOutputStream(f);
+                try (FileOutputStream fos = new FileOutputStream(f)) {
                     BucketTools.copyTo(data, fos, Long.MAX_VALUE);
-                    fos.close();
                     outsb.append("Written to ").append(fnam);
                 } catch (IOException e) {
                     outsb.append("Could not write file: caught ").append(e);
                     e.printStackTrace();
-                } finally {
-                    if(fos != null) try {
-                        fos.close();
-                    } catch (IOException e1) {
-                        // Ignore
-                    }
                 }
                 long endTime = System.currentTimeMillis();
                 long sz = data.size();
@@ -438,21 +428,16 @@ public class TextModeClientInterface implements Runnable {
     	final String content = readLines(reader, false);
         final Bucket input = new ArrayBucket(content.getBytes(StandardCharsets.UTF_8));
     	final Bucket output = new ArrayBucket();
-    	InputStream inputStream = null;
-    	OutputStream outputStream = null;
-    	InputStream bis = null;
-    	try {
-    		inputStream = input.getInputStream();
-    		outputStream = output.getOutputStream();
+    	
+    	try (InputStream inputStream = input.getInputStream();
+    	     OutputStream outputStream = output.getOutputStream()) {
+    		
     		ContentFilter.filter(inputStream, outputStream, "text/html", new URI("http://127.0.0.1:8888/"), null, null, null, null, core.getLinkFilterExceptionProvider());
-    		inputStream.close();
-			inputStream = null;
-    		outputStream.close();
-			outputStream = null;
 
-    		bis = output.getInputStream();
-    		while(bis.available() > 0){
-    			outsb.append((char)bis.read());
+    		try (InputStream bis = output.getInputStream()) {
+    			while(bis.available() > 0){
+    				outsb.append((char)bis.read());
+    			}
     		}
     	} catch (IOException e) {
     		outsb.append("Bucket error?: " + e.getMessage());
@@ -461,9 +446,6 @@ public class TextModeClientInterface implements Runnable {
     		outsb.append("Internal error: " + e.getMessage());
     		Logger.error(this, "Internal error: " + e, e);
     	} finally {
-			Closer.close(inputStream);
-			Closer.close(outputStream);
-			Closer.close(bis);
     		input.free();
     		output.free();
     	}
@@ -762,14 +744,13 @@ public class TextModeClientInterface implements Runnable {
             String content = null;
             if(!key.isEmpty()) {
                 // Filename
-            	BufferedReader in;
                 outsb.append("Trying to add peer to node by noderef in ").append(key).append("\r\n");
                 File f = new File(key);
                 if (f.isFile()) {
                 	outsb.append("Given string seems to be a file, loading...\r\n");
-                	in = new BufferedReader(new InputStreamReader(new FileInputStream(f), ENCODING));
-                    content = readLines(in, true);
-                    in.close();
+                	try (BufferedReader fileReader = new BufferedReader(new InputStreamReader(new FileInputStream(f), ENCODING))) {
+                        content = readLines(fileReader, true);
+                    }
                 } else {
                 	outsb.append("Given string seems to be an URL, loading...\r\n");
                     URL url = new URL(key);

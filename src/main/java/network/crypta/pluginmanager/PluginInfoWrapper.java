@@ -13,7 +13,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.support.JarClassLoader;
 import network.crypta.support.Logger;
-import network.crypta.support.io.Closer;
+import network.crypta.support.io.IOUtils;
 
 public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
 
@@ -184,7 +184,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
 		// Close the jar file, so we may delete / reload it
 		ClassLoader cl = plug.getClass().getClassLoader();
 		if (cl instanceof JarClassLoader) {
-			Closer.close((JarClassLoader) cl);
+			IOUtils.closeQuietly((JarClassLoader) cl);
 		}
 		return success;
 	}

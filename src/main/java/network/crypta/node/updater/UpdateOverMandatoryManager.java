@@ -60,7 +60,6 @@ import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.api.RandomAccessBuffer;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
@@ -2607,7 +2606,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 public void run() {
                   boolean failed = false;
                   File tmp = null;
-                  FileRandomAccessBuffer raf = null;
                   try {
                     System.out.println("Fetching " + saveTo + " from " + fetchFrom);
                     long uid = updateManager.getNode().getFastWeakRandom().nextLong();
@@ -2620,15 +2618,14 @@ public class UpdateOverMandatoryManager implements RequestClient {
                             saveTo.getName(),
                             NodeUpdateManager.TEMP_FILE_SUFFIX,
                             saveTo.getParentFile());
-                    raf = new FileRandomAccessBuffer(tmp, size, false);
-                    PartiallyReceivedBulk prb =
-                        new PartiallyReceivedBulk(
-                            updateManager.getNode().getUSM(), size, Node.PACKET_SIZE, raf, false);
-                    BulkReceiver br =
-                        new BulkReceiver(prb, fetchFrom, uid, updateManager.getByteCounter());
-                    failed = !br.receive();
-                    raf.close();
-                    raf = null;
+                    try (FileRandomAccessBuffer raf = new FileRandomAccessBuffer(tmp, size, false)) {
+                      PartiallyReceivedBulk prb =
+                          new PartiallyReceivedBulk(
+                              updateManager.getNode().getUSM(), size, Node.PACKET_SIZE, raf, false);
+                      BulkReceiver br =
+                          new BulkReceiver(prb, fetchFrom, uid, updateManager.getByteCounter());
+                      failed = !br.receive();
+                    }
                     if (!failed) {
                       // Check the hash.
                       if (MainJarDependenciesChecker.validFile(
@@ -2714,7 +2711,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
                       if (addFailed) peersFailed.add(fetchFrom);
                       peersFetching.remove(fetchFrom);
                     }
-                    Closer.close(raf);
                     if (tmp != null) tmp.delete();
                     if (failed) {
                       start();

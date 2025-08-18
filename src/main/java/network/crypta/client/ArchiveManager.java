@@ -31,7 +31,6 @@ import network.crypta.support.compress.CompressionOutputSizeException;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.SkipShieldingInputStream;
 import net.contrapunctus.lzma.LzmaInputStream;
 
@@ -288,20 +287,27 @@ public class ArchiveManager {
 		else if(logMINOR)
 			Logger.minor(this, "Container size (possibly compressed): "+archiveSize+" for "+data);
 
-		InputStream is = null;
+		final ExceptionWrapper wrapper;
 		try {
-			final ExceptionWrapper wrapper;
 			if((ctype == null) || (ARCHIVE_TYPE.ZIP == archiveType)) {
 				if(logMINOR) Logger.minor(this, "No compression");
-				is = data.getInputStream();
+				try (InputStream is = data.getInputStream()) {
+					handleArchiveWithStream(archiveType, ctx, key, is, element, callback, gotElement, throwAtExit, context);
+				}
 				wrapper = null;
 			} else if(ctype == COMPRESSOR_TYPE.BZIP2) {
 				if(logMINOR) Logger.minor(this, "dealing with BZIP2");
-				is = new BZip2CompressorInputStream(data.getInputStream());
+				try (InputStream baseIs = data.getInputStream();
+					 InputStream is = new BZip2CompressorInputStream(baseIs)) {
+					handleArchiveWithStream(archiveType, ctx, key, is, element, callback, gotElement, throwAtExit, context);
+				}
 				wrapper = null;
 			} else if(ctype == COMPRESSOR_TYPE.GZIP) {
 				if(logMINOR) Logger.minor(this, "dealing with GZIP");
-				is = new GZIPInputStream(data.getInputStream());
+				try (InputStream baseIs = data.getInputStream();
+					 InputStream is = new GZIPInputStream(baseIs)) {
+					handleArchiveWithStream(archiveType, ctx, key, is, element, callback, gotElement, throwAtExit, context);
+				}
 				wrapper = null;
 			} else if(ctype == COMPRESSOR_TYPE.LZMA_NEW) {
 				// LZMA internally uses pipe streams, so we may as well do it here.
@@ -315,9 +321,8 @@ public class ArchiveManager {
 
 					@Override
 					public void run() {
-						InputStream is = null;
-						try {
-							Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(is = data.getInputStream(), os, data.size(), expectedSize);
+						try (InputStream is = data.getInputStream()) {
+							Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(is, os, data.size(), expectedSize);
 						} catch (CompressionOutputSizeException e) {
 							Logger.error(this, "Failed to decompress archive: "+e, e);
 							wrapper.set(e);
@@ -330,44 +335,48 @@ public class ArchiveManager {
 							} catch (IOException e) {
 								Logger.error(this, "Failed to close PipedOutputStream: "+e, e);
 							}
-							Closer.close(is);
 						}
 					}
 					
 				});
-				is = pis;
+				// Note: pis is closed by the archive handling methods, not here
+				handleArchiveWithStream(archiveType, ctx, key, pis, element, callback, gotElement, throwAtExit, context);
 			} else if(ctype == COMPRESSOR_TYPE.LZMA) {
 				if(logMINOR) Logger.minor(this, "dealing with LZMA");
-				is = new LzmaInputStream(data.getInputStream());
+				try (InputStream baseIs = data.getInputStream();
+					 InputStream is = new LzmaInputStream(baseIs)) {
+					handleArchiveWithStream(archiveType, ctx, key, is, element, callback, gotElement, throwAtExit, context);
+				}
 				wrapper = null;
 			} else {
 				wrapper = null;
 			}
 
-			if(ARCHIVE_TYPE.ZIP == archiveType) {
-				handleZIPArchive(ctx, key, is, element, callback, gotElement, throwAtExit, context);
-			} else if(ARCHIVE_TYPE.TAR == archiveType) {
-				 // COMPRESS-449 workaround, see https://freenet.mantishub.io/view.php?id=6921
-				handleTARArchive(ctx, key, new SkipShieldingInputStream(is), element, callback, gotElement, throwAtExit, context);
-			} else {
-				throw new ArchiveFailureException("Unknown or unsupported archive algorithm " + archiveType);
-			}
 			if(wrapper != null) {
 				Exception e = wrapper.get();
 				if(e != null) throw new ArchiveFailureException("An exception occured decompressing: "+e.getMessage(), e);
 			}
 		} catch (IOException ioe) {
 			throw new ArchiveFailureException("An IOE occured: "+ioe.getMessage(), ioe);
-		} finally {
-			Closer.close(is);
+		}
 	}
+	
+	private void handleArchiveWithStream(ARCHIVE_TYPE archiveType, ArchiveStoreContext ctx, FreenetURI key, 
+			InputStream is, String element, ArchiveExtractCallback callback, MutableBoolean gotElement, 
+			boolean throwAtExit, ClientContext context) throws ArchiveFailureException, ArchiveRestartException {
+		if(ARCHIVE_TYPE.ZIP == archiveType) {
+			handleZIPArchive(ctx, key, is, element, callback, gotElement, throwAtExit, context);
+		} else if(ARCHIVE_TYPE.TAR == archiveType) {
+			 // COMPRESS-449 workaround, see https://freenet.mantishub.io/view.php?id=6921
+			handleTARArchive(ctx, key, new SkipShieldingInputStream(is), element, callback, gotElement, throwAtExit, context);
+		} else {
+			throw new ArchiveFailureException("Unknown or unsupported archive algorithm " + archiveType);
+		}
 	}
 
 	private void handleTARArchive(ArchiveStoreContext ctx, FreenetURI key, InputStream data, String element, ArchiveExtractCallback callback, MutableBoolean gotElement, boolean throwAtExit, ClientContext context) throws ArchiveFailureException, ArchiveRestartException {
 		if(logMINOR) Logger.minor(this, "Handling a TAR Archive");
-		TarArchiveInputStream tarIS = null;
-		try {
-			tarIS = new TarArchiveInputStream(data);
+		try (TarArchiveInputStream tarIS = new TarArchiveInputStream(data)) {
 
 			// MINOR: Assumes the first entry in the tarball is a directory.
 			ArchiveEntry entry;
@@ -399,24 +408,22 @@ outerTAR:		while(true) {
 					// Read the element
 					long realLen = 0;
 					Bucket output = tempBucketFactory.makeBucket(size);
-					OutputStream out = output.getOutputStream();
-
-					try {
+					boolean shouldFree = false;
+					try (OutputStream out = output.getOutputStream()) {
 						int readBytes;
 						while((readBytes = tarIS.read(buf)) > 0) {
 							out.write(buf, 0, readBytes);
 							readBytes += realLen;
 							if(readBytes > maxArchivedFileSize) {
 								addErrorElement(ctx, key, name, "File too big: "+maxArchivedFileSize+" greater than current archived file size limit "+maxArchivedFileSize, true);
-								out.close();
-								out = null;
-								output.free();
-								continue outerTAR;
+								shouldFree = true;
+								break;
 							}
 						}
-						
-					} finally {
-						if(out != null) out.close();
+					}
+					if(shouldFree) {
+						output.free();
+						continue outerTAR;
 					}
 					if(size <= maxArchivedFileSize) {
 						addStoreElement(ctx, key, name, output, gotElement, element, callback, context);
@@ -443,16 +450,12 @@ outerTAR:		while(true) {
 
 		} catch (IOException e) {
 			throw new ArchiveFailureException("Error reading archive: "+e.getMessage(), e);
-		} finally {
-			Closer.close(tarIS);
 		}
 	}
 
 	private void handleZIPArchive(ArchiveStoreContext ctx, FreenetURI key, InputStream data, String element, ArchiveExtractCallback callback, MutableBoolean gotElement, boolean throwAtExit, ClientContext context) throws ArchiveFailureException, ArchiveRestartException {
 		if(logMINOR) Logger.minor(this, "Handling a ZIP Archive");
-		ZipInputStream zis = null;
-		try {
-			zis = new ZipInputStream(data);
+		try (ZipInputStream zis = new ZipInputStream(data)) {
 
 			// MINOR: Assumes the first entry in the zip is a directory.
 			ZipEntry entry;
@@ -479,24 +482,22 @@ outerZIP:		while(true) {
 					// Read the element
 					long realLen = 0;
 					Bucket output = tempBucketFactory.makeBucket(size);
-					OutputStream out = output.getOutputStream();
-					try {
-						
+					boolean shouldFree = false;
+					try (OutputStream out = output.getOutputStream()) {
 						int readBytes;
 						while((readBytes = zis.read(buf)) > 0) {
 							out.write(buf, 0, readBytes);
 							readBytes += realLen;
 							if(readBytes > maxArchivedFileSize) {
 								addErrorElement(ctx, key, name, "File too big: "+maxArchivedFileSize+" greater than current archived file size limit "+maxArchivedFileSize, true);
-								out.close();
-								out = null;
-								output.free();
-								continue outerZIP;
+								shouldFree = true;
+								break;
 							}
 						}
-						
-					} finally {
-						if(out != null) out.close();
+					}
+					if(shouldFree) {
+						output.free();
+						continue outerZIP;
 					}
 					if(size <= maxArchivedFileSize) {
 						addStoreElement(ctx, key, name, output, gotElement, element, callback, context);
@@ -523,14 +524,6 @@ outerZIP:		while(true) {
 
 		} catch (IOException e) {
 			throw new ArchiveFailureException("Error reading archive: "+e.getMessage(), e);
-		} finally {
-			if(zis != null) {
-				try {
-					zis.close();
-				} catch (IOException e) {
-					Logger.error(this, "Failed to close stream: "+e, e);
-				}
-			}
 		}
 	}
 

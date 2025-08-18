@@ -26,7 +26,6 @@ import network.crypta.support.*;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -611,17 +610,13 @@ public class WelcomeToadlet extends Toadlet {
         long logSize = logs.length();
         if (logs.exists() && logs.isFile() && logs.canRead() && (logSize > 0)) {
             HTMLNode logInfoboxContent = ctx.getPageMaker().getInfobox("infobox-info", "Current status", contentNode, "start-progress", true);
-            LineReadingInputStream logreader = null;
-            try {
-                logreader = FileUtil.getLogTailReader(logs, 2000);
+            try (LineReadingInputStream logreader = FileUtil.getLogTailReader(logs, 2000)) {
                 String line;
                 while ((line = logreader.readLine(100000, 200, true)) != null) {
                     logInfoboxContent.addChild("#", line);
                     logInfoboxContent.addChild("br");
                 }
             } catch (IOException e) {
-            } finally {
-                Closer.close(logreader);
             }
         }
     }
@@ -638,12 +633,8 @@ public class WelcomeToadlet extends Toadlet {
      * @throws IOException if an I/O error occurs
      */
     private static String readLogTail(File logfile, long byteLimit) throws IOException {
-        LineReadingInputStream stream = null;
-        try {
-            stream = FileUtil.getLogTailReader(logfile, byteLimit);
+        try (LineReadingInputStream stream = FileUtil.getLogTailReader(logfile, byteLimit)) {
             return FileUtil.readUTF(stream).toString();
-        } finally {
-            Closer.close(stream);
         }
     }
 

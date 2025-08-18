@@ -31,7 +31,6 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 
@@ -812,18 +811,13 @@ public class FCPConnectionHandler implements Closeable {
 			// We don't want to attempt to write before: in case an IOException is raised, we want to inform the
 			// client somehow that the node can't write there... And setting readFile to null means we won't inform
 			// it on the status (as if it hadn't requested us to do the test).
-			FileOutputStream fos = null;
-			BufferedOutputStream bos = null;
-			try {
-				fos = new FileOutputStream(result.readFilename);
-				bos = new BufferedOutputStream(fos);
+			try (FileOutputStream fos = new FileOutputStream(result.readFilename);
+			     BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+				
 				bos.write(result.readContent.getBytes(StandardCharsets.UTF_8));
 				bos.flush();
 			} catch (IOException e) {
 				Logger.error(this, "Got a IOE while creating the file (" + readFile + " ! " + e.getMessage());
-			} finally {
-				Closer.close(bos);
-				Closer.close(fos);
 			}
 		}
 		
