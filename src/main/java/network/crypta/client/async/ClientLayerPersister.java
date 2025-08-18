@@ -621,7 +621,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
 
     private void writeRecoveryData(ObjectOutputStream os, ClientRequest req) throws IOException {
-        PrependLengthOutputStream oos = checker.checksumWriterWithLength(os, tempBucketFactory);
+        PrependLengthOutputStream oos = checker.checksumWriterWithLengthNoClose(os, tempBucketFactory);
         DataOutputStream dos = new DataOutputStream(oos);
         try {
             req.getClientDetail(dos, checker);
@@ -655,7 +655,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     }
 
     private void writeChecksummedObject(ObjectOutputStream os, Object req, String name) throws IOException {
-        PrependLengthOutputStream oos = checker.checksumWriterWithLength(os, tempBucketFactory);
+        PrependLengthOutputStream oos = checker.checksumWriterWithLengthNoClose(os, tempBucketFactory);
         try {
             ObjectOutputStream innerOOS = new ObjectOutputStream(oos);
             innerOOS.writeObject(req);
