@@ -5,9 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.Deque;
-
 import network.crypta.support.LogThresholdCallback;
-
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 
@@ -16,7 +14,7 @@ public class FCPConnectionOutputHandler implements Runnable {
 	final FCPConnectionHandler handler;
 	final Deque<FCPMessage> outQueue;
 	// Synced on outQueue
-	private boolean closedOutputQueue;
+	boolean closedOutputQueue;
 
         private static volatile boolean logMINOR;
         private static volatile boolean logDEBUG;
@@ -115,44 +113,6 @@ public class FCPConnectionOutputHandler implements Runnable {
 		}
 	}
 
-    /**
-     * @deprecated
-     *     Use {@link FCPConnectionHandler#send(FCPMessage)} instead of using public access to the
-     *     member variable {@link FCPConnectionHandler#getOutputHandler()} to call this function here
-     *     upon the outputHandler. In other words: Replace
-     *     <code>fcpConnectionHandler.outputHandler.queue(...)</code>
-     *     with <code>fcpConnectionHandler.send(...)</code><br>
-     *     TODO: The deprecation is merely to enforce people to stop using the said member variable
-     *     in a public way. The function itself is fine to stay. Once the public usage has been
-     *     replaced by the suggested way of using send(), please make the member variable
-     *     {@link FCPConnectionHandler#getOutputHandler()} private and remove the deprecation at this
-     *     function here.
-     */
-    @Deprecated
-	public void queue(FCPMessage msg) {
-		if(logDEBUG)
-			Logger.debug(this, "Queueing "+msg, new Exception("debug"));
-		if(msg == null) throw new NullPointerException();
-		boolean neverDropAMessage = handler.getServer().neverDropAMessage();
-		int MAX_QUEUE_LENGTH = handler.getServer().maxMessageQueueLength();
-		synchronized(outQueue) {
-			if(closedOutputQueue) {
-				Logger.error(this, "Closed already: "+this+" queueing message "+msg);
-				// FIXME throw something???
-				return;
-			}
-			if(outQueue.size() >= MAX_QUEUE_LENGTH) {
-				if(neverDropAMessage) {
-					Logger.error(this, "FCP message queue length is "+outQueue.size()+" for "+handler+" - not dropping message as configured...");
-				} else {
-					Logger.error(this, "Dropping FCP message to "+handler+" : "+outQueue.size()+" messages queued - maybe client died?", new Exception("debug"));
-					return;
-				}
-			}
-			outQueue.add(msg);
-			outQueue.notifyAll();
-		}
-	}
 
 	public void onClosed() {
 		synchronized(outQueue) {

@@ -35,6 +35,16 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 
 public class FCPConnectionHandler implements Closeable {
+	private static volatile boolean logDEBUG;
+	static {
+		Logger.registerLogThresholdCallback(new LogThresholdCallback(){
+			@Override
+			public void shouldUpdate(){
+				logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+			}
+		});
+	}
+
 	private static final class DirectoryAccess {
 		final boolean canWrite;
 		final boolean canRead;
@@ -83,12 +93,7 @@ public class FCPConnectionHandler implements Closeable {
 	final FCPConnectionInputHandler inputHandler;
 	final Map<String, SubscribeUSK> uskSubscriptions;
 
-	/**
-	 * @deprecated Use {@link #getOutputHandler()} instead of accessing this directly.
-	 */
-	@Deprecated
-	/* it’s not actually the field that is deprecated but accessing it directly is. */
-	public final FCPConnectionOutputHandler outputHandler;
+	private final FCPConnectionOutputHandler outputHandler;
 	private boolean isClosed;
 	private boolean inputClosed;
 	private boolean outputClosed;
@@ -182,9 +187,29 @@ public class FCPConnectionHandler implements Closeable {
      * As a consequence, this function not throwing does not give any guarantee whatsoever that the
      * message will ever be sent.
      */
-    @SuppressWarnings("deprecation")
     public final void send(final FCPMessage message) {
-        outputHandler.queue(message);
+        if(logDEBUG)
+            Logger.debug(this, "Queueing "+message, new Exception("debug"));
+        if(message == null) throw new NullPointerException();
+        boolean neverDropAMessage = server.neverDropAMessage();
+        int MAX_QUEUE_LENGTH = server.maxMessageQueueLength();
+        synchronized(outputHandler.outQueue) {
+            if(outputHandler.closedOutputQueue) {
+                Logger.error(this, "Closed already: "+this+" queueing message "+message);
+                // FIXME throw something???
+                return;
+            }
+            if(outputHandler.outQueue.size() >= MAX_QUEUE_LENGTH) {
+                if(neverDropAMessage) {
+                    Logger.error(this, "FCP message queue length is "+outputHandler.outQueue.size()+" for "+this+" - not dropping message as configured...");
+                } else {
+                    Logger.error(this, "Dropping FCP message to "+this+" : "+outputHandler.outQueue.size()+" messages queued - maybe client died?", new Exception("debug"));
+                    return;
+                }
+            }
+            outputHandler.outQueue.add(message);
+            outputHandler.outQueue.notifyAll();
+        }
     }
 
 	void start() {
@@ -353,10 +378,10 @@ public class FCPConnectionHandler implements Closeable {
 					                } catch (IdentifierCollisionException e1) {
 					                    Logger.normal(this, "Identifier collision on "+this);
 					                    FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-					                    outputHandler.queue(msg);
+					                    send(msg);
 					                    return false;
 					                } catch (MessageInvalidException e1) {
-					                    outputHandler.queue(new ProtocolErrorMessage(e1.protocolCode, false, e1.getMessage(), e1.ident, e1.global));
+					                    send(new ProtocolErrorMessage(e1.protocolCode, false, e1.getMessage(), e1.ident, e1.global));
 					                    return false;
 					                }
 					                try {
@@ -364,7 +389,7 @@ public class FCPConnectionHandler implements Closeable {
 					                } catch (IdentifierCollisionException e) {
 					                    Logger.normal(this, "Identifier collision on "+this);
 					                    FCPMessage msg = new IdentifierCollisionMessage(id, global);
-					                    outputHandler.queue(msg);
+					                    send(msg);
 					                    return false;
 					                }
 					                getter.start(context);
@@ -373,7 +398,7 @@ public class FCPConnectionHandler implements Closeable {
 					            
 					        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 					    } catch (PersistenceDisabledException e) {
-					        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
+					        send(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 					        return;
 					    }
 						return; // Don't run the start() below
@@ -383,7 +408,7 @@ public class FCPConnectionHandler implements Closeable {
 				} catch (IdentifierCollisionException e) {
 					success = false;
 				} catch (MessageInvalidException e) {
-					outputHandler.queue(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
+					send(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
 					return;
 				}
 			}
@@ -397,7 +422,7 @@ public class FCPConnectionHandler implements Closeable {
 		if(!success) {
 			Logger.normal(this, "Identifier collision on "+this);
 			FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-			outputHandler.queue(msg);
+			send(msg);
         } else {
 			cg.start(server.getCore().getClientContext());
 		}
@@ -430,7 +455,7 @@ public class FCPConnectionHandler implements Closeable {
 					} catch (IdentifierCollisionException e) {
 						success = false;
 					} catch (MessageInvalidException e) {
-						outputHandler.queue(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
+						send(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
 						return;
 					} catch (MalformedURLException e) {
 						failedMessage = new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, e.getMessage(), id, message.global);
@@ -449,16 +474,16 @@ public class FCPConnectionHandler implements Closeable {
 				                } catch (IdentifierCollisionException e) {
 				                    Logger.normal(this, "Identifier collision on "+this);
 				                    FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-				                    outputHandler.queue(msg);
+				                    send(msg);
 				                    return false;
 				                } catch (MessageInvalidException e) {
-				                    outputHandler.queue(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
+				                    send(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
 				                    return false;
 				                } catch (MalformedURLException e) {
-				                    outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, null, id, message.global));
+				                    send(new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, null, id, message.global));
 				                    return false;
 				                } catch (IOException e) {
-                                    outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.IO_ERROR, true, null, id, message.global));
+                                    send(new ProtocolErrorMessage(ProtocolErrorMessage.IO_ERROR, true, null, id, message.global));
                                     return false;
                                 }
 				                try {
@@ -466,7 +491,7 @@ public class FCPConnectionHandler implements Closeable {
 				                } catch (IdentifierCollisionException e) {
 				                    Logger.normal(this, "Identifier collision on "+this);
 				                    FCPMessage msg = new IdentifierCollisionMessage(id, global);
-				                    outputHandler.queue(msg);
+				                    send(msg);
 				                    return false;
 				                }
 				                putter.start(context);
@@ -475,7 +500,7 @@ public class FCPConnectionHandler implements Closeable {
 				        
 				        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 				    } catch (PersistenceDisabledException e) {
-				        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
+				        send(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 				    }
 					return; // Don't run the start() below
 				} else {
@@ -484,7 +509,7 @@ public class FCPConnectionHandler implements Closeable {
 					} catch (IdentifierCollisionException e) {
 						success = false;
 					} catch (MessageInvalidException e) {
-						outputHandler.queue(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
+						send(new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global));
 						return;
 					} catch (MalformedURLException e) {
 						failedMessage = new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, null, id, message.global);
@@ -506,7 +531,7 @@ public class FCPConnectionHandler implements Closeable {
 			}
 		if(failedMessage != null) {
 			if(logMINOR) Logger.minor(this, "Failed: "+failedMessage);
-			outputHandler.queue(failedMessage);
+			send(failedMessage);
 			if(cp != null)
 			    cp.freeData();
 			else
@@ -561,13 +586,13 @@ public class FCPConnectionHandler implements Closeable {
 			                } catch (IdentifierCollisionException e) {
 			                    Logger.normal(this, "Identifier collision on "+this);
 			                    FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-			                    outputHandler.queue(msg);
+			                    send(msg);
 			                    return false;
 			                } catch (MalformedURLException e) {
-			                    outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, null, id, message.global));
+			                    send(new ProtocolErrorMessage(ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, true, null, id, message.global));
 			                    return false;
 			                } catch (TooManyFilesInsertException e) {
-			                    outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.TOO_MANY_FILES_IN_INSERT, true, null, id, message.global));
+			                    send(new ProtocolErrorMessage(ProtocolErrorMessage.TOO_MANY_FILES_IN_INSERT, true, null, id, message.global));
 			                    return false;
 			                }
 			                try {
@@ -575,7 +600,7 @@ public class FCPConnectionHandler implements Closeable {
 			                } catch (IdentifierCollisionException e) {
 			                    Logger.normal(this, "Identifier collision on "+this);
 			                    FCPMessage msg = new IdentifierCollisionMessage(id, global);
-			                    outputHandler.queue(msg);
+			                    send(msg);
 			                    return false;
 			                }
 			                putter.start(context);
@@ -584,7 +609,7 @@ public class FCPConnectionHandler implements Closeable {
 			            
 			        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 			    } catch (PersistenceDisabledException e) {
-			        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
+			        send(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 			    }
 				return; // Don't run the start() below
 				
@@ -613,7 +638,7 @@ public class FCPConnectionHandler implements Closeable {
 			}
 		if(failedMessage != null) {
 			// FIXME do we need to freeData???
-			outputHandler.queue(failedMessage);
+			send(failedMessage);
 			if(cp != null)
 				cp.cancel(server.getCore().getClientContext());
         } else {

@@ -412,10 +412,12 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 			msg = getFailedMessage;
 		}
 
-		if(handler == null && persistence == Persistence.CONNECTION)
-			handler = origHandler.getOutputHandler();
-		if(handler != null)
-			handler.queue(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+		if(handler == null && persistence == Persistence.CONNECTION) {
+			if(origHandler != null)
+				origHandler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+		} else if(handler != null) {
+			handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+		}
 		else
 			client.queueClientRequestMessage(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier), 0);
 	}
@@ -432,21 +434,30 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 
 	private void trySendAllDataMessage(FCPConnectionOutputHandler handler, String listRequestIdentifier) {
 	    if(persistence == Persistence.CONNECTION) {
-	        if(handler == null)
-	            handler = origHandler.getOutputHandler();
+	        if(handler == null) {
+	            if(origHandler != null) {
+	                FCPMessage allData = FCPMessage.withListRequestIdentifier(getAllDataMessage(), listRequestIdentifier);
+	                if(allData != null)
+	                    origHandler.send(allData);
+	            }
+	            return;
+	        }
 	    }
 	    if(handler != null) {
 	        FCPMessage allData = FCPMessage.withListRequestIdentifier(getAllDataMessage(), listRequestIdentifier);
 	        if(allData != null)
-	            handler.queue(allData);
+	            handler.handler.send(allData);
 	    }
 	}
 
 	private void queueProgressMessageInner(FCPMessage msg, FCPConnectionOutputHandler handler, int verbosityMask) {
-	    if(persistence == Persistence.CONNECTION && handler == null)
-	        handler = origHandler.getOutputHandler();
+	    if(persistence == Persistence.CONNECTION && handler == null) {
+	        if(origHandler != null)
+	            origHandler.send(msg);
+	        return;
+	    }
 	    if(handler != null)
-	        handler.queue(msg);
+	        handler.handler.send(msg);
 	    else
 	        client.queueClientRequestMessage(msg, verbosityMask);
     }
@@ -455,17 +466,17 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 	public void sendPendingMessages(FCPConnectionOutputHandler handler, String listRequestIdentifier, boolean includeData, boolean onlyData) {
 		if(!onlyData) {
 			FCPMessage msg = persistentTagMessage();
-			handler.queue(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+			handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
 			if(progressPending != null) {
-				handler.queue(FCPMessage.withListRequestIdentifier(progressPending, listRequestIdentifier));
+				handler.handler.send(FCPMessage.withListRequestIdentifier(progressPending, listRequestIdentifier));
 			}
 			if(sentToNetwork)
-				handler.queue(FCPMessage.withListRequestIdentifier(new SendingToNetworkMessage(identifier, global), listRequestIdentifier));
+				handler.handler.send(FCPMessage.withListRequestIdentifier(new SendingToNetworkMessage(identifier, global), listRequestIdentifier));
 			if(finished)
 				trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
 		} else if(returnType != ReturnType.DIRECT) {
 		    ProtocolErrorMessage msg = new ProtocolErrorMessage(ProtocolErrorMessage.WRONG_RETURN_TYPE, false, "No AllData", identifier, global);
-		    handler.queue(msg);
+		    handler.handler.send(msg);
 		    return;
 		}
 
@@ -485,17 +496,17 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 		    if(foundDataLength > 0)
 		        lengthMsg = new ExpectedDataLength(identifier, global, foundDataLength);
 		}
-		handler.queue(FCPMessage.withListRequestIdentifier(cmsg, listRequestIdentifier));
+		handler.handler.send(FCPMessage.withListRequestIdentifier(cmsg, listRequestIdentifier));
 
 		if(expectedHashes != null) {
-			handler.queue(FCPMessage.withListRequestIdentifier(expectedHashes, listRequestIdentifier));
+			handler.handler.send(FCPMessage.withListRequestIdentifier(expectedHashes, listRequestIdentifier));
 		}
 
 		if (mimeMsg != null) {
-			handler.queue(FCPMessage.withListRequestIdentifier(mimeMsg, listRequestIdentifier));
+			handler.handler.send(FCPMessage.withListRequestIdentifier(mimeMsg, listRequestIdentifier));
 		}
 		if (lengthMsg != null) {
-			handler.queue(FCPMessage.withListRequestIdentifier(lengthMsg, listRequestIdentifier));
+			handler.handler.send(FCPMessage.withListRequestIdentifier(lengthMsg, listRequestIdentifier));
 		}
 	}
 

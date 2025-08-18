@@ -357,12 +357,14 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 		if(msg == null) {
 			Logger.error(this, "Trying to send null message on "+this, new Exception("error"));
 		} else {
-			if(persistence == Persistence.CONNECTION && handler == null)
-				handler = origHandler.getOutputHandler();
-			if(handler != null)
-				handler.queue(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-			else
+			if(persistence == Persistence.CONNECTION && handler == null) {
+				if(origHandler != null)
+					origHandler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+			} else if(handler != null) {
+				handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+			} else {
 				client.queueClientRequestMessage(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier), 0);
+			}
 		}
 	}
 
@@ -371,12 +373,14 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 		synchronized(this) {
 			msg = new URIGeneratedMessage(generatedURI, identifier, isGlobalQueue());
 		}
-		if(persistence == Persistence.CONNECTION && handler == null)
-			handler = origHandler.getOutputHandler();
-		if(handler != null)
-			handler.queue(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-		else
+		if(persistence == Persistence.CONNECTION && handler == null) {
+			if(origHandler != null)
+				origHandler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+		} else if(handler != null) {
+			handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
+		} else {
 			client.queueClientRequestMessage(msg, 0);
+		}
 	}
 
 	/**
@@ -386,12 +390,14 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	 */
 	private void trySendGeneratedMetadataMessage(Bucket metadata, FCPConnectionOutputHandler handler, String listRequestIdentifier) {
 		FCPMessage msg = FCPMessage.withListRequestIdentifier(new GeneratedMetadataMessage(identifier, global, metadata), listRequestIdentifier);
-		if(persistence == Persistence.CONNECTION && handler == null)
-			handler = origHandler.getOutputHandler();
-		if(handler != null)
-			handler.queue(msg);
-		else
+		if(persistence == Persistence.CONNECTION && handler == null) {
+			if(origHandler != null)
+				origHandler.send(msg);
+		} else if(handler != null) {
+			handler.handler.send(msg);
+		} else {
 			client.queueClientRequestMessage(msg, 0);
+		}
 	}
 
 	/**
@@ -406,12 +412,14 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	        if(persistence != Persistence.CONNECTION)
 	            progressMessage = msg;
 	    }
-		if(persistence == Persistence.CONNECTION && handler == null)
-			handler = origHandler.getOutputHandler();
-		if(handler != null)
-			handler.queue(msg);
-		else
+		if(persistence == Persistence.CONNECTION && handler == null) {
+			if(origHandler != null)
+				origHandler.send(msg);
+		} else if(handler != null) {
+			handler.handler.send(msg);
+		} else {
 			client.queueClientRequestMessage(msg, verbosity);
+		}
 	}
 
 	protected abstract FCPMessage persistentTagMessage();
@@ -419,7 +427,7 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public void sendPendingMessages(FCPConnectionOutputHandler handler, String listRequestIdentifier, boolean includeData, boolean onlyData) {
 		FCPMessage msg = FCPMessage.withListRequestIdentifier(persistentTagMessage(), listRequestIdentifier);
-		handler.queue(msg);
+		handler.handler.send(msg);
 
 		boolean generated = false;
 		boolean fin = false;
@@ -435,7 +443,7 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 		if(meta != null)
 			trySendGeneratedMetadataMessage(meta, handler, listRequestIdentifier);
 		if(msg != null)
-			handler.queue(msg);
+			handler.handler.send(msg);
 		if(fin)
 			trySendFinalMessage(handler, listRequestIdentifier);
 	}
