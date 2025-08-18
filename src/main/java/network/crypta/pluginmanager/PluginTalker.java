@@ -85,8 +85,6 @@ public class PluginTalker {
 				return;
 			}
 			plug.handle(replysender, plugparams, data2, access);
-		} catch (ThreadDeath td) {
-			throw td;  // Fatal, thread is stop()'ed
 		} catch (VirtualMachineError vme) {
 			throw vme; // OOM is included here
 		} catch (Throwable t) {
