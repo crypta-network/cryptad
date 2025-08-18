@@ -63,6 +63,9 @@ val generateVersionSource by tasks.registering(Copy::class) {
     // Always regenerate to ensure fresh version info
     outputs.upToDateWhen { false }
     
+    // Capture version during configuration to avoid deprecation warning
+    val buildVersion = project.version.toString()
+    
     // Delete old generated version first to ensure clean generation
     doFirst {
         delete(versionBuildDir)
@@ -71,7 +74,7 @@ val generateVersionSource by tasks.registering(Copy::class) {
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
-            line.replace("@build_number@", project.version.toString())
+            line.replace("@build_number@", buildVersion)
                 .replace("@git_rev@", gitrev)
         }
     }
