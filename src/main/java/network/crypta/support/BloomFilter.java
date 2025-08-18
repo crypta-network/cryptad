@@ -3,6 +3,7 @@ package network.crypta.support;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.ref.Cleaner;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.Random;
@@ -12,7 +13,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import network.crypta.support.math.MersenneTwister;
 
-public abstract class BloomFilter {
+public abstract class BloomFilter implements AutoCloseable {
+	private static final Cleaner cleaner = Cleaner.create();
+	
 	protected ByteBuffer filter;
 
 	/** Number of hash functions */
@@ -20,6 +23,27 @@ public abstract class BloomFilter {
 	protected final int length;
 
 	protected transient ReadWriteLock lock = new ReentrantReadWriteLock();
+	
+	// Cleaner action for safety net resource cleanup
+	private final Cleaner.Cleanable cleanable;
+	
+	// Static nested class for cleaner action to avoid holding reference to the BloomFilter instance
+	private static class FilterCleanup implements Runnable {
+		private ByteBuffer filter;
+		
+		FilterCleanup(BloomFilter bloomFilter) {
+			this.filter = bloomFilter.filter;
+		}
+		
+		@Override
+		public void run() {
+			// Safety net cleanup - this should rarely be called if close() is used properly
+			if (filter instanceof MappedByteBuffer) {
+				((MappedByteBuffer) filter).force();
+			}
+			filter = null;
+		}
+	}
 	
 	public void init() {
 		lock = new ReentrantReadWriteLock();
@@ -63,6 +87,9 @@ public abstract class BloomFilter {
 
 		this.length = length;
 		this.k = k;
+		
+		// Register cleaner for safety net (will be cleaned up when close() is called properly)
+		this.cleanable = cleaner.register(this, new FilterCleanup(this));
 	}
 
 	//-- Core
@@ -221,18 +248,18 @@ public abstract class BloomFilter {
 		}
 	}
 	
+	@Override
 	public void close() {
 		if (filter != null) {
 			force();
 		}
 		filter = null;
 		forkedFilter = null;
-	}
-
-	@Override
-	protected void finalize() throws Throwable {
-		close();
-                super.finalize();
+		
+		// Clean up the cleaner since we've properly closed resources
+		if (cleanable != null) {
+			cleanable.clean();
+		}
 	}
 	
 	public int getSizeBytes() {

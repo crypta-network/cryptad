@@ -180,12 +180,7 @@ public class UdpSocketHandler implements PrioRunnable, PacketSocketHandler, Port
 				System.err.print(t.getMessage());
 				System.err.println();
 			} catch (Throwable tt) {}
-			try {
-				System.gc();
-				System.runFinalization();
-				System.gc();
-				System.runFinalization();
-			} catch (Throwable tt) {}
+			// Note: Removed forced GC calls as they are ineffective and can mask real memory issues
 			try {
 				Runtime r = Runtime.getRuntime();
 				System.err.print(r.freeMemory());
