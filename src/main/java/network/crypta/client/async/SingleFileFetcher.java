@@ -904,13 +904,13 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 						if(logMINOR) Logger.minor(this, "decompressing...");
 						pipeOut.connect(pipeIn);
 						DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-						PipedInputStream newPipeIn = decompressorManager.execute();
-						ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null , ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-						worker.start();
-						streamGenerator.writeTo(pipeOut, context);
-						decompressorManager.waitFinished();
-						worker.waitFinished();
-						newPipeIn.close();
+						try (PipedInputStream newPipeIn = decompressorManager.execute()) {
+							ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null , ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+							worker.start();
+							streamGenerator.writeTo(pipeOut, context);
+							decompressorManager.waitFinished();
+							worker.waitFinished();
+						}
 					} else {
 						streamGenerator.writeTo(output, context);
 					}
@@ -1045,14 +1045,14 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 						if(logMINOR) Logger.minor(this, "decompressing...");
 						pipeIn.connect(pipeOut);
 						DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-						PipedInputStream newPipeIn = decompressorManager.execute();
-						ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-						worker.start();
-						streamGenerator.writeTo(pipeOut, context);
-						decompressorManager.waitFinished();
-						worker.waitFinished();
-						// ClientGetWorkerThread will close output.
-						newPipeIn.close();
+						try (PipedInputStream newPipeIn = decompressorManager.execute()) {
+							ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+							worker.start();
+							streamGenerator.writeTo(pipeOut, context);
+							decompressorManager.waitFinished();
+							worker.waitFinished();
+							// ClientGetWorkerThread will close output.
+						}
 					} else {
 					    streamGenerator.writeTo(output, context);
 					}

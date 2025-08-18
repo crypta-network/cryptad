@@ -36,13 +36,10 @@ public class PluginStores {
 
     private void writePluginStoreInner(String storeIdentifier, PluginStore pluginStore, boolean isEncrypted, boolean backup) throws IOException {
         Bucket bucket = makePluginStoreBucket(storeIdentifier, isEncrypted, backup);
-        OutputStream os = bucket.getOutputStream();
-        try {
+        try (OutputStream os = bucket.getOutputStream()) {
             if(pluginStore != null) {
                 pluginStore.exportStoreAsSFS().writeTo(os);
             }
-        } finally {
-            os.close();
         }
     }
     
@@ -110,18 +107,12 @@ public class PluginStores {
         } catch (FileNotFoundException e) {
             return null;
         }
-        InputStream is = null;
-        try {
-            try {
-                is = bucket.getInputStream();
-                SimpleFieldSet fs = SimpleFieldSet.readFrom(is, false, false, true, true);
-                return new PluginStore(fs);
-            } finally {
-                // Do NOT use IOUtils.closeQuietly().
-                // We use authenticated encryption, which will throw at close() time if the file is corrupt,
-                // or has been modified while the node was offline etc.
-                if(is != null) is.close();
-            }
+        try (InputStream is = bucket.getInputStream()) {
+            // Do NOT use IOUtils.closeQuietly().
+            // We use authenticated encryption, which will throw at close() time if the file is corrupt,
+            // or has been modified while the node was offline etc.
+            SimpleFieldSet fs = SimpleFieldSet.readFrom(is, false, false, true, true);
+            return new PluginStore(fs);
         } catch (IOException e) {
             // Hence, if close() throws, we DO need to catch it here.
             System.err.println("Unable to load plugin data for "+storeIdentifier+" : "+e);

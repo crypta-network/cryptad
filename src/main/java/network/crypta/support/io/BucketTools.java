@@ -211,9 +211,7 @@ public class BucketTools {
 		long size = bucket.size();
 		if(size > output.length)
 			throw new IllegalArgumentException("Data does not fit in provided buffer");
-		InputStream is = null;
-		try {
-			is = bucket.getInputStreamUnbuffered();
+		try (InputStream is = bucket.getInputStreamUnbuffered()) {
 			int moved = 0;
 			while(true) {
 				if(moved == size) return moved;
@@ -221,8 +219,6 @@ public class BucketTools {
 				if(x == -1) return moved;
 				moved += x;
 			}
-		} finally {
-			if(is != null) is.close();
 		}
 	}
 	
@@ -244,8 +240,7 @@ public class BucketTools {
 	}
 
 	public static byte[] hash(Bucket data) throws IOException {
-		InputStream is = data.getInputStreamUnbuffered();
-		try {
+		try (InputStream is = data.getInputStreamUnbuffered()) {
 			MessageDigest md = SHA256.getMessageDigest();
 			long bucketLength = data.size();
 			long bytesRead = 0;
@@ -263,8 +258,6 @@ public class BucketTools {
 			if ((bytesRead != bucketLength) && (bucketLength > 0))
 				throw new IOException("Read " + bytesRead + " but bucket length " + bucketLength + " on " + data + '!');
             return md.digest();
-		} finally {
-			if(is != null) is.close();
 		}
 	}
 
@@ -273,8 +266,7 @@ public class BucketTools {
 	public static long copyTo(Bucket decodedData, OutputStream os, long truncateLength) throws IOException {
 		if(truncateLength == 0) return 0;
 		if(truncateLength < 0) truncateLength = Long.MAX_VALUE;
-		InputStream is = decodedData.getInputStreamUnbuffered();
-		try {
+		try (InputStream is = decodedData.getInputStreamUnbuffered()) {
 			int bufferSize = BUFFER_SIZE;
 			if(truncateLength > 0 && truncateLength < bufferSize) bufferSize = (int) truncateLength;
 			byte[] buf = new byte[bufferSize];
@@ -295,10 +287,8 @@ public class BucketTools {
 				os.write(buf, 0, bytes);
 				moved += bytes;
 			}
-			return moved;
-		} finally {
-			is.close();
 			os.flush();
+			return moved;
 		}
 	}
 
