@@ -115,15 +115,18 @@ public class MultiReaderBucket implements Serializable {
 			synchronized(MultiReaderBucket.this) {
 				if(freed) return;
 				freed = true;
-				ListUtils.removeBySwapLast(readers, this);
-				if(!readers.isEmpty()) {
-				    // Clean up the cleaner since we've properly freed this reader
-				    if (cleanable != null) {
-				        cleanable.clean();
-				    }
-				    return;
+				// Check if readers is null before trying to remove from it
+				if(readers != null) {
+					ListUtils.removeBySwapLast(readers, this);
+					if(!readers.isEmpty()) {
+					    // Clean up the cleaner since we've properly freed this reader
+					    if (cleanable != null) {
+					        cleanable.clean();
+					    }
+					    return;
+					}
+					readers = null;
 				}
-				readers = null;
 				if(closed) {
 				    // Clean up the cleaner since we've properly freed this reader
 				    if (cleanable != null) {
@@ -147,8 +150,8 @@ public class MultiReaderBucket implements Serializable {
 				if(freed || closed) {
 					throw new IOException("Already freed");
 				}
+				return new ReaderBucketInputStream(true);
 			}
-			return new ReaderBucketInputStream(true);
 		}
 		
         @Override
@@ -157,8 +160,8 @@ public class MultiReaderBucket implements Serializable {
                 if(freed || closed) {
                     throw new IOException("Already freed");
                 }
+                return new ReaderBucketInputStream(false);
             }
-            return new ReaderBucketInputStream(false);
         }
         
 		private class ReaderBucketInputStream extends InputStream {

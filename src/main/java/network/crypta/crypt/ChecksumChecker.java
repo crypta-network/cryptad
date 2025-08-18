@@ -36,6 +36,16 @@ public abstract class ChecksumChecker {
         return PrependLengthOutputStream.create(checksumWriter(dos, 8), bf, 0, true);
     }
     
+    /** Get an OutputStream that will write to a temporary Bucket, append a checksum and prepend a
+     * length, without closing the underlying stream.
+     * @param os The underlying stream, which will not be closed.
+     * @param bf Used to allocate temporary storage.
+     * @throws IOException 
+     */
+    public PrependLengthOutputStream checksumWriterWithLengthNoClose(final OutputStream dos, BucketFactory bf) throws IOException {
+        return PrependLengthOutputStream.create(checksumWriter(dos, 8), bf, 0, false);
+    }
+    
     public abstract byte[] appendChecksum(byte[] data);
     
     /** Verify a checksum or throw */

@@ -456,7 +456,6 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 							if(logMINOR) Logger.minor(this, "gotBucket on "+SingleFileFetcher.this+" persistent="+persistent);
 							try {
 								metadata = Metadata.construct(data);
-								data.free();
 								innerWrapHandleMetadata(true, context);
 							} catch (MetadataParseException e) {
 								// Invalid metadata
@@ -464,7 +463,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
                             } catch (IOException e) {
 								// Bucket error?
 								onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), false, context);
-                            }
+                            } finally {
+								data.free();
+							}
 						}
 						@Override
 						public void notInArchive(ClientContext context) {
