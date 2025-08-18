@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-import network.crypta.support.io.Closer;
 
 import java.io.File;
 import java.io.IOException;
@@ -46,15 +45,10 @@ public class CountingBloomFilter extends BloomFilter {
 		if (!file.exists() || file.length() != fileLength)
 			needRebuild = true;
 
-		RandomAccessFile raf = new RandomAccessFile(file, "rw");
-		FileChannel channel = null;
-		try {
+		try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+		     FileChannel channel = raf.getChannel()) {
 			raf.setLength(fileLength);
-			channel = raf.getChannel();
 			filter = channel.map(MapMode.READ_WRITE, 0, fileLength).load();
-		} finally {
-			Closer.close(raf);
-			Closer.close(channel);
 		}
 	}
 

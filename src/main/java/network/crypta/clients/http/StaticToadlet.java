@@ -91,17 +91,14 @@ public class StaticToadlet extends Toadlet {
 			return;
 		}
 		Bucket data = ctx.getBucketFactory().makeBucket(strm.available());
-		OutputStream os = data.getOutputStream();
-		try {
-		byte[] cbuf = new byte[4096];
-		while(true) {
-			int r = strm.read(cbuf);
-			if(r == -1) break;
-			os.write(cbuf, 0, r);
-		}
-		} finally {
-			strm.close();
-			os.close();
+		try (InputStream inputStream = strm;
+		     OutputStream os = data.getOutputStream()) {
+			byte[] cbuf = new byte[4096];
+			while(true) {
+				int r = inputStream.read(cbuf);
+				if(r == -1) break;
+				os.write(cbuf, 0, r);
+			}
 		}
 		
 		URL url = getClass().getResource(ROOT_PATH+path);

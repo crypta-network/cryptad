@@ -17,7 +17,6 @@ import network.crypta.support.HexUtil;
 import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.NullWriter;
 
 public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
@@ -72,27 +71,19 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
 		if(input.length > getCharsetBufferSize() && logMINOR) {
 			Logger.minor(this, "More data than was strictly needed was passed to the charset extractor for extraction");
 		}
-		InputStream strm = new ByteArrayInputStream(input, 0, length);
-		NullWriter w = new NullWriter();
-		InputStreamReader isr;
-		BufferedReader r = null;
-		try {
+		try (InputStream strm = new ByteArrayInputStream(input, 0, length);
+		     NullWriter w = new NullWriter()) {
+			InputStreamReader isr;
 			try {
 				isr = new InputStreamReader(strm, charset);
-				r = new BufferedReader(isr, 32768);
 			} catch(UnsupportedEncodingException e) {
 				throw UnknownCharsetException.create(e, charset);
 			}
-			CSSParser parser = new CSSParser(r, w, false, new NullFilterCallback(), null, true, false);
-			parser.parse();
-			r.close();
-			r = null;
-			return parser.detectedCharset();
-		}
-		finally {
-			Closer.close(strm);
-			Closer.close(r);
-			Closer.close(w);
+			try (BufferedReader r = new BufferedReader(isr, 32768)) {
+				CSSParser parser = new CSSParser(r, w, false, new NullFilterCallback(), null, true, false);
+				parser.parse();
+				return parser.detectedCharset();
+			}
 		}
 	}
 

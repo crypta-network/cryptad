@@ -58,7 +58,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.TimeSortedHashtable;
 import network.crypta.support.io.ArrayBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 
 /**
@@ -913,19 +912,13 @@ public class LocationManager implements ByteCounter {
 				File locationLog = node.nodeDir().file("location.log.txt");
 				if(locationLog.exists() && locationLog.length() > 1024*1024*10)
 					locationLog.delete();
-				FileOutputStream os = null;
-				try {
-					os = new FileOutputStream(locationLog, true);
-					BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.ISO_8859_1));
+				try (FileOutputStream os = new FileOutputStream(locationLog, true);
+				     BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.ISO_8859_1))) {
 					DateFormat df = DateFormat.getDateTimeInstance();
 					df.setTimeZone(TimeZone.getTimeZone("GMT"));
 					bw.write(df.format(new Date())+" : "+getLocation()+(randomReset ? " (random reset"+(fromDupLocation?" from duplicated location" : "")+")" : "")+'\n');
-					bw.close();
-					os = null;
 				} catch (IOException e) {
 					Logger.error(this, "Unable to write changed location to "+locationLog+" : "+e, e);
-				} finally {
-					Closer.close(os);
 				}
 			}
 

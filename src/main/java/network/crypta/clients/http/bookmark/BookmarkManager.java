@@ -27,7 +27,6 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 public class BookmarkManager implements RequestClient {
@@ -363,18 +362,15 @@ public class BookmarkManager implements RequestClient {
 
 			sfs = toSimpleFieldSet();
 		}
-		FileOutputStream fos = null;
 		try {
-			fos = new FileOutputStream(backupBookmarksFile);
-			sfs.writeToBigBuffer(fos);
-			fos.close();
-			fos = null;
+			try (FileOutputStream fos = new FileOutputStream(backupBookmarksFile)) {
+				sfs.writeToBigBuffer(fos);
+			}
 			if(!FileUtil.moveTo(backupBookmarksFile, bookmarksFile))
 				Logger.error(this, "Unable to rename " + backupBookmarksFile + " to " + bookmarksFile);
 		} catch(IOException ioe) {
 			Logger.error(this, "An error has occured saving the bookmark file :" + ioe.getMessage(), ioe);
 		} finally {
-			Closer.close(fos);
 			synchronized(bookmarks) {
 				isSavingBookmarks = false;
 			}

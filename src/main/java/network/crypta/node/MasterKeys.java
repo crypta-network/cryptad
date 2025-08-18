@@ -22,7 +22,6 @@ import network.crypta.crypt.SHA256;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.Fields;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /** Keys read from the master keys file */
@@ -77,15 +76,13 @@ public class MasterKeys {
 		System.err.println("Trying to read master keys file...");
 		if(masterKeysFile != null && masterKeysFile.exists()) {
 			// Try to read the keys
-			FileInputStream fis = null;
 			// FIXME move declarations of sensitive data out and clear() in finally {}
 			long len = masterKeysFile.length();
             if(len > 1024) throw new MasterKeysFileSizeException(true);
             if(len < (32 + 32 + 8 + 32)) throw new MasterKeysFileSizeException(false);
 			int length = (int) len;
-			try {
-				fis = new FileInputStream(masterKeysFile);
-				DataInputStream dis = new DataInputStream(fis);
+			try (FileInputStream fis = new FileInputStream(masterKeysFile);
+			     DataInputStream dis = new DataInputStream(fis)) {
 				if(len == 140) {
 				    MasterKeys ret = readOldFormat(dis, length, hardRandom, password);
 				    System.out.println("Read old-format master keys file. Writing new format master.keys ...");
@@ -143,19 +140,19 @@ public class MasterKeys {
 
 				// It matches. Now decode it.
 				ByteArrayInputStream bais = new ByteArrayInputStream(data);
-				dis = new DataInputStream(bais);
-				long flags = dis.readLong();
+				DataInputStream dataStream = new DataInputStream(bais);
+				long flags = dataStream.readLong();
 				// At the moment there are no interesting flags.
 				// In future the flags will tell us whether the database and the datastore are encrypted.
 				byte[] clientCacheKey = new byte[32];
-				dis.readFully(clientCacheKey);
+				dataStream.readFully(clientCacheKey);
 				byte[] databaseKey = null;
 				databaseKey = new byte[32];
-				dis.readFully(databaseKey);
+				dataStream.readFully(databaseKey);
 				byte[] tempfilesMasterSecret = new byte[64];
 				boolean mustWrite = false;
 				if(data.length >= 8+32+32+64) {
-				    dis.readFully(tempfilesMasterSecret);
+				    dataStream.readFully(tempfilesMasterSecret);
 				} else {
                     System.err.println("Created new master secret for encrypted tempfiles");
 				    hardRandom.nextBytes(tempfilesMasterSecret);
@@ -173,8 +170,6 @@ public class MasterKeys {
 				// Ok, create a new one.
 			} catch (EOFException e) {
 				throw new MasterKeysFileSizeException(false);
-			} finally {
-				Closer.close(fis);
 			}
 		}
 		System.err.println("Creating new master keys file");

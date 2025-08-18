@@ -25,7 +25,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
@@ -101,7 +100,6 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 		if(logMINOR)
 			Logger.minor(this, "Success on "+this+" from "+state+" : length "+streamGenerator.size()+"mime type "+clientMetadata.getMIMEType());
 		DecompressorThreadManager decompressorManager = null;
-		OutputStream output = null;
 		Bucket finalResult = null;
 		long maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
 		try {
@@ -119,27 +117,21 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 			return;
 		}
 
-		PipedInputStream pipeIn = null;
-		PipedOutputStream pipeOut = null;
-		try {
-			output = finalResult.getOutputStream();
+		try (OutputStream output = finalResult.getOutputStream()) {
 			// Decompress
 			if(decompressors != null) {
 				if(logMINOR) Logger.minor(this, "Decompressing...");
-				pipeIn = new PipedInputStream();
-				pipeOut = new PipedOutputStream(pipeIn);
-				decompressorManager = new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-				pipeIn = decompressorManager.execute();
-				ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(pipeIn), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-				worker.start();
-				streamGenerator.writeTo(pipeOut, context);
-				worker.waitFinished();
-				// If this throws, we want the whole request to fail.
-				pipeOut.close(); pipeOut = null;
+				try (PipedInputStream pipeIn = new PipedInputStream();
+					 PipedOutputStream pipeOut = new PipedOutputStream(pipeIn)) {
+					decompressorManager = new DecompressorThreadManager(pipeIn, decompressors, maxLen);
+					PipedInputStream decompressedInput = decompressorManager.execute();
+					ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(decompressedInput), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+					worker.start();
+					streamGenerator.writeTo(pipeOut, context);
+					worker.waitFinished();
+				}
 			} else {
-					streamGenerator.writeTo(output, context);
-					// If this throws, we want the whole request to fail.
-					output.close(); output = null;
+				streamGenerator.writeTo(output, context);
 			}
 		} catch(IOException e) {
 			Logger.error(this, "Caught "+e, e);
@@ -148,9 +140,6 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 			Logger.error(this, "Caught "+t, t);
 			onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
 			return;
-		} finally {
-			Closer.close(output);
-			Closer.close(pipeOut);
 		}
 
 		final FetchResult result = new FetchResult(clientMetadata, finalResult);

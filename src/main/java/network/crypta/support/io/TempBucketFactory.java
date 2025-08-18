@@ -8,6 +8,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.ref.Cleaner;
 import java.lang.ref.WeakReference;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
@@ -56,6 +57,50 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 	public final static long defaultIncrement = 4096;
 	public final static float DEFAULT_FACTOR = 1.25F;
 	
+	// Cleaner for safety net resource cleanup
+	private static final Cleaner resourceCleaner = Cleaner.create();
+	
+	// Static nested class for cleaner action to avoid holding reference to the TempBucket instance
+	private static class TempBucketCleanup implements Runnable {
+		private RandomAccessBucket currentBucket;
+		
+		TempBucketCleanup(RandomAccessBucket bucket) {
+			this.currentBucket = bucket;
+		}
+		
+		@Override
+		public void run() {
+			// Safety net cleanup - this should rarely be called if free() is used properly
+			// We only clean up the bucket itself as a bare minimum safety net
+			if (currentBucket != null) {
+				currentBucket.free();
+			}
+		}
+	}
+	
+	// Static nested class for cleaner action for TempRandomAccessBuffer
+	private static class TempRABCleanup implements Runnable {
+		private final long rabId;
+		private final long size;
+		private final TempBucketFactory factory;
+		
+		TempRABCleanup(long rabId, long size, TempBucketFactory factory) {
+			this.rabId = rabId;
+			this.size = size;
+			this.factory = factory;
+		}
+		
+		@Override
+		public void run() {
+			// Safety net cleanup - this should rarely be called if free() is used properly
+			// Since this is a safety net, we only clean up memory accounting, not the underlying buffer
+			// as it may have complex state that we can't safely clean up without proper synchronization
+			if (factory != null) {
+				factory._cleanerFreedRAM(rabId, size);
+			}
+		}
+	}
+	
 	private final FilenameGenerator filenameGenerator;
 	private final PooledFileRandomAccessBufferFactory underlyingDiskRAFFactory;
 	private final DiskSpaceCheckingRandomAccessBufferFactory diskRAFFactory;
@@ -64,6 +109,10 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 	private final Executor executor;
 	private volatile boolean reallyEncrypt;
 	private final MasterSecret secret;
+	
+	// Tracking for cleanup safety net to prevent double-freeing
+	private static volatile long nextRABId = 1;
+	private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> freedRABIds = new java.util.concurrent.ConcurrentHashMap<>();
 	
 	/** How big can the defaultSize be for us to consider using RAMBuckets? */
 	private long maxRAMBucketSize;
@@ -114,6 +163,9 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 		
 		private final Throwable tracer;
 		
+		// Cleaner for safety net resource cleanup
+		private final Cleaner.Cleanable cleanable;
+		
 		public TempBucket(long now, RandomAccessBucket cur) {
 			if(cur == null)
 				throw new NullPointerException();
@@ -125,6 +177,10 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 			this.creationTime = now;
 			this.osIndex = 0;
 			this.tbis = new ArrayList<TempBucketInputStream>(1);
+			
+			// Register cleaner for safety net (will be cleaned up when free() is called properly)
+			this.cleanable = resourceCleaner.register(this, new TempBucketCleanup(this.currentBucket));
+			
 			if(logMINOR) Logger.minor(TempBucket.class, "Created "+this, new Exception("debug"));
 		}
 		
@@ -143,7 +199,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 							is._maybeResetInputStream();
 						} catch(IOException e) {
 							i.remove();
-							Closer.close(is);
+							IOUtils.closeQuietly(is);
 						}
 					}
 			}
@@ -348,7 +404,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 				if(idx != osIndex)
 					close();
 				else {
-					Closer.close(currentIS);
+					IOUtils.closeQuietly(currentIS);
 					currentIS = currentBucket.getInputStreamUnbuffered();
 					long toSkip = index;
 					while(toSkip > 0) {
@@ -413,7 +469,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 			@Override
 			public final void close() throws IOException {
 				synchronized(TempBucket.this) {
-					Closer.close(currentIS);
+					IOUtils.closeQuietly(currentIS);
 					tbis.remove(this);
 				}
 			}
@@ -446,7 +502,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 		        if(hasBeenFreed) return;
 		        hasBeenFreed = true;
 		        
-		        Closer.close(os);
+		        IOUtils.closeQuietly(os);
 		        closeInputStreams(true);
 		        if(isRAMBucket()) {
 		            // If it's in memory we must free before removing from the queue.
@@ -455,6 +511,11 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 		            synchronized(ramBucketQueue) {
 		                ramBucketQueue.remove(getReference());
 		            }
+		            
+		            // Clean up the cleaner since we've properly freed resources
+		            if (cleanable != null) {
+		                cleanable.clean();
+		            }
 		            return;
 		        } else {
 		            // Better to free outside the lock if it's not in-memory.
@@ -462,6 +523,11 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 		        }
 		    }
 		    cur.free();
+		    
+		    // Clean up the cleaner since we've properly freed resources
+		    if (cleanable != null) {
+		        cleanable.clean();
+		    }
 		}
 		
 		/** Called only by TempRandomAccessBuffer */
@@ -480,19 +546,6 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 			return weakRef;
 		}
 		
-		@Override
-		protected void finalize() throws Throwable {
-		    // If it's been converted to a TempRandomAccessBuffer, finalize() will only be called 
-		    // if *neither* object is reachable.
-			if (!hasBeenFreed) {
-				if (TRACE_BUCKET_LEAKS)
-					Logger.error(this, "TempBucket not freed, size=" + size() + ", isRAMBucket=" + isRAMBucket()+" : "+this, tracer);
-				else
-				    Logger.error(this, "TempBucket not freed, size=" + size() + ", isRAMBucket=" + isRAMBucket()+" : "+this);
-				free();
-			}
-                        super.finalize();
-		}
 
         @Override
         public long creationTime() {
@@ -566,6 +619,17 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 	
 	private synchronized void _hasFreed(long size) {
 		bytesInUse -= size;
+	}
+	
+	private synchronized void _cleanerFreedRAM(long rabId, long size) {
+		// Safety net cleanup - only free if we haven't already done so
+		if (!freedRABIds.containsKey(rabId)) {
+			bytesInUse -= size;
+		}
+	}
+	
+	private synchronized void _markRABFreed(long rabId) {
+		freedRABIds.put(rabId, true);
 	}
 	
 	public synchronized long getRamUsed() {
@@ -798,15 +862,25 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 	    /** For debugging leaks if TRACE_BUCKET_LEAKS is enabled */
 	    private final Throwable tracer;
 	    
+	    // Unique ID for tracking cleanup
+	    private final long rabId;
+	    
+	    // Cleaner for safety net resource cleanup
+	    private final Cleaner.Cleanable cleanable;
+	    
 	    TempRandomAccessBuffer(int size, long time) throws IOException {
 	        super(new ByteArrayRandomAccessBuffer(size), size);
 	        creationTime = time;
 	        hasMigrated = false;
 	        original = null;
+	        rabId = nextRABId++;
             if (TRACE_BUCKET_LEAKS)
                 tracer = new Throwable();
             else
                 tracer = null;
+            
+            // Register cleaner for safety net (will be cleaned up when free() is called properly)
+            this.cleanable = resourceCleaner.register(this, new TempRABCleanup(rabId, size, TempBucketFactory.this));
 	    }
 
         public TempRandomAccessBuffer(byte[] initialContents, int offset, int size, long time, boolean readOnly) throws IOException {
@@ -814,10 +888,14 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
             creationTime = time;
             hasMigrated = false;
             original = null;
+            rabId = nextRABId++;
             if (TRACE_BUCKET_LEAKS)
                 tracer = new Throwable();
             else
                 tracer = null;
+            
+            // Register cleaner for safety net (will be cleaned up when free() is called properly)
+            this.cleanable = resourceCleaner.register(this, new TempRABCleanup(rabId, size, TempBucketFactory.this));
         }
 
         public TempRandomAccessBuffer(LockableRandomAccessBuffer underlying, long creationTime, boolean migrated, TempBucket tempBucket) throws IOException {
@@ -825,10 +903,14 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
             this.creationTime = creationTime;
             this.hasMigrated = hasFreedRAM = migrated;
             this.original = tempBucket;
+            rabId = nextRABId++;
             if (TRACE_BUCKET_LEAKS)
                 tracer = new Throwable();
             else
                 tracer = null;
+            
+            // Register cleaner for safety net (will be cleaned up when free() is called properly)
+            this.cleanable = resourceCleaner.register(this, new TempRABCleanup(rabId, underlying.size(), TempBucketFactory.this));
         }
 
         @Override
@@ -846,6 +928,14 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                 // Tell the TempBucket to prevent log spam. Don't call free().
                 original.onFreed();
             }
+            
+            // Mark as freed so cleaner won't double-free
+            _markRABFreed(rabId);
+            
+            // Clean up the cleaner since we've properly freed resources
+            if (cleanable != null) {
+                cleanable.clean();
+            }
         }
         
         @Override
@@ -856,8 +946,14 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                 hasFreedRAM = true;
             }
             _hasFreed(size);
+            _markRABFreed(rabId);
             synchronized(ramBucketQueue) {
                 ramBucketQueue.remove(getReference());
+            }
+            
+            // Clean up the cleaner since we've properly freed resources
+            if (cleanable != null) {
+                cleanable.clean();
             }
         }
         
@@ -897,20 +993,6 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
             throw new UnsupportedOperationException();
         }
         
-        @Override
-        protected void finalize() throws Throwable {
-            if(original != null) return; // TempBucket's responsibility if there was one.
-            // If it's been converted to a TempRandomAccessBuffer, finalize() will only be called 
-            // if *neither* object is reachable.
-            if (!hasBeenFreed()) {
-                if (TRACE_BUCKET_LEAKS)
-                    Logger.error(this, "TempRandomAccessBuffer not freed, size=" + size() +" : "+this, tracer);
-                else
-                    Logger.error(this, "TempRandomAccessBuffer not freed, size=" + size() +" : "+this);
-                free();
-            }
-            super.finalize();
-        }
 
 	}
 

@@ -48,7 +48,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeSortedHashtable;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
@@ -324,31 +323,23 @@ public class OpennetManager {
 
 		if(orig.exists()) backup.delete();
 
-		FileOutputStream fos = null;
-		OutputStreamWriter osr = null;
-		BufferedWriter bw = null;
-		try {
-			fos = new FileOutputStream(backup);
-			osr = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-			bw = new BufferedWriter(osr);
+		try (FileOutputStream fos = new FileOutputStream(backup);
+		     OutputStreamWriter osr = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+		     BufferedWriter bw = new BufferedWriter(osr)) {
 			fs.writeTo(bw);
-
-			bw.close();
+			bw.flush(); // Ensure data is written before moving file
 			FileUtil.moveTo(backup, orig);
 		} catch (IOException e) {
-			Closer.close(bw);
-			Closer.close(osr);
-			Closer.close(fos);
+			// Resources are automatically closed by try-with-resources
 		}
 	}
 
 	private void readFile(File filename) throws IOException {
 		// REDFLAG: Any way to share this code with Node and NodePeer?
-		FileInputStream fis = new FileInputStream(filename);
-		InputStreamReader isr = new InputStreamReader(fis, StandardCharsets.UTF_8);
-		BufferedReader br = new BufferedReader(isr);
-		SimpleFieldSet fs = new SimpleFieldSet(br, false, true);
-		br.close();
+		try (FileInputStream fis = new FileInputStream(filename);
+		     InputStreamReader isr = new InputStreamReader(fis, StandardCharsets.UTF_8);
+		     BufferedReader br = new BufferedReader(isr)) {
+			SimpleFieldSet fs = new SimpleFieldSet(br, false, true);
 		// Read contents
 		String[] udp = fs.getAll("physical.udp");
 		if(udp != null) {
@@ -373,6 +364,7 @@ public class OpennetManager {
 		}
 
 		crypto.readCrypto(fs);
+		} // end try-with-resources
 	}
 
 	public void start() {

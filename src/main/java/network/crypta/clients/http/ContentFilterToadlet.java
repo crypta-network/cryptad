@@ -21,7 +21,6 @@ import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 
@@ -320,15 +319,9 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
 
     private FilterStatus applyFilter(Bucket input, Bucket output, String mimeType, FilterOperation operation, NodeClientCore core)
             throws IOException {
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
-        try {
-            inputStream = input.getInputStream();
-            outputStream = output.getOutputStream();
+        try (InputStream inputStream = input.getInputStream();
+             OutputStream outputStream = output.getOutputStream()) {
             return applyFilter(inputStream, outputStream, mimeType, operation, core);
-        } finally {
-            Closer.close(inputStream);
-            Closer.close(outputStream);
         }
     }
 

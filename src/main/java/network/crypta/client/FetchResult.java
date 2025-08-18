@@ -58,7 +58,7 @@ public class FetchResult {
 	/**
 	 * Get the result as a Bucket.
 	 * 
-	 * You have to call Closer.close(bucket) to free() the obtained Bucket to prevent resource leakage!
+	 * You have to call IOUtils.closeQuietly(bucket) to free() the obtained Bucket to prevent resource leakage!
 	 */
 	public Bucket asBucket() {
 		return data;

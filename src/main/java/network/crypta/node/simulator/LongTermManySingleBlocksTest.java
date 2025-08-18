@@ -36,7 +36,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /** 
@@ -182,7 +181,6 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 		int exitCode = 0;
 		Node node = null;
 		Node node2 = null;
-		FileInputStream fis = null;
 		File file = new File("many-single-blocks-test-"+uid + ".csv");
 		long t1, t2;
 		
@@ -201,9 +199,9 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
 			final File innerDir = new File(dir, Integer.toString(DARKNET_PORT1));
 			innerDir.mkdir();
-			fis = new FileInputStream(seednodes);
-			FileUtil.writeTo(fis, new File(innerDir, "seednodes.fref"));
-			fis.close();
+			try (FileInputStream seedInputStream = new FileInputStream(seednodes)) {
+				FileUtil.writeTo(seedInputStream, new File(innerDir, "seednodes.fref"));
+			}
 
 			// Create one node
 			node = NodeStarter.createTestNode(DARKNET_PORT1, OPENNET_PORT1, dir.getPath(), false, Node.DEFAULT_MAX_HTL,
@@ -275,8 +273,14 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 			// PARSE FILE AND FETCH OLD STUFF IF APPROPRIATE
 			
 			FreenetURI[] mhkURIs = new FreenetURI[3];
-			fis = new FileInputStream(file);
-			BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING));
+			
+			// Declare variables that need to survive the try-with-resources block
+			int[] totalFetchesByDelta = new int[MAX_N+1];
+			int[] totalSuccessfulFetchesByDelta = new int[MAX_N+1];
+			long[] totalFetchTimeByDelta = new long[MAX_N+1];
+			
+			try (FileInputStream fis = new FileInputStream(file);
+			     BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING))) {
 			String line = null;
 			GregorianCalendar target = (GregorianCalendar) today.clone();
 			target.set(Calendar.HOUR_OF_DAY, 0);
@@ -289,9 +293,6 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 				targets[i].add(Calendar.DAY_OF_MONTH, -((1<<i)-1));
 				targets[i].getTime();
 			}
-			int[] totalFetchesByDelta = new int[MAX_N+1];
-			int[] totalSuccessfulFetchesByDelta = new int[MAX_N+1];
-			long[] totalFetchTimeByDelta = new long[MAX_N+1];
 			
 loopOverLines:
 			while((line = br.readLine()) != null) {
@@ -406,15 +407,14 @@ loopOverLines:
 				}
 			}
 			
+			} // end try-with-resources for file reading
+			
 			System.out.println();
 			System.out.println();
 			
 			for(int i=0;i<MAX_N+1;i++) {
 				System.out.println("DELTA: "+i+" days: Total fetches: "+totalFetchesByDelta[i]+" total successes "+totalSuccessfulFetchesByDelta[i]+" = "+((totalSuccessfulFetchesByDelta[i]*100.0)/totalFetchesByDelta[i])+"% in "+(totalFetchTimeByDelta[i]*1.0)/totalSuccessfulFetchesByDelta[i]+"ms");
 			}
-			
-			fis.close();
-			fis = null;
 			
 		} catch (Throwable t) {
 			t.printStackTrace();
@@ -430,7 +430,6 @@ loopOverLines:
 					node2.park();
 			} catch (Throwable tt) {
 			}
-			Closer.close(fis);
 			writeToStatusLog(file, csvLine);
 
 			System.out.println("Exiting with status "+exitCode);

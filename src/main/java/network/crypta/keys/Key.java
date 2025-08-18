@@ -181,19 +181,14 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
             COMPRESSOR_TYPE decompressor = COMPRESSOR_TYPE.getCompressorByMetadataID(compressionAlgorithm);
             if (decompressor==null)
             	throw new CHKDecodeException("Unknown compression algorithm: "+compressionAlgorithm);
-            InputStream inputStream = null;
-            OutputStream outputStream = null;
             Bucket inputBucket = new SimpleReadOnlyArrayBucket(input, inputOffset, inputLength-inputOffset);
             Bucket outputBucket = bf.makeBucket(maxLength);
-            outputStream = outputBucket.getOutputStream();
-            inputStream = inputBucket.getInputStream();
-            try {
+            try (InputStream inputStream = inputBucket.getInputStream();
+                 OutputStream outputStream = outputBucket.getOutputStream()) {
             	decompressor.decompress(inputStream, outputStream, maxLength, -1);
-			}  catch (CompressionOutputSizeException e) {
+			} catch (CompressionOutputSizeException e) {
 				throw new TooBigException("Too big");
 			} finally {
-            inputStream.close();
-            outputStream.close();
             inputBucket.free();
 			}
             return outputBucket;

@@ -22,7 +22,6 @@ import network.crypta.crypt.MultiHashInputStream;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.Logger;
 import network.crypta.support.compress.CompressionOutputSizeException;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileUtil;
 
 /**A thread which does postprocessing of decompressed data, in particular,
@@ -111,20 +110,22 @@ public class ClientGetWorkerThread extends Thread {
 	@Override
 	public void run() {
 		if(logMINOR) Logger.minor(this, "Starting worker thread for "+uri+" mime type "+mimeType+" filter data = "+filterData+" charset "+charset);
-		try {
+		try (InputStream managedInput = new BufferedInputStream(input);
+			 OutputStream managedOutput = output) {
+			
 			//Validate the hash of the now decompressed data
-			input = new BufferedInputStream(input);
+			InputStream currentInput = managedInput;
 			MultiHashInputStream hashStream = null;
 			if(hashes != null) {
-				hashStream = new MultiHashInputStream(input, HashResult.makeBitmask(hashes));
-				input = hashStream;
+				hashStream = new MultiHashInputStream(currentInput, HashResult.makeBitmask(hashes));
+				currentInput = hashStream;
 			}
 			//Filter the data, if we are supposed to
 			if(filterData){
 				if(logMINOR) Logger.minor(this, "Running content filter... Prefetch hook: "+prefetchHook+" tagReplacer: "+tagReplacer);
-				if(mimeType == null || uri == null || input == null || output == null) throw new IOException("Insufficient arguements to worker thread");
+				if(mimeType == null || uri == null || currentInput == null || managedOutput == null) throw new IOException("Insufficient arguements to worker thread");
 				// Send XHTML as HTML because we can't use web-pushing on XHTML.
-				FilterStatus filterStatus = ContentFilter.filter(input, output, mimeType, uri,
+				FilterStatus filterStatus = ContentFilter.filter(currentInput, managedOutput, mimeType, uri,
 						schemeHostAndPort, prefetchHook, tagReplacer, charset, linkFilterExceptionProvider);
 
 				String detectedMIMEType = filterStatus.mimeType.concat(filterStatus.charset == null ? "" : "; charset="+filterStatus.charset);
@@ -134,7 +135,7 @@ public class ClientGetWorkerThread extends Thread {
 			}
 			else {
 				if(logMINOR) Logger.minor(this, "Ignoring content filter. The final result has not been written. Writing now.");
-				FileUtil.copy(input, output, -1);
+				FileUtil.copy(currentInput, managedOutput, -1);
 			}
 			// Dump the rest.
 			try {
@@ -143,14 +144,13 @@ public class ClientGetWorkerThread extends Thread {
 				    // Note this is only necessary because we might have an AEADInputStream?
 				    // FIXME get rid - they should check the end anyway?
 				    byte[] buf = new byte[4096];
-				    int r = input.read(buf);
+				    int r = currentInput.read(buf);
 				    if(r < 0) break;
 				}
 			} catch (EOFException e) {
 				// Okay.
 			}
-			input.close();
-			output.close();
+			
 			if(hashes != null) {
 				HashResult[] results = hashStream.getResults();
 				if(!HashResult.strictEquals(results, hashes)) {
@@ -166,9 +166,6 @@ public class ClientGetWorkerThread extends Thread {
 			else if(logMINOR)
 				Logger.minor(this, "Exception caught while processing fetch: "+t,t);
 			setError(t);
-		} finally {
-			Closer.close(input);
-			Closer.close(output);
 		}
 	}
 

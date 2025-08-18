@@ -26,7 +26,6 @@ import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.Closer;
 
 /**
  * Cryptographic and transport level node identity.
@@ -450,15 +449,10 @@ public class NodeCrypto {
 		SimpleFieldSet fs = exportPublicFieldSet(setup, heavySetup, forARK);
 
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		DeflaterOutputStream gis;
-		gis = new DeflaterOutputStream(baos);
-		try {
+		try (DeflaterOutputStream gis = new DeflaterOutputStream(baos)) {
 			fs.writeTo(gis);
                 } catch (IOException e) {
                     Logger.error(this, "IOE :"+e.getMessage(), e);
-		} finally {
-			Closer.close(gis);
-                        Closer.close(baos);
 		}
 
 		byte[] buf = baos.toByteArray();

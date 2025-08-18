@@ -1160,17 +1160,11 @@ public class Node implements TimeSkewDetectorCallback {
 
     if (orig.exists()) backup.delete();
 
-    FileOutputStream fos = null;
-    try {
-      fos = new FileOutputStream(backup);
+    try (FileOutputStream fos = new FileOutputStream(backup)) {
       fs.writeTo(fos);
-      fos.close();
-      fos = null;
       FileUtil.moveTo(backup, orig);
     } catch (IOException ioe) {
       Logger.error(this, "IOE :" + ioe.getMessage(), ioe);
-    } finally {
-      Closer.close(fos);
     }
   }
 
@@ -1569,9 +1563,8 @@ public class Node implements TimeSkewDetectorCallback {
     File bootIDFile = runDir.file("bootID");
     int BOOT_FILE_LENGTH = 64 / 4; // A long in padded hex bytes
     long oldBootID = -1;
-    RandomAccessFile raf = null;
-    try {
-      raf = new RandomAccessFile(bootIDFile, "rw");
+    
+    try (RandomAccessFile raf = new RandomAccessFile(bootIDFile, "rw")) {
       if (raf.length() < BOOT_FILE_LENGTH) {
         oldBootID = -1;
       } else {
@@ -1593,8 +1586,6 @@ public class Node implements TimeSkewDetectorCallback {
     } catch (IOException e) {
       oldBootID = -1;
       // If we have an error in reading, *or in writing*, we don't reliably know the last boot ID.
-    } finally {
-      Closer.close(raf);
     }
     lastBootID = oldBootID;
 

@@ -15,7 +15,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.CountedInputStream;
 import network.crypta.support.io.CountedOutputStream;
 
@@ -39,22 +38,12 @@ public class NewLZMACompressor extends AbstractCompressor {
 	@Override
 	public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
 			throws IOException {
-		Bucket output;
-		InputStream is = null;
-		OutputStream os = null;
-		try {
-			output = bf.makeBucket(maxWriteLength);
-			is = data.getInputStream();
-			os = output.getOutputStream();
+		Bucket output = bf.makeBucket(maxWriteLength);
+		try (InputStream is = data.getInputStream();
+		     OutputStream os = output.getOutputStream()) {
 			if(logMINOR)
 				Logger.minor(this, "Compressing "+data+" size "+data.size()+" to new bucket "+output);
 			compress(is, os, maxReadLength, maxWriteLength);
-			// It is essential that the close()'s throw if there is any problem.
-			is.close(); is = null;
-			os.close(); os = null;
-		} finally {
-			Closer.close(is);
-			Closer.close(os);
 		}
 		return output;
 	}
@@ -118,20 +107,11 @@ public class NewLZMACompressor extends AbstractCompressor {
 			output = bf.makeBucket(maxLength);
 		if(logMINOR)
 			Logger.minor(this, "Decompressing "+data+" size "+data.size()+" to new bucket "+output);
-		CountedInputStream is = null;
-		OutputStream os = null;
-		try {
-			is = new CountedInputStream(data.getInputStream());
-			os = output.getOutputStream();
+		try (CountedInputStream is = new CountedInputStream(data.getInputStream());
+		     OutputStream os = output.getOutputStream()) {
 			decompress(is, os, maxLength, maxCheckSizeLength);
 			if(logMINOR)
 				Logger.minor(this, "Output: "+output+" size "+output.size()+" read "+is.count());
-			// It is essential that the close()'s throw if there is any problem.
-			is.close(); is = null;
-			os.close(); os = null;
-		} finally {
-			Closer.close(os);
-			Closer.close(is);
 		}
 		return output;
 	}

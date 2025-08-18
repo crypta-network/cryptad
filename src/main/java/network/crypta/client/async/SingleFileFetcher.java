@@ -45,7 +45,6 @@ import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.InsufficientDiskSpaceException;
 
 /**
@@ -892,38 +891,34 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 		@Override
 		public void onSuccess(StreamGenerator streamGenerator, ClientMetadata clientMetadata, List<? extends Compressor> decompressors, ClientGetState state, ClientContext context) {
-			OutputStream output = null;
-			PipedInputStream pipeIn = new PipedInputStream();
-			PipedOutputStream pipeOut = new PipedOutputStream();
 			Bucket data = null;
 			// FIXME not strictly correct and unnecessary - archive size already checked against ctx.max*Length inside SingleFileFetcher
 			long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
 			try {
 				data = context.getBucketFactory(persistent).makeBucket(maxLen);
-				output = data.getOutputStream();
-				if(decompressors != null) {
-					if(logMINOR) Logger.minor(this, "decompressing...");
-					pipeOut.connect(pipeIn);
-					DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-					pipeIn = decompressorManager.execute();
-					ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(pipeIn), output, null, null , ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-					worker.start();
-					streamGenerator.writeTo(pipeOut, context);
-					decompressorManager.waitFinished();
-					worker.waitFinished();
-				} else streamGenerator.writeTo(output, context);
-				// We want to see anything thrown when these are closed.
-				output.close(); output = null;
-				pipeOut.close(); pipeOut = null;
-				pipeIn.close(); pipeIn = null;
+				try (PipedInputStream pipeIn = new PipedInputStream();
+				     PipedOutputStream pipeOut = new PipedOutputStream();
+				     OutputStream output = data.getOutputStream()) {
+					
+					if(decompressors != null) {
+						if(logMINOR) Logger.minor(this, "decompressing...");
+						pipeOut.connect(pipeIn);
+						DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
+						try (PipedInputStream newPipeIn = decompressorManager.execute()) {
+							ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null , ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+							worker.start();
+							streamGenerator.writeTo(pipeOut, context);
+							decompressorManager.waitFinished();
+							worker.waitFinished();
+						}
+					} else {
+						streamGenerator.writeTo(output, context);
+					}
+				}
 			} catch (Throwable t) {
 				Logger.error(this, "Caught "+t, t);
 				onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
 				return;
-			} finally {
-				Closer.close(pipeOut);
-				Closer.close(pipeIn);
-				Closer.close(output);
 			}
 			if(key instanceof ClientSSK) {
 				// Fetching the container is essentially a full success, we should update the latest known good.
@@ -938,14 +933,11 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 		private void innerSuccess(Bucket data, ClientContext context) {
 			try {
 				if(hashes != null) {
-					InputStream is = null;
-					try {
-						is = data.getInputStream();
-						MultiHashInputStream hasher = new MultiHashInputStream(is, HashResult.makeBitmask(hashes));
+					try (InputStream is = data.getInputStream();
+					     MultiHashInputStream hasher = new MultiHashInputStream(is, HashResult.makeBitmask(hashes))) {
+						
 						byte[] buf = new byte[32768];
 						while(hasher.read(buf) > 0);
-						hasher.close();
-						is = null;
 						HashResult[] results = hasher.getResults();
 						if(!HashResult.strictEquals(results, hashes)) {
 							onFailure(new FetchException(FetchExceptionMode.CONTENT_HASH_FAILED), SingleFileFetcher.this, context);
@@ -956,8 +948,6 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 					} catch (IOException e) {
 						onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), SingleFileFetcher.this, context);
 						return;
-					} finally {
-						Closer.close(is);
 					}
 				}
 				ah.extractToCache(data, actx, element, callback, context.archiveManager, context);
@@ -1039,9 +1029,6 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 		@Override
 		public void onSuccess(StreamGenerator streamGenerator, ClientMetadata clientMetadata, List<? extends Compressor> decompressors, ClientGetState state, ClientContext context) {
-			OutputStream output = null;
-			PipedInputStream pipeIn = new PipedInputStream();
-			PipedOutputStream pipeOut = new PipedOutputStream();
 			Bucket finalData = null;
 			// does matter only on pre-1255 keys (1255 keys have top block sizes)
 			// FIXME would save at most few tics on decompression
@@ -1050,31 +1037,30 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 			long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
 			try {
 				finalData = context.getBucketFactory(persistent).makeBucket(maxLen);
-				output = finalData.getOutputStream();
-				if(decompressors != null) {
-					if(logMINOR) Logger.minor(this, "decompressing...");
-					pipeIn.connect(pipeOut);
-					DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
-					pipeIn = decompressorManager.execute();
-					ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(pipeIn), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
-					worker.start();
-					streamGenerator.writeTo(pipeOut, context);
-					decompressorManager.waitFinished();
-					worker.waitFinished();
-					// ClientGetWorkerThread will close output.
-				} else {
-				    streamGenerator.writeTo(output, context);
-				    output.close();
+				try (PipedInputStream pipeIn = new PipedInputStream();
+				     PipedOutputStream pipeOut = new PipedOutputStream();
+				     OutputStream output = finalData.getOutputStream()) {
+					
+					if(decompressors != null) {
+						if(logMINOR) Logger.minor(this, "decompressing...");
+						pipeIn.connect(pipeOut);
+						DecompressorThreadManager decompressorManager =  new DecompressorThreadManager(pipeIn, decompressors, maxLen);
+						try (PipedInputStream newPipeIn = decompressorManager.execute()) {
+							ClientGetWorkerThread worker = new ClientGetWorkerThread(new BufferedInputStream(newPipeIn), output, null, null, ctx.getSchemeHostAndPort(), null, false, null, null, null, context.linkFilterExceptionProvider);
+							worker.start();
+							streamGenerator.writeTo(pipeOut, context);
+							decompressorManager.waitFinished();
+							worker.waitFinished();
+							// ClientGetWorkerThread will close output.
+						}
+					} else {
+					    streamGenerator.writeTo(output, context);
+					}
 				}
-
 			} catch (Throwable t) {
 				Logger.error(this, "Caught "+t, t);
 				onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
 				return;
-			} finally {
-				Closer.close(pipeOut);
-				Closer.close(pipeIn);
-				Closer.close(output);
 			}
 
 			try {

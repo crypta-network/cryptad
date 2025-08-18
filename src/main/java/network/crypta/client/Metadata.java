@@ -34,7 +34,6 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.NullOutputStream;
 
@@ -270,13 +269,10 @@ public class Metadata implements Cloneable, Serializable {
 	 * @throws IOException If we could not read the metadata from the bucket.
 	 */
 	public static Metadata construct(Bucket data) throws MetadataParseException, IOException {
-		InputStream is = data.getInputStream();
 		Metadata m;
-		try {
-			DataInputStream dis = new DataInputStream(is);
+		try (InputStream is = data.getInputStream();
+		     DataInputStream dis = new DataInputStream(is)) {
 			m = new Metadata(dis, data.size());
-		} finally {
-			is.close();
 		}
 		return m;
 	}
@@ -1206,18 +1202,13 @@ public class Metadata implements Cloneable, Serializable {
 	}
 	
     public long writtenLength() throws MetadataUnresolvedException {
-        CountedOutputStream cos = new CountedOutputStream(new NullOutputStream());
-        DataOutputStream dos = null;
-        try {
-            dos = new DataOutputStream(cos);
+        try (CountedOutputStream cos = new CountedOutputStream(new NullOutputStream());
+             DataOutputStream dos = new DataOutputStream(cos)) {
             writeTo(dos);
+            return cos.written();
         } catch (IOException e) {
             throw new Error("Could not write to CountedOutputStream: "+e, e);
-        } finally {
-            Closer.close(dos);
-            Closer.close(cos);
         }
-        return cos.written();
     }
 
 	/**
@@ -1665,20 +1656,17 @@ public class Metadata implements Cloneable, Serializable {
 
 	public RandomAccessBucket toBucket(BucketFactory bf) throws MetadataUnresolvedException, IOException {
 	    RandomAccessBucket b = bf.makeBucket(-1);
-	    DataOutputStream dos = null;
 	    boolean success = false;
-	    try {
-	        dos = new DataOutputStream(b.getOutputStream());
+	    try (DataOutputStream dos = new DataOutputStream(b.getOutputStream())) {
 	        writeTo(dos);
-	        dos.close();
-	        dos = null;
-	        b.setReadOnly(); // Must be after dos.close()
+	        dos.flush(); // Ensure data is written before setReadOnly()
 	        success = true;
-	        return b;
-	    } finally {
-	        Closer.close(dos);
+	    } catch (IOException e) {
 	        if(!success) b.free();
+	        throw e;
 	    }
+	    b.setReadOnly(); // Must be after dos.close()
+	    return b;
 	}
 
 	public boolean isResolved() {

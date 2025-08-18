@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 
 import network.crypta.client.async.ClientContext;
@@ -23,6 +24,35 @@ import network.crypta.support.api.Bucket;
 public class MultiReaderBucket implements Serializable {
 	
     private static final long serialVersionUID = 1L;
+    
+    // Cleaner for safety net resource cleanup  
+    private static final Cleaner cleaner = Cleaner.create();
+    
+    // Static nested class for cleaner action to avoid holding reference to the ReaderBucket instance
+    private static class ReaderBucketCleanup implements Runnable {
+        private final MultiReaderBucket parent;
+        
+        ReaderBucketCleanup(MultiReaderBucket parent) {
+            this.parent = parent;
+        }
+        
+        @Override
+        public void run() {
+            // Safety net cleanup - this should rarely be called if free() is used properly
+            synchronized(parent) {
+                if (parent.readers != null && !parent.readers.isEmpty()) {
+                    parent.readers.clear();
+                    parent.readers = null;
+                }
+                if (!parent.closed) {
+                    parent.closed = true;
+                }
+            }
+            if (parent.bucket != null) {
+                parent.bucket.free();
+            }
+        }
+    }
 
     private final Bucket bucket;
 	
@@ -69,6 +99,14 @@ public class MultiReaderBucket implements Serializable {
 		
         private static final long serialVersionUID = 1L;
         private boolean freed;
+        
+        // Cleaner for safety net resource cleanup
+        private final Cleaner.Cleanable cleanable;
+        
+        ReaderBucket() {
+            // Register cleaner for safety net (will be cleaned up when free() is called properly)
+            this.cleanable = cleaner.register(this, new ReaderBucketCleanup(MultiReaderBucket.this));
+        }
 
 		@Override
 		public void free() {
@@ -78,12 +116,29 @@ public class MultiReaderBucket implements Serializable {
 				if(freed) return;
 				freed = true;
 				ListUtils.removeBySwapLast(readers, this);
-				if(!readers.isEmpty()) return;
+				if(!readers.isEmpty()) {
+				    // Clean up the cleaner since we've properly freed this reader
+				    if (cleanable != null) {
+				        cleanable.clean();
+				    }
+				    return;
+				}
 				readers = null;
-				if(closed) return;
+				if(closed) {
+				    // Clean up the cleaner since we've properly freed this reader
+				    if (cleanable != null) {
+				        cleanable.clean();
+				    }
+				    return;
+				}
 				closed = true;
 			}
 			bucket.free();
+			
+			// Clean up the cleaner since we've properly freed this reader
+			if (cleanable != null) {
+				cleanable.clean();
+			}
 		}
 
 		@Override
@@ -179,11 +234,6 @@ public class MultiReaderBucket implements Serializable {
 			return bucket.size();
 		}
 		
-		@Override
-		protected void finalize() throws Throwable {
-			free();
-                        super.finalize();
-		}
 
 		@Override
 		public Bucket createShadow() {

@@ -12,7 +12,6 @@ import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.CountedOutputStream;
 
 public class GzipCompressor extends AbstractCompressor {
@@ -21,20 +20,12 @@ public class GzipCompressor extends AbstractCompressor {
 	public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
 			throws IOException {
 		RandomAccessBucket output = bf.makeBucket(maxWriteLength);
-		InputStream is = null;
-		OutputStream os = null;
-		try {
-			is = data.getInputStream();
-			os = output.getOutputStream();
+		try (InputStream is = data.getInputStream();
+			 OutputStream os = output.getOutputStream()) {
 			// force OS byte to 0 regardless of Java version (java 16 changed to setting 255 which would break hashes)
 			SingleOffsetReplacingOutputStream osByteFixingOs = new SingleOffsetReplacingOutputStream(os, 9, 0);
 			compress(is, osByteFixingOs, maxReadLength, maxWriteLength);
-			// It is essential that the close()'s throw if there is any problem.
-			is.close(); is = null;
-			os.close(); os = null;
-		} finally {
-			Closer.close(is);
-			Closer.close(os);
+			// Resources will be closed automatically by try-with-resources
 		}
 		return output;
 	}
@@ -127,18 +118,16 @@ public class GzipCompressor extends AbstractCompressor {
 	public int decompress(byte[] dbuf, int i, int j, byte[] output) throws CompressionOutputSizeException {
 		// Didn't work with Inflater.
 		// FIXME fix sometimes to use Inflater - format issue?
-		ByteArrayInputStream bais = new ByteArrayInputStream(dbuf, i, j);
-		ByteArrayOutputStream baos = new ByteArrayOutputStream(output.length);
-		int bytes = 0;
-		try {
+		try (ByteArrayInputStream bais = new ByteArrayInputStream(dbuf, i, j);
+			 ByteArrayOutputStream baos = new ByteArrayOutputStream(output.length)) {
 			decompress(bais, baos, output.length, -1);
-			bytes = baos.size();
+			int bytes = baos.size();
+			byte[] buf = baos.toByteArray();
+			System.arraycopy(buf, 0, output, 0, bytes);
+			return bytes;
 		} catch (IOException e) {
 			// Impossible
 			throw new Error("Got IOException: " + e.getMessage(), e);
 		}
-		byte[] buf = baos.toByteArray();
-		System.arraycopy(buf, 0, output, 0, bytes);
-		return bytes;
 	}
 }

@@ -9,7 +9,6 @@ import network.crypta.support.Executor;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
 import network.crypta.support.Logger;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FileUtil.CPUArchitecture;
@@ -86,10 +85,8 @@ public class MainJarDependenciesChecker {
 
     public static String getDependencyVersion(File currentFile) {
         // We can't use parseProperties because there are multiple sections.
-        InputStream is = null;
-        try {
-            is = new FileInputStream(currentFile);
-            ZipInputStream zis = new ZipInputStream(is);
+        try (FileInputStream is = new FileInputStream(currentFile);
+             ZipInputStream zis = new ZipInputStream(is)) {
             ZipEntry ze;
             while (true) {
                 ze = zis.getNextEntry();
@@ -103,22 +100,21 @@ public class MainJarDependenciesChecker {
 
                 if (name.equals("META-INF/MANIFEST.MF")) {
                     final String key = "Implementation-Version";
-                    BufferedInputStream bis = new BufferedInputStream(zis);
-                    Manifest m = new Manifest(bis);
-                    bis.close();
-                    bis = null;
-                    Attributes a = m.getMainAttributes();
-                    if (a != null) {
-                        String ver = a.getValue(key);
-                        if (ver != null) {
-                            return ver;
+                    try (BufferedInputStream bis = new BufferedInputStream(zis)) {
+                        Manifest m = new Manifest(bis);
+                        Attributes a = m.getMainAttributes();
+                        if (a != null) {
+                            String ver = a.getValue(key);
+                            if (ver != null) {
+                                return ver;
+                            }
                         }
-                    }
-                    a = m.getAttributes("common");
-                    if (a != null) {
-                        String ver = a.getValue(key);
-                        if (ver != null) {
-                            return ver;
+                        a = m.getAttributes("common");
+                        if (a != null) {
+                            String ver = a.getValue(key);
+                            if (ver != null) {
+                                return ver;
+                            }
                         }
                     }
                 }
@@ -130,8 +126,6 @@ public class MainJarDependenciesChecker {
             return null;
         } catch (IOException e) {
             return null;
-        } finally {
-            Closer.close(is);
         }
     }
 
@@ -148,14 +142,10 @@ public class MainJarDependenciesChecker {
                 size + ") for " + filename);
             return false;
         }
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(filename);
+        try (FileInputStream fis = new FileInputStream(filename)) {
             MessageDigest md = SHA256.getMessageDigest();
             SHA256.hash(fis, md);
             byte[] hash = md.digest();
-            fis.close();
-            fis = null;
             if (Arrays.equals(hash, expectedHash)) {
                 if (executable && !filename.canExecute()) {
                     filename.setExecutable(true);
@@ -170,8 +160,6 @@ public class MainJarDependenciesChecker {
         } catch (IOException e) {
             System.err.println("Unable to read " + filename + " for updater");
             return false;
-        } finally {
-            Closer.close(fis);
         }
     }
 
@@ -888,24 +876,19 @@ public class MainJarDependenciesChecker {
                                            "a script or not ...");
                         return false; // Weird!
                     }
-                    try {
-                        FileInputStream fis = new FileInputStream(f);
+                    try (FileInputStream fis = new FileInputStream(f);
+                         DataInputStream dis = new DataInputStream(fis)) {
                         byte[] buf = new byte[SCRIPT_HEAD.length];
-                        DataInputStream dis = new DataInputStream(fis);
-                        try {
-                            dis.read(buf);
-                            return !Arrays.equals(buf, SCRIPT_HEAD);
-                        } catch (IOException e) {
-                            Logger.error(this,
-                                         "Unable to read " + f + " to check whether it is a script: " +
-                                         e + " - disk corruption problems???", e);
-                            return false;
-                        } finally {
-                            Closer.close(fis);
-                            Closer.close(dis);
-                        }
+                        dis.read(buf);
+                        return !Arrays.equals(buf, SCRIPT_HEAD);
                     } catch (FileNotFoundException e) {
                         // Impossible.
+                        return false;
+                    } catch (IOException e) {
+                        Logger.error(this,
+                                     "Unable to read " + f + " to check whether it is a script: " +
+                                     e + " - disk corruption problems???", e);
+                        return false;
                     }
                 }
             }
@@ -1895,11 +1878,8 @@ public class MainJarDependenciesChecker {
             File restartFreenet = new File(RESTART_SCRIPT_NAME);
             restartFreenet.delete();
             FileBucket fb = new FileBucket(restartFreenet, false, true, false, false);
-            OutputStream os = null;
-            try {
-                os = new BufferedOutputStream(fb.getOutputStream());
-                OutputStreamWriter osw =
-                    new OutputStreamWriter(os, StandardCharsets.ISO_8859_1); // Right???
+            try (OutputStream os = new BufferedOutputStream(fb.getOutputStream());
+                 OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.ISO_8859_1)) {
                 osw.write("#!/bin/sh\n"); // FIXME exec >/dev/null 2>&1 ???? Believed to be portable.
                 //osw.write("trap true PIPE\n"); - should not be necessary
                 osw.write("while kill -0 " + WrapperManager.getWrapperPID() +
@@ -1907,12 +1887,7 @@ public class MainJarDependenciesChecker {
                 osw.write("./" + runshNoNice + " start > /dev/null 2>&1\n");
                 osw.write("rm " + RESTART_SCRIPT_NAME + "\n");
                 osw.write("rm " + runshNoNice + "\n");
-                osw.close();
-                osw = null;
-                os = null;
                 return restartFreenet;
-            } finally {
-                Closer.close(os);
             }
         }
 
@@ -1926,16 +1901,13 @@ public class MainJarDependenciesChecker {
          * @throws IOException
          */
         private boolean createRunShNoNice(File input, File output) throws IOException {
-            InputStream is = null;
-            OutputStream os = null;
             boolean failed = false;
-            try {
-                is = new FileInputStream(input);
-                BufferedReader br = new BufferedReader(
-                    new InputStreamReader(new BufferedInputStream(is), StandardCharsets.UTF_8));
-                os = new FileOutputStream(output);
-                Writer w = new BufferedWriter(
-                    new OutputStreamWriter(new BufferedOutputStream(os), StandardCharsets.UTF_8));
+            try (InputStream is = new FileInputStream(input);
+                 BufferedReader br = new BufferedReader(
+                     new InputStreamReader(new BufferedInputStream(is), StandardCharsets.UTF_8));
+                 OutputStream os = new FileOutputStream(output);
+                 Writer w = new BufferedWriter(
+                     new OutputStreamWriter(new BufferedOutputStream(os), StandardCharsets.UTF_8))) {
                 boolean writtenPrio = false;
                 String line;
                 while ((line = br.readLine()) != null) {
@@ -1945,11 +1917,7 @@ public class MainJarDependenciesChecker {
                     }
                     w.write(line + "\n");
                 }
-                // We want to see exceptions on close() here.
-                br.close();
-                is = new FileInputStream(input);
-                w.close();
-                os = null;
+                // Resources will be closed automatically by try-with-resources
                 if (!(output.setExecutable(true) || output.canExecute())) {
                     failed = true;
                     return false;
@@ -1959,8 +1927,6 @@ public class MainJarDependenciesChecker {
                 failed = true;
                 return false;
             } finally {
-                Closer.close(is);
-                Closer.close(os);
                 if (failed) {
                     output.delete();
                 }

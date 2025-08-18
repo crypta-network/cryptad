@@ -495,10 +495,9 @@ public class SplitFileFetcherStorage {
         if(persistent) {
             // Write the metadata to a temporary file to get its exact length.
             metadataTemp = tempBucketFactory.makeBucket(-1);
-            OutputStream os = metadataTemp.getOutputStream();
-            OutputStream cos = checksumOutputStream(os);
-            BufferedOutputStream bos = new BufferedOutputStream(cos);
-            try {
+            try (OutputStream os = metadataTemp.getOutputStream();
+                 OutputStream cos = checksumOutputStream(os);
+                 BufferedOutputStream bos = new BufferedOutputStream(cos)) {
                 // Need something bigger than a CRC for this...
                 MultiHashOutputStream mos = new MultiHashOutputStream(bos, HashType.SHA256.bitmask);
                 metadata.writeTo(new DataOutputStream(mos));
@@ -506,7 +505,6 @@ public class SplitFileFetcherStorage {
             } catch (MetadataUnresolvedException e) {
                 throw new FetchException(FetchExceptionMode.INTERNAL_ERROR, "Metadata not resolved starting splitfile fetch?!: "+e, e);
             }
-            bos.close();
             long metadataLength = metadataTemp.size();
             offsetOriginalDetails = offsetOriginalMetadata + metadataLength;
             

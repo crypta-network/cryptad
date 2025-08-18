@@ -25,7 +25,6 @@ import java.util.Properties;
 import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.io.Closer;
 
 /**
  * An implementation of the Yarrow PRNG in Java.
@@ -131,29 +130,22 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 	private void seedFromExternalStuff(boolean canBlock) {
 		byte[] buf = new byte[32];
 		if(File.separatorChar == '/') {
-			DataInputStream dis = null;
-			FileInputStream fis = null;
 			File hwrng = new File("/dev/hwrng");
-			if(hwrng.exists() && hwrng.canRead())
-				try {
-					fis = new FileInputStream(hwrng);
-					dis = new DataInputStream(fis);
+			if(hwrng.exists() && hwrng.canRead()) {
+				try (FileInputStream fis = new FileInputStream(hwrng);
+				     DataInputStream dis = new DataInputStream(fis)) {
 					dis.readFully(buf);
 					consumeBytes(buf);
 					dis.readFully(buf);
 					consumeBytes(buf);
-					dis.close();
 				} catch(Throwable t) {
 					Logger.normal(this, "Can't read /dev/hwrng even though exists and is readable: " + t, t);
-				} finally {
-					Closer.close(dis);
-					Closer.close(fis);
 				}
+			}
 
 			// Read some bits from /dev/urandom
-			try {
-				fis = new FileInputStream("/dev/urandom");
-				dis = new DataInputStream(fis);
+			try (FileInputStream fis = new FileInputStream("/dev/urandom");
+			     DataInputStream dis = new DataInputStream(fis)) {
 				dis.readFully(buf);
 				consumeBytes(buf);
 				dis.readFully(buf);
@@ -162,26 +154,19 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 				Logger.normal(this, "Can't read /dev/urandom: " + t, t);
 				// We can't read it; let's skip /dev/random and seed from SecureRandom.generateSeed()
 				canBlock = true;
-			} finally {
-				Closer.close(dis);
-				Closer.close(fis);
 			}
-			if(canBlock)
+			if(canBlock) {
 				// Read some bits from /dev/random
-				try {
-					fis = new FileInputStream("/dev/random");
-					dis = new DataInputStream(fis);
+				try (FileInputStream fis = new FileInputStream("/dev/random");
+				     DataInputStream dis = new DataInputStream(fis)) {
 					dis.readFully(buf);
 					consumeBytes(buf);
 					dis.readFully(buf);
 					consumeBytes(buf);
 				} catch(Throwable t) {
 					Logger.normal(this, "Can't read /dev/random: " + t, t);
-				} finally {
-					Closer.close(dis);
-					Closer.close(fis);
 				}
-			fis = null;
+			}
 		} else
 			// Force generateSeed(), since we can't read random data from anywhere else.
 			// Anyway, Windows's CAPI won't block.
@@ -236,27 +221,17 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 	 * Seed handling
 	 */
 	private void read_seed(File filename) {
-		FileInputStream fis = null;
-		BufferedInputStream bis = null;
-		DataInputStream dis = null;
-
-		try {
-			fis = new FileInputStream(filename);
-			bis = new BufferedInputStream(fis);
-			dis = new DataInputStream(bis);
-
+		try (FileInputStream fis = new FileInputStream(filename);
+		     BufferedInputStream bis = new BufferedInputStream(fis);
+		     DataInputStream dis = new DataInputStream(bis)) {
+			
 			EntropySource seedFile = new EntropySource();
-				for(int i = 0; i < 32; i++)
-					acceptEntropy(seedFile, dis.readLong(), 64);
-			dis.close();
+			for(int i = 0; i < 32; i++)
+				acceptEntropy(seedFile, dis.readLong(), 64);
 		} catch(EOFException f) {
 			// Okay.
 		} catch(IOException e) {
 			Logger.error(this, "IOE trying to read the seedfile from disk : " + e.getMessage());
-		} finally {
-			Closer.close(dis);
-			Closer.close(bis);
-			Closer.close(fis);
 		}
 		fast_pool_reseed();
 	}
@@ -284,25 +259,16 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 					timeLastWroteSeed = now;
 			}
 
-		FileOutputStream fos = null;
-		BufferedOutputStream bos = null;
-		DataOutputStream dos = null;
-		try {
-			fos = new FileOutputStream(filename);
-			bos = new BufferedOutputStream(fos);
-			dos = new DataOutputStream(bos);
-
+		try (FileOutputStream fos = new FileOutputStream(filename);
+		     BufferedOutputStream bos = new BufferedOutputStream(fos);
+		     DataOutputStream dos = new DataOutputStream(bos)) {
+			
 			for(int i = 0; i < 32; i++)
 				dos.writeLong(nextLong());
 
 			dos.flush();
-			dos.close();
 		} catch(IOException e) {
 			Logger.error(this, "IOE while saving the seed file! : " + e.getMessage());
-		} finally {
-			Closer.close(dos);
-			Closer.close(bos);
-			Closer.close(fos);
 		}
 	}
 	/**

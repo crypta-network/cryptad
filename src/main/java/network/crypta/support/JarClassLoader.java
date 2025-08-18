@@ -92,9 +92,9 @@ public class JarClassLoader extends ClassLoader implements Closeable {
 	 */
 	private void copyFileToTemp(InputStream inputStream, long length) throws IOException {
 		File tempFile = File.createTempFile("jar-", ".tmp");
-		FileOutputStream fileOutputStream = new FileOutputStream(tempFile);
-		FileUtil.copy(inputStream, fileOutputStream, length);
-		fileOutputStream.close();
+		try (FileOutputStream fileOutputStream = new FileOutputStream(tempFile)) {
+			FileUtil.copy(inputStream, fileOutputStream, length);
+		}
 		tempFile.deleteOnExit();
 		tempJarFile = new JarFile(tempFile);
 	}
@@ -114,12 +114,12 @@ public class JarClassLoader extends ClassLoader implements Closeable {
 			JarEntry jarEntry = tempJarFile.getJarEntry(pathName);
 			if (jarEntry != null) {
 				long size = jarEntry.getSize();
-				InputStream jarEntryInputStream = tempJarFile.getInputStream(jarEntry);
-				ByteArrayOutputStream classBytesOutputStream = new ByteArrayOutputStream((int) size);
-				FileUtil.copy(jarEntryInputStream, classBytesOutputStream, size);
-				classBytesOutputStream.close();
-				jarEntryInputStream.close();
-				byte[] classBytes = classBytesOutputStream.toByteArray();
+				byte[] classBytes;
+				try (InputStream jarEntryInputStream = tempJarFile.getInputStream(jarEntry);
+				     ByteArrayOutputStream classBytesOutputStream = new ByteArrayOutputStream((int) size)) {
+					FileUtil.copy(jarEntryInputStream, classBytesOutputStream, size);
+					classBytes = classBytesOutputStream.toByteArray();
+				}
 
 				definePackage(name);
 					

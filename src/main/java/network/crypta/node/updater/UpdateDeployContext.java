@@ -7,7 +7,6 @@ import network.crypta.node.updater.MainJarDependenciesChecker.Dependency;
 import network.crypta.node.updater.MainJarDependenciesChecker.MainJarDependencies;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.Logger;
-import network.crypta.support.io.Closer;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 import java.io.*;
@@ -98,26 +97,15 @@ public class UpdateDeployContext {
             }
         }
 
-        FileInputStream fis = null;
-        BufferedInputStream bis = null;
-        InputStreamReader isr = null;
-        BufferedReader br = null;
-        FileOutputStream fos = null;
-        OutputStreamWriter osw = null;
-        BufferedWriter bw = null;
-
         boolean success = false;
 
-        try {
-
-            fis = new FileInputStream(oldConfig);
-            bis = new BufferedInputStream(fis);
-            isr = new InputStreamReader(bis);
-            br = new BufferedReader(isr);
-
-            fos = new FileOutputStream(newConfig);
-            osw = new OutputStreamWriter(fos);
-            bw = new BufferedWriter(osw);
+        try (FileInputStream fis = new FileInputStream(oldConfig);
+             BufferedInputStream bis = new BufferedInputStream(fis);
+             InputStreamReader isr = new InputStreamReader(bis);
+             BufferedReader br = new BufferedReader(isr);
+             FileOutputStream fos = new FileOutputStream(newConfig);
+             OutputStreamWriter osw = new OutputStreamWriter(fos);
+             BufferedWriter bw = new BufferedWriter(osw)) {
 
             String line;
 
@@ -151,20 +139,11 @@ public class UpdateDeployContext {
 
                 bw.write(line + '\n');
             }
-            br.close();
 
         } catch (IOException e) {
             newConfig.delete();
             System.err.println("Unable to rewrite wrapper.conf with new memory limit.");
             return CHANGED.FAIL;
-        } finally {
-            Closer.close(br);
-            Closer.close(isr);
-            Closer.close(bis);
-            Closer.close(fis);
-            Closer.close(bw);
-            Closer.close(osw);
-            Closer.close(fos);
         }
 
         if (success) {

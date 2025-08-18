@@ -32,7 +32,6 @@ import network.crypta.node.updater.UpdateOverMandatoryManager.UOMDependencyFetch
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.Logger;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.InsufficientDiskSpaceException;
@@ -129,25 +128,22 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
     }
 
     public void cleanupDependencies() {
-        InputStream is = getClass().getResourceAsStream("/" + DEPENDENCIES_FILE);
-        if (is == null) {
-            System.err.println(
-                "Can't find dependencies file. Other nodes will not be able to use Update Over " +
-				"Mandatory through this one.");
-            return;
-        }
-        Properties props = new Properties();
-        try {
+        try (InputStream is = getClass().getResourceAsStream("/" + DEPENDENCIES_FILE)) {
+            if (is == null) {
+                System.err.println(
+                    "Can't find dependencies file. Other nodes will not be able to use Update Over " +
+    				"Mandatory through this one.");
+                return;
+            }
+            Properties props = new Properties();
             props.load(is);
+            dependencies.cleanup(props, this, Version.currentBuildNumber());
         } catch (IOException e) {
             System.err.println(
                 "Can't read dependencies file. Other nodes will not be able to use Update Over " +
 				"Mandatory through this one.");
             return;
-        } finally {
-            Closer.close(is);
         }
-        dependencies.cleanup(props, this, Version.currentBuildNumber());
     }
 
     @Override

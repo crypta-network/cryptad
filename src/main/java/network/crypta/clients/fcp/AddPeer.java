@@ -29,7 +29,6 @@ import network.crypta.node.RequestStarter;
 import network.crypta.support.Logger;
 import network.crypta.support.MediaType;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.Closer;
 
 public class AddPeer extends FCPMessage {
 
@@ -74,35 +73,31 @@ public class AddPeer extends FCPMessage {
 	
 	public static StringBuilder getReferenceFromURL(URL url) throws IOException {
 		StringBuilder ref = new StringBuilder(1024);
-		InputStream is = null;
-		try {
-			URLConnection uc = url.openConnection();
-			is = uc.getInputStream();
-			BufferedReader in = new BufferedReader(new InputStreamReader(is, MediaType.getCharsetRobustOrUTF(uc.getContentType())));
+		
+		URLConnection uc = url.openConnection();
+		try (InputStream is = uc.getInputStream();
+		     BufferedReader in = new BufferedReader(new InputStreamReader(is, MediaType.getCharsetRobustOrUTF(uc.getContentType())))) {
+			
 			String line;
 			while ((line = in.readLine()) != null) {
 				ref.append( line ).append('\n');
 			}
 			return ref;
-		} finally {
-			Closer.close(is);
 		}
 	}
 
 	public static StringBuilder getReferenceFromFreenetURI(FreenetURI url, HighLevelSimpleClient client)
 			throws IOException, FetchException {
 		StringBuilder ref = new StringBuilder(1024); // the 1024 is the initial capacity
-		InputStream is = null;
-		try {
-			is = client.fetch(url, 31000).asBucket().getInputStream(); // limit to 31k, which should suffice even if we add many more ipv6 addresses
-			BufferedReader in = new BufferedReader(new InputStreamReader(is, MediaType.getCharsetRobustOrUTF("text/plain")));
+		
+		try (InputStream is = client.fetch(url, 31000).asBucket().getInputStream(); // limit to 31k, which should suffice even if we add many more ipv6 addresses
+		     BufferedReader in = new BufferedReader(new InputStreamReader(is, MediaType.getCharsetRobustOrUTF("text/plain")))) {
+			
 			String line;
 			while ((line = in.readLine()) != null) {
 				ref.append( line ).append('\n');
 			}
 			return ref;
-		} finally {
-			Closer.close(is);
 		}
 	}
 
@@ -114,7 +109,6 @@ public class AddPeer extends FCPMessage {
 		String urlString = fs.get("URL");
 		String fileString = fs.get("File");
 		StringBuilder ref = null;
-		BufferedReader in;
 		if(urlString != null) {
 			try {
 				try {
@@ -148,15 +142,13 @@ public class AddPeer extends FCPMessage {
 			if(!f.isFile()) {
 				throw new MessageInvalidException(ProtocolErrorMessage.NOT_A_FILE_ERROR, "The given ref file path <"+fileString+"> is not a file", identifier, false);
 			}
-			try {
-				in = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
+			try (BufferedReader in = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
 				ref = new StringBuilder(1024);
 				String line;
 				while((line = in.readLine()) != null) {
 					line = line.trim();
 					ref.append( line ).append('\n');
 				}
-				in.close();
 			} catch (FileNotFoundException e) {
 				throw new MessageInvalidException(ProtocolErrorMessage.FILE_NOT_FOUND, "File not found when retrieving ref file <"+fileString+">: "+e.getMessage(), identifier, false);
 			} catch (IOException e) {

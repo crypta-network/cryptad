@@ -38,7 +38,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
-import network.crypta.support.io.Closer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NullOutputStream;
@@ -322,49 +321,41 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 	protected abstract void maybeParseManifest(FetchResult result, int build);
 
 	protected void parseManifest(FetchResult result) {
-		InputStream is = null;
-		try {
-			is = result.asBucket().getInputStream();
-			ZipInputStream zis = new ZipInputStream(is);
-			try {
-				ZipEntry ze;
-				while(true) {
-					ze = zis.getNextEntry();
-					if(ze == null) break;
-					if(ze.isDirectory()) continue;
-					String name = ze.getName();
-					
-					if(name.equals("META-INF/MANIFEST.MF")) {
-						if(logMINOR) Logger.minor(this, "Found manifest");
-						long size = ze.getSize();
-						if(logMINOR) Logger.minor(this, "Manifest size: "+size);
-						if(size > MAX_MANIFEST_SIZE) {
-							Logger.error(this, "Manifest is too big: "+size+" bytes, limit is "+MAX_MANIFEST_SIZE);
-							break;
-						}
-						byte[] buf = new byte[(int) size];
-						DataInputStream dis = new DataInputStream(zis);
-						dis.readFully(buf);
-						ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-						InputStreamReader isr = new InputStreamReader(bais, StandardCharsets.UTF_8);
-						BufferedReader br = new BufferedReader(isr);
-						String line;
-						while((line = br.readLine()) != null) {
-							parseManifestLine(line);
-						}
-					} else {
-						zis.closeEntry();
+		try (InputStream is = result.asBucket().getInputStream();
+		     ZipInputStream zis = new ZipInputStream(is)) {
+			ZipEntry ze;
+			while(true) {
+				ze = zis.getNextEntry();
+				if(ze == null) break;
+				if(ze.isDirectory()) continue;
+				String name = ze.getName();
+				
+				if(name.equals("META-INF/MANIFEST.MF")) {
+					if(logMINOR) Logger.minor(this, "Found manifest");
+					long size = ze.getSize();
+					if(logMINOR) Logger.minor(this, "Manifest size: "+size);
+					if(size > MAX_MANIFEST_SIZE) {
+						Logger.error(this, "Manifest is too big: "+size+" bytes, limit is "+MAX_MANIFEST_SIZE);
+						break;
 					}
+					byte[] buf = new byte[(int) size];
+					DataInputStream dis = new DataInputStream(zis);
+					dis.readFully(buf);
+					ByteArrayInputStream bais = new ByteArrayInputStream(buf);
+					InputStreamReader isr = new InputStreamReader(bais, StandardCharsets.UTF_8);
+					BufferedReader br = new BufferedReader(isr);
+					String line;
+					while((line = br.readLine()) != null) {
+						parseManifestLine(line);
+					}
+				} else {
+					zis.closeEntry();
 				}
-			} finally {
-				Closer.close(zis);
 			}
 		} catch (IOException e) {
 			Logger.error(this, "IOException trying to read manifest on update");
 		} catch (Throwable t) {
 			Logger.error(this, "Failed to parse update manifest: "+t, t);
-		} finally {
-			Closer.close(is);
 		}
 	}
 	
@@ -381,8 +372,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 	 * @throws IOException If there is a temporary files error or the jar is corrupted. */
 	static Properties parseProperties(InputStream is, String filename) throws IOException {
 		Properties props = new Properties();
-		ZipInputStream zis = new ZipInputStream(is);
-		try {
+		try (ZipInputStream zis = new ZipInputStream(is)) {
 			ZipEntry ze;
 			while(true) {
 				ze = zis.getNextEntry();
@@ -412,23 +402,17 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 					zis.closeEntry();
 				}
 			}
-		} finally {
-			Closer.close(zis);
 		}
 		return props;
 	}
 
 	protected void parseDependencies(FetchResult result, int build) {
-		InputStream is = null;
-		try {
-			is = result.asBucket().getInputStream();
+		try (InputStream is = result.asBucket().getInputStream()) {
 			parseDependencies(parseProperties(is, DEPENDENCIES_FILE), build);
 		} catch (IOException e) {
 			Logger.error(this, "IOException trying to read manifest on update");
 		} catch (Throwable t) {
 			Logger.error(this, "Failed to parse update manifest: "+t, t);
-		} finally {
-			Closer.close(is);
 		}
 	}
 

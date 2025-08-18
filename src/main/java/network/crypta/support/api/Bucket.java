@@ -16,7 +16,7 @@ import network.crypta.support.io.ResumeFailedException;
  * 
  * @author oskar
  */
-public interface Bucket {
+public interface Bucket extends AutoCloseable {
 
     /**
      * Returns an OutputStream that is used to put data in this Bucket, from the 
@@ -38,7 +38,7 @@ public interface Bucket {
      * Returns an InputStream that reads data from this Bucket. If there is
      * no data in this bucket, null is returned.
      * 
-     * You have to call Closer.close(inputStream) on the obtained stream to prevent resource leakage.
+     * You have to call IOUtils.closeQuietly(inputStream) on the obtained stream to prevent resource leakage.
      */
     InputStream getInputStream() throws IOException;
 
@@ -71,6 +71,15 @@ public interface Bucket {
      * allocated space (e.g. created a temporary file).
      */
     void free();
+    
+    /**
+     * AutoCloseable implementation that delegates to free().
+     * This allows Bucket to be used with try-with-resources.
+     */
+    @Override
+    default void close() {
+        free();
+    }
 	
 	/**
 	 * Create a shallow read-only copy of this bucket, using different 

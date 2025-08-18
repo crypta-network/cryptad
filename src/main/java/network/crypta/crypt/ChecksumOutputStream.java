@@ -58,11 +58,12 @@ public class ChecksumOutputStream extends FilterOutputStream {
     public void close() throws IOException {
         if(writeChecksum) {
             synchronized(this) {
-                if(closed) throw new IOException("Already closed");
+                if(closed) return; // Already closed, don't throw exception
                 closed = true;
             }
             out.write(Fields.intToBytes((int)crc.getValue()));
         }
+        super.close(); // Always close the underlying stream
     }
     
     public long getValue() {
