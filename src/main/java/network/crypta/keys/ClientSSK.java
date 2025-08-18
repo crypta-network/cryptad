@@ -34,10 +34,10 @@ public class ClientSSK extends ClientKey {
 	/** Encrypted hashed docname */
 	public final byte[] ehDocname;
 	private final int hashCode;
-	
+
 	public static final int CRYPTO_KEY_LENGTH = 32;
 	public static final int EXTRA_LENGTH = 5;
-	
+
 	private ClientSSK(ClientSSK key) {
 		this.cryptoAlgorithm = key.cryptoAlgorithm;
 		this.docName = key.docName;
@@ -50,7 +50,7 @@ public class ClientSSK extends ClientKey {
 		ehDocname = key.ehDocname.clone();
 		hashCode = Fields.hashCode(pubKeyHash) ^ Fields.hashCode(cryptoKey) ^ Fields.hashCode(ehDocname) ^ docName.hashCode();
 	}
-	
+
 	public ClientSSK(String docName, byte[] pubKeyHash, byte[] extras, DSAPublicKey pubKey, byte[] cryptoKey) throws MalformedURLException {
 		this.docName = docName;
 		this.pubKey = pubKey;
@@ -93,13 +93,13 @@ public class ClientSSK extends ClientKey {
 			throw new NullPointerException();
 		hashCode = Fields.hashCode(pubKeyHash) ^ Fields.hashCode(cryptoKey) ^ Fields.hashCode(ehDocname) ^ docName.hashCode();
 	}
-	
+
 	public ClientSSK(FreenetURI origURI) throws MalformedURLException {
 		this(origURI.getDocName(), origURI.getRoutingKey(), origURI.getExtra(), null, origURI.getCryptoKey());
 		if(!origURI.getKeyType().equalsIgnoreCase("SSK"))
 			throw new MalformedURLException();
 	}
-	
+
 	protected ClientSSK() {
 	    // For serialization.
 	    this.cryptoAlgorithm = 0;
@@ -109,7 +109,7 @@ public class ClientSSK extends ClientKey {
 	    this.ehDocname = null;
 	    this.hashCode = 0;
 	}
-	
+
 	public synchronized void setPublicKey(DSAPublicKey pubKey) {
 		if((this.pubKey != null) && (this.pubKey != pubKey) && !this.pubKey.equals(pubKey))
 			throw new IllegalArgumentException("Cannot reassign: was "+this.pubKey+" now "+pubKey);
@@ -122,7 +122,7 @@ public class ClientSSK extends ClientKey {
 		this.pubKey = pubKey;
 		this.cachedNodeKey = null;
 	}
-	
+
 	@Override
 	public FreenetURI getURI() {
 		return new FreenetURI("SSK", docName, pubKeyHash, cryptoKey, getExtraBytes());
@@ -131,7 +131,7 @@ public class ClientSSK extends ClientKey {
 	protected final byte[] getExtraBytes() {
 		return getExtraBytes(cryptoAlgorithm);
 	}
-	
+
 	protected static byte[] getExtraBytes(byte cryptoAlgorithm) {
 		// 5 bytes.
 		byte[] extra = new byte[5];
@@ -144,16 +144,8 @@ public class ClientSSK extends ClientKey {
 		return extra;
 	}
 
-	/**
-	 * @return the provided argument
-	 * @deprecated mutable data cannot safely be interned
-	 */
-	public static byte[] internExtra(byte[] buf) {
-		return buf;
-	}
-
 	private transient Key cachedNodeKey;
-	
+
 	@Override
 	public Key getNodeKey(boolean cloneKey) {
 		try {
@@ -192,7 +184,7 @@ public class ClientSSK extends ClientKey {
 	public int hashCode() {
 		return hashCode;
 	}
-	
+
 	@Override
 	public boolean equals(Object o) {
 		if(!(o instanceof ClientSSK key)) return false;
