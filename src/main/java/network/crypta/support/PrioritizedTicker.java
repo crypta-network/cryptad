@@ -55,7 +55,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
 		this.executor = executor;
 		timedJobsByTime = new TreeMap<Long, Object>();
 		timedJobsQueued = new HashMap<Job, Long>();
-		myThread = new NativeThread(this, "Ticker thread for " + portNumber, NativeThread.MAX_PRIORITY, false);
+		myThread = new NativeThread(this, "Ticker thread for " + portNumber, NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
 		myThread.setDaemon(true);
 	}
 	

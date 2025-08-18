@@ -386,13 +386,13 @@ public abstract class ClientRequest implements Serializable {
 				return true;
 			}
 			
-		}, NativeThread.HIGH_PRIORITY);
+		}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 		} else {
 			server.getCore().getExecutor().execute(new PrioRunnable() {
 
 				@Override
 				public int getPriority() {
-					return NativeThread.NORM_PRIORITY;
+					return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 				}
 
 				@Override

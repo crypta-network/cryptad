@@ -335,7 +335,7 @@ public class RequestHandler implements PrioRunnable, HighHtlAware, ByteCounter, 
 
 				@Override
 				public int getPriority() {
-					return NativeThread.HIGH_PRIORITY;
+					return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 				}
 				
 			});
@@ -998,7 +998,7 @@ public class RequestHandler implements PrioRunnable, HighHtlAware, ByteCounter, 
 
 	@Override
 	public int getPriority() {
-		return NativeThread.HIGH_PRIORITY;
+		return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 	}
 
 	@Override

@@ -436,7 +436,7 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
     private static final int[] TEST_LIST = new int[]{0, 1, 32, 64, 32768, 1024 * 1024, 1024 * 1024 + 1};
     private static final int[] TEST_LIST_NOT_MIGRATED = new int[]{1, 32, 64, 1024, 2048, 4095};
     private final Random weakPRNG = new Random(12340);
-    private final Executor exec = new SerialExecutor(NativeThread.NORM_PRIORITY);
+    private final Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
     private final File f = new File("temp-bucket-raf-test");
     private FilenameGenerator fg;
     private TempBucketFactory factory;

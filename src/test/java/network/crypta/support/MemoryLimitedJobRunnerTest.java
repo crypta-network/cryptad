@@ -28,7 +28,7 @@ public class MemoryLimitedJobRunnerTest {
 
         @Override
         public int getPriority() {
-            return NativeThread.NORM_PRIORITY;
+            return NativeThread.PriorityLevel.NORM_PRIORITY.value;
         }
 
         @Override
@@ -212,7 +212,7 @@ public class MemoryLimitedJobRunnerTest {
 
         @Override
         public int getPriority() {
-            return NativeThread.NORM_PRIORITY;
+            return NativeThread.PriorityLevel.NORM_PRIORITY.value;
         }
 
         @Override

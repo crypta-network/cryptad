@@ -29,7 +29,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     private final List<QueuedJob> queuedJobs;
     private ClientContext context;
     private long lastCheckpointed;
-    static final int WRITE_AT_PRIORITY = NativeThread.HIGH_PRIORITY-1;
+    static final int WRITE_AT_PRIORITY = NativeThread.PriorityLevel.HIGH_PRIORITY.value-1;
     final long checkpointInterval;
     /** Not to be used by child classes. */
     private final Object sync = new Object();
@@ -100,7 +100,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     @Override
     public void queueInternal(PersistentJob job) {
         try {
-            queueInternal(job, NativeThread.NORM_PRIORITY);
+            queueInternal(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
         } catch (PersistenceDisabledException e) {
             // Maybe this could happen ... panic button maybe?
             Logger.error(this, "Dropping internal job because persistence has been turned off!: "+e, e);
@@ -110,7 +110,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     @Override
     public void queueNormalOrDrop(PersistentJob job) {
         try {
-            queue(job, NativeThread.NORM_PRIORITY);
+            queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
         } catch (PersistenceDisabledException e) {
         }
     }

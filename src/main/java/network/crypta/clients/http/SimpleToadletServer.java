@@ -1087,7 +1087,7 @@ public final class SimpleToadletServer implements ToadletContainer, Runnable, Li
 
 		@Override
 		public int getPriority() {
-			return NativeThread.HIGH_PRIORITY-1;
+			return NativeThread.PriorityLevel.HIGH_PRIORITY.value-1;
 		}
 
 	}

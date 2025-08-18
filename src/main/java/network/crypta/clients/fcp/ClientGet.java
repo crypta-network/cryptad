@@ -656,7 +656,7 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 	                    return false;
 	                }
 	                
-	            }, NativeThread.HIGH_PRIORITY);
+	            }, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 	        } catch (PersistenceDisabledException e) {
 	            // Not much we can do
 	        }

@@ -183,7 +183,7 @@ public class NativeThread extends Thread {
 			new NullPointerException().printStackTrace();
 			return false;
 		}
-		final int linuxPriority = NATIVE_PRIORITY_BASE + NATIVE_PRIORITY_RANGE - (NATIVE_PRIORITY_RANGE * (prio - MIN_PRIORITY)) / JAVA_PRIORITY_RANGE;
+		final int linuxPriority = NATIVE_PRIORITY_BASE + NATIVE_PRIORITY_RANGE - (NATIVE_PRIORITY_RANGE * (prio - PriorityLevel.MIN_PRIORITY.value)) / JAVA_PRIORITY_RANGE;
 		if(linuxPriority == realPrio) return true; // Ok
 		// That's an obvious coding mistake
 		if(prio < currentPriority)

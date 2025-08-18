@@ -86,7 +86,7 @@ public abstract class SendableGet extends BaseSendableGet {
 	@Override
 	public void internalError(final Throwable t, final RequestScheduler sched, ClientContext context, boolean persistent) {
 		Logger.error(this, "Internal error on "+this+" : "+t, t);
-		sched.callFailure(this, new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR, t.getMessage(), t), NativeThread.MAX_PRIORITY, persistent);
+		sched.callFailure(this, new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR, t.getMessage(), t), NativeThread.PriorityLevel.MAX_PRIORITY.value, persistent);
 	}
 
 	@Override

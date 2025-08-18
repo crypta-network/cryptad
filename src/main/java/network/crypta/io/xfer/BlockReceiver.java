@@ -364,7 +364,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
 						@Override
 						public int getPriority() {
-							return NativeThread.NORM_PRIORITY;
+							return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 						}
 						
 					}, _ctr);
@@ -391,7 +391,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
 		@Override
 		public int getPriority() {
-			return NativeThread.NORM_PRIORITY;
+			return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 		}
 		
 	};

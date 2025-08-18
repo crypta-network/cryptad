@@ -1275,7 +1275,7 @@ public class OpennetManager {
 
 				@Override
 				public int getPriority() {
-					return NativeThread.NORM_PRIORITY;
+					return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 				}
 
 				private void complete(byte[] buf) {

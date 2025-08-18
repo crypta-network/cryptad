@@ -29,7 +29,7 @@ public class PersistentJobRunnerImplTest {
     public void testWaitForCheckpoint() throws PersistenceDisabledException {
         jobRunner.onLoading();
         WakeableJob w = new WakeableJob();
-        jobRunner.queue(w, NativeThread.NORM_PRIORITY);
+        jobRunner.queue(w, NativeThread.PriorityLevel.NORM_PRIORITY.value);
         w.waitForStarted();
         WaitAndCheckpoint checkpointer = new WaitAndCheckpoint(jobRunner);
         new Thread(checkpointer).start();
@@ -50,7 +50,7 @@ public class PersistentJobRunnerImplTest {
         assertFalse(jobRunner.mustCheckpoint());
 
         // Run a job which will request a checkpoint.
-        jobRunner.queue(context -> true, NativeThread.NORM_PRIORITY);
+        jobRunner.queue(context -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
 
         // Wait for the job to complete.
         exec.waitForIdle();

@@ -232,7 +232,7 @@ public class FCPConnectionHandler implements Closeable {
 		                return false;
 		            }
 		            
-		        }, NativeThread.NORM_PRIORITY);
+		        }, NativeThread.PriorityLevel.NORM_PRIORITY.value);
 		    } catch (PersistenceDisabledException e) {
 		        // Ignore
 		    }
@@ -371,7 +371,7 @@ public class FCPConnectionHandler implements Closeable {
 					                return true;
 					            }
 					            
-					        }, NativeThread.HIGH_PRIORITY-1);
+					        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 					    } catch (PersistenceDisabledException e) {
 					        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 					        return;
@@ -473,7 +473,7 @@ public class FCPConnectionHandler implements Closeable {
 				                return true;
 				            }
 				        
-				        }, NativeThread.HIGH_PRIORITY-1);
+				        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 				    } catch (PersistenceDisabledException e) {
 				        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 				    }
@@ -582,7 +582,7 @@ public class FCPConnectionHandler implements Closeable {
 			                return true;
 			            }
 			            
-			        }, NativeThread.HIGH_PRIORITY-1);
+			        }, NativeThread.PriorityLevel.HIGH_PRIORITY.value-1);
 			    } catch (PersistenceDisabledException e) {
 			        outputHandler.queue(new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence is disabled", id, global));
 			    }

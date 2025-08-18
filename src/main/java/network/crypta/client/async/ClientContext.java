@@ -195,7 +195,7 @@ public class ClientContext {
 					return true;
 				}
 				
-			}, NativeThread.NORM_PRIORITY);
+			}, NativeThread.PriorityLevel.NORM_PRIORITY.value);
 		} else {
 			inserter.start(false, this);
 		}
@@ -222,7 +222,7 @@ public class ClientContext {
 					return true;
 				}
 				
-			}, NativeThread.NORM_PRIORITY);
+			}, NativeThread.PriorityLevel.NORM_PRIORITY.value);
 		} else {
 			getter.start(this);
 		}
@@ -249,7 +249,7 @@ public class ClientContext {
 					return true;
 				}
 				
-			}, NativeThread.NORM_PRIORITY);
+			}, NativeThread.PriorityLevel.NORM_PRIORITY.value);
 		} else {
 			inserter.start(this);
 		}

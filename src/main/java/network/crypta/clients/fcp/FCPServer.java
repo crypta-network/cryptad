@@ -674,7 +674,7 @@ public class FCPServer implements Runnable, DownloadCache {
 					return true;
 				}
 
-			}, NativeThread.HIGH_PRIORITY);
+			}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 			while (done.getCount() > 0) {
 				try {
 					done.await();
@@ -715,7 +715,7 @@ public class FCPServer implements Runnable, DownloadCache {
 				return true;
 			}
 
-		}, NativeThread.HIGH_PRIORITY);
+		}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 		while (done.getCount() > 0) {
 			try {
 				done.await();
@@ -773,7 +773,7 @@ public class FCPServer implements Runnable, DownloadCache {
 				}
 			}
 
-		}, NativeThread.HIGH_PRIORITY);
+		}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
 		synchronized(ow) {
 			while(true) {
@@ -828,7 +828,7 @@ public class FCPServer implements Runnable, DownloadCache {
 					return true;
 				}
 
-			}, NativeThread.HIGH_PRIORITY);
+			}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
 			synchronized(ow) {
 				while(true) {
@@ -1011,7 +1011,7 @@ public class FCPServer implements Runnable, DownloadCache {
 					return true;
 				}
 
-			}, NativeThread.HIGH_PRIORITY);
+			}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
 			synchronized(ow) {
 				while(true) {
@@ -1072,7 +1072,7 @@ public class FCPServer implements Runnable, DownloadCache {
 					return true;
 				}
 
-			}, NativeThread.HIGH_PRIORITY);
+			}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
 			synchronized(ow) {
 				while(true) {
@@ -1130,7 +1130,7 @@ public class FCPServer implements Runnable, DownloadCache {
 				return false;
 			}
 
-		}, NativeThread.HIGH_PRIORITY);
+		}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 
 		synchronized(ow) {
 			while(true) {

@@ -273,7 +273,7 @@ public final class CHKInsertSender extends BaseSender implements PrioRunnable, A
 
 		@Override
 		public int getPriority() {
-			return NativeThread.HIGH_PRIORITY;
+			return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 		}
 		
 		@Override
@@ -727,7 +727,7 @@ public final class CHKInsertSender extends BaseSender implements PrioRunnable, A
 
 				@Override
 				public int getPriority() {
-					return NativeThread.NORM_PRIORITY;
+					return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 				}
 				
 			}, this);
@@ -1079,7 +1079,7 @@ public final class CHKInsertSender extends BaseSender implements PrioRunnable, A
 
 	@Override
 	public int getPriority() {
-		return NativeThread.HIGH_PRIORITY;
+		return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 	}
 
 	public PeerNode[] getRoutedTo() {

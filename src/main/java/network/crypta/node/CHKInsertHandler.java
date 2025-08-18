@@ -431,7 +431,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
                 @Override
                 public int getPriority() {
-                  return NativeThread.NORM_PRIORITY;
+                  return NativeThread.PriorityLevel.NORM_PRIORITY.value;
                 }
               },
               this);
@@ -746,7 +746,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
     @Override
     public int getPriority() {
-      return NativeThread.HIGH_PRIORITY;
+      return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
     }
   }
 
@@ -790,7 +790,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   @Override
   public int getPriority() {
-    return NativeThread.HIGH_PRIORITY;
+    return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
   }
 
   private final BlockReceiverTimeoutHandler myTimeoutHandler =

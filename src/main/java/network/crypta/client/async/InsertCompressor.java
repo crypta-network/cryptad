@@ -122,7 +122,7 @@ public class InsertCompressor implements CompressJob {
 								return false;
 							}
 
-						}, NativeThread.NORM_PRIORITY+1);
+						}, NativeThread.PriorityLevel.NORM_PRIORITY.value+1);
 					} else {
 						try {
 							inserter.onStartCompression(comp, context);
@@ -218,14 +218,14 @@ public class InsertCompressor implements CompressJob {
 						return true;
 					}
 
-				}, NativeThread.NORM_PRIORITY+1);
+				}, NativeThread.PriorityLevel.NORM_PRIORITY.value+1);
 			} else {
 				// We do it off thread so that RealCompressor can release the semaphore
 				context.getMainExecutor().execute(new PrioRunnable() {
 
 					@Override
 					public int getPriority() {
-						return NativeThread.NORM_PRIORITY;
+						return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 					}
 
 					@Override
@@ -261,7 +261,7 @@ public class InsertCompressor implements CompressJob {
 						return true;
 					}
 
-				}, NativeThread.NORM_PRIORITY+1);
+				}, NativeThread.PriorityLevel.NORM_PRIORITY.value+1);
 			} catch (PersistenceDisabledException e1) {
 				Logger.error(this, "Database disabled compressing data", new Exception("error"));
 				if(bestCompressedData != null && bestCompressedData != origData)
@@ -303,7 +303,7 @@ public class InsertCompressor implements CompressJob {
 						return true;
 					}
 
-				}, NativeThread.NORM_PRIORITY+1);
+				}, NativeThread.PriorityLevel.NORM_PRIORITY.value+1);
 			} catch (PersistenceDisabledException e1) {
 				// Can't do anything
 			}

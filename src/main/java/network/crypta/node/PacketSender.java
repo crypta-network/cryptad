@@ -64,7 +64,7 @@ public class PacketSender implements Runnable {
 
 	PacketSender(Node node) {
 		this.node = node;
-		myThread = new NativeThread(this, "PacketSender thread for " + node.getDarknetPortNumber(), NativeThread.MAX_PRIORITY, false);
+		myThread = new NativeThread(this, "PacketSender thread for " + node.getDarknetPortNumber(), NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
 		myThread.setDaemon(true);
 		localRandom = node.createRandom();
 	}

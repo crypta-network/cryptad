@@ -450,7 +450,7 @@ public class UdpSocketHandler implements PrioRunnable, PacketSocketHandler, Port
 
 	@Override
 	public int getPriority() {
-		return NativeThread.MAX_PRIORITY;
+		return NativeThread.PriorityLevel.MAX_PRIORITY.value;
 	}
 
 	public long getStartTime() {

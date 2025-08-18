@@ -380,7 +380,7 @@ outer:	while(true) {
 
 			@Override
 			public int getPriority() {
-				return NativeThread.HIGH_PRIORITY;
+				return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 			}
 			
 		});

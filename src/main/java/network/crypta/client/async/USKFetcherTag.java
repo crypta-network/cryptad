@@ -146,7 +146,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 						return false;
 					}
 					
-				}, NativeThread.HIGH_PRIORITY);
+				}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 			} catch (PersistenceDisabledException e) {
 				// Impossible.
 			}
@@ -179,7 +179,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 						return true;
 					}
 					
-				}, NativeThread.HIGH_PRIORITY);
+				}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 			} catch (PersistenceDisabledException e) {
 				// Impossible.
 			}
@@ -226,7 +226,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 						return false;
 					}
 					
-				}, NativeThread.HIGH_PRIORITY);
+				}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 			} catch (PersistenceDisabledException e) {
 				// Impossible.
 			}

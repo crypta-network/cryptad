@@ -65,7 +65,7 @@ public class RemovePersistentRequest extends FCPMessage {
                         }
                     }
                     
-                }, NativeThread.HIGH_PRIORITY);
+                }, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
             } catch (PersistenceDisabledException e) {
                 FCPMessage err = new ProtocolErrorMessage(ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence disabled and non-persistent request not found", identifier, global);
                 handler.send(err);

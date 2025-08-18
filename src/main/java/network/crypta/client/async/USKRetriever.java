@@ -153,7 +153,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 
 			@Override
 			public int getPriority() {
-				return NativeThread.NORM_PRIORITY;
+				return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 			}
 
 		});

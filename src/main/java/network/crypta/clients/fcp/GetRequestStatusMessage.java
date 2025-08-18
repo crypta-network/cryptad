@@ -56,7 +56,7 @@ public class GetRequestStatusMessage extends FCPMessage {
                         return false;
                     }
                     
-                }, NativeThread.NORM_PRIORITY);
+                }, NativeThread.PriorityLevel.NORM_PRIORITY.value);
             } catch (PersistenceDisabledException e) {
                 ProtocolErrorMessage msg = new ProtocolErrorMessage(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);
                 handler.send(msg);

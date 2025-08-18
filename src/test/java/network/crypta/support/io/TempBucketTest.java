@@ -162,7 +162,7 @@ public class TempBucketTest {
             os.close();
         }
         private final Random weakPRNG = new Random(12340);
-        private final Executor exec = new SerialExecutor(NativeThread.NORM_PRIORITY);
+        private final Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
         private final FilenameGenerator fg;
 
     }
@@ -219,7 +219,7 @@ public class TempBucketTest {
         }
         private final RandomSource strongPRNG = new DummyRandomSource(12345);
         private final Random weakPRNG = new DummyRandomSource(54321);
-        private final Executor exec = new SerialExecutor(NativeThread.NORM_PRIORITY);
+        private final Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
         private final FilenameGenerator fg;
         private final TempBucketFactory tbf;
     }

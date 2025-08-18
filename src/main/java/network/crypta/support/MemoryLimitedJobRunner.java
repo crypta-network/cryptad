@@ -12,7 +12,7 @@ import network.crypta.support.io.NativeThread;
  */
 public class MemoryLimitedJobRunner {
     
-    public static final int THREAD_PRIORITY = NativeThread.LOW_PRIORITY;
+    public static final int THREAD_PRIORITY = NativeThread.PriorityLevel.LOW_PRIORITY.value;
     public long capacity;
     /** The amount of some limited resource that is in use */
     private long counter;

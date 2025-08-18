@@ -371,7 +371,7 @@ public class SSKInsertSender extends BaseSender implements PrioRunnable, AnyInse
 
 				@Override
 				public int getPriority() {
-					return NativeThread.NORM_PRIORITY;
+					return NativeThread.PriorityLevel.NORM_PRIORITY.value;
 				}
 				
 			}, this);
@@ -660,7 +660,7 @@ public class SSKInsertSender extends BaseSender implements PrioRunnable, AnyInse
 
 	@Override
 	public int getPriority() {
-		return NativeThread.HIGH_PRIORITY;
+		return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
 	}
 
 	@Override

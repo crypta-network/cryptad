@@ -1564,7 +1564,7 @@ public class PeerManager {
 
               @Override
               public int getPriority() {
-                return NativeThread.HIGH_PRIORITY;
+                return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
               }
             });
   }
@@ -1581,7 +1581,7 @@ public class PeerManager {
 
               @Override
               public int getPriority() {
-                return NativeThread.HIGH_PRIORITY;
+                return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
               }
             });
   }

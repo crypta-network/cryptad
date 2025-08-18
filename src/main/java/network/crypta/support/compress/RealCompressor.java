@@ -64,7 +64,7 @@ public class RealCompressor {
 
                     @Override
                     public int getPriority() {
-                        return NativeThread.MIN_PRIORITY;
+                        return NativeThread.PriorityLevel.MIN_PRIORITY.value;
                     }
                 }, "Compressor thread for " + j);
                 if(logMINOR)
@@ -108,7 +108,7 @@ public class RealCompressor {
     public static class CompressorThreadFactory implements ThreadFactory {
         @Override
         public Thread newThread(Runnable r) {
-            return new NativeThread(r, "Compressor thread", NativeThread.MIN_PRIORITY, true);
+            return new NativeThread(r, "Compressor thread", NativeThread.PriorityLevel.MIN_PRIORITY.value, true);
         }
     }
 }

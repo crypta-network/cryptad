@@ -62,13 +62,13 @@ public class PooledExecutor implements Executor {
 
 	@Override
 	public void execute(Runnable runnable, String jobName, boolean fromTicker) {
-		int prio = NativeThread.NORM_PRIORITY;
+		int prio = NativeThread.PriorityLevel.NORM_PRIORITY.value;
 		if(runnable instanceof PrioRunnable)
 			prio = ((PrioRunnable) runnable).getPriority();
 
 		if(logMINOR)
 			Logger.minor(this, "Executing " + runnable + " as " + jobName + " at prio " + prio);
-		if(prio < NativeThread.MIN_PRIORITY || prio > NativeThread.MAX_PRIORITY)
+		if(prio < NativeThread.PriorityLevel.MIN_PRIORITY.value || prio > NativeThread.PriorityLevel.MAX_PRIORITY.value)
 			throw new IllegalArgumentException("Unreconized priority level : " + prio + '!');
 
 		Job job = new Job(runnable, jobName);

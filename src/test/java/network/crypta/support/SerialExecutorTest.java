@@ -12,7 +12,7 @@ public class SerialExecutorTest {
 
     @Test
     public void testBlocking() {
-        SerialExecutor exec = new SerialExecutor(NativeThread.NORM_PRIORITY);
+        SerialExecutor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
         exec.start(new PooledExecutor(), "test");
         final MutableBoolean flag = new MutableBoolean();
         exec.execute(new PrioRunnable() {
@@ -32,7 +32,7 @@ public class SerialExecutorTest {
 
             @Override
             public int getPriority() {
-                return NativeThread.NORM_PRIORITY;
+                return NativeThread.PriorityLevel.NORM_PRIORITY.value;
             }
 
         });

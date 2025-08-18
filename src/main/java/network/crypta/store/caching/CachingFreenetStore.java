@@ -62,7 +62,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
 		this.sizeBlock = callback.getTotalBlockSize();
 		
 		callback.setStore(this);
-		shutdownHook.addEarlyJob(new NativeThread("Close CachingFreenetStore", NativeThread.HIGH_PRIORITY, true) {
+		shutdownHook.addEarlyJob(new NativeThread("Close CachingFreenetStore", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
 			@Override
 			public void realRun() {
 				innerClose(); // SaltedHashFS has its own shutdown job.

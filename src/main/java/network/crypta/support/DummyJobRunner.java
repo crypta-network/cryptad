@@ -44,7 +44,7 @@ public class DummyJobRunner implements PersistentJobRunner {
 
     @Override
     public void queueNormalOrDrop(PersistentJob job) {
-        queue(job, NativeThread.NORM_PRIORITY);
+        queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     }
 
     @Override
@@ -64,7 +64,7 @@ public class DummyJobRunner implements PersistentJobRunner {
 
     @Override
     public void queueInternal(PersistentJob job) {
-        queueInternal(job, NativeThread.NORM_PRIORITY);
+        queueInternal(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     }
 
     @Override

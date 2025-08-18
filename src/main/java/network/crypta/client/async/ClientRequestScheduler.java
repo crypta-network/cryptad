@@ -271,7 +271,7 @@ public class ClientRequestScheduler implements RequestScheduler {
 		return choosenPriorityScheduler;
 	}
 
-	static final int TRIP_PENDING_PRIORITY = NativeThread.HIGH_PRIORITY-1;
+	static final int TRIP_PENDING_PRIORITY = NativeThread.PriorityLevel.HIGH_PRIORITY.value-1;
 	
 	@Override
 	public synchronized void succeeded(final BaseSendableGet succeeded, boolean persistent) {

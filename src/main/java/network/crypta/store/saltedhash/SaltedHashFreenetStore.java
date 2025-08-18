@@ -213,7 +213,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         writeConfigFile();
 
         callback.setStore(this);
-        shutdownHook.addEarlyJob(new NativeThread(new ShutdownDB(), "Shutdown salted hash store", NativeThread.HIGH_PRIORITY, true));
+        shutdownHook.addEarlyJob(new NativeThread(new ShutdownDB(), "Shutdown salted hash store", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true));
 
         cleanerThread = new Cleaner();
         cleanerStatusUserAlert = new CleanerStatusUserAlert(cleanerThread);
@@ -1316,8 +1316,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         private volatile boolean isResizing;
 
         public Cleaner() {
-            super("Store-" + name + "-Cleaner", NativeThread.LOW_PRIORITY, false);
-            setPriority(MIN_PRIORITY);
+            super("Store-" + name + "-Cleaner", NativeThread.PriorityLevel.LOW_PRIORITY.value, false);
+            setPriority(NativeThread.PriorityLevel.MIN_PRIORITY.value);
             setDaemon(true);
         }
 

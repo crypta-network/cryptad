@@ -640,7 +640,7 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 							}
 						}
 
-					}, NativeThread.HIGH_PRIORITY+1);
+					}, NativeThread.PriorityLevel.HIGH_PRIORITY.value+1);
 				} catch (PersistenceDisabledException e1) {
 					sendPersistenceDisabledError(ctx);
 					return;
@@ -747,7 +747,7 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 							}
 						}
 
-					}, NativeThread.HIGH_PRIORITY+1);
+					}, NativeThread.PriorityLevel.HIGH_PRIORITY.value+1);
 				} catch (PersistenceDisabledException e1) {
 					sendPersistenceDisabledError(ctx);
 					return;
@@ -839,7 +839,7 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 							}
 						}
 
-					}, NativeThread.HIGH_PRIORITY+1);
+					}, NativeThread.PriorityLevel.HIGH_PRIORITY.value+1);
 				} catch (PersistenceDisabledException e1) {
 					sendPersistenceDisabledError(ctx);
 					return;
@@ -1151,7 +1151,7 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 					}
 				}
 			// Do not use maximal priority: There may be exceptional cases which have higher priority than the UI, to get rid of excessive garbage for example.
-			}, NativeThread.HIGH_PRIORITY);
+			}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 		} catch (PersistenceDisabledException e1) {
 			sendPersistenceDisabledError(ctx);
 			return;
@@ -2391,7 +2391,7 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 				return false;
 			}
 
-		}, NativeThread.HIGH_PRIORITY);
+		}, NativeThread.PriorityLevel.HIGH_PRIORITY.value);
 	}
 
 	private boolean readCompletedIdentifiers(File file) {

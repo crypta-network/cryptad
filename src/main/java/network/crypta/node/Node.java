@@ -1401,7 +1401,7 @@ public class Node implements TimeSkewDetectorCallback {
               }
             },
             "Entropy Gathering Thread",
-            NativeThread.MIN_PRIORITY,
+            NativeThread.PriorityLevel.MIN_PRIORITY.value,
             true);
 
     // Setup RNG if needed : DO NOT USE IT BEFORE THAT POINT!
@@ -3371,7 +3371,7 @@ public class Node implements TimeSkewDetectorCallback {
     pluginManager = new PluginManager(this, lastVersion);
 
     shutdownHook.addEarlyJob(
-        new NativeThread("Shutdown plugins", NativeThread.HIGH_PRIORITY, true) {
+        new NativeThread("Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
           @Override
           public void realRun() {
             pluginManager.stop(SECONDS.toMillis(30)); // FIXME make it configurable??

@@ -23,7 +23,7 @@ public class PrioritizedSerialExecutorTest {
         realExec = new PooledExecutor();
         completedJobs = new ArrayList<String>();
         completingJob = new SynchronousQueue<String>();
-        exec = new PrioritizedSerialExecutor(NativeThread.MAX_PRIORITY, 10, 5, true);
+        exec = new PrioritizedSerialExecutor(NativeThread.PriorityLevel.MAX_PRIORITY.value, 10, 5, true);
     }
 
     @Test

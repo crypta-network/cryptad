@@ -108,7 +108,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         @Override
         public int getPriority() {
             // Slightly less than the actual requests themselves because accepting requests increases load.
-            return NativeThread.HIGH_PRIORITY - 1;
+            return NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1;
         }
 
     };
