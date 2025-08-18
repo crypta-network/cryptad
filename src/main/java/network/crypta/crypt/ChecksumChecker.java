@@ -33,7 +33,7 @@ public abstract class ChecksumChecker {
      * @throws IOException 
      */
     public PrependLengthOutputStream checksumWriterWithLength(final OutputStream dos, BucketFactory bf) throws IOException {
-        return PrependLengthOutputStream.create(checksumWriter(dos, 8), bf, 0, true);
+        return PrependLengthOutputStream.create(checksumWriter(dos, 8), bf, 0, false);
     }
     
     public abstract byte[] appendChecksum(byte[] data);
