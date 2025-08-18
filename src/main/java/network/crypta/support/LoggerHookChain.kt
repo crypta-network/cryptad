@@ -14,9 +14,9 @@ class LoggerHookChain : LoggerHook {
     constructor(threshold: String) : super(threshold) { hooks = emptyArray() }
 
     @Synchronized
-    override fun log(o: Any?, c: Class<*>?, msg: String?, e: Throwable?, priority: LogLevel) {
+    override fun log(o: Any?, source: Class<*>?, message: String?, e: Throwable?, priority: LogLevel) {
         for (hook in hooks) {
-            hook.log(o, c, msg, e, priority)
+            hook.log(o, source, message, e, priority)
         }
     }
 
