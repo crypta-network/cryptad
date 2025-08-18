@@ -1,9 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.util.*;
 
@@ -55,7 +52,7 @@ import network.crypta.support.io.StorageFormatException;
  */
 public class ClientGet extends ClientRequest implements ClientGetCallback, ClientEventListener, PersistentClientCallback {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Fetch context. Never passed in: always created new by the ClientGet. Therefore, we
 	 * can safely delete it in requestWasRemoved(). */
 	private final FetchContext fctx;
@@ -579,11 +576,11 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 	    if(logMINOR) Logger.minor(this, "Receiving "+ce+" on "+this);
 	    final FCPMessage progress;
 		final int verbosityMask;
-		if(ce instanceof SplitfileProgressEvent) {
+		if(ce instanceof SplitfileProgressEvent event2) {
 			verbosityMask = ClientGet.VERBOSITY_SPLITFILE_PROGRESS;
 			synchronized(this) {
 			    progress = progressPending = 
-			        new SimpleProgressMessage(identifier, global, (SplitfileProgressEvent)ce);
+			        new SimpleProgressMessage(identifier, global, event2);
 			}
 			if(client != null) {
 			    RequestStatusCache cache = client.getRequestStatusCache();
@@ -601,8 +598,8 @@ public class ClientGet extends ClientRequest implements ClientGetCallback, Clien
 			if((verbosity & verbosityMask) == 0)
 				return;
 			progress = new SendingToNetworkMessage(identifier, global);
-		} else if(ce instanceof SplitfileCompatibilityModeEvent) {
-		    handleCompatibilityMode((SplitfileCompatibilityModeEvent)ce, context);
+		} else if(ce instanceof SplitfileCompatibilityModeEvent event1) {
+		    handleCompatibilityMode(event1, context);
 		    return;
 		} else if(ce instanceof ExpectedHashesEvent event) {
             synchronized(this) {

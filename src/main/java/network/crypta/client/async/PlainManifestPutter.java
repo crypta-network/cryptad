@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,7 +20,7 @@ import network.crypta.support.io.ResumeFailedException;
 
 public class PlainManifestPutter extends BaseManifestPutter {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logDEBUG;
 
 	static {

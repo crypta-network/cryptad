@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
@@ -28,7 +29,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public class USKInserter implements ClientPutState, USKFetcherCallback, PutCompletionCallback, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	
 	static {

@@ -1,5 +1,6 @@
 package network.crypta.keys;
 
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,7 +21,7 @@ import network.crypta.support.Logger;
  */
 public class ClientSSK extends ClientKey {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Crypto type */
 	public final byte cryptoAlgorithm;
 	/** Document name */

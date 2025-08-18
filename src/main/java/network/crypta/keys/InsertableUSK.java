@@ -1,5 +1,6 @@
 package network.crypta.keys;
 
+import java.io.Serial;
 import java.net.MalformedURLException;
 
 import network.crypta.crypt.DSAGroup;
@@ -18,8 +19,8 @@ import network.crypta.support.Logger;
  * - It has a getUSK() method which gets the public USK
  */
 public class InsertableUSK extends USK {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
     public final DSAPrivateKey privKey;
 	
 	public static InsertableUSK createInsertable(FreenetURI uri, boolean persistent) throws MalformedURLException {

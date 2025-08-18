@@ -1,8 +1,10 @@
 package network.crypta.node;
 
+import java.io.Serial;
+
 public class MasterKeysFileSizeException extends Exception {
 
-	final private static long serialVersionUID = -2753942792186990130L;
+	@Serial final private static long serialVersionUID = -2753942792186990130L;
 
 	final public boolean tooBig;
 

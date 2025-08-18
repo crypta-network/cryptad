@@ -1,5 +1,6 @@
 package network.crypta.support.math;
 
+import java.io.Serial;
 import java.util.ArrayList;
 
 /**
@@ -9,7 +10,7 @@ import java.util.ArrayList;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public final class MedianMeanRunningAverage implements RunningAverage, Cloneable {
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	final ArrayList<Double> reports;
 	final TrivialRunningAverage mean;

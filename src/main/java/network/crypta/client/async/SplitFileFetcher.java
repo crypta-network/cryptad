@@ -1,10 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.List;
 
 import network.crypta.client.ClientMetadata;
@@ -69,8 +65,7 @@ import network.crypta.support.io.StorageFormatException;
  * @author toad
  */
 public class SplitFileFetcher implements ClientGetState, SplitFileFetcherStorageCallback, Serializable {
-    
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
     static {
         Logger.registerClass(SplitFileFetcher.class);
@@ -114,8 +109,8 @@ public class SplitFileFetcher implements ClientGetState, SplitFileFetcherStorage
         this.realTimeFlag = realTimeFlag;
         this.token = token;
         this.context = context;
-        if(parent instanceof ClientGetter) {
-            wantBinaryBlob = ((ClientGetter)parent).collectingBinaryBlob();
+        if(parent instanceof ClientGetter clientGetter) {
+            wantBinaryBlob = clientGetter.collectingBinaryBlob();
         } else {
             wantBinaryBlob = false;
         }
@@ -376,8 +371,8 @@ public class SplitFileFetcher implements ClientGetState, SplitFileFetcherStorage
 
     @Override
     public void maybeAddToBinaryBlob(ClientCHKBlock block) {
-        if(parent instanceof ClientGetter) {
-            ((ClientGetter)parent).addKeyToBinaryBlob(block, context);
+        if(parent instanceof ClientGetter clientGetter) {
+            clientGetter.addKeyToBinaryBlob(block, context);
         }
     }
 
@@ -420,7 +415,7 @@ public class SplitFileFetcher implements ClientGetState, SplitFileFetcherStorage
     @Override
     public void onResume(ClientContext context) throws FetchException {
         if(logMINOR) Logger.minor(this, "Restarting SplitFileFetcher from storage...");
-        boolean resumed = parent instanceof ClientGetter && ((ClientGetter)parent).resumedFetcher();
+        boolean resumed = parent instanceof ClientGetter cg && cg.resumedFetcher();
         this.context = context;
         try {
             KeySalter salter = getSalter();

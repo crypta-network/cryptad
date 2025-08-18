@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.FetchContext;
@@ -20,7 +21,7 @@ import network.crypta.support.io.NativeThread;
  */
 class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 	/** The callback */
 	public final USKFetcherCallback callback;
 	/** The original USK */
@@ -140,8 +141,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 
 					@Override
 					public boolean run(ClientContext context) {
-						if(callback instanceof USKFetcherTagCallback)
-							((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+						if(callback instanceof USKFetcherTagCallback tagCallback)
+							tagCallback.setTag(USKFetcherTag.this, context);
 						callback.onCancelled(context);
 						return false;
 					}
@@ -151,8 +152,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 				// Impossible.
 			}
 		} else {
-			if(callback instanceof USKFetcherTagCallback)
-				((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+			if(callback instanceof USKFetcherTagCallback tagCallback)
+				tagCallback.setTag(USKFetcherTag.this, context);
 			callback.onCancelled(context);
 		}
 	}
@@ -173,8 +174,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 
 					@Override
 					public boolean run(ClientContext context) {
-						if(callback instanceof USKFetcherTagCallback)
-							((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+						if(callback instanceof USKFetcherTagCallback tagCallback)
+							tagCallback.setTag(USKFetcherTag.this, context);
 						callback.onFailure(context);
 						return true;
 					}
@@ -184,8 +185,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 				// Impossible.
 			}
 		} else {
-			if(callback instanceof USKFetcherTagCallback)
-				((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+			if(callback instanceof USKFetcherTagCallback tagCallback)
+				tagCallback.setTag(USKFetcherTag.this, context);
 			callback.onFailure(context);
 		}
 	}
@@ -220,8 +221,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 
 					@Override
 					public boolean run(ClientContext context) {
-						if(callback instanceof USKFetcherTagCallback)
-							((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+						if(callback instanceof USKFetcherTagCallback tagCallback)
+							tagCallback.setTag(USKFetcherTag.this, context);
 						callback.onFoundEdition(l, key, context, metadata, codec, data, newKnownGood, newSlotToo);
 						return false;
 					}
@@ -231,8 +232,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 				// Impossible.
 			}
 		} else {
-			if(callback instanceof USKFetcherTagCallback)
-				((USKFetcherTagCallback)callback).setTag(USKFetcherTag.this, context);
+			if(callback instanceof USKFetcherTagCallback tagCallback)
+				tagCallback.setTag(USKFetcherTag.this, context);
 			callback.onFoundEdition(l, key, context, metadata, codec, data, newKnownGood, newSlotToo);
 		}
 	}

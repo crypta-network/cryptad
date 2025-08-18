@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertBlock;
@@ -25,7 +26,7 @@ import network.crypta.support.io.ResumeFailedException;
 /** A high level insert. */
 public class ClientPutter extends BaseClientPutter implements PutCompletionCallback {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Callback for when the insert completes. */
 	final ClientPutCallback client;
 	/** The data to insert. */
@@ -197,8 +198,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 			}
 			if(logMINOR)
 				Logger.minor(this, "Starting insert: "+currentState);
-			if(currentState instanceof SingleFileInserter)
-				((SingleFileInserter)currentState).start(context);
+			if(currentState instanceof SingleFileInserter inserter)
+				inserter.start(context);
 			else
 				currentState.schedule(context);
 			synchronized(this) {
@@ -524,8 +525,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 	}
 	
     public byte[] getClientDetail(ChecksumChecker checker) throws IOException {
-        if(client instanceof PersistentClientCallback) {
-            return getClientDetail((PersistentClientCallback)client, checker);
+        if(client instanceof PersistentClientCallback callback) {
+            return getClientDetail(callback, checker);
         } else
             return new byte[0];
     }

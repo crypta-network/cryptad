@@ -1,5 +1,7 @@
 package network.crypta.client.filter;
 
+import java.io.Serial;
+
 /**
  * Thrown when a filter operation cannot complete and the filter has produced some error output to help guide the user in
  * resolving the situation.
@@ -8,8 +10,8 @@ package network.crypta.client.filter;
  * catcher.
  */
 public class CommentException extends Exception {
-	
-	private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
 
 	public CommentException(String msg) {
 		super(msg);

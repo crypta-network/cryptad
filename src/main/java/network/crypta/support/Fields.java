@@ -9,7 +9,6 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
-
 import network.crypta.config.Dimension;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Logger.LogLevel;
@@ -568,7 +567,7 @@ public abstract class Fields {
 	public static int bytesToInt(byte[] buf) {
 		return bytesToInt(buf, 0);
 	}
-	
+
 	/**
 	 * Convert an array of bytes to a single int.
 	 */
@@ -624,7 +623,7 @@ public abstract class Fields {
 		}
 		return buf;
 	}
-	
+
 	public static byte[] intsToBytes(int[] ints) {
 		return intsToBytes(ints, 0, ints.length);
 	}
@@ -749,7 +748,7 @@ public abstract class Fields {
 
 	/**
 	 * Parse a human-readable string possibly including SI and ICE units into an integer.
-     * 
+     *
      * If it is a size (suffix b für bits or B for bytes), the size is returned as bytes.
      * 8b = 1, 8B = 8.
 	 * @throws NumberFormatException
@@ -834,15 +833,11 @@ public abstract class Fields {
 	}
 
 	public static String intToString(int val, Dimension dimension) {
-		switch (dimension) {
-			case NOT:
-				return intToString(val, false);
-			case SIZE:
-				return intToString(val, true);
-			case DURATION:
-				return TimeUtil.formatTime(val, 6, false);
-		}
-		throw new AssertionError("Unknown dimension " + dimension);
+		return switch (dimension) {
+			case NOT -> intToString(val, false);
+			case SIZE -> intToString(val, true);
+			case DURATION -> TimeUtil.formatTime(val, 6, false);
+		};
 	}
 
 	public static String intToString(int val, boolean isSize) {
@@ -962,7 +957,7 @@ public abstract class Fields {
 			if(i >= x.length() && j >= y.length()) return 0;
 			wantDigits = !wantDigits;
 		}
-		
+
 	}
 
 	static int getDigits(String x, int i, boolean wantDigits) {
@@ -981,14 +976,14 @@ public abstract class Fields {
 		if(id2 > id1) return -1;
 		return 0;
 	}
-	
+
 	/** Avoid issues with overflow, 2's complement. E.g. 0-Integer.MIN_VALUE = Integer.MIN_VALUE-0. */
 	public static final int compare(int x, int y) {
 		if(x > y) return 1;
 		if(y > x) return -1;
 		return 0;
 	}
-	
+
 	/** Avoid issues with overflow, 2's complement. */
 	public static final int compare(long x, long y) {
 		if(x > y) return 1;

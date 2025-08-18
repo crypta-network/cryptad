@@ -188,8 +188,8 @@ public class BookmarkManager implements RequestClient {
 
 	public BookmarkCategory getCategoryByPath(String path) {
 		Bookmark cat = getBookmarkByPath(path);
-		if(cat instanceof BookmarkCategory)
-			return (BookmarkCategory) cat;
+		if(cat instanceof BookmarkCategory category)
+			return category;
 
 		return null;
 	}
@@ -209,8 +209,8 @@ public class BookmarkManager implements RequestClient {
 		putPaths(parentPath + bookmark.getName() + ((bookmark instanceof BookmarkCategory) ? "/" : ""),
 			bookmark);
 
-		if(bookmark instanceof BookmarkItem)
-			subscribeToUSK((BookmarkItem)bookmark);
+		if(bookmark instanceof BookmarkItem item)
+			subscribeToUSK(item);
 	}
 
 	public void renameBookmark(String path, String newName) {
@@ -307,9 +307,9 @@ public class BookmarkManager implements RequestClient {
 		synchronized(bookmarks) {
 			bookmarks.put(path, b);
 		}
-		if(b instanceof BookmarkCategory)
-			for(int i = 0; i < ((BookmarkCategory) b).size(); i++) {
-				Bookmark child = ((BookmarkCategory) b).get(i);
+		if(b instanceof BookmarkCategory category)
+			for(int i = 0; i < category.size(); i++) {
+				Bookmark child = category.get(i);
 				putPaths(path + child.getName() + (child instanceof BookmarkItem ? "" : "/"), child);
 			}
 

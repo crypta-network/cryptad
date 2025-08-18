@@ -409,8 +409,8 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
 
         @Override
         public synchronized void receive(ClientEvent ce, ClientContext context) {
-			if (ce instanceof SplitfileProgressEvent) {
-				lastProgress = (SplitfileProgressEvent) ce;
+			if (ce instanceof SplitfileProgressEvent event) {
+				lastProgress = event;
 			}
         }
 

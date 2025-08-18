@@ -8,6 +8,8 @@ import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.ResumeFailedException;
 
+import java.io.Serial;
+
 /**
  * Callback interface for a low level insert, which is immediately sendable. These
  * should be registered on the ClientRequestScheduler when we want to send them. It will
@@ -16,7 +18,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public abstract class SendableInsert extends SendableRequest {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	public SendableInsert(boolean persistent, boolean realTimeFlag) {
 		super(persistent, realTimeFlag);

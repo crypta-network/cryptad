@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 
@@ -12,7 +13,7 @@ import network.crypta.support.SimpleFieldSet;
 
 public class PutFailedMessage extends FCPMessage implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final InsertExceptionMode code;
 	final String codeDescription;
 	final String extraDescription;

@@ -81,7 +81,7 @@ public class NPFPacketTest {
 		assertEquals(0, r.getAcks().size());
 		assertEquals(1, r.getFragments().size());
 
-		MessageFragment frag = r.getFragments().get(0);
+		MessageFragment frag = r.getFragments().getFirst();
 		assertTrue(frag.shortMessage);
 		assertFalse(frag.isFragmented);
 		assertTrue(frag.firstFragment);
@@ -112,7 +112,7 @@ public class NPFPacketTest {
 		assertEquals(2, r.getFragments().size());
 
 		// Check first fragment
-		MessageFragment frag = r.getFragments().get(0);
+		MessageFragment frag = r.getFragments().getFirst();
 		assertTrue(frag.shortMessage);
 		assertFalse(frag.isFragmented);
 		assertTrue(frag.firstFragment);
@@ -169,7 +169,7 @@ public class NPFPacketTest {
 		NPFPacket r = NPFPacket.create(packet, pn);
 		assertEquals(0, r.getAcks().size());
 		assertEquals(1, r.getFragments().size());
-		MessageFragment f = r.getFragments().get(0);
+		MessageFragment f = r.getFragments().getFirst();
 		assertTrue(f.firstFragment);
 		assertTrue(f.shortMessage);
 		assertEquals(0, f.messageID);
@@ -206,7 +206,7 @@ public class NPFPacketTest {
 		assertEquals(0, r.getAcks().size());
 		assertEquals(1, r.getFragments().size());
 
-		MessageFragment f = r.getFragments().get(0);
+		MessageFragment f = r.getFragments().getFirst();
 		assertFalse(f.shortMessage);
 		assertFalse(f.firstFragment);
 		assertTrue(f.isFragmented);
@@ -243,7 +243,7 @@ public class NPFPacketTest {
 		assertFalse(r.getError());
 		assertEquals(1, r.getFragments().size());
 
-		MessageFragment f = r.getFragments().get(0);
+		MessageFragment f = r.getFragments().getFirst();
 		assertEquals(0, f.fragmentLength);
 		assertEquals(0, f.fragmentData.length);
 		assertEquals(0, f.messageID);
@@ -434,9 +434,9 @@ public class NPFPacketTest {
 		assertEquals(0, received.countAcks());
 		assertEquals(1, received.getLossyMessages().size());
 		assertEquals(encoded.length, received.getLength());
-		byte[] decodedFragData = received.getFragments().get(0).fragmentData;
+		byte[] decodedFragData = received.getFragments().getFirst().fragmentData;
 		checkEquals(fragData, decodedFragData);
-		byte[] decodedLossyMessage = received.getLossyMessages().get(0);
+		byte[] decodedLossyMessage = received.getLossyMessages().getFirst();
 		checkEquals(lossyFragment, decodedLossyMessage);
 	}
 
@@ -457,9 +457,9 @@ public class NPFPacketTest {
 		assertEquals(0, received.countAcks());
 		assertEquals(2, received.getLossyMessages().size());
 		assertEquals(encoded.length, received.getLength());
-		byte[] decodedFragData = received.getFragments().get(0).fragmentData;
+		byte[] decodedFragData = received.getFragments().getFirst().fragmentData;
 		checkEquals(fragData, decodedFragData);
-		byte[] decodedLossyMessage = received.getLossyMessages().get(0);
+		byte[] decodedLossyMessage = received.getLossyMessages().getFirst();
 		checkEquals(lossyFragment, decodedLossyMessage);
 		decodedLossyMessage = received.getLossyMessages().get(1);
 		checkEquals(lossyFragment2, decodedLossyMessage);
@@ -484,9 +484,9 @@ public class NPFPacketTest {
 		assertEquals("Seed was "+randomSeed, 2, received.getLossyMessages().size());
 		assertEquals(p.getLength(), received.getLength());
 		assertEquals(encoded.length - 20, received.getLength());
-		byte[] decodedFragData = received.getFragments().get(0).fragmentData;
+		byte[] decodedFragData = received.getFragments().getFirst().fragmentData;
 		checkEquals(fragData, decodedFragData);
-		byte[] decodedLossyMessage = received.getLossyMessages().get(0);
+		byte[] decodedLossyMessage = received.getLossyMessages().getFirst();
 		checkEquals(lossyFragment, decodedLossyMessage);
 		decodedLossyMessage = received.getLossyMessages().get(1);
 		checkEquals(lossyFragment2, decodedLossyMessage);

@@ -36,10 +36,9 @@ public class MultiValueTable<K, V> {
 
     public static <K, V> MultiValueTable<K, V> from(K[] keys, V[] values) {
         if (keys.length != values.length) {
-            throw new IllegalArgumentException(String.format(
-                "keys and values must contain the same number of values, but there are %d keys and %d values",
-                keys.length,
-                values.length));
+            throw new IllegalArgumentException("keys and values must contain the same number of values, but there are %d keys and %d values".formatted(
+				keys.length,
+				values.length));
         }
         MultiValueTable<K, V> table = new MultiValueTable<>(keys.length);
         for (int i = 0; i < keys.length; i++) {
@@ -105,7 +104,7 @@ public class MultiValueTable<K, V> {
         if (list == null || list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 
     public boolean containsKey(K key) {

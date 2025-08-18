@@ -1,5 +1,6 @@
 package network.crypta.client.filter;
 
+import java.io.Serial;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -8,7 +9,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLEncoder;
 
 public class KnownUnsafeContentTypeException extends UnsafeContentTypeException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	FilterMIMEType type;
 	
 	public KnownUnsafeContentTypeException(FilterMIMEType type) {

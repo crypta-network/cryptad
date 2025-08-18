@@ -337,11 +337,11 @@ public class BucketTools {
 	 * the provided bucket, or writing to created buckets.
 	 */
 	public static Bucket[] split(Bucket origData, int splitSize, BucketFactory bf, boolean freeData, boolean persistent) throws IOException {
-		if(origData instanceof FileBucket) {
+		if(origData instanceof FileBucket bucket) {
 			if(freeData) {
 				Logger.error(BucketTools.class, "Asked to free data when splitting a FileBucket ?!?!? Not freeing as this would clobber the split result...");
 			}
-			Bucket[] buckets = ((FileBucket)origData).split(splitSize);
+			Bucket[] buckets = bucket.split(splitSize);
 			if(persistent)
 			return buckets;
 		}
@@ -567,10 +567,10 @@ public class BucketTools {
     }
     
     public static RandomAccessBucket toRandomAccessBucket(Bucket bucket, BucketFactory bf) throws IOException {
-        if(bucket instanceof RandomAccessBucket)
-            return (RandomAccessBucket)bucket;
-        if(bucket instanceof DelayedFreeBucket) {
-            RandomAccessBucket ret = ((DelayedFreeBucket)bucket).toRandomAccessBucket();
+        if(bucket instanceof RandomAccessBucket accessBucket)
+            return accessBucket;
+        if(bucket instanceof DelayedFreeBucket freeBucket) {
+            RandomAccessBucket ret = freeBucket.toRandomAccessBucket();
             if(ret != null) return ret;
         }
         RandomAccessBucket ret = bf.makeBucket(bucket.size());

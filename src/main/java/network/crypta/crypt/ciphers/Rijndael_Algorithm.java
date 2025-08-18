@@ -1100,14 +1100,11 @@ final class Rijndael_Algorithm // implicit no-argument constructor
 	 *      block sizes.
 	 */
 	private static int getRounds(int keySize, int blockSize) {
-		switch (keySize) {
-		case 16:
-			return blockSize == 16 ? 10 : (blockSize == 24 ? 12 : 14);
-		case 24:
-			return blockSize != 32 ? 12 : 14;
-		default: // 32 bytes = 256 bits
-			return 14;
-		}
+		return switch (keySize) {
+		case 16 -> blockSize == 16 ? 10 : (blockSize == 24 ? 12 : 14);
+		case 24 -> blockSize != 32 ? 12 : 14;
+		default -> 14;
+		};
 	}
 
 

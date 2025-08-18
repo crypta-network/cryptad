@@ -1,12 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.Logger;
@@ -14,7 +8,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 
 public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     transient RandomAccessFile raf;
 	final File file;
 	private boolean closed = false;

@@ -781,13 +781,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 				endSlash = true;
 				// Don't need to set it back because everything is an I-value
 			} else endSlash = false;
-			s = v.get(0);
+			s = v.getFirst();
 			if ((s.length() > 1) && s.startsWith("/")) {
 				s = s.substring(1);
 				v.set(0, s);
 				startSlash = true;
 			} else startSlash = false;
-			element = v.get(0);
+			element = v.getFirst();
 			if (len > 1) {
 				unparsedAttrs = new String[len - 1];
 				for (int x = 1; x < len; x++)
@@ -2246,8 +2246,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 				String x = entry.getKey();
 				Object o = entry.getValue();
 				String y;
-				if (o instanceof String)
-					y = (String) o;
+				if (o instanceof String string)
+					y = string;
 				else
 					y = null;
 				StringBuilder out = new StringBuilder(x);
@@ -2310,7 +2310,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 				/*Boolean attributes must either be empty or equal to their own name*/
 				if(booleanAttrs.contains(x)) {
 					String value = null;
-					if(o instanceof String ) value = (String) o;
+					if(o instanceof String string ) value = string;
 					if((value != null && value.equalsIgnoreCase(x)) || (!pc.isXHTML && o == null)) {
 						hn.put(x, o);
 						continue;
@@ -2319,14 +2319,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 				// lang, xml:lang and dir can go on anything
 				// lang or xml:lang = language [ "-" country [ "-" variant ] ]
 				// The variant can be just about anything; no way to test (avian)
-				if (x.equals("xml:lang") ||x.equals("lang") || (x.equals("dir") && (o instanceof String) && (((String)o).equalsIgnoreCase("ltr") || ((String)o).equalsIgnoreCase("rtl") || ((String)o).equalsIgnoreCase("auto")))) {
+				if (x.equals("xml:lang") ||x.equals("lang") || (x.equals("dir") && (o instanceof String string) && (string.equalsIgnoreCase("ltr") || string.equalsIgnoreCase("rtl") || string.equalsIgnoreCase("auto")))) {
 					if(logDEBUG) Logger.debug(this, "HTML Filter is putting attribute: "+x+" =  "+o);
 					hn.put(x, o);
 				}
 				// ARIA properties
 				// role can be set on any element
-				if (x.equals("role") && o instanceof String) {
-					if(allowedRole.contains((String)o)) {
+				if (x.equals("role") && o instanceof String string) {
+					if(allowedRole.contains(string)) {
 						hn.put(x, o);
 					}
 				}
@@ -3530,8 +3530,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 		Object o = h.get(key);
 		if (o == null)
 			return null;
-		if (o instanceof String)
-			return (String) o;
+		if (o instanceof String string)
+			return string;
 		else
 			return null;
 	}

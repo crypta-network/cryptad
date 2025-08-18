@@ -27,7 +27,7 @@ public class ReceivedCookieTest extends CookieTest {
 		
 		validExpiresDate = new Date(2030 - 1900, 10 - 1, 25, 15, 9, 37);
 		
-		cookie = ReceivedCookie.parseHeader(validEncodedCookie).get(0);
+		cookie = ReceivedCookie.parseHeader(validEncodedCookie).getFirst();
 	}
 
 	@Override
@@ -45,24 +45,24 @@ public class ReceivedCookieTest extends CookieTest {
 		
 		// Plain firefox cookie
 		
-		cookie = ReceivedCookie.parseHeader("SessionID=abCd12345").get(0);
+		cookie = ReceivedCookie.parseHeader("SessionID=abCd12345").getFirst();
 		assertEquals(VALID_NAME.toLowerCase(), cookie.getName()); assertEquals(VALID_VALUE, cookie.getValue());
 		
 		// Two plain firefox cookies
 		
 		cookies = ReceivedCookie.parseHeader("SessionID=abCd12345;key2=valUe2");
-		cookie = cookies.get(0); assertEquals(VALID_NAME.toLowerCase(), cookie.getName()); assertEquals(VALID_VALUE, cookie.getValue());
+		cookie = cookies.getFirst(); assertEquals(VALID_NAME.toLowerCase(), cookie.getName()); assertEquals(VALID_VALUE, cookie.getValue());
 		cookie = cookies.get(1); assertEquals("key2", cookie.getName()); assertEquals("valUe2", cookie.getValue());
 		
 		// Key without value at end:
 		
 		cookie = ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;"
-										+   " $blah;").get(0);
+										+   " $blah;").getFirst();
 		assertEquals(VALID_NAME.toLowerCase(), cookie.getName()); assertEquals(VALID_VALUE, cookie.getValue());
 		
 		// Key without value and without semicolon at end
 		cookie = ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;"
-										+   " $blah").get(0);
+										+   " $blah").getFirst();
 		assertEquals(VALID_NAME.toLowerCase(), cookie.getName()); assertEquals(VALID_VALUE, cookie.getValue());
 	}
 

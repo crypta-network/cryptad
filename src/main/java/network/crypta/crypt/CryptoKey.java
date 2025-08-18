@@ -1,9 +1,6 @@
 package network.crypta.crypt;
 
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.security.MessageDigest;
@@ -13,7 +10,7 @@ import network.crypta.support.Logger;
 
 public abstract class CryptoKey implements CryptoElement, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	CryptoKey() {
 	}
@@ -28,10 +25,10 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
 			return (CryptoKey) m.invoke(null, dis);
 		} catch (Exception e) {
 			e.printStackTrace();
-			if (e instanceof CryptFormatException)
-				throw (CryptFormatException) e;
-			if (e instanceof IOException)
-				throw (IOException) e;
+			if (e instanceof CryptFormatException exception)
+				throw exception;
+			if (e instanceof IOException exception)
+				throw exception;
 			Logger.error(CryptoKey.class, "Unknown exception while reading CryptoKey", e);
 			return null;
 		}

@@ -80,8 +80,8 @@ public class NewPacketFormatTest {
 		Thread.sleep(NewPacketFormatKeyContext.MAX_ACK_DELAY*2);
 		NPFPacket ack1 = receiver.createPacket(512, receiverQueue, receiverKey, false);
 		assertEquals(2, ack1.getAcks().size());
-		assertEquals(0, (int)ack1.getAcks().first());
-		assertEquals(1, (int)ack1.getAcks().last());
+		assertEquals(0, (int)ack1.getAcks().getFirst());
+		assertEquals(1, (int)ack1.getAcks().getLast());
 		sender.handleDecryptedPacket(ack1, senderKey);
 
 		NPFPacket fragment3 = sender.createPacket(512, senderQueue, senderKey, false);
@@ -287,6 +287,6 @@ public class NewPacketFormatTest {
 
 		assertEquals(1, receiverNode.decryptedMessages.size());
         assertArrayEquals(message, copyOfMessage);
-        assertArrayEquals(message, receiverNode.decryptedMessages.get(0));
+        assertArrayEquals(message, receiverNode.decryptedMessages.getFirst());
 	}
 }

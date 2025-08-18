@@ -1,7 +1,9 @@
 package network.crypta.client;
 
+import java.io.Serial;
+
 public class MetadataUnresolvedException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	public final Metadata[] mustResolve;
 	

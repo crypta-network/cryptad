@@ -105,34 +105,21 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     private PeerNode successFrom;
     
     static String getStatusString(int status) {
-    	switch(status) {
-    	case NOT_FINISHED:
-    		return "NOT FINISHED";
-    	case SUCCESS:
-    		return "SUCCESS";
-    	case ROUTE_NOT_FOUND:
-    		return "ROUTE NOT FOUND";
-    	case DATA_NOT_FOUND:
-    		return "DATA NOT FOUND";
-    	case TRANSFER_FAILED:
-    		return "TRANSFER FAILED";
-    	case GET_OFFER_TRANSFER_FAILED:
-    		return "GET OFFER TRANSFER FAILED";
-    	case VERIFY_FAILURE:
-    		return "VERIFY FAILURE";
-    	case GET_OFFER_VERIFY_FAILURE:
-    		return "GET OFFER VERIFY FAILURE";
-    	case TIMED_OUT:
-    		return "TIMED OUT";
-    	case GENERATED_REJECTED_OVERLOAD:
-    		return "GENERATED REJECTED OVERLOAD";
-    	case INTERNAL_ERROR:
-    		return "INTERNAL ERROR";
-    	case RECENTLY_FAILED:
-    		return "RECENTLY FAILED";
-    	default:
-    		return "UNKNOWN STATUS CODE: "+status;
-    	}
+    	return switch(status) {
+    	case NOT_FINISHED -> "NOT FINISHED";
+    	case SUCCESS -> "SUCCESS";
+    	case ROUTE_NOT_FOUND -> "ROUTE NOT FOUND";
+    	case DATA_NOT_FOUND -> "DATA NOT FOUND";
+    	case TRANSFER_FAILED -> "TRANSFER FAILED";
+    	case GET_OFFER_TRANSFER_FAILED -> "GET OFFER TRANSFER FAILED";
+    	case VERIFY_FAILURE -> "VERIFY FAILURE";
+    	case GET_OFFER_VERIFY_FAILURE -> "GET OFFER VERIFY FAILURE";
+    	case TIMED_OUT -> "TIMED OUT";
+    	case GENERATED_REJECTED_OVERLOAD -> "GENERATED REJECTED OVERLOAD";
+    	case INTERNAL_ERROR -> "INTERNAL ERROR";
+    	case RECENTLY_FAILED -> "RECENTLY FAILED";
+    	default -> "UNKNOWN STATUS CODE: "+status;
+    	};
     }
     
     String getStatusString() {

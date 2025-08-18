@@ -209,7 +209,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
                     }
                     if (monthlyLimit < BandwidthLimit.minMonthlyLimit) {
                         errors.put("bandwidthMonthlyLimitError",
-                                l10n("valid.bandwidthMonthlyLimit", String.format("%.2f", BandwidthLimit.minMonthlyLimit)));
+                                l10n("valid.bandwidthMonthlyLimit", "%.2f".formatted(BandwidthLimit.minMonthlyLimit)));
                     }
                 } catch (NumberFormatException e) {
                     errors.put("bandwidthMonthlyLimitError",
@@ -226,7 +226,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
                     if (storageLimit > maxDatastoreSize) {
                         errors.put("storageLimitError",
                                 NodeL10n.getBase().getString("Node.invalidMaxStoreSize",
-                                        String.format("%.2f", (float) maxDatastoreSize / DatastoreUtil.oneGiB)));
+									"%.2f".formatted((float)maxDatastoreSize / DatastoreUtil.oneGiB)));
                     }
                 }
             } catch (NumberFormatException e) {
@@ -272,7 +272,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
             model.put("downloadLimit", downloadLimit);
             model.put("uploadLimit", uploadLimit);
             model.put("bandwidthMonthlyLimit", bandwidthMonthlyLimit);
-            model.put("minBandwidthMonthlyLimit", String.format("%.2f", BandwidthLimit.minMonthlyLimit));
+            model.put("minBandwidthMonthlyLimit", "%.2f".formatted(BandwidthLimit.minMonthlyLimit));
             model.put("storageLimit", storageLimit);
             model.put("minStorageLimit", minStorageLimit);
             if (!isPasswordAlreadySet) {

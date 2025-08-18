@@ -660,8 +660,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 			toCheck = subscribers.toArray(new USKCallback[subscribers.size()]);
 		}
 		for(USKCallback cb : toCheck) {
-			if(cb instanceof USKProgressCallback)
-				((USKProgressCallback)cb).onRoundFinished(context);
+			if(cb instanceof USKProgressCallback callback)
+				callback.onRoundFinished(context);
 		}
 	}
 
@@ -672,8 +672,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 			toCheck = subscribers.toArray(new USKCallback[subscribers.size()]);
 		}
 		for(USKCallback cb : toCheck) {
-			if(cb instanceof USKProgressCallback)
-				((USKProgressCallback)cb).onSendingToNetwork(context);
+			if(cb instanceof USKProgressCallback callback)
+				callback.onSendingToNetwork(context);
 		}
 	}
 
@@ -2103,8 +2103,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 
 		@Override
 		public boolean equals(Object o) {
-			if(o instanceof Lookup) {
-				return ((Lookup)o).val == val;
+			if(o instanceof Lookup lookup) {
+				return lookup.val == val;
 			} else return false;
 		}
 

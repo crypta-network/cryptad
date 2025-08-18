@@ -63,9 +63,9 @@ public class PluginDownLoaderURL extends PluginDownLoader<URL> {
 		InputStream in = null;
 		do
 		{
-			if (c instanceof HttpURLConnection)
+			if (c instanceof HttpURLConnection connection)
 			{
-				((HttpURLConnection) c).setInstanceFollowRedirects(false);
+				connection.setInstanceFollowRedirects(false);
 			}
 			// We want to open the input stream before getting headers
 			// because getHeaderField() et al swallow IOExceptions.

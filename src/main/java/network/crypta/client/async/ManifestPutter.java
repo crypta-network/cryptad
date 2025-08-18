@@ -1,13 +1,15 @@
 package network.crypta.client.async;
 
 import network.crypta.node.RequestClient;
+
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.InsertException;
 
 public abstract class ManifestPutter extends BaseClientPutter {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
 
 	/** Required because {@link Serializable} is implemented by a parent class. */
 	protected ManifestPutter() {

@@ -1,9 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
@@ -28,10 +25,10 @@ import network.crypta.support.io.StorageFormatException;
  */
 public abstract class ClientRequest implements Serializable {
 
-    /**
-     * ATTENTION: When incrementing this, please skip version 2. Version 2 had already temporarily
-     * been used by a development branch. */
-    private static final long serialVersionUID = 1L;
+	/**
+	* ATTENTION: When incrementing this, please skip version 2. Version 2 had already temporarily
+	* been used by a development branch. */
+	@Serial private static final long serialVersionUID = 1L;
     /** URI to fetch, or target URI to insert to */
 	protected FreenetURI uri;
 	/** Unique request identifier */
@@ -526,12 +523,10 @@ public abstract class ClientRequest implements Serializable {
 
     public static ClientRequest restartFrom(DataInputStream dis, RequestIdentifier reqID,
             ClientContext context, ChecksumChecker checker) throws StorageFormatException, IOException, ResumeFailedException {
-        switch(reqID.type) {
-        case GET:
-            return ClientGet.restartFrom(dis, reqID, context, checker);
-        default:
-            return null;
-        }
+        return switch(reqID.type) {
+        case GET -> ClientGet.restartFrom(dis, reqID, context, checker);
+        default -> null;
+        };
     }
 
     /** Return true if we resumed the original fetch from stored data (usually a file for a 

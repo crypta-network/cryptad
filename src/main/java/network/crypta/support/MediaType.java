@@ -66,7 +66,7 @@ public class MediaType {
 		for (String parameter : parameters) {
 			int equals = parameter.indexOf('=');
 			if (equals == -1) {
-				throw new MalformedURLException(String.format("Illegal parameter: “%s”", parameter));
+				throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
 			}
 			String name = parameter.substring(0, equals).trim().toLowerCase();
 			String value = parameter.substring(equals + 1).trim();

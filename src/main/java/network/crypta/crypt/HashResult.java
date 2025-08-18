@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 
@@ -13,7 +14,7 @@ import network.crypta.support.Logger;
 
 public class HashResult implements Comparable<HashResult>, Cloneable, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** The type of hash. */
 	public final HashType type;
 	/** The result of the hash. Immutable. */

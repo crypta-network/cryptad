@@ -109,14 +109,14 @@ public class RequestStatusCache {
 	synchronized void removeByIdentifier(String identifier) {
 		RequestStatus status = requestsByIdentifier.remove(identifier);
 		if(status == null) return;
-		if(status instanceof DownloadRequestStatus) {
+		if(status instanceof DownloadRequestStatus requestStatus1) {
 			downloads.remove(status);
 			FreenetURI uri = status.getURI();
 			assert(uri != null);
-			downloadsByURI.removeElement(uri, (DownloadRequestStatus) status);
-		} else if(status instanceof UploadRequestStatus) {
+			downloadsByURI.removeElement(uri, requestStatus1);
+		} else if(status instanceof UploadRequestStatus requestStatus) {
 			uploads.remove(status);
-			FreenetURI uri = ((UploadRequestStatus) status).getFinalURI();
+			FreenetURI uri = requestStatus.getFinalURI();
 			if(uri != null)
 				uploadsByFinalURI.removeElement(uri, status);
 		}

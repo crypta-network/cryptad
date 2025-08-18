@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.util.List;
 
 import network.crypta.client.ClientMetadata;
@@ -16,7 +17,7 @@ import network.crypta.support.io.ResumeFailedException;
  * Wrapper for a backgrounded USKFetcher.
  */
 public class USKFetcherWrapper extends BaseClientGetter {
-	private static final long serialVersionUID = -6416069493740293035L;
+	@Serial private static final long serialVersionUID = -6416069493740293035L;
 
 	final USK usk;
 	

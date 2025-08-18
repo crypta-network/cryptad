@@ -15,6 +15,8 @@ import network.crypta.keys.Key;
 import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
 
+import java.io.Serial;
+
 /**
  * A low-level key fetch which can be sent immediately. @see SendableRequest
  * 
@@ -23,7 +25,7 @@ import network.crypta.support.io.NativeThread;
  */
 public abstract class SendableGet extends BaseSendableGet {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Parent BaseClientGetter. Required for schedulers. */
 	public final ClientRequester parent;
 	

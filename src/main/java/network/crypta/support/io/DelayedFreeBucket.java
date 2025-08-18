@@ -1,11 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
@@ -17,7 +12,7 @@ import network.crypta.support.api.RandomAccessBucket;
 
 public class DelayedFreeBucket implements Bucket, Serializable, DelayedFree {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     // Only set on construction and on onResume() on startup. So shouldn't need locking.
 	private transient PersistentFileTracker factory;
 	private final Bucket bucket;
@@ -167,9 +162,9 @@ public class DelayedFreeBucket implements Bucket, Serializable, DelayedFree {
      * @throws IOException If the bucket has already been freed. */
     public synchronized RandomAccessBucket toRandomAccessBucket() throws IOException {
         if(freed) throw new IOException("Already freed");
-        if(bucket instanceof RandomAccessBucket) {
+        if(bucket instanceof RandomAccessBucket accessBucket) {
             migrated = true;
-            return new DelayedFreeRandomAccessBucket(factory, (RandomAccessBucket)bucket);
+            return new DelayedFreeRandomAccessBucket(factory, accessBucket);
             // Underlying file is already registered.
         }
         return null;

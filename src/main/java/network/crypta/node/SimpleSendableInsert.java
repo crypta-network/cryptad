@@ -14,6 +14,8 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 
+import java.io.Serial;
+
 /**
  * Simple SendableInsert implementation. No feedback, no retries, just insert the
  * block. Not designed for use by the client layer (and not persistent). Used by the node layer 
@@ -21,7 +23,7 @@ import network.crypta.support.Logger.LogLevel;
  */
 public class SimpleSendableInsert extends SendableInsert {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     public final KeyBlock block;
 	public final short prioClass;
 	private boolean finished;
@@ -181,8 +183,8 @@ public class SimpleSendableInsert extends SendableInsert {
         
         @Override
         public boolean equals(Object o) {
-            if(o instanceof MySendableRequestItem) {
-                return ((MySendableRequestItem)o).parent == parent;
+            if(o instanceof MySendableRequestItem item) {
+                return item.parent == parent;
             } else return false;
         }
         

@@ -932,8 +932,8 @@ public class PluginManager {
 		ClassLoader pluginClassLoader = handler.getClass().getClassLoader();
 		Thread.currentThread().setContextClassLoader(pluginClassLoader);
 		try {
-		if(handler instanceof FredPluginHTTP)
-			return ((FredPluginHTTP) handler).handleHTTPPost(request);
+		if(handler instanceof FredPluginHTTP tP)
+			return tP.handleHTTPPost(request);
 		} finally {
 			Thread.currentThread().setContextClassLoader(oldClassLoader);
 		}
@@ -1122,7 +1122,7 @@ public class PluginManager {
 		List<File> filesInPluginDirectory = getPreviousInstances(pluginDirectory, filename);
 		cleanCacheDirectory(filesInPluginDirectory, useCachedFile);
 		if (!filesInPluginDirectory.isEmpty() && useCachedFile) {
-			return new File(pluginDirectory, filesInPluginDirectory.get(0).getName());
+			return new File(pluginDirectory, filesInPluginDirectory.getFirst().getName());
 		}
 		return new File(pluginDirectory, filename + "-" + System.currentTimeMillis());
 	}
@@ -1202,21 +1202,21 @@ public class PluginManager {
 		try {
 			JarClassLoader jarClassLoader = new JarClassLoader(pluginFile);
 			Class<?> pluginMainClass = jarClassLoader.loadClass(pluginMainClassName);
-			Object object = pluginMainClass.newInstance();
+			Object object = pluginMainClass.getDeclaredConstructor().newInstance();
 			if (!(object instanceof FredPlugin)) {
 				throw new PluginNotFoundException("plugin main class is not a plugin");
 			}
 			if (isOfficialPlugin) {
 				verifyPluginVersion(name, jarClassLoader, (FredPlugin) object);
 			}
-			if (object instanceof FredPluginL10n) {
-				((FredPluginL10n) object).setLanguage(NodeL10n.getBase().getSelectedLanguage());
+			if (object instanceof FredPluginL10n l10n) {
+				l10n.setLanguage(NodeL10n.getBase().getSelectedLanguage());
 			}
-			if (object instanceof FredPluginBaseL10n) {
-				((FredPluginBaseL10n) object).setLanguage(NodeL10n.getBase().getSelectedLanguage());
+			if (object instanceof FredPluginBaseL10n l10n) {
+				l10n.setLanguage(NodeL10n.getBase().getSelectedLanguage());
 			}
-			if (object instanceof FredPluginThemed) {
-				((FredPluginThemed) object).setTheme(fproxyTheme);
+			if (object instanceof FredPluginThemed themed) {
+				themed.setTheme(fproxyTheme);
 			}
 			return (FredPlugin) object;
 		} catch (IOException ioe1) {
@@ -1249,8 +1249,8 @@ public class PluginManager {
 		long ver = -1;
 
 		if (minVer != -1) {
-			if (plugin instanceof FredPluginRealVersioned) {
-				ver = ((FredPluginRealVersioned) plugin).getRealVersion();
+			if (plugin instanceof FredPluginRealVersioned versioned) {
+				ver = versioned.getRealVersion();
 			}
 		}
 

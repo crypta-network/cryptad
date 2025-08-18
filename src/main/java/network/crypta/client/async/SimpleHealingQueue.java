@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,7 +18,7 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 
 public class SimpleHealingQueue extends BaseClientPutter implements HealingQueue, PutCompletionCallback {
-	private static final long serialVersionUID = -2884613086588264043L;
+	@Serial private static final long serialVersionUID = -2884613086588264043L;
 
 	final int maxRunning;
 	int counter;

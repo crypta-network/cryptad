@@ -1,5 +1,7 @@
 package network.crypta.crypt;
 
+import java.io.Serial;
+
 /**
  * The UnsupportedTypeException is a subclass of IllegalArgumentException.
  * 
@@ -10,7 +12,7 @@ package network.crypta.crypt;
  *
  */
 public class UnsupportedTypeException extends IllegalArgumentException {
-    private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     public UnsupportedTypeException(Enum<?> type, String s) {
         super("Unsupported "+type.getDeclaringClass().getName()+" "+type.name()+" used. "+s);
     }

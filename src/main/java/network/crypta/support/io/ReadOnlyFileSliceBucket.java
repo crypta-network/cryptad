@@ -1,15 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.RandomAccessFile;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.Bucket;
@@ -19,7 +10,7 @@ import network.crypta.support.api.Bucket;
  */
 public class ReadOnlyFileSliceBucket implements Bucket, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private final File file;
 	private final long startAt;
 	private final long length;
@@ -120,7 +111,7 @@ public class ReadOnlyFileSliceBucket implements Bucket, Serializable {
 
 	public static class ReadOnlyFileSliceBucketException extends IOException {
 
-		private static final long serialVersionUID = -1;
+		@Serial private static final long serialVersionUID = -1;
 
 		public ReadOnlyFileSliceBucketException(FileNotFoundException e) {
 			super("File not found: " + e.getMessage());

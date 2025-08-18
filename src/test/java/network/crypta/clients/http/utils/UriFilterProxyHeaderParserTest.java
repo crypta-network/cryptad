@@ -287,16 +287,15 @@ public class UriFilterProxyHeaderParserTest {
         uriHost,
         headers)
                                                          .toString();
-      assertEquals(String.format(
-              "schemeHostAndPort %s does not match expected %s; portConfig=\"%s\", bindTo=\"%s\", uriScheme=\"%s\", uriHost=\"%s\", headers=%s, expected=\"%s\"",
-              schemeHostAndPort,
-              resultUriPrefix,
-              fProxyPort,
-              fProxyBindTo,
-              uriScheme,
-              uriHost,
-              headers,
-              resultUriPrefix), schemeHostAndPort, resultUriPrefix);
+      assertEquals("schemeHostAndPort %s does not match expected %s; portConfig=\"%s\", bindTo=\"%s\", uriScheme=\"%s\", uriHost=\"%s\", headers=%s, expected=\"%s\"".formatted(
+			schemeHostAndPort,
+			resultUriPrefix,
+			fProxyPort,
+			fProxyBindTo,
+			uriScheme,
+			uriHost,
+			headers,
+			resultUriPrefix), schemeHostAndPort, resultUriPrefix);
 
   }
 

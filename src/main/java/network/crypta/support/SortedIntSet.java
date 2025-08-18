@@ -49,7 +49,7 @@ public class SortedIntSet extends AbstractCollection<Integer> implements SortedS
 	 * @return the smallest item, or -1 if the set is empty
 	 */
 	public synchronized Integer getFirst() {
-		return data.isEmpty() ? -1 : data.get(0);
+		return data.isEmpty() ? -1 : data.getFirst();
 	}
 
 	/**
@@ -58,7 +58,7 @@ public class SortedIntSet extends AbstractCollection<Integer> implements SortedS
 	 * @return the largest item, or -1 if the set is empty
 	 */
 	public synchronized Integer getLast() {
-		return data.isEmpty() ? -1 : data.get(data.size() - 1);
+		return data.isEmpty() ? -1 : data.getLast();
 	}
 
 	/**
@@ -226,8 +226,7 @@ public class SortedIntSet extends AbstractCollection<Integer> implements SortedS
 
 	@Override
 	public boolean contains(Object arg0) {
-		if(arg0 instanceof Integer) {
-			int x = (Integer)arg0;
+		if(arg0 instanceof Integer x) {
 			return contains(x);
 		}
 		return false;
@@ -240,8 +239,8 @@ public class SortedIntSet extends AbstractCollection<Integer> implements SortedS
 
 	@Override
 	public boolean remove(Object arg0) {
-		if(arg0 instanceof Integer) {
-			return remove(((Integer)arg0).intValue());
+		if(arg0 instanceof Integer integer) {
+			return remove(integer.intValue());
 		}
 		return false;
 	}

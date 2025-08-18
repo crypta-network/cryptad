@@ -3,6 +3,8 @@ package network.crypta.support.math;
 import network.crypta.node.Location;
 import network.crypta.support.SimpleFieldSet;
 
+import java.io.Serial;
+
 /**
  * @author robert
  *
@@ -10,7 +12,7 @@ import network.crypta.support.SimpleFieldSet;
  */
 public final class DecayingKeyspaceAverage implements RunningAverage, Cloneable {
 
-	private static final long serialVersionUID = 5129429614949179428L;
+	@Serial private static final long serialVersionUID = 5129429614949179428L;
 	/**
 	'avg' is the normalized average location, note that the the reporting bounds are (-2.0, 2.0) however.
 	 */

@@ -1,9 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Arrays;
 
 import network.crypta.client.InsertContext;
@@ -13,7 +10,7 @@ import network.crypta.support.io.StorageFormatException;
 
 public class CompatibilityAnalyser implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     CompatibilityMode min;
     CompatibilityMode max;
     byte[] cryptoKey;

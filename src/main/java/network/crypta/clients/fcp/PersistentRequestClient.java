@@ -505,8 +505,8 @@ public class PersistentRequestClient {
 			ArrayList<RequestStatus> statuses = new ArrayList<RequestStatus>();
 			addPersistentRequestStatus(statuses, true);
 			for(RequestStatus status : statuses) {
-				if(status instanceof DownloadRequestStatus)
-					cache.addDownload((DownloadRequestStatus)status);
+				if(status instanceof DownloadRequestStatus requestStatus)
+					cache.addDownload(requestStatus);
 				else
 					cache.addUpload((UploadRequestStatus)status);
 			}

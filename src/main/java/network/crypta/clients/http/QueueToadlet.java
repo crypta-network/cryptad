@@ -2173,10 +2173,10 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 						requestRow.addChild(createSizeCell(clientRequest.getDataSize(), isFinal, advancedModeEnabled));
 						break;
 					case MIME_TYPE:
-						if (clientRequest instanceof DownloadRequestStatus) {
-							requestRow.addChild(createTypeCell(((DownloadRequestStatus) clientRequest).getMIMEType()));
-						} else if (clientRequest instanceof UploadFileRequestStatus) {
-							requestRow.addChild(createTypeCell(((UploadFileRequestStatus) clientRequest).getMIMEType()));
+						if (clientRequest instanceof DownloadRequestStatus status1) {
+							requestRow.addChild(createTypeCell(status1.getMIMEType()));
+						} else if (clientRequest instanceof UploadFileRequestStatus status) {
+							requestRow.addChild(createTypeCell(status.getMIMEType()));
 						}
 						break;
 					case PERSISTENCE:
@@ -2185,17 +2185,17 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 					case KEY:
 						if (clientRequest instanceof DownloadRequestStatus) {
 							requestRow.addChild(createKeyCell(clientRequest.getURI(), false));
-						} else if (clientRequest instanceof UploadFileRequestStatus) {
-							requestRow.addChild(createKeyCell(((UploadFileRequestStatus) clientRequest).getFinalURI(), false));
+						} else if (clientRequest instanceof UploadFileRequestStatus status) {
+							requestRow.addChild(createKeyCell(status.getFinalURI(), false));
 						}else {
 							requestRow.addChild(createKeyCell(((UploadDirRequestStatus) clientRequest).getFinalURI(), true));
 						}
 						break;
 					case FILENAME:
-						if (clientRequest instanceof DownloadRequestStatus) {
-							requestRow.addChild(createFilenameCell(((DownloadRequestStatus) clientRequest).getDestFilename()));
-						} else if (clientRequest instanceof UploadFileRequestStatus) {
-							requestRow.addChild(createFilenameCell(((UploadFileRequestStatus) clientRequest).getOrigFilename()));
+						if (clientRequest instanceof DownloadRequestStatus status1) {
+							requestRow.addChild(createFilenameCell(status1.getDestFilename()));
+						} else if (clientRequest instanceof UploadFileRequestStatus status) {
+							requestRow.addChild(createFilenameCell(status.getOrigFilename()));
 						}
 						break;
 					case PRIORITY:
@@ -2208,9 +2208,9 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 						requestRow.addChild(createSizeCell(((UploadDirRequestStatus) clientRequest).getTotalDataSize(), true, advancedModeEnabled));
 						break;
 					case PROGRESS:
-						if(clientRequest instanceof UploadFileRequestStatus)
+						if(clientRequest instanceof UploadFileRequestStatus status)
 							requestRow.addChild(createProgressCell(ctx.isAdvancedModeEnabled(),
-									clientRequest.isStarted(), ((UploadFileRequestStatus)clientRequest).isCompressing(),
+									clientRequest.isStarted(), status.isCompressing(),
 									clientRequest.getFetchedBlocks(), clientRequest.getFailedBlocks(),
 									clientRequest.getFatalyFailedBlocks(), clientRequest.getMinBlocks(),
 									clientRequest.getTotalBlocks(),
@@ -2236,8 +2236,8 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 				clientRequest.getLastFailure()));
 			break;
 					case COMPAT_MODE:
-						if(clientRequest instanceof DownloadRequestStatus) {
-							requestRow.addChild(createCompatModeCell((DownloadRequestStatus)clientRequest));
+						if(clientRequest instanceof DownloadRequestStatus status) {
+							requestRow.addChild(createCompatModeCell(status));
 						} else {
 							requestRow.addChild("td");
 						}
@@ -2277,8 +2277,8 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 		if(clientRequest instanceof DownloadRequestStatus) {
 			uri = clientRequest.getURI();
 			size = clientRequest.getDataSize();
-		} else if(clientRequest instanceof UploadRequestStatus) {
-			uri = ((UploadRequestStatus)clientRequest).getFinalURI();
+		} else if(clientRequest instanceof UploadRequestStatus status) {
+			uri = status.getFinalURI();
 			size = clientRequest.getDataSize();
 		} else {
 			uri = null;
@@ -2463,38 +2463,38 @@ public class QueueToadlet extends Toadlet implements RequestCompletionCallback, 
 				Logger.minor(this, "Request hasn't finished: "+req+" for "+identifier, new Exception("debug"));
 			return;
 		}
-		if(req instanceof ClientGet) {
-			FreenetURI uri = ((ClientGet)req).getURI();
+		if(req instanceof ClientGet get) {
+			FreenetURI uri = get.getURI();
 			if(uri == null) {
 				Logger.error(this, "No URI for supposedly finished request "+req);
 				return;
 			}
-			long size = ((ClientGet)req).getDataSize();
+			long size = get.getDataSize();
 			GetCompletedEvent event = new GetCompletedEvent(identifier, uri, size);
 			synchronized(completedGets) {
 				completedGets.put(identifier, event);
 			}
 			core.getAlerts().register(event);
-		} else if(req instanceof ClientPut) {
-			FreenetURI uri = ((ClientPut)req).getFinalURI();
+		} else if(req instanceof ClientPut put) {
+			FreenetURI uri = put.getFinalURI();
 			if(uri == null) {
 				Logger.error(this, "No URI for supposedly finished request "+req);
 				return;
 			}
-			long size = ((ClientPut)req).getDataSize();
+			long size = put.getDataSize();
 			PutCompletedEvent event = new PutCompletedEvent(identifier, uri, size);
 			synchronized(completedPuts) {
 				completedPuts.put(identifier, event);
 			}
 			core.getAlerts().register(event);
-		} else if(req instanceof ClientPutDir) {
-			FreenetURI uri = ((ClientPutDir)req).getFinalURI();
+		} else if(req instanceof ClientPutDir dir) {
+			FreenetURI uri = dir.getFinalURI();
 			if(uri == null) {
 				Logger.error(this, "No URI for supposedly finished request "+req);
 				return;
 			}
-			long size = ((ClientPutDir)req).getTotalDataSize();
-			int files = ((ClientPutDir)req).getNumberOfFiles();
+			long size = dir.getTotalDataSize();
+			int files = dir.getNumberOfFiles();
 			PutDirCompletedEvent event = new PutDirCompletedEvent(identifier, uri, size, files);
 			synchronized(completedPutDirs) {
 				completedPutDirs.put(identifier, event);

@@ -2,11 +2,13 @@ package network.crypta.client.filter;
 
 import network.crypta.l10n.NodeL10n;
 
+import java.io.Serial;
+
 // This is thrown when a stylesheet starts with the CSS BOM, i.e. "@charset \"
 // in some encoding, but the declaration is invalid.
 public class UndetectableCharsetException extends UnsafeContentTypeException {
 
-	final private static long serialVersionUID = -7663468693283975543L;
+	@Serial final private static long serialVersionUID = -7663468693283975543L;
 
 	final String charset;
 

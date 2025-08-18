@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import java.io.Serial;
 import java.net.URI;
 import java.net.URISyntaxException;
 
@@ -12,7 +13,7 @@ import java.net.URISyntaxException;
  * @author xor <xor@freenetproject.org>
  */
 public class RedirectException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	final URI newuri;
 
 	public RedirectException(String newURI) throws URISyntaxException {

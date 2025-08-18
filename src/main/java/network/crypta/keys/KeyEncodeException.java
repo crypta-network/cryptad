@@ -1,7 +1,9 @@
 package network.crypta.keys;
 
+import java.io.Serial;
+
 public class KeyEncodeException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	public KeyEncodeException(String string) {
 		super(string);

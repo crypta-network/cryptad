@@ -1066,24 +1066,16 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
 	}
 
 	public static int numberOf(char c) {
-		switch (c) {
-			case 'd' :
-				return DATE;
-			case 'c' :
-				return CLASS;
-			case 'h' :
-				return HASHCODE;
-			case 't' :
-				return THREAD;
-			case 'p' :
-				return PRIORITY;
-			case 'm' :
-				return MESSAGE;
-			case 'u' :
-				return UNAME;
-			default :
-				return 0;
-		}
+		return switch (c) {
+			case 'd'  -> DATE;
+			case 'c'  -> CLASS;
+			case 'h'  -> HASHCODE;
+			case 't'  -> THREAD;
+			case 'p'  -> PRIORITY;
+			case 'm'  -> MESSAGE;
+			case 'u'  -> UNAME;
+			default  -> 0;
+		};
 	}
 
 	@Override

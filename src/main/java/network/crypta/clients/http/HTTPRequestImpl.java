@@ -201,7 +201,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 		if (asParts) {
 			for (Entry<String, List<String>> parameterValues : parameters.entrySet()) {
 				List<String> values = parameterValues.getValue();
-				String value = values.get(values.size() - 1);
+				String value = values.getLast();
 				byte[] buf = value.getBytes(StandardCharsets.UTF_8);
 				RandomAccessBucket b = new SimpleReadOnlyArrayBucket(buf);
 				parts.put(parameterValues.getKey(), b);
@@ -227,7 +227,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 			return null;
 		}
 		List<String> allValues = this.getParameterValueList(name);
-		return allValues.get(0);
+		return allValues.getFirst();
 	}
 
 	/**

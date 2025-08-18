@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +31,7 @@ import network.crypta.support.api.Bucket;
  */
 public abstract class ClientPutBase extends ClientRequest implements ClientPutCallback, ClientEventListener {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Created new for each ClientPutBase, so we have to delete it in requestWasRemoved() */
 	final InsertContext ctx;
 
@@ -289,36 +290,36 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	public void receive(final ClientEvent ce, ClientContext context) {
 		if(finished) return;
 		if(logMINOR) Logger.minor(this, "Receiving event "+ce+" on "+this);
-		if(ce instanceof SplitfileProgressEvent) {
+		if(ce instanceof SplitfileProgressEvent event3) {
 			if((verbosity & VERBOSITY_SPLITFILE_PROGRESS) == VERBOSITY_SPLITFILE_PROGRESS) {
 				SimpleProgressMessage progress = 
-					new SimpleProgressMessage(identifier, global, (SplitfileProgressEvent)ce);
+					new SimpleProgressMessage(identifier, global, event3);
 				trySendProgressMessage(progress, VERBOSITY_SPLITFILE_PROGRESS, null, context);
 			}
 			if(client != null) {
 				RequestStatusCache cache = client.getRequestStatusCache();
 				if(cache != null) {
-					cache.updateStatus(identifier, (SplitfileProgressEvent)ce);
+					cache.updateStatus(identifier, event3);
 				}
 			}
-		} else if(ce instanceof StartedCompressionEvent) {
+		} else if(ce instanceof StartedCompressionEvent event2) {
 			if((verbosity & VERBOSITY_COMPRESSION_START_END) == VERBOSITY_COMPRESSION_START_END) {
 				StartedCompressionMessage msg =
-					new StartedCompressionMessage(identifier, global, ((StartedCompressionEvent)ce).codec);
+					new StartedCompressionMessage(identifier, global, event2.codec);
 				trySendProgressMessage(msg, VERBOSITY_COMPRESSION_START_END, null, context);
 				onStartCompressing();
 			}
-		} else if(ce instanceof FinishedCompressionEvent) {
+		} else if(ce instanceof FinishedCompressionEvent event1) {
 			if((verbosity & VERBOSITY_COMPRESSION_START_END) == VERBOSITY_COMPRESSION_START_END) {
 				FinishedCompressionMessage msg = 
-					new FinishedCompressionMessage(identifier, global, (FinishedCompressionEvent)ce);
+					new FinishedCompressionMessage(identifier, global, event1);
 				trySendProgressMessage(msg, VERBOSITY_COMPRESSION_START_END, null, context);
 				onStopCompressing();
 			}
-		} else if(ce instanceof ExpectedHashesEvent) {
+		} else if(ce instanceof ExpectedHashesEvent event) {
 			if((verbosity & VERBOSITY_EXPECTED_HASHES) == VERBOSITY_EXPECTED_HASHES) {
 				ExpectedHashes msg =
-					new ExpectedHashes((ExpectedHashesEvent)ce, identifier, global);
+					new ExpectedHashes(event, identifier, global);
 				trySendProgressMessage(msg, VERBOSITY_EXPECTED_HASHES, null, context);
 				//FIXME: onHashesComputed();
 			}
@@ -453,8 +454,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getSuccessFraction() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getFraction();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getFraction();
 			else return 0;
 		} else
 			return -1;
@@ -464,8 +465,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getTotalBlocks() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getTotalBlocks();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getTotalBlocks();
 			else return 0;
 		} else
 			return -1;
@@ -474,8 +475,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getMinBlocks() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getMinBlocks();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getMinBlocks();
 			else return 0;
 		} else
 			return -1;
@@ -484,8 +485,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getFailedBlocks() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getFailedBlocks();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getFailedBlocks();
 			else return 0;
 		} else
 			return -1;
@@ -494,8 +495,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getFatalyFailedBlocks() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getFatalyFailedBlocks();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getFatalyFailedBlocks();
 			else return 0;
 		} else
 			return -1;
@@ -504,8 +505,8 @@ public abstract class ClientPutBase extends ClientRequest implements ClientPutCa
 	@Override
 	public synchronized double getFetchedBlocks() {
 		if(progressMessage != null) {
-			if(progressMessage instanceof SimpleProgressMessage)
-				return ((SimpleProgressMessage)progressMessage).getFetchedBlocks();
+			if(progressMessage instanceof SimpleProgressMessage message)
+				return message.getFetchedBlocks();
 			else return 0;
 		} else
 			return -1;

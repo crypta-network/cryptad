@@ -110,11 +110,11 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
 		assert(keysList.size() == keys.size());
 		if(keys.size() == 1) {
 			// Shortcut the common case
-			Key k = keysList.get(0);
+			Key k = keysList.getFirst();
 			if(fetching.hasKey(k, null)) return null;
 			// Ignore RecentlyFailed because an offered key overrides it.
 			keys.remove(k);
-			keysList.remove(0);
+			keysList.removeFirst();
 			keysList.trimToSize();
 			return new MySendableRequestItem(k);
 		}

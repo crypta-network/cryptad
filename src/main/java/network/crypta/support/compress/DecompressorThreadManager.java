@@ -60,7 +60,7 @@ public class DecompressorThreadManager {
 		}
 		input = inputStream;
 		while(!decompressors.isEmpty()) {
-			Compressor compressor = decompressors.remove(decompressors.size()-1);
+			Compressor compressor = decompressors.removeLast();
 			if(logMINOR) Logger.minor(this, "Decompressing with "+compressor);
 			DecompressorThread thread = new DecompressorThread(compressor, this, input, output, maxLen);
 			threads.add(thread);

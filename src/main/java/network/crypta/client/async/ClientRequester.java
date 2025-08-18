@@ -1,9 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Date;
 import java.util.WeakHashMap;
 
@@ -28,7 +25,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	
 	static {

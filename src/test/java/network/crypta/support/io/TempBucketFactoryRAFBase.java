@@ -406,8 +406,8 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
         } else {
             EncryptedRandomAccessBucket erab = (EncryptedRandomAccessBucket) bucket.getUnderlying();
             RandomAccessBucket b = erab.getUnderlying();
-            if (b instanceof PaddedRandomAccessBucket) {
-                b = ((PaddedRandomAccessBucket) b).getUnderlying();
+            if (b instanceof PaddedRandomAccessBucket accessBucket) {
+                b = accessBucket.getUnderlying();
             }
             return ((TempFileBucket) b).getFile();
         }

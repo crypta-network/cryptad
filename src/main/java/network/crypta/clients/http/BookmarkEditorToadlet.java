@@ -229,21 +229,12 @@ public class BookmarkEditorToadlet extends Toadlet {
 
 				} else if("edit".equals(action) || "addItem".equals(action) || "addCat".equals(action) || "share".equals(action)) {
 					boolean isNew = "addItem".equals(action) || "addCat".equals(action);
-					String header;
-					switch (action) {
-						case "edit":
-							header = NodeL10n.getBase().getString("BookmarkEditorToadlet.edit" + ((bookmark instanceof BookmarkItem) ? "Bookmark" : "Category") + "Title");
-							break;
-						case "addItem":
-							header = NodeL10n.getBase().getString("BookmarkEditorToadlet.addNewBookmark");
-							break;
-						case "share":
-							header = NodeL10n.getBase().getString("BookmarkEditorToadlet.share");
-							break;
-						default:
-							header = NodeL10n.getBase().getString("BookmarkEditorToadlet.addNewCategory");
-							break;
-					}
+					String header = switch (action) {
+						case "edit" -> NodeL10n.getBase().getString("BookmarkEditorToadlet.edit" + ((bookmark instanceof BookmarkItem) ? "Bookmark" : "Category") + "Title");
+						case "addItem" -> NodeL10n.getBase().getString("BookmarkEditorToadlet.addNewBookmark");
+						case "share" -> NodeL10n.getBase().getString("BookmarkEditorToadlet.share");
+						default -> NodeL10n.getBase().getString("BookmarkEditorToadlet.addNewCategory");
+					};
 
 					HTMLNode actionBoxContent = pageMaker.getInfobox("infobox-query", header, content, "bookmark-action", false);
 
@@ -414,8 +405,8 @@ public class BookmarkEditorToadlet extends Toadlet {
 
 					bookmarkManager.addBookmark(bookmarkPath, newBookmark);
 					bookmarkManager.storeBookmarks();
-					if(newBookmark instanceof BookmarkItem)
-						sendBookmarkFeeds(req, (BookmarkItem) newBookmark, req.getPartAsStringFailsafe("publicDescB", MAX_KEY_LENGTH));
+					if(newBookmark instanceof BookmarkItem item)
+						sendBookmarkFeeds(req, item, req.getPartAsStringFailsafe("publicDescB", MAX_KEY_LENGTH));
 
 					pageMaker.getInfobox("infobox-success", NodeL10n.getBase().getString("BookmarkEditorToadlet.addedNewBookmarkTitle"), content, "bookmark-add-new", false).
 						addChild("p", NodeL10n.getBase().getString("BookmarkEditorToadlet.addedNewBookmark"));

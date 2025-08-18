@@ -1,12 +1,14 @@
 package network.crypta.pluginmanager;
 
+import java.io.Serial;
+
 /**
  * Force the download of something to disk
  * 
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class DownloadPluginHTTPException extends PluginHTTPException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	
 	public static final short CODE = 200; // Found
 	public final String filename;

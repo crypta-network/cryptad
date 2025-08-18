@@ -3,6 +3,8 @@ package network.crypta.io.comm;
 
 import network.crypta.support.LightweightException;
 
+import java.io.Serial;
+
 /**
  * @author ian
  *
@@ -10,7 +12,7 @@ import network.crypta.support.LightweightException;
  * Window - Preferences - Java - Code Generation - Code and Comments
  */
 public class RetrievalException extends LightweightException {
-	private static final long serialVersionUID = 3257565105301500723L;
+	@Serial private static final long serialVersionUID = 3257565105301500723L;
 
 	public static final int UNKNOWN = 0;
 	public static final int PREMATURE_EOF = 2;
@@ -56,34 +58,21 @@ public class RetrievalException extends LightweightException {
 	}
 	
 	public static String getErrString(int reason) {
-		switch (reason) {
-			case PREMATURE_EOF:
-				return "PREMATURE_EOF";
-			case IO_ERROR:
-				return "IO_ERROR";
-			case SENDER_DIED:
-				return "SENDER_DIED";
-			case TIMED_OUT:
-				return "TIMED_OUT";
-			case ALREADY_CACHED:
-				return "ALREADY_CACHED";
-			case SENDER_DISCONNECTED:
-				return "SENDER_DISCONNECTED";
-			case NO_DATAINSERT:
-				return "NO_DATAINSERT";
-			case CANCELLED_BY_RECEIVER:
-				return "CANCELLED_BY_RECEIVER";
-			case UNKNOWN:
-				return "UNKNOWN";
-			case UNABLE_TO_SEND_BLOCK_WITHIN_TIMEOUT:
-				return "UNABLE_TO_SEND_BLOCK_WITHIN_TIMEOUT";
-			case GONE_TO_TURTLE_MODE:
-				return "GONE_TO_TURTLE_MODE";
-			case TURTLE_KILLED:
-				return "TURTLE_KILLED";
-			default:
-				return "UNKNOWN ("+reason+")";
-		}
+		return switch (reason) {
+			case PREMATURE_EOF -> "PREMATURE_EOF";
+			case IO_ERROR -> "IO_ERROR";
+			case SENDER_DIED -> "SENDER_DIED";
+			case TIMED_OUT -> "TIMED_OUT";
+			case ALREADY_CACHED -> "ALREADY_CACHED";
+			case SENDER_DISCONNECTED -> "SENDER_DISCONNECTED";
+			case NO_DATAINSERT -> "NO_DATAINSERT";
+			case CANCELLED_BY_RECEIVER -> "CANCELLED_BY_RECEIVER";
+			case UNKNOWN -> "UNKNOWN";
+			case UNABLE_TO_SEND_BLOCK_WITHIN_TIMEOUT -> "UNABLE_TO_SEND_BLOCK_WITHIN_TIMEOUT";
+			case GONE_TO_TURTLE_MODE -> "GONE_TO_TURTLE_MODE";
+			case TURTLE_KILLED -> "TURTLE_KILLED";
+			default -> "UNKNOWN ("+reason+")";
+		};
 	}
 	
 	@Override

@@ -873,9 +873,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
             public int getPriority() {
                 NativeThread.PriorityLevel priority = NativeThread.PriorityLevel.NORM_PRIORITY;
                 
-                if(messageHandler instanceof PrioritizedMessageHandler) {
+                if(messageHandler instanceof PrioritizedMessageHandler handler) {
                     try {
-                        priority = ((PrioritizedMessageHandler)messageHandler).getPriority(message);
+                        priority = handler.getPriority(message);
                     } catch(Throwable t) {
                         Logger.error(messageHandler, "Message handler's getPriority() threw!", t);
                     }

@@ -1,6 +1,8 @@
 package network.crypta.client.async;
 
 import network.crypta.node.RequestClient;
+
+import java.io.Serial;
 import java.io.Serializable;
 
 /** Base class for inserts, including site inserts, at the level of a ClientRequester.
@@ -10,7 +12,7 @@ import java.io.Serializable;
  */
 public abstract class BaseClientPutter extends ClientRequester {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	/** Required because {@link Serializable} is implemented by the parent class. */
 	protected BaseClientPutter() {

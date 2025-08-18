@@ -1,9 +1,6 @@
 package network.crypta.keys;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.util.Arrays;
 import java.util.Random;
@@ -16,8 +13,7 @@ import network.crypta.support.Fields;
  * a CHKBlock, can be produced by a CHKBlock. 
  */
 public class ClientCHK extends ClientKey implements Serializable {
-    
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Lazily constructed: the NodeCHK */
     transient NodeCHK nodeKey;
     /** Routing key */

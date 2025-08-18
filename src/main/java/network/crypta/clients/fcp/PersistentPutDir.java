@@ -104,10 +104,10 @@ public class PersistentPutDir extends FCPMessage {
 			} else {
 				Bucket origData = e.getData();
 				Bucket data = origData;
-				if(data instanceof DelayedFreeBucket) {
-					data = ((DelayedFreeBucket)data).getUnderlying();
-				} else if(data instanceof DelayedFreeRandomAccessBucket) {
-				    data = ((DelayedFreeRandomAccessBucket)data).getUnderlying();
+				if(data instanceof DelayedFreeBucket bucket1) {
+					data = bucket1.getUnderlying();
+				} else if(data instanceof DelayedFreeRandomAccessBucket bucket) {
+				    data = bucket.getUnderlying();
 				}
 				subset.put("DataLength", e.getSize());
 				if(mimeOverride != null)
@@ -116,9 +116,9 @@ public class PersistentPutDir extends FCPMessage {
 				// It is either a persistent encrypted bucket or a file bucket ...
 				if(data == null) {
 					Logger.error(this, "Bucket already freed: "+e.getData()+" for "+e+" for "+e.getName()+" for "+identifier);
-				} else if(data instanceof FileBucket) {
+				} else if(data instanceof FileBucket bucket) {
 					subset.putSingle("UploadFrom", "disk");
-					subset.putSingle("Filename", ((FileBucket)data).getFile().getPath());
+					subset.putSingle("Filename", bucket.getFile().getPath());
 				} else if (data instanceof PaddedEphemerallyEncryptedBucket || data instanceof NullBucket || data instanceof PersistentTempFileBucket || data instanceof TempBucketFactory.TempBucket || data instanceof EncryptedRandomAccessBucket) {
 					subset.putSingle("UploadFrom", "direct");
 				} else {

@@ -1,11 +1,6 @@
 package network.crypta.keys;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -76,10 +71,10 @@ import network.crypta.support.io.FileUtil;
  */
 public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializable {
 
-    /**
-     * For Serializable.
-     */
-    private static final long serialVersionUID = 1L;
+	/**
+	* For Serializable.
+	*/
+	@Serial private static final long serialVersionUID = 1L;
     
     private static volatile boolean logMINOR;
 	private static volatile boolean logDEBUG;
@@ -378,12 +373,12 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
 		
 		if((isSSK || isUSK || isKSK) && !sv.isEmpty()) {
 
-			docName = sv.remove(sv.size() - 1);
+			docName = sv.removeLast();
 			if(isUSK) {
 				if(sv.isEmpty())
 					throw new MalformedURLException("No suggested edition number for USK");
 				try {
-					suggestedEdition = Long.parseLong(sv.remove(sv.size() - 1));
+					suggestedEdition = Long.parseLong(sv.removeLast());
 				} catch(NumberFormatException e) {
 					throw (MalformedURLException)new MalformedURLException("Invalid suggested edition: " + e).initCause(e);
 				}

@@ -2,11 +2,13 @@ package network.crypta.client.filter;
 
 import network.crypta.client.FetchException;
 
+import java.io.Serial;
+
 /**
  * Exception thrown when the data cannot be filtered.
  */
 public class DataFilterException extends UnsafeContentTypeException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	final String rawTitle;
 	final String encodedTitle;

@@ -24,7 +24,7 @@ public class UriFilterProxyHeaderParser {
         List<String> bindToHosts = Arrays.stream(fProxyBindToConfig.getValueString().split(","))
             .map(host -> host.contains(":") ? "[" + host + "]" : host)
             .collect(Collectors.toList());
-        String firstBindToHost = bindToHosts.get(0);
+        String firstBindToHost = bindToHosts.getFirst();
         // set default values
         if (firstBindToHost.isEmpty()) {
             firstBindToHost = "127.0.0.1";

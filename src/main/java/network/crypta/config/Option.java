@@ -137,17 +137,13 @@ public abstract class Option<T> {
 	}
 	
 	public String getDataTypeStr() {
-		switch(dataType) {
-		case STRING:
-			return "string";
-		case NUMBER:
-			return "number";
-		case BOOLEAN:
-			return "boolean";
-		case STRING_ARRAY:
-			return "stringArray";
-		default: return null;
-		}
+		return switch(dataType) {
+		case STRING -> "string";
+		case NUMBER -> "number";
+		case BOOLEAN -> "boolean";
+		case STRING_ARRAY -> "stringArray";
+		default -> null;
+		};
 	}
 
 	/**

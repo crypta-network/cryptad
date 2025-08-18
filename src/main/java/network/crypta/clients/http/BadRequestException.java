@@ -1,10 +1,12 @@
 package network.crypta.clients.http;
 
+import java.io.Serial;
+
 /**
  * Indicates that a request cannot be processed by the toadlet, due to missing or invalid data in the request.
  */
 public class BadRequestException extends Exception {
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     
     private final String invalidRequestPart;
 

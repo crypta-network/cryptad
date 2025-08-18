@@ -1,5 +1,7 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
+
 /**
  * Thrown when an FCP message is invalid. This is after we have a
  * SimpleFieldSet; one example is if the fields necessary do not exist.
@@ -7,7 +9,7 @@ package network.crypta.clients.fcp;
  * ProtocolError.
  */
 public class MessageInvalidException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	final int protocolCode;
 	public final String ident;

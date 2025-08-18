@@ -1914,7 +1914,7 @@ public class Node implements TimeSkewDetectorCallback {
     dnsr = new DNSRequester(this);
     ps = new PacketSender(this);
     ticker = new PrioritizedTicker(executor, getDarknetPortNumber());
-    if (executor instanceof PooledExecutor) ((PooledExecutor) executor).setTicker(ticker);
+    if (executor instanceof PooledExecutor pooledExecutor) pooledExecutor.setTicker(ticker);
 
     Logger.normal(Node.class, "Creating node...");
 
@@ -2164,9 +2164,10 @@ public class Node implements TimeSkewDetectorCallback {
     throttleLocalData = nodeConfig.getBoolean("throttleLocalTraffic");
 
     String s =
-        "Testnet mode DISABLED. You may have some level of anonymity. :)\n"
-            + "Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.\n"
-            + "In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).";
+        """
+        Testnet mode DISABLED. You may have some level of anonymity. :)
+        Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.
+        In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).""";
     Logger.normal(this, s);
     System.err.println(s);
 
@@ -2747,8 +2748,8 @@ public class Node implements TimeSkewDetectorCallback {
           private void setPreallocate(StoreCallback<?> datastore, boolean val) {
             // Avoid race conditions by checking first.
             FreenetStore<?> store = datastore.getStore();
-            if (store instanceof SaltedHashFreenetStore)
-              ((SaltedHashFreenetStore<?>) store).setPreallocate(val);
+            if (store instanceof SaltedHashFreenetStore<?> freenetStore)
+              freenetStore.setPreallocate(val);
           }
         });
     storePreallocate = nodeConfig.getBoolean("storePreallocate");
@@ -4226,8 +4227,8 @@ public class Node implements TimeSkewDetectorCallback {
 
     // Transfer coalescing - match key only as HTL irrelevant
     RequestSender sender =
-        key instanceof NodeCHK
-            ? tracker.getTransferringRequestSenderByKey((NodeCHK) key, realTimeFlag)
+        key instanceof NodeCHK nchk
+            ? tracker.getTransferringRequestSenderByKey(nchk, realTimeFlag)
             : null;
     if (sender != null) {
       if (logMINOR) Logger.minor(this, "Data already being transferred: " + sender);
@@ -4306,18 +4307,18 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteDatastore,
       boolean forULPR,
       BlockMetadata meta) {
-    if (key instanceof NodeSSK)
+    if (key instanceof NodeSSK sK)
       return fetch(
-          (NodeSSK) key,
+          sK,
           false,
           canReadClientCache,
           canWriteClientCache,
           canWriteDatastore,
           forULPR,
           meta);
-    else if (key instanceof NodeCHK)
+    else if (key instanceof NodeCHK hK)
       return fetch(
-          (NodeCHK) key,
+          hK,
           false,
           canReadClientCache,
           canWriteClientCache,
@@ -4646,10 +4647,10 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteDatastore,
       boolean forULPR)
       throws KeyCollisionException {
-    if (block instanceof CHKBlock)
-      store((CHKBlock) block, deep, canWriteClientCache, canWriteDatastore, forULPR);
-    else if (block instanceof SSKBlock)
-      store((SSKBlock) block, deep, false, canWriteClientCache, canWriteDatastore, forULPR);
+    if (block instanceof CHKBlock kBlock1)
+      store(kBlock1, deep, canWriteClientCache, canWriteDatastore, forULPR);
+    else if (block instanceof SSKBlock kBlock)
+      store(kBlock, deep, false, canWriteClientCache, canWriteDatastore, forULPR);
     else throw new IllegalArgumentException("Unknown keytype ");
   }
 
@@ -4935,10 +4936,10 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteClientCache,
       boolean canWriteDatastore)
       throws KeyVerifyException {
-    if (key instanceof ClientCHK)
-      return fetch((ClientCHK) key, canReadClientCache, canWriteClientCache, canWriteDatastore);
-    else if (key instanceof ClientSSK)
-      return fetch((ClientSSK) key, canReadClientCache, canWriteClientCache, canWriteDatastore);
+    if (key instanceof ClientCHK hK)
+      return fetch(hK, canReadClientCache, canWriteClientCache, canWriteDatastore);
+    else if (key instanceof ClientSSK sK)
+      return fetch(sK, canReadClientCache, canWriteClientCache, canWriteDatastore);
     else throw new IllegalStateException("Don't know what to do with " + key);
   }
 
@@ -5050,8 +5051,8 @@ public class Node implements TimeSkewDetectorCallback {
 
     config.store();
 
-    if (random instanceof PersistentRandomSource) {
-      ((PersistentRandomSource) random).write_seed(true);
+    if (random instanceof PersistentRandomSource source) {
+      source.write_seed(true);
     }
   }
 
@@ -5683,8 +5684,8 @@ public class Node implements TimeSkewDetectorCallback {
 
   public boolean hasKey(Key key, boolean canReadClientCache, boolean forULPR) {
     // FIXME optimise!
-    if (key instanceof NodeCHK)
-      return fetch((NodeCHK) key, true, canReadClientCache, false, false, forULPR, null) != null;
+    if (key instanceof NodeCHK hK)
+      return fetch(hK, true, canReadClientCache, false, false, forULPR, null) != null;
     else return fetch((NodeSSK) key, true, canReadClientCache, false, false, forULPR, null) != null;
   }
 

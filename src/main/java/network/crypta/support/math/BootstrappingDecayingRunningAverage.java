@@ -5,6 +5,8 @@ import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Logger.LogLevel;
 
+import java.io.Serial;
+
 /**
  * Exponential decay "running average".
  * 
@@ -20,7 +22,7 @@ import network.crypta.support.Logger.LogLevel;
  * </ul>
  */
 public final class BootstrappingDecayingRunningAverage implements RunningAverage, Cloneable {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	@Override
 	public BootstrappingDecayingRunningAverage clone() {
 		// Override clone() for locking; BDRAs are self-synchronized.

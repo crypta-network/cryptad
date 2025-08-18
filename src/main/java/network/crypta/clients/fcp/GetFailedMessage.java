@@ -1,9 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 
 import network.crypta.client.FailureCodeTracker;
@@ -19,7 +16,7 @@ import network.crypta.support.SimpleFieldSet;
 
 public class GetFailedMessage extends FCPMessage implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final FetchExceptionMode code;
 	final String extraDescription;
 	final FailureCodeTracker tracker;

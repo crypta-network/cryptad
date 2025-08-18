@@ -1,7 +1,9 @@
 package network.crypta.pluginmanager;
 
+import java.io.Serial;
+
 public class PluginNotFoundException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	public PluginNotFoundException() {
 		super();

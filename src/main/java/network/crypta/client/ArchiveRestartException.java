@@ -1,5 +1,7 @@
 package network.crypta.client;
 
+import java.io.Serial;
+
 /**
  * Thrown when we need to restart a fetch process because of a problem
  * with an archive. This is usually because an archive has changed
@@ -7,7 +9,7 @@ package network.crypta.client;
  */
 public class ArchiveRestartException extends Exception {
 
-	private static final long serialVersionUID = -7670838856130773012L;
+	@Serial private static final long serialVersionUID = -7670838856130773012L;
 
 	public ArchiveRestartException(String msg) {
 		super(msg);

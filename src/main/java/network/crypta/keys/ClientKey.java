@@ -1,5 +1,6 @@
 package network.crypta.keys;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -13,7 +14,7 @@ import java.io.Serializable;
  */
 public abstract class ClientKey extends BaseClientKey implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     /**
 	 * @return a NodeCHK corresponding to this key. Basically keep the 

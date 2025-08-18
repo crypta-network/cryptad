@@ -37,9 +37,9 @@ public abstract class BandwidthManipulator {
 			config.get("node").set(limitType, limit);
 			Logger.normal(this, "The " + limitType + " has been set to " + limit);
 		} catch (ConfigException e) {
-			if (e instanceof InvalidConfigValueException) {
+			if (e instanceof InvalidConfigValueException exception) {
 				//Limit was not readable.
-				throw (InvalidConfigValueException)e;
+				throw exception;
 			}
 			Logger.error(this, "Should not happen, please report!" + e, e);
 		}

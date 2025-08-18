@@ -249,8 +249,8 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 				ckey = null;
 			} else {
 				key = ((BaseSendableGet)req).getNodeKey(token);
-				if(req instanceof SendableGet)
-					ckey = ((SendableGet)req).getKey(token);
+				if(req instanceof SendableGet get)
+					ckey = get.getKey(token);
 				else
 					ckey = null;
 			}
@@ -271,10 +271,10 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 				forkOnCacheable = false;
 			} else {
 				localRequestOnly = false;
-				if(req instanceof SendableInsert) {
-					canWriteClientCache = ((SendableInsert)req).canWriteClientCache();
-					forkOnCacheable = ((SendableInsert)req).forkOnCacheable();
-					localRequestOnly = ((SendableInsert)req).localRequestOnly();
+				if(req instanceof SendableInsert insert) {
+					canWriteClientCache = insert.canWriteClientCache();
+					forkOnCacheable = insert.forkOnCacheable();
+					localRequestOnly = insert.localRequestOnly();
 					realTimeFlag = req.realTimeFlag();
 				} else {
 					canWriteClientCache = false;

@@ -258,7 +258,7 @@ public class ContentFilterTest {
             try (FileOutputStream fos = new FileOutputStream("unfiltered")) {
                 fos.write(total);
             }
-            throw failures.get(0);
+            throw failures.getFirst();
         }
     }
 
@@ -372,8 +372,13 @@ public class ContentFilterTest {
     private static final String XHTML_IMPROPERNESTINGC =
         "<html xmlns=\"http://www.w3.org/1999/xhtml\"><b><i>helloworld</i></b></html>";
     private static final String CSS_STRING_NEWLINES =
-        "<style>* { content: \"this string does not terminate\n}\nbody {\nbackground: url(http://www" +
-        ".google.co.uk/intl/en_uk/images/logo.gif); }\n\" }</style>";
+        """
+        <style>* { content: "this string does not terminate
+        }
+        body {
+        background: url(http://www\
+        .google.co.uk/intl/en_uk/images/logo.gif); }
+        " }</style>""";
     private static final String CSS_STRING_NEWLINESC = "<style>* {}\nbody { }\n</style>";
     private static final String HTML_STYLESHEET_MAYBECHARSET =
         "<link rel=\"stylesheet\" href=\"test.css\">";
@@ -432,11 +437,29 @@ public class ContentFilterTest {
     private static final String BAD_BASE_HREF5 = "<base href=\"http://www.google.com/\">";
     private static final String DELETED_BASE_HREF = "<!-- deleted invalid base href -->";
     private static final String CSS_SPEC_EXAMPLE1 =
-        "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<HTML>\n  <HEAD>\n  <TITLE>Bach's home " +
-        "page</TITLE>\n  <STYLE type=\"text/css\">\n    body {\n      font-family: \"Gill Sans\", " +
-        "sans-serif;\n      font-size: 12pt;\n      margin: 3em;\n\n    }\n  </STYLE>\n  </HEAD>\n  " +
-        "<BODY>\n    <H1>Bach's home page</H1>\n    <P>Johann Sebastian Bach was a prolific composer" +
-        ".\n  </BODY>\n</HTML>";
+        """
+        <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+        <HTML>
+          <HEAD>
+          <TITLE>Bach's home \
+        page</TITLE>
+          <STYLE type="text/css">
+            body {
+              font-family: "Gill Sans", \
+        sans-serif;
+              font-size: 12pt;
+              margin: 3em;
+        
+            }
+          </STYLE>
+          </HEAD>
+          \
+        <BODY>
+            <H1>Bach's home page</H1>
+            <P>Johann Sebastian Bach was a prolific composer\
+        .
+          </BODY>
+        </HTML>""";
     private static final String HTML_START_TO_BODY = "<html><head></head><body>";
     private static final String HTML_BODY_END = "</body></html>";
     private static final String HTML_VIDEO_TAG = "<video></video>";
@@ -455,12 +478,21 @@ public class ContentFilterTest {
         "<!-- doesn't parse as number in meta refresh -->";
     private static final String META_CHARSET = "<html><head><meta charset=\"UTF-8\" />";
     private static final String META_CHARSET_LOWER =
-        "<!DOCTYPE html>\n" + "<html lang=\"de\">\n" + "<head>\n" + "<!-- 2022-12-08 Do 01:20 -->\n" +
-        "<meta charset=\"utf-8\" />\n" + "<title>Some Title</title>";
+        """
+        <!DOCTYPE html>
+        <html lang="de">
+        <head>
+        <!-- 2022-12-08 Do 01:20 -->
+        <meta charset="utf-8" />
+        <title>Some Title</title>""";
     private static final String META_CHARSET_LOWER_RES =
-        "<!DOCTYPE html>\n" + "<html lang=\"de\">\n" + "<head>\n" + "<!--  2022-12-08 Do 01:20  -->\n"
-        // comment has additional spaces after content filter
-        + "<meta charset=\"utf-8\" />\n" + "<title>Some Title</title>";
+        """
+        <!DOCTYPE html>
+        <html lang="de">
+        <head>
+        <!--  2022-12-08 Do 01:20  -->
+        <meta charset="utf-8" />
+        <title>Some Title</title>""";
     private static final String META_VALID_REDIRECT =
         "<meta http-equiv=\"refresh\" content=\"30; url=/KSK@gpl.txt\">";
     private static final String META_VALID_REDIRECT_NOSPACE =

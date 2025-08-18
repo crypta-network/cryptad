@@ -829,8 +829,8 @@ public class CachingFreenetStoreTest {
 
                 boolean atLeastOneKey = false;
                 for (int i = 0; i < 5; i++) {
-                    String test = tests.remove(0); // get the first element
-                    ClientSSKBlock block = sskBlocks.remove(0); // get the first element
+                    String test = tests.removeFirst(); // get the first element
+                    ClientSSKBlock block = sskBlocks.removeFirst(); // get the first element
                     ClientSSK key = block.getClientKey();
                     NodeSSK ssk = (NodeSSK) key.getNodeKey();
                     SSKBlock verify = store.fetch(ssk, false, false, false, false, null);

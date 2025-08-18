@@ -1,6 +1,7 @@
 package network.crypta.keys;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.math.BigInteger;
 import java.net.MalformedURLException;
 import java.security.MessageDigest;
@@ -29,7 +30,7 @@ import org.bouncycastle.crypto.signers.HMacDSAKCalculator;
 /** A ClientSSK that has a private key and therefore can be inserted. */
 public class InsertableClientSSK extends ClientSSK {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     public final DSAPrivateKey privKey;
 	

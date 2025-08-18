@@ -224,10 +224,10 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 			Logger.error(this, "No temporary binary blob file moving it: may not be able to propagate revocation, bug???");
 			return;
 		}
-		if(tmpBlob instanceof ArrayBucket) {
+		if(tmpBlob instanceof ArrayBucket bucket1) {
 			synchronized(this) {
 				if(tmpBlob == blobBucket) return;
-				blobBucket = (ArrayBucket) tmpBlob;
+				blobBucket = bucket1;
 			}
 		} else {
 			try {
@@ -241,8 +241,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 				// Don't blow(), as that's already happened.
 				return;
 			}
-			if(tmpBlob instanceof FileBucket) {
-				File f = ((FileBucket)tmpBlob).getFile();
+			if(tmpBlob instanceof FileBucket bucket) {
+				File f = bucket.getFile();
 				synchronized(this) {
 					if(f == blobFile) return;
 					if(f.equals(blobFile)) return;

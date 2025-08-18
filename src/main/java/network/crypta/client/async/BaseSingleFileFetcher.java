@@ -18,6 +18,8 @@ import network.crypta.node.SendableRequestItem;
 import network.crypta.support.Logger;
 import network.crypta.support.TimeUtil;
 
+import java.io.Serial;
+
 /**
  * Base class implements most of what is needed for fetching a single block.
  * 
@@ -27,7 +29,7 @@ import network.crypta.support.TimeUtil;
  */
 public abstract class BaseSingleFileFetcher extends SendableGet implements HasKeyListener {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	protected final ClientKey key;
 	protected boolean cancelled;
@@ -333,7 +335,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
 	@Override
 	public byte[] getWantedKey() {
 		Key newKey = key.getNodeKey(false);
-		return newKey instanceof NodeSSK ? ((NodeSSK)newKey).getPubKeyHash() : newKey.getRoutingKey();
+		return newKey instanceof NodeSSK nssk ? nssk.getPubKeyHash() : newKey.getRoutingKey();
 	}
 
     public void onResume(ClientContext context) {

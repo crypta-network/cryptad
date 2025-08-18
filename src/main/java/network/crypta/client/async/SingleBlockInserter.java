@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.util.Arrays;
@@ -53,7 +54,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public class SingleBlockInserter extends SendableInsert implements ClientPutState, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	private static volatile boolean logDEBUG;
 
@@ -683,8 +684,8 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
 		
 		@Override
 		public boolean equals(Object o) {
-			if(o instanceof BlockItemKey) {
-                return ((BlockItemKey) o).parent == parent;
+			if(o instanceof BlockItemKey key) {
+                return key.parent == parent;
 			}
 			return false;
 		}

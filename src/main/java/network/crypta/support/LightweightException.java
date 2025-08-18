@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import java.io.Serial;
+
 /**
  * These exceptions are intended to be as lightweight as possible so that they may be used for
  * normal control flow instead of indicating a program error.
@@ -12,7 +14,7 @@ package network.crypta.support;
  * @author bertm
  */
 public class LightweightException extends Exception {
-    private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
     public LightweightException() {
         super();

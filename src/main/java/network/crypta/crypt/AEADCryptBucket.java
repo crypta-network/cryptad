@@ -1,13 +1,6 @@
 package network.crypta.crypt;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Arrays;
 
 import network.crypta.client.async.ClientContext;
@@ -25,8 +18,7 @@ import network.crypta.support.io.StorageFormatException;
  * @author toad
  */
 public class AEADCryptBucket implements Bucket, Serializable {
-    
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private final Bucket underlying;
     private final byte[] key;
     private volatile boolean readOnly;

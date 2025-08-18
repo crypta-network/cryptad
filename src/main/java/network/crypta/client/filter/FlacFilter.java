@@ -96,7 +96,7 @@ public class FlacFilter implements ContentDataFilter {
 						buffer.add((byte) (data & 0xFF));
 					}
 				}
-				if(currentState == State.UNINITIALIZED && packet instanceof FlacMetadataBlock && ((FlacMetadataBlock) packet).isLastMetadataBlock()) {
+				if(currentState == State.UNINITIALIZED && packet instanceof FlacMetadataBlock block && block.isLastMetadataBlock()) {
 					currentState = State.METADATA_FOUND;
 				}
 				packet = parser.parse(packet);

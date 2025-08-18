@@ -1,5 +1,7 @@
 package network.crypta.keys;
 
+import java.io.Serial;
+
 /**
  * @author amphibian
  * 
@@ -7,7 +9,7 @@ package network.crypta.keys;
  * Specifically, it is thrown when the data is too big to encode.
  */
 public class CHKEncodeException extends KeyEncodeException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     public CHKEncodeException() {
         super();
     }

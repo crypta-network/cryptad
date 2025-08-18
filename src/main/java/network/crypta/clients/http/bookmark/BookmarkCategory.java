@@ -69,8 +69,8 @@ public class BookmarkCategory extends Bookmark {
     public synchronized List<BookmarkItem> getItems() {
         List<BookmarkItem> items = new ArrayList<BookmarkItem>();
         for (Bookmark b: bookmarks) {
-            if (b instanceof BookmarkItem) {
-                items.add((BookmarkItem)b);
+            if (b instanceof BookmarkItem item) {
+                items.add(item);
             }
         }
         return items;
@@ -87,8 +87,8 @@ public class BookmarkCategory extends Bookmark {
     public synchronized List<BookmarkCategory> getSubCategories() {
         List<BookmarkCategory> categories = new ArrayList<BookmarkCategory>();
         for (Bookmark b: bookmarks) {
-            if (b instanceof BookmarkCategory) {
-                categories.add((BookmarkCategory)b);
+            if (b instanceof BookmarkCategory category) {
+                categories.add(category);
             }
         }
         return categories;

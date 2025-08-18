@@ -313,8 +313,8 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     }
 
 	public static ClientKeyBlock createKeyBlock(ClientKey key, KeyBlock block) throws KeyVerifyException {
-		if(key instanceof ClientSSK)
-			return ClientSSKBlock.construct((SSKBlock)block, (ClientSSK)key);
+		if(key instanceof ClientSSK sK)
+			return ClientSSKBlock.construct((SSKBlock)block, sK);
 		else //if(key instanceof ClientCHK
 			return new ClientCHKBlock((CHKBlock)block, (ClientCHK)key);
 	}

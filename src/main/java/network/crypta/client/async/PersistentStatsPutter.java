@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.node.Node;
@@ -13,7 +14,7 @@ import network.crypta.support.UptimeContainer;
  * @author Artefact2
  */
 public class PersistentStatsPutter implements Serializable {
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     public static final int OFFSET = 60000;
 

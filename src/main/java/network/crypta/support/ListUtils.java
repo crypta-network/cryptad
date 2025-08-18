@@ -67,7 +67,7 @@ public class ListUtils {
 		if (size == 0) return null;
 		if (size == 1) {
 			// short-circuit, avoid expensive random call
-			E removed = a.remove(0);
+			E removed = a.removeFirst();
 			return new RandomRemoveResult<E>(removed, removed);
 		}
 		int idx = random.nextInt(size);
@@ -89,7 +89,7 @@ public class ListUtils {
 		if (size == 0) return null;
 		if (size == 1) {
 			// short-circuit, avoid expensive random call
-			return a.remove(0);
+			return a.removeFirst();
 		}
 		int idx = random.nextInt(size);
 		E removed = a.get(idx);

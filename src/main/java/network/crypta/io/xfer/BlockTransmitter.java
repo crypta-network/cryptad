@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
@@ -140,7 +141,7 @@ public class BlockTransmitter {
 						count++;
 						if (isHighHtl() && count >= (Node.PACKETS_IN_BLOCK - 1)) {
 							try {
-								wait((int) (Math.random() * MAX_ARTIFICIAL_FINAL_PACKETS_DELAY), 1);
+								wait((int) (ThreadLocalRandom.current().nextDouble() * MAX_ARTIFICIAL_FINAL_PACKETS_DELAY), 1);
 							} catch (InterruptedException e) {
 								// intentionally left blank: can continue
 							}
@@ -822,8 +823,8 @@ public class BlockTransmitter {
 	}
 
     private boolean isHighHtl() {
-        if (_ctr instanceof HighHtlAware) {
-            return ((HighHtlAware) _ctr).isHighHtl();
+        if (_ctr instanceof HighHtlAware aware) {
+            return aware.isHighHtl();
         }
         return false;
     }

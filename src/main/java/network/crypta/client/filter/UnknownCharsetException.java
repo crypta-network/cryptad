@@ -1,11 +1,12 @@
 package network.crypta.client.filter;
 
+import java.io.Serial;
 import java.io.UnsupportedEncodingException;
 
 import network.crypta.l10n.NodeL10n;
 
 public class UnknownCharsetException extends DataFilterException {
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 	public final String charset;
 	
 	private UnknownCharsetException(String warning, String warning2, String string, String charset) {

@@ -2,6 +2,8 @@ package network.crypta.io.comm;
 
 import network.crypta.support.LightweightException;
 
+import java.io.Serial;
+
 /**
  * @author amphibian
  * 
@@ -9,7 +11,7 @@ import network.crypta.support.LightweightException;
  * not currently connected.
  */
 public class NotConnectedException extends LightweightException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     public NotConnectedException(String string) {
         super(string);
     }

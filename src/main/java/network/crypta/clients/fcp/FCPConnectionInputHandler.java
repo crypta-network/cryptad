@@ -109,10 +109,10 @@ public class FCPConnectionInputHandler implements Runnable {
 					handler.close();
 					return;
 				}
-				if(msg instanceof BaseDataCarryingMessage) {
+				if(msg instanceof BaseDataCarryingMessage message) {
 					// FIXME tidy up - coalesce with above and below try { } catch (MIE) {}'s?
 					try {
-						((BaseDataCarryingMessage)msg).readFrom(lis, handler.bf, handler.getServer());
+						message.readFrom(lis, handler.bf, handler.getServer());
 					} catch (MessageInvalidException e) {
 						FCPMessage err = new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global);
 						handler.send(err);

@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.util.HashMap;
@@ -50,7 +51,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 class SingleFileInserter implements ClientPutState, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	private static volatile boolean logDEBUG;
 	
@@ -263,8 +264,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
 				if(logMINOR)
 					Logger.minor(this, "Inserting without metadata: "+bi+" for "+this);
 				cb.onTransition(this, bi, context);
-				if(ctx.earlyEncode && bi instanceof SingleBlockInserter && isCHK)
-					((SingleBlockInserter)bi).getBlock(context, true);
+				if(ctx.earlyEncode && bi instanceof SingleBlockInserter inserter && isCHK)
+					inserter.getBlock(context, true);
 				bi.schedule(context);
 				if(!isUSK)
 					cb.onBlockSetFinished(this, context);
@@ -324,8 +325,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
 				Logger.minor(this, mcb+" : data "+dataPutter+" meta "+metaPutter);
 				mcb.arm(context);
 				dataPutter.schedule(context);
-				if(ctx.earlyEncode && metaPutter instanceof SingleBlockInserter)
-					((SingleBlockInserter)metaPutter).getBlock(context, true);
+				if(ctx.earlyEncode && metaPutter instanceof SingleBlockInserter inserter)
+					inserter.getBlock(context, true);
 				metaPutter.schedule(context);
 				if(!isUSK)
 					cb.onBlockSetFinished(this, context);
@@ -548,7 +549,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
 	 */
 	public class SplitHandler implements PutCompletionCallback, ClientPutState, Serializable {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         ClientPutState sfi;
 		ClientPutState metadataPutter;
 		boolean finished;

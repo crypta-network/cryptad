@@ -1,12 +1,14 @@
 package network.crypta.pluginmanager;
 
+import java.io.Serial;
+
 /**
  * A basic, Plugin exception intended for generic error displaying.
  * 
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class PluginHTTPException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	
 	public static final short code = 400; // Bad Request
 	public final String message;

@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
@@ -31,7 +32,7 @@ public class SplitFileInserter implements ClientPutState, Serializable, SplitFil
         Logger.registerClass(SplitFileInserter.class);
     }
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** Is the insert persistent? */
     final boolean persistent;
     /** Parent ClientPutter etc */

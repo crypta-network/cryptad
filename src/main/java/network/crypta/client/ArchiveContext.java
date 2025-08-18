@@ -1,5 +1,6 @@
 package network.crypta.client;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashSet;
 
@@ -17,7 +18,7 @@ import network.crypta.keys.FreenetURI;
  */
 public class ArchiveContext implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private HashSet<FreenetURI> soFar;
 	final int maxArchiveLevels;
 	final long maxArchiveSize;

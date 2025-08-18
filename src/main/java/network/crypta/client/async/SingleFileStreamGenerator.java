@@ -42,8 +42,8 @@ public class SingleFileStreamGenerator implements StreamGenerator {
 			}
 			if(logMINOR) Logger.minor(this, "Stream completely generated", new Exception("debug"));
 		} catch (Exception e) {
-			if (e instanceof IOException) {
-				throw (IOException) e;
+			if (e instanceof IOException exception) {
+				throw exception;
 			} else {
 				throw new IOException("Error during stream generation", e);
 			}

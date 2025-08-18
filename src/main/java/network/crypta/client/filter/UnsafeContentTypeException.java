@@ -1,6 +1,7 @@
 package network.crypta.client.filter;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.util.List;
 
 import network.crypta.client.FetchException;
@@ -13,7 +14,7 @@ import network.crypta.client.FetchException.FetchExceptionMode;
  * Base class for UnknownContentTypeException and KnownUnsafeContentTypeException.
  */
 public abstract class UnsafeContentTypeException extends IOException {
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
 	/**
 	 * Get the contents of the error page.

@@ -1,13 +1,14 @@
 package network.crypta.support.compress;
 
 import java.io.IOException;
+import java.io.Serial;
 
 /**
  * The output was too big for the buffer.
  */
 public class CompressionOutputSizeException extends IOException {
 
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	public final long estimatedSize;
 
 	CompressionOutputSizeException() {

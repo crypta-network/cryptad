@@ -1,12 +1,14 @@
 package network.crypta.keys;
 
+import java.io.Serial;
+
 /**
  * @author amphibian
  * 
  * Exception thrown when decode fails.
  */
 public class CHKDecodeException extends KeyDecodeException {
-    private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     
     public CHKDecodeException() {
         super();

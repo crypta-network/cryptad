@@ -4,8 +4,10 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLEncoder;
 
+import java.io.Serial;
+
 public class UnknownContentTypeException extends UnsafeContentTypeException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	final String type;
 	final String encodedType;
 	

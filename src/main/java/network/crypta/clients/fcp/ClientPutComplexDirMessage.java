@@ -68,8 +68,8 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
 			DirPutFile f = DirPutFile.create(subset, identifier, global, (persistence == Persistence.FOREVER) ? bfPersistent : bfTemp);
 			addFile(f);
 			if(logMINOR) Logger.minor(this, "Adding "+f);
-			if(f instanceof DirectDirPutFile) {
-				totalBytes += ((DirectDirPutFile)f).bytesToRead();
+			if(f instanceof DirectDirPutFile file) {
+				totalBytes += file.bytesToRead();
 				filesToRead.addLast(f);
 				if(logMINOR) Logger.minor(this, "totalBytes now "+totalBytes);
 			}
@@ -166,8 +166,8 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
 				convertFilesByNameToManifestElements(h, manifests, node);
 			} else {
 				DirPutFile f = (DirPutFile) val;
-				if(f instanceof DiskDirPutFile && !node.getClientCore().allowUploadFrom(((DiskDirPutFile)f).getFile()))
-					throw new MessageInvalidException(ProtocolErrorMessage.ACCESS_DENIED, "Not allowed to upload "+((DiskDirPutFile) f).getFile(), identifier, global);
+				if(f instanceof DiskDirPutFile file && !node.getClientCore().allowUploadFrom(file.getFile()))
+					throw new MessageInvalidException(ProtocolErrorMessage.ACCESS_DENIED, "Not allowed to upload "+file.getFile(), identifier, global);
 				ManifestElement e = f.getElement();
 				manifestElements.put(tempName, e);
 			}

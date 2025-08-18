@@ -1,5 +1,6 @@
 package network.crypta.crypt;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -30,7 +31,7 @@ import network.crypta.support.Fields;
  */
 @SuppressWarnings("deprecation") // Suppresses warnings about RijndaelPCFB being deprecated
 public final class CryptByteBuffer implements Serializable{
-    private static final long serialVersionUID = 6143338995971755362L;
+	@Serial private static final long serialVersionUID = 6143338995971755362L;
     private final CryptByteBufferType type;
     private final SecretKey key;
     private IvParameterSpec iv;

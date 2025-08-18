@@ -1,10 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.Logger;
@@ -12,7 +8,7 @@ import network.crypta.support.api.RandomAccessBucket;
 
 public class PersistentTempFileBucket extends TempFileBucket implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     
     transient PersistentFileTracker tracker;
     

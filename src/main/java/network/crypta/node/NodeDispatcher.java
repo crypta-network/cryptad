@@ -182,8 +182,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
             return handleTime(m, source);
         } else if (spec == DMT.FNPUptime) {
             return handleUptime(m, source);
-        } else if (spec == DMT.FNPVisibility && source instanceof DarknetPeerNode) {
-            ((DarknetPeerNode) source).handleVisibility(m);
+        } else if (spec == DMT.FNPVisibility && source instanceof DarknetPeerNode peerNode1) {
+            peerNode1.handleVisibility(m);
             return true;
         } else if (spec == DMT.FNPVoid) {
             return true;
@@ -210,11 +210,11 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         } else if (spec == DMT.FNPOpennetAnnounceRequest) {
             return handleAnnounceRequest(m, source);
         } else if (spec == DMT.FNPRoutingStatus) {
-            if (source instanceof DarknetPeerNode) {
+            if (source instanceof DarknetPeerNode peerNode) {
                 boolean value = m.getBoolean(DMT.ROUTING_ENABLED);
                 if (logMINOR)
                     Logger.minor(this, "The peer (" + source + ") asked us to set routing=" + value);
-                ((DarknetPeerNode) source).setRoutingStatus(value, false);
+                peerNode.setRoutingStatus(value, false);
             }
             // We claim it in any case
             return true;
@@ -306,11 +306,11 @@ public class NodeDispatcher implements Dispatcher, Runnable {
             return handleOfferKey(m, source);
         } else if (spec == DMT.FNPGetOfferedKey) {
             return handleGetOfferedKey(m, source);
-        } else if (spec == DMT.FNPGetYourFullNoderef && source instanceof DarknetPeerNode) {
-            ((DarknetPeerNode) source).sendFullNoderef();
+        } else if (spec == DMT.FNPGetYourFullNoderef && source instanceof DarknetPeerNode peerNode1) {
+            peerNode1.sendFullNoderef();
             return true;
-        } else if (spec == DMT.FNPMyFullNoderef && source instanceof DarknetPeerNode) {
-            ((DarknetPeerNode) source).handleFullNoderef(m);
+        } else if (spec == DMT.FNPMyFullNoderef && source instanceof DarknetPeerNode peerNode) {
+            peerNode.handleFullNoderef(m);
             return true;
         } else if (spec == DMT.ProbeRequest) {
             //Response is handled by callbacks within probe.
@@ -439,10 +439,10 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         boolean remove = m.getBoolean(DMT.REMOVE);
         if (remove) {
             node.getPeers().disconnectAndRemove(source, false, false, false);
-            if (source instanceof DarknetPeerNode)
+            if (source instanceof DarknetPeerNode peerNode)
                 // FIXME remove, dirty logs.
                 // FIXME add a useralert?
-                System.out.println("Disconnecting permanently from your friend \"" + ((DarknetPeerNode) source).getName() + "\" because they asked us to remove them.");
+                System.out.println("Disconnecting permanently from your friend \"" + peerNode.getName() + "\" because they asked us to remove them.");
         }
         // If true, purge all references to this node. Otherwise, we can keep the node
         // around in secondary tables etc in order to more easily reconnect later.
@@ -450,8 +450,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         boolean purge = m.getBoolean(DMT.PURGE);
         if (purge) {
             OpennetManager om = node.getOpennet();
-            if (om != null && source instanceof OpennetPeerNode)
-                om.purgeOldOpennetPeer((OpennetPeerNode) source);
+            if (om != null && source instanceof OpennetPeerNode peerNode)
+                om.purgeOldOpennetPeer(peerNode);
         }
         // Process parting message
         int type = m.getInt(DMT.NODE_TO_NODE_MESSAGE_TYPE);
@@ -654,8 +654,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
 
         OpennetManager om = node.getOpennet();
         if (om == null || !source.canAcceptAnnouncements()) {
-            if (om != null && source instanceof SeedClientPeerNode)
-                om.getSeedTracker().rejectedAnnounce((SeedClientPeerNode) source);
+            if (om != null && source instanceof SeedClientPeerNode peerNode)
+                om.getSeedTracker().rejectedAnnounce(peerNode);
             Message msg = DMT.createFNPOpennetDisabled(uid);
             try {
                 source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
@@ -671,8 +671,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
             // So we don't need to, and should not, ask Node.
             NodeStats.AnnouncementDecision shouldAcceptAnnouncement = node.getNodeStats().shouldAcceptAnnouncement(uid);
             if (!(NodeStats.AnnouncementDecision.ACCEPT == shouldAcceptAnnouncement)) {
-                if (om != null && source instanceof SeedClientPeerNode)
-                    om.getSeedTracker().rejectedAnnounce((SeedClientPeerNode) source);
+                if (om != null && source instanceof SeedClientPeerNode peerNode)
+                    om.getSeedTracker().rejectedAnnounce(peerNode);
                 Message msg = null;
                 if (NodeStats.AnnouncementDecision.OVERLOAD == shouldAcceptAnnouncement) {
                     msg = DMT.createFNPRejectedOverload(uid, true, false, false);
@@ -698,8 +698,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
                 return true;
             }
             if (!source.shouldAcceptAnnounce(uid)) {
-                if (om != null && source instanceof SeedClientPeerNode)
-                    om.getSeedTracker().rejectedAnnounce((SeedClientPeerNode) source);
+                if (om != null && source instanceof SeedClientPeerNode peerNode)
+                    om.getSeedTracker().rejectedAnnounce(peerNode);
                 node.getNodeStats().endAnnouncement(uid);
                 Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
                 try {
@@ -710,8 +710,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
                 if (logMINOR) Logger.minor(this, "Rejected announcement (peer limit) from " + source);
                 return true;
             }
-            if (om != null && source instanceof SeedClientPeerNode) {
-                if (!om.getSeedTracker().acceptAnnounce((SeedClientPeerNode) source, node.getFastWeakRandom())) {
+            if (om != null && source instanceof SeedClientPeerNode peerNode) {
+                if (!om.getSeedTracker().acceptAnnounce(peerNode, node.getFastWeakRandom())) {
                     node.getNodeStats().endAnnouncement(uid);
                     Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
                     try {

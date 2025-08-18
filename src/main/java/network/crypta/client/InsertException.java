@@ -1,5 +1,6 @@
 package network.crypta.client;
 
+import java.io.Serial;
 import java.util.HashMap;
 
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -15,7 +16,7 @@ import network.crypta.support.Logger.LogLevel;
  * will be inaccurate.
  */
 public class InsertException extends Exception implements Cloneable {
-	private static final long serialVersionUID = -1106716067841151962L;
+	@Serial private static final long serialVersionUID = -1106716067841151962L;
 	
 	/** Failure mode, see the constants below. */
 	public final InsertExceptionMode mode;

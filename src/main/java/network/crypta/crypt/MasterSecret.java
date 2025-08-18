@@ -1,5 +1,6 @@
 package network.crypta.crypt;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.security.InvalidKeyException;
 
@@ -13,7 +14,7 @@ import javax.crypto.spec.IvParameterSpec;
  *
  */
 public final class MasterSecret implements Serializable{
-    private static final long serialVersionUID = -8411217325990445764L;
+	@Serial private static final long serialVersionUID = -8411217325990445764L;
     private final SecretKey masterKey;
     
     /**

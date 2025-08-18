@@ -63,8 +63,8 @@ public class PooledExecutor implements Executor {
 	@Override
 	public void execute(Runnable runnable, String jobName, boolean fromTicker) {
 		int prio = NativeThread.PriorityLevel.NORM_PRIORITY.value;
-		if(runnable instanceof PrioRunnable)
-			prio = ((PrioRunnable) runnable).getPriority();
+		if(runnable instanceof PrioRunnable prioRunnable)
+			prio = prioRunnable.getPriority();
 
 		if(logMINOR)
 			Logger.minor(this, "Executing " + runnable + " as " + jobName + " at prio " + prio);

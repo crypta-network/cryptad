@@ -702,7 +702,7 @@ public class OpennetManager {
 					if(logMINOR) Logger.minor(this, "Added opennet peer "+nodeToAddNow+" after clearing "+dropList.size()+" items - now have "+peersLRU.size()+" opennet peers");
 					oldPeers.remove(nodeToAddNow);
 					if(!dropList.isEmpty()) {
-						if(logMINOR) Logger.minor(this, "Dropped opennet peer: "+dropList.get(0));
+						if(logMINOR) Logger.minor(this, "Dropped opennet peer: "+dropList.getFirst());
 						timeLastDropped.put(connectionType, now);
 					}
 					connectionAttemptsAdded.put(connectionType, connectionAttemptsAdded.get(connectionType)+1);
@@ -1455,8 +1455,8 @@ public class OpennetManager {
 	 * to make space. If it's a darknet peer, the connection limit for opennet peers may have
 	 * decreased so again we may need to drop a peer. */
     public void onConnectedPeer(PeerNode pn) {
-        if(pn instanceof OpennetPeerNode) {
-            dropExcessPeers(((OpennetPeerNode)pn).linkLengthClass());
+        if(pn instanceof OpennetPeerNode peerNode) {
+            dropExcessPeers(peerNode.linkLengthClass());
         } else {
             // The peer count target may have decreased, so we may need to drop an opennet peer.
             dropAllExcessPeers();

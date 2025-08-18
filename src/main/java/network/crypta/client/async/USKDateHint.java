@@ -71,7 +71,7 @@ public class USKDateHint {
 	
 	/** Return the data to insert to each hint slot. */
 	public String getData(long edition) {
-		return String.format("HINT\n%d\n%s\n", edition, get(Type.DAY));
+		return "HINT\n%d\n%s\n".formatted(edition, get(Type.DAY));
 	}
 
 	/** Return the URL's to insert hint data to */
@@ -89,7 +89,7 @@ public class USKDateHint {
 	}
 
 	private String getDocName(USK key, Type type) {
-		return String.format("%s-DATEHINT-%s", key.siteName, get(type));
+		return "%s-DATEHINT-%s".formatted(key.siteName, get(type));
 	}
 
 }

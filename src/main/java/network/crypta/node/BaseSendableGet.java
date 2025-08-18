@@ -3,14 +3,16 @@ package network.crypta.node;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.Key;
 
+import java.io.Serial;
+
 /**
  * WARNING: Changing non-transient members on classes that are Serializable can result in 
  * restarting downloads or losing uploads. (Some children of this class are actually stored)
  * @author toad
  */
 public abstract class BaseSendableGet extends SendableRequest {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
 
     protected BaseSendableGet(boolean persistent, boolean realTimeFlag) {
 		super(persistent, realTimeFlag);

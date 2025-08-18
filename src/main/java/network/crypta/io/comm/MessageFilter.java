@@ -324,7 +324,7 @@ public final class MessageFilter {
     		_ctr = null;
     	}
     	if(cb != null) {
-    		if(cb instanceof SlowAsyncMessageFilterCallback) {
+    		if(cb instanceof SlowAsyncMessageFilterCallback callback) {
     			executor.execute(new PrioRunnable() {
 
 					@Override
@@ -335,7 +335,7 @@ public final class MessageFilter {
 
 					@Override
 					public int getPriority() {
-						return ((SlowAsyncMessageFilterCallback)cb).getPriority();
+						return callback.getPriority();
 					}
 					
     			});
@@ -359,7 +359,7 @@ public final class MessageFilter {
     		_ctr = null;
     	}
     	if(cb != null) {
-    		if(cb instanceof SlowAsyncMessageFilterCallback) {
+    		if(cb instanceof SlowAsyncMessageFilterCallback callback) {
     			executor.execute(new PrioRunnable() {
 
 					@Override
@@ -370,7 +370,7 @@ public final class MessageFilter {
 
 					@Override
 					public int getPriority() {
-						return ((SlowAsyncMessageFilterCallback)cb).getPriority();
+						return callback.getPriority();
 					}
 					
     			});
@@ -397,7 +397,7 @@ public final class MessageFilter {
 				clearMatched();
 		}
 		if(cb != null) {
-			if(cb instanceof SlowAsyncMessageFilterCallback)
+			if(cb instanceof SlowAsyncMessageFilterCallback callback)
 				executor.execute(new PrioRunnable() {
 
 					@Override
@@ -407,7 +407,7 @@ public final class MessageFilter {
 
 					@Override
 					public int getPriority() {
-						return ((SlowAsyncMessageFilterCallback)cb).getPriority();
+						return callback.getPriority();
 					}
 					
 				}, "Slow callback for "+cb);
@@ -428,7 +428,7 @@ public final class MessageFilter {
 			cb = _callback;
 		}
 		if(cb != null) {
-			if(cb instanceof SlowAsyncMessageFilterCallback) {
+			if(cb instanceof SlowAsyncMessageFilterCallback callback) {
 				executor.execute(new PrioRunnable() {
 
 					@Override
@@ -438,7 +438,7 @@ public final class MessageFilter {
 
 					@Override
 					public int getPriority() {
-						return ((SlowAsyncMessageFilterCallback)cb).getPriority();
+						return callback.getPriority();
 					}
 					
 				});

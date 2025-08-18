@@ -1418,10 +1418,10 @@ public class NodeClientCore implements Persistable {
 	}
 
 	public ClientKeyBlock realGetKey(ClientKey key, boolean localOnly, boolean ignoreStore, boolean canWriteClientCache, boolean realTimeFlag) throws LowLevelGetException {
-		if(key instanceof ClientCHK)
-			return realGetCHK((ClientCHK) key, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
-		else if(key instanceof ClientSSK)
-			return realGetSSK((ClientSSK) key, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
+		if(key instanceof ClientCHK hK)
+			return realGetCHK(hK, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
+		else if(key instanceof ClientSSK sK)
+			return realGetSSK(sK, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
 		else
 			throw new IllegalArgumentException("Not a CHK or SSK: " + key);
 	}
@@ -1448,10 +1448,10 @@ public class NodeClientCore implements Persistable {
 		RequestSender rs = null;
 		try {
 			Object o = node.makeRequestSender(key.getNodeCHK(), node.maxHTL(), uid, tag, null, localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag);
-			if(o instanceof CHKBlock)
+			if(o instanceof CHKBlock block)
 				try {
 					tag.setServedFromDatastore();
-					return new ClientCHKBlock((CHKBlock) o, key);
+					return new ClientCHKBlock(block, key);
 				} catch(CHKVerifyException e) {
 					Logger.error(this, "Does not verify: " + e, e);
 					throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
@@ -1681,10 +1681,10 @@ public class NodeClientCore implements Persistable {
 	 * @throws LowLevelPutException
 	 */
 	public void realPut(KeyBlock block, boolean canWriteClientCache, boolean forkOnCacheable, boolean preferInsert, boolean ignoreLowBackoff, boolean realTimeFlag) throws LowLevelPutException {
-		if(block instanceof CHKBlock)
-			realPutCHK((CHKBlock) block, canWriteClientCache, forkOnCacheable, preferInsert, ignoreLowBackoff, realTimeFlag);
-		else if(block instanceof SSKBlock)
-			realPutSSK((SSKBlock) block, canWriteClientCache, forkOnCacheable, preferInsert, ignoreLowBackoff, realTimeFlag);
+		if(block instanceof CHKBlock kBlock1)
+			realPutCHK(kBlock1, canWriteClientCache, forkOnCacheable, preferInsert, ignoreLowBackoff, realTimeFlag);
+		else if(block instanceof SSKBlock kBlock)
+			realPutSSK(kBlock, canWriteClientCache, forkOnCacheable, preferInsert, ignoreLowBackoff, realTimeFlag);
 		else
 			throw new IllegalArgumentException("Unknown put type " + block.getClass());
 	}

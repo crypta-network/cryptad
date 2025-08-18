@@ -2,6 +2,8 @@ package network.crypta.support.math;
 
 import network.crypta.support.Fields;
 
+import java.io.Serial;
+
 /*
 ** Originally, we maintained the below functionality as a fork of the above
 ** code, in the contrib repo. Eventually this was refactored into this class,
@@ -36,7 +38,7 @@ import network.crypta.support.Fields;
 */
 public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwister {
 
-	private static final long serialVersionUID = 6555069655883958609L;
+	@Serial private static final long serialVersionUID = 6555069655883958609L;
 
 	/** Creates a new random number generator using the current time as the seed. */
 	public MersenneTwister() { super(); }

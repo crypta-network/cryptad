@@ -39,9 +39,9 @@ public class UserAlertManagerTest {
     }
 
     private static String formatTime(long time) {
-        return String.format("%tY-%<tm-%<tdT%<tH:%<tM:%<tS%0+3d:%02d", time,
-                MILLISECONDS.toHours(TimeZone.getDefault().getOffset(time)),
-                MILLISECONDS.toMinutes(TimeZone.getDefault().getOffset(time)) % 60);
+        return "%tY-%<tm-%<tdT%<tH:%<tM:%<tS%0+3d:%02d".formatted(time,
+			MILLISECONDS.toHours(TimeZone.getDefault().getOffset(time)),
+			MILLISECONDS.toMinutes(TimeZone.getDefault().getOffset(time)) % 60);
     }
 
     @Test
@@ -135,7 +135,7 @@ public class UserAlertManagerTest {
                     }
                 };
         userAlertManager.register(userAlert);
-        Node node = getEntryNodes(createAtomXml()).get(0);
+        Node node = getEntryNodes(createAtomXml()).getFirst();
         assertThat(xPath.evaluate("id", node), equalTo("urn:feed:test-anchor"));
     }
 

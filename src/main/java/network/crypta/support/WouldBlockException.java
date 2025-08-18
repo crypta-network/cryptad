@@ -3,12 +3,14 @@ package network.crypta.support;
 import network.crypta.io.comm.IncomingPacketFilterException;
 import network.crypta.support.Logger.LogLevel;
 
+import java.io.Serial;
+
 /**
  * Thrown when we would have to block but have been told not to.
  */
 public class WouldBlockException extends IncomingPacketFilterException {
 
-    private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     private static volatile boolean logDEBUG;
 
     static {

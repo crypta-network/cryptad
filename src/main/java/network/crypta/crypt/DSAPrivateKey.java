@@ -2,6 +2,7 @@ package network.crypta.crypt;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Serial;
 import java.math.BigInteger;
 import java.util.Random;
 
@@ -11,7 +12,7 @@ import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.SimpleFieldSet;
 
 public class DSAPrivateKey extends CryptoKey {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
     private final BigInteger x;
 

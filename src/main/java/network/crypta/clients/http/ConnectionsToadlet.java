@@ -488,10 +488,12 @@ public abstract class ConnectionsToadlet extends Toadlet {
       // BEGIN PEER TABLE
       if (fProxyJavascriptEnabled) {
         String js =
-            "  function peerNoteChange() {\n"
-                + "    document.getElementById(\"action\").value = \"update_notes\";"
-                + "    document.getElementById(\"peersForm\").doAction.click();\n"
-                + "  }\n";
+            """
+              function peerNoteChange() {
+                document.getElementById("action").value = "update_notes";\
+                document.getElementById("peersForm").doAction.click();
+              }
+            """;
         contentNode.addChild("script", "type", "text/javascript").addChild("%", js);
         contentNode.addChild(
             "script",

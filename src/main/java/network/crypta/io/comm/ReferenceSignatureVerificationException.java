@@ -1,11 +1,13 @@
 package network.crypta.io.comm;
 
+import java.io.Serial;
+
 /**
  * Thown when we can't parse a string to a Peer.
  * @author amphibian
  */
 public class ReferenceSignatureVerificationException extends Exception {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     public ReferenceSignatureVerificationException(Exception e) {
         super(e);
     }

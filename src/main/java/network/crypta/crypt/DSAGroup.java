@@ -2,6 +2,7 @@ package network.crypta.crypt;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Serial;
 import java.math.BigInteger;
 
 import network.crypta.node.FSParseException;
@@ -15,7 +16,7 @@ import network.crypta.support.SimpleFieldSet;
  * needed for the DSA algorithm
  */
 public class DSAGroup extends CryptoKey {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	
 	protected static final int Q_BIT_LENGTH = 256;
 
@@ -111,8 +112,8 @@ public class DSAGroup extends CryptoKey {
 	public boolean equals(Object o) {
         if (this == o) // Not necessary, but a very cheap optimization
                 return true;
-        return (o instanceof DSAGroup) && p.equals(((DSAGroup) o).p)
-                && q.equals(((DSAGroup) o).q) && g.equals(((DSAGroup) o).g);
+        return (o instanceof DSAGroup dsag) && p.equals(dsag.p)
+                && q.equals(dsag.q) && g.equals(dsag.g);
     }
 
     public boolean equals(DSAGroup o) {

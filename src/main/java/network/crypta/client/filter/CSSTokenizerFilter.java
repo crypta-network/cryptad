@@ -2413,8 +2413,8 @@ class CSSTokenizerFilter {
 							ParsedWord[] strparts=split(str1, false);
 							if(strparts != null && strparts.length > 0 && (strparts[0] instanceof ParsedURL || strparts[0] instanceof ParsedString)) {
 								String uri;
-								if(strparts[0] instanceof ParsedString) {
-									uri = ((ParsedString)strparts[0]).getDecoded();
+								if(strparts[0] instanceof ParsedString string) {
+									uri = string.getDecoded();
 								} else {
 									uri = ((ParsedURL)strparts[0]).getDecoded();
 								}
@@ -3113,8 +3113,8 @@ class CSSTokenizerFilter {
 		ArrayList<String> medias = new ArrayList<String>(strparts.length-1);
 		if(strparts.length <= offset) {
 			// Nothing to munch
-		} else if(strparts.length == offset+1 && strparts[1] instanceof ParsedIdentifier) {
-			medias.add(((ParsedIdentifier)strparts[1]).getDecoded());
+		} else if(strparts.length == offset+1 && strparts[1] instanceof ParsedIdentifier identifier1) {
+			medias.add(identifier1.getDecoded());
 		} else {
 			boolean first = true;
 			for(ParsedWord word : strparts) {
@@ -3122,8 +3122,8 @@ class CSSTokenizerFilter {
 					first = false;
 					continue;
 				}
-				if(word instanceof ParsedIdentifier) {
-					medias.add(((ParsedIdentifier)word).getDecoded());
+				if(word instanceof ParsedIdentifier identifier) {
+					medias.add(identifier.getDecoded());
 				} else if(word instanceof SimpleParsedWord) {
 					String data = word.original;
 					String[] split = FilterUtils.removeWhiteSpace(data.split(","),false);
@@ -4123,10 +4123,10 @@ class CSSTokenizerFilter {
 					return true;
 				}
 			}
-			if(isURI && words[0] instanceof ParsedURL)
+			if(isURI && words[0] instanceof ParsedURL rL)
 
 			{
-				return isValidURI((ParsedURL)words[0], cb);
+				return isValidURI(rL, cb);
 			}
 
 			if(isIdentifier && words[0] instanceof ParsedIdentifier)
@@ -4148,9 +4148,9 @@ class CSSTokenizerFilter {
 				}
 			}
 
-			if(isString && words[0] instanceof ParsedString)
+			if(isString && words[0] instanceof ParsedString string)
 			{
-                return ElementInfo.ALLOW_ALL_VALID_STRINGS || ElementInfo.isValidStringDecoded(((ParsedString) words[0]).getDecoded());
+                return ElementInfo.ALLOW_ALL_VALID_STRINGS || ElementInfo.isValidStringDecoded(string.getDecoded());
 			}
 
 			}
@@ -4667,12 +4667,12 @@ class CSSTokenizerFilter {
 
 			if(value.length != 1) return false;
 
-			if(value[0] instanceof ParsedIdentifier && allowedValues!=null && allowedValues.contains(((ParsedIdentifier)value[0]).getDecoded()))
+			if(value[0] instanceof ParsedIdentifier identifier && allowedValues!=null && allowedValues.contains(identifier.getDecoded()))
 				return true;
 
 			//String processing
-			if(value[0] instanceof ParsedString) {
-                return ElementInfo.ALLOW_ALL_VALID_STRINGS || ElementInfo.isValidStringDecoded(((ParsedString) value[0]).getDecoded());
+			if(value[0] instanceof ParsedString string) {
+                return ElementInfo.ALLOW_ALL_VALID_STRINGS || ElementInfo.isValidStringDecoded(string.getDecoded());
 			}
 
 			if(value[0] instanceof ParsedCounter counter) {
@@ -4688,12 +4688,12 @@ class CSSTokenizerFilter {
 				return true;
 			}
 
-			if(value[0] instanceof ParsedURL) {
+			if(value[0] instanceof ParsedURL rL) {
 				// CONFORMANCE: This is required by the spec, and quite useful in practice.
 				// Browsers in practice only support images here.
 				// However, as long as they respect the MIME type - and if they don't we are screwed anyway - this should be safe even if it allows including text, CSS and HTML.
 				// Note also that generated content cannot alter the parse tree, so what can be done is presumably severely limited.
-				return isValidURI((ParsedURL)value[0], cb);
+				return isValidURI(rL, cb);
 			}
 
 			return false;
@@ -4789,8 +4789,8 @@ class CSSTokenizerFilter {
 outer:		for(int i=0;i<value.length;i++) {
 				ParsedWord word = value[i];
 				String s = null;
-				if(word instanceof ParsedString) {
-					String decoded = (((ParsedString)word).getDecoded());
+				if(word instanceof ParsedString string) {
+					String decoded = (string.getDecoded());
 					if(logDEBUG) Logger.debug(this, "decoded: \""+decoded+"\"");
 					// It's actually quoted, great.
 					if(isSpecificFamily(decoded.toLowerCase())) {
@@ -4799,8 +4799,8 @@ outer:		for(int i=0;i<value.length;i++) {
 						continue;
 					} else
 						s = decoded;
-				} else if(word instanceof ParsedIdentifier) {
-					s = (((ParsedIdentifier)word).getDecoded());
+				} else if(word instanceof ParsedIdentifier identifier) {
+					s = (identifier.getDecoded());
 					if(isGenericFamily(s)) {
 						continue;
 					}
@@ -4891,7 +4891,7 @@ outer:		for(int i=0;i<value.length;i++) {
 				if(s == null) throw new NullPointerException();
 			}
 			if(fontWords.size() == 1) {
-				if(isGenericFamily(fontWords.get(0).toLowerCase()))
+				if(isGenericFamily(fontWords.getFirst().toLowerCase()))
 					return true;
 			}
 			StringBuilder sb = new StringBuilder();

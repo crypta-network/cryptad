@@ -455,7 +455,7 @@ public class OCBBlockCipher_v149
     {
         while (n >= L.size())
         {
-            L.add(OCB_double(L.get(L.size() - 1)));
+            L.add(OCB_double(L.getLast()));
         }
         return L.get(n);
     }

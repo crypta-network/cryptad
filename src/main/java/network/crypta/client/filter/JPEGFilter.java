@@ -230,13 +230,12 @@ public class JPEGFilter implements ContentDataFilter {
 				if(logMINOR)
 					Logger.minor(this, "End of image");
 			} else {
-				boolean valid = false;
 				// We used to support only DB C4 C0, because some website said they were
 				// sufficient for decoding a JPEG. Unfortunately they are not, JPEG is a
 				// very complex standard and the full spec is only available for a fee.
 				// FIXME somebody who has access to the spec should have a look at this,
 				// and ideally write some chunk sanitizers.
-				switch(markerType) {
+				boolean valid = switch(markerType) {
 				// descriptions from http://svn.xiph.org/experimental/giles/jpegdump.c (GPL)
 				case 0xc0: // start of frame
 				case 0xc1: // extended sequential, huffman
@@ -275,8 +274,9 @@ public class JPEGFilter implements ContentDataFilter {
 					// DELETE extension data sections JPG0-6,SOF48,LSE,JPG9-JPG13, JCOM (comment!!), TEM ("temporary private use for arithmetic coding")
 					// DELETE 0x02 - 0xbf reserved sections.
 					// Do not support JPEG2000 at the moment. Probably has different headers. FIXME.
-					valid = true;
-				}
+					yield true;
+					default: yield false;
+				};
 				if(valid) {
 					// Essential, non-terminal, but unparsed frames.
 					if(blockLength < 2)

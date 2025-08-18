@@ -225,7 +225,7 @@ public class PushDataManager {
 			Logger.minor(this, "Polling for notification:" + requestId);
 		}
 		while (awaitingNotifications.get(requestId) != null && awaitingNotifications.get(requestId).isEmpty() || // No notifications
-				(awaitingNotifications.get(requestId) != null && !awaitingNotifications.get(requestId).isEmpty() && !isFirstKeepaliveReceived.containsKey(awaitingNotifications.get(requestId).get(0).requestId))) { // Not asked us yet
+				(awaitingNotifications.get(requestId) != null && !awaitingNotifications.get(requestId).isEmpty() && !isFirstKeepaliveReceived.containsKey(awaitingNotifications.get(requestId).getFirst().requestId))) { // Not asked us yet
 			try {
 				wait();
 			} catch (InterruptedException ie) {
@@ -236,9 +236,9 @@ public class PushDataManager {
 			return null;
 		}
 		if (logMINOR) {
-			Logger.minor(this, "Getting notification, notification:" + awaitingNotifications.get(requestId).get(0) + ",remaining:" + (awaitingNotifications.get(requestId).size() - 1));
+			Logger.minor(this, "Getting notification, notification:" + awaitingNotifications.get(requestId).getFirst() + ",remaining:" + (awaitingNotifications.get(requestId).size() - 1));
 		}
-		return awaitingNotifications.get(requestId).remove(0);
+		return awaitingNotifications.get(requestId).removeFirst();
 	}
 
 	/** Returns the cleaner's delay in ms */

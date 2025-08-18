@@ -1,9 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,7 +42,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public class ContainerInserter implements ClientPutState, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	private static volatile boolean logDEBUG;
 
@@ -333,10 +330,10 @@ public class ContainerInserter implements ClientPutState, Serializable {
 				smc.addItem(name, makeManifest(hm, archivePrefix+name+ '/'));
 				if(logDEBUG)
 					Logger.debug(this, "Sub map for "+name+" : "+subMap.size()+" elements from "+hm.size());
-			} else if (o instanceof Metadata) {
+			} else if (o instanceof Metadata metadata) {
 				//already Metadata, take it as is
 				//System.out.println("Decompose: "+name+" (Metadata)");
-				smc.addItem(name, (Metadata)o);
+				smc.addItem(name, metadata);
 			} else {
 				ManifestElement element = (ManifestElement) o;
 				String mimeType = element.getMimeType();
@@ -392,8 +389,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
                 // Ignore
             } else if(o instanceof PutHandler handler) {
                 handler.onResume(context);
-            } else if(o instanceof ManifestElement) {
-                ((ManifestElement)o).onResume(context);
+            } else if(o instanceof ManifestElement element) {
+                element.onResume(context);
             } else throw new IllegalArgumentException("Unknown manifest element: "+o);
         }
     }

@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.TimeZone;
+import java.util.concurrent.ThreadLocalRandom;
 
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.annotation.AllowData;
@@ -48,6 +49,7 @@ import network.crypta.support.io.TooLongException;
 import network.crypta.support.io.NoFreeBucket;
 
 import static java.util.concurrent.TimeUnit.DAYS;
+
 /**
  * ToadletContext implementation, including all the icky HTTP parsing etc.
  * An actual ToadletContext object represents a request, after we have parsed the 
@@ -120,7 +122,7 @@ public class ToadletContextImpl implements ToadletContext {
 		this.userAlertManager = userAlertManager;
 		this.bookmarkManager = bookmarkManager;
 		//Generate an unique id
-		uniqueId=String.valueOf(Math.random());
+		uniqueId=String.valueOf(ThreadLocalRandom.current().nextDouble());
 	}
 	
 	private void close() {

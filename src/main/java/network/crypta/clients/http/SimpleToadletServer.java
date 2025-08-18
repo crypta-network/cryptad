@@ -1305,8 +1305,8 @@ public final class SimpleToadletServer implements ToadletContainer, Runnable, Li
 		} catch (PermanentRedirectException pre1) {
 			/* ignore. */
 		}
-		if (toadlet instanceof LinkFilterExceptedToadlet) {
-			return ((LinkFilterExceptedToadlet) toadlet).isLinkExcepted(link);
+		if (toadlet instanceof LinkFilterExceptedToadlet exceptedToadlet) {
+			return exceptedToadlet.isLinkExcepted(link);
 		}
 		return false;
 	}

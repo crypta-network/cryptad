@@ -1,5 +1,6 @@
 package network.crypta.client;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.keys.FreenetURI;
@@ -13,7 +14,7 @@ import network.crypta.support.api.RandomAccessBucket;
  */
 public class InsertBlock implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private RandomAccessBucket data;
 	private boolean isFreed;
 	public FreenetURI desiredURI;

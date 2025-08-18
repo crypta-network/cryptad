@@ -8,7 +8,7 @@ import network.crypta.support.Logger;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 
 public class DatastoreUtil {
 
@@ -38,7 +38,7 @@ public class DatastoreUtil {
 
         // check free disc space
         try {
-            long unallocatedSpace = Files.getFileStore(Paths.get("")).getUnallocatedSpace();
+            long unallocatedSpace = Files.getFileStore(Path.of("")).getUnallocatedSpace();
             // TODO: leave some free space
             // probably limit 256GB see comments of the autodetectDatastoreSize method
             return Math.min(unallocatedSpace, maxDatastoreSize);

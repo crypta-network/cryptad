@@ -453,7 +453,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
                             return true;
                         }
                         oldEntry.setHD(readHD(oldOffset)); // read from disk
-                        T oldBlock = oldEntry.getStorableBlock(routingKey, fullKey, false, false, null, (block instanceof SSKBlock) ? ((SSKBlock) block).getPubKey() : null);
+                        T oldBlock = oldEntry.getStorableBlock(routingKey, fullKey, false, false, null, (block instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
                         if (block.equals(oldBlock)) {
                             if (logDEBUG) Logger.debug(this, "Block already stored");
                             if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {

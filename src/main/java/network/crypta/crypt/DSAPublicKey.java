@@ -4,6 +4,7 @@ package network.crypta.crypt;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Serial;
 import java.math.BigInteger;
 import java.util.Arrays;
 
@@ -16,7 +17,7 @@ import network.crypta.support.SimpleFieldSet;
 
 public class DSAPublicKey extends CryptoKey implements StorableBlock {
 
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	private final BigInteger y;
 	public static final int PADDED_SIZE = 1024;
 	public static final int HASH_LENGTH = 32;
@@ -180,8 +181,8 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
 	}
 
 	public int compareTo(Object other) {
-		if(other instanceof DSAPublicKey)
-			return getY().compareTo(((DSAPublicKey) other).getY());
+		if(other instanceof DSAPublicKey key)
+			return getY().compareTo(key.getY());
 		else
 			return -1;
 	}

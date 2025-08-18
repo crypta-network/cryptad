@@ -1,5 +1,6 @@
 package network.crypta.support.api;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.async.ClientContext;
@@ -13,7 +14,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public class ManifestElement implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     /** Filename */
 	final String name;
@@ -103,8 +104,8 @@ public class ManifestElement implements Serializable {
 	@Override
 	public boolean equals(Object o) {
 		if(this == o) return true;
-		if(o instanceof ManifestElement) {
-            return ((ManifestElement) o).name.equals(name);
+		if(o instanceof ManifestElement element) {
+            return element.name.equals(name);
 		}
 		return false;
 	}

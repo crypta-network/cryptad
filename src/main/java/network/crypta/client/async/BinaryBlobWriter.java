@@ -123,7 +123,7 @@ public final class BinaryBlobWriter {
 				out.setReadOnly();
 			}
 			_buckets.clear();
-			_buckets.add(0, out);
+			_buckets.addFirst(out);
 		} else if (mark){
 			DataOutputStream out = new DataOutputStream(getOutputStream());
 			try {
@@ -140,7 +140,7 @@ public final class BinaryBlobWriter {
 	public synchronized void getSnapshot(Bucket bucket) throws IOException, BinaryBlobAlreadyClosedException {
 		if (_buckets.isEmpty()) return;
 		if (_finalized) {
-			BucketTools.copy(_buckets.get(0), bucket);
+			BucketTools.copy(_buckets.getFirst(), bucket);
 			return;
 		}
 		getSnapshot(bucket, true);
@@ -170,7 +170,7 @@ public final class BinaryBlobWriter {
 		if (_isSingleBucket) {
 			return _out;
 		} else {
-			return _buckets.get(0);
+			return _buckets.getFirst();
 		}
 	}
 

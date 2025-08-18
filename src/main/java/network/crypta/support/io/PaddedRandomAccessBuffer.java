@@ -1,17 +1,13 @@
 package network.crypta.support.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 
 public class PaddedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
-    
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final LockableRandomAccessBuffer raf;
     final long realSize;
 

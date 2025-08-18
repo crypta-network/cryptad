@@ -1,10 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.LogThresholdCallback;
@@ -24,8 +20,8 @@ import network.crypta.support.api.RandomAccessBucket;
  * @author     giannij
  */
 public class TempFileBucket extends BaseFileBucket implements Bucket, Serializable {
-    // Should not be serialized but we need Serializable to save the parent state for PersistentTempFileBucket.
-    private static final long serialVersionUID = 1L;
+	// Should not be serialized but we need Serializable to save the parent state for PersistentTempFileBucket.
+	@Serial private static final long serialVersionUID = 1L;
     long filenameID;
 	protected transient FilenameGenerator generator;
 	private boolean readOnly;

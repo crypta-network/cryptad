@@ -352,6 +352,6 @@ public class SSL {
 		if (causeMsg == null) {
 			causeMsg = cause.toString();
 		}
-		throw new InvalidConfigValueException(String.format("%s: %s", message, causeMsg));
+		throw new InvalidConfigValueException("%s: %s".formatted(message, causeMsg));
 	}
 }

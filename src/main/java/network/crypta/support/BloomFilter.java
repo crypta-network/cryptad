@@ -38,8 +38,8 @@ public abstract class BloomFilter implements AutoCloseable {
 		@Override
 		public void run() {
 			// Safety net cleanup - this should rarely be called if close() is used properly
-			if (filter instanceof MappedByteBuffer) {
-				((MappedByteBuffer) filter).force();
+			if (filter instanceof MappedByteBuffer buffer) {
+				buffer.force();
 			}
 			filter = null;
 		}
@@ -243,8 +243,8 @@ public abstract class BloomFilter implements AutoCloseable {
 	}
 
 	public void force() {
-		if (filter instanceof MappedByteBuffer) {
-			((MappedByteBuffer) filter).force();
+		if (filter instanceof MappedByteBuffer buffer) {
+			buffer.force();
 		}
 	}
 	

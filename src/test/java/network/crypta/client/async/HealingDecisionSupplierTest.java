@@ -182,7 +182,7 @@ public class HealingDecisionSupplierTest {
 	  HealingDecisionSupplier healingDecisionSupplier,
 	  double keyLocation, double randomValue) {
 	assertThat(
-		String.format("Healing triggers at random value %g", randomValue),
+		"Healing triggers at random value %g".formatted(randomValue),
 		healingDecisionSupplier.shouldHeal(keyLocation),
 		Matchers.equalTo(true));
   }
@@ -191,7 +191,7 @@ public class HealingDecisionSupplierTest {
 	  HealingDecisionSupplier healingDecisionSupplier,
 	  double keyLocation, double randomValue) {
 	assertThat(
-		String.format("Healing does not trigger at random value %g", randomValue),
+		"Healing does not trigger at random value %g".formatted(randomValue),
 		healingDecisionSupplier.shouldHeal(keyLocation),
 		Matchers.equalTo(false));
   }

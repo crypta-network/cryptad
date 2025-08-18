@@ -1,7 +1,9 @@
 package network.crypta.support.io;
 
+import java.io.Serial;
+
 public class ResumeFailedException extends Exception {
-    private static final long serialVersionUID = 4332224721883071870L;
+	@Serial private static final long serialVersionUID = 4332224721883071870L;
 
     public ResumeFailedException(String message) {
         super(message);

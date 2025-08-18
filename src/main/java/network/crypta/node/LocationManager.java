@@ -349,11 +349,11 @@ public class LocationManager implements ByteCounter {
         double probedLocationFromYesterday = insertFromYesterday
             .getNodeKey()
             .toNormalizedDouble();
-        if (insertFromYesterday instanceof ClientSSK) {
+        if (insertFromYesterday instanceof ClientSSK sK) {
             // decide between SSK and pubkey at random, because they always break together.
             if (node.getFastWeakRandom().nextBoolean()) {
                 probedLocationFromYesterday = Util.keyDigestAsNormalizedDouble(
-                    ((ClientSSK) insertFromYesterday).getPubKey().getRoutingKey());
+                    sK.getPubKey().getRoutingKey());
             }
         }
         Logger.warning(

@@ -599,20 +599,20 @@ public class DiagnosticToadlet extends Toadlet {
         List<NodeThreadInfo> threads = threadSnapshot.getThreads();
         threads.sort(Comparator.comparing(NodeThreadInfo::getCpuTime).reversed());
 
-        sb.append(String.format("Threads (%d):%n", threads.size()));
+        sb.append("Threads (%d):%n".formatted(threads.size()));
 
         // Thread ID, Job ID, Name, Priority, Group (system, main), Status, % CPU
-        sb.append(String.format("%10s %15s %-90s %5s %10s %-20s %-5s%n", "Thread ID", "Job ID", "Name",
-                                "Prio.", "Group", "Status", "% CPU"));
+        sb.append("%10s %15s %-90s %5s %10s %-20s %-5s%n".formatted("Thread ID", "Job ID", "Name",
+			"Prio.", "Group", "Status", "% CPU"));
 
         for (NodeThreadInfo thread : threads) {
             String line =
-                String.format("%10s %15s %-90s %5s %10s %-20s %.2f%n", thread.getId(), thread.getJobId(),
-                              thread.getName().substring(0, Math.min(90, thread.getName().length())),
-                              thread.getPrio(), thread.getGroupName().substring(0, Math.min(10,
-                                                                                            thread.getGroupName()
-                                                                                                  .length())),
-                              thread.getState(), thread.getCpuTime() / wallTime * 100);
+				"%10s %15s %-90s %5s %10s %-20s %.2f%n".formatted(thread.getId(), thread.getJobId(),
+					thread.getName().substring(0, Math.min(90, thread.getName().length())),
+					thread.getPrio(), thread.getGroupName().substring(0, Math.min(10,
+						thread.getGroupName()
+							.length())),
+					thread.getState(), thread.getCpuTime() / wallTime * 100);
             sb.append(line);
         }
 

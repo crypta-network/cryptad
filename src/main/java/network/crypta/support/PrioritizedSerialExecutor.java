@@ -206,8 +206,8 @@ public class PrioritizedSerialExecutor implements Executor {
 	@Override
 	public void execute(Runnable job, String jobName) {
 		int prio = defaultPriority;
-		if(job instanceof PrioRunnable)
-			prio = ((PrioRunnable) job).getPriority();
+		if(job instanceof PrioRunnable runnable)
+			prio = runnable.getPriority();
 		execute(job, prio, jobName);
 	}
 

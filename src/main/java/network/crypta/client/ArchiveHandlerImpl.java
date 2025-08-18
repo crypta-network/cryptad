@@ -1,5 +1,6 @@
 package network.crypta.client;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
@@ -11,7 +12,7 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 
 class ArchiveHandlerImpl implements ArchiveHandler, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 
 	static {

@@ -1,5 +1,6 @@
 package network.crypta.client;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,7 +18,7 @@ import network.crypta.support.compress.Compressor;
  */
 public class InsertContext implements Cloneable, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /** If true, don't try to compress the data */
 	public boolean dontCompress;
 	/** Splitfile algorithm. */

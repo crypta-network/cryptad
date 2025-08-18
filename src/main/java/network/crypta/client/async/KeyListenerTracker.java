@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import static java.lang.String.format;
-
 import java.security.MessageDigest;
 import java.util.*;
 
@@ -111,10 +109,10 @@ class KeyListenerTracker implements KeySalter {
 				Object o = singleKeyListeners.get(wrapper);
 				if(o == null) {
 					singleKeyListeners.put(wrapper, listener);
-				} else if(o instanceof KeyListener) {
+				} else if(o instanceof KeyListener keyListener) {
 					if(listener == o) return;
 					singleKeyListeners.put(wrapper,
-							new KeyListener[] { (KeyListener)o, listener });
+							new KeyListener[] { keyListener, listener });
 				} else {
 					@SuppressWarnings("unchecked")
 					KeyListener[] listeners = (KeyListener[])o;
@@ -195,10 +193,10 @@ class KeyListenerTracker implements KeySalter {
 				Object o = singleKeyListeners.get(wrapper);
 				if(o == null) {
 					// do nothing
-				} else if(o instanceof KeyListener) {
-					if((ret = ((KeyListener)o).getHasKeyListener() == hasListener)) {
+				} else if(o instanceof KeyListener listener) {
+					if((ret = listener.getHasKeyListener() == hasListener)) {
 						singleKeyListeners.remove(wrapper);
-						((KeyListener)o).onRemove();
+						listener.onRemove();
 					}
 				} else {
 					@SuppressWarnings("unchecked")
@@ -290,7 +288,7 @@ class KeyListenerTracker implements KeySalter {
 			try {
 				prio = listener.definitelyWantKey(key, saltedKey, sched.clientContext);
 			} catch (Throwable t) {
-				Logger.error(this, format("Error in definitelyWantKey callback for %s", listener), t);
+				Logger.error(this, "Error in definitelyWantKey callback for %s".formatted(listener), t);
 				continue;
 			}
 			if(prio == -1) continue;
@@ -304,8 +302,8 @@ class KeyListenerTracker implements KeySalter {
 		for(Object o: singleKeyListeners.values()) {
 			if(o == null) {
 				continue;
-			} else if(o instanceof KeyListener) {
-				count += ((KeyListener)o).countKeys();
+			} else if(o instanceof KeyListener listener1) {
+				count += listener1.countKeys();
 			} else {
 				@SuppressWarnings("unchecked")
 				KeyListener[] listeners = (KeyListener[])o;
@@ -317,7 +315,7 @@ class KeyListenerTracker implements KeySalter {
 			try {
 				count += listener.countKeys();
 			} catch (Throwable t) {
-				Logger.error(this, format("Error in countKeys callback for %s", listener), t);
+				Logger.error(this, "Error in countKeys callback for %s".formatted(listener), t);
 			}
 		}
 		return count;
@@ -334,7 +332,7 @@ class KeyListenerTracker implements KeySalter {
 						return true;
 					}
 				} catch (Throwable t) {
-					Logger.error(this, format("Error in definitelyWantKey callback for %s", listener), t);
+					Logger.error(this, "Error in definitelyWantKey callback for %s".formatted(listener), t);
 				}
 			}
 		}
@@ -364,7 +362,7 @@ class KeyListenerTracker implements KeySalter {
 					return true;
 				}
 			} catch (Throwable t) {
-				Logger.error(this, format("Error in probablyWantKey callback for %s", listener), t);
+				Logger.error(this, "Error in probablyWantKey callback for %s".formatted(listener), t);
 			}
 		}
 		return false;
@@ -389,13 +387,13 @@ class KeyListenerTracker implements KeySalter {
 						ret = true;
 					}
 				} catch (Throwable t) {
-					Logger.error(this, format("Error in handleBlock callback for %s", listener), t);
+					Logger.error(this, "Error in handleBlock callback for %s".formatted(listener), t);
 				}
 				if (listener.isEmpty()) {
 					try {
 						removePendingKeys(listener);
 					} catch (Throwable t) {
-						Logger.error(this, format("Error while removing %s", listener), t);
+						Logger.error(this, "Error while removing %s".formatted(listener), t);
 					}
 				}
 			}
@@ -415,7 +413,7 @@ class KeyListenerTracker implements KeySalter {
 			try {
 				reqs = listener.getRequestsForKey(key, saltedKey, context);
 			} catch (Throwable t) {
-				Logger.error(this, format("Error in getRequestsForKey callback for %s", listener), t);
+				Logger.error(this, "Error in getRequestsForKey callback for %s".formatted(listener), t);
 				continue;
 			}
 			if (reqs == null) {
@@ -446,7 +444,7 @@ class KeyListenerTracker implements KeySalter {
 	public byte[] globalSalt;
 	
 	public byte[] saltKey(Key key) {
-		return  saltKey(key instanceof NodeSSK ? ((NodeSSK)key).getPubKeyHash() : key.getRoutingKey());
+		return  saltKey(key instanceof NodeSSK nssk ? nssk.getPubKeyHash() : key.getRoutingKey());
 	}
 
 	private byte[] saltKey(byte[] key) {
@@ -475,7 +473,7 @@ class KeyListenerTracker implements KeySalter {
 						continue;
 					}
 				} catch (Throwable t) {
-					Logger.error(this, format("Error in probablyWantKey callback for %s", listener), t);
+					Logger.error(this, "Error in probablyWantKey callback for %s".formatted(listener), t);
 					continue;
 				}
 				matches.add(listener);

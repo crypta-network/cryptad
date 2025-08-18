@@ -340,8 +340,8 @@ public class WelcomeToadlet extends Toadlet {
 
             UpgradeConnectionSpeedUserAlert upgradeConnectionSpeedAlert = null;
             for (UserAlert alert : node.getClientCore().getAlerts().getAlerts()) {
-                if (alert instanceof UpgradeConnectionSpeedUserAlert) {
-                    upgradeConnectionSpeedAlert = (UpgradeConnectionSpeedUserAlert) alert;
+                if (alert instanceof UpgradeConnectionSpeedUserAlert userAlert) {
+                    upgradeConnectionSpeedAlert = userAlert;
                     break;
                 }
             }

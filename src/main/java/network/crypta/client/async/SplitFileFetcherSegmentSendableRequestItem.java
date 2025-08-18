@@ -27,8 +27,8 @@ public class SplitFileFetcherSegmentSendableRequestItem implements
 	}
 	
 	public boolean equals(Object o) {
-		if(o instanceof SplitFileFetcherSegmentSendableRequestItem) {
-			return ((SplitFileFetcherSegmentSendableRequestItem)o).blockNum == blockNum;
+		if(o instanceof SplitFileFetcherSegmentSendableRequestItem item) {
+			return item.blockNum == blockNum;
 		} else return false;
 	}
 

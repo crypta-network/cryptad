@@ -1,9 +1,6 @@
 package network.crypta.crypt;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
@@ -25,14 +22,15 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+
 /**
  * EncryptedRandomAccessBuffer is a encrypted RandomAccessBuffer implementation using a 
  * SkippingStreamCipher. 
  * @author unixninja92
  * Suggested EncryptedRandomAccessBufferType to use: ChaCha128
  */
-public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable { 
-    private static final long serialVersionUID = 1L;
+public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+	@Serial private static final long serialVersionUID = 1L;
     private final ReentrantLock readLock = new ReentrantLock();
     private final ReentrantLock writeLock = new ReentrantLock();
     private final EncryptedRandomAccessBufferType type;

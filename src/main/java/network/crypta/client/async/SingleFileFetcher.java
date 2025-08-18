@@ -1,13 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.BufferedInputStream;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -56,7 +49,7 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
  */
 public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 
 	static {
@@ -136,9 +129,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 		this.decompressors = new LinkedList<COMPRESSOR_TYPE>();
 		this.topDontCompress = topDontCompress;
 		this.topCompatibilityMode = topCompatibilityMode;
-		if(parent instanceof ClientGetter) {
-			metaSnoop = ((ClientGetter)parent).getMetaSnoop();
-			bucketSnoop = ((ClientGetter)parent).getBucketSnoop();
+		if(parent instanceof ClientGetter getter) {
+			metaSnoop = getter.getMetaSnoop();
+			bucketSnoop = getter.getBucketSnoop();
 		}
 		else {
 			metaSnoop = null;
@@ -184,8 +177,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 	// splitfile, or another SingleFileFetcher, etc.
 	@Override
 	public void onSuccess(ClientKeyBlock block, boolean fromStore, Object token, ClientContext context) {
-		if(parent instanceof ClientGetter)
-			((ClientGetter)parent).addKeyToBinaryBlob(block, context);
+		if(parent instanceof ClientGetter getter)
+			getter.addKeyToBinaryBlob(block, context);
 		parent.completedBlock(fromStore, context);
 		// Extract data
 
@@ -430,7 +423,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 					// Do loop detection on the archive that we are about to fetch.
 					actx.doLoopDetection(thisKey);
 					ah = context.archiveManager.makeHandler(thisKey, metadata.getArchiveType(), metadata.getCompressionCodec(),
-							(parent instanceof ClientGetter && ((ClientGetter) parent).collectingBinaryBlob()), persistent);
+							(parent instanceof ClientGetter cg && cg.collectingBinaryBlob()), persistent);
 				}
 				archiveMetadata = metadata;
 				metadata = null; // Copied to archiveMetadata, so do not need to clear it
@@ -450,7 +443,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 				} else {
 					final boolean persistent = this.persistent;
 					fetchArchive(false, archiveMetadata, ArchiveManager.METADATA_NAME, new ArchiveExtractCallback() {
-                        private static final long serialVersionUID = 1L;
+						@Serial private static final long serialVersionUID = 1L;
                         @Override
 						public void gotBucket(Bucket data, ClientContext context) {
 							if(logMINOR) Logger.minor(this, "gotBucket on "+SingleFileFetcher.this+" persistent="+persistent);
@@ -514,7 +507,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 					// We enforce this in ArchiveHandler.
 					// Therefore, the archive needs to be fetched.
 					fetchArchive(true, archiveMetadata, filename, new ArchiveExtractCallback() {
-                        private static final long serialVersionUID = 1L;
+						@Serial private static final long serialVersionUID = 1L;
                         @Override
 						public void gotBucket(Bucket data, ClientContext context) {
 							if(logMINOR) Logger.minor(this, "Returning data");
@@ -591,7 +584,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 					// We enforce this in ArchiveHandler.
 					// Therefore, the archive needs to be fetched.
 					fetchArchive(true, archiveMetadata, filename, new ArchiveExtractCallback() {
-                        private static final long serialVersionUID = 1L;
+						@Serial private static final long serialVersionUID = 1L;
                         @Override
 						public void gotBucket(Bucket data, ClientContext context) {
 							if(logMINOR) Logger.minor(this, "Returning data");
@@ -671,8 +664,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 				ClientKey redirectedKey;
 				try {
 					BaseClientKey k = BaseClientKey.getBaseKey(newURI);
-					if(k instanceof ClientKey)
-						redirectedKey = (ClientKey) k;
+					if(k instanceof ClientKey clientKey)
+						redirectedKey = clientKey;
 					else
 						// FIXME do we want to allow redirects to USKs?
 						// Without redirects to USKs, all SSK and CHKs are static.
@@ -685,18 +678,18 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 				// Move any new meta strings to beginning of our list of remaining meta strings
 				while(!newMetaStrings.isEmpty()) {
-					String o = newMetaStrings.remove(newMetaStrings.size()-1);
-					metaStrings.add(0, o);
+					String o = newMetaStrings.removeLast();
+					metaStrings.addFirst(o);
 					addedMetaStrings++;
 				}
 
 				final SingleFileFetcher f = new SingleFileFetcher(parent, rcb, clientMetadata, redirectedKey, metaStrings, this.uri, addedMetaStrings, ctx, deleteFetchContext, realTimeFlag, actx, ah, archiveMetadata, maxRetries, recursionLevel, false, token, true, isFinal, topDontCompress, topCompatibilityMode, context, false);
 				this.deleteFetchContext = false;
-				if((redirectedKey instanceof ClientCHK) && !((ClientCHK)redirectedKey).isMetadata()) {
+				if((redirectedKey instanceof ClientCHK hK1) && !hK1.isMetadata()) {
 					rcb.onBlockSetFinished(this, context);
-					byte [] redirectedCryptoKey = ((ClientCHK)redirectedKey).getCryptoKey();
-					if (key instanceof ClientCHK && !Arrays.equals(
-							((ClientCHK)key).getCryptoKey(),
+					byte [] redirectedCryptoKey = hK1.getCryptoKey();
+					if (key instanceof ClientCHK hK && !Arrays.equals(
+							hK.getCryptoKey(),
 							redirectedCryptoKey))
 						redirectedCryptoKey = null;
 					// not splitfile, synthesize CompatibilityMode event
@@ -704,7 +697,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 							metadata.getMinCompatMode(),
 							metadata.getMaxCompatMode(),
 							redirectedCryptoKey,
-							!((ClientCHK)redirectedKey).isCompressed(),
+							!hK1.isCompressed(),
 							true, true,
 							context);
 				}
@@ -809,7 +802,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 	}
 
 	private String removeMetaString() {
-		String name = metaStrings.remove(0);
+		String name = metaStrings.removeFirst();
 		if(addedMetaStrings > 0) addedMetaStrings--;
 		return name;
 	}
@@ -873,7 +866,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 	class ArchiveFetcherCallback implements GetCompletionCallback, Serializable {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         private final boolean wasFetchingFinalData;
 		private final String element;
 		private final ArchiveExtractCallback callback;
@@ -1019,7 +1012,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 	class MultiLevelMetadataCallback implements GetCompletionCallback, Serializable {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         private final boolean persistent;
 		private final FetchContext ctx;
 
@@ -1147,8 +1140,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 			key = BaseClientKey.getBaseKey(uri);
 		if((!uri.hasMetaStrings()) &&
                 !ctx.allowSplitfiles && !ctx.followRedirects &&
-				key instanceof ClientKey && (!hasInitialMetadata))
-			return new SimpleSingleFileFetcher((ClientKey)key, maxRetries, ctx, requester, cb, isEssential, false, l, context, false, realTimeFlag);
+				key instanceof ClientKey clientKey && (!hasInitialMetadata))
+			return new SimpleSingleFileFetcher(clientKey, maxRetries, ctx, requester, cb, isEssential, false, l, context, false, realTimeFlag);
 		if(key instanceof ClientKey || hasInitialMetadata)
 			return new SingleFileFetcher(requester, cb, null, (ClientKey)key, new ArrayList<String>(uri.listMetaStrings()), uri, 0, ctx, false, realTimeFlag, actx, null, null, maxRetries, recursionLevel, dontTellClientGet, l, isEssential, isFinal, false, (short)0, context, hasInitialMetadata);
 		else {
@@ -1205,7 +1198,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
 
 	public static class MyUSKFetcherCallback implements USKFetcherTagCallback, Serializable {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         final ClientRequester parent;
 		final GetCompletionCallback cb;
 		final USK usk;

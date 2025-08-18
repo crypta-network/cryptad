@@ -32,10 +32,10 @@ public class SerializerTest {
             for (Object datum : data) {
                 Object read = Serializer.readFromDataInputStream(datum.getClass(), dis);
                 //Might be an array.
-                if (read instanceof double[]) {
-                    assertArrayEquals((double[]) datum, (double[]) read, 0.0);
-                } else if (read instanceof float[]) {
-                    assertTrue(Arrays.equals((float[]) datum, (float[]) read));
+                if (read instanceof double[] doubles) {
+                    assertArrayEquals((double[]) datum, doubles, 0.0);
+                } else if (read instanceof float[] floats) {
+                    assertTrue(Arrays.equals((float[]) datum, floats));
                 } else {
                     assertEquals(datum, read);
                 }

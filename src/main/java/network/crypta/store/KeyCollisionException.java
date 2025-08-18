@@ -3,8 +3,10 @@ package network.crypta.store;
 import network.crypta.support.LightweightException;
 import network.crypta.support.Logger;
 
+import java.io.Serial;
+
 public class KeyCollisionException extends LightweightException {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     private static volatile boolean logDEBUG;
     
     static { Logger.registerClass(KeyCollisionException.class); }

@@ -173,7 +173,7 @@ public class MultiValueTableTest {
     public void testGetFirst() {
         for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
             assertEquals(
-                entry.getValue().get(0),
+                entry.getValue().getFirst(),
                 multiValueTable.getFirst(entry.getKey())
             );
         }
@@ -183,7 +183,7 @@ public class MultiValueTableTest {
     public void testGet() {
         for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
             assertEquals(
-                entry.getValue().get(0),
+                entry.getValue().getFirst(),
                 multiValueTable.get(entry.getKey())
             );
         }
@@ -606,7 +606,7 @@ public class MultiValueTableTest {
 
         assertThrows(UnsupportedOperationException.class, entries::clear);
         for (Map.Entry<Integer, List<Object>> entry : entries) {
-            assertThrows(UnsupportedOperationException.class, () -> entry.getValue().remove(0));
+            assertThrows(UnsupportedOperationException.class, () -> entry.getValue().removeFirst());
         }
 
         assertEquals(3, multiValueTable.entrySet().size());

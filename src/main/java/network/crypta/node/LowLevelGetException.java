@@ -5,6 +5,8 @@ import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 
+import java.io.Serial;
+
 public class LowLevelGetException extends LightweightException {
     private static volatile boolean logDEBUG;
 
@@ -18,7 +20,7 @@ public class LowLevelGetException extends LightweightException {
         });
     }
 
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 	/** Decode of data failed, probably was bogus at source */
 	public static final int DECODE_FAILED = 1;
 	/** Data was not in store and request was local-only */
@@ -46,30 +48,19 @@ public class LowLevelGetException extends LightweightException {
 	public static final int RECENTLY_FAILED = 10;
 	
 	public static String getMessage(int reason) {
-		switch(reason) {
-		case DECODE_FAILED:
-			return "Decode of data failed, probably was bogus at source";
-		case DATA_NOT_FOUND_IN_STORE:
-			return "Data was not in store and request was local-only";
-		case INTERNAL_ERROR:
-			return "Internal error - probably a bug";
-		case DATA_NOT_FOUND:
-			return "Could not find the data";
-		case ROUTE_NOT_FOUND:
-			return "Could not find enough nodes to be sure that the data is not out there somewhere";
-		case REJECTED_OVERLOAD:
-			return "A node downstream either timed out or was overloaded (retry)";
-		case TRANSFER_FAILED:
-			return "Started to transfer data, then failed (should be rare)";
-		case VERIFY_FAILED:
-			return "Node sent us invalid data";
-		case CANCELLED:
-			return "Request cancelled";
-		case RECENTLY_FAILED:
-			return "Request killed by failure table due to recently DNFing on a downstream node";
-		default:
-			return "Unknown error code: "+reason;
-		}
+		return switch(reason) {
+		case DECODE_FAILED -> "Decode of data failed, probably was bogus at source";
+		case DATA_NOT_FOUND_IN_STORE -> "Data was not in store and request was local-only";
+		case INTERNAL_ERROR -> "Internal error - probably a bug";
+		case DATA_NOT_FOUND -> "Could not find the data";
+		case ROUTE_NOT_FOUND -> "Could not find enough nodes to be sure that the data is not out there somewhere";
+		case REJECTED_OVERLOAD -> "A node downstream either timed out or was overloaded (retry)";
+		case TRANSFER_FAILED -> "Started to transfer data, then failed (should be rare)";
+		case VERIFY_FAILED -> "Node sent us invalid data";
+		case CANCELLED -> "Request cancelled";
+		case RECENTLY_FAILED -> "Request killed by failure table due to recently DNFing on a downstream node";
+		default -> "Unknown error code: "+reason;
+		};
 	}
 	
 	/** Failure code */

@@ -3,6 +3,7 @@ package network.crypta.support.math;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serial;
 
 import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.Logger;
@@ -22,7 +23,7 @@ import network.crypta.support.Logger.LogLevel;
  */
 public final class TimeDecayingRunningAverage implements RunningAverage, Cloneable {
 
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     static final int MAGIC = 0x5ff4ac94;
     
     @Override

@@ -3187,8 +3187,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 			// FIXME add to stats page
 		}
 		OpennetManager om = node.getOpennet();
-		if(om != null && source instanceof SeedClientPeerNode)
-			om.getSeedTracker().completedAnnounce((SeedClientPeerNode)source, forwardedRefs);
+		if(om != null && source instanceof SeedClientPeerNode peerNode)
+			om.getSeedTracker().completedAnnounce(peerNode, forwardedRefs);
 	}
 	
 	public synchronized int getTransfersPerAnnounce() {

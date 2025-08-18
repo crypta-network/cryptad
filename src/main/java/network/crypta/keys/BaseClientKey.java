@@ -1,5 +1,6 @@
 package network.crypta.keys;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 
@@ -13,7 +14,7 @@ import java.net.MalformedURLException;
  */
 public abstract class BaseClientKey implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     public static BaseClientKey getBaseKey(FreenetURI origURI) throws MalformedURLException {
 		String keyType = origURI.getKeyType();

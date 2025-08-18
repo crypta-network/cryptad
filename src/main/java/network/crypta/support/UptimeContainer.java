@@ -1,5 +1,6 @@
 package network.crypta.support;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -8,7 +9,7 @@ import java.io.Serializable;
  * @author Artefact2
  */
 public class UptimeContainer implements Serializable {
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     public long creationTime = 0;
 	public long totalUptime = 0;
 

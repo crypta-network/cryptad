@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.ClientMetadata;
@@ -29,7 +30,7 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
  */
 public class SimpleSingleFileFetcher extends BaseSingleFileFetcher implements ClientGetState, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     SimpleSingleFileFetcher(ClientKey key, int maxRetries, FetchContext ctx, ClientRequester parent, 
 			GetCompletionCallback rcb, boolean isEssential, boolean dontAdd, long l, ClientContext context, boolean deleteFetchContext, boolean realTimeFlag) {
@@ -102,8 +103,8 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher implements Cl
 
 	@Override
 	public void onSuccess(ClientKeyBlock block, boolean fromStore, Object reqTokenIgnored, ClientContext context) {
-		if(parent instanceof ClientGetter)
-			((ClientGetter)parent).addKeyToBinaryBlob(block, context);
+		if(parent instanceof ClientGetter getter)
+			getter.addKeyToBinaryBlob(block, context);
 		Bucket data = extract(block, context);
 		if(data == null) return; // failed
 		context.uskManager.checkUSK(key.getURI(), fromStore, block.isMetadata());

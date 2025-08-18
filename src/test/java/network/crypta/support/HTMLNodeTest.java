@@ -223,7 +223,7 @@ public class HTMLNodeTest {
 		assertEquals(1,childrenList.size());
 		assertEquals(generateNoContentNodeOutput(SAMPLE_OKAY_NODE_NAME_EMPTY,
 				SAMPLE_OKAY_ATTRIBUTE_NAME,SAMPLE_ATTRIBUTE_VALUE),
-				childrenList.get(0).generate());
+				childrenList.getFirst().generate());
 	}
 	
 	/**
@@ -242,7 +242,7 @@ public class HTMLNodeTest {
 		assertEquals(generateFullNodeOutput(SAMPLE_OKAY_NODE_NAME_NON_EMPTY,
 				SAMPLE_OKAY_ATTRIBUTE_NAME, SAMPLE_ATTRIBUTE_VALUE, 
 				SAMPLE_NODE_CONTENT),
-					childrenList.get(0).generate());
+					childrenList.getFirst().generate());
 	}
 	
 	/**
@@ -287,7 +287,7 @@ public class HTMLNodeTest {
 	private void testSingleChildAttributes(HTMLNode aHTMLNode,String[] attibutesNames, String[] attributesValues) {
 		List<HTMLNode> childrenList = aHTMLNode.children;
 		assertEquals(1,childrenList.size());
-		HTMLNode childHTMLNode = childrenList.get(0);
+		HTMLNode childHTMLNode = childrenList.getFirst();
 		assertEquals(attibutesNames.length,childHTMLNode.getAttributes().size());
 		for(int i = 0 ; i<attibutesNames.length;i++)
 			assertEquals(attributesValues[i],
@@ -308,7 +308,7 @@ public class HTMLNodeTest {
 		//since the HTMLNode name is not "#", or "%",
 		//the content will be a new child with the "#" name
 		assertEquals(SAMPLE_NODE_CONTENT,
-				methodHTMLNode.children.get(0).getContent());
+				methodHTMLNode.children.getFirst().getContent());
 		assertNull(methodHTMLNode.getContent());
 		
 		methodHTMLNode = new HTMLNode("#",SAMPLE_NODE_CONTENT);

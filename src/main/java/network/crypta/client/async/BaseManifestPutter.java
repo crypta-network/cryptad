@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -56,7 +57,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public abstract class BaseManifestPutter extends ManifestPutter {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 	private static volatile boolean logDEBUG;
 
@@ -75,7 +76,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 	 */
 	private final class ArchivePutHandler extends PutHandler {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         private ArchivePutHandler(BaseManifestPutter bmp, PutHandler parent, String name, HashMap<String, Object> data, FreenetURI insertURI) {
 			super(bmp, parent, name, null, containerPutHandlers);
@@ -130,7 +131,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 	 */
 	private final class ContainerPutHandler extends PutHandler {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         private ContainerPutHandler(BaseManifestPutter bmp, PutHandler parent, String name, HashMap<String, Object> data, FreenetURI insertURI, Object object, HashSet<PutHandler> runningMap) {
 			super(bmp, parent, name, null, runningMap);
@@ -177,7 +178,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
 	private final class ExternPutHandler extends PutHandler {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         private ExternPutHandler(BaseManifestPutter bmp, PutHandler parent, String name, RandomAccessBucket data, ClientMetadata cm2) {
 			super(bmp, parent, name, cm2, runningPutHandlers);
@@ -269,7 +270,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
 		// Metadata is not put with a cryptokey. It is derived from other stuff that is already encrypted with random keys.
 		
-        private static final long serialVersionUID = 1L;
+			@Serial private static final long serialVersionUID = 1L;
 
         // final metadata
 		private MetaPutHandler(BaseManifestPutter smp, PutHandler parent, InsertBlock insertBlock) {
@@ -323,7 +324,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 	/** Placeholder for Metadata, don't run it! */
 	private final class JokerPutHandler extends PutHandler {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         /** a normal ( freeform) redirect */
 		public JokerPutHandler(BaseManifestPutter bmp, 	String name, FreenetURI targetURI2, ClientMetadata cm2) {
@@ -350,7 +351,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 	// Only implements PutCompletionCallback for the final metadata insert
 	abstract class PutHandler extends BaseClientPutter implements PutCompletionCallback {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         // run me
 		private PutHandler(final BaseManifestPutter bmp, PutHandler parent, String name, ClientMetadata cm, HashSet<PutHandler> runningMap) {
@@ -1296,7 +1297,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
 	protected abstract class ManifestBuilder implements Serializable {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         private final Stack<HashMap<String, Object>> dirStack;
 		/** Map from name to either a Metadata (to be included as-is), a ManifestElement (either a redirect
 		 * or a file), or another HashMap. Eventually processed by e.g. ContainerInserter.makeManifest()
@@ -1392,7 +1393,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
 	protected final class FreeFormBuilder extends ManifestBuilder {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
 
         protected FreeFormBuilder() {
 			rootDir = new HashMap<String, Object>();
@@ -1427,7 +1428,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 	
 	protected final class ContainerBuilder extends ManifestBuilder {
 
-        private static final long serialVersionUID = 1L;
+		@Serial private static final long serialVersionUID = 1L;
         /** Tree containing the status of the insert. Can have ManifestElement's (original files to
          * insert or bundle inside a container), HashMap's (more subdirs), Metadata (to be put into 
          * a container as metadata for e.g. an external file), a ContainerPutHandler or an 

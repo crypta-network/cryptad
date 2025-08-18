@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
 
@@ -19,7 +20,7 @@ import network.crypta.support.compress.Compressor;
  */
 public class USKProxyCompletionCallback implements GetCompletionCallback, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final USK usk;
 	final GetCompletionCallback cb;
 	final boolean persistent;

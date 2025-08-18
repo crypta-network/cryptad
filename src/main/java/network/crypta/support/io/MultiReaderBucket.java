@@ -1,10 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 
@@ -22,8 +18,8 @@ import network.crypta.support.api.Bucket;
  * @author toad
  */
 public class MultiReaderBucket implements Serializable {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
     
     // Cleaner for safety net resource cleanup  
     private static final Cleaner cleaner = Cleaner.create();
@@ -96,8 +92,8 @@ public class MultiReaderBucket implements Serializable {
 	}
 
 	class ReaderBucket implements Bucket, Serializable {
-		
-        private static final long serialVersionUID = 1L;
+
+		@Serial private static final long serialVersionUID = 1L;
         private boolean freed;
         
         // Cleaner for safety net resource cleanup

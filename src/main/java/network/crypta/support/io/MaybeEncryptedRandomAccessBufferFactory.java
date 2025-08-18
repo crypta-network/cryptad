@@ -80,8 +80,8 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
         synchronized(this) {
             reallyEncrypt = value;
         }
-        if(factory instanceof PooledFileRandomAccessBufferFactory)
-            ((PooledFileRandomAccessBufferFactory)factory).enableCrypto(value);
+        if(factory instanceof PooledFileRandomAccessBufferFactory bufferFactory)
+            bufferFactory.enableCrypto(value);
     }
     
 }

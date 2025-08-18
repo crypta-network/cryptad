@@ -210,8 +210,8 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 				req.onDumped();
 				return false;
 			}
-		} else if(((ChosenBlockImpl)req).request instanceof SendableInsert) {
-			if(!sched.addRunningInsert((SendableInsert)(((ChosenBlockImpl)req).request), req.token.getKey())) {
+		} else if(((ChosenBlockImpl)req).request instanceof SendableInsert insert) {
+			if(!sched.addRunningInsert(insert, req.token.getKey())) {
 				req.onDumped();
 				return false;
 			}

@@ -59,8 +59,8 @@ public class UserAlertManager implements Comparator<UserAlert> {
 	}
 
 	public void register(UserAlert alert) {
-		if(alert instanceof UserEvent)
-			register((UserEvent) alert);
+		if(alert instanceof UserEvent event)
+			register(event);
 		synchronized (alerts) {
 			if (!alerts.contains(alert)) {
 				alerts.add(alert);
@@ -104,8 +104,8 @@ public class UserAlertManager implements Comparator<UserAlert> {
 
 	public void unregister(UserAlert alert) {
 		if(alert == null) return;
-		if(alert instanceof UserEvent)
-			unregister(((UserEvent)alert).getEventType());
+		if(alert instanceof UserEvent event)
+			unregister(event.getEventType());
 		synchronized (alerts) {
 			alerts.remove(alert);
 		}

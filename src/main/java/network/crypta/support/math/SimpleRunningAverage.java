@@ -1,6 +1,7 @@
 package network.crypta.support.math;
 
 import java.io.DataOutputStream;
+import java.io.Serial;
 
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -10,7 +11,7 @@ import network.crypta.support.Logger.LogLevel;
  * @author amphibian
  */
 public final class SimpleRunningAverage implements RunningAverage, Cloneable {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
     final double[] refs;
     int nextSlotPtr=0;
     int curLen=0;

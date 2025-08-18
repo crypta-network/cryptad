@@ -1,12 +1,6 @@
 package network.crypta.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -40,7 +34,7 @@ import network.crypta.support.io.NullOutputStream;
 /** Metadata parser/writer class. */
 public class Metadata implements Cloneable, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     static final long FREENET_METADATA_MAGIC = 0xf053b2842d91482bL;
 	static final int MAX_SPLITFILE_PARAMS_LENGTH = 32768;
 	/** Soft limit, to avoid memory DoS */
@@ -786,9 +780,9 @@ public class Metadata implements Cloneable, Serializable {
 			String key = entry.getKey().intern();
 			Object o = entry.getValue();
 			Metadata target;
-			if(o instanceof String) {
+			if(o instanceof String string) {
 				// External redirect
-				FreenetURI uri = new FreenetURI((String)o);
+				FreenetURI uri = new FreenetURI(string);
 				target = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, uri, null);
 			} else if(o instanceof HashMap) {
 				target = new Metadata();
@@ -1239,8 +1233,8 @@ public class Metadata implements Cloneable, Serializable {
 			if((meta != null) && (meta.length > 0))
 				throw new MalformedURLException("Not a plain CHK");
 			BaseClientKey key = BaseClientKey.getBaseKey(freenetURI);
-			if(key instanceof ClientCHK) {
-				((ClientCHK)key).writeRawBinaryKey(dos);
+			if(key instanceof ClientCHK hK) {
+				hK.writeRawBinaryKey(dos);
 			} else throw new IllegalArgumentException("Full keys must be enabled to write non-CHKs");
 		}
 	}

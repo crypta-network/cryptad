@@ -943,7 +943,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   public synchronized Peer getPeer() {
     if (detectedPeer == null && !nominalPeer.isEmpty()) {
       sortNominalPeer();
-      detectedPeer = nominalPeer.get(0);
+      detectedPeer = nominalPeer.getFirst();
       updateShortToString();
     }
     return detectedPeer;
@@ -4468,7 +4468,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (validIPs.isEmpty()) {
       ret = null;
     } else if (validIPs.size() == 1) {
-      ret = validIPs.get(0);
+      ret = validIPs.getFirst();
     } else {
       // Don't need to synchronize for this value as we're only called from one thread anyway.
       handshakeIPAlternator %= validIPs.size();

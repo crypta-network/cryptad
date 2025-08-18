@@ -2,8 +2,10 @@ package network.crypta.node;
 
 import network.crypta.keys.KeyBlock;
 
+import java.io.Serial;
+
 public class LowLevelPutException extends Exception {
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 	/** An internal error occurred */
 	public static final int INTERNAL_ERROR = 1;
 	/** The request could not go enough hops to store the data properly. */
@@ -22,20 +24,14 @@ public class LowLevelPutException extends Exception {
 	private KeyBlock collidedBlock;
 	
 	static String getMessage(int reason) {
-		switch(reason) {
-		case INTERNAL_ERROR:
-			return "Internal error - probably a bug";
-		case ROUTE_NOT_FOUND:
-			return "Could not store the data on enough nodes";
-		case REJECTED_OVERLOAD:
-			return "A node downstream either timed out or was overloaded (retry)";
-		case ROUTE_REALLY_NOT_FOUND:
-			return "The insert could not get off the node at all";
-		case COLLISION:
-			return "The insert collided with different data of the same key already on the network";
-		default:
-			return "Unknown error code: "+reason;
-		}
+		return switch(reason) {
+		case INTERNAL_ERROR -> "Internal error - probably a bug";
+		case ROUTE_NOT_FOUND -> "Could not store the data on enough nodes";
+		case REJECTED_OVERLOAD -> "A node downstream either timed out or was overloaded (retry)";
+		case ROUTE_REALLY_NOT_FOUND -> "The insert could not get off the node at all";
+		case COLLISION -> "The insert collided with different data of the same key already on the network";
+		default -> "Unknown error code: "+reason;
+		};
 		
 	}
 	

@@ -1,9 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -36,7 +33,7 @@ import network.crypta.client.async.ClientRequester;
 
 public class ClientPut extends ClientPutBase {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     ClientPutter putter;
 	private final UploadFrom uploadFrom;
 	/** Original filename if from disk, otherwise null. Purely for PersistentPut. */

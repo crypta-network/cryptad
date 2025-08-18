@@ -183,8 +183,8 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
 		
 		// Close the jar file, so we may delete / reload it
 		ClassLoader cl = plug.getClass().getClassLoader();
-		if (cl instanceof JarClassLoader) {
-			IOUtils.closeQuietly((JarClassLoader) cl);
+		if (cl instanceof JarClassLoader loader) {
+			IOUtils.closeQuietly(loader);
 		}
 		return success;
 	}

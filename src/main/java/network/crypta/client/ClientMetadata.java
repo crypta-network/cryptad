@@ -1,9 +1,6 @@
 package network.crypta.client;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 
 /**
  * Stores the metadata that the client might actually be interested in.
@@ -15,8 +12,8 @@ import java.io.Serializable;
  * restarting downloads or losing uploads.
  */
 public class ClientMetadata implements Cloneable, Serializable {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
     /** The document MIME type */
 	private String mimeType;
 

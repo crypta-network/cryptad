@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.keys.FreenetURI;
@@ -16,7 +17,7 @@ import network.crypta.support.io.ResumeFailedException;
 @Deprecated
 public class ManifestElement implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 
     /** Filename */
 	private String name;

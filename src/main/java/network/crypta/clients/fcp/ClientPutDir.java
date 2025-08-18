@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.util.Date;
 import java.util.HashMap;
@@ -32,7 +33,7 @@ import network.crypta.support.io.ResumeFailedException;
 
 public class ClientPutDir extends ClientPutBase {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private HashMap<String, Object> manifestElements;
 	private ManifestPutter putter;
 	private final String defaultName;

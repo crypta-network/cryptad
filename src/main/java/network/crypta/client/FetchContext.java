@@ -1,10 +1,6 @@
 package network.crypta.client;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -22,7 +18,7 @@ import network.crypta.support.io.StorageFormatException;
  * checking for valid values e.g. maxRecursionLevel >= 1. */
 public class FetchContext implements Cloneable, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     public static final int IDENTICAL_MASK = 0;
 	public static final int SPLITFILE_DEFAULT_BLOCK_MASK = 1;
 	public static final int SPLITFILE_DEFAULT_MASK = 2;

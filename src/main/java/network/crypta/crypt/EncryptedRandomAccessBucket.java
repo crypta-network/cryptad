@@ -1,16 +1,6 @@
 package network.crypta.crypt;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.EOFException;
-import java.io.FilterInputStream;
-import java.io.FilterOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
@@ -41,8 +31,7 @@ import network.crypta.support.io.StorageFormatException;
  * @author toad
  */
 public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializable {
-    
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     
     private final EncryptedRandomAccessBufferType type;
     private final RandomAccessBucket underlying;

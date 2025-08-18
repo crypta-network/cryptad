@@ -1,9 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,8 +20,8 @@ import network.crypta.support.Fields;
  * @author toad
  */
 public class SplitFileSegmentKeys implements Cloneable, Serializable {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
     public final int dataBlocks;
 	public final int checkBlocks;
 	/** Modern splitfiles have a common decrypt key */

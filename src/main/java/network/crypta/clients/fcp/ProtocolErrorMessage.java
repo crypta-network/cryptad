@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.node.Node;
@@ -20,7 +21,7 @@ import network.crypta.support.SimpleFieldSet;
  */
 public class ProtocolErrorMessage extends FCPMessage implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     static final int CLIENT_HELLO_MUST_BE_FIRST_MESSAGE = 1;
 	static final int NO_LATE_CLIENT_HELLOS = 2;
 	static final int MESSAGE_PARSE_ERROR = 3;

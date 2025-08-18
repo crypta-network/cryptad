@@ -1,12 +1,6 @@
 package network.crypta.support.io;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Arrays;
 
 import network.crypta.client.async.ClientContext;
@@ -22,7 +16,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * @author oskar
  */
 public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private volatile byte[] data;
 	private final String name;
 	private boolean readOnly;

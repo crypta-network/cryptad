@@ -32,11 +32,11 @@ public class SparseBitmap implements Iterable<int[]> {
 		}
 		NavigableSet<Range> toReplace = overlaps(start, end, true);
 		if (!toReplace.isEmpty()) {
-			Range first = toReplace.first();
+			Range first = toReplace.getFirst();
 			if (first.start < start) {
 				start = first.start;
 			}
-			Range last = toReplace.last();
+			Range last = toReplace.getLast();
 			if (last.end > end) {
 				end = last.end;
 			}

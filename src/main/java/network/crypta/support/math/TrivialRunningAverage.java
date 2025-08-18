@@ -1,8 +1,10 @@
 package network.crypta.support.math;
 
+import java.io.Serial;
+
 public final class TrivialRunningAverage implements RunningAverage, Cloneable {
 
-	private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
 	private long reports;
 	private double total;
 

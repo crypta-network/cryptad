@@ -378,9 +378,9 @@ public class PeerManager {
     }
     if (pn.recordStatus()) addPeerNodeStatus(pn.getPeerNodeStatus(), pn, false);
     pn.setPeerNodeStatus(System.currentTimeMillis());
-    if ((!ignoreOpennet) && pn instanceof OpennetPeerNode) {
+    if ((!ignoreOpennet) && pn instanceof OpennetPeerNode peerNode) {
       OpennetManager opennet = node.getOpennet();
-      if (opennet != null) opennet.forceAddPeer((OpennetPeerNode) pn, true);
+      if (opennet != null) opennet.forceAddPeer(peerNode, true);
       else {
         Logger.error(
             this, "Adding opennet peer when no opennet enabled!!!: " + pn + " - removing...");
@@ -422,7 +422,7 @@ public class PeerManager {
           break;
         }
       }
-      if (pn instanceof DarknetPeerNode) ((DarknetPeerNode) pn).removeExtraPeerDataDir();
+      if (pn instanceof DarknetPeerNode peerNode) peerNode.removeExtraPeerDataDir();
       if (isInPeers) {
         int peerNodeStatus = pn.getPeerNodeStatus();
         if (pn.recordStatus()) removePeerNodeStatus(peerNodeStatus, pn, !isInPeers);
@@ -2158,7 +2158,7 @@ public class PeerManager {
     // FIXME optimise! Maybe maintain as a separate list?
     List<SeedServerPeerNode> v = new ArrayList<SeedServerPeerNode>(peers.length);
     for (PeerNode peer : peers) {
-      if (peer instanceof SeedServerPeerNode) v.add((SeedServerPeerNode) peer);
+      if (peer instanceof SeedServerPeerNode peerNode) v.add(peerNode);
     }
     return v;
   }
@@ -2334,8 +2334,8 @@ public class PeerManager {
     int count = 0;
     for (PeerNode peer : peers) {
       if (peer.isDisabled()) continue;
-      if (peer instanceof DarknetPeerNode) {
-        if (((DarknetPeerNode) peer).isListenOnly()) continue;
+      if (peer instanceof DarknetPeerNode peerNode) {
+        if (peerNode.isListenOnly()) continue;
       }
       count++;
     }

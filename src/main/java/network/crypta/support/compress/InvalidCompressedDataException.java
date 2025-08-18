@@ -1,10 +1,11 @@
 package network.crypta.support.compress;
 
 import java.io.IOException;
+import java.io.Serial;
 
 public class InvalidCompressedDataException extends IOException {
 
-	private static final long serialVersionUID = -1L;
+	@Serial private static final long serialVersionUID = -1L;
 
 	public InvalidCompressedDataException() {
 		super();

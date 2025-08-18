@@ -1,17 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
-import java.io.RandomAccessFile;
-import java.io.Serializable;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.util.List;
@@ -60,7 +49,7 @@ import network.crypta.support.io.StorageFormatException;
 public class ClientGetter extends BaseClientGetter
 implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private static volatile boolean logMINOR;
 
 	static {
@@ -227,8 +216,8 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 			if(cancelled) cancel();
 			// schedule() may deactivate stuff, so store it now.
 			if(currentState != null && !finished) {
-				if(initialMetadata != null && currentState instanceof SingleFileFetcher && !resumedFetcher) {
-					((SingleFileFetcher)currentState).startWithMetadata(initialMetadata, context);
+				if(initialMetadata != null && currentState instanceof SingleFileFetcher fetcher && !resumedFetcher) {
+					fetcher.startWithMetadata(initialMetadata, context);
 				} else
 					currentState.schedule(context);
 			}
@@ -959,8 +948,8 @@ implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 	}
 
     public byte[] getClientDetail(ChecksumChecker checker) throws IOException {
-        if(clientCallback instanceof PersistentClientCallback) {
-            return getClientDetail((PersistentClientCallback)clientCallback, checker);
+        if(clientCallback instanceof PersistentClientCallback callback) {
+            return getClientDetail(callback, checker);
         } else
             return new byte[0];
     }

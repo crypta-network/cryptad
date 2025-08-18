@@ -1,5 +1,6 @@
 package network.crypta.keys;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.util.Arrays;
@@ -23,7 +24,7 @@ import network.crypta.support.Logger;
  */
 public class USK extends BaseClientKey implements Comparable<USK>, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     /* The character to separate the site name from the edition number in its SSK form.
 	 * I chose "-", because it makes it ludicrously easy to go from the USK form to the
 	 * SSK form, and we don't need to go vice versa.

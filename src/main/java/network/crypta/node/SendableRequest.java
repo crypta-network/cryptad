@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.async.ClientContext;
@@ -23,8 +24,8 @@ import network.crypta.support.Logger.LogLevel;
  * restarting downloads or losing uploads. Not all subclasses of this class are actually persisted.
  */
 public abstract class SendableRequest implements RandomGrabArrayItem, Serializable {
-	
-    private static final long serialVersionUID = 1L;
+
+	@Serial private static final long serialVersionUID = 1L;
 
     /** Since we put these into Set's etc, hashCode must be persistent.
 	 * Guaranteed not to be 0 unless this is a persistent object that is deactivated. */

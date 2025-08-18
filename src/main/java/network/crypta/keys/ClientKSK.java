@@ -1,8 +1,6 @@
 package network.crypta.keys;
 
-/** A KSK. We know the private key from the keyword, so this can be both 
- * requested and inserted. */
-
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -15,7 +13,7 @@ import network.crypta.support.math.MersenneTwister;
 
 public class ClientKSK extends InsertableClientSSK {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final String keyword;
 	
 	private ClientKSK(String keyword, byte[] pubKeyHash, DSAPublicKey pubKey, DSAPrivateKey privKey, byte[] keywordHash) throws MalformedURLException {

@@ -93,8 +93,8 @@ public class PrioritizedTicker implements Ticker, Runnable {
 					if(jobsToRun == null)
 						jobsToRun = new ArrayList<Job>();
 					Object o = timedJobsByTime.remove(tRun);
-					if(o instanceof Job[]) {
-						for(Job r: (Job[]) o) {
+					if(o instanceof Job[] jobs) {
+						for(Job r: jobs) {
 							jobsToRun.add(r);
 							timedJobsQueued.remove(r);
 						}
@@ -221,8 +221,8 @@ public class PrioritizedTicker implements Ticker, Runnable {
             Object o = timedJobsByTime.get(runJobAt);
             if(o == null)
                 timedJobsByTime.put(runJobAt, job);
-            else if(o instanceof Job)
-                timedJobsByTime.put(runJobAt, new Job[]{(Job) o, job});
+            else if(o instanceof Job job1)
+                timedJobsByTime.put(runJobAt, new Job[]{job1, job});
             else if(o instanceof Job[] r) {
                 Job[] jobs = Arrays.copyOf(r, r.length+1);
                 jobs[jobs.length - 1] = job;

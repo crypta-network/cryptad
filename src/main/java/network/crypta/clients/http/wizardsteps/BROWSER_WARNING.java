@@ -65,7 +65,7 @@ public class BROWSER_WARNING implements Step {
 				showTabWarning);
 		if(!oldBrowserWarnings.isEmpty()) {
 			HTMLNode p = infoboxContent.addChild("p");
-			p.addChild("#", oldBrowserWarnings.remove(0));
+			p.addChild("#", oldBrowserWarnings.removeFirst());
 			oldBrowserWarnings.forEach(s -> p.addChild("#", " " + s));
 		}
 

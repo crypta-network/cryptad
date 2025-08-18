@@ -1,12 +1,14 @@
 package network.crypta.crypt;
 
+import java.io.Serial;
+
 /**
  * @author amphibian
  * 
  * Not a real RNG at all, just a simple PRNG. Use it for e.g. simulations.
  */
 public class DummyRandomSource extends RandomSource {
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 
 	public DummyRandomSource() {}
 

@@ -490,7 +490,7 @@ public class HTMLNode implements XMLCharacterClasses, Cloneable {
 			//TODO A meaningful exception should be raised 
 			// when trying to call the method for a HTMLDoctype 
 			// with number of child != 1 
-			return children.get(0).generate(tagBuffer);
+			return children.getFirst().generate(tagBuffer);
 		}
 
 	}

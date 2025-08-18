@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 import network.crypta.client.events.ExpectedHashesEvent;
@@ -10,7 +11,7 @@ import network.crypta.support.SimpleFieldSet;
 
 public class ExpectedHashes extends FCPMessage implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     final HashResult[] hashes;
 	final String identifier;
 	final boolean global;

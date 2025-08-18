@@ -2,6 +2,7 @@ package network.crypta.support.io;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 
@@ -10,7 +11,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 
 public class ByteArrayRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
 
-    private static final long serialVersionUID = 1L;
+	@Serial private static final long serialVersionUID = 1L;
     private final byte[] data;
 	private boolean readOnly;
 	private boolean closed;

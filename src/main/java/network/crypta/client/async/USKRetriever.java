@@ -1,10 +1,6 @@
 package network.crypta.client.async;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.io.*;
 import java.net.MalformedURLException;
 import java.util.List;
 
@@ -33,7 +29,7 @@ import network.crypta.support.io.NativeThread;
  * Poll a USK, and when a new slot is found, fetch it.
  */
 public class USKRetriever extends BaseClientGetter implements USKCallback {
-	private static final long serialVersionUID = 5913500655676487409L;
+	@Serial private static final long serialVersionUID = 5913500655676487409L;
 
 	/** Context for fetching data */
 	final FetchContext ctx;

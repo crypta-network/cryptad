@@ -34,26 +34,17 @@ class FlacMetadataBlock extends FlacPacket {
 	}
 
 	public BlockType getMetadataBlockType() {
-		switch(header.block_type) {
-		case 0:
-			return BlockType.STREAMINFO;
-		case 1:
-			return BlockType.PADDING;
-		case 2:
-			return BlockType.APPLICATION;
-		case 3:
-			return BlockType.SEEKTABLE;
-		case 4:
-			return BlockType.VORBIS_COMMENT;
-		case 5:
-			return BlockType.CUESHEET;
-		case 6:
-			return BlockType.PICTURE;
-		case 127:
-			return BlockType.INVALID;
-		default:
-			return BlockType.UNKNOWN;
-		}
+		return switch(header.block_type) {
+		case 0 -> BlockType.STREAMINFO;
+		case 1 -> BlockType.PADDING;
+		case 2 -> BlockType.APPLICATION;
+		case 3 -> BlockType.SEEKTABLE;
+		case 4 -> BlockType.VORBIS_COMMENT;
+		case 5 -> BlockType.CUESHEET;
+		case 6 -> BlockType.PICTURE;
+		case 127 -> BlockType.INVALID;
+		default -> BlockType.UNKNOWN;
+		};
 	}
 
 	public void setMetadataBlockType(BlockType type) {

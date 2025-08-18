@@ -2,6 +2,8 @@ package network.crypta.support;
 
 import network.crypta.support.DoublyLinkedList.Item;
 
+import java.io.Serial;
+
 /**
  * Indicates an attempt to link a DoublyLinkedList.Item into
  * two or more DoublyLinkedList's simultaneously (or twice
@@ -13,7 +15,7 @@ import network.crypta.support.DoublyLinkedList.Item;
  */
 public class PromiscuousItemException extends RuntimeException {
 
-	private static final long serialVersionUID = -1;
+	@Serial private static final long serialVersionUID = -1;
 	
     PromiscuousItemException(DoublyLinkedList.Item<?> item) {
         super(item.toString());

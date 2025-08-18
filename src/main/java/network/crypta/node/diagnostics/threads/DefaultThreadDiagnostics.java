@@ -121,8 +121,8 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
      */
     private long getJobId(Thread thread) {
         long jobId = thread.getId();
-        if ((thread instanceof PooledExecutor.MyThread)) {
-            jobId = ((PooledExecutor.MyThread) thread).getJobId();
+        if ((thread instanceof PooledExecutor.MyThread myThread)) {
+            jobId = myThread.getJobId();
         }
 
         return jobId;

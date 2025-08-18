@@ -30,11 +30,11 @@ public class FieldsDurationTest {
     public void test() {
         durations.forEach((duration, millis) -> {
             Integer parsed = Fields.parseInt(Fields.trimPerSecond(duration), Dimension.DURATION);
-            assertEquals(String.format("Input: %s; Intended: %d; Parsed: %d", duration, millis, parsed),
+            assertEquals("Input: %s; Intended: %d; Parsed: %d".formatted(duration, millis, parsed),
                     millis, parsed);
 
             String packed = Fields.intToString(millis, Dimension.DURATION);
-            assertEquals(String.format("Input: %d; Intended: %s; Packed: %s", millis, duration, packed),
+            assertEquals("Input: %d; Intended: %s; Packed: %s".formatted(millis, duration, packed),
                     duration, packed);
         });
     }
