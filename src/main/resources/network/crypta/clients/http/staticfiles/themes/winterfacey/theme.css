@@ -401,12 +401,8 @@ ul.config {
 #navbar #navlist .subnavlist-not-selected {
   background-color: #fff;
   border: 1px solid rgba(0, 0, 0, .2);
-  -webkit-border-radius: 6px;
-    -moz-border-radius: 6px;
-      border-radius: 6px;
-  -webkit-box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
-    -moz-box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
-      box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
+  border-radius: 0;
+  box-shadow: none;
   vertical-align: middle;
 }
 
@@ -420,31 +416,25 @@ ul.config {
 
 #navbar ul#navlist li ul li {
   text-align: left;
-  border-bottom: 1px solid;
-  -o-border-image: -o-linear-gradient(left, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 50%, rgba(51,51,51,0) 100%);
-    -webkit-border-image: -webkit-gradient(linear, left top, right top, from(rgba(0,0,0,0)), color-stop(50%, rgba(0,0,0,1)), to(rgba(51,51,51,0)));
-      border-image: -webkit-gradient(linear, left top, right top, from(rgba(0,0,0,0)), color-stop(50%, rgba(0,0,0,1)), to(rgba(51,51,51,0)));
-  -moz-border-image: -moz-linear-gradient(left, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 50%, rgba(51,51,51,0) 100%);
-    border-image: linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 50%, rgba(51,51,51,0) 100%);
+  border: 1px solid transparent;
+  border-bottom: 1px solid rgba(0,0,0,0.2);
+  position: relative;
 }
 
 #navbar ul#navlist li ul li a {
-  display: block;
-  padding-left: .75em;
-  padding-right: .75em;
-  line-height: 3em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 .75em;
+  height: 3em;
   white-space: nowrap;
 }
 
 #navbar ul#navlist li ul {
   background-color: #fff;
   border: 1px solid rgba(0, 0, 0, .2);
-  -webkit-border-radius: 6px;
-    -moz-border-radius: 6px;
-      border-radius: 6px;
-  -webkit-box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
-    -moz-box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
-      box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 #navbar ul#navlist li a:hover,
@@ -457,6 +447,7 @@ ul.config {
   color: #333;
   text-decoration: none;
   background: #f0f0f0;
+  border: 1px solid #E6713B;
 }
 
 #navbar ul#navlist li a {
@@ -469,21 +460,11 @@ ul.config {
 }
 
 ul#navlist li ul li:first-child {
-  -webkit-border-top-left-radius: 6px;
-    -moz-border-radius-topleft: 6px;
-      border-top-left-radius: 6px;
-  -webkit-border-top-right-radius: 6px;
-    -moz-border-radius-topright: 6px;
-      border-top-right-radius: 6px;
+  border-radius: 0;
 }
 
 ul#navlist li ul li:last-child {
-  -webkit-border-bottom-left-radius: 6px;
-    -moz-border-radius-bottomleft: 6px;
-      border-bottom-left-radius: 6px;
-  -webkit-border-bottom-right-radius: 6px;
-    -moz-border-radius-bottomright: 6px;
-      border-bottom-right-radius: 6px;
+  border-radius: 0;
 }
 
 
