@@ -56,7 +56,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   // Static nested class for cleaner action to avoid holding reference to the TempBucket instance
   private static class TempBucketCleanup implements Runnable {
-    private RandomAccessBucket currentBucket;
+    private final RandomAccessBucket currentBucket;
 
     TempBucketCleanup(RandomAccessBucket bucket) {
       this.currentBucket = bucket;

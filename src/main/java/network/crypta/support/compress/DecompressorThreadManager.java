@@ -166,10 +166,10 @@ public class DecompressorThreadManager {
     final Compressor compressor;
 
     /** The stream compressed data will be read from */
-    private InputStream input;
+    private final InputStream input;
 
     /** The stream decompressed data will be written */
-    private OutputStream output;
+    private final OutputStream output;
 
     /** A upper limit to how much data may be decompressed. This is passed to the decompressor */
     final long maxLen;
