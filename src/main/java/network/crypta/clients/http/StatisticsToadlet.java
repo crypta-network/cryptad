@@ -698,7 +698,7 @@ public class StatisticsToadlet extends Toadlet {
                   Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber
                 }));
 
-    node.getNodeUpdater().addChangelogLinks((int) Version.currentBuildNumber(), versionInfobox);
+    node.getNodeUpdater().addChangelogLinks(Version.currentBuildNumber(), versionInfobox);
   }
 
   private void drawJVMStatsBox(HTMLNode jvmStatsInfobox, boolean advancedModeEnabled) {

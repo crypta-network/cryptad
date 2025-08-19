@@ -205,7 +205,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
   protected String getHourLogName(Calendar c, int digit, boolean compressed) {
     StringBuilder buf = new StringBuilder(50);
     buf.append(baseFilename).append('-');
-    buf.append((int) Version.currentBuildNumber());
+    buf.append(Version.currentBuildNumber());
     buf.append('-');
     buf.append(c.get(Calendar.YEAR)).append('-');
     pad2digits(buf, c.get(Calendar.MONTH) + 1);

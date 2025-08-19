@@ -12,12 +12,24 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.clients.fcp.*;
+import network.crypta.clients.fcp.DownloadRequestStatus;
+import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.RequestStatus;
+import network.crypta.clients.fcp.UploadDirRequestStatus;
+import network.crypta.clients.fcp.UploadFileRequestStatus;
 import network.crypta.config.SubConfig;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.l10n.BaseL10n;
-import network.crypta.node.*;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStats;
+import network.crypta.node.OpennetManager;
+import network.crypta.node.PeerManager;
+import network.crypta.node.PeerNodeStatus;
+import network.crypta.node.RequestTracker;
+import network.crypta.node.Version;
 import network.crypta.node.diagnostics.ThreadDiagnostics;
 import network.crypta.node.diagnostics.threads.NodeThreadInfo;
 import network.crypta.node.diagnostics.threads.NodeThreadSnapshot;
@@ -80,7 +92,7 @@ public class DiagnosticToadlet extends Toadlet {
                   new String[] {"fullVersion", "build", "rev"},
                   new String[] {
                     Long.toString(Version.currentBuildNumber()),
-                    Integer.toString((int) Version.currentBuildNumber()),
+                    Integer.toString(Version.currentBuildNumber()),
                     Version.gitRevision()
                   }))
           .append("\n");

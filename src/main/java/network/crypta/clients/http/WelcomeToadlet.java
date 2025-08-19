@@ -19,11 +19,20 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.*;
+import network.crypta.node.BandwidthManager;
+import network.crypta.node.DarknetPeerNode;
+import network.crypta.node.Node;
+import network.crypta.node.NodeStarter;
+import network.crypta.node.Version;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.support.*;
+import network.crypta.support.Fields;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.MultiValueTable;
+import network.crypta.support.URLDecoder;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
@@ -803,7 +812,7 @@ public class WelcomeToadlet extends Toadlet {
                 new String[] {"fullVersion", "build", "rev"},
                 new String[] {
                   Long.toString(Version.currentBuildNumber()),
-                  Integer.toString((int) Version.currentBuildNumber()),
+                  Integer.toString(Version.currentBuildNumber()),
                   Version.gitRevision()
                 }));
     versionContent.addChild("br");
