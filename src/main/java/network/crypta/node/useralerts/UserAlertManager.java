@@ -88,12 +88,9 @@ public class UserAlertManager implements Comparator<UserAlert> {
     core.getClientContext()
         .getMainExecutor()
         .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                for (FCPConnectionHandler subscriber : subscribers)
-                  subscriber.send(alert.getFCPMessage());
-              }
+            () -> {
+              for (FCPConnectionHandler subscriber : subscribers)
+                subscriber.send(alert.getFCPMessage());
             },
             "UserAlertManager callback executor");
   }
@@ -408,12 +405,9 @@ public class UserAlertManager implements Comparator<UserAlert> {
     core.getClientContext()
         .getMainExecutor()
         .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                for (UserAlert alert : getAlerts())
-                  if (alert.isValid()) subscriber.send(alert.getFCPMessage());
-              }
+            () -> {
+              for (UserAlert alert : getAlerts())
+                if (alert.isValid()) subscriber.send(alert.getFCPMessage());
             },
             "UserAlertManager callback executor");
     subscribers.add(subscriber);

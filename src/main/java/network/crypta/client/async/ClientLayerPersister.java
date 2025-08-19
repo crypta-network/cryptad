@@ -228,13 +228,9 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     deleteAfterSuccessfulWrite = makeFilename(dir, baseName, false, !writeEncrypted);
     otherDeleteAfterSuccessfulWrite = makeFilename(dir, baseName, true, !writeEncrypted);
     queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            return true; // Force a checkpoint ASAP.
-            // This also avoids any possible locking issues.
-          }
+        context -> {
+          return true; // Force a checkpoint ASAP.
+          // This also avoids any possible locking issues.
         });
   }
 

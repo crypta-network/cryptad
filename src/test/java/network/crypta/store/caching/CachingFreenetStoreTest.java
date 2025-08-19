@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
@@ -615,15 +614,7 @@ public class CachingFreenetStoreTest {
           fail();
         }
 
-        FutureTask<Long> future =
-            new FutureTask<>(
-                new Callable<>() {
-
-                  @Override
-                  public Long call() throws Exception {
-                    return cachingStore.pushLeastRecentlyBlock();
-                  }
-                });
+        FutureTask<Long> future = new FutureTask<>(() -> cachingStore.pushLeastRecentlyBlock());
         Executors.newCachedThreadPool().execute(future);
 
         delayStore.waitForSomeBlocked();

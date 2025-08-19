@@ -230,15 +230,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       if (req == null) {
         if (r.wakeupTime != Long.MAX_VALUE && r.wakeupTime > now) {
           // Wake up later.
-          sched.clientContext.ticker.queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  sched.wakeStarter();
-                }
-              },
-              r.wakeupTime - now);
+          sched.clientContext.ticker.queueTimedJob(() -> sched.wakeStarter(), r.wakeupTime - now);
         }
         continue;
       }
@@ -923,15 +915,6 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
   public void wakeUp(ClientContext context) {
     // Break out of locks. Can be called within RGAs etc!
-    context
-        .getMainExecutor()
-        .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                sched.wakeStarter();
-              }
-            });
+    context.getMainExecutor().execute(() -> sched.wakeStarter());
   }
 }

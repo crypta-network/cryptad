@@ -4,18 +4,35 @@ import java.io.File;
 import java.io.IOException;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
-import network.crypta.io.comm.Message;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.keys.*;
-import network.crypta.node.*;
+import network.crypta.keys.CHKEncodeException;
+import network.crypta.keys.ClientCHKBlock;
+import network.crypta.keys.ClientKSK;
+import network.crypta.keys.ClientKey;
+import network.crypta.keys.ClientKeyBlock;
+import network.crypta.keys.FreenetURI;
+import network.crypta.keys.InsertableClientSSK;
+import network.crypta.keys.Key;
+import network.crypta.keys.SSKEncodeException;
+import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
+import network.crypta.node.FSParseException;
+import network.crypta.node.LowLevelGetException;
+import network.crypta.node.Node;
 import network.crypta.node.NodeDispatcher.NodeDispatcherCallback;
+import network.crypta.node.NodeInitException;
+import network.crypta.node.NodeStarter;
+import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
-import network.crypta.support.*;
+import network.crypta.support.Executor;
+import network.crypta.support.HexUtil;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.PooledExecutor;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucket;
@@ -237,16 +254,12 @@ public class RealNodeULPRTest extends RealNodeTest {
       final boolean[] visited = new boolean[nodes.length];
 
       NodeDispatcherCallback cb =
-          new NodeDispatcherCallback() {
-
-            @Override
-            public void snoop(Message m, Node n) {
-              if (((!isSSK) && m.getSpec() == DMT.FNPCHKDataRequest)
-                  || (isSSK && m.getSpec() == DMT.FNPSSKDataRequest)) {
-                Key key = (Key) m.getObject(DMT.FREENET_ROUTING_KEY);
-                if (key.equals(nodeKey)) {
-                  visited[n.getDarknetPortNumber() - DARKNET_PORT_BASE] = true;
-                }
+          (m, n) -> {
+            if (((!isSSK) && m.getSpec() == DMT.FNPCHKDataRequest)
+                || (isSSK && m.getSpec() == DMT.FNPSSKDataRequest)) {
+              Key key = (Key) m.getObject(DMT.FREENET_ROUTING_KEY);
+              if (key.equals(nodeKey)) {
+                visited[n.getDarknetPortNumber() - DARKNET_PORT_BASE] = true;
               }
             }
           };

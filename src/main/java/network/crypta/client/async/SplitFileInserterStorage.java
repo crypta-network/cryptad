@@ -31,7 +31,11 @@ import network.crypta.crypt.MasterSecret;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientCHK;
 import network.crypta.node.KeysFetchingLocally;
-import network.crypta.support.*;
+import network.crypta.support.HexUtil;
+import network.crypta.support.Logger;
+import network.crypta.support.MemoryLimitedJobRunner;
+import network.crypta.support.RandomArrayIterator;
+import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -1260,20 +1264,16 @@ public class SplitFileInserterStorage {
    */
   public void onFinishedEncoding(SplitFileInserterCrossSegmentStorage completed) {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            synchronized (cooldownLock) {
-              noBlocksToSend = false;
-            }
-            callback.encodingProgress();
-            if (maybeFail()) return true;
-            if (allFinishedCrossEncoding()) {
-              onCompletedCrossSegmentEncode();
-            }
-            return false;
+        context -> {
+          synchronized (cooldownLock) {
+            noBlocksToSend = false;
           }
+          callback.encodingProgress();
+          if (maybeFail()) return true;
+          if (allFinishedCrossEncoding()) {
+            onCompletedCrossSegmentEncode();
+          }
+          return false;
         });
   }
 
@@ -1292,21 +1292,17 @@ public class SplitFileInserterStorage {
    */
   public void onFinishedEncoding(final SplitFileInserterSegmentStorage completed) {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            synchronized (cooldownLock) {
-              noBlocksToSend = false;
-            }
-            completed.storeStatus(true);
-            callback.encodingProgress();
-            if (maybeFail()) return true;
-            if (allFinishedEncoding()) {
-              onCompletedSegmentEncode();
-            }
-            return false;
+        context -> {
+          synchronized (cooldownLock) {
+            noBlocksToSend = false;
           }
+          completed.storeStatus(true);
+          callback.encodingProgress();
+          if (maybeFail()) return true;
+          if (allFinishedEncoding()) {
+            onCompletedSegmentEncode();
+          }
+          return false;
         });
   }
 

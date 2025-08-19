@@ -12,7 +12,6 @@ import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.BlockTransmitter.ReceiverAbortHandler;
-import network.crypta.io.xfer.BulkTransmitter;
 import network.crypta.io.xfer.BulkTransmitter.AllSentCallback;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.io.xfer.WaitedTooLongException;
@@ -1065,20 +1064,18 @@ public class RequestHandler
                       dataSource,
                       newNoderef,
                       RequestHandler.this,
-                      new AllSentCallback() {
-
-                        @Override
-                        public void allSent(BulkTransmitter bulkTransmitter, boolean anyFailed) {
-                          // As soon as the originator receives the three blocks, he can reuse the
-                          // slot.
-                          tag.finishedWaitingForOpennet(dataSource);
-                          tag.unlockHandler();
-                          applyByteCounts();
-                          // Note that sendOpennetRef() does not wait for an acknowledgement or even
-                          // for the blocks to have been sent!
-                          // So this will be called well after gotNoderef() exits.
-                        }
-                      });
+                      (AllSentCallback)
+                          (bulkTransmitter, anyFailed) -> {
+                            // As soon as the originator receives the three blocks, he can reuse the
+                            // slot.
+                            tag.finishedWaitingForOpennet(dataSource);
+                            tag.unlockHandler();
+                            applyByteCounts();
+                            // Note that sendOpennetRef() does not wait for an acknowledgement or
+                            // even
+                            // for the blocks to have been sent!
+                            // So this will be called well after gotNoderef() exits.
+                          });
                 } catch (NotConnectedException e) {
                   // How sad
                 }

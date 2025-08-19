@@ -6,17 +6,36 @@ import java.io.File;
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.pluginmanager.*;
+import network.crypta.pluginmanager.AccessDeniedPluginHTTPException;
+import network.crypta.pluginmanager.DownloadPluginHTTPException;
+import network.crypta.pluginmanager.NotFoundPluginHTTPException;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
+import network.crypta.pluginmanager.PluginHTTPException;
+import network.crypta.pluginmanager.PluginInfoWrapper;
+import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginManager.PluginProgress;
-import network.crypta.support.*;
+import network.crypta.pluginmanager.RedirectPluginHTTPException;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.MultiValueTable;
+import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 
 public class PproxyToadlet extends Toadlet {
@@ -107,14 +126,7 @@ public class PproxyToadlet extends Toadlet {
       if (request.isPartSet("submit-official")) {
         final String pluginName = request.getPartAsStringFailsafe("plugin-name", 40);
 
-        node.getExecutor()
-            .execute(
-                new Runnable() {
-                  @Override
-                  public void run() {
-                    pm.startPluginOfficial(pluginName, true);
-                  }
-                });
+        node.getExecutor().execute(() -> pm.startPluginOfficial(pluginName, true));
 
         headers.put("Location", ".");
         ctx.sendReplyHeaders(302, "Found", headers, null, 0);
@@ -127,12 +139,9 @@ public class PproxyToadlet extends Toadlet {
 
         node.getExecutor()
             .execute(
-                new Runnable() {
-                  @Override
-                  public void run() {
-                    if (fileonly) pm.startPluginFile(pluginName, true);
-                    else pm.startPluginURL(pluginName, true);
-                  }
+                () -> {
+                  if (fileonly) pm.startPluginFile(pluginName, true);
+                  else pm.startPluginURL(pluginName, true);
                 });
 
         headers.put("Location", ".");
@@ -142,14 +151,7 @@ public class PproxyToadlet extends Toadlet {
       if (request.isPartSet("submit-freenet")) {
         final String pluginName = request.getPartAsStringFailsafe("plugin-uri", 300);
 
-        node.getExecutor()
-            .execute(
-                new Runnable() {
-                  @Override
-                  public void run() {
-                    pm.startPluginFreenet(pluginName, true);
-                  }
-                });
+        node.getExecutor().execute(() -> pm.startPluginFreenet(pluginName, true));
 
         headers.put("Location", ".");
         ctx.sendReplyHeaders(302, "Found", headers, null, 0);
@@ -291,13 +293,9 @@ public class PproxyToadlet extends Toadlet {
           }
           node.getExecutor()
               .execute(
-                  new Runnable() {
-
-                    @Override
-                    public void run() {
-                      // FIXME
-                      pm.startPluginAuto(fn, true);
-                    }
+                  () -> {
+                    // FIXME
+                    pm.startPluginAuto(fn, true);
                   });
 
           headers.put("Location", ".");

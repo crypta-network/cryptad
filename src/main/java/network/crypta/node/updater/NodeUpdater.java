@@ -193,13 +193,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   private void finishOnFoundEdition(int found) {
     ticker.queueTimedJob(
-        new Runnable() {
-          @Override
-          public void run() {
-            maybeUpdate();
-          }
-        },
-        SECONDS.toMillis(60)); // leave some time in case we get later editions
+        () -> maybeUpdate(), SECONDS.toMillis(60)); // leave some time in case we get later editions
     // LOCKING: Always take the NodeUpdater lock *BEFORE* the NodeUpdateManager lock
     if (found <= currentVersion) {
       System.err.println(
@@ -334,16 +328,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         System.err.println("Cannot update: result either null or empty for " + availableVersion);
         // Try again
         if (result == null || result.asBucket() == null || availableVersion > fetchedVersion)
-          node.getTicker()
-              .queueTimedJob(
-                  new Runnable() {
-
-                    @Override
-                    public void run() {
-                      maybeUpdate();
-                    }
-                  },
-                  0);
+          node.getTicker().queueTimedJob(() -> maybeUpdate(), 0);
         return;
       }
       blobFile = getBlobFile(fetchedVersion);
@@ -525,30 +510,13 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     }
     if (errorCode == FetchExceptionMode.CANCELLED || !e.isFatal()) {
       Logger.normal(this, "Rescheduling new request");
-      ticker.queueTimedJob(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              maybeUpdate();
-            }
-          },
-          0);
+      ticker.queueTimedJob(() -> maybeUpdate(), 0);
     } else {
       Logger.error(this, "Canceling fetch : " + e.getMessage());
       System.err.println("Unexpected error fetching update: " + e.getMessage());
       if (e.isFatal()) {
         // Wait for the next version
-      } else
-        ticker.queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                maybeUpdate();
-              }
-            },
-            HOURS.toMillis(1));
+      } else ticker.queueTimedJob(() -> maybeUpdate(), HOURS.toMillis(1));
     }
   }
 

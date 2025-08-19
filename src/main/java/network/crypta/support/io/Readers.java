@@ -13,12 +13,7 @@ public final class Readers {
    * {@link BufferedReader}.
    */
   public static LineReader fromBufferedReader(final BufferedReader br) {
-    return new LineReader() {
-      @Override
-      public String readLine(int maxLength, int bufferSize, boolean utf) throws IOException {
-        return br.readLine();
-      }
-    };
+    return (maxLength, bufferSize, utf) -> br.readLine();
   }
 
   /**

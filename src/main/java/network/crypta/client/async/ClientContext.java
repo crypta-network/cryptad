@@ -216,18 +216,15 @@ public class ClientContext {
       throws InsertException, PersistenceDisabledException {
     if (inserter.persistent()) {
       jobRunner.queue(
-          new PersistentJob() {
-
-            @Override
-            public boolean run(ClientContext context) {
-              try {
-                inserter.start(false, context);
-              } catch (InsertException e) {
-                inserter.client.onFailure(e, inserter);
-              }
-              return true;
-            }
-          },
+          (PersistentJob)
+              context -> {
+                try {
+                  inserter.start(false, context);
+                } catch (InsertException e) {
+                  inserter.client.onFailure(e, inserter);
+                }
+                return true;
+              },
           NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } else {
       inserter.start(false, this);
@@ -245,18 +242,15 @@ public class ClientContext {
   public void start(final ClientGetter getter) throws FetchException, PersistenceDisabledException {
     if (getter.persistent()) {
       jobRunner.queue(
-          new PersistentJob() {
-
-            @Override
-            public boolean run(ClientContext context) {
-              try {
-                getter.start(context);
-              } catch (FetchException e) {
-                getter.clientCallback.onFailure(e, getter);
-              }
-              return true;
-            }
-          },
+          (PersistentJob)
+              context -> {
+                try {
+                  getter.start(context);
+                } catch (FetchException e) {
+                  getter.clientCallback.onFailure(e, getter);
+                }
+                return true;
+              },
           NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } else {
       getter.start(this);
@@ -275,18 +269,15 @@ public class ClientContext {
       throws InsertException, PersistenceDisabledException {
     if (inserter.persistent()) {
       jobRunner.queue(
-          new PersistentJob() {
-
-            @Override
-            public boolean run(ClientContext context) {
-              try {
-                inserter.start(context);
-              } catch (InsertException e) {
-                inserter.cb.onFailure(e, inserter);
-              }
-              return true;
-            }
-          },
+          (PersistentJob)
+              context -> {
+                try {
+                  inserter.start(context);
+                } catch (InsertException e) {
+                  inserter.cb.onFailure(e, inserter);
+                }
+                return true;
+              },
           NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } else {
       inserter.start(this);
@@ -319,18 +310,7 @@ public class ClientContext {
   public void postUserAlert(final UserAlert alert) {
     if (alerts == null) {
       // Wait until after startup
-      ticker.queueTimedJob(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              alerts.register(alert);
-            }
-          },
-          "Post alert",
-          0L,
-          false,
-          false);
+      ticker.queueTimedJob(() -> alerts.register(alert), "Post alert", 0L, false, false);
     } else {
       alerts.register(alert);
     }

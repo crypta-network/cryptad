@@ -49,10 +49,23 @@ public class ReloadPlugin extends FCPMessage {
 
     node.getExecutor()
         .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                PluginInfoWrapper pi = node.getPluginManager().getPluginInfo(plugname);
+            () -> {
+              PluginInfoWrapper pi = node.getPluginManager().getPluginInfo(plugname);
+              if (pi == null) {
+                handler.send(
+                    new ProtocolErrorMessage(
+                        ProtocolErrorMessage.NO_SUCH_PLUGIN,
+                        false,
+                        "Plugin '" + plugname + "' does not exist or is not a FCP plugin",
+                        identifier,
+                        false));
+              } else {
+                String source = pi.getFilename();
+                pi.stopPlugin(node.getPluginManager(), maxWaitTime, true);
+                if (purge) {
+                  node.getPluginManager().removeCachedCopy(pi.getFilename());
+                }
+                pi = node.getPluginManager().startPluginAuto(source, store);
                 if (pi == null) {
                   handler.send(
                       new ProtocolErrorMessage(
@@ -62,23 +75,7 @@ public class ReloadPlugin extends FCPMessage {
                           identifier,
                           false));
                 } else {
-                  String source = pi.getFilename();
-                  pi.stopPlugin(node.getPluginManager(), maxWaitTime, true);
-                  if (purge) {
-                    node.getPluginManager().removeCachedCopy(pi.getFilename());
-                  }
-                  pi = node.getPluginManager().startPluginAuto(source, store);
-                  if (pi == null) {
-                    handler.send(
-                        new ProtocolErrorMessage(
-                            ProtocolErrorMessage.NO_SUCH_PLUGIN,
-                            false,
-                            "Plugin '" + plugname + "' does not exist or is not a FCP plugin",
-                            identifier,
-                            false));
-                  } else {
-                    handler.send(new PluginInfoMessage(pi, identifier, true));
-                  }
+                  handler.send(new PluginInfoMessage(pi, identifier, true));
                 }
               }
             },

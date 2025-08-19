@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
@@ -45,27 +44,24 @@ public class GetRequestStatusMessage extends FCPMessage {
             .getClientContext()
             .jobRunner
             .queue(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    ClientRequest req = handler.getForeverRequest(global, handler, identifier);
-                    if (req == null) {
-                      ProtocolErrorMessage msg =
-                          new ProtocolErrorMessage(
-                              ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
-                              false,
-                              null,
-                              identifier,
-                              global);
-                      handler.send(msg);
-                    } else {
-                      req.sendPendingMessages(
-                          handler.getOutputHandler(), identifier, true, onlyData);
-                    }
-                    return false;
-                  }
-                },
+                (PersistentJob)
+                    context -> {
+                      ClientRequest req1 = handler.getForeverRequest(global, handler, identifier);
+                      if (req1 == null) {
+                        ProtocolErrorMessage msg =
+                            new ProtocolErrorMessage(
+                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                                false,
+                                null,
+                                identifier,
+                                global);
+                        handler.send(msg);
+                      } else {
+                        req1.sendPendingMessages(
+                            handler.getOutputHandler(), identifier, true, onlyData);
+                      }
+                      return false;
+                    },
                 NativeThread.PriorityLevel.NORM_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         ProtocolErrorMessage msg =

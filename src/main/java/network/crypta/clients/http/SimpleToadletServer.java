@@ -29,7 +29,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PrioRunnable;
-import network.crypta.node.SecurityLevelListener;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -1139,32 +1138,24 @@ public final class SimpleToadletServer
     core.getNode()
         .getSecurityLevels()
         .addNetworkThreatLevelListener(
-            new SecurityLevelListener<>() {
-
-              @Override
-              public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-                // At LOW, we do ACCEPT_OLD.
-                // Otherwise we do RE_FILTER.
-                // But we don't change it unless it changes from LOW to not LOW.
-                if (newLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
-                  refilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
-                } else if (oldLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
-                  refilterPolicy = REFILTER_POLICY.RE_FILTER;
-                }
+            (oldLevel, newLevel) -> {
+              // At LOW, we do ACCEPT_OLD.
+              // Otherwise we do RE_FILTER.
+              // But we don't change it unless it changes from LOW to not LOW.
+              if (newLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
+                refilterPolicy = REFILTER_POLICY.ACCEPT_OLD;
+              } else if (oldLevel == NETWORK_THREAT_LEVEL.LOW && newLevel != oldLevel) {
+                refilterPolicy = REFILTER_POLICY.RE_FILTER;
               }
             });
     core.getNode()
         .getSecurityLevels()
         .addPhysicalThreatLevelListener(
-            new SecurityLevelListener<>() {
-
-              @Override
-              public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
-                if (newLevel != oldLevel && newLevel == PHYSICAL_THREAT_LEVEL.LOW) {
-                  isPanicButtonToBeShown = false;
-                } else if (newLevel != oldLevel) {
-                  isPanicButtonToBeShown = true;
-                }
+            (oldLevel, newLevel) -> {
+              if (newLevel != oldLevel && newLevel == PHYSICAL_THREAT_LEVEL.LOW) {
+                isPanicButtonToBeShown = false;
+              } else if (newLevel != oldLevel) {
+                isPanicButtonToBeShown = true;
               }
             });
     synchronized (this) {

@@ -8,7 +8,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetState;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.SimpleSingleFileFetcher;
 import network.crypta.client.async.WantsCooldownCallback;
 import network.crypta.keys.ClientKey;
@@ -140,14 +139,10 @@ public abstract class SendableGet extends BaseSendableGet {
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  ((WantsCooldownCallback) parent)
-                      .enterCooldown(getClientGetState(), wakeupTime, context);
-                  return false;
-                }
+              context1 -> {
+                ((WantsCooldownCallback) parent)
+                    .enterCooldown(getClientGetState(), wakeupTime, context1);
+                return false;
               });
     }
     return ret;
@@ -160,13 +155,9 @@ public abstract class SendableGet extends BaseSendableGet {
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  ((WantsCooldownCallback) parent).clearCooldown(getClientGetState());
-                  return false;
-                }
+              context1 -> {
+                ((WantsCooldownCallback) parent).clearCooldown(getClientGetState());
+                return false;
               });
     }
   }

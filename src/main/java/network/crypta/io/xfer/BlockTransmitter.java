@@ -407,12 +407,8 @@ public class BlockTransmitter {
   }
 
   private final Future nullFuture =
-      new Future() {
-
-        @Override
-        public void execute() {
-          // Do nothing.
-        }
+      () -> {
+        // Do nothing.
       };
 
   /**
@@ -441,16 +437,12 @@ public class BlockTransmitter {
       } else {
         _sentSendAborted = true;
         // Send the aborted, then wait.
-        return new Future() {
-
-          @Override
-          public void execute() {
-            try {
-              innerSendAborted(reason, description);
-              scheduleTimeoutAfterBlockSends();
-            } catch (NotConnectedException e) {
-              onDisconnect();
-            }
+        return () -> {
+          try {
+            innerSendAborted(reason, description);
+            scheduleTimeoutAfterBlockSends();
+          } catch (NotConnectedException e) {
+            onDisconnect();
           }
         };
       }
@@ -464,15 +456,11 @@ public class BlockTransmitter {
         _sentSendAborted = true;
         // They have sent us a cancel, but we still need to send them an ack or they will do a fatal
         // timeout.
-        return new Future() {
-
-          @Override
-          public void execute() {
-            try {
-              innerSendAborted(reason, description);
-            } catch (NotConnectedException e) {
-              onDisconnect();
-            }
+        return () -> {
+          try {
+            innerSendAborted(reason, description);
+          } catch (NotConnectedException e) {
+            onDisconnect();
           }
         };
       }
@@ -482,19 +470,15 @@ public class BlockTransmitter {
     decRunningBlockTransmits();
     final boolean sendAborted = _sentSendAborted;
     _sentSendAborted = true;
-    return new Future() {
-
-      @Override
-      public void execute() {
-        if (!sendAborted) {
-          try {
-            innerSendAborted(reason, description);
-          } catch (NotConnectedException e) {
-            onDisconnect();
-          }
+    return () -> {
+      if (!sendAborted) {
+        try {
+          innerSendAborted(reason, description);
+        } catch (NotConnectedException e) {
+          onDisconnect();
         }
-        callCallback(false);
       }
+      callCallback(false);
     };
   }
 
@@ -519,23 +503,9 @@ public class BlockTransmitter {
     boolean onAbort();
   }
 
-  public static final ReceiverAbortHandler ALWAYS_CASCADE =
-      new ReceiverAbortHandler() {
+  public static final ReceiverAbortHandler ALWAYS_CASCADE = () -> true;
 
-        @Override
-        public boolean onAbort() {
-          return true;
-        }
-      };
-
-  public static final ReceiverAbortHandler NEVER_CASCADE =
-      new ReceiverAbortHandler() {
-
-        @Override
-        public boolean onAbort() {
-          return false;
-        }
-      };
+  public static final ReceiverAbortHandler NEVER_CASCADE = () -> false;
 
   public interface BlockTransmitterCompletion {
 
@@ -956,15 +926,11 @@ public class BlockTransmitter {
   public void callCallback(final boolean success) {
     if (_callback != null) {
       _executor.execute(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              try {
-                _callback.blockTransferFinished(success);
-              } finally {
-                cleanup();
-              }
+          () -> {
+            try {
+              _callback.blockTransferFinished(success);
+            } finally {
+              cleanup();
             }
           },
           "BlockTransmitter completion callback for " + this);

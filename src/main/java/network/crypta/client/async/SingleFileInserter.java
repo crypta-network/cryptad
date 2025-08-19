@@ -621,7 +621,6 @@ class SingleFileInserter implements ClientPutState, Serializable {
           context.getBucketFactory(persistent),
           persistent,
           wantHashes,
-          !atLeast1254,
           context.getConfig());
     } else {
       if (logMINOR)
@@ -645,13 +644,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  onCompressed(output, context);
-                  return true;
-                }
+              context1 -> {
+                onCompressed(output, context1);
+                return true;
               });
     }
   }

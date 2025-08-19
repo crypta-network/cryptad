@@ -71,8 +71,17 @@ import network.crypta.node.NodeStats.PeerLoadStats;
 import network.crypta.node.NodeStats.RequestType;
 import network.crypta.node.NodeStats.RunningRequestsSnapshot;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.support.*;
+import network.crypta.support.Base64;
+import network.crypta.support.BooleanLastTrueTracker;
+import network.crypta.support.Fields;
+import network.crypta.support.HexUtil;
+import network.crypta.support.IllegalBase64Exception;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.TimeUtil;
+import network.crypta.support.WeakHashSet;
 import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
@@ -2541,14 +2550,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     }
     final USKRetriever unsub = ret;
     node.getExecutor()
-        .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                node.getClientCore().getUskManager().unsubscribeContent(myARK, unsub, true);
-              }
-            });
+        .execute(() -> node.getClientCore().getUskManager().unsubscribeContent(myARK, unsub, true));
   }
 
   // Both at IMMEDIATE_SPLITFILE_PRIORITY_CLASS because we want to compete with FMS, not
@@ -2975,15 +2977,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     if (parseARK(fs, false, forDiffNodeRef)) changedAnything = true;
     if (shouldUpdatePeerCounts) {
-      node.getExecutor()
-          .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  node.getPeers().updatePMUserAlert();
-                }
-              });
+      node.getExecutor().execute(() -> node.getPeers().updatePMUserAlert());
     }
     return changedAnything;
   }

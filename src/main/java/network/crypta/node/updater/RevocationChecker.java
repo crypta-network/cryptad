@@ -368,15 +368,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         this.manager
             .getNode()
             .getTicker()
-            .queueTimedJob(
-                new Runnable() {
-
-                  @Override
-                  public void run() {
-                    start(wasAggressive, false);
-                  }
-                },
-                SECONDS.toMillis(1));
+            .queueTimedJob(() -> start(wasAggressive, false), SECONDS.toMillis(1));
       } else {
         start(wasAggressive, false);
       }

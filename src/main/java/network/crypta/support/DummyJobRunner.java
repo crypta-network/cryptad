@@ -72,12 +72,8 @@ public class DummyJobRunner implements PersistentJobRunner {
 
   @Override
   public CheckpointLock lock() {
-    return new CheckpointLock() {
-
-      @Override
-      public void unlock(boolean forceWrite, int threadPriority) {
-        // Do nothing.
-      }
+    return (forceWrite, threadPriority) -> {
+      // Do nothing.
     };
   }
 

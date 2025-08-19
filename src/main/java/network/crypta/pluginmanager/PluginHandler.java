@@ -31,13 +31,7 @@ public class PluginHandler {
         final Thread t = new Thread(ps);
         t.setDaemon(true);
         pi.setThread(t);
-        job =
-            new Runnable() {
-              @Override
-              public void run() {
-                t.start();
-              }
-            };
+        job = () -> t.start();
         pm.getTicker().queueTimedJob(job, 0);
       } else {
         // Avoid NPEs: let it init, then register it.

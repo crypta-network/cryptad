@@ -61,22 +61,8 @@ public abstract class RandomAccessBufferTestBase {
   @Test
   public void testFormula() throws IOException {
     Random r = new Random(2126);
-    Formula modulo256 =
-        new Formula() {
-
-          @Override
-          public byte getByte(long offset) {
-            return (byte) offset;
-          }
-        };
-    Formula modulo57 =
-        new Formula() {
-
-          @Override
-          public byte getByte(long offset) {
-            return (byte) (offset % 57);
-          }
-        };
+    Formula modulo256 = offset -> (byte) offset;
+    Formula modulo57 = offset -> (byte) (offset % 57);
     for (long size : fullSizeList) {
       innerTestFormula(size, r, modulo256);
       innerTestFormula(size, r, modulo57);

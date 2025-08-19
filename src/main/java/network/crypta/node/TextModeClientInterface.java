@@ -477,15 +477,7 @@ public class TextModeClientInterface implements Runnable {
     } else if (uline.startsWith("UPDATE")) {
       outsb.append("starting the update process");
       // FIXME run on separate thread
-      n.getTicker()
-          .queueTimedJob(
-              new Runnable() {
-                @Override
-                public void run() {
-                  n.getNodeUpdater().arm();
-                }
-              },
-              0);
+      n.getTicker().queueTimedJob(() -> n.getNodeUpdater().arm(), 0);
       outsb.append("\r\n");
       w.write(outsb.toString());
       w.flush();

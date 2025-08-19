@@ -1374,18 +1374,14 @@ public class SplitFileFetcherStorage {
 
   private void callSuccessOffThread() {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            synchronized (SplitFileFetcherStorage.this) {
-              // Race conditions are possible, make sure we only call it once.
-              if (succeeded) return false;
-              succeeded = true;
-            }
-            fetcher.onSuccess();
-            return true;
+        context -> {
+          synchronized (SplitFileFetcherStorage.this) {
+            // Race conditions are possible, make sure we only call it once.
+            if (succeeded) return false;
+            succeeded = true;
           }
+          fetcher.onSuccess();
+          return true;
         });
   }
 
@@ -1491,16 +1487,12 @@ public class SplitFileFetcherStorage {
   /** Called on a normal non-truncation completion. Frees the storage file off-thread. */
   private void closeOffThread() {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            // ATOMICITY/DURABILITY: This will run after the checkpoint after completion.
-            // So after restart, even if the checkpoint failed, we will be in a valid state.
-            // This is why this is queue() not queueInternal().
-            close();
-            return true;
-          }
+        context -> {
+          // ATOMICITY/DURABILITY: This will run after the checkpoint after completion.
+          // So after restart, even if the checkpoint failed, we will be in a valid state.
+          // This is why this is queue() not queueInternal().
+          close();
+          return true;
         });
   }
 
@@ -1600,13 +1592,9 @@ public class SplitFileFetcherStorage {
     if (logMINOR)
       Logger.minor(this, "Failing " + this + " with error " + e + " and codes " + errors);
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            fetcher.fail(e);
-            return true;
-          }
+        context -> {
+          fetcher.fail(e);
+          return true;
         });
   }
 
@@ -1623,26 +1611,18 @@ public class SplitFileFetcherStorage {
   public void failOnDiskError(final IOException e) {
     Logger.error(this, "Failing on disk error: " + e, e);
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            fetcher.failOnDiskError(e);
-            return true;
-          }
+        context -> {
+          fetcher.failOnDiskError(e);
+          return true;
         });
   }
 
   public void failOnDiskError(final ChecksumFailedException e) {
     Logger.error(this, "Failing on unrecoverable corrupt data: " + e, e);
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            fetcher.failOnDiskError(e);
-            return true;
-          }
+        context -> {
+          fetcher.failOnDiskError(e);
+          return true;
         });
   }
 
@@ -1816,13 +1796,9 @@ public class SplitFileFetcherStorage {
 
   public void failedBlock() {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            fetcher.onFailedBlock();
-            return false;
-          }
+        context -> {
+          fetcher.onFailedBlock();
+          return false;
         });
   }
 
@@ -1833,14 +1809,10 @@ public class SplitFileFetcherStorage {
 
   public void restartedAfterDataCorruption(boolean wasCorrupt) {
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            maybeClearCooldown();
-            fetcher.restartedAfterDataCorruption();
-            return false;
-          }
+        context -> {
+          maybeClearCooldown();
+          fetcher.restartedAfterDataCorruption();
+          return false;
         });
   }
 
@@ -1855,28 +1827,24 @@ public class SplitFileFetcherStorage {
       SplitFileFetcherSegmentStorage splitFileFetcherSegmentStorage, final long cooldownTime) {
     // Risky locking-wise, so run as a separate job.
     jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            long now = System.currentTimeMillis();
-            long wakeupTime;
-            synchronized (cooldownLock) {
-              if (cooldownTime < now) return false;
-              long oldCooldownTime = overallCooldownWakeupTime;
-              if (overallCooldownWakeupTime > now) return false; // Wait for it to wake up.
-              wakeupTime = Long.MAX_VALUE;
-              for (SplitFileFetcherSegmentStorage segment : segments) {
-                long segmentTime = segment.getOverallCooldownTime();
-                if (segmentTime < now) return false;
-                wakeupTime = Math.min(segmentTime, wakeupTime);
-              }
-              overallCooldownWakeupTime = wakeupTime;
-              if (overallCooldownWakeupTime < oldCooldownTime) return false;
+        context -> {
+          long now = System.currentTimeMillis();
+          long wakeupTime;
+          synchronized (cooldownLock) {
+            if (cooldownTime < now) return false;
+            long oldCooldownTime = overallCooldownWakeupTime;
+            if (overallCooldownWakeupTime > now) return false; // Wait for it to wake up.
+            wakeupTime = Long.MAX_VALUE;
+            for (SplitFileFetcherSegmentStorage segment : segments) {
+              long segmentTime = segment.getOverallCooldownTime();
+              if (segmentTime < now) return false;
+              wakeupTime = Math.min(segmentTime, wakeupTime);
             }
-            fetcher.reduceCooldown(wakeupTime);
-            return false;
+            overallCooldownWakeupTime = wakeupTime;
+            if (overallCooldownWakeupTime < oldCooldownTime) return false;
           }
+          fetcher.reduceCooldown(wakeupTime);
+          return false;
         });
   }
 

@@ -1110,21 +1110,17 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
   }
 
   public static final Comparator<FreenetURI> FAST_COMPARATOR =
-      new Comparator<>() {
-
-        @Override
-        public int compare(FreenetURI uri0, FreenetURI uri1) {
-          // Unfortunately the hashCode's may not have been computed yet.
-          // But it's still cheaper to recompute them in the long run.
-          int hash0 = uri0.hashCode();
-          int hash1 = uri1.hashCode();
-          if (hash0 > hash1) {
-            return 1;
-          } else if (hash1 > hash0) {
-            return -1;
-          }
-          return uri0.compareTo(uri1);
+      (uri0, uri1) -> {
+        // Unfortunately the hashCode's may not have been computed yet.
+        // But it's still cheaper to recompute them in the long run.
+        int hash0 = uri0.hashCode();
+        int hash1 = uri1.hashCode();
+        if (hash0 > hash1) {
+          return 1;
+        } else if (hash1 > hash0) {
+          return -1;
         }
+        return uri0.compareTo(uri1);
       };
 
   public static FreenetURI generateRandomCHK(Random rand) {

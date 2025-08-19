@@ -341,17 +341,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       cleanerThread.start();
     } else
       ticker.queueTimedJob(
-          new FastRunnable() {
-
-            @Override
-            public void run() {
-              cleanerThread.start();
-            }
-          },
-          "Start cleaner thread",
-          0,
-          true,
-          false);
+          (FastRunnable) () -> cleanerThread.start(), "Start cleaner thread", 0, true, false);
 
     started = true;
 

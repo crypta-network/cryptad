@@ -1160,13 +1160,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
     synchronized (trimOldLogFilesLock) {
       maxOldLogfilesDiskUsage = val;
     }
-    Runnable r =
-        new Runnable() {
-          @Override
-          public void run() {
-            trimOldLogFiles();
-          }
-        };
+    Runnable r = () -> trimOldLogFiles();
     Thread t = new Thread(r, "Shrink logs");
     t.setDaemon(true);
     t.start();

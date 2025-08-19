@@ -60,15 +60,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   public void update() {
     // Called by detector code, which is critical and convoluted.
     // Run off-thread, break locks, avoid stalling caller.
-    node.getExecutor()
-        .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                innerUpdate();
-              }
-            });
+    node.getExecutor().execute(() -> innerUpdate());
   }
 
   private void innerUpdate() {

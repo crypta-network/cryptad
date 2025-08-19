@@ -474,13 +474,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       }
       runningJobs++;
     }
-    return new CheckpointLock() {
-
-      @Override
-      public void unlock(boolean forceWrite, int threadPriority) {
-        handleCompletion(forceWrite, threadPriority);
-      }
-    };
+    return (forceWrite, threadPriority) -> handleCompletion(forceWrite, threadPriority);
   }
 
   public void disableWrite() {

@@ -390,15 +390,7 @@ public class PeerManager {
     notifyPeerStatusChangeListeners();
     if (!pn.isSeed()) {
       // LOCKING: addPeer() can be called inside PM lock, so must do this on a separate thread.
-      node.getExecutor()
-          .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  updatePMUserAlert();
-                }
-              });
+      node.getExecutor().execute(() -> updatePMUserAlert());
     }
     return true;
   }
@@ -728,20 +720,16 @@ public class PeerManager {
       if (!pn.isSeed()) {
         node.getTicker()
             .queueTimedJob(
-                new Runnable() {
-
-                  @Override
-                  public void run() {
-                    if (pn.isDisconnecting()) {
-                      if (remove) {
-                        if (removePeer(pn)) {
-                          if (!pn.isSeed()) {
-                            writePeersUrgent(pn.isOpennet());
-                          }
+                () -> {
+                  if (pn.isDisconnecting()) {
+                    if (remove) {
+                      if (removePeer(pn)) {
+                        if (!pn.isSeed()) {
+                          writePeersUrgent(pn.isOpennet());
                         }
                       }
-                      pn.disconnected(true, true);
                     }
+                    pn.disconnected(true, true);
                   }
                 },
                 timeout);
@@ -1988,15 +1976,7 @@ public class PeerManager {
     if (!peerNode.isOpennet())
       this.darknetPeersStatuses.changePeerNodeStatus(
           peerNode, oldPeerNodeStatus, peerNodeStatus, noLog);
-    node.getExecutor()
-        .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                updatePMUserAlert();
-              }
-            });
+    node.getExecutor().execute(() -> updatePMUserAlert());
   }
 
   /** Add a PeerNode status to the map. Used internally when a peer is added. */

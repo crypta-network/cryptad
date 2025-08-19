@@ -257,23 +257,19 @@ public class SplitFileInserter
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  try {
-                    Metadata metadata = storage.encodeMetadata();
-                    reportMetadata(metadata);
-                    if (ctx.getCHKOnly) onSucceeded(metadata);
-                  } catch (IOException e) {
-                    storage.fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null));
-                  } catch (MissingKeyException e) {
-                    storage.fail(
-                        new InsertException(
-                            InsertExceptionMode.BUCKET_ERROR, "Lost one or more keys", e, null));
-                  }
-                  return false;
+              context -> {
+                try {
+                  Metadata metadata = storage.encodeMetadata();
+                  reportMetadata(metadata);
+                  if (ctx.getCHKOnly) onSucceeded(metadata);
+                } catch (IOException e) {
+                  storage.fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null));
+                } catch (MissingKeyException e) {
+                  storage.fail(
+                      new InsertException(
+                          InsertExceptionMode.BUCKET_ERROR, "Lost one or more keys", e, null));
                 }
+                return false;
               });
     }
   }
@@ -317,18 +313,14 @@ public class SplitFileInserter
     context
         .getJobRunner(persistent)
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                unregisterSender();
-                raf.close();
-                raf.free();
-                originalData.close();
-                if (freeData) originalData.free();
-                cb.onFailure(e, SplitFileInserter.this, context);
-                return true;
-              }
+            context -> {
+              unregisterSender();
+              raf.close();
+              raf.free();
+              originalData.close();
+              if (freeData) originalData.free();
+              cb.onFailure(e, SplitFileInserter.this, context);
+              return true;
             });
   }
 

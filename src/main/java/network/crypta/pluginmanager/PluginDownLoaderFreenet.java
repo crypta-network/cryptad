@@ -9,11 +9,8 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
 import network.crypta.client.FetchWaiter;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.events.ClientEvent;
-import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -52,20 +49,16 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
       try {
         progress.setDownloading();
         hlsc.addEventHook(
-            new ClientEventListener() {
-
-              @Override
-              public void receive(ClientEvent ce, ClientContext context) {
-                if (ce instanceof SplitfileProgressEvent split) {
-                  if (split.finalizedTotal) {
-                    progress.setDownloadProgress(
-                        split.minSuccessfulBlocks,
-                        split.succeedBlocks,
-                        split.totalBlocks,
-                        split.failedBlocks,
-                        split.fatallyFailedBlocks,
-                        split.finalizedTotal);
-                  }
+            (ce, context) -> {
+              if (ce instanceof SplitfileProgressEvent split) {
+                if (split.finalizedTotal) {
+                  progress.setDownloadProgress(
+                      split.minSuccessfulBlocks,
+                      split.succeedBlocks,
+                      split.totalBlocks,
+                      split.failedBlocks,
+                      split.fatallyFailedBlocks,
+                      split.finalizedTotal);
                 }
               }
             });

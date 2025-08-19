@@ -1,7 +1,6 @@
 package network.crypta.support.io;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -105,14 +104,10 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
     originalFiles = new HashSet<>();
     File[] files =
         dir.listFiles(
-            new FileFilter() {
-
-              @Override
-              public boolean accept(File pathname) {
-                if (!pathname.exists() || pathname.isDirectory()) return false;
-                String name = pathname.getName();
-                return name.startsWith(prefix);
-              }
+            pathname -> {
+              if (!pathname.exists() || pathname.isDirectory()) return false;
+              String name = pathname.getName();
+              return name.startsWith(prefix);
             });
     for (File f : files) {
       f = FileUtil.getCanonicalFile(f);

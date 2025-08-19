@@ -1549,13 +1549,7 @@ public class NodeUpdateManager {
     broadcastUOMAnnounces();
     node.getTicker()
         .queueTimedJob(
-            new Runnable() {
-              @Override
-              public void run() {
-                revocationChecker.start(false);
-              }
-            },
-            node.getRandom().nextInt((int) DAYS.toMillis(1)));
+            () -> revocationChecker.start(false), node.getRandom().nextInt((int) DAYS.toMillis(1)));
   }
 
   private void deployPluginUpdates() {
@@ -1803,26 +1797,13 @@ public class NodeUpdateManager {
     peersSayBlown = false;
     node.getExecutor()
         .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                if (isReadyToDeployUpdate(false)) {
-                  deployUpdate();
-                }
+            () -> {
+              if (isReadyToDeployUpdate(false)) {
+                deployUpdate();
               }
             },
             "Check for updates");
-    node.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                maybeBroadcastUOMAnnounces();
-              }
-            },
-            REVOCATION_FETCH_TIMEOUT);
+    node.getTicker().queueTimedJob(() -> maybeBroadcastUOMAnnounces(), REVOCATION_FETCH_TIMEOUT);
   }
 
   boolean peersSayBlown() {

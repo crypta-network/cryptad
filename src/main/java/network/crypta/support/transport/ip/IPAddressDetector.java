@@ -80,14 +80,7 @@ public class IPAddressDetector implements Runnable {
     assert (executor != null);
     if (System.currentTimeMillis() > (lastDetectedTime + interval)) {
       if (checkpoint()) {
-        executor.execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                detector.redetectAddress();
-              }
-            });
+        executor.execute(() -> detector.redetectAddress());
       }
     }
     return lastAddressList == null ? new InetAddress[0] : lastAddressList;

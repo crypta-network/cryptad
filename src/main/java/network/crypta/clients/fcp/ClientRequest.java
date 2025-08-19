@@ -1,6 +1,10 @@
 package network.crypta.clients.fcp;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -443,18 +447,15 @@ public abstract class ClientRequest implements Serializable {
           .getClientContext()
           .jobRunner
           .queue(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  try {
-                    restart(context, disableFilterData);
-                  } catch (PersistenceDisabledException e) {
-                    // Impossible
-                  }
-                  return true;
-                }
-              },
+              (PersistentJob)
+                  context -> {
+                    try {
+                      restart(context, disableFilterData);
+                    } catch (PersistenceDisabledException e) {
+                      // Impossible
+                    }
+                    return true;
+                  },
               NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     } else {
       server

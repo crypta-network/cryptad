@@ -1,6 +1,8 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -40,29 +42,19 @@ public final class FCPPluginConnectionImplTest {
     // This is by design: Plugins are supposed to be unloadable and the FCPPluginConnectionImpl
     // must not keep them pinned in memory after unload.
     final ServerSideFCPMessageHandler server =
-        new ServerSideFCPMessageHandler() {
-          @Override
-          public FCPPluginMessage handlePluginFCPMessage(
-              final FCPPluginConnection connection, final FCPPluginMessage message) {
-
-            final FCPPluginMessage reply = FCPPluginMessage.constructSuccessReply(message);
-            reply.params.putSingle("replyToThread", message.params.get("thread"));
-            return reply;
-          }
+        (connection, message) -> {
+          final FCPPluginMessage reply = FCPPluginMessage.constructSuccessReply(message);
+          reply.params.putSingle("replyToThread", message.params.get("thread"));
+          return reply;
         };
 
     final ClientSideFCPMessageHandler client =
-        new ClientSideFCPMessageHandler() {
-          @Override
-          public FCPPluginMessage handlePluginFCPMessage(
-              final FCPPluginConnection connection, final FCPPluginMessage message) {
-
-            failure.set(true);
-            fail(
-                "This test is about sendSynchronous() so the reply messages should not "
-                    + "hit the client message handler");
-            throw new UnsupportedOperationException();
-          }
+        (connection, message) -> {
+          failure.set(true);
+          fail(
+              "This test is about sendSynchronous() so the reply messages should not "
+                  + "hit the client message handler");
+          throw new UnsupportedOperationException();
         };
 
     final FCPPluginConnectionImpl connection =

@@ -401,16 +401,7 @@ public class WelcomeToadlet extends Toadlet {
       MultiValueTable<String, String> headers =
           MultiValueTable.from("Location", "/?terminated&formPassword=" + ctx.getFormPassword());
       ctx.sendReplyHeaders(302, "Found", headers, null, 0);
-      node.getTicker()
-          .queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  node.exit("Shutdown from fproxy");
-                }
-              },
-              1);
+      node.getTicker().queueTimedJob(() -> node.exit("Shutdown from fproxy"), 1);
     } else if (request.isPartSet("restart")) {
       PageNode page = ctx.getPageMaker().getPageNode(l10n("restartConfirmTitle"), ctx);
       HTMLNode contentNode = page.getContentNode();
@@ -438,16 +429,7 @@ public class WelcomeToadlet extends Toadlet {
       MultiValueTable<String, String> headers =
           MultiValueTable.from("Location", "/?restarted&formPassword=" + ctx.getFormPassword());
       ctx.sendReplyHeaders(302, "Found", headers, null, 0);
-      node.getTicker()
-          .queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  node.getNodeStarter().restart();
-                }
-              },
-              1);
+      node.getTicker().queueTimedJob(() -> node.getNodeStarter().restart(), 1);
     } else if (request.isPartSet("dismiss-events")) {
       if (!ctx.checkFormPassword(request)) return;
       String alertsToDump = request.getPartAsStringFailsafe("events", Integer.MAX_VALUE);

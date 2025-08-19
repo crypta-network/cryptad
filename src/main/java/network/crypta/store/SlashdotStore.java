@@ -223,13 +223,9 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
       purgeOldData();
     } else {
       ticker.queueTimedJob(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              purgeOldData();
-              // Don't re-schedule
-            }
+          () -> {
+            purgeOldData();
+            // Don't re-schedule
           },
           0);
     }

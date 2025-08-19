@@ -319,12 +319,7 @@ public class DiagnosticToadlet extends Toadlet {
       PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
       Arrays.sort(
           peerNodeStatuses,
-          new Comparator<>() {
-            @Override
-            public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-              return firstNode.getStatusValue() - secondNode.getStatusValue();
-            }
-          });
+          (firstNode, secondNode) -> firstNode.getStatusValue() - secondNode.getStatusValue());
       int numberOfConnected =
           getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED);
       int numberOfRoutingBackedOff =

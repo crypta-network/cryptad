@@ -1124,14 +1124,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     if (delay <= 0) {
       schedule(context);
     } else {
-      context.ticker.queueTimedJob(
-          new Runnable() {
-            @Override
-            public void run() {
-              USKFetcher.this.schedule(context);
-            }
-          },
-          delay);
+      context.ticker.queueTimedJob(() -> USKFetcher.this.schedule(context), delay);
     }
   }
 

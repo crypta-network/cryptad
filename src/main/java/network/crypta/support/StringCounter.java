@@ -1,7 +1,6 @@
 package network.crypta.support;
 
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 
 /**
@@ -49,22 +48,19 @@ public class StringCounter {
     Item[] items = items();
     Arrays.sort(
         items,
-        new Comparator<>() {
-          @Override
-          public int compare(Item it0, Item it1) {
-            int ret;
-            if (it0.counter > it1.counter) {
-              ret = 1;
-            } else if (it0.counter < it1.counter) {
-              ret = -1;
-            } else {
-              ret = it0.string.compareTo(it1.string);
-            }
-            if (!ascending) {
-              ret = -ret;
-            }
-            return ret;
+        (it0, it1) -> {
+          int ret;
+          if (it0.counter > it1.counter) {
+            ret = 1;
+          } else if (it0.counter < it1.counter) {
+            ret = -1;
+          } else {
+            ret = it0.string.compareTo(it1.string);
           }
+          if (!ascending) {
+            ret = -ret;
+          }
+          return ret;
         });
     return items;
   }

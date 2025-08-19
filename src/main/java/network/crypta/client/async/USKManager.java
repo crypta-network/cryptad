@@ -425,18 +425,14 @@ public class USKManager {
     // However, the above is done on-thread because a lot of the time it will already be running.
     if (cancelled != null || sched != null) {
       executor.execute(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              if (cancelled != null) {
-                for (int i = 0; i < cancelled.size(); i++) {
-                  USKFetcher fetcher = cancelled.get(i);
-                  fetcher.cancel(USKManager.this.context);
-                }
+          () -> {
+            if (cancelled != null) {
+              for (int i = 0; i < cancelled.size(); i++) {
+                USKFetcher fetcher = cancelled.get(i);
+                fetcher.cancel(USKManager.this.context);
               }
-              if (scheduleMe != null) scheduleMe.schedule(USKManager.this.context);
             }
+            if (scheduleMe != null) scheduleMe.schedule(USKManager.this.context);
           });
     }
   }
@@ -564,9 +560,7 @@ public class USKManager {
         context
             .getMainExecutor()
             .execute(
-                new Runnable() {
-                  @Override
-                  public void run() {
+                () ->
                     callback.onFoundEdition(
                         number,
                         usk, // non-persistent
@@ -575,9 +569,7 @@ public class USKManager {
                         (short) -1,
                         null,
                         true,
-                        newSlotToo);
-                  }
-                },
+                        newSlotToo),
                 "USKManager callback executor for " + callback);
     }
   }
@@ -608,9 +600,7 @@ public class USKManager {
         context
             .getMainExecutor()
             .execute(
-                new Runnable() {
-                  @Override
-                  public void run() {
+                () ->
                     callback.onFoundEdition(
                         number,
                         usk, // non-persistent
@@ -619,9 +609,7 @@ public class USKManager {
                         (short) -1,
                         null,
                         false,
-                        false);
-                  }
-                },
+                        false),
                 "USKManager callback executor for " + callback);
     }
   }

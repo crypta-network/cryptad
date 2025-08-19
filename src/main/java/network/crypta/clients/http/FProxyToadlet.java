@@ -814,14 +814,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               core.getNode()
                   .getExecutor()
                   .execute(
-                      new Runnable() {
-
-                        @Override
-                        public void run() {
-                          for (FreenetURI uri : uris) {
-                            client.prefetch(
-                                uri, SECONDS.toMillis(60), 512 * 1024, prefetchAllowedTypes);
-                          }
+                      () -> {
+                        for (FreenetURI uri1 : uris) {
+                          client.prefetch(
+                              uri1, SECONDS.toMillis(60), 512 * 1024, prefetchAllowedTypes);
                         }
                       });
             }

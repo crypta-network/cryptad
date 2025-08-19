@@ -177,16 +177,13 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
       // PersistentJobRunner.
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                if (callback instanceof USKFetcherTagCallback tagCallback)
-                  tagCallback.setTag(USKFetcherTag.this, context);
-                callback.onCancelled(context);
-                return false;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  if (callback instanceof USKFetcherTagCallback tagCallback)
+                    tagCallback.setTag(USKFetcherTag.this, context1);
+                  callback.onCancelled(context1);
+                  return false;
+                },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         // Impossible.
@@ -211,16 +208,13 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     if (persistent) {
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                if (callback instanceof USKFetcherTagCallback tagCallback)
-                  tagCallback.setTag(USKFetcherTag.this, context);
-                callback.onFailure(context);
-                return true;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  if (callback instanceof USKFetcherTagCallback tagCallback)
+                    tagCallback.setTag(USKFetcherTag.this, context1);
+                  callback.onFailure(context1);
+                  return true;
+                },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         // Impossible.
@@ -271,17 +265,14 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     if (persistent) {
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                if (callback instanceof USKFetcherTagCallback tagCallback)
-                  tagCallback.setTag(USKFetcherTag.this, context);
-                callback.onFoundEdition(
-                    l, key, context, metadata, codec, data, newKnownGood, newSlotToo);
-                return false;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  if (callback instanceof USKFetcherTagCallback tagCallback)
+                    tagCallback.setTag(USKFetcherTag.this, context1);
+                  callback.onFoundEdition(
+                      l, key, context1, metadata, codec, data, newKnownGood, newSlotToo);
+                  return false;
+                },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         // Impossible.

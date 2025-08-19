@@ -2084,16 +2084,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             Logger.minor(
                 this, "Delaying opennet completion for " + TimeUtil.formatTime(delay, 2, true));
           }
-          node.getTicker()
-              .queueTimedJob(
-                  new Runnable() {
-
-                    @Override
-                    public void run() {
-                      ackOpennet(next);
-                    }
-                  },
-                  delay);
+          node.getTicker().queueTimedJob(() -> ackOpennet(next), delay);
 
         } else if (origTag.shouldStop()) {
           // Can't pass it on.

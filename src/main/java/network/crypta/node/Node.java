@@ -15,7 +15,6 @@ import static network.crypta.support.io.DatastoreUtil.oneGiB;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -1439,15 +1438,8 @@ public class Node implements TimeSkewDetectorCallback {
                 extendTimeouts();
                 File[] subDirs =
                     f.listFiles(
-                        new FileFilter() {
-
-                          @Override
-                          public boolean accept(File pathname) {
-                            return pathname.exists()
-                                && pathname.canRead()
-                                && pathname.isDirectory();
-                          }
-                        });
+                        pathname ->
+                            pathname.exists() && pathname.canRead() && pathname.isDirectory());
 
                 // @see http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5086412
                 if (subDirs != null) for (File currentDir : subDirs) recurse(currentDir);
@@ -2858,17 +2850,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (File.separatorChar == '/'
         && !System.getProperty("os.name").toLowerCase().contains("mac os")) {
       securityLevels.addPhysicalThreatLevelListener(
-          new SecurityLevelListener<>() {
-
-            @Override
-            public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
-              try {
-                nodeConfig.set("storePreallocate", newLevel != PHYSICAL_THREAT_LEVEL.LOW);
-              } catch (NodeNeedRestartException e) {
-                // Ignore
-              } catch (InvalidConfigValueException e) {
-                // Ignore
-              }
+          (oldLevel, newLevel) -> {
+            try {
+              nodeConfig.set("storePreallocate", newLevel != PHYSICAL_THREAT_LEVEL.LOW);
+            } catch (NodeNeedRestartException e) {
+              // Ignore
+            } catch (InvalidConfigValueException e) {
+              // Ignore
             }
           });
     }
@@ -3305,15 +3293,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // MAXIMUM seclevel = no slashdot cache.
 
     securityLevels.addNetworkThreatLevelListener(
-        new SecurityLevelListener<>() {
-
-          @Override
-          public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-            if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
-              useSlashdotCache = false;
-            } else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
-              useSlashdotCache = true;
-            }
+        (oldLevel, newLevel) -> {
+          if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+            useSlashdotCache = false;
+          } else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+            useSlashdotCache = true;
           }
         });
 
@@ -3965,20 +3949,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
         this.getTicker()
             .queueTimedJob(
-                new Runnable() {
+                () -> {
+                  Node.this.chkDatastore = chkDatastore;
+                  Node.this.chkDatacache = chkDatacache;
+                  Node.this.pubKeyDatastore = pubKeyDatastore;
+                  Node.this.pubKeyDatacache = pubKeyDatacache;
+                  getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
+                  Node.this.sskDatastore = sskDatastore;
+                  Node.this.sskDatacache = sskDatacache;
 
-                  @Override
-                  public void run() {
-                    Node.this.chkDatastore = chkDatastore;
-                    Node.this.chkDatacache = chkDatacache;
-                    Node.this.pubKeyDatastore = pubKeyDatastore;
-                    Node.this.pubKeyDatacache = pubKeyDatacache;
-                    getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
-                    Node.this.sskDatastore = sskDatastore;
-                    Node.this.sskDatacache = sskDatacache;
-
-                    finishInitSaltHashFS(suffix, clientCore);
-                  }
+                  finishInitSaltHashFS(suffix, clientCore);
                 },
                 "Start store",
                 0,
@@ -6062,16 +6042,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       showFriendsVisibilityAlert = true;
     }
     // Wait until startup completed.
-    this.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                config.store();
-              }
-            },
-            0);
+    this.getTicker().queueTimedJob(() -> config.store(), 0);
     registerFriendsVisibilityAlert();
   }
 
@@ -6096,16 +6067,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   private void registerFriendsVisibilityAlert() {
     if (clientCore == null || clientCore.getAlerts() == null) {
       // Wait until startup completed.
-      this.getTicker()
-          .queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  registerFriendsVisibilityAlert();
-                }
-              },
-              0);
+      this.getTicker().queueTimedJob(() -> registerFriendsVisibilityAlert(), 0);
       return;
     }
     clientCore.getAlerts().register(visibilityAlert);

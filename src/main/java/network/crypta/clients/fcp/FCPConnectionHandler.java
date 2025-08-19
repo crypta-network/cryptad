@@ -257,19 +257,16 @@ public class FCPConnectionHandler implements Closeable {
             .getClientContext()
             .jobRunner
             .queue(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    if ((rebootClient != null) && !rebootClient.hasPersistentRequests())
-                      server.unregisterClient(rebootClient);
-                    if (foreverClient != null) {
-                      if (!foreverClient.hasPersistentRequests())
-                        server.unregisterClient(foreverClient);
-                    }
-                    return false;
-                  }
-                },
+                (PersistentJob)
+                    context -> {
+                      if ((rebootClient != null) && !rebootClient.hasPersistentRequests())
+                        server.unregisterClient(rebootClient);
+                      if (foreverClient != null) {
+                        if (!foreverClient.hasPersistentRequests())
+                          server.unregisterClient(foreverClient);
+                      }
+                      return false;
+                    },
                 NativeThread.PriorityLevel.NORM_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         // Ignore

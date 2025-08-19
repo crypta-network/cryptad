@@ -26,9 +26,6 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertException;
-import network.crypta.client.async.ClientContext;
-import network.crypta.client.events.ClientEvent;
-import network.crypta.client.events.ClientEventListener;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -168,14 +165,7 @@ public class LongTermPushPullTest extends LongTermTest {
         FreenetURI uri =
             new FreenetURI("KSK@" + uid + "-" + dateFormat.format(today.getTime()) + "-" + i);
         System.out.println("PUSHING " + uri);
-        client.addEventHook(
-            new ClientEventListener() {
-
-              @Override
-              public void receive(ClientEvent ce, ClientContext context) {
-                System.out.println(ce.getDescription());
-              }
-            });
+        client.addEventHook((ce, context) -> System.out.println(ce.getDescription()));
 
         try {
           InsertBlock block = new InsertBlock(data, new ClientMetadata(), uri);

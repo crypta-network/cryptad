@@ -1,8 +1,16 @@
 package network.crypta.clients.fcp;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.Serial;
 import java.net.MalformedURLException;
-import java.util.*;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -754,14 +762,11 @@ public class ClientGet extends ClientRequest
     if (persistence == Persistence.FOREVER && context.jobRunner.hasLoaded()) {
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                innerHandleCompatibilityMode(ce, context);
-                return false;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  innerHandleCompatibilityMode(ce, context1);
+                  return false;
+                },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         // Not much we can do

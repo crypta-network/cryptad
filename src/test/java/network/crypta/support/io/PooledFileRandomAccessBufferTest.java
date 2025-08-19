@@ -1,6 +1,10 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -170,41 +174,37 @@ public class PooledFileRandomAccessBufferTest extends RandomAccessBufferTestBase
     }
     final Status s = new Status();
     Runnable r =
-        new Runnable() {
-
-          @Override
-          public void run() {
+        () -> {
+          synchronized (s) {
+            s.hasStarted = true;
+            s.notify();
+          }
+          try {
+            RAFLock lock1 = b.lockOpen();
             synchronized (s) {
-              s.hasStarted = true;
+              s.hasLocked = true;
               s.notify();
             }
-            try {
-              RAFLock lock = b.lockOpen();
-              synchronized (s) {
-                s.hasLocked = true;
-                s.notify();
-              }
-              synchronized (s) {
-                while (!s.canFinish) {
-                  try {
-                    s.wait();
-                  } catch (InterruptedException e) {
-                    // Ignore.
-                  }
+            synchronized (s) {
+              while (!s.canFinish) {
+                try {
+                  s.wait();
+                } catch (InterruptedException e) {
+                  // Ignore.
                 }
               }
-              lock.unlock();
-              synchronized (s) {
-                s.success = true;
-              }
-            } catch (IOException e) {
-              e.printStackTrace();
-              fail("Caught IOException trying to lock: " + e);
-            } finally {
-              synchronized (s) {
-                s.hasFinished = true;
-                s.notify();
-              }
+            }
+            lock1.unlock();
+            synchronized (s) {
+              s.success = true;
+            }
+          } catch (IOException e) {
+            e.printStackTrace();
+            fail("Caught IOException trying to lock: " + e);
+          } finally {
+            synchronized (s) {
+              s.hasFinished = true;
+              s.notify();
             }
           }
         };

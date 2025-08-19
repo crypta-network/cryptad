@@ -134,13 +134,9 @@ public class SplitFileInserterSender extends SendableInsert {
         context
             .getJobRunner(request.isPersistent())
             .queueNormalOrDrop(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    onEncode(token, key, context);
-                    return false;
-                  }
+                context2 -> {
+                  onEncode(token, key, context2);
+                  return false;
                 });
         if (request.localRequestOnly) {
           try {
@@ -166,21 +162,17 @@ public class SplitFileInserterSender extends SendableInsert {
         context
             .getJobRunner(request.isPersistent())
             .queueNormalOrDrop(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    try {
-                      storage.failOnDiskError(e);
-                    } finally {
-                      // Must terminate the request anyway.
-                      request.onFailure(
-                          new LowLevelPutException(
-                              LowLevelPutException.INTERNAL_ERROR, "Disk error", e),
-                          context);
-                    }
-                    return true;
+                context1 -> {
+                  try {
+                    storage.failOnDiskError(e);
+                  } finally {
+                    // Must terminate the request anyway.
+                    request.onFailure(
+                        new LowLevelPutException(
+                            LowLevelPutException.INTERNAL_ERROR, "Disk error", e),
+                        context1);
                   }
+                  return true;
                 });
         return true;
       } catch (Throwable t) {

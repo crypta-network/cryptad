@@ -309,25 +309,17 @@ public class SplitFileFetcherCrossSegmentStorage {
 
   private void failOffThread(final FetchException e) {
     parent.jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            parent.fail(e);
-            return true;
-          }
+        context -> {
+          parent.fail(e);
+          return true;
         });
   }
 
   private void failDiskOffThread(final IOException e) {
     parent.jobRunner.queueNormalOrDrop(
-        new PersistentJob() {
-
-          @Override
-          public boolean run(ClientContext context) {
-            parent.failOnDiskError(e);
-            return true;
-          }
+        context -> {
+          parent.failOnDiskError(e);
+          return true;
         });
   }
 

@@ -4,7 +4,14 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import network.crypta.clients.http.ConnectivityToadlet;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.io.AddressTracker;
@@ -441,15 +448,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     } catch (Throwable t) {
       Logger.error(this, "Caught " + t, t);
     }
-    node.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-              @Override
-              public void run() {
-                tryMaybeRun();
-              }
-            },
-            MINUTES.toMillis(1));
+    node.getTicker().queueTimedJob(() -> tryMaybeRun(), MINUTES.toMillis(1));
   }
 
   /** Register a plugin. */
@@ -1087,15 +1086,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       // Not much more we can do / want to do for now
       // FIXME use status.externalPort.
     }
-    node.getExecutor()
-        .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                maybeRun();
-              }
-            },
-            "Redetect IP after port forward changed");
+    node.getExecutor().execute(() -> maybeRun(), "Redetect IP after port forward changed");
   }
 
   public synchronized boolean hasDetectors() {

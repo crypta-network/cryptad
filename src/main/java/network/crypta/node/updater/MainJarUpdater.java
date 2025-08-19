@@ -28,7 +28,6 @@ import network.crypta.node.updater.MainJarDependenciesChecker.JarFetcher;
 import network.crypta.node.updater.MainJarDependenciesChecker.JarFetcherCallback;
 import network.crypta.node.updater.MainJarDependenciesChecker.MainJarDependencies;
 import network.crypta.node.updater.UpdateOverMandatoryManager.UOMDependencyFetcher;
-import network.crypta.node.updater.UpdateOverMandatoryManager.UOMDependencyFetcherCallback;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.Logger;
@@ -362,14 +361,10 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
           .node
           .getExecutor()
           .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  getter.cancel(clientContext);
-                  if (f != null) {
-                    f.cancel();
-                  }
+              () -> {
+                getter.cancel(clientContext);
+                if (f != null) {
+                  f.cancel();
                 }
               });
     }
@@ -501,19 +496,15 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
                   expectedLength,
                   filename,
                   executable,
-                  new UOMDependencyFetcherCallback() {
-
-                    @Override
-                    public void onSuccess() {
-                      synchronized (DependencyJarFetcher.this) {
-                        if (fetched) {
-                          return;
-                        }
-                        fetched = true;
+                  () -> {
+                    synchronized (DependencyJarFetcher.this) {
+                      if (fetched) {
+                        return;
                       }
-                      if (cb != null) {
-                        cb.onSuccess();
-                      }
+                      fetched = true;
+                    }
+                    if (cb != null) {
+                      cb.onSuccess();
                     }
                   });
       synchronized (this) {

@@ -35,13 +35,9 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
           keys.getNodeKey(chosen, null, false), segment.parent.fetcher.getSendableGet());
     } catch (final IOException e) {
       segment.parent.jobRunner.queueNormalOrDrop(
-          new PersistentJob() {
-
-            @Override
-            public boolean run(ClientContext context) {
-              segment.parent.failOnDiskError(e);
-              return true;
-            }
+          context -> {
+            segment.parent.failOnDiskError(e);
+            return true;
           });
       return false;
     }

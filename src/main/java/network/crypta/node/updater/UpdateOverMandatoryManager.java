@@ -386,27 +386,23 @@ public class UpdateOverMandatoryManager implements RequestClient {
         .getNode()
         .getTicker()
         .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                if (updateManager.isBlown()) return;
-                synchronized (UpdateOverMandatoryManager.this) {
-                  if (nodesSayKeyRevokedFailedTransfer.contains(source)) return;
-                  if (nodesSayKeyRevokedTransferring.contains(source)) return;
-                  nodesSayKeyRevoked.remove(source);
-                }
-                System.err.println(
-                    "Peer "
-                        + source
-                        + " (build #"
-                        + source.getSimpleVersion()
-                        + ") said that the auto-update key had been blown, but did not transfer the"
-                        + " revocation certificate. The most likely explanation is that the key has"
-                        + " not been blown (the node is buggy or malicious), so we are ignoring"
-                        + " this.");
-                maybeNotRevoked();
+            () -> {
+              if (updateManager.isBlown()) return;
+              synchronized (UpdateOverMandatoryManager.this) {
+                if (nodesSayKeyRevokedFailedTransfer.contains(source)) return;
+                if (nodesSayKeyRevokedTransferring.contains(source)) return;
+                nodesSayKeyRevoked.remove(source);
               }
+              System.err.println(
+                  "Peer "
+                      + source
+                      + " (build #"
+                      + source.getSimpleVersion()
+                      + ") said that the auto-update key had been blown, but did not transfer the"
+                      + " revocation certificate. The most likely explanation is that the key has"
+                      + " not been blown (the node is buggy or malicious), so we are ignoring"
+                      + " this.");
+              maybeNotRevoked();
             },
             SECONDS.toMillis(60));
 
@@ -676,16 +672,12 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   .getNode()
                   .getTicker()
                   .queueTimedJob(
-                      new Runnable() {
-
-                        @Override
-                        public void run() {
-                          synchronized (UpdateOverMandatoryManager.this) {
-                            // free up a slot
-                            if (!askedSendJar.remove(source)) return;
-                          }
-                          maybeRequestMainJar();
+                      () -> {
+                        synchronized (UpdateOverMandatoryManager.this) {
+                          // free up a slot
+                          if (!askedSendJar.remove(source)) return;
                         }
+                        maybeRequestMainJar();
                       },
                       REQUEST_MAIN_JAR_TIMEOUT);
             }
@@ -2500,17 +2492,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     synchronized (this) {
       dependencyFetchers.put(f.expectedHashBuffer, f);
     }
-    this.updateManager
-        .getNode()
-        .getExecutor()
-        .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                f.start();
-              }
-            });
+    this.updateManager.getNode().getExecutor().execute(() -> f.start());
     f.start();
     return f;
   }
@@ -2753,14 +2735,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                             .getNode()
                             .getTicker()
                             .queueTimedJob(
-                                new Runnable() {
-
-                                  @Override
-                                  public void run() {
-                                    peerMaybeFreeSlots(fetchFrom);
-                                  }
-                                },
-                                TimeUnit.HOURS.toMillis(1));
+                                () -> peerMaybeFreeSlots(fetchFrom), TimeUnit.HOURS.toMillis(1));
                       }
                     }
                   }

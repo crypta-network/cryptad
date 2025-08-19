@@ -533,18 +533,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
     node.getSecurityLevels()
         .addNetworkThreatLevelListener(
-            new SecurityLevelListener<>() {
-
-              @Override
-              public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-                if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
-                  ignoreLocalVsRemoteBandwidthLiability = true;
-                }
-                if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
-                  ignoreLocalVsRemoteBandwidthLiability = false;
-                }
-                // Otherwise leave it as it was. It defaults to false.
+            (oldLevel, newLevel) -> {
+              if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+                ignoreLocalVsRemoteBandwidthLiability = true;
               }
+              if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+                ignoreLocalVsRemoteBandwidthLiability = false;
+              }
+              // Otherwise leave it as it was. It defaults to false.
             });
 
     statsConfig.registerIgnoredOption("enableNewLoadManagementRT");
@@ -953,15 +949,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   public void start() throws NodeInitException {
-    node.getExecutor()
-        .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                nodePinger.start();
-              }
-            },
-            "Starting NodePinger");
+    node.getExecutor().execute(() -> nodePinger.start(), "Starting NodePinger");
     persister.start();
     noisyRejectStatsUpdater.run();
   }

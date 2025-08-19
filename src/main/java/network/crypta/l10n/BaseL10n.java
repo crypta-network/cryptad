@@ -612,12 +612,7 @@ public class BaseL10n {
    * Enumerate strings associated with a key in order of preference, starting with a specified one.
    */
   private Iterable<String> getStrings(final String key, final FallbackState initialState) {
-    return new Iterable<>() {
-      @Override
-      public Iterator<String> iterator() {
-        return new L10nStringIterator(key, initialState);
-      }
-    };
+    return () -> new L10nStringIterator(key, initialState);
   }
 
   /**

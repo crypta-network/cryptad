@@ -419,18 +419,14 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       context
           .getJobRunner(persistent())
           .queueInternal(
-              new PersistentJob() {
-
-                @Override
-                public boolean run(ClientContext context) {
-                  rcb.onSuccess(
-                      new SingleFileStreamGenerator(result.asBucket(), persistent),
-                      result.getMetadata(),
-                      decompressors,
-                      SingleFileFetcher.this,
-                      context);
-                  return true;
-                }
+              context1 -> {
+                rcb.onSuccess(
+                    new SingleFileStreamGenerator(result.asBucket(), persistent),
+                    result.getMetadata(),
+                    decompressors,
+                    SingleFileFetcher.this,
+                    context1);
+                return true;
               });
     }
   }
@@ -837,13 +833,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         context
             .getJobRunner(persistent)
             .queueInternal(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    f.innerWrapHandleMetadata(true, context);
-                    return true;
-                  }
+                context1 -> {
+                  f.innerWrapHandleMetadata(true, context1);
+                  return true;
                 });
         return;
       } else if (metadata.isSingleFileRedirect()) {
@@ -1138,13 +1130,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     context
         .getJobRunner(persistent)
         .queueInternal(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                f.innerWrapHandleMetadata(true, context);
-                return true;
-              }
+            context1 -> {
+              f.innerWrapHandleMetadata(true, context1);
+              return true;
             });
   }
 

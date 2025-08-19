@@ -972,13 +972,9 @@ public class SplitFileFetcherSegmentStorage {
                 + " written to "
                 + slotNumber);
       parent.jobRunner.queueNormalOrDrop(
-          new PersistentJob() {
-
-            @Override
-            public boolean run(ClientContext context) {
-              parent.fetcher.onFetchedBlock();
-              return false;
-            }
+          context -> {
+            parent.fetcher.onFetchedBlock();
+            return false;
           });
       tryStartDecode();
       parent.fetcher.maybeAddToBinaryBlob(block);

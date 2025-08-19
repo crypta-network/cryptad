@@ -1670,14 +1670,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         existingCounts[1] = messageCount;
       }
     }
-    Collections.sort(
-        messageNames,
-        new Comparator<>() {
-          @Override
-          public int compare(String first, String second) {
-            return first.compareToIgnoreCase(second);
-          }
-        });
+    Collections.sort(messageNames, (first, second) -> first.compareToIgnoreCase(second));
     for (String messageName : messageNames) {
       Long[] messageCount = messageCounts.get(messageName);
       HTMLNode messageRow = messageCountTable.addChild("tr");

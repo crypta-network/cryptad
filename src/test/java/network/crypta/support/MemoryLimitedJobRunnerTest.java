@@ -1,6 +1,7 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import network.crypta.support.io.NativeThread;
 import org.junit.Test;
@@ -225,22 +226,18 @@ public class MemoryLimitedJobRunnerTest {
       checkRunner(runner);
       Thread t =
           new Thread(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  checkRunner(runner);
-                  waitForCanFinish();
-                  checkRunner(runner);
-                  synchronized (completionSemaphore) {
-                    isFinished = true;
-                    completionSemaphore.notifyAll();
-                  }
-                  checkRunner(runner);
-                  assertEquals(chunk.release(), initialAllocation);
-                  assertEquals(chunk.release(), 0);
-                  checkRunner(runner);
+              () -> {
+                checkRunner(runner);
+                waitForCanFinish();
+                checkRunner(runner);
+                synchronized (completionSemaphore) {
+                  isFinished = true;
+                  completionSemaphore.notifyAll();
                 }
+                checkRunner(runner);
+                assertEquals(chunk.release(), initialAllocation);
+                assertEquals(chunk.release(), 0);
+                checkRunner(runner);
               });
       t.start();
       return false;

@@ -11,7 +11,6 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.xfer.BlockTransmitter;
-import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.Key;
@@ -370,14 +369,7 @@ public class FailureTable {
         return; // we haven't asked for it
       }
     }
-    offerExecutor.execute(
-        new Runnable() {
-          @Override
-          public void run() {
-            innerOnOffer(key, peer, authenticator);
-          }
-        },
-        "onOffer()");
+    offerExecutor.execute(() -> innerOnOffer(key, peer, authenticator), "onOffer()");
   }
 
   /**
@@ -627,13 +619,7 @@ public class FailureTable {
               prb,
               senderCounter,
               BlockTransmitter.NEVER_CASCADE,
-              new BlockTransmitterCompletion() {
-
-                @Override
-                public void blockTransferFinished(boolean success) {
-                  tag.unlockHandler();
-                }
-              },
+              success -> tag.unlockHandler(),
               realTimeFlag,
               node.getNodeStats());
       node.getExecutor()

@@ -826,13 +826,9 @@ public class ClientGetter extends BaseClientGetter
     context
         .getJobRunner(persistent())
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                ctx.eventProducer.produceEvent(new SendingToNetworkEvent(), context);
-                return false;
-              }
+            context1 -> {
+              ctx.eventProducer.produceEvent(new SendingToNetworkEvent(), context1);
+              return false;
             });
   }
 
@@ -1023,13 +1019,9 @@ public class ClientGetter extends BaseClientGetter
     context
         .getJobRunner(persistent())
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                ctx.eventProducer.produceEvent(new ExpectedFileSizeEvent(size), context);
-                return false;
-              }
+            context1 -> {
+              ctx.eventProducer.produceEvent(new ExpectedFileSizeEvent(size), context1);
+              return false;
             });
   }
 
@@ -1128,20 +1120,12 @@ public class ClientGetter extends BaseClientGetter
     context
         .getJobRunner(persistent())
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                ctx.eventProducer.produceEvent(
-                    new SplitfileCompatibilityModeEvent(
-                        min,
-                        max,
-                        customSplitfileKey,
-                        dontCompress,
-                        bottomLayer || definitiveAnyway),
-                    context);
-                return false;
-              }
+            context1 -> {
+              ctx.eventProducer.produceEvent(
+                  new SplitfileCompatibilityModeEvent(
+                      min, max, customSplitfileKey, dontCompress, bottomLayer || definitiveAnyway),
+                  context1);
+              return false;
             });
   }
 
@@ -1161,13 +1145,9 @@ public class ClientGetter extends BaseClientGetter
     context
         .getJobRunner(persistent())
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                ctx.eventProducer.produceEvent(new ExpectedHashesEvent(h), context);
-                return false;
-              }
+            context1 -> {
+              ctx.eventProducer.produceEvent(new ExpectedHashesEvent(h), context1);
+              return false;
             });
   }
 

@@ -83,13 +83,7 @@ public class PluginTalker {
 
     node.getExecutor()
         .execute(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                sendSyncInternalOnly(plugparams, data2);
-              }
-            },
+            () -> sendSyncInternalOnly(plugparams, data2),
             "FCPPlugin talk runner for " + pluginName);
   }
 

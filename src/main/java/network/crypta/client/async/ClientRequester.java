@@ -1,6 +1,10 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Date;
 import java.util.WeakHashMap;
 import network.crypta.crypt.ChecksumChecker;
@@ -383,13 +387,9 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     context
         .getJobRunner(persistent())
         .queueNormalOrDrop(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                innerNotifyClients(context);
-                return false;
-              }
+            context1 -> {
+              innerNotifyClients(context1);
+              return false;
             });
   }
 

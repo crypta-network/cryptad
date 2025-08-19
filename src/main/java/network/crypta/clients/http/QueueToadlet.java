@@ -69,8 +69,15 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.support.*;
+import network.crypta.support.Fields;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.MultiValueTable;
+import network.crypta.support.SizeUtil;
+import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.api.RandomAccessBucket;
@@ -1601,83 +1608,77 @@ public class QueueToadlet extends Toadlet
     Logger.minor(this, "Total queued uploads: " + SizeUtil.formatSize(totalQueuedUploadSize));
 
     Comparator<RequestStatus> jobComparator =
-        new Comparator<>() {
-          @Override
-          public int compare(RequestStatus firstRequest, RequestStatus secondRequest) {
+        (firstRequest, secondRequest) -> {
+          if (firstRequest == secondRequest) {
+            return 0; // Short cut.
+          }
 
-            if (firstRequest == secondRequest) {
-              return 0; // Short cut.
+          int result = 0;
+          boolean isSet = true;
+
+          if (request.isParameterSet("sortBy")) {
+            final String sortBy = request.getParam("sortBy");
+
+            switch (sortBy) {
+              case "id":
+                result =
+                    firstRequest.getIdentifier().compareToIgnoreCase(secondRequest.getIdentifier());
+                if (result == 0) {
+                  result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
+                }
+                break;
+              case "size":
+                result =
+                    Fields.compare(firstRequest.getTotalBlocks(), secondRequest.getTotalBlocks());
+                break;
+              case "progress":
+                boolean firstFinalized = firstRequest.isTotalFinalized();
+                boolean secondFinalized = secondRequest.isTotalFinalized();
+                if (firstFinalized && !secondFinalized) {
+                  result = 1;
+                } else if (secondFinalized && !firstFinalized) {
+                  result = -1;
+                } else {
+                  double firstProgress =
+                      ((double) firstRequest.getFetchedBlocks())
+                          / ((double) firstRequest.getMinBlocks());
+                  double secondProgress =
+                      ((double) secondRequest.getFetchedBlocks())
+                          / ((double) secondRequest.getMinBlocks());
+                  result = Fields.compare(firstProgress, secondProgress);
+                }
+                break;
+              case "lastActivity":
+                result =
+                    Fields.compare(firstRequest.getLastSuccess(), secondRequest.getLastSuccess());
+                break;
+              case "lastFailure":
+                result =
+                    Fields.compare(firstRequest.getLastFailure(), secondRequest.getLastFailure());
+                break;
+              default:
+                isSet = false;
+                break;
             }
+          } else {
+            isSet = false;
+          }
 
-            int result = 0;
-            boolean isSet = true;
-
-            if (request.isParameterSet("sortBy")) {
-              final String sortBy = request.getParam("sortBy");
-
-              switch (sortBy) {
-                case "id":
-                  result =
-                      firstRequest
-                          .getIdentifier()
-                          .compareToIgnoreCase(secondRequest.getIdentifier());
-                  if (result == 0) {
-                    result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
-                  }
-                  break;
-                case "size":
-                  result =
-                      Fields.compare(firstRequest.getTotalBlocks(), secondRequest.getTotalBlocks());
-                  break;
-                case "progress":
-                  boolean firstFinalized = firstRequest.isTotalFinalized();
-                  boolean secondFinalized = secondRequest.isTotalFinalized();
-                  if (firstFinalized && !secondFinalized) {
-                    result = 1;
-                  } else if (secondFinalized && !firstFinalized) {
-                    result = -1;
-                  } else {
-                    double firstProgress =
-                        ((double) firstRequest.getFetchedBlocks())
-                            / ((double) firstRequest.getMinBlocks());
-                    double secondProgress =
-                        ((double) secondRequest.getFetchedBlocks())
-                            / ((double) secondRequest.getMinBlocks());
-                    result = Fields.compare(firstProgress, secondProgress);
-                  }
-                  break;
-                case "lastActivity":
-                  result =
-                      Fields.compare(firstRequest.getLastSuccess(), secondRequest.getLastSuccess());
-                  break;
-                case "lastFailure":
-                  result =
-                      Fields.compare(firstRequest.getLastFailure(), secondRequest.getLastFailure());
-                  break;
-                default:
-                  isSet = false;
-                  break;
-              }
-            } else {
-              isSet = false;
-            }
-
-            if (!isSet) {
-              result = Fields.compare(firstRequest.getPriority(), secondRequest.getPriority());
-              if (result == 0) {
-                result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
-              }
-            }
-
+          if (!isSet) {
+            result = Fields.compare(firstRequest.getPriority(), secondRequest.getPriority());
             if (result == 0) {
-              return 0;
-            } else if (request.isParameterSet("reversed")) {
-              isReversed = true;
-              return result > 0 ? -1 : 1;
-            } else {
-              isReversed = false;
-              return result < 0 ? -1 : 1;
+              result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
             }
+          }
+
+          if (result == 0) {
+            return 0;
+          } else if (request.isParameterSet("reversed")) {
+            isReversed = true;
+            return result > 0 ? -1 : 1;
+          } else {
+            isReversed = false;
+            return result < 0 ? -1 : 1;
           }
         };
 
@@ -3407,15 +3408,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private void saveCompletedIdentifiersOffThread() {
-    core.getExecutor()
-        .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                saveCompletedIdentifiers();
-              }
-            },
-            "Save completed identifiers");
+    core.getExecutor().execute(() -> saveCompletedIdentifiers(), "Save completed identifiers");
   }
 
   private void loadCompletedIdentifiers() throws PersistenceDisabledException {

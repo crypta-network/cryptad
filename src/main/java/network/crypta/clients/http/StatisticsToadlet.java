@@ -11,7 +11,6 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -144,12 +143,7 @@ public class StatisticsToadlet extends Toadlet {
       PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
       Arrays.sort(
           peerNodeStatuses,
-          new Comparator<>() {
-            @Override
-            public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-              return firstNode.getStatusValue() - secondNode.getStatusValue();
-            }
-          });
+          (firstNode, secondNode) -> firstNode.getStatusValue() - secondNode.getStatusValue());
 
       int numberOfConnected =
           getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED);
@@ -795,14 +789,7 @@ public class StatisticsToadlet extends Toadlet {
     nf.setMaximumFractionDigits(0);
     nf.setMinimumIntegerDigits(2);
     ClientRequester[] requests = ClientRequester.getAll();
-    Arrays.sort(
-        requests,
-        new Comparator<>() {
-          @Override
-          public int compare(ClientRequester a, ClientRequester b) {
-            return -Long.signum(a.creationTime - b.creationTime);
-          }
-        });
+    Arrays.sort(requests, (a, b) -> -Long.signum(a.creationTime - b.creationTime));
     long now = System.currentTimeMillis();
     for (ClientRequester request : requests) {
       if (request.isFinished() || request.isCancelled()) continue;
@@ -982,11 +969,8 @@ public class StatisticsToadlet extends Toadlet {
     }
     Arrays.sort(
         unclaimedFIFOMessageCountsArray,
-        new Comparator<>() {
-          @Override
-          public int compare(STMessageCount firstCount, STMessageCount secondCount) {
-            return secondCount.messageCount - firstCount.messageCount; // sort in descending order
-          }
+        (firstCount, secondCount) -> {
+          return secondCount.messageCount - firstCount.messageCount; // sort in descending order
         });
     for (STMessageCount messageCountItem : unclaimedFIFOMessageCountsArray) {
       int thisMessageCount = messageCountItem.messageCount;
@@ -1874,17 +1858,14 @@ public class StatisticsToadlet extends Toadlet {
     ThreadBunch[] bunches = map.values().toArray(new ThreadBunch[map.size()]);
     Arrays.sort(
         bunches,
-        new Comparator<>() {
-          @Override
-          public int compare(ThreadBunch b0, ThreadBunch b1) {
-            if (b0.count > b1.count) {
-              return -1;
-            }
-            if (b0.count < b1.count) {
-              return 1;
-            }
-            return b0.name.compareTo(b1.name);
+        (b0, b1) -> {
+          if (b0.count > b1.count) {
+            return -1;
           }
+          if (b0.count < b1.count) {
+            return 1;
+          }
+          return b0.name.compareTo(b1.name);
         });
     double thisThreadPercentOfTotal;
     for (ThreadBunch bunch : bunches) {

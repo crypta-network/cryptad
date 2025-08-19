@@ -1,10 +1,30 @@
 package network.crypta.node.updater;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.regex.Pattern;
@@ -206,30 +226,26 @@ public class MainJarDependenciesChecker {
     File[] listMain =
         new File(".")
             .listFiles(
-                new FileFilter() {
-
-                  @Override
-                  public boolean accept(File arg0) {
-                    if (!arg0.isFile()) {
-                      return false;
-                    }
-                    String name = arg0.getName().toLowerCase();
-                    // Cleanup old updater tempfiles.
-                    if (name.endsWith(NodeUpdateManager.TEMP_FILE_SUFFIX)
-                        || name.endsWith(NodeUpdateManager.TEMP_BLOB_SUFFIX)) {
-                      toDelete.add(arg0);
-                      return false;
-                    }
-                    // Ignore non-jars regardless of what the regex says.
-                    if (!name.endsWith(".jar")) {
-                      return false;
-                    }
-                    // FIXME similar checks elsewhere, factor out?
-                    return !name.equals("cryptad.jar")
-                        && !name.equals("cryptad.jar.new")
-                        && !name.equals("cryptad-stable-latest.jar")
-                        && !name.equals("cryptad-stable-latest.jar.new");
+                arg0 -> {
+                  if (!arg0.isFile()) {
+                    return false;
                   }
+                  String name = arg0.getName().toLowerCase();
+                  // Cleanup old updater tempfiles.
+                  if (name.endsWith(NodeUpdateManager.TEMP_FILE_SUFFIX)
+                      || name.endsWith(NodeUpdateManager.TEMP_BLOB_SUFFIX)) {
+                    toDelete.add(arg0);
+                    return false;
+                  }
+                  // Ignore non-jars regardless of what the regex says.
+                  if (!name.endsWith(".jar")) {
+                    return false;
+                  }
+                  // FIXME similar checks elsewhere, factor out?
+                  return !name.equals("cryptad.jar")
+                      && !name.equals("cryptad.jar.new")
+                      && !name.equals("cryptad-stable-latest.jar")
+                      && !name.equals("cryptad-stable-latest.jar.new");
                 });
     for (File f : toDelete) {
       System.out.println("Deleting old temp file \"" + f + "\"");
@@ -577,24 +593,20 @@ public class MainJarDependenciesChecker {
     File[] list =
         new File(".")
             .listFiles(
-                new FileFilter() {
-
-                  @Override
-                  public boolean accept(File arg0) {
-                    if (!arg0.isFile()) {
-                      return false;
-                    }
-                    // Ignore non-jars regardless of what the regex says.
-                    String name = arg0.getName().toLowerCase();
-                    if (!(name.endsWith(".jar") || name.endsWith(".jar.new"))) {
-                      return false;
-                    }
-                    // FIXME similar checks elsewhere, factor out?
-                    return !name.equals("cryptad.jar")
-                        && !name.equals("cryptad.jar.new")
-                        && !name.equals("cryptad-stable-latest.jar")
-                        && !name.equals("cryptad-stable-latest.jar.new");
+                arg0 -> {
+                  if (!arg0.isFile()) {
+                    return false;
                   }
+                  // Ignore non-jars regardless of what the regex says.
+                  String name = arg0.getName().toLowerCase();
+                  if (!(name.endsWith(".jar") || name.endsWith(".jar.new"))) {
+                    return false;
+                  }
+                  // FIXME similar checks elsewhere, factor out?
+                  return !name.equals("cryptad.jar")
+                      && !name.equals("cryptad.jar.new")
+                      && !name.equals("cryptad-stable-latest.jar")
+                      && !name.equals("cryptad-stable-latest.jar.new");
                 });
     outer:
     for (String propName : props.stringPropertyNames()) {
@@ -1216,13 +1228,9 @@ public class MainJarDependenciesChecker {
     this.build = build;
     final Downloader[] toCancel = downloaders.toArray(new Downloader[downloaders.size()]);
     executor.execute(
-        new Runnable() {
-
-          @Override
-          public void run() {
-            for (Downloader d : toCancel) {
-              d.cancel();
-            }
+        () -> {
+          for (Downloader d : toCancel) {
+            d.cancel();
           }
         });
     downloaders.clear();

@@ -117,13 +117,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   public static final int AMOUNT_OF_BYTES_ALLOWED_BEFORE_WE_REKEY = 1024 * 1024 * 1024;
 
   /** The Runnable in charge of rekeying on a regular basis */
-  private final Runnable transientKeyRekeyer =
-      new Runnable() {
-        @Override
-        public void run() {
-          maybeResetTransientKey();
-        }
-      };
+  private final Runnable transientKeyRekeyer = () -> maybeResetTransientKey();
 
   private long lastConnectivityStatusUpdate;
   private Status lastConnectivityStatus;
@@ -580,17 +574,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     if (packetType == 0 || packetType == 2) {
       this.authHandlingThread.execute(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              if (packetType == 0) {
-                // Phase 1
-                processJFKMessage1(payload, 4, null, replyTo, true, setupType, negType);
-              } else if (packetType == 2) {
-                // Phase 3
-                processJFKMessage3(payload, 4, null, replyTo, false, true, setupType, negType);
-              }
+          () -> {
+            if (packetType == 0) {
+              // Phase 1
+              processJFKMessage1(payload, 4, null, replyTo, true, setupType, negType);
+            } else if (packetType == 2) {
+              // Phase 3
+              processJFKMessage3(payload, 4, null, replyTo, false, true, setupType, negType);
             }
           });
     } else {
@@ -664,17 +654,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     if (packetType == 1 || packetType == 3) {
       authHandlingThread.execute(
-          new Runnable() {
-
-            @Override
-            public void run() {
-              if (packetType == 1) {
-                // Phase 2
-                processJFKMessage2(payload, 4, pn, replyTo, true, setupType, negType);
-              } else if (packetType == 3) {
-                // Phase 4
-                processJFKMessage4(payload, 4, pn, replyTo, false, true, setupType, negType);
-              }
+          () -> {
+            if (packetType == 1) {
+              // Phase 2
+              processJFKMessage2(payload, 4, pn, replyTo, true, setupType, negType);
+            } else if (packetType == 3) {
+              // Phase 4
+              processJFKMessage4(payload, 4, pn, replyTo, false, true, setupType, negType);
             }
           });
     } else {
@@ -780,42 +766,38 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         Logger.error(this, "Unknown PacketType" + packetType + "from" + replyTo + "from" + pn);
       } else
         authHandlingThread.execute(
-            new Runnable() {
+            () -> {
+              if (packetType == 0) {
+                /*
+                 * Initiator- This is a straightforward DiffieHellman exponential.
+                 * The Initiator Nonce serves two purposes;it allows the initiator to use the same
+                 * exponentials during different sessions while ensuring that the resulting
+                 * session key will be different,can be used to differentiate between
+                 * parallel sessions
+                 */
+                processJFKMessage1(payload, 3, pn, replyTo, false, -1, negType);
 
-              @Override
-              public void run() {
-                if (packetType == 0) {
-                  /*
-                   * Initiator- This is a straightforward DiffieHellman exponential.
-                   * The Initiator Nonce serves two purposes;it allows the initiator to use the same
-                   * exponentials during different sessions while ensuring that the resulting
-                   * session key will be different,can be used to differentiate between
-                   * parallel sessions
-                   */
-                  processJFKMessage1(payload, 3, pn, replyTo, false, -1, negType);
-
-                } else if (packetType == 1) {
-                  /*
-                   * Responder replies with a signed copy of his own exponential, a random
-                   * nonce and an authenticator calculated from a transient hash key private
-                   * to the responder.
-                   */
-                  processJFKMessage2(payload, 3, pn, replyTo, false, -1, negType);
-                } else if (packetType == 2) {
-                  /*
-                   * Initiator echoes the data sent by the responder.These messages are
-                   * cached by the Responder.Receiving a duplicate message simply causes
-                   * the responder to Re-transmit the corresponding message4
-                   */
-                  processJFKMessage3(payload, 3, pn, replyTo, oldOpennetPeer, false, -1, negType);
-                } else if (packetType == 3) {
-                  /*
-                   * Encrypted message of the signature on both nonces, both exponentials
-                   * using the same keys as in the previous message.
-                   * The signature is non-message recovering
-                   */
-                  processJFKMessage4(payload, 3, pn, replyTo, oldOpennetPeer, false, -1, negType);
-                }
+              } else if (packetType == 1) {
+                /*
+                 * Responder replies with a signed copy of his own exponential, a random
+                 * nonce and an authenticator calculated from a transient hash key private
+                 * to the responder.
+                 */
+                processJFKMessage2(payload, 3, pn, replyTo, false, -1, negType);
+              } else if (packetType == 2) {
+                /*
+                 * Initiator echoes the data sent by the responder.These messages are
+                 * cached by the Responder.Receiving a duplicate message simply causes
+                 * the responder to Re-transmit the corresponding message4
+                 */
+                processJFKMessage3(payload, 3, pn, replyTo, oldOpennetPeer, false, -1, negType);
+              } else if (packetType == 3) {
+                /*
+                 * Encrypted message of the signature on both nonces, both exponentials
+                 * using the same keys as in the previous message.
+                 * The signature is non-message recovering
+                 */
+                processJFKMessage4(payload, 3, pn, replyTo, oldOpennetPeer, false, -1, negType);
               }
             });
     } else {

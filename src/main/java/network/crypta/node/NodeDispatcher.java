@@ -6,7 +6,13 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.concurrent.ArrayBlockingQueue;
 import network.crypta.crypt.HMAC;
-import network.crypta.io.comm.*;
+import network.crypta.io.comm.ByteCounter;
+import network.crypta.io.comm.DMT;
+import network.crypta.io.comm.Dispatcher;
+import network.crypta.io.comm.Message;
+import network.crypta.io.comm.MessageType;
+import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.Peer;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeCHK;
@@ -445,15 +451,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
 
   private void handleDisconnect(final Message m, final PeerNode source) {
     // Wait for 1 second to ensure that the ack gets sent first.
-    node.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-              @Override
-              public void run() {
-                finishDisconnect(m, source);
-              }
-            },
-            1000);
+    node.getTicker().queueTimedJob(() -> finishDisconnect(m, source), 1000);
   }
 
   private void finishDisconnect(final Message m, final PeerNode source) {

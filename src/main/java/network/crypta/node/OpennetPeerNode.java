@@ -245,14 +245,7 @@ public class OpennetPeerNode extends PeerNode {
     // Guarantee that it gets cleared.
     node.getTicker()
         .queueTimedJob(
-            new FastRunnable() {
-
-              @Override
-              public void run() {
-                isDroppableWithReason(false);
-              }
-            },
-            OpennetManager.DROP_MIN_AGE + 1);
+            (FastRunnable) () -> isDroppableWithReason(false), OpennetManager.DROP_MIN_AGE + 1);
   }
 
   @Override

@@ -110,52 +110,46 @@ public class ImageElement extends BaseUpdateableElement {
     ((SimpleToadletServer) ctx.getContainer())
         .getTicker()
         .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                try {
-                  FProxyFetchWaiter waiter =
-                      ImageElement.this.tracker.makeFetcher(
-                          ImageElement.this.key,
-                          ImageElement.this.maxSize,
-                          null,
-                          REFILTER_POLICY.RE_FILTER);
-                  ImageElement.this
-                      .tracker
-                      .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
-                      .addListener(fetchListener);
-                  ImageElement.this
-                      .tracker
-                      .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
-                      .close(waiter);
-                } catch (FetchException fe) {
-                  if (fe.newURI != null) {
-                    try {
-                      ImageElement.this.key = fe.newURI;
-                      FProxyFetchWaiter waiter =
-                          ImageElement.this.tracker.makeFetcher(
-                              ImageElement.this.key,
-                              ImageElement.this.maxSize,
-                              null,
-                              REFILTER_POLICY.RE_FILTER);
-                      ImageElement.this
-                          .tracker
-                          .getFetchInProgress(
-                              ImageElement.this.key, ImageElement.this.maxSize, null)
-                          .addListener(fetchListener);
-                      ImageElement.this
-                          .tracker
-                          .getFetchInProgress(
-                              ImageElement.this.key, ImageElement.this.maxSize, null)
-                          .close(waiter);
-                    } catch (FetchException fe2) {
-                      wasError = true;
-                    }
+            () -> {
+              try {
+                FProxyFetchWaiter waiter =
+                    ImageElement.this.tracker.makeFetcher(
+                        ImageElement.this.key,
+                        ImageElement.this.maxSize,
+                        null,
+                        REFILTER_POLICY.RE_FILTER);
+                ImageElement.this
+                    .tracker
+                    .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                    .addListener(fetchListener);
+                ImageElement.this
+                    .tracker
+                    .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                    .close(waiter);
+              } catch (FetchException fe) {
+                if (fe.newURI != null) {
+                  try {
+                    ImageElement.this.key = fe.newURI;
+                    FProxyFetchWaiter waiter =
+                        ImageElement.this.tracker.makeFetcher(
+                            ImageElement.this.key,
+                            ImageElement.this.maxSize,
+                            null,
+                            REFILTER_POLICY.RE_FILTER);
+                    ImageElement.this
+                        .tracker
+                        .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                        .addListener(fetchListener);
+                    ImageElement.this
+                        .tracker
+                        .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                        .close(waiter);
+                  } catch (FetchException fe2) {
+                    wasError = true;
                   }
                 }
-                fetchListener.onEvent();
               }
+              fetchListener.onEvent();
             },
             0);
 

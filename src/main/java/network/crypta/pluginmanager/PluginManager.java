@@ -4,7 +4,6 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -208,26 +207,19 @@ public class PluginManager {
     for (final String name : toStart) {
       core.getExecutor()
           .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  startPluginAuto(name, false);
-                  startingPlugins.release();
-                }
+              () -> {
+                startPluginAuto(name, false);
+                startingPlugins.release();
               });
     }
 
     core.getExecutor()
         .execute(
-            new Runnable() {
-              @Override
-              public void run() {
-                startingPlugins.acquireUninterruptibly(toStart.length);
-                synchronized (loadedPlugins) {
-                  started = true;
-                  toStart = null;
-                }
+            () -> {
+              startingPlugins.acquireUninterruptibly(toStart.length);
+              synchronized (loadedPlugins) {
+                started = true;
+                toStart = null;
               }
             });
   }
@@ -423,16 +415,7 @@ public class PluginManager {
           // Retry forever...
           final PluginDownLoader<?> retry = pdl.getRetryDownloader();
           stillTrying = true;
-          node.getTicker()
-              .queueTimedJob(
-                  new Runnable() {
-
-                    @Override
-                    public void run() {
-                      realStartPlugin(retry, filename, store, true);
-                    }
-                  },
-                  0);
+          node.getTicker().queueTimedJob(() -> realStartPlugin(retry, filename, store, true), 0);
         }
       }
       PluginLoadFailedUserAlert newAlert =
@@ -533,15 +516,7 @@ public class PluginManager {
     @Override
     public void onDismiss() {
       loadedPlugins.removeFailedPlugin(filename);
-      node.getExecutor()
-          .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  cancelRunningLoads(filename, null);
-                }
-              });
+      node.getExecutor().execute(() -> cancelRunningLoads(filename, null));
     }
 
     @Override
@@ -1399,13 +1374,7 @@ public class PluginManager {
     List<File> cachedFiles =
         Arrays.asList(
             pluginDirectory.listFiles(
-                new FileFilter() {
-
-                  @Override
-                  public boolean accept(File pathname) {
-                    return pathname.isFile() && pathname.getName().startsWith(filename);
-                  }
-                }));
+                pathname -> pathname.isFile() && pathname.getName().startsWith(filename)));
     Collections.sort(
         cachedFiles,
         new Comparator<>() {

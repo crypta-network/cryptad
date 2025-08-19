@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Hashtable;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
@@ -342,20 +341,17 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
       Arrays.sort(
           files,
-          new Comparator<>() {
-            @Override
-            public int compare(File firstFile, File secondFile) {
-              /* Put directories above files, sorting each alphabetically and
-               * case-insensitively.
-               */
-              if (firstFile.isDirectory() && !secondFile.isDirectory()) {
-                return -1;
-              }
-              if (!firstFile.isDirectory() && secondFile.isDirectory()) {
-                return 1;
-              }
-              return firstFile.getName().compareToIgnoreCase(secondFile.getName());
+          (firstFile, secondFile) -> {
+            /* Put directories above files, sorting each alphabetically and
+             * case-insensitively.
+             */
+            if (firstFile.isDirectory() && !secondFile.isDirectory()) {
+              return -1;
             }
+            if (!firstFile.isDirectory() && secondFile.isDirectory()) {
+              return 1;
+            }
+            return firstFile.getName().compareToIgnoreCase(secondFile.getName());
           });
       HTMLNode listingTable = listingDiv.addChild("table", "class", "directory-listing");
       HTMLNode headerRow = listingTable.addChild("tr");

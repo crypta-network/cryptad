@@ -179,47 +179,44 @@ public class ListPersistentRequestsMessage extends FCPMessage {
           private void finishComplete(ClientContext context) {
             try {
               context.jobRunner.queue(
-                  new PersistentJob() {
+                  (PersistentJob)
+                      context1 -> {
+                        PersistentRequestClient foreverClient = handler.getForeverClient();
+                        PersistentListJob job1 =
+                            new PersistentListJob(
+                                foreverClient, outputHandler, context1, listRequestIdentifier) {
 
-                    @Override
-                    public boolean run(ClientContext context) {
-                      PersistentRequestClient foreverClient = handler.getForeverClient();
-                      PersistentListJob job =
-                          new PersistentListJob(
-                              foreverClient, outputHandler, context, listRequestIdentifier) {
+                              @Override
+                              void complete(ClientContext context1) {
+                                if (handler.getRebootClient().watchGlobal) {
+                                  PersistentRequestClient globalForeverClient =
+                                      handler.getServer().getGlobalForeverClient();
+                                  PersistentListJob job1 =
+                                      new PersistentListJob(
+                                          globalForeverClient,
+                                          outputHandler,
+                                          context1,
+                                          listRequestIdentifier) {
 
-                            @Override
-                            void complete(ClientContext context) {
-                              if (handler.getRebootClient().watchGlobal) {
-                                PersistentRequestClient globalForeverClient =
-                                    handler.getServer().getGlobalForeverClient();
-                                PersistentListJob job =
-                                    new PersistentListJob(
-                                        globalForeverClient,
-                                        outputHandler,
-                                        context,
-                                        listRequestIdentifier) {
-
-                                      @Override
-                                      void complete(ClientContext context) {
-                                        finishFinal();
-                                      }
-                                    };
-                                job.run(context);
-                              } else {
-                                finishFinal();
+                                        @Override
+                                        void complete(ClientContext context1) {
+                                          finishFinal();
+                                        }
+                                      };
+                                  job1.run(context1);
+                                } else {
+                                  finishFinal();
+                                }
                               }
-                            }
 
-                            private void finishFinal() {
-                              outputHandler.handler.send(
-                                  new EndListPersistentRequestsMessage(listRequestIdentifier));
-                            }
-                          };
-                      job.run(context);
-                      return false;
-                    }
-                  },
+                              private void finishFinal() {
+                                outputHandler.handler.send(
+                                    new EndListPersistentRequestsMessage(listRequestIdentifier));
+                              }
+                            };
+                        job1.run(context1);
+                        return false;
+                      },
                   NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
             } catch (PersistenceDisabledException e) {
               handler.send(new EndListPersistentRequestsMessage(listRequestIdentifier));

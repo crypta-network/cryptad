@@ -71,7 +71,6 @@ public class InsertCompressor implements CompressJob {
       BucketFactory bf,
       boolean persistent,
       long generateHashes,
-      boolean pre1254,
       Config config) {
     this.inserter = inserter;
     this.origData = origData;
@@ -137,14 +136,11 @@ public class InsertCompressor implements CompressJob {
           // Only produce if we are compressing *the original data*
           if (persistent) {
             context.jobRunner.queue(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    inserter.onStartCompression(comp, context);
-                    return false;
-                  }
-                },
+                (PersistentJob)
+                    context2 -> {
+                      inserter.onStartCompression(comp, context2);
+                      return false;
+                    },
                 NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
           } else {
             try {
@@ -245,17 +241,14 @@ public class InsertCompressor implements CompressJob {
 
       if (persistent) {
 
+        // This can wait until after the next checkpoint, because it's still in the
+        // persistentInsertCompressors list, so will be restarted if necessary.
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              // This can wait until after the next checkpoint, because it's still in the
-              // persistentInsertCompressors list, so will be restarted if necessary.
-              @Override
-              public boolean run(ClientContext context) {
-                inserter.onCompressed(output, context);
-                return true;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  inserter.onCompressed(output, context1);
+                  return true;
+                },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
       } else {
         // We do it off thread so that RealCompressor can release the semaphore
@@ -300,14 +293,11 @@ public class InsertCompressor implements CompressJob {
     if (persistent) {
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                inserter.cb.onFailure(ie, inserter, context);
-                return true;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  inserter.cb.onFailure(ie, inserter, context1);
+                  return true;
+                },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
       } catch (PersistenceDisabledException e1) {
         Logger.error(this, "Database disabled compressing data", new Exception("error"));
@@ -328,7 +318,6 @@ public class InsertCompressor implements CompressJob {
    * @param bf
    * @param persistent
    * @param generateHashes
-   * @param pre1254
    * @return
    */
   public static InsertCompressor start(
@@ -339,11 +328,9 @@ public class InsertCompressor implements CompressJob {
       BucketFactory bf,
       boolean persistent,
       long generateHashes,
-      boolean pre1254,
       final Config config) {
     InsertCompressor compressor =
-        new InsertCompressor(
-            inserter, origData, minSize, bf, persistent, generateHashes, pre1254, config);
+        new InsertCompressor(inserter, origData, minSize, bf, persistent, generateHashes, config);
     compressor.init(ctx);
     return compressor;
   }
@@ -353,14 +340,11 @@ public class InsertCompressor implements CompressJob {
     if (persistent) {
       try {
         context.jobRunner.queue(
-            new PersistentJob() {
-
-              @Override
-              public boolean run(ClientContext context) {
-                inserter.cb.onFailure(e, inserter, context);
-                return true;
-              }
-            },
+            (PersistentJob)
+                context1 -> {
+                  inserter.cb.onFailure(e, inserter, context1);
+                  return true;
+                },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
       } catch (PersistenceDisabledException e1) {
         // Can't do anything

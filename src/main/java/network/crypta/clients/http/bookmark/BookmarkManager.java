@@ -362,15 +362,11 @@ public class BookmarkManager implements RequestClient {
       node.getNode()
           .getTicker()
           .queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  try {
-                    storeBookmarks();
-                  } finally {
-                    isSavingBookmarksLazy = false;
-                  }
+              () -> {
+                try {
+                  storeBookmarks();
+                } finally {
+                  isSavingBookmarksLazy = false;
                 }
               },
               MINUTES.toMillis(5));

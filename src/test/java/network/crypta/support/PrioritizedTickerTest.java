@@ -1,6 +1,6 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import network.crypta.node.FastRunnable;
 import org.junit.Before;
@@ -64,24 +64,16 @@ public class PrioritizedTickerTest {
   private int runCount = 0;
 
   Runnable simpleRunnable =
-      new Runnable() {
-
-        @Override
-        public void run() {
-          synchronized (PrioritizedTickerTest.this) {
-            runCount++;
-          }
+      () -> {
+        synchronized (PrioritizedTickerTest.this) {
+          runCount++;
         }
       };
 
   Runnable simpleRunnable2 =
-      new Runnable() {
-
-        @Override
-        public void run() {
-          synchronized (PrioritizedTickerTest.this) {
-            runCount += 10;
-          }
+      () -> {
+        synchronized (PrioritizedTickerTest.this) {
+          runCount += 10;
         }
       };
 

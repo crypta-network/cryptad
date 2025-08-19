@@ -240,25 +240,13 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     if (!persistent) {
       context
           .getMainExecutor()
-          .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  cb.onEncode(key, SingleBlockInserter.this, context);
-                }
-              },
-              "Got URI");
+          .execute(() -> cb.onEncode(key, SingleBlockInserter.this, context), "Got URI");
     } else {
+      // Will be reported on restart in innerOnResume() if necessary.
       context.jobRunner.queueNormalOrDrop(
-          new PersistentJob() {
-            // Will be reported on restart in innerOnResume() if necessary.
-
-            @Override
-            public boolean run(ClientContext context) {
-              cb.onEncode(key, SingleBlockInserter.this, context);
-              return false;
-            }
+          context1 -> {
+            cb.onEncode(key, SingleBlockInserter.this, context1);
+            return false;
           });
     }
   }
@@ -577,13 +565,9 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
         context
             .getJobRunner(block.persistent)
             .queueNormalOrDrop(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    orig.onEncode(key, context);
-                    return true;
-                  }
+                context1 -> {
+                  orig.onEncode(key, context1);
+                  return true;
                 });
         if (req.localRequestOnly)
           try {

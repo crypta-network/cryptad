@@ -162,13 +162,7 @@ public class Announcer {
          * event.
          */
         node.getTicker()
-            .queueTimedJob(
-                new Runnable() {
-                  public void run() {
-                    maybeSendAnnouncement();
-                  }
-                },
-                Announcer.RETRY_MISSING_SEEDNODES_DELAY);
+            .queueTimedJob(() -> maybeSendAnnouncement(), Announcer.RETRY_MISSING_SEEDNODES_DELAY);
         return;
       } else {
         registerEvent(STATUS_CONNECTING_SEEDNODES);
@@ -439,16 +433,12 @@ public class Announcer {
     if (killAnnouncement) {
       node.getExecutor()
           .execute(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  for (OpennetPeerNode pn : node.getPeers().getOpennetPeers()) {
-                    node.getPeers().disconnectAndRemove(pn, true, true, true);
-                  }
-                  for (SeedServerPeerNode pn : node.getPeers().getSeedServerPeersVector()) {
-                    node.getPeers().disconnectAndRemove(pn, true, true, true);
-                  }
+              () -> {
+                for (OpennetPeerNode pn : node.getPeers().getOpennetPeers()) {
+                  node.getPeers().disconnectAndRemove(pn, true, true, true);
+                }
+                for (SeedServerPeerNode pn : node.getPeers().getSeedServerPeersVector()) {
+                  node.getPeers().disconnectAndRemove(pn, true, true, true);
                 }
               });
       return true;
@@ -514,12 +504,7 @@ public class Announcer {
             // to have to reseed.
             node.getTicker()
                 .queueTimedJob(
-                    new Runnable() {
-                      @Override
-                      public void run() {
-                        maybeSendAnnouncement();
-                      }
-                    },
+                    () -> maybeSendAnnouncement(),
                     "Check whether we need to announce",
                     RETRY_DELAY,
                     false,
@@ -527,12 +512,7 @@ public class Announcer {
           } else {
             node.getTicker()
                 .queueTimedJob(
-                    new Runnable() {
-                      @Override
-                      public void run() {
-                        maybeSendAnnouncement();
-                      }
-                    },
+                    () -> maybeSendAnnouncement(),
                     "Check whether we need to announce",
                     RETRY_DELAY,
                     false,
@@ -544,16 +524,7 @@ public class Announcer {
 
   public void maybeSendAnnouncementOffThread() {
     if (enoughPeers()) return;
-    node.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                maybeSendAnnouncement();
-              }
-            },
-            0);
+    node.getTicker().queueTimedJob(() -> maybeSendAnnouncement(), 0);
   }
 
   protected void maybeSendAnnouncement() {
@@ -742,15 +713,7 @@ public class Announcer {
                     sentAnnouncements = 0;
                     // Wait for COOLING_OFF_PERIOD before trying again
                     node.getTicker()
-                        .queueTimedJob(
-                            new Runnable() {
-
-                              @Override
-                              public void run() {
-                                maybeSendAnnouncement();
-                              }
-                            },
-                            COOLING_OFF_PERIOD);
+                        .queueTimedJob(() -> maybeSendAnnouncement(), COOLING_OFF_PERIOD);
                   } else if (runningAnnouncements == 0) {
                     sentAnnouncements = 0;
                     announceNow = true;
