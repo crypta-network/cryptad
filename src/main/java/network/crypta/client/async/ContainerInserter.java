@@ -349,12 +349,9 @@ public class ContainerInserter implements ClientPutState, Serializable {
       if (o instanceof HashMap) {
         @SuppressWarnings("unchecked")
         HashMap<String, Object> hm = (HashMap<String, Object>) o;
-        HashMap<String, Object> subMap = new HashMap<>();
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
-        if (logDEBUG)
-          Logger.debug(
-              this, "Sub map for " + name + " : " + subMap.size() + " elements from " + hm.size());
+        if (logDEBUG) Logger.debug(this, "Sub map for " + name + " : " + hm.size() + " elements");
       } else if (o instanceof Metadata metadata) {
         // already Metadata, take it as is
         // System.out.println("Decompose: "+name+" (Metadata)");
@@ -408,17 +405,15 @@ public class ContainerInserter implements ClientPutState, Serializable {
   public static void resumeMetadata(Map<String, Object> map, ClientContext context)
       throws ResumeFailedException {
     for (Object o : map.values()) {
-      if (o instanceof HashMap) {
-        resumeMetadata((Map<String, Object>) o, context);
-      } else if (o instanceof ManifestElement e) {
-        e.onResume(context);
-      } else if (o instanceof Metadata) {
-        // Ignore
-      } else if (o instanceof PutHandler handler) {
-        handler.onResume(context);
-      } else if (o instanceof ManifestElement element) {
-        element.onResume(context);
-      } else throw new IllegalArgumentException("Unknown manifest element: " + o);
+      switch (o) {
+        case HashMap hashMap -> resumeMetadata((Map<String, Object>) o, context);
+        case ManifestElement e -> e.onResume(context);
+        case Metadata metadata -> {
+          // Ignore
+        }
+        case PutHandler handler -> handler.onResume(context);
+        case null, default -> throw new IllegalArgumentException("Unknown manifest element: " + o);
+      }
     }
   }
 
