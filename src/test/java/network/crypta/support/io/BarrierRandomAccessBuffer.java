@@ -2,127 +2,122 @@ package network.crypta.support.io;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
-
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 
 public class BarrierRandomAccessBuffer implements LockableRandomAccessBuffer {
 
-    public BarrierRandomAccessBuffer(LockableRandomAccessBuffer underlying) {
-        this.underlying = underlying;
-        proceed = true;
-    }
+  public BarrierRandomAccessBuffer(LockableRandomAccessBuffer underlying) {
+    this.underlying = underlying;
+    proceed = true;
+  }
 
-    @Override
-    public long size() {
-        return underlying.size();
-    }
+  @Override
+  public long size() {
+    return underlying.size();
+  }
 
-    /**
-     * Wait until some threads are waiting for the proceed thread.
-     */
-    public void waitForWaiting() {
-        synchronized (this) {
-            if (proceed) {
-                throw new IllegalArgumentException();
-            }
-            while (waiting == 0) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    // Ignore.
-                }
-            }
+  /** Wait until some threads are waiting for the proceed thread. */
+  public void waitForWaiting() {
+    synchronized (this) {
+      if (proceed) {
+        throw new IllegalArgumentException();
+      }
+      while (waiting == 0) {
+        try {
+          wait();
+        } catch (InterruptedException e) {
+          // Ignore.
         }
+      }
     }
+  }
 
-    @Override
-    public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
-        waitForClear();
-        underlying.pread(fileOffset, buf, bufOffset, length);
+  @Override
+  public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
+    waitForClear();
+    underlying.pread(fileOffset, buf, bufOffset, length);
+  }
+
+  @Override
+  public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
+    waitForClear();
+    underlying.pwrite(fileOffset, buf, bufOffset, length);
+  }
+
+  @Override
+  public void close() {
+    underlying.close();
+  }
+
+  @Override
+  public void free() {
+    underlying.free();
+  }
+
+  @Override
+  public RAFLock lockOpen() throws IOException {
+    return underlying.lockOpen();
+  }
+
+  @Override
+  public void onResume(ClientContext context) throws ResumeFailedException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void storeTo(DataOutputStream dos) throws IOException {
+    throw new UnsupportedOperationException();
+  }
+
+  public synchronized void proceed() {
+    proceed = true;
+    notifyAll();
+  }
+
+  public synchronized void pause() {
+    proceed = false;
+  }
+
+  @Override
+  public int hashCode() {
+    return underlying.hashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
     }
-
-    @Override
-    public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
-        waitForClear();
-        underlying.pwrite(fileOffset, buf, bufOffset, length);
+    if (obj == null) {
+      return false;
     }
-
-    @Override
-    public void close() {
-        underlying.close();
+    if (getClass() != obj.getClass()) {
+      return false;
     }
+    BarrierRandomAccessBuffer other = (BarrierRandomAccessBuffer) obj;
+    return underlying.equals(other.underlying);
+  }
 
-    @Override
-    public void free() {
-        underlying.free();
-    }
-
-    @Override
-    public RAFLock lockOpen() throws IOException {
-        return underlying.lockOpen();
-    }
-
-    @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void storeTo(DataOutputStream dos) throws IOException {
-        throw new UnsupportedOperationException();
-    }
-
-    public synchronized void proceed() {
-        proceed = true;
+  /** Wait until the proceed flag is set. */
+  private void waitForClear() {
+    synchronized (this) {
+      waiting++;
+      if (waiting == 1) {
         notifyAll();
-    }
-
-    public synchronized void pause() {
-        proceed = false;
-    }
-
-    @Override
-    public int hashCode() {
-        return underlying.hashCode();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
+      }
+      while (!proceed) {
+        try {
+          wait();
+        } catch (InterruptedException e) {
+          // Ignore.
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
-        BarrierRandomAccessBuffer other = (BarrierRandomAccessBuffer) obj;
-        return underlying.equals(other.underlying);
+      }
+      waiting--;
     }
+  }
 
-    /**
-     * Wait until the proceed flag is set.
-     */
-    private void waitForClear() {
-        synchronized (this) {
-            waiting++;
-            if (waiting == 1) {
-                notifyAll();
-            }
-            while (!proceed) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    // Ignore.
-                }
-            }
-            waiting--;
-        }
-    }
-    private final LockableRandomAccessBuffer underlying;
-    private boolean proceed;
-    private int waiting;
-
+  private final LockableRandomAccessBuffer underlying;
+  private boolean proceed;
+  private int waiting;
 }

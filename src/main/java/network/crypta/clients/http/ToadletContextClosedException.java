@@ -1,5 +1,7 @@
 package network.crypta.clients.http;
 
+import java.io.Serial;
+
 public class ToadletContextClosedException extends Exception {
-	private static final long serialVersionUID = -1;
+  @Serial private static final long serialVersionUID = -1;
 }

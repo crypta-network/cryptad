@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
-/**
- * Thrown to indicate reuse of an Identifier.
- */
+import java.io.Serial;
+
+/** Thrown to indicate reuse of an Identifier. */
 public class IdentifierCollisionException extends Exception {
-	private static final long serialVersionUID = -1;
+  @Serial private static final long serialVersionUID = -1;
 }

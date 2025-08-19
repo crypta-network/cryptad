@@ -1,28 +1,86 @@
 /* Freenet 0.7 node. */
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.*;
-import static network.crypta.node.stats.DataStoreKeyType.*;
-import static network.crypta.node.stats.DataStoreType.*;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static network.crypta.node.stats.DataStoreKeyType.CHK;
+import static network.crypta.node.stats.DataStoreKeyType.PUB_KEY;
+import static network.crypta.node.stats.DataStoreKeyType.SSK;
+import static network.crypta.node.stats.DataStoreType.CACHE;
+import static network.crypta.node.stats.DataStoreType.CLIENT;
+import static network.crypta.node.stats.DataStoreType.SLASHDOT;
+import static network.crypta.node.stats.DataStoreType.STORE;
 import static network.crypta.support.io.DatastoreUtil.oneGiB;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.MissingResourceException;
+import java.util.Random;
+import java.util.Set;
 import network.crypta.client.FetchContext;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.clients.http.SecurityLevelsToadlet;
 import network.crypta.clients.http.SimpleToadletServer;
-import network.crypta.config.*;
-import network.crypta.crypt.*;
+import network.crypta.config.Dimension;
+import network.crypta.config.EnumerableOptionCallback;
+import network.crypta.config.FreenetFilePersistentConfig;
+import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.PersistentConfig;
+import network.crypta.config.SubConfig;
+import network.crypta.crypt.DSAPublicKey;
+import network.crypta.crypt.ECDH;
+import network.crypta.crypt.MasterSecret;
+import network.crypta.crypt.PersistentRandomSource;
+import network.crypta.crypt.RandomSource;
+import network.crypta.crypt.Util;
+import network.crypta.crypt.Yarrow;
 import network.crypta.crypt.ciphers.Rijndael;
-import network.crypta.io.comm.*;
+import network.crypta.io.comm.DMT;
+import network.crypta.io.comm.DisconnectedException;
+import network.crypta.io.comm.FreenetInetAddress;
+import network.crypta.io.comm.IOStatisticCollector;
+import network.crypta.io.comm.Message;
+import network.crypta.io.comm.MessageCore;
+import network.crypta.io.comm.MessageFilter;
+import network.crypta.io.comm.Peer;
+import network.crypta.io.comm.PeerParseException;
+import network.crypta.io.comm.ReferenceSignatureVerificationException;
+import network.crypta.io.comm.TrafficClass;
+import network.crypta.io.comm.UdpSocketHandler;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
-import network.crypta.keys.*;
+import network.crypta.keys.CHKBlock;
+import network.crypta.keys.CHKVerifyException;
+import network.crypta.keys.ClientCHK;
+import network.crypta.keys.ClientCHKBlock;
+import network.crypta.keys.ClientKey;
+import network.crypta.keys.ClientKeyBlock;
+import network.crypta.keys.ClientSSK;
+import network.crypta.keys.ClientSSKBlock;
+import network.crypta.keys.Key;
+import network.crypta.keys.KeyBlock;
+import network.crypta.keys.KeyVerifyException;
+import network.crypta.keys.NodeCHK;
+import network.crypta.keys.NodeSSK;
+import network.crypta.keys.SSKBlock;
+import network.crypta.keys.SSKVerifyException;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
@@ -41,18 +99,53 @@ import network.crypta.node.stats.DataStoreStats;
 import network.crypta.node.stats.NotAvailNodeStoreStats;
 import network.crypta.node.stats.StoreCallbackStats;
 import network.crypta.node.updater.NodeUpdateManager;
-import network.crypta.node.useralerts.*;
+import network.crypta.node.useralerts.JVMVersionAlert;
+import network.crypta.node.useralerts.MeaningfulNodeNameUserAlert;
+import network.crypta.node.useralerts.NotEnoughNiceLevelsUserAlert;
+import network.crypta.node.useralerts.PeersOffersUserAlert;
+import network.crypta.node.useralerts.SimpleUserAlert;
+import network.crypta.node.useralerts.TimeSkewDetectedUserAlert;
+import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.ForwardPort;
 import network.crypta.pluginmanager.PluginManager;
-import network.crypta.store.*;
+import network.crypta.store.BlockMetadata;
+import network.crypta.store.CHKStore;
+import network.crypta.store.FreenetStore;
+import network.crypta.store.KeyCollisionException;
+import network.crypta.store.NullFreenetStore;
+import network.crypta.store.PubkeyStore;
+import network.crypta.store.RAMFreenetStore;
+import network.crypta.store.SSKStore;
+import network.crypta.store.SlashdotStore;
+import network.crypta.store.StorableBlock;
+import network.crypta.store.StoreCallback;
 import network.crypta.store.caching.CachingFreenetStore;
 import network.crypta.store.caching.CachingFreenetStoreTracker;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
-import network.crypta.support.*;
+import network.crypta.support.Executor;
+import network.crypta.support.Fields;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.JVMVersion;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.api.*;
-import network.crypta.support.io.*;
+import network.crypta.support.PooledExecutor;
+import network.crypta.support.PrioritizedTicker;
+import network.crypta.support.ShortBuffer;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.Ticker;
+import network.crypta.support.TokenBucket;
+import network.crypta.support.api.BooleanCallback;
+import network.crypta.support.api.IntCallback;
+import network.crypta.support.api.LongCallback;
+import network.crypta.support.api.ShortCallback;
+import network.crypta.support.api.StringCallback;
+import network.crypta.support.io.ArrayBucketFactory;
+import network.crypta.support.io.DatastoreUtil;
+import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -929,8 +1022,6 @@ public class Node implements TimeSkewDetectorCallback {
   /* It’s not the field that is deprecated but accessing it directly is. */
   public final long startupTime;
 
-  private final SimpleToadletServer toadlets;
-
   /**
    * @deprecated Use {@link #getClientCore()} instead of accessing this directly.
    */
@@ -1077,14 +1168,16 @@ public class Node implements TimeSkewDetectorCallback {
         } catch (HostnameSyntaxException e) {
           Logger.error(
               this,
-              "Invalid hostname or IP Address syntax error while parsing our darknet node reference: "
+              "Invalid hostname or IP Address syntax error while parsing our darknet node"
+                  + " reference: "
                   + udpAddr);
           System.err.println(
-              "Invalid hostname or IP Address syntax error while parsing our darknet node reference: "
+              "Invalid hostname or IP Address syntax error while parsing our darknet node"
+                  + " reference: "
                   + udpAddr);
           continue;
         } catch (PeerParseException e) {
-          throw (IOException) new IOException(e);
+          throw new IOException(e);
         }
         if (p.getPort() == getDarknetPortNumber()) {
           // DNSRequester doesn't deal with our own node
@@ -1316,6 +1409,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     // FProxy config needs to be here too
     SubConfig fproxyConfig = config.createSubConfig("fproxy");
+    SimpleToadletServer toadlets;
     try {
       toadlets = new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor, this);
       fproxyConfig.finishedInitialization();
@@ -1344,15 +1438,8 @@ public class Node implements TimeSkewDetectorCallback {
                 extendTimeouts();
                 File[] subDirs =
                     f.listFiles(
-                        new FileFilter() {
-
-                          @Override
-                          public boolean accept(File pathname) {
-                            return pathname.exists()
-                                && pathname.canRead()
-                                && pathname.isDirectory();
-                          }
-                        });
+                        pathname ->
+                            pathname.exists() && pathname.canRead() && pathname.isDirectory());
 
                 // @see http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=5086412
                 if (subDirs != null) for (File currentDir : subDirs) recurse(currentDir);
@@ -1373,7 +1460,8 @@ public class Node implements TimeSkewDetectorCallback {
                     System.out.println("/dev/hwrng exists - have you installed rng-tools?");
                   else
                     System.out.println(
-                        "You should consider installing a better random number generator e.g. haveged.");
+                        "You should consider installing a better random number generator e.g."
+                            + " haveged.");
                 }
                 extendTimeouts();
                 for (File root : File.listRoots()) {
@@ -1401,7 +1489,7 @@ public class Node implements TimeSkewDetectorCallback {
               }
             },
             "Entropy Gathering Thread",
-            NativeThread.MIN_PRIORITY,
+            NativeThread.PriorityLevel.MIN_PRIORITY.value,
             true);
 
     // Setup RNG if needed : DO NOT USE IT BEFORE THAT POINT!
@@ -1470,7 +1558,8 @@ public class Node implements TimeSkewDetectorCallback {
             // FIXME l10n
             // FIXME wipe the old one and move
             throw new InvalidConfigValueException(
-                "Node.masterKeyFile cannot be changed on the fly, you must shutdown, wipe the old file and reconfigure");
+                "Node.masterKeyFile cannot be changed on the fly, you must shutdown, wipe the old"
+                    + " file and reconfigure");
           }
         });
     String value = nodeConfig.getString("masterKeyFile");
@@ -1534,7 +1623,8 @@ public class Node implements TimeSkewDetectorCallback {
         databaseKey = keys.createDatabaseKey();
         if (securityLevels.getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.HIGH) {
           System.err.println(
-              "Physical threat level is set to HIGH but no password, resetting to NORMAL - probably timing glitch");
+              "Physical threat level is set to HIGH but no password, resetting to NORMAL - probably"
+                  + " timing glitch");
           securityLevels.resetPhysicalThreatLevel(PHYSICAL_THREAT_LEVEL.NORMAL);
         }
         break;
@@ -1563,7 +1653,7 @@ public class Node implements TimeSkewDetectorCallback {
     File bootIDFile = runDir.file("bootID");
     int BOOT_FILE_LENGTH = 64 / 4; // A long in padded hex bytes
     long oldBootID = -1;
-    
+
     try (RandomAccessFile raf = new RandomAccessFile(bootIDFile, "rw")) {
       if (raf.length() < BOOT_FILE_LENGTH) {
         oldBootID = -1;
@@ -1655,7 +1745,7 @@ public class Node implements TimeSkewDetectorCallback {
 
       @Override
       public String[] getPossibleValues() {
-        ArrayList<String> array = new ArrayList<String>();
+        ArrayList<String> array = new ArrayList<>();
         for (TrafficClass tc : TrafficClass.values()) array.add(tc.name());
         return array.toArray(new String[0]);
       }
@@ -1914,7 +2004,7 @@ public class Node implements TimeSkewDetectorCallback {
     dnsr = new DNSRequester(this);
     ps = new PacketSender(this);
     ticker = new PrioritizedTicker(executor, getDarknetPortNumber());
-    if (executor instanceof PooledExecutor) ((PooledExecutor) executor).setTicker(ticker);
+    if (executor instanceof PooledExecutor pooledExecutor) pooledExecutor.setTicker(ticker);
 
     Logger.normal(Node.class, "Creating node...");
 
@@ -2164,9 +2254,11 @@ public class Node implements TimeSkewDetectorCallback {
     throttleLocalData = nodeConfig.getBoolean("throttleLocalTraffic");
 
     String s =
-        "Testnet mode DISABLED. You may have some level of anonymity. :)\n"
-            + "Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.\n"
-            + "In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).";
+"""
+Testnet mode DISABLED. You may have some level of anonymity. :)
+Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.
+In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).\
+""";
     Logger.normal(this, s);
     System.err.println(s);
 
@@ -2371,7 +2463,7 @@ public class Node implements TimeSkewDetectorCallback {
     }
 
     securityLevels.addNetworkThreatLevelListener(
-        new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+        new SecurityLevelListener<>() {
 
           @Override
           public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
@@ -2379,7 +2471,9 @@ public class Node implements TimeSkewDetectorCallback {
               OpennetManager om;
               synchronized (Node.this) {
                 om = opennet;
-                if (om != null) opennet = null;
+                if (om != null) {
+                  opennet = null;
+                }
               }
               if (om != null) {
                 om.stop(true);
@@ -2747,8 +2841,8 @@ public class Node implements TimeSkewDetectorCallback {
           private void setPreallocate(StoreCallback<?> datastore, boolean val) {
             // Avoid race conditions by checking first.
             FreenetStore<?> store = datastore.getStore();
-            if (store instanceof SaltedHashFreenetStore)
-              ((SaltedHashFreenetStore<?>) store).setPreallocate(val);
+            if (store instanceof SaltedHashFreenetStore<?> freenetStore)
+              freenetStore.setPreallocate(val);
           }
         });
     storePreallocate = nodeConfig.getBoolean("storePreallocate");
@@ -2756,23 +2850,19 @@ public class Node implements TimeSkewDetectorCallback {
     if (File.separatorChar == '/'
         && !System.getProperty("os.name").toLowerCase().contains("mac os")) {
       securityLevels.addPhysicalThreatLevelListener(
-          new SecurityLevelListener<SecurityLevels.PHYSICAL_THREAT_LEVEL>() {
-
-            @Override
-            public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
-              try {
-                nodeConfig.set("storePreallocate", newLevel != PHYSICAL_THREAT_LEVEL.LOW);
-              } catch (NodeNeedRestartException e) {
-                // Ignore
-              } catch (InvalidConfigValueException e) {
-                // Ignore
-              }
+          (oldLevel, newLevel) -> {
+            try {
+              nodeConfig.set("storePreallocate", newLevel != PHYSICAL_THREAT_LEVEL.LOW);
+            } catch (NodeNeedRestartException e) {
+              // Ignore
+            } catch (InvalidConfigValueException e) {
+              // Ignore
             }
           });
     }
 
     securityLevels.addPhysicalThreatLevelListener(
-        new SecurityLevelListener<SecurityLevels.PHYSICAL_THREAT_LEVEL>() {
+        new SecurityLevelListener<>() {
 
           @Override
           public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
@@ -3173,7 +3263,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     chkSlashdotcache = new CHKStore();
     chkSlashdotcacheStore =
-        new SlashdotStore<CHKBlock>(
+        new SlashdotStore<>(
             chkSlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3182,7 +3272,7 @@ public class Node implements TimeSkewDetectorCallback {
             this.clientCore.getTempBucketFactory());
     pubKeySlashdotcache = new PubkeyStore();
     pubKeySlashdotcacheStore =
-        new SlashdotStore<DSAPublicKey>(
+        new SlashdotStore<>(
             pubKeySlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3192,7 +3282,7 @@ public class Node implements TimeSkewDetectorCallback {
     getPubKey.setLocalSlashdotcache(pubKeySlashdotcache);
     sskSlashdotcache = new SSKStore(getPubKey);
     sskSlashdotcacheStore =
-        new SlashdotStore<SSKBlock>(
+        new SlashdotStore<>(
             sskSlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3203,12 +3293,11 @@ public class Node implements TimeSkewDetectorCallback {
     // MAXIMUM seclevel = no slashdot cache.
 
     securityLevels.addNetworkThreatLevelListener(
-        new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
-
-          @Override
-          public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-            if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) useSlashdotCache = false;
-            else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) useSlashdotCache = true;
+        (oldLevel, newLevel) -> {
+          if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+            useSlashdotCache = false;
+          } else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+            useSlashdotCache = true;
           }
         });
 
@@ -3371,7 +3460,7 @@ public class Node implements TimeSkewDetectorCallback {
     pluginManager = new PluginManager(this, lastVersion);
 
     shutdownHook.addEarlyJob(
-        new NativeThread("Shutdown plugins", NativeThread.HIGH_PRIORITY, true) {
+        new NativeThread("Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
           @Override
           public void realRun() {
             pluginManager.stop(SECONDS.toMillis(30)); // FIXME make it configurable??
@@ -3400,7 +3489,72 @@ public class Node implements TimeSkewDetectorCallback {
 
     this.arkFetcherContext = ctx;
 
+    // Keep track of the fileNumber so we can potentially delete the extra peer data file
+    // later, the file is authoritative
+    // Shouldn't happen
+    NodeToNodeMessageListener fproxyN2NMListener =
+        new NodeToNodeMessageListener() {
+
+          @Override
+          public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
+            if (!fromDarknet) {
+              Logger.error(this, "Got N2NTM from non-darknet node ?!?!?!: from " + src);
+              return;
+            }
+            DarknetPeerNode darkSource = (DarknetPeerNode) src;
+            Logger.normal(this, "Received N2NTM from '" + darkSource.getPeer() + "'");
+            SimpleFieldSet fs = null;
+            try {
+              fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
+            } catch (IOException e) {
+              Logger.error(this, "IOException while parsing node to node message data", e);
+              return;
+            }
+            fs.putOverwrite("n2nType", Integer.toString(type));
+            fs.putOverwrite("receivedTime", Long.toString(System.currentTimeMillis()));
+            fs.putOverwrite("receivedAs", "nodeToNodeMessage");
+            int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
+            if (fileNumber == -1) {
+              Logger.error(
+                  this,
+                  "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
+            }
+            // Keep track of the fileNumber so we can potentially delete the extra peer data file
+            // later, the file is authoritative
+            try {
+              handleNodeToNodeTextMessageSimpleFieldSet(fs, darkSource, fileNumber);
+            } catch (FSParseException e) {
+              // Shouldn't happen
+              throw new Error(e);
+            }
+          }
+        };
     registerNodeToNodeMessageListener(N2N_MESSAGE_TYPE_FPROXY, fproxyN2NMListener);
+    NodeToNodeMessageListener diffNoderefListener =
+        new NodeToNodeMessageListener() {
+
+          @Override
+          public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
+            Logger.normal(
+                this,
+                "Received differential node reference node to node message from " + src.getPeer());
+            SimpleFieldSet fs = null;
+            try {
+              fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
+            } catch (IOException e) {
+              Logger.error(this, "IOException while parsing node to node message data", e);
+              return;
+            }
+            if (fs.get("n2nType") != null) {
+              fs.removeValue("n2nType");
+            }
+            try {
+              src.processDiffNoderef(fs);
+            } catch (FSParseException e) {
+              Logger.error(this, "FSParseException while parsing node to node message data", e);
+            }
+          }
+        };
     registerNodeToNodeMessageListener(Node.N2N_MESSAGE_TYPE_DIFFNODEREF, diffNoderefListener);
 
     // FIXME this is a hack
@@ -3648,23 +3802,20 @@ public class Node implements TimeSkewDetectorCallback {
 
   private void initRAMClientCacheFS() {
     chkClientcache = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(
-        chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
     pubKeyClientcache = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(pubKeyClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
     sskClientcache = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(
-        sskClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(sskClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
   }
 
   private void initNoClientCacheFS() {
     chkClientcache = new CHKStore();
-    new NullFreenetStore<CHKBlock>(chkClientcache);
+    new NullFreenetStore<>(chkClientcache);
     pubKeyClientcache = new PubkeyStore();
-    new NullFreenetStore<DSAPublicKey>(pubKeyClientcache);
+    new NullFreenetStore<>(pubKeyClientcache);
     sskClientcache = new SSKStore(getPubKey);
-    new NullFreenetStore<SSKBlock>(sskClientcache);
+    new NullFreenetStore<>(sskClientcache);
   }
 
   private String getStoreSuffix() {
@@ -3683,20 +3834,18 @@ public class Node implements TimeSkewDetectorCallback {
 
   private void initRAMFS() {
     chkDatastore = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     chkDatacache = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(chkDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(chkDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
     pubKeyDatastore = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(pubKeyDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     pubKeyDatacache = new PubkeyStore();
     getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(pubKeyDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
     sskDatastore = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(sskDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(sskDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     sskDatacache = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(sskDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(sskDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
   }
 
   private long cachingFreenetStoreMaxSize;
@@ -3800,20 +3949,16 @@ public class Node implements TimeSkewDetectorCallback {
 
         this.getTicker()
             .queueTimedJob(
-                new Runnable() {
+                () -> {
+                  Node.this.chkDatastore = chkDatastore;
+                  Node.this.chkDatacache = chkDatacache;
+                  Node.this.pubKeyDatastore = pubKeyDatastore;
+                  Node.this.pubKeyDatacache = pubKeyDatacache;
+                  getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
+                  Node.this.sskDatastore = sskDatastore;
+                  Node.this.sskDatacache = sskDatacache;
 
-                  @Override
-                  public void run() {
-                    Node.this.chkDatastore = chkDatastore;
-                    Node.this.chkDatacache = chkDatacache;
-                    Node.this.pubKeyDatastore = pubKeyDatastore;
-                    Node.this.pubKeyDatacache = pubKeyDatacache;
-                    getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
-                    Node.this.sskDatastore = sskDatastore;
-                    Node.this.sskDatacache = sskDatacache;
-
-                    finishInitSaltHashFS(suffix, clientCore);
-                  }
+                  finishInitSaltHashFS(suffix, clientCore);
                 },
                 "Start store",
                 0,
@@ -3908,10 +4053,8 @@ public class Node implements TimeSkewDetectorCallback {
       boolean dontResizeOnStart,
       byte[] clientCacheMasterKey)
       throws IOException {
-    FreenetStore<T> store =
-        makeStore(
-            type, "clientcache", maxClientCacheKeys, cb, dontResizeOnStart, clientCacheMasterKey);
-    return store;
+    return makeStore(
+        type, "clientcache", maxClientCacheKeys, cb, dontResizeOnStart, clientCacheMasterKey);
   }
 
   private <T extends StorableBlock> FreenetStore<T> makeStore(
@@ -3952,7 +4095,7 @@ public class Node implements TimeSkewDetectorCallback {
             clientCacheMasterKey);
     cb.setStore(fs);
     if (cachingFreenetStoreMaxSize > 0)
-      return new CachingFreenetStore<T>(cb, fs, cachingFreenetStoreTracker);
+      return new CachingFreenetStore<>(cb, fs, cachingFreenetStoreTracker);
     else return fs;
   }
 
@@ -3987,9 +4130,15 @@ public class Node implements TimeSkewDetectorCallback {
     } else {
       Logger.error(
           this,
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
+          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
+              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
+              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
+              + " need to be updated.");
       System.out.println(
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
+          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
+              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
+              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
+              + " need to be updated.");
     }
     Logger.normal(this, "Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
     System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
@@ -4226,8 +4375,8 @@ public class Node implements TimeSkewDetectorCallback {
 
     // Transfer coalescing - match key only as HTL irrelevant
     RequestSender sender =
-        key instanceof NodeCHK
-            ? tracker.getTransferringRequestSenderByKey((NodeCHK) key, realTimeFlag)
+        key instanceof NodeCHK nchk
+            ? tracker.getTransferringRequestSenderByKey(nchk, realTimeFlag)
             : null;
     if (sender != null) {
       if (logMINOR) Logger.minor(this, "Data already being transferred: " + sender);
@@ -4306,24 +4455,12 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteDatastore,
       boolean forULPR,
       BlockMetadata meta) {
-    if (key instanceof NodeSSK)
+    if (key instanceof NodeSSK sK)
       return fetch(
-          (NodeSSK) key,
-          false,
-          canReadClientCache,
-          canWriteClientCache,
-          canWriteDatastore,
-          forULPR,
-          meta);
-    else if (key instanceof NodeCHK)
+          sK, false, canReadClientCache, canWriteClientCache, canWriteDatastore, forULPR, meta);
+    else if (key instanceof NodeCHK hK)
       return fetch(
-          (NodeCHK) key,
-          false,
-          canReadClientCache,
-          canWriteClientCache,
-          canWriteDatastore,
-          forULPR,
-          meta);
+          hK, false, canReadClientCache, canWriteClientCache, canWriteDatastore, forULPR, meta);
     else throw new IllegalArgumentException();
   }
 
@@ -4541,8 +4678,7 @@ public class Node implements TimeSkewDetectorCallback {
    * @return map that has an entry for each data store instance type and corresponding stats
    */
   public Map<DataStoreInstanceType, DataStoreStats> getDataStoreStats() {
-    Map<DataStoreInstanceType, DataStoreStats> map =
-        new LinkedHashMap<DataStoreInstanceType, DataStoreStats>();
+    Map<DataStoreInstanceType, DataStoreStats> map = new LinkedHashMap<>();
 
     map.put(
         new DataStoreInstanceType(CHK, STORE),
@@ -4646,10 +4782,10 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteDatastore,
       boolean forULPR)
       throws KeyCollisionException {
-    if (block instanceof CHKBlock)
-      store((CHKBlock) block, deep, canWriteClientCache, canWriteDatastore, forULPR);
-    else if (block instanceof SSKBlock)
-      store((SSKBlock) block, deep, false, canWriteClientCache, canWriteDatastore, forULPR);
+    if (block instanceof CHKBlock kBlock1)
+      store(kBlock1, deep, canWriteClientCache, canWriteDatastore, forULPR);
+    else if (block instanceof SSKBlock kBlock)
+      store(kBlock, deep, false, canWriteClientCache, canWriteDatastore, forULPR);
     else throw new IllegalArgumentException("Unknown keytype ");
   }
 
@@ -4935,10 +5071,10 @@ public class Node implements TimeSkewDetectorCallback {
       boolean canWriteClientCache,
       boolean canWriteDatastore)
       throws KeyVerifyException {
-    if (key instanceof ClientCHK)
-      return fetch((ClientCHK) key, canReadClientCache, canWriteClientCache, canWriteDatastore);
-    else if (key instanceof ClientSSK)
-      return fetch((ClientSSK) key, canReadClientCache, canWriteClientCache, canWriteDatastore);
+    if (key instanceof ClientCHK hK)
+      return fetch(hK, canReadClientCache, canWriteClientCache, canWriteDatastore);
+    else if (key instanceof ClientSSK sK)
+      return fetch(sK, canReadClientCache, canWriteClientCache, canWriteDatastore);
     else throw new IllegalStateException("Don't know what to do with " + key);
   }
 
@@ -5050,8 +5186,8 @@ public class Node implements TimeSkewDetectorCallback {
 
     config.store();
 
-    if (random instanceof PersistentRandomSource) {
-      ((PersistentRandomSource) random).write_seed(true);
+    if (random instanceof PersistentRandomSource source) {
+      source.write_seed(true);
     }
   }
 
@@ -5086,8 +5222,7 @@ public class Node implements TimeSkewDetectorCallback {
     return peers.isOutdated();
   }
 
-  private final Map<Integer, NodeToNodeMessageListener> n2nmListeners =
-      new HashMap<Integer, NodeToNodeMessageListener>();
+  private final Map<Integer, NodeToNodeMessageListener> n2nmListeners = new HashMap<>();
 
   public synchronized void registerNodeToNodeMessageListener(
       int type, NodeToNodeMessageListener listener) {
@@ -5119,70 +5254,6 @@ public class Node implements TimeSkewDetectorCallback {
 
     listener.handleMessage(messageData.getData(), fromDarknet, src, type);
   }
-
-  private final NodeToNodeMessageListener diffNoderefListener =
-      new NodeToNodeMessageListener() {
-
-        @Override
-        public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
-          Logger.normal(
-              this,
-              "Received differential node reference node to node message from " + src.getPeer());
-          SimpleFieldSet fs = null;
-          try {
-            fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
-          } catch (IOException e) {
-            Logger.error(this, "IOException while parsing node to node message data", e);
-            return;
-          }
-          if (fs.get("n2nType") != null) {
-            fs.removeValue("n2nType");
-          }
-          try {
-            src.processDiffNoderef(fs);
-          } catch (FSParseException e) {
-            Logger.error(this, "FSParseException while parsing node to node message data", e);
-          }
-        }
-      };
-
-  private final NodeToNodeMessageListener fproxyN2NMListener =
-      new NodeToNodeMessageListener() {
-
-        @Override
-        public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
-          if (!fromDarknet) {
-            Logger.error(this, "Got N2NTM from non-darknet node ?!?!?!: from " + src);
-            return;
-          }
-          DarknetPeerNode darkSource = (DarknetPeerNode) src;
-          Logger.normal(this, "Received N2NTM from '" + darkSource.getPeer() + "'");
-          SimpleFieldSet fs = null;
-          try {
-            fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
-          } catch (IOException e) {
-            Logger.error(this, "IOException while parsing node to node message data", e);
-            return;
-          }
-          fs.putOverwrite("n2nType", Integer.toString(type));
-          fs.putOverwrite("receivedTime", Long.toString(System.currentTimeMillis()));
-          fs.putOverwrite("receivedAs", "nodeToNodeMessage");
-          int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
-          if (fileNumber == -1) {
-            Logger.error(
-                this,
-                "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
-          }
-          // Keep track of the fileNumber so we can potentially delete the extra peer data file
-          // later, the file is authoritative
-          try {
-            handleNodeToNodeTextMessageSimpleFieldSet(fs, darkSource, fileNumber);
-          } catch (FSParseException e) {
-            // Shouldn't happen
-            throw new Error(e);
-          }
-        }
-      };
 
   /**
    * Handle a node to node text message SimpleFieldSet
@@ -5593,7 +5664,7 @@ public class Node implements TimeSkewDetectorCallback {
    * @return A Set of ForwardPort's to be fed to port forward plugins.
    */
   public Set<ForwardPort> getPublicInterfacePorts() {
-    HashSet<ForwardPort> set = new HashSet<ForwardPort>();
+    HashSet<ForwardPort> set = new HashSet<>();
     // FIXME IPv6 support
     set.add(
         new ForwardPort(
@@ -5683,8 +5754,8 @@ public class Node implements TimeSkewDetectorCallback {
 
   public boolean hasKey(Key key, boolean canReadClientCache, boolean forULPR) {
     // FIXME optimise!
-    if (key instanceof NodeCHK)
-      return fetch((NodeCHK) key, true, canReadClientCache, false, false, forULPR, null) != null;
+    if (key instanceof NodeCHK hK)
+      return fetch(hK, true, canReadClientCache, false, false, forULPR, null) != null;
     else return fetch((NodeSSK) key, true, canReadClientCache, false, false, forULPR, null) != null;
   }
 
@@ -5971,16 +6042,7 @@ public class Node implements TimeSkewDetectorCallback {
       showFriendsVisibilityAlert = true;
     }
     // Wait until startup completed.
-    this.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-
-              @Override
-              public void run() {
-                config.store();
-              }
-            },
-            0);
+    this.getTicker().queueTimedJob(() -> config.store(), 0);
     registerFriendsVisibilityAlert();
   }
 
@@ -6005,16 +6067,7 @@ public class Node implements TimeSkewDetectorCallback {
   private void registerFriendsVisibilityAlert() {
     if (clientCore == null || clientCore.getAlerts() == null) {
       // Wait until startup completed.
-      this.getTicker()
-          .queueTimedJob(
-              new Runnable() {
-
-                @Override
-                public void run() {
-                  registerFriendsVisibilityAlert();
-                }
-              },
-              0);
+      this.getTicker().queueTimedJob(() -> registerFriendsVisibilityAlert(), 0);
       return;
     }
     clientCore.getAlerts().register(visibilityAlert);

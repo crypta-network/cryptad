@@ -1,21 +1,24 @@
 package network.crypta.io.comm;
 
+import java.io.Serial;
+
 /**
  * Thown when we can't parse a string to a Peer.
+ *
  * @author amphibian
  */
 public class PeerParseException extends Exception {
-	private static final long serialVersionUID = -1;
-    public PeerParseException(Exception e) {
-        super(e);
-    }
+  @Serial private static final long serialVersionUID = -1;
 
-    public PeerParseException() {
-        super();
-    }
+  public PeerParseException(Exception e) {
+    super(e);
+  }
 
-	public PeerParseException(String string) {
-		super(string);
-	}
+  public PeerParseException() {
+    super();
+  }
 
+  public PeerParseException(String string) {
+    super(string);
+  }
 }

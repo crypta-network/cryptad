@@ -6,19 +6,15 @@ package network.crypta.pluginmanager;
  * automatically register the plugin for whichever service it is using.
  */
 public interface FredPlugin {
-    // HTTP-stuff has been moved to FredPluginHTTP
+  // HTTP-stuff has been moved to FredPluginHTTP
 
-    /**
-     * Shut down the plugin.
-     */
-    void terminate();
+  /** Shut down the plugin. */
+  void terminate();
 
-    /**
-     * Run the plugin. Called after node startup. Should be able to access
-     * queue etc at this point. Plugins which do not implement
-     * FredPluginThreadless will be terminated after they return from this
-     * function. Threadless plugins will not terminate until they are
-     * explicitly unloaded.
-     */
-    void runPlugin(PluginRespirator pr);
+  /**
+   * Run the plugin. Called after node startup. Should be able to access queue etc at this point.
+   * Plugins which do not implement FredPluginThreadless will be terminated after they return from
+   * this function. Threadless plugins will not terminate until they are explicitly unloaded.
+   */
+  void runPlugin(PluginRespirator pr);
 }

@@ -2,7 +2,6 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import java.util.Hashtable;
-
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
@@ -10,37 +9,42 @@ import network.crypta.support.HTMLNode;
 
 public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
 
-	public LocalDirectoryConfigToadlet (NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient,
-	        String postTo) {
-		super(core, highLevelSimpleClient, postTo);
-	}
+  public LocalDirectoryConfigToadlet(
+      NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient, String postTo) {
+    super(core, highLevelSimpleClient, postTo);
+  }
 
-	@Override
-	protected String startingDir() {
-		//Start out in user home directory.
-		return System.getProperty("user.home");
-	}
+  @Override
+  protected String startingDir() {
+    // Start out in user home directory.
+    return System.getProperty("user.home");
+  }
 
-	@Override
-	protected boolean allowedDir(File path) {
-		//When configuring, can select any directory.
-		return true;
-	}
-	
-	@Override
-	protected void createSelectDirectoryButton (HTMLNode formNode, String path, HTMLNode persist) {
-		formNode.addChild("input", new String[] { "type", "name", "value" }, 
-		        new String[] { "submit", selectDir,
-		                NodeL10n.getBase().getString("ConfigToadlet.selectDirectory")});
-		formNode.addChild("input", new String[] { "type", "name", "value" }, 
-		        new String[] { "hidden", filenameField(), path});
-		formNode.addChild(persist);
-	}
+  @Override
+  protected boolean allowedDir(File path) {
+    // When configuring, can select any directory.
+    return true;
+  }
 
-	@Override
-	protected  Hashtable<String, String> persistenceFields (Hashtable<String, String> set) {
-		set.remove("path");
-		set.remove("formPassword");
-		return set;
-	}
+  @Override
+  protected void createSelectDirectoryButton(HTMLNode formNode, String path, HTMLNode persist) {
+    formNode.addChild(
+        "input",
+        new String[] {"type", "name", "value"},
+        new String[] {
+          "submit", selectDir, NodeL10n.getBase().getString("ConfigToadlet.selectDirectory")
+        });
+    formNode.addChild(
+        "input",
+        new String[] {"type", "name", "value"},
+        new String[] {"hidden", filenameField(), path});
+    formNode.addChild(persist);
+  }
+
+  @Override
+  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
+    set.remove("path");
+    set.remove("formPassword");
+    return set;
+  }
 }

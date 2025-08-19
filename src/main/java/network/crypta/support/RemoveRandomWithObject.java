@@ -2,10 +2,9 @@ package network.crypta.support;
 
 public interface RemoveRandomWithObject<T> extends RemoveRandom {
 
-	T getObject();
+  T getObject();
 
-	boolean isEmpty();
+  boolean isEmpty();
 
-	void setObject(T client);
-
+  void setObject(T client);
 }

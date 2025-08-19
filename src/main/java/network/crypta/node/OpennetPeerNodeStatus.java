@@ -2,11 +2,10 @@ package network.crypta.node;
 
 public class OpennetPeerNodeStatus extends PeerNodeStatus {
 
-	OpennetPeerNodeStatus(PeerNode peerNode, boolean noHeavy) {
-		super(peerNode, noHeavy);
-		timeLastSuccess = ((OpennetPeerNode)peerNode).timeLastSuccess();
-	}
+  OpennetPeerNodeStatus(PeerNode peerNode, boolean noHeavy) {
+    super(peerNode, noHeavy);
+    timeLastSuccess = ((OpennetPeerNode) peerNode).timeLastSuccess();
+  }
 
-	public final long timeLastSuccess;
-	
+  public final long timeLastSuccess;
 }

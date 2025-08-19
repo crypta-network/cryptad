@@ -1,7 +1,6 @@
 package network.crypta.node;
 
 public interface SecurityLevelListener<T> {
-	
-	void onChange(T oldLevel, T newLevel);
 
+  void onChange(T oldLevel, T newLevel);
 }

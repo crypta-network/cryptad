@@ -5,32 +5,28 @@ import network.crypta.support.SimpleFieldSet;
 
 public class WatchFeedsMessage extends FCPMessage {
 
-	public static final String NAME = "WatchFeeds";
-	public final boolean enabled;
+  public static final String NAME = "WatchFeeds";
+  public final boolean enabled;
 
-	public WatchFeedsMessage(SimpleFieldSet fs) {
-		enabled = fs.getBoolean("Enabled", true);
-	}
+  public WatchFeedsMessage(SimpleFieldSet fs) {
+    enabled = fs.getBoolean("Enabled", true);
+  }
 
-	@Override
-	public String getName() {
-		return NAME;
-	}
+  @Override
+  public String getName() {
+    return NAME;
+  }
 
-	@Override
-	public void run(FCPConnectionHandler handler, Node node)
-			throws MessageInvalidException {
-		if(enabled)
-			node.getClientCore().getAlerts().watch(handler);
-		else
-			node.getClientCore().getAlerts().unwatch(handler);
-	}
+  @Override
+  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+    if (enabled) node.getClientCore().getAlerts().watch(handler);
+    else node.getClientCore().getAlerts().unwatch(handler);
+  }
 
-	@Override
-	public SimpleFieldSet getFieldSet() {
-		SimpleFieldSet fs = new SimpleFieldSet(true);
-		fs.put("Enabled", enabled);
-		return fs;
-	}
-
+  @Override
+  public SimpleFieldSet getFieldSet() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.put("Enabled", enabled);
+    return fs;
+  }
 }

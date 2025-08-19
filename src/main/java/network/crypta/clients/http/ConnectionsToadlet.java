@@ -4,7 +4,6 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -12,7 +11,13 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.text.DecimalFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.AddPeer;
@@ -112,7 +117,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
           return compareLocations(firstNode, secondNode);
         case "version":
           return Version.compareBuildNumbers(
-              Version.parseNodeNameFromVersionStr(firstNode.getVersion()), 
+              Version.parseNodeNameFromVersionStr(firstNode.getVersion()),
               Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
               Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
               Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
@@ -488,10 +493,12 @@ public abstract class ConnectionsToadlet extends Toadlet {
       // BEGIN PEER TABLE
       if (fProxyJavascriptEnabled) {
         String js =
-            "  function peerNoteChange() {\n"
-                + "    document.getElementById(\"action\").value = \"update_notes\";"
-                + "    document.getElementById(\"peersForm\").doAction.click();\n"
-                + "  }\n";
+            """
+              function peerNoteChange() {
+                document.getElementById("action").value = "update_notes";\
+                document.getElementById("peersForm").doAction.click();
+              }
+            """;
         contentNode.addChild("script", "type", "text/javascript").addChild("%", js);
         contentNode.addChild(
             "script",
@@ -617,7 +624,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Other node busy (realtime)? Display: Percentage of time the node is overloaded, Current wait time remaining (0=not overloaded)/total/last overload reason",
+                    "Other node busy (realtime)? Display: Percentage of time the node is"
+                        + " overloaded, Current wait time remaining (0=not overloaded)/total/last"
+                        + " overload reason",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Backoff (realtime)");
@@ -628,7 +637,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Other node busy (bulk)? Display: Percentage of time the node is overloaded, Current wait time remaining (0=not overloaded)/total/last overload reason",
+                    "Other node busy (bulk)? Display: Percentage of time the node is overloaded,"
+                        + " Current wait time remaining (0=not overloaded)/total/last overload"
+                        + " reason",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Backoff (bulk)");
@@ -640,7 +651,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Probability of the node rejecting a request due to overload or causing a timeout.",
+                    "Probability of the node rejecting a request due to overload or causing a"
+                        + " timeout.",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Overload Probability");
@@ -743,8 +755,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       // FOAF locations table.
       if (advancedMode) {
         // requires a location-to-list/count in-memory transform
-        List<Double> locations = new ArrayList<Double>();
-        List<List<PeerNodeStatus>> peerGroups = new ArrayList<List<PeerNodeStatus>>();
+        List<Double> locations = new ArrayList<>();
+        List<List<PeerNodeStatus>> peerGroups = new ArrayList<>();
         {
           for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
             double[] peersLoc = peerNodeStatus.getPeersLocation();
@@ -761,7 +773,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
                 if (i < max && locations.get(i) == location) {
                   peerGroup = peerGroups.get(i);
                 } else {
-                  peerGroup = new ArrayList<PeerNodeStatus>();
+                  peerGroup = new ArrayList<>();
                   locations.add(i, location);
                   peerGroups.add(i, peerGroup);
                 }
@@ -996,7 +1008,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       String[] nodesToAdd = ref.toString().split("\nEnd\n");
       for (int i = 0; i < nodesToAdd.length; i++) {
         String[] split = nodesToAdd[i].split("\n");
-        StringBuffer sb = new StringBuffer(nodesToAdd[i].length());
+        StringBuilder sb = new StringBuilder(nodesToAdd[i].length());
         boolean first = true;
         for (String s : split) {
           if (s.equals("End")) break;
@@ -1013,8 +1025,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         // Don't need to add a newline at the end, we will do that later.
       }
       // The peer's additions results
-      Map<PeerAdditionReturnCodes, Integer> results =
-          new HashMap<PeerAdditionReturnCodes, Integer>();
+      Map<PeerAdditionReturnCodes, Integer> results = new HashMap<>();
       for (int i = 0; i < nodesToAdd.length; i++) {
         // We need to trim then concat 'End' to the node's reference, this way we have a normal
         // reference(the split() removes the 'End'-s!)
@@ -1136,7 +1147,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     } else {
       Logger.warning(
           null,
-          "Cannot parse noderef: does not contain lastGoodVersion, trying to replace all spaces with newlines and parsing again.");
+          "Cannot parse noderef: does not contain lastGoodVersion, trying to replace all spaces"
+              + " with newlines and parsing again.");
       return new SimpleFieldSet(nodeReference.replace(" ", "\n"), false, true, true);
     }
   }
@@ -1637,8 +1649,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     countHeaderRow.addChild("th", "Message");
     countHeaderRow.addChild("th", "Incoming");
     countHeaderRow.addChild("th", "Outgoing");
-    List<String> messageNames = new ArrayList<String>();
-    Map<String, Long[]> messageCounts = new HashMap<String, Long[]>();
+    List<String> messageNames = new ArrayList<>();
+    Map<String, Long[]> messageCounts = new HashMap<>();
     for (Map.Entry<String, Long> entry : peerNodeStatus.getLocalMessagesReceived().entrySet()) {
       String messageName = entry.getKey();
       Long messageCount = entry.getValue();
@@ -1658,14 +1670,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         existingCounts[1] = messageCount;
       }
     }
-    Collections.sort(
-        messageNames,
-        new Comparator<String>() {
-          @Override
-          public int compare(String first, String second) {
-            return first.compareToIgnoreCase(second);
-          }
-        });
+    Collections.sort(messageNames, (first, second) -> first.compareToIgnoreCase(second));
     for (String messageName : messageNames) {
       Long[] messageCount = messageCounts.get(messageName);
       HTMLNode messageRow = messageCountTable.addChild("tr");

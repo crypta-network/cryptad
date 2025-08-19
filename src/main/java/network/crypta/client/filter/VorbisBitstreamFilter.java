@@ -3,26 +3,28 @@ package network.crypta.client.filter;
 import java.io.IOException;
 import java.util.ArrayList;
 
-/**An Ogg bitstream parser for the Ogg Vorbis codec
+/**
+ * An Ogg bitstream parser for the Ogg Vorbis codec
+ *
  * @author sajack
  */
 public class VorbisBitstreamFilter extends OggBitstreamFilter {
-	private final VorbisPacketFilter parser;
+  private final VorbisPacketFilter parser;
 
-	VorbisBitstreamFilter(OggPage page) {
-		super(page);
-		parser = new VorbisPacketFilter();
-	}
+  VorbisBitstreamFilter(OggPage page) {
+    super(page);
+    parser = new VorbisPacketFilter();
+  }
 
-	@Override
-	OggPage parse(OggPage page) throws IOException {
-		page = super.parse(page);
-		if(!isValidStream) return null;
-		ArrayList<CodecPacket> parsedPackets = new ArrayList<CodecPacket>();
-		for(CodecPacket packet : page.asPackets()) {
-			packet = parser.parse(packet);
-			if(packet != null) parsedPackets.add(packet);
-		}
-		return new OggPage(page, parsedPackets);
-	}
+  @Override
+  OggPage parse(OggPage page) throws IOException {
+    page = super.parse(page);
+    if (!isValidStream) return null;
+    ArrayList<CodecPacket> parsedPackets = new ArrayList<>();
+    for (CodecPacket packet : page.asPackets()) {
+      packet = parser.parse(packet);
+      if (packet != null) parsedPackets.add(packet);
+    }
+    return new OggPage(page, parsedPackets);
+  }
 }

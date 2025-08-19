@@ -1,4 +1,2 @@
-/**
- * Various kinds of averager.
- */
+/** Various kinds of averager. */
 package network.crypta.support.math;

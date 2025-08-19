@@ -7,9 +7,8 @@ import java.net.InetAddress;
  * @version $Id$
  */
 public interface AddressMatcher {
-	boolean matches(InetAddress address);
+  boolean matches(InetAddress address);
 
-	/** Get the human-readable version of the Matcher */
-    String getHumanRepresentation();
-
+  /** Get the human-readable version of the Matcher */
+  String getHumanRepresentation();
 }

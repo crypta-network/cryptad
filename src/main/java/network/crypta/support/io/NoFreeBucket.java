@@ -1,97 +1,93 @@
 package network.crypta.support.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Serializable;
-
+import java.io.*;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.Bucket;
 
 public class NoFreeBucket implements Bucket, Serializable {
-	
-    private static final long serialVersionUID = 1L;
-    final Bucket proxy;
-	
-	public NoFreeBucket(Bucket orig) {
-		proxy = orig;
-	}
-	
-	protected NoFreeBucket() {
-	    // For serialization.
-	    proxy = null;
-	}
 
-    @Override
-	public OutputStream getOutputStream() throws IOException {
-		return proxy.getOutputStream();
-	}
+  @Serial private static final long serialVersionUID = 1L;
+  final Bucket proxy;
 
-    @Override
-    public OutputStream getOutputStreamUnbuffered() throws IOException {
-        return proxy.getOutputStreamUnbuffered();
-    }
+  public NoFreeBucket(Bucket orig) {
+    proxy = orig;
+  }
 
-	@Override
-	public InputStream getInputStream() throws IOException {
-		return proxy.getInputStream();
-	}
+  protected NoFreeBucket() {
+    // For serialization.
+    proxy = null;
+  }
 
-    @Override
-    public InputStream getInputStreamUnbuffered() throws IOException {
-        return proxy.getInputStreamUnbuffered();
-    }
+  @Override
+  public OutputStream getOutputStream() throws IOException {
+    return proxy.getOutputStream();
+  }
 
-	@Override
-	public String getName() {
-		return proxy.getName();
-	}
+  @Override
+  public OutputStream getOutputStreamUnbuffered() throws IOException {
+    return proxy.getOutputStreamUnbuffered();
+  }
 
-	@Override
-	public long size() {
-		return proxy.size();
-	}
+  @Override
+  public InputStream getInputStream() throws IOException {
+    return proxy.getInputStream();
+  }
 
-	@Override
-	public boolean isReadOnly() {
-		return proxy.isReadOnly();
-	}
+  @Override
+  public InputStream getInputStreamUnbuffered() throws IOException {
+    return proxy.getInputStreamUnbuffered();
+  }
 
-	@Override
-	public void setReadOnly() {
-		proxy.setReadOnly();
-	}
+  @Override
+  public String getName() {
+    return proxy.getName();
+  }
 
-	@Override
-	public void free() {
-		// Do nothing.
-	}
+  @Override
+  public long size() {
+    return proxy.size();
+  }
 
-	@Override
-	public Bucket createShadow() {
-		return proxy.createShadow();
-	}
+  @Override
+  public boolean isReadOnly() {
+    return proxy.isReadOnly();
+  }
 
-    @Override
-    public void onResume(ClientContext context) throws ResumeFailedException {
-        proxy.onResume(context);
-    }
-    
-    static final int MAGIC = 0xa88da5c2;
+  @Override
+  public void setReadOnly() {
+    proxy.setReadOnly();
+  }
 
-    @Override
-    public void storeTo(DataOutputStream dos) throws IOException {
-        dos.writeInt(MAGIC);
-        proxy.storeTo(dos);
-    }
+  @Override
+  public void free() {
+    // Do nothing.
+  }
 
-    protected NoFreeBucket(DataInputStream dis, FilenameGenerator fg, 
-            PersistentFileTracker persistentFileTracker, MasterSecret masterKey) 
-    throws IOException, StorageFormatException, ResumeFailedException {
-        proxy = BucketTools.restoreFrom(dis, fg, persistentFileTracker, masterKey);
-    }
+  @Override
+  public Bucket createShadow() {
+    return proxy.createShadow();
+  }
 
+  @Override
+  public void onResume(ClientContext context) throws ResumeFailedException {
+    proxy.onResume(context);
+  }
+
+  static final int MAGIC = 0xa88da5c2;
+
+  @Override
+  public void storeTo(DataOutputStream dos) throws IOException {
+    dos.writeInt(MAGIC);
+    proxy.storeTo(dos);
+  }
+
+  protected NoFreeBucket(
+      DataInputStream dis,
+      FilenameGenerator fg,
+      PersistentFileTracker persistentFileTracker,
+      MasterSecret masterKey)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    proxy = BucketTools.restoreFrom(dis, fg, persistentFileTracker, masterKey);
+  }
 }

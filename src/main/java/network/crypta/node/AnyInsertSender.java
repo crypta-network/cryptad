@@ -2,17 +2,16 @@ package network.crypta.node;
 
 public interface AnyInsertSender {
 
-	int getStatus();
+  int getStatus();
 
-	short getHTL();
+  short getHTL();
 
-	/**
-	 * @return The current status as a string
-	 */
-    String getStatusString();
+  /**
+   * @return The current status as a string
+   */
+  String getStatusString();
 
-	boolean sentRequest();
+  boolean sentRequest();
 
-	long getUID();
-
+  long getUID();
 }

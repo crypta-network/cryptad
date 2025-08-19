@@ -7,14 +7,13 @@ package network.crypta.node.stats;
  */
 public interface StoreLocationStats {
 
-	double avgLocation() throws StatsNotAvailableException;
+  double avgLocation() throws StatsNotAvailableException;
 
-	double avgSuccess() throws StatsNotAvailableException;
+  double avgSuccess() throws StatsNotAvailableException;
 
-	double furthestSuccess() throws StatsNotAvailableException;
+  double furthestSuccess() throws StatsNotAvailableException;
 
-	double avgDist() throws StatsNotAvailableException;
+  double avgDist() throws StatsNotAvailableException;
 
-	double distanceStats() throws StatsNotAvailableException;
-
+  double distanceStats() throws StatsNotAvailableException;
 }

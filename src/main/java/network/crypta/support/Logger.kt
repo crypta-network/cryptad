@@ -114,7 +114,7 @@ abstract class Logger {
         @JvmStatic
         @Throws(InvalidThresholdException::class)
         fun setupStdoutLogging(level: Int, detail: String?): FileLoggerHook =
-            setupStdoutLogging(LogLevel.fromOrdinal(level), detail)
+            setupStdoutLogging(LogLevel.entries.getOrNull(level) ?: LogLevel.NORMAL, detail)
 
         @Synchronized
         @JvmStatic
@@ -258,7 +258,7 @@ abstract class Logger {
         @Synchronized
         @JvmStatic
         fun logStatic(o: Any, s: String, prio: Int) {
-            logStatic(o, s, LogLevel.fromOrdinal(prio))
+            logStatic(o, s, LogLevel.entries.getOrNull(prio) ?: LogLevel.NORMAL)
         }
 
         @JvmStatic
@@ -266,14 +266,14 @@ abstract class Logger {
 
         @Deprecated("use LogLevel version")
         @JvmStatic
-        fun shouldLog(priority: Int, c: Class<*>?): Boolean = shouldLog(LogLevel.fromOrdinal(priority), c)
+        fun shouldLog(priority: Int, c: Class<*>?): Boolean = shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, c)
 
         @JvmStatic
         fun shouldLog(priority: LogLevel, o: Any?): Boolean = shouldLog(priority, o?.javaClass)
 
         @Deprecated("use LogLevel version")
         @JvmStatic
-        fun shouldLog(priority: Int, o: Any?): Boolean = shouldLog(LogLevel.fromOrdinal(priority), o)
+        fun shouldLog(priority: Int, o: Any?): Boolean = shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, o)
 
         @JvmStatic
         fun registerLogThresholdCallback(ltc: LogThresholdCallback) {
@@ -336,7 +336,7 @@ abstract class Logger {
         @Synchronized
         @JvmStatic
         fun globalSetThreshold(i: Int) {
-            logger.setThreshold(LogLevel.fromOrdinal(i))
+            logger.setThreshold(LogLevel.entries.getOrNull(i) ?: LogLevel.NORMAL)
         }
 
         @Synchronized

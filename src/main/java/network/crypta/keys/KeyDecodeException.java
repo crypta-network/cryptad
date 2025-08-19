@@ -1,24 +1,24 @@
 package network.crypta.keys;
 
-/**
- * Base class for decode exceptions.
- */
+import java.io.Serial;
+
+/** Base class for decode exceptions. */
 public class KeyDecodeException extends Exception {
-	private static final long serialVersionUID = -1;
-	public KeyDecodeException(String message) {
-		super(message);
-	}
+  @Serial private static final long serialVersionUID = -1;
 
-	public KeyDecodeException() {
-		super();
-	}
+  public KeyDecodeException(String message) {
+    super(message);
+  }
 
-	public KeyDecodeException(String message, Throwable cause) {
-		super(message, cause);
-	}
+  public KeyDecodeException() {
+    super();
+  }
 
-	public KeyDecodeException(Throwable cause) {
-		super(cause);
-	}
+  public KeyDecodeException(String message, Throwable cause) {
+    super(message, cause);
+  }
 
+  public KeyDecodeException(Throwable cause) {
+    super(cause);
+  }
 }

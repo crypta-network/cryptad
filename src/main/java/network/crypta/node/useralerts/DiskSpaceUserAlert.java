@@ -1,7 +1,6 @@
 package network.crypta.node.useralerts;
 
 import java.io.File;
-
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
@@ -10,171 +9,175 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.Logger;
 import network.crypta.support.io.FilenameGenerator;
 
-/** Tell the user when there is insufficient disk space for either short term (transient requests, 
+/**
+ * Tell the user when there is insufficient disk space for either short term (transient requests,
  * request completion) or long term (starting persistent requests).
+ *
  * @author toad
  */
 public class DiskSpaceUserAlert implements UserAlert {
-    
-    final NodeClientCore core;
-    private Status status;
-    private long lastCheckedStatus;
-    static final int UPDATE_TIME = 100;
-    
-    enum Status {
-        /** Everything is OK. */
-        OK,
-        /** Not enough space to start persistent requests: Space on persistent-temp-* < long term 
-         * limit. */
-        PERSISTENT,
-        /** Not enough space to start transient requests, finish persistent requests or do 
-         * anything much: Space on temp-* < short term limit */
-        TRANSIENT,
-        /** Not enough space to complete persistent requests: Space on persistent-temp-* < short 
-         * term limit. */
-        PERSISTENT_COMPLETION;
 
-        public String getExplanation() {
-            return l10n("explanation."+ this);
-        }
-    }
-    
-    Status evaluate() {
-        long shortTermLimit = core.getMinDiskFreeShortTerm();
-        long longTermLimit = core.getMinDiskFreeLongTerm();
-        File tempDir = core.getTempFilenameGenerator().getDir();
-        if(tempDir.getUsableSpace() < shortTermLimit)
-            return Status.TRANSIENT; // Takes precedence.
-        FilenameGenerator fg = core.getPersistentFilenameGenerator();
-        if(fg != null) {
-            File persistentTempDir = fg.getDir();
-            long space = persistentTempDir.getUsableSpace();
-            if(space < shortTermLimit)
-                return Status.PERSISTENT_COMPLETION;
-            if(space < longTermLimit)
-                return Status.PERSISTENT;
-        }
-        return Status.OK;
-    }
-    
-    public DiskSpaceUserAlert(NodeClientCore core) {
-        this.core = core;
-    }
+  final NodeClientCore core;
+  private Status status;
+  private long lastCheckedStatus;
+  static final int UPDATE_TIME = 100;
 
-    @Override
-    public boolean userCanDismiss() {
-        return true;
-    }
+  enum Status {
+    /** Everything is OK. */
+    OK,
+    /**
+     * Not enough space to start persistent requests: Space on persistent-temp-* < long term limit.
+     */
+    PERSISTENT,
+    /**
+     * Not enough space to start transient requests, finish persistent requests or do anything much:
+     * Space on temp-* < short term limit
+     */
+    TRANSIENT,
+    /**
+     * Not enough space to complete persistent requests: Space on persistent-temp-* < short term
+     * limit.
+     */
+    PERSISTENT_COMPLETION;
 
-    @Override
-    public String getTitle() {
-        return l10n("title");
+    public String getExplanation() {
+      return l10n("explanation." + this);
     }
+  }
 
-    private static String l10n(String key) {
-        return NodeL10n.getBase().getString("DiskSpaceUserAlert."+key);
+  Status evaluate() {
+    long shortTermLimit = core.getMinDiskFreeShortTerm();
+    long longTermLimit = core.getMinDiskFreeLongTerm();
+    File tempDir = core.getTempFilenameGenerator().getDir();
+    if (tempDir.getUsableSpace() < shortTermLimit) return Status.TRANSIENT; // Takes precedence.
+    FilenameGenerator fg = core.getPersistentFilenameGenerator();
+    if (fg != null) {
+      File persistentTempDir = fg.getDir();
+      long space = persistentTempDir.getUsableSpace();
+      if (space < shortTermLimit) return Status.PERSISTENT_COMPLETION;
+      if (space < longTermLimit) return Status.PERSISTENT;
     }
+    return Status.OK;
+  }
 
-    private static String l10n(String key, String pattern, String value) {
-        return NodeL10n.getBase().getString("DiskSpaceUserAlert."+key, pattern, value);
-    }
+  public DiskSpaceUserAlert(NodeClientCore core) {
+    this.core = core;
+  }
 
-    @Override
-    public String getText() {
-        Status status = getStatus();
-        String sb = l10n("notEnoughSpaceIn", "where", getWhere(status).toString()) +
-                " " +
-                status.getExplanation() +
-                " " +
-                l10n("action");
-        return sb;
-    }
+  @Override
+  public boolean userCanDismiss() {
+    return true;
+  }
 
-    private File getWhere(Status status) {
-        // FIXME return the filesystem rather than the directory. Will need java.nio.file (1.7).
-        if(status == Status.PERSISTENT || status == Status.PERSISTENT_COMPLETION) {
-            // Be very careful about race conditions!
-            FilenameGenerator fg = core.getPersistentFilenameGenerator();
-            if(fg != null) {
-                return fg.getDir();
-            }
-        }
-        return core.getTempFilenameGenerator().getDir();
-    }
+  @Override
+  public String getTitle() {
+    return l10n("title");
+  }
 
-    private synchronized Status getStatus() {
-        long now = System.currentTimeMillis();
-        if(!(this.status == null || now - lastCheckedStatus > UPDATE_TIME)) return status;
-        try {
-            status = evaluate();
-            lastCheckedStatus = now;
-            return status;
-        } catch (Throwable t) {
-            // This is an alert. If it fails, it can break the web interface completely.
-            // So it's essential that we catch Throwable's here.
-            Logger.error(this, "Unable to check disk space: "+t, t);
-            return Status.OK;
-        }
-    }
+  private static String l10n(String key) {
+    return NodeL10n.getBase().getString("DiskSpaceUserAlert." + key);
+  }
 
-    @Override
-    public HTMLNode getHTMLText() {
-        return new HTMLNode("#", getText());
-    }
+  private static String l10n(String key, String pattern, String value) {
+    return NodeL10n.getBase().getString("DiskSpaceUserAlert." + key, pattern, value);
+  }
 
-    @Override
-    public String getShortText() {
-        return getTitle();
-    }
+  @Override
+  public String getText() {
+    Status status = getStatus();
+    return l10n("notEnoughSpaceIn", "where", getWhere(status).toString())
+        + " "
+        + status.getExplanation()
+        + " "
+        + l10n("action");
+  }
 
-    @Override
-    public short getPriorityClass() {
-        return UserAlert.CRITICAL_ERROR;
+  private File getWhere(Status status) {
+    // FIXME return the filesystem rather than the directory. Will need java.nio.file (1.7).
+    if (status == Status.PERSISTENT || status == Status.PERSISTENT_COMPLETION) {
+      // Be very careful about race conditions!
+      FilenameGenerator fg = core.getPersistentFilenameGenerator();
+      if (fg != null) {
+        return fg.getDir();
+      }
     }
+    return core.getTempFilenameGenerator().getDir();
+  }
 
-    @Override
-    public boolean isValid() {
-        Status status = getStatus();
-        return status != Status.OK;
+  private synchronized Status getStatus() {
+    long now = System.currentTimeMillis();
+    if (!(this.status == null || now - lastCheckedStatus > UPDATE_TIME)) return status;
+    try {
+      status = evaluate();
+      lastCheckedStatus = now;
+      return status;
+    } catch (Throwable t) {
+      // This is an alert. If it fails, it can break the web interface completely.
+      // So it's essential that we catch Throwable's here.
+      Logger.error(this, "Unable to check disk space: " + t, t);
+      return Status.OK;
     }
+  }
 
-    @Override
-    public void isValid(boolean validity) {
-        // Ignore.
-    }
+  @Override
+  public HTMLNode getHTMLText() {
+    return new HTMLNode("#", getText());
+  }
 
-    @Override
-    public String dismissButtonText() {
-        return NodeL10n.getBase().getString("UserAlert.hide");
-    }
+  @Override
+  public String getShortText() {
+    return getTitle();
+  }
 
-    @Override
-    public boolean shouldUnregisterOnDismiss() {
-        return true;
-    }
+  @Override
+  public short getPriorityClass() {
+    return UserAlert.CRITICAL_ERROR;
+  }
 
-    @Override
-    public void onDismiss() {
-        // Ignore.
-    }
+  @Override
+  public boolean isValid() {
+    Status status = getStatus();
+    return status != Status.OK;
+  }
 
-    @Override
-    public String anchor() {
-        return "not-enough-disk-space";
-    }
+  @Override
+  public void isValid(boolean validity) {
+    // Ignore.
+  }
 
-    @Override
-    public boolean isEventNotification() {
-        return false;
-    }
+  @Override
+  public String dismissButtonText() {
+    return NodeL10n.getBase().getString("UserAlert.hide");
+  }
 
-    @Override
-    public FCPMessage getFCPMessage() {
-        return new FeedMessage(getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
-    }
+  @Override
+  public boolean shouldUnregisterOnDismiss() {
+    return true;
+  }
 
-    @Override
-    public synchronized long getUpdatedTime() {
-        return lastCheckedStatus;
-    }
+  @Override
+  public void onDismiss() {
+    // Ignore.
+  }
+
+  @Override
+  public String anchor() {
+    return "not-enough-disk-space";
+  }
+
+  @Override
+  public boolean isEventNotification() {
+    return false;
+  }
+
+  @Override
+  public FCPMessage getFCPMessage() {
+    return new FeedMessage(
+        getTitle(), getShortText(), getText(), getPriorityClass(), getUpdatedTime());
+  }
+
+  @Override
+  public synchronized long getUpdatedTime() {
+    return lastCheckedStatus;
+  }
 }

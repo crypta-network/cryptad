@@ -2,79 +2,85 @@ package network.crypta.node;
 
 import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
-import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.SimpleFieldSet;
 
 public class ThrottleWindowManager {
-	private static volatile boolean logMINOR;
-	
-	static {
-		Logger.registerLogThresholdCallback(new LogThresholdCallback() {
-			@Override
-			public void shouldUpdate() {
-				logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-			}
-		});
-	}
+  private static volatile boolean logMINOR;
 
-	static final float PACKET_DROP_DECREASE_MULTIPLE = 0.97f;
-	static final float PACKET_TRANSMIT_INCREMENT = (4 * (1 - (PACKET_DROP_DECREASE_MULTIPLE * PACKET_DROP_DECREASE_MULTIPLE))) / 3;
+  static {
+    Logger.registerLogThresholdCallback(
+        new LogThresholdCallback() {
+          @Override
+          public void shouldUpdate() {
+            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+          }
+        });
+  }
 
-	private long _totalPackets = 0, _droppedPackets = 0;
-	private double _simulatedWindowSize = 2;
-	
-	private final Node node;
-	
-	public ThrottleWindowManager(double def, SimpleFieldSet fs, Node node) {
-		this.node = node;
-		if(fs != null) {
-			_totalPackets = fs.getInt("TotalPackets", 0);
-			_droppedPackets = fs.getInt("DroppedPackets", 0);
-			_simulatedWindowSize = fs.getDouble("SimulatedWindowSize", def);
-		} else {
-			_simulatedWindowSize = def;
-		}
-	}
+  static final float PACKET_DROP_DECREASE_MULTIPLE = 0.97f;
+  static final float PACKET_TRANSMIT_INCREMENT =
+      (4 * (1 - (PACKET_DROP_DECREASE_MULTIPLE * PACKET_DROP_DECREASE_MULTIPLE))) / 3;
 
-	public synchronized double currentValue(boolean realTime) {
-		if (_simulatedWindowSize < 1.0) {
-			_simulatedWindowSize = 1.0F;
-		}
-		return _simulatedWindowSize * Math.max(1, node.getPeers().countNonBackedOffPeers(realTime));
-	}
+  private long _totalPackets = 0, _droppedPackets = 0;
+  private double _simulatedWindowSize = 2;
 
-	public synchronized void rejectedOverload() {
-		_droppedPackets++;
-		_totalPackets++;
-		_simulatedWindowSize *= PACKET_DROP_DECREASE_MULTIPLE;
-        if(logMINOR)
-        	Logger.minor(this, "request rejected overload: "+this);
-	}
+  private final Node node;
 
-	public synchronized void requestCompleted() {
-        _totalPackets++;
-        _simulatedWindowSize += (PACKET_TRANSMIT_INCREMENT / _simulatedWindowSize);
-        if(logMINOR)
-        	Logger.minor(this, "requestCompleted on "+this);
-	}
+  public ThrottleWindowManager(double def, SimpleFieldSet fs, Node node) {
+    this.node = node;
+    if (fs != null) {
+      _totalPackets = fs.getInt("TotalPackets", 0);
+      _droppedPackets = fs.getInt("DroppedPackets", 0);
+      _simulatedWindowSize = fs.getDouble("SimulatedWindowSize", def);
+    } else {
+      _simulatedWindowSize = def;
+    }
+  }
 
-	@Override
-	public synchronized String toString() {
-		return  super.toString()+" w: "
-				+ _simulatedWindowSize + ", d:"
-				+ (((float) _droppedPackets / (float) _totalPackets)) + '=' +_droppedPackets+ '/' +_totalPackets;
-	}
+  public synchronized double currentValue(boolean realTime) {
+    if (_simulatedWindowSize < 1.0) {
+      _simulatedWindowSize = 1.0F;
+    }
+    return _simulatedWindowSize * Math.max(1, node.getPeers().countNonBackedOffPeers(realTime));
+  }
 
-	public SimpleFieldSet exportFieldSet(boolean shortLived) {
-		SimpleFieldSet fs = new SimpleFieldSet(shortLived);
-		fs.putSingle("Type", "ThrottleWindowManager");
-		fs.put("TotalPackets", _totalPackets);
-		fs.put("DroppedPackets", _droppedPackets);
-		fs.put("SimulatedWindowSize", _simulatedWindowSize);
-		return fs;
-	}
+  public synchronized void rejectedOverload() {
+    _droppedPackets++;
+    _totalPackets++;
+    _simulatedWindowSize *= PACKET_DROP_DECREASE_MULTIPLE;
+    if (logMINOR) Logger.minor(this, "request rejected overload: " + this);
+  }
 
-	public double realCurrentValue() {
-		return _simulatedWindowSize;
-	}
+  public synchronized void requestCompleted() {
+    _totalPackets++;
+    _simulatedWindowSize += (PACKET_TRANSMIT_INCREMENT / _simulatedWindowSize);
+    if (logMINOR) Logger.minor(this, "requestCompleted on " + this);
+  }
+
+  @Override
+  public synchronized String toString() {
+    return super.toString()
+        + " w: "
+        + _simulatedWindowSize
+        + ", d:"
+        + (((float) _droppedPackets / (float) _totalPackets))
+        + '='
+        + _droppedPackets
+        + '/'
+        + _totalPackets;
+  }
+
+  public SimpleFieldSet exportFieldSet(boolean shortLived) {
+    SimpleFieldSet fs = new SimpleFieldSet(shortLived);
+    fs.putSingle("Type", "ThrottleWindowManager");
+    fs.put("TotalPackets", _totalPackets);
+    fs.put("DroppedPackets", _droppedPackets);
+    fs.put("SimulatedWindowSize", _simulatedWindowSize);
+    return fs;
+  }
+
+  public double realCurrentValue() {
+    return _simulatedWindowSize;
+  }
 }

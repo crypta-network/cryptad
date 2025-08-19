@@ -221,3 +221,34 @@ This ensures that the build number and git revision in Version.kt are always cur
 - Uses custom cryptographic implementations - exercise caution when modifying
 - Network protocol changes require careful consideration for backward compatibility
 - The project includes simulator components for testing network behavior under various conditions
+
+## Spotless + Dependency Verification
+
+When dependency verification is strict, Spotless tool artifacts (like `google-java-format`) may be blocked, surfacing as a misleading repository error during `spotlessApply`.
+
+Symptoms
+- Error: `You need to add a repository containing the '[com.google.googlejavaformat:google-java-format:x.y.z]' artifact` even though `mavenCentral()` is present.
+
+Update verification-metadata for Spotless
+- Temporarily relax verification:
+  - Edit `gradle.properties`: set `org.gradle.dependency.verification=lenient`.
+- Record Spotless tool artifacts (checksums + PGP keys):
+  - `./gradlew --write-verification-metadata sha256,pgp spotlessApply`
+  - If a specific version is missing, force re-resolution:
+    - `./gradlew --refresh-dependencies --write-verification-metadata sha256,pgp spotlessApply`
+  - Alternative (faster):
+    - `./gradlew --write-verification-metadata sha256,pgp spotlessInternalRegisterDependencies`
+- Verify metadata entries:
+  - Check `gradle/verification-metadata.xml` for `com.google.googlejavaformat` components and trusted keys.
+  - Ensure the Spotless plugin/libs entries are present as needed.
+- Re-enable strict verification:
+  - Edit `gradle.properties`: set `org.gradle.dependency.verification=strict`.
+- Validate:
+  - `./gradlew spotlessApply` should succeed under strict mode.
+ - Export keys for reproducibility (optional but recommended):
+   - `./gradlew --export-keys`
+
+Notes
+- Do not use `--no-daemon` with Gradle.
+- Network access is required to resolve and sign artifacts.
+ - Keep keyring files (`gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys`) in VCS to help fresh environments.

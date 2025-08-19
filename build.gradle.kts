@@ -6,6 +6,7 @@ plugins {
     java
     `maven-publish`
     alias(libs.plugins.kotlinJvm)
+    id("com.diffplug.spotless") version "7.2.1"
 }
 
 // Set version manually instead of using Nebula Release plugin
@@ -16,32 +17,27 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
-val provided by configurations.creating
-val compile by configurations.creating
-
 val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
 val versionSrc = "network/crypta/node/Version.kt"
 
 repositories {
+    mavenCentral()
     flatDir { dirs(uri("${projectDir}/lib")) }
     maven(url = "https://mvn.freenetproject.org") {
         metadataSources { artifact() }
     }
-    mavenCentral()
 }
 
 sourceSets {
-    val main by getting {
+    main {
         // Rely on Gradle's default directories (src/main/java, src/main/resources)
         // Exclude the templated Version.kt from direct compilation
         java.exclude("network/crypta/node/Version.kt")
         kotlin.exclude("**/Version.kt")
-        // Preserve provided configuration on classpaths
-        compileClasspath += configurations["provided"]
+        // Source set configuration
     }
-    val test by getting {
+    test {
         // Rely on Gradle's default directories (src/test/java, src/test/resources)
-        compileClasspath += configurations["provided"]
     }
 }
 
@@ -51,10 +47,36 @@ tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 }
 
+// Spotless configuration for code formatting
+spotless {
+    java {
+        // Use Google Java Format
+        googleJavaFormat("1.28.0").reflowLongStrings()
+        // Apply to all Java source files
+        target("src/**/*.java")
+        // Remove unused imports
+        removeUnusedImports()
+        // Remove the ratchet for now to format all files
+        // ratchetFrom("origin/develop")
+    }
+}
+
+// Make compileJava depend on Spotless check and apply formatting to changed files
+tasks.compileJava {
+    // This will automatically format files that have changes according to git
+    dependsOn("spotlessApply")
+}
+
 val gitrev: String = try {
     val cmd = "git describe --always --abbrev=4 --dirty"
-    Runtime.getRuntime().exec(cmd, null, rootDir).inputStream.bufferedReader().readText().trim()
-} catch (e: IOException) {
+    ProcessBuilder(cmd.split(" "))
+        .directory(rootDir)
+        .start()
+        .inputStream
+        .bufferedReader()
+        .readText()
+        .trim()
+} catch (_: IOException) {
     "@unknown@"
 }
 
@@ -62,16 +84,19 @@ val gitrev: String = try {
 val generateVersionSource by tasks.registering(Copy::class) {
     // Always regenerate to ensure fresh version info
     outputs.upToDateWhen { false }
-    
+
+    // Capture version during configuration to avoid deprecation warning
+    val buildVersion = project.version.toString()
+
     // Delete old generated version first to ensure clean generation
     doFirst {
         delete(versionBuildDir)
     }
-    
+
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
-            line.replace("@build_number@", project.version.toString())
+            line.replace("@build_number@", buildVersion)
                 .replace("@git_rev@", gitrev)
         }
     }
@@ -81,11 +106,11 @@ val generateVersionSource by tasks.registering(Copy::class) {
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn(generateVersionSource)
     source(versionBuildDir)
-    
+
     // Force recompilation of Version.kt when build number or git rev changes
     inputs.property("buildNumber", project.version.toString())
     inputs.property("gitRevision", gitrev)
-    
+
     // Also track the generated file as an input to ensure recompilation
     inputs.files(generateVersionSource)
 }
@@ -130,37 +155,37 @@ tasks.named<Jar>("jar") {
     dependsOn(buildJar)
 }
 
-val jars = mutableListOf<File>()
-
-gradle.addListener(object : TaskExecutionListener {
-    override fun afterExecute(task: Task, state: TaskState) {
-        if (task is AbstractArchiveTask && task.enabled) {
-            jars.add(task.outputs.files.singleFile)
-        }
-    }
-
-    override fun beforeExecute(task: Task) {}
-})
-
-gradle.addBuildListener(object : BuildAdapter() {
-    override fun buildFinished(result: BuildResult) {
-        if (jars.isNotEmpty()) {
-            fun hash(file: File) {
-                val sha256 = MessageDigest.getInstance("SHA-256")
-                file.inputStream().use { input ->
-                    val buffer = ByteArray(4096)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        sha256.update(buffer, 0, read)
-                    }
+// Modern approach using task finalization instead of deprecated listeners
+val printHashTask by tasks.registering {
+    description = "Prints SHA-256 hashes of built JAR files"
+    group = "verification"
+    
+    doLast {
+        fun hash(file: File) {
+            val sha256 = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(4096)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    sha256.update(buffer, 0, read)
                 }
-                println("SHA-256 of ${file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) })
             }
-            jars.forEach { hash(it) }
+            println("SHA-256 of ${file.name}: " + sha256.digest().joinToString("") { "%02x".format(it) })
+        }
+        
+        // Hash the main JAR file
+        val jarFile = buildJar.get().outputs.files.singleFile
+        if (jarFile.exists()) {
+            hash(jarFile)
         }
     }
-})
+}
+
+// Make the hash printing run after the JAR is built
+buildJar {
+    finalizedBy(printHashTask)
+}
 
 tasks.test {
     // Point tests expecting old layout to new standard resource locations
@@ -219,7 +244,7 @@ tasks.test {
     minHeapSize = "128m"
     maxHeapSize = "512m"
     include("network/crypta/**/*Test.class")
-    exclude("network/crypta/**/*${'$'}*Test.class")
+    exclude("network/crypta/**/*$*Test.class")
     systemProperties.putAll(mapOf<String, Any>())
 }
 
@@ -246,7 +271,7 @@ publishing {
 }
 
 val copyRuntimeLibs by tasks.registering(Copy::class) {
-    into("${'$'}{buildDir}/output/")
+    into("${layout.buildDirectory.get()}/output/")
     from(configurations.runtimeClasspath)
     from(tasks.jar)
 }
@@ -269,7 +294,8 @@ dependencies {
     testImplementation(libs.objenesis)
 }
 
-val tar by tasks.registering(Tar::class) {
+tasks.register<Tar>("tar") {
+    group = "distribution"
     description = "Build a source release, specifically excluding the build directories and gradle wrapper files"
     compression = Compression.BZIP2
     archiveBaseName.set("freenet-sources")
@@ -281,12 +307,12 @@ val tar by tasks.registering(Tar::class) {
     into(archiveBaseName.get())
     isPreserveFileTimestamps = true
     isReproducibleFileOrder = true
-    destinationDirectory.set(file("${'$'}{project.buildDir}"))
-    archiveFileName.set("${'$'}{archiveBaseName.get()}.tgz")
+    destinationDirectory.set(layout.buildDirectory)
+    archiveFileName.set("${archiveBaseName.get()}.tgz")
     doLast {
         ant.invokeMethod(
             "checksum",
-            mapOf("file" to "${'$'}{destinationDirectory.get()}/${'$'}{archiveFileName.get()}")
+            mapOf("file" to "${destinationDirectory.get()}/${archiveFileName.get()}")
         )
     }
 }

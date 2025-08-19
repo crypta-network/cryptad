@@ -1,26 +1,28 @@
 package network.crypta.keys;
 
+import java.io.Serial;
+
 /**
  * @author amphibian
- * 
- * Exception thrown when a CHK encoding fails.
- * Specifically, it is thrown when the data is too big to encode.
+ *     <p>Exception thrown when a CHK encoding fails. Specifically, it is thrown when the data is
+ *     too big to encode.
  */
 public class CHKEncodeException extends KeyEncodeException {
-	private static final long serialVersionUID = -1;
-    public CHKEncodeException() {
-        super();
-    }
+  @Serial private static final long serialVersionUID = -1;
 
-    public CHKEncodeException(String message) {
-        super(message);
-    }
+  public CHKEncodeException() {
+    super();
+  }
 
-    public CHKEncodeException(String message, Throwable cause) {
-        super(message, cause);
-    }
+  public CHKEncodeException(String message) {
+    super(message);
+  }
 
-    public CHKEncodeException(Throwable cause) {
-        super(cause);
-    }
+  public CHKEncodeException(String message, Throwable cause) {
+    super(message, cause);
+  }
+
+  public CHKEncodeException(Throwable cause) {
+    super(cause);
+  }
 }

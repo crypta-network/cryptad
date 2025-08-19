@@ -4,29 +4,29 @@ import network.crypta.keys.FreenetURI;
 
 public class ArchiveKey {
 
-	final FreenetURI key;
-	final String filename;
-	
-	public ArchiveKey(FreenetURI key2, String filename2) {
-		key = key2;
-		filename = filename2;
-	}
+  final FreenetURI key;
+  final String filename;
 
-	@Override
-	public boolean equals(Object o) {
-		if((o == null) || !(o instanceof ArchiveKey cmp)) return false;
-		if(this == o) return true;
+  public ArchiveKey(FreenetURI key2, String filename2) {
+    key = key2;
+    filename = filename2;
+  }
 
-        return (cmp.key.equals(key) && cmp.filename.equals(filename));
-	}
-	
-	@Override
-	public int hashCode() {
-		return key.hashCode() ^ filename.hashCode();
-	}
-	
-	@Override
-	public String toString() {
-		return key+":"+filename;
-	}
+  @Override
+  public boolean equals(Object o) {
+    if (!(o instanceof ArchiveKey cmp)) return false;
+    if (this == o) return true;
+
+    return (cmp.key.equals(key) && cmp.filename.equals(filename));
+  }
+
+  @Override
+  public int hashCode() {
+    return key.hashCode() ^ filename.hashCode();
+  }
+
+  @Override
+  public String toString() {
+    return key + ":" + filename;
+  }
 }

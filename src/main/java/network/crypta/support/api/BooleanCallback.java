@@ -1,15 +1,14 @@
 package network.crypta.support.api;
 
 import java.util.function.Supplier;
-
 import network.crypta.config.ConfigCallback;
 import network.crypta.config.ConfigConsumer;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 
 /**
- * A callback to be called when a config value of integer type changes.
- * Also reports the current value.
+ * A callback to be called when a config value of integer type changes. Also reports the current
+ * value.
  */
 public abstract class BooleanCallback extends ConfigCallback<Boolean> {
 
