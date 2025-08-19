@@ -510,9 +510,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   private PacketFormat packetFormat;
 
-  /**
-   * Non-cryptographic random source scoped to this PeerNode. Thread-safe.
-   */
+  /** Non-cryptographic random source scoped to this PeerNode. Thread-safe. */
   protected final Random random;
 
   protected SimpleFieldSet fullFieldSet;
@@ -870,7 +868,6 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     bytesInAtStartup = fs.getLong("totalInput", 0);
     bytesOutAtStartup = fs.getLong("totalOutput", 0);
-
 
     if (fromLocal) {
       SimpleFieldSet f = fs.subset("full");
@@ -3284,9 +3281,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       Logger.error(
           this, "Entering mandatory backoff for " + this + (realTime ? " (realtime)" : " (bulk)"));
       mandatoryBackoffUntil =
-          now
-              + (mandatoryBackoffLength / 2)
-              + random.nextInt(mandatoryBackoffLength / 2);
+          now + (mandatoryBackoffLength / 2) + random.nextInt(mandatoryBackoffLength / 2);
       mandatoryBackoffLength *= MANDATORY_BACKOFF_MULTIPLIER;
       node.getNodeStats().reportMandatoryBackoff(reason, mandatoryBackoffUntil - now, realTime);
       if (realTime) {
