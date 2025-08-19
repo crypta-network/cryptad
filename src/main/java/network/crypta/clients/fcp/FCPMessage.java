@@ -112,7 +112,6 @@ public abstract class FCPMessage {
     if (name.equals(ShutdownMessage.NAME)) return new ShutdownMessage();
     if (name.equals(WatchFeedsMessage.NAME)) return new WatchFeedsMessage(fs);
     if (name.equals(SubscribeUSKMessage.NAME)) return new SubscribeUSKMessage(fs);
-    if (name.equals(WatchFeedsMessage.NAME)) return new WatchFeedsMessage(fs);
     if (name.equals(UnsubscribeUSKMessage.NAME)) return new UnsubscribeUSKMessage(fs);
     if (name.equals(TestDDARequestMessage.NAME)) return new TestDDARequestMessage(fs);
     if (name.equals(TestDDAResponseMessage.NAME)) return new TestDDAResponseMessage(fs);

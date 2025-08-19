@@ -187,7 +187,6 @@ public final class FileUtil {
       if (name.equals("amd64")
           || name.equals("x86-64")
           || name.equals("x86_64")
-          || name.equals("x86")
           || name.equals("em64t")
           || name.equals("x8664")
           || name.equals("8664")) return CPUArchitecture.X86_64;

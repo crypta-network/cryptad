@@ -3264,7 +3264,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       String charset = encodingAttr.substring("encoding='".length(), encodingAttr.length() - 1);
 
       if (!charset.equalsIgnoreCase(pc.charset)) {
-        if (pc.charset != null && !charset.equalsIgnoreCase(pc.charset)) {
+        if (pc.charset != null) {
           if (logMINOR)
             Logger.minor(
                 this,

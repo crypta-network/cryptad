@@ -520,9 +520,11 @@ public class ElementInfo {
         }
         if (c == '\r') {
           escapeNewline = true;
+          escape = false;
+
           continue;
         }
-        if (c == '\r' || c == '\n' || c == '\f') {
+        if (c == '\n' || c == '\f') {
           // Newline is allowed escaped in a string.
           escape = false;
           continue;
@@ -541,7 +543,6 @@ public class ElementInfo {
 
       if (c == '\\') {
         escape = true;
-        continue;
       }
 
       // Allow everything else.

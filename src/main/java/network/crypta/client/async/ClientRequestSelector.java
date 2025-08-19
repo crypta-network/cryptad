@@ -655,12 +655,10 @@ public class ClientRequestSelector implements KeysFetchingLocally {
         transientWaiting = this.transientRequestsWaitingForKeysFetching.remove(key);
       }
       if (transientWaiting != null) {
-        if (transientWaiting != null) {
-          for (WeakReference<BaseSendableGet> ref : transientWaiting) {
-            BaseSendableGet get = ref.get();
-            if (get == null) continue;
-            get.clearWakeupTime(sched.getContext());
-          }
+        for (WeakReference<BaseSendableGet> ref : transientWaiting) {
+          BaseSendableGet get = ref.get();
+          if (get == null) continue;
+          get.clearWakeupTime(sched.getContext());
         }
       }
     }
