@@ -416,6 +416,7 @@ ul.config {
   border-radius: 0;
   box-shadow: none;
   vertical-align: middle;
+  width: 250px;
 }
 
 #navbar #navlist li ul,
@@ -468,6 +469,10 @@ ul.config {
 #navbar ul#navlist li a:hover,
 #navbar ul#navlist li ul li a:hover {
   color: #333;
+}
+
+#navbar ul#navlist > li > a:hover {
+  color: #ddd;
 }
 
 ul#navlist li ul li:first-child {
