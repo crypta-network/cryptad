@@ -2204,8 +2204,6 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // Three chances.
       for (int i = 0; i < 3; i++) if (hardRandom.nextDouble() >= x) return false;
       return true;
-    } else {
-      // One chance
     }
     return hardRandom.nextDouble() < x;
   }

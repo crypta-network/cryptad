@@ -3942,25 +3942,24 @@ class CSSTokenizerFilter {
 
   private ArrayList<String> commaListFromIdentifiers(ParsedWord[] strparts, int offset) {
     ArrayList<String> medias = new ArrayList<>(strparts.length - 1);
-    if (strparts.length <= offset) {
-      // Nothing to munch
-    } else if (strparts.length == offset + 1
-        && strparts[1] instanceof ParsedIdentifier identifier1) {
-      medias.add(identifier1.getDecoded());
-    } else {
-      boolean first = true;
-      for (ParsedWord word : strparts) {
-        if (first) {
-          first = false;
-          continue;
+    if (strparts.length > offset) {
+      if (strparts.length == offset + 1 && strparts[1] instanceof ParsedIdentifier identifier1) {
+        medias.add(identifier1.getDecoded());
+      } else {
+        boolean first = true;
+        for (ParsedWord word : strparts) {
+          if (first) {
+            first = false;
+            continue;
+          }
+          if (word instanceof ParsedIdentifier identifier) {
+            medias.add(identifier.getDecoded());
+          } else if (word instanceof SimpleParsedWord) {
+            String data = word.original;
+            String[] split = FilterUtils.removeWhiteSpace(data.split(","), false);
+            medias.addAll(Arrays.asList(split));
+          } else return null;
         }
-        if (word instanceof ParsedIdentifier identifier) {
-          medias.add(identifier.getDecoded());
-        } else if (word instanceof SimpleParsedWord) {
-          String data = word.original;
-          String[] split = FilterUtils.removeWhiteSpace(data.split(","), false);
-          medias.addAll(Arrays.asList(split));
-        } else return null;
       }
     }
     return medias;

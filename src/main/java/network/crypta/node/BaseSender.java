@@ -200,13 +200,13 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     while (true) {
       DO action = waitForAccepted(null, next, origTag);
       // Here FINISHED means accepted, WAIT means try again (soft reject).
-      if (action == DO.WAIT) {
-        // retriedForLoadManagement = true;
-      } else if (action == DO.NEXT_PEER) {
-        routeRequests();
-        return;
-      } else { // FINISHED => accepted
-        break;
+      if (action != DO.WAIT) {
+        if (action == DO.NEXT_PEER) {
+          routeRequests();
+          return;
+        } else { // FINISHED => accepted
+          break;
+        }
       }
     } // loadWaiterLoop
 
