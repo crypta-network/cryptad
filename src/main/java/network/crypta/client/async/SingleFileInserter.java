@@ -204,7 +204,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
   }
 
   void onCompressedInner(CompressionOutput output, ClientContext context) throws InsertException {
-    HashResult[] hashes = output.hashes;
+    HashResult[] hashes = output.hashes();
     long origSize = block.getData().size();
     byte[] hashThisLayerOnly = null;
     if (hashes != null && metadata) {
@@ -228,10 +228,10 @@ class SingleFileInserter implements ClientPutState, Serializable {
     } else {
       hashes = origHashes; // Inherit so it goes all the way to the top.
     }
-    RandomAccessBucket bestCompressedData = output.data;
+    RandomAccessBucket bestCompressedData = output.data();
     long bestCompressedDataSize = bestCompressedData.size();
     RandomAccessBucket data = bestCompressedData;
-    COMPRESSOR_TYPE bestCodec = output.bestCodec;
+    COMPRESSOR_TYPE bestCodec = output.bestCodec();
 
     boolean shouldFreeData = freeData;
     if (bestCodec != null) {

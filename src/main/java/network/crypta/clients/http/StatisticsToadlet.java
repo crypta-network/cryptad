@@ -409,10 +409,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getMandatoryBackoffStatistics(false)) {
           row = mandatoryBackoffStatisticsTableBulk.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
 
         // Mandatory backoff - realtime
@@ -426,10 +426,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getMandatoryBackoffStatistics(true)) {
           row = mandatoryBackoffStatisticsTableRT.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
 
         // Routing Backoff bulk
@@ -443,10 +443,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getRoutingBackoffStatistics(false)) {
           row = routingBackoffStatisticsTableBulk.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
 
         // Routing Backoff realtime
@@ -460,10 +460,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getRoutingBackoffStatistics(true)) {
           row = routingBackoffStatisticsTableRT.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
 
         // Transfer Backoff bulk
@@ -477,10 +477,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getTransferBackoffStatistics(false)) {
           row = transferBackoffStatisticsTableBulk.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
         // Transfer Backoff realtime
         HTMLNode transferBackoffStatisticsTableRT =
@@ -493,10 +493,10 @@ public class StatisticsToadlet extends Toadlet {
 
         for (NodeStats.TimedStats entry : stats.getTransferBackoffStatistics(true)) {
           row = transferBackoffStatisticsTableRT.addChild("tr");
-          row.addChild("td", entry.keyStr);
-          row.addChild("td", Long.toString(entry.count));
-          row.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-          row.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+          row.addChild("td", entry.keyStr());
+          row.addChild("td", Long.toString(entry.count()));
+          row.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+          row.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
         }
 
         // Swap statistics box
@@ -699,7 +699,7 @@ public class StatisticsToadlet extends Toadlet {
                   Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber
                 }));
 
-    node.getNodeUpdater().addChangelogLinks((int) Version.currentBuildNumber(), versionInfobox);
+    node.getNodeUpdater().addChangelogLinks(Version.currentBuildNumber(), versionInfobox);
   }
 
   private void drawJVMStatsBox(HTMLNode jvmStatsInfobox, boolean advancedModeEnabled) {
@@ -880,7 +880,7 @@ public class StatisticsToadlet extends Toadlet {
 
       row = storeSizeTable.addChild("tr");
       row.addChild(
-          "th", l10n(instance.store.name()) + "\n" + " (" + l10n(instance.key.name()) + ")");
+          "th", l10n(instance.store().name()) + "\n" + " (" + l10n(instance.key().name()) + ")");
 
       row.addChild("td", thousandPoint.format(stats.keys()));
       row.addChild("td", thousandPoint.format(stats.capacity()));

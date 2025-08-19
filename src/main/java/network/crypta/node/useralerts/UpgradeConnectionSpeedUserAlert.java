@@ -62,14 +62,14 @@ public class UpgradeConnectionSpeedUserAlert extends AbstractUserAlert {
         "input",
         new String[] {"type", "name", "value"},
         new String[] {
-          "text", "inputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.downBytes)
+          "text", "inputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.downBytes())
         });
     bandwidthInput.addChild("br");
     bandwidthInput.addChild("span", "style", "margin-right: .5em;", l10n("uploadLimit"));
     bandwidthInput.addChild(
         "input",
         new String[] {"type", "name", "value"},
-        new String[] {"text", "outputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.upBytes)});
+        new String[] {"text", "outputBandwidthLimit", SizeUtil.formatSize(bandwidthLimit.upBytes())});
 
     form.addChild(
         "input",

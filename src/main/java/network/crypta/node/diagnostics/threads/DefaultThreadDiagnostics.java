@@ -112,7 +112,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
     }
 
     ThreadSnapshot snapshot = threadSnapshot.get(jobId);
-    long cpuUsage = current - (snapshot != null ? snapshot.getCpu() : 0);
+    long cpuUsage = current - (snapshot != null ? snapshot.cpu() : 0);
     threadSnapshot.put(jobId, new ThreadSnapshot(current, name));
 
     return cpuUsage;
@@ -155,30 +155,16 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
    */
   private String getJobName(Thread thread) {
     ThreadSnapshot ts = threadSnapshot.get(getJobId(thread));
-    return ts != null ? ts.getName() : thread.getName();
+    return ts != null ? ts.name() : thread.getName();
   }
 
-  /**
-   * Class holder for cpu and thread name at the moment of measurement. This is necessary as the
-   * threads are pooled and may change name right after measurement.
-   */
-  private static class ThreadSnapshot {
-    public ThreadSnapshot(long cpu, String name) {
-      this.cpu = cpu;
-      this.name = name;
-    }
+    /**
+     * Class holder for cpu and thread name at the moment of measurement. This is necessary as the
+     * threads are pooled and may change name right after measurement.
+     */
+    private record ThreadSnapshot(long cpu, String name) {
 
-    public String getName() {
-      return name;
     }
-
-    public long getCpu() {
-      return cpu;
-    }
-
-    private final long cpu;
-    private final String name;
-  }
 
   /** Sleep interval to calculate % CPU used by each thread */
   private static final int DEFAULT_MONITOR_INTERVAL = 1000;

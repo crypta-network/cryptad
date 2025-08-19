@@ -716,60 +716,27 @@ public class HTTPRequestImpl implements HTTPRequest {
     }
   }
 
-  /**
-   * Container for uploaded files in HTTP POST requests.
-   *
-   * @author David 'Bombe' Roden &lt;bombe@freenetproject.org&gt;
-   * @version $Id$
-   */
-  public static class HTTPUploadedFileImpl implements HTTPUploadedFile {
-
-    /** The filename. */
-    private final String filename;
-
-    /** The content type. */
-    private final String contentType;
-
-    /** The data. */
-    private final Bucket data;
-
     /**
-     * Creates a new file with the specified filename, content type, and data.
+     * Container for uploaded files in HTTP POST requests.
      *
-     * @param filename The name of the file
-     * @param contentType The content type of the file
-     * @param data The data of the file
+     * @param filename    The filename.
+     * @param contentType The content type.
+     * @param data        The data.
+     * @author David 'Bombe' Roden &lt;bombe@freenetproject.org&gt;
+     * @version $Id$
      */
-    public HTTPUploadedFileImpl(String filename, String contentType, Bucket data) {
-      this.filename = filename;
-      this.contentType = contentType;
-      this.data = data;
-    }
+    public record HTTPUploadedFileImpl(String filename, String contentType, Bucket data) implements HTTPUploadedFile {
 
-    /* (non-Javadoc)
-     * @see freenet.clients.http.HTTPUploadedFile#getContentType()
-     */
-    @Override
-    public String getContentType() {
-      return contentType;
+        /**
+         * Creates a new file with the specified filename, content type, and data.
+         *
+         * @param filename    The name of the file
+         * @param contentType The content type of the file
+         * @param data        The data of the file
+         */
+        public HTTPUploadedFileImpl {
+        }
     }
-
-    /* (non-Javadoc)
-     * @see freenet.clients.http.HTTPUploadedFile#getData()
-     */
-    @Override
-    public Bucket getData() {
-      return data;
-    }
-
-    /* (non-Javadoc)
-     * @see freenet.clients.http.HTTPUploadedFile#getFilename()
-     */
-    @Override
-    public String getFilename() {
-      return filename;
-    }
-  }
 
   @Override
   public String getMethod() {

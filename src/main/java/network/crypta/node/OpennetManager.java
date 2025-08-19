@@ -408,7 +408,7 @@ public class OpennetManager {
                     + u);
             continue;
           } catch (PeerParseException e) {
-            throw (IOException) new IOException(e);
+            throw new IOException(e);
           }
           if (p.getPort() == crypto.getPortNumber()) {
             // DNSRequester doesn't deal with our own node

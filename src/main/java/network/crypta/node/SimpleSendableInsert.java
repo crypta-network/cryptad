@@ -166,38 +166,28 @@ public class SimpleSendableInsert extends SendableInsert {
     return 1;
   }
 
-  // FIXME share with SingleBlockInserter???
-  private static class MySendableRequestItem
-      implements SendableRequestItem, SendableRequestItemKey {
+    // FIXME share with SingleBlockInserter???
+    private record MySendableRequestItem(SimpleSendableInsert parent)
+            implements SendableRequestItem, SendableRequestItemKey {
 
-    final SimpleSendableInsert parent;
+        @Override
+        public void dump() {
+            // Ignore.
+        }
 
-    public MySendableRequestItem(SimpleSendableInsert parent) {
-      this.parent = parent;
+        @Override
+        public SendableRequestItemKey getKey() {
+            return this;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof MySendableRequestItem item) {
+                return item.parent == parent;
+            } else return false;
+        }
+
     }
-
-    @Override
-    public void dump() {
-      // Ignore.
-    }
-
-    @Override
-    public SendableRequestItemKey getKey() {
-      return this;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (o instanceof MySendableRequestItem item) {
-        return item.parent == parent;
-      } else return false;
-    }
-
-    @Override
-    public int hashCode() {
-      return parent.hashCode();
-    }
-  }
 
   @Override
   public synchronized SendableRequestItem chooseKey(

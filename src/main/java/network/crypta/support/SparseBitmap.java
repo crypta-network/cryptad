@@ -152,20 +152,17 @@ public class SparseBitmap implements Iterable<int[]> {
     }
   }
 
-  private static class Range {
-    final int start; // inclusive
-    final int end; // inclusive
+    /**
+     * @param start inclusive
+     * @param end   inclusive
+     */
+    private record Range(int start, int end) {
 
-    public Range(int start, int end) {
-      this.start = start;
-      this.end = end;
+        @Override
+        public String toString() {
+            return "Range:" + start + "->" + end;
+        }
     }
-
-    @Override
-    public String toString() {
-      return "Range:" + start + "->" + end;
-    }
-  }
 
   private static class RangeComparator implements Comparator<Range> {
     @Override

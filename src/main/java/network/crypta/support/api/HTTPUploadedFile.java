@@ -7,19 +7,19 @@ public interface HTTPUploadedFile {
    *
    * @return The MIME type of the file
    */
-  String getContentType();
+  String contentType();
 
   /**
    * Returns the data of the file.
    *
    * @return The data of the file
    */
-  Bucket getData();
+  Bucket data();
 
   /**
    * Returns the name of the file.
    *
    * @return The name of the file
    */
-  String getFilename();
+  String filename();
 }

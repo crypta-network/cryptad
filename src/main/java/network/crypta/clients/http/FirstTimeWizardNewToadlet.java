@@ -294,8 +294,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
                 core.getNode().getIpDetector().getBandwidthIndicator());
 
         // Detected limits reasonable; add half of both as recommended option.
-        downloadLimitDetected = Long.toString(detected.downBytes / 2 / KiB);
-        uploadLimitDetected = Long.toString(detected.upBytes / 2 / KiB);
+        downloadLimitDetected = Long.toString(detected.downBytes() / 2 / KiB);
+        uploadLimitDetected = Long.toString(detected.upBytes() / 2 / KiB);
       } catch (PluginNotFoundException | IllegalValueException e) {
         Logger.normal(this, e.getMessage(), e);
       }
@@ -363,8 +363,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
         } else { // save bandwidthMonthlyLimit
           BandwidthLimit bandwidth =
               new BandwidthLimit(Fields.parseLong(bandwidthMonthlyLimit + "GiB"));
-          config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes));
-          config.get("node").set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));
+          config.get("node").set("inputBandwidthLimit", Long.toString(bandwidth.downBytes()));
+          config.get("node").set("outputBandwidthLimit", Long.toString(bandwidth.upBytes()));
         }
       } catch (ConfigException e) {
         Logger.error(this, "Should not happen, please report! " + e, e);

@@ -381,7 +381,7 @@ public abstract class ClientPutBase extends ClientRequest
     } else if (ce instanceof StartedCompressionEvent event2) {
       if ((verbosity & VERBOSITY_COMPRESSION_START_END) == VERBOSITY_COMPRESSION_START_END) {
         StartedCompressionMessage msg =
-            new StartedCompressionMessage(identifier, global, event2.codec);
+            new StartedCompressionMessage(identifier, global, event2.codec());
         trySendProgressMessage(msg, VERBOSITY_COMPRESSION_START_END, null, context);
         onStartCompressing();
       }

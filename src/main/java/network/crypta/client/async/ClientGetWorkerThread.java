@@ -30,7 +30,7 @@ import network.crypta.support.io.FileUtil;
  */
 public class ClientGetWorkerThread extends Thread {
 
-  private InputStream input;
+  private final InputStream input;
   private final String schemeHostAndPort;
   private final URI uri;
   private final HashResult[] hashes;

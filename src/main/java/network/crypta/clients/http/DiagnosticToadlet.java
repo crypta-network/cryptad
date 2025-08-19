@@ -80,7 +80,7 @@ public class DiagnosticToadlet extends Toadlet {
                   new String[] {"fullVersion", "build", "rev"},
                   new String[] {
                     Long.toString(Version.currentBuildNumber()),
-                    Integer.toString((int) Version.currentBuildNumber()),
+                    Integer.toString(Version.currentBuildNumber()),
                     Version.gitRevision()
                   }))
           .append("\n");
@@ -154,9 +154,9 @@ public class DiagnosticToadlet extends Toadlet {
           totalAccess = null;
         }
         textBuilder
-            .append(l10n(instance.store.name()))
+            .append(l10n(instance.store().name()))
             .append(": (")
-            .append(l10n(instance.key.name()))
+            .append(l10n(instance.key().name()))
             .append(")\n");
         textBuilder
             .append("  ")
@@ -857,9 +857,9 @@ public class DiagnosticToadlet extends Toadlet {
 
     NodeThreadSnapshot threadSnapshot = threadDiagnostics.getThreadSnapshot();
 
-    double wallTime = TimeUnit.MILLISECONDS.toNanos(threadSnapshot.getInterval());
+    double wallTime = TimeUnit.MILLISECONDS.toNanos(threadSnapshot.interval());
 
-    List<NodeThreadInfo> threads = threadSnapshot.getThreads();
+    List<NodeThreadInfo> threads = threadSnapshot.threads();
     threads.sort(Comparator.comparing(NodeThreadInfo::getCpuTime).reversed());
 
     sb.append("Threads (%d):%n".formatted(threads.size()));

@@ -663,9 +663,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   private OFFER_STATUS tryOffer(final BlockOffer offer, final PeerNode pn, final OfferList offers) {
     if (pn == null) return OFFER_STATUS.TRY_ANOTHER;
-    if (pn.getBootID() != offer.bootID) return OFFER_STATUS.TRY_ANOTHER;
+    if (pn.getBootID() != offer.bootID()) return OFFER_STATUS.TRY_ANOTHER;
     origTag.addRoutedTo(pn, true);
-    Message msg = DMT.createFNPGetOfferedKey(key, offer.authenticator, pubKey == null, uid);
+    Message msg = DMT.createFNPGetOfferedKey(key, offer.authenticator(), pubKey == null, uid);
     msg.addSubMessage(DMT.createFNPRealTimeFlag(realTimeFlag));
     try {
       pn.sendSync(msg, this, realTimeFlag);

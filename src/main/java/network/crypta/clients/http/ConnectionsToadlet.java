@@ -1548,23 +1548,23 @@ public abstract class ConnectionsToadlet extends Toadlet {
             .addChild("td", "class", "peer-idle" /* FIXME */)
             .addChild(
                 "#",
-                loadStatsBulk.runningRequestsTotal
+                loadStatsBulk.runningRequestsTotal()
                     + "reqs:out:"
-                    + SizeUtil.formatSize(loadStatsBulk.usedCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.usedCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.othersUsedCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.othersUsedCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.peerCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.peerCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.totalCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.totalCapacityOutputBytes())
                     + ":in:"
-                    + SizeUtil.formatSize(loadStatsBulk.usedCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.usedCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.othersUsedCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.othersUsedCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.peerCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsBulk.peerCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsBulk.totalCapacityInputBytes));
+                    + SizeUtil.formatSize(loadStatsBulk.totalCapacityInputBytes()));
       IncomingLoadSummaryStats loadStatsRT = peerNodeStatus.incomingLoadStatsRealTime;
       if (loadStatsRT == null) peerRow.addChild("td", "class", "peer-idle" /* FIXME */);
       else
@@ -1572,23 +1572,23 @@ public abstract class ConnectionsToadlet extends Toadlet {
             .addChild("td", "class", "peer-idle" /* FIXME */)
             .addChild(
                 "#",
-                loadStatsRT.runningRequestsTotal
+                loadStatsRT.runningRequestsTotal()
                     + "reqs:out:"
-                    + SizeUtil.formatSize(loadStatsRT.usedCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.usedCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.othersUsedCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.othersUsedCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.peerCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.peerCapacityOutputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.totalCapacityOutputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.totalCapacityOutputBytes())
                     + ":in:"
-                    + SizeUtil.formatSize(loadStatsRT.usedCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.usedCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.othersUsedCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.othersUsedCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.peerCapacityInputBytes)
+                    + SizeUtil.formatSize(loadStatsRT.peerCapacityInputBytes())
                     + "/"
-                    + SizeUtil.formatSize(loadStatsRT.totalCapacityInputBytes));
+                    + SizeUtil.formatSize(loadStatsRT.totalCapacityInputBytes()));
     }
 
     if (endCols != null) {

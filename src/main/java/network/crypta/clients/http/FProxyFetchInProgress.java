@@ -406,12 +406,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
         }
       } else if (ce instanceof ExpectedMIMEEvent event1) {
         synchronized (this) {
-          this.mimeType = event1.expectedMIMEType;
+          this.mimeType = event1.expectedMIMEType();
         }
         if (!goneToNetwork) return;
       } else if (ce instanceof ExpectedFileSizeEvent event) {
         synchronized (this) {
-          this.size = event.expectedSize;
+          this.size = event.expectedSize();
         }
         if (!goneToNetwork) return;
       } else return;

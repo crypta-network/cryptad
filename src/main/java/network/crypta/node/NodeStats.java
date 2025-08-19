@@ -63,31 +63,37 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     SSK_OFFER_FETCH
   }
 
-  /** Histogram for request locations. */
-  private static class RequestsByLocation {
-    private final AtomicIntegerArray bins;
+    /**
+     * Histogram for request locations.
+     */
+    private record RequestsByLocation(AtomicIntegerArray bins) {
+        /**
+         * Constructs a request location histogram with the given number of bins.
+         */
+        private RequestsByLocation(int bins) {
+            this.bins = new AtomicIntegerArray(bins);
+        }
 
-    /** Constructs a request location histogram with the given number of bins. */
-    RequestsByLocation(int numBins) {
-      bins = new AtomicIntegerArray(numBins);
-    }
+        /**
+         * Update the request counts with a request for the given location.
+         */
+        final void report(final double loc) {
+            assert loc >= 0 && loc < 1.0;
+            int bin = (int) Math.floor(loc * bins.length());
+            bins.incrementAndGet(bin);
+        }
 
-    /** Update the request counts with a request for the given location. */
-    final void report(final double loc) {
-      assert loc >= 0 && loc < 1.0;
-      int bin = (int) Math.floor(loc * bins.length());
-      bins.incrementAndGet(bin);
+        /**
+         * Get the request count bins.
+         */
+        final int[] getCounts() {
+            int[] counts = new int[bins.length()];
+            for (int i = 0; i < counts.length; i++) {
+                counts[i] = bins.get(i);
+            }
+            return counts;
+        }
     }
-
-    /** Get the request count bins. */
-    final int[] getCounts() {
-      int[] counts = new int[bins.length()];
-      for (int i = 0; i < counts.length; i++) {
-        counts[i] = bins.get(i);
-      }
-      return counts;
-    }
-  }
 
   /** Sub-max ping time. If ping is greater than this, we reject some requests. */
   public static final long DEFAULT_SUB_MAX_PING_TIME = MILLISECONDS.toMillis(700);
@@ -1607,25 +1613,17 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /** Input bytes required for an outbound transfer. Includes e.g. sending the insert etc. */
   static final int TRANSFER_OUT_IN_OVERHEAD = 256;
 
-  static class RejectReason {
-    public final String name;
-
     /**
-     * If true, rejected because of preemptive bandwidth limiting, i.e. "soft", at least somewhat
-     * predictable, can be retried. If false, hard rejection, should backoff and not retry.
+     * @param soft If true, rejected because of preemptive bandwidth limiting, i.e. "soft", at least somewhat
+     *             predictable, can be retried. If false, hard rejection, should backoff and not retry.
      */
-    public final boolean soft;
+    record RejectReason(String name, boolean soft) {
 
-    RejectReason(String n, boolean s) {
-      name = n;
-      soft = s;
+        @Override
+        public String toString() {
+            return (soft ? "SOFT" : "HARD") + ":" + name;
+        }
     }
-
-    @Override
-    public String toString() {
-      return (soft ? "SOFT" : "HARD") + ":" + name;
-    }
-  }
 
   private final Object serializeShouldRejectRequest = new Object();
 
@@ -4171,26 +4169,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return cachePercent;
   }
 
-  public static class TimedStats implements Comparable<TimedStats> {
-    public final String keyStr;
-    public final long count;
-    public final long avgTime;
-    public final long totalTime;
+    public record TimedStats(String keyStr, long count, long avgTime,
+                             long totalTime) implements Comparable<TimedStats> {
 
-    public TimedStats(String myKeyStr, long myCount, long myAvgTime, long myTotalTime) {
-      keyStr = myKeyStr;
-      count = myCount;
-      avgTime = myAvgTime;
-      totalTime = myTotalTime;
+        @Override
+        public int compareTo(TimedStats o) {
+            if (totalTime < o.totalTime) return 1;
+            else if (totalTime == o.totalTime) return 0;
+            else return -1;
+        }
     }
-
-    @Override
-    public int compareTo(TimedStats o) {
-      if (totalTime < o.totalTime) return 1;
-      else if (totalTime == o.totalTime) return 0;
-      else return -1;
-    }
-  }
 
   public TimedStats[] getMandatoryBackoffStatistics(boolean realtime) {
     return mandatoryBackoffStats.getStatistics(realtime);

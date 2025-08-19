@@ -6,35 +6,21 @@ package network.crypta.node.stats;
  *
  * <p>User: nikotyan Date: Apr 16, 2010
  */
-public class DataStoreInstanceType {
-  public final DataStoreType store;
-  public final DataStoreKeyType key;
+public record DataStoreInstanceType(DataStoreKeyType key, DataStoreType store) {
 
-  public DataStoreInstanceType(DataStoreKeyType key, DataStoreType store) {
-    this.store = store;
-    this.key = key;
-  }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
 
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+        DataStoreInstanceType that = (DataStoreInstanceType) o;
 
-    DataStoreInstanceType that = (DataStoreInstanceType) o;
+        if (key != that.key) return false;
+        return store == that.store;
+    }
 
-    if (key != that.key) return false;
-    return store == that.store;
-  }
-
-  @Override
-  public int hashCode() {
-    int result = store.hashCode();
-    result = 31 * result + key.hashCode();
-    return result;
-  }
-
-  @Override
-  public String toString() {
-    return "DataStoreInstanceType{" + "store=" + store + ", key=" + key + '}';
-  }
+    @Override
+    public String toString() {
+        return "DataStoreInstanceType{" + "store=" + store + ", key=" + key + '}';
+    }
 }

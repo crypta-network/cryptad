@@ -495,7 +495,6 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
                   }
                 } catch (NotConnectedException e) {
                   // Hmmm...!
-                  return;
                 }
               } else {
                 // Add it

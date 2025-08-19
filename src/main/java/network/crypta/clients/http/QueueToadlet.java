@@ -609,12 +609,12 @@ public class QueueToadlet extends Toadlet
           return;
         }
         final HTTPUploadedFile file = request.getUploadedFile("filename");
-        if (file == null || file.getFilename().trim().isEmpty()) {
+        if (file == null || file.filename().trim().isEmpty()) {
           writeError(l10n("errorNoFileSelected"), l10n("errorNoFileSelectedU"), ctx, false, true);
           return;
         }
         final boolean compress = !request.getPartAsStringFailsafe("compress", 128).isEmpty();
-        final String identifier = file.getFilename() + "-fred-" + System.currentTimeMillis();
+        final String identifier = file.filename() + "-fred-" + System.currentTimeMillis();
         final String compatibilityMode = request.getPartAsStringFailsafe("compatibilityMode", 100);
         final CompatibilityMode cmode;
         if (compatibilityMode.isEmpty()) cmode = CompatibilityMode.COMPAT_DEFAULT.intern();
@@ -625,12 +625,12 @@ public class QueueToadlet extends Toadlet
         else overrideSplitfileKey = null;
         final String fnam;
         if (insertURI.getKeyType().equals("CHK") || keyType.equals("SSK"))
-          fnam = file.getFilename();
+          fnam = file.filename();
         else fnam = null;
         /* copy bucket data */
         final RandomAccessBucket copiedBucket =
-            core.getPersistentTempBucketFactory().makeBucket(file.getData().size());
-        BucketTools.copy(file.getData(), copiedBucket);
+            core.getPersistentTempBucketFactory().makeBucket(file.data().size());
+        BucketTools.copy(file.data(), copiedBucket);
         final CountDownLatch done = new CountDownLatch(1);
         try {
           core.getClientLayerPersister()
@@ -662,7 +662,7 @@ public class QueueToadlet extends Toadlet
                                   -1,
                                   UploadFrom.DIRECT,
                                   null,
-                                  file.getContentType(),
+                                  file.contentType(),
                                   copiedBucket,
                                   null,
                                   fnam,
@@ -693,7 +693,7 @@ public class QueueToadlet extends Toadlet
                         } catch (NotAllowedException e) {
                           writeError(
                               l10n("errorAccessDenied"),
-                              l10n("errorAccessDeniedFile", "file", file.getFilename()),
+                              l10n("errorAccessDeniedFile", "file", file.filename()),
                               ctx,
                               false,
                               true);
@@ -701,7 +701,7 @@ public class QueueToadlet extends Toadlet
                         } catch (FileNotFoundException e) {
                           writeError(
                               l10n("errorNoFileOrCannotRead"),
-                              l10n("errorAccessDeniedFile", "file", file.getFilename()),
+                              l10n("errorAccessDeniedFile", "file", file.filename()),
                               ctx,
                               false,
                               true);

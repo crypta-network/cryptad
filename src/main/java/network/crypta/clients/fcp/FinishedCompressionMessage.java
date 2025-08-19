@@ -16,9 +16,9 @@ public class FinishedCompressionMessage extends FCPMessage {
   public FinishedCompressionMessage(
       String identifier, boolean global, FinishedCompressionEvent event) {
     this.identifier = identifier;
-    this.codec = event.codec;
-    this.compressedSize = event.compressedSize;
-    this.origSize = event.originalSize;
+    this.codec = event.codec();
+    this.compressedSize = event.compressedSize();
+    this.origSize = event.originalSize();
     this.global = global;
   }
 

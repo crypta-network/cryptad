@@ -23,31 +23,26 @@ public class MultiReaderBucket implements Serializable {
   // Cleaner for safety net resource cleanup
   private static final Cleaner cleaner = Cleaner.create();
 
-  // Static nested class for cleaner action to avoid holding reference to the ReaderBucket instance
-  private static class ReaderBucketCleanup implements Runnable {
-    private final MultiReaderBucket parent;
+    // Static nested class for cleaner action to avoid holding reference to the ReaderBucket instance
+    private record ReaderBucketCleanup(MultiReaderBucket parent) implements Runnable {
 
-    ReaderBucketCleanup(MultiReaderBucket parent) {
-      this.parent = parent;
-    }
-
-    @Override
-    public void run() {
-      // Safety net cleanup - this should rarely be called if free() is used properly
-      synchronized (parent) {
-        if (parent.readers != null && !parent.readers.isEmpty()) {
-          parent.readers.clear();
-          parent.readers = null;
+        @Override
+        public void run() {
+            // Safety net cleanup - this should rarely be called if free() is used properly
+            synchronized (parent) {
+                if (parent.readers != null && !parent.readers.isEmpty()) {
+                    parent.readers.clear();
+                    parent.readers = null;
+                }
+                if (!parent.closed) {
+                    parent.closed = true;
+                }
+            }
+            if (parent.bucket != null) {
+                parent.bucket.free();
+            }
         }
-        if (!parent.closed) {
-          parent.closed = true;
-        }
-      }
-      if (parent.bucket != null) {
-        parent.bucket.free();
-      }
     }
-  }
 
   private final Bucket bucket;
 

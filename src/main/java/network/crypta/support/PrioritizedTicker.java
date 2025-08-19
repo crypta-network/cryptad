@@ -23,27 +23,20 @@ public class PrioritizedTicker implements Ticker, Runnable {
         });
   }
 
-  private static final class Job {
-    final String name;
-    final Runnable job;
+    private record Job(String name, Runnable job) {
 
-    Job(String name, Runnable job) {
-      this.name = name;
-      this.job = job;
-    }
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Job)) return false;
+            // Ignore the name, we are only interested in the job, needed for noDupes.
+            return ((Job) o).job == job;
+        }
 
-    @Override
-    public boolean equals(Object o) {
-      if (!(o instanceof Job)) return false;
-      // Ignore the name, we are only interested in the job, needed for noDupes.
-      return ((Job) o).job == job;
+        @Override
+        public int hashCode() {
+            return job.hashCode();
+        }
     }
-
-    @Override
-    public int hashCode() {
-      return job.hashCode();
-    }
-  }
 
   /** ~= Ticker :) */
   private final TreeMap<Long, Object> timedJobsByTime;

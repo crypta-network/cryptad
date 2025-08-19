@@ -46,15 +46,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
     Logger.registerClass(ContainerInserter.class);
   }
 
-  private static class ContainerElement {
-    private final Bucket data;
-    private final String targetInArchive;
-
-    private ContainerElement(Bucket data2, String targetInArchive2) {
-      data = data2;
-      targetInArchive = targetInArchive2;
+    private record ContainerElement(Bucket data, String targetInArchive) {
     }
-  }
 
   private final ArrayList<ContainerElement> containerItems;
 

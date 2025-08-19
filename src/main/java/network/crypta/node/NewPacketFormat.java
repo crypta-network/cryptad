@@ -209,40 +209,40 @@ public class NewPacketFormat implements PacketFormat {
     for (MessageFragment fragment : packet.getFragments()) {
       if (messageWindowPtrReceived + MSG_WINDOW_SIZE > NUM_MESSAGE_IDS) {
         int upperBound = (messageWindowPtrReceived + MSG_WINDOW_SIZE) % NUM_MESSAGE_IDS;
-        if ((fragment.messageID > upperBound) && (fragment.messageID < messageWindowPtrReceived)) {
+        if ((fragment.messageID() > upperBound) && (fragment.messageID() < messageWindowPtrReceived)) {
           if (logMINOR)
             Logger.minor(
-                this, "Received message " + fragment.messageID + " outside window, acking");
+                this, "Received message " + fragment.messageID() + " outside window, acking");
           continue;
         }
       } else {
         int upperBound = messageWindowPtrReceived + MSG_WINDOW_SIZE;
-        if (!((fragment.messageID >= messageWindowPtrReceived)
-            && (fragment.messageID < upperBound))) {
+        if (!((fragment.messageID() >= messageWindowPtrReceived)
+            && (fragment.messageID() < upperBound))) {
           if (logMINOR)
             Logger.minor(
-                this, "Received message " + fragment.messageID + " outside window, acking");
+                this, "Received message " + fragment.messageID() + " outside window, acking");
           continue;
         }
       }
       synchronized (receivedMessages) {
-        if (receivedMessages.contains(fragment.messageID, fragment.messageID)) continue;
+        if (receivedMessages.contains(fragment.messageID(), fragment.messageID())) continue;
       }
 
-      PartiallyReceivedBuffer recvBuffer = receiveBuffers.get(fragment.messageID);
-      SparseBitmap recvMap = receiveMaps.get(fragment.messageID);
+      PartiallyReceivedBuffer recvBuffer = receiveBuffers.get(fragment.messageID());
+      SparseBitmap recvMap = receiveMaps.get(fragment.messageID());
       if (recvBuffer == null) {
-        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID + ": Creating buffer");
+        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID() + ": Creating buffer");
 
         recvBuffer = new PartiallyReceivedBuffer(this);
-        if (fragment.firstFragment) {
-          if (!recvBuffer.setMessageLength(fragment.messageLength)) {
+        if (fragment.firstFragment()) {
+          if (!recvBuffer.setMessageLength(fragment.messageLength())) {
             dontAck = true;
             continue;
           }
         } else {
           synchronized (receiveBufferSizeLock) {
-            if ((receiveBufferUsed + fragment.fragmentLength) > MAX_RECEIVE_BUFFER_SIZE) {
+            if ((receiveBufferUsed + fragment.fragmentLength()) > MAX_RECEIVE_BUFFER_SIZE) {
               if (logMINOR) Logger.minor(this, "Could not create buffer, would excede max size");
               dontAck = true;
               continue;
@@ -251,33 +251,33 @@ public class NewPacketFormat implements PacketFormat {
         }
 
         recvMap = new SparseBitmap();
-        receiveBuffers.put(fragment.messageID, recvBuffer);
-        receiveMaps.put(fragment.messageID, recvMap);
+        receiveBuffers.put(fragment.messageID(), recvBuffer);
+        receiveMaps.put(fragment.messageID(), recvMap);
       } else {
-        if (fragment.firstFragment) {
-          if (!recvBuffer.setMessageLength(fragment.messageLength)) {
+        if (fragment.firstFragment()) {
+          if (!recvBuffer.setMessageLength(fragment.messageLength())) {
             dontAck = true;
             continue;
           }
         }
       }
 
-      if (!recvBuffer.add(fragment.fragmentData, fragment.fragmentOffset)) {
+      if (!recvBuffer.add(fragment.fragmentData(), fragment.fragmentOffset())) {
         dontAck = true;
         continue;
       }
-      if (fragment.fragmentLength == 0) {
+      if (fragment.fragmentLength() == 0) {
         Logger.warning(this, "Received fragment of length 0");
         continue;
       }
-      recvMap.add(fragment.fragmentOffset, fragment.fragmentOffset + fragment.fragmentLength - 1);
+      recvMap.add(fragment.fragmentOffset(), fragment.fragmentOffset() + fragment.fragmentLength() - 1);
       if ((recvBuffer.messageLength != -1) && recvMap.contains(0, recvBuffer.messageLength - 1)) {
-        receiveBuffers.remove(fragment.messageID);
-        receiveMaps.remove(fragment.messageID);
+        receiveBuffers.remove(fragment.messageID());
+        receiveMaps.remove(fragment.messageID());
 
         synchronized (receivedMessages) {
-          if (receivedMessages.contains(fragment.messageID, fragment.messageID)) continue;
-          receivedMessages.add(fragment.messageID, fragment.messageID);
+          if (receivedMessages.contains(fragment.messageID(), fragment.messageID())) continue;
+          receivedMessages.add(fragment.messageID(), fragment.messageID());
 
           int oldWindow = messageWindowPtrReceived;
           while (receivedMessages.contains(messageWindowPtrReceived, messageWindowPtrReceived)) {
@@ -306,9 +306,9 @@ public class NewPacketFormat implements PacketFormat {
 
         fullyReceived.add(recvBuffer.buffer);
 
-        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID + ": Completed");
+        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID() + ": Completed");
       } else {
-        if (logDEBUG) Logger.debug(this, "Message id " + fragment.messageID + ": " + recvMap);
+        if (logDEBUG) Logger.debug(this, "Message id " + fragment.messageID() + ": " + recvMap);
       }
     }
 
@@ -550,13 +550,13 @@ public class NewPacketFormat implements PacketFormat {
       if (logMINOR) {
         String fragments = null;
         for (MessageFragment frag : packet.getFragments()) {
-          if (fragments == null) fragments = String.valueOf(frag.messageID);
-          else fragments = fragments + ", " + frag.messageID;
+          if (fragments == null) fragments = String.valueOf(frag.messageID());
+          else fragments = fragments + ", " + frag.messageID();
           fragments +=
               " ("
-                  + frag.fragmentOffset
+                  + frag.fragmentOffset()
                   + "->"
-                  + (frag.fragmentOffset + frag.fragmentLength - 1)
+                  + (frag.fragmentOffset() + frag.fragmentLength() - 1)
                   + ")";
         }
 
@@ -1103,8 +1103,8 @@ public class NewPacketFormat implements PacketFormat {
     }
 
     void addFragment(MessageFragment frag) {
-      messages.add(frag.wrapper);
-      ranges.add(new int[] {frag.fragmentOffset, frag.fragmentOffset + frag.fragmentLength - 1});
+      messages.add(frag.wrapper());
+      ranges.add(new int[] {frag.fragmentOffset(), frag.fragmentOffset() + frag.fragmentLength() - 1});
     }
 
     public long acked(SessionKey key) {

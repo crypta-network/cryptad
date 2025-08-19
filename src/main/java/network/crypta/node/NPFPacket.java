@@ -313,38 +313,38 @@ class NPFPacket {
     // Add fragments
     int prevFragmentID = -1;
     for (MessageFragment fragment : fragments) {
-      if (fragment.shortMessage) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x80);
-      if (fragment.isFragmented) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x40);
-      if (fragment.firstFragment) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x20);
+      if (fragment.shortMessage()) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x80);
+      if (fragment.isFragmented()) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x40);
+      if (fragment.firstFragment()) buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x20);
 
-      if (prevFragmentID == -1 || (fragment.messageID - prevFragmentID >= 4096)) {
+      if (prevFragmentID == -1 || (fragment.messageID() - prevFragmentID >= 4096)) {
         buf[offset] = (byte) ((buf[offset] & 0xFF) | 0x10);
-        buf[offset] = (byte) ((buf[offset] & 0xFF) | ((fragment.messageID >>> 24) & 0x0F));
-        buf[offset + 1] = (byte) (fragment.messageID >>> 16);
-        buf[offset + 2] = (byte) (fragment.messageID >>> 8);
-        buf[offset + 3] = (byte) (fragment.messageID);
+        buf[offset] = (byte) ((buf[offset] & 0xFF) | ((fragment.messageID() >>> 24) & 0x0F));
+        buf[offset + 1] = (byte) (fragment.messageID() >>> 16);
+        buf[offset + 2] = (byte) (fragment.messageID() >>> 8);
+        buf[offset + 3] = (byte) (fragment.messageID());
         offset += 4;
       } else {
-        int compressedMsgID = fragment.messageID - prevFragmentID;
+        int compressedMsgID = fragment.messageID() - prevFragmentID;
         buf[offset] = (byte) ((buf[offset] & 0xFF) | ((compressedMsgID >>> 8) & 0x0F));
         buf[offset + 1] = (byte) (compressedMsgID);
         offset += 2;
       }
-      prevFragmentID = fragment.messageID;
+      prevFragmentID = fragment.messageID();
 
-      if (fragment.shortMessage) {
-        buf[offset++] = (byte) (fragment.fragmentLength);
+      if (fragment.shortMessage()) {
+        buf[offset++] = (byte) (fragment.fragmentLength());
       } else {
-        buf[offset] = (byte) (fragment.fragmentLength >>> 8);
-        buf[offset + 1] = (byte) (fragment.fragmentLength);
+        buf[offset] = (byte) (fragment.fragmentLength() >>> 8);
+        buf[offset + 1] = (byte) (fragment.fragmentLength());
         offset += 2;
       }
 
-      if (fragment.isFragmented) {
+      if (fragment.isFragmented()) {
         // If firstFragment is true, add total message length. Else, add fragment offset
-        int value = fragment.firstFragment ? fragment.messageLength : fragment.fragmentOffset;
+        int value = fragment.firstFragment() ? fragment.messageLength() : fragment.fragmentOffset();
 
-        if (fragment.shortMessage) {
+        if (fragment.shortMessage()) {
           buf[offset++] = (byte) (value);
         } else {
           buf[offset] = (byte) (value >>> 8);
@@ -353,8 +353,8 @@ class NPFPacket {
         }
       }
 
-      System.arraycopy(fragment.fragmentData, 0, buf, offset, fragment.fragmentLength);
-      offset += fragment.fragmentLength;
+      System.arraycopy(fragment.fragmentData(), 0, buf, offset, fragment.fragmentLength());
+      offset += fragment.fragmentLength();
     }
 
     if (!lossyMessages.isEmpty()) {
@@ -441,10 +441,10 @@ class NPFPacket {
     int msgIDLength = 0;
     int prevMessageID = -1;
     for (MessageFragment fragment : fragments) {
-      if ((prevMessageID == -1) || (fragment.messageID - prevMessageID >= 4096)) {
+      if ((prevMessageID == -1) || (fragment.messageID() - prevMessageID >= 4096)) {
         msgIDLength += 2;
       }
-      prevMessageID = fragment.messageID;
+      prevMessageID = fragment.messageID();
     }
 
     length += (msgIDLength - oldMsgIDLength);
@@ -523,8 +523,8 @@ class NPFPacket {
   private static class MessageFragmentComparator implements Comparator<MessageFragment> {
     @Override
     public int compare(MessageFragment frag1, MessageFragment frag2) {
-      if (frag1.messageID < frag2.messageID) return -1;
-      if (frag1.messageID == frag2.messageID) return 0;
+      if (frag1.messageID() < frag2.messageID()) return -1;
+      if (frag1.messageID() == frag2.messageID()) return 0;
       return 1;
     }
   }
@@ -534,9 +534,9 @@ class NPFPacket {
     int size = fragments.size();
     int biggest = 0;
     for (MessageFragment frag : fragments) {
-      totalMessageData += frag.fragmentLength;
+      totalMessageData += frag.fragmentLength();
       size++;
-      if (biggest < frag.messageLength) biggest = frag.messageLength;
+      if (biggest < frag.messageLength()) biggest = frag.messageLength();
     }
     int overhead = totalPacketLength - totalMessageData;
     if (logDEBUG)
@@ -554,8 +554,8 @@ class NPFPacket {
               + biggest);
     for (MessageFragment frag : fragments) {
       // frag.wrapper is always non-null on sending.
-      frag.wrapper.onSent(
-          frag.fragmentOffset, frag.fragmentOffset + frag.fragmentLength - 1, overhead / size, pn);
+      frag.wrapper().onSent(
+              frag.fragmentOffset(), frag.fragmentOffset() + frag.fragmentLength() - 1, overhead / size, pn);
     }
   }
 

@@ -128,7 +128,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         try {
           manager
               .getUpdateOverMandatory()
-              .processMainJarBlob(temp, null, (long) currentVersion, uri);
+              .processMainJarBlob(temp, null, currentVersion, uri);
         } catch (Throwable t) {
           // Don't disrupt startup.
           Logger.error(this, "Unable to process old blob, caught " + t, t);

@@ -136,19 +136,13 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
   protected final Deque<OldLogFile> logFiles = new ArrayDeque<OldLogFile>();
   private long oldLogFilesDiskSpaceUsage = 0;
 
-  private static class OldLogFile {
-    public OldLogFile(File currentFilename, long startTime, long endTime, long length) {
-      this.filename = currentFilename;
-      this.start = startTime;
-      this.end = endTime;
-      this.size = length;
-    }
+    /**
+     * @param start inclusive
+     * @param end   exclusive
+     */
+    private record OldLogFile(File filename, long start, long end, long size) {
 
-    final File filename;
-    final long start; // inclusive
-    final long end; // exclusive
-    final long size;
-  }
+    }
 
   public void setMaxListBytes(long len) {
     synchronized (list) {
@@ -205,7 +199,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
   protected String getHourLogName(Calendar c, int digit, boolean compressed) {
     StringBuilder buf = new StringBuilder(50);
     buf.append(baseFilename).append('-');
-    buf.append((int) Version.currentBuildNumber());
+    buf.append(Version.currentBuildNumber());
     buf.append('-');
     buf.append(c.get(Calendar.YEAR)).append('-');
     pad2digits(buf, c.get(Calendar.MONTH) + 1);
