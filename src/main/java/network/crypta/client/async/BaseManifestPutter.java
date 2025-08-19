@@ -1166,30 +1166,29 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     synchronized (this) {
       if (hasResolvedBase) return;
     }
-    while (true) {
+
+    try {
+      bucket = baseMetadata.toBucket(context.getBucketFactory(persistent()));
+      if (logMINOR) Logger.minor(this, "Metadata bucket is " + bucket.size() + " bytes long");
+    } catch (IOException e) {
+      fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null), context);
+      return;
+    } catch (MetadataUnresolvedException e) {
       try {
-        bucket = baseMetadata.toBucket(context.getBucketFactory(persistent()));
-        if (logMINOR) Logger.minor(this, "Metadata bucket is " + bucket.size() + " bytes long");
-        break;
-      } catch (IOException e) {
+        // Start the insert for the sub-Metadata.
+        // Eventually it will generate a URI and call onEncode(), which will call back here.
+        if (logMINOR) Logger.minor(this, "Main metadata needs resolving: " + e);
+        resolve(e, context);
+        return;
+      } catch (IOException e1) {
         fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null), context);
         return;
-      } catch (MetadataUnresolvedException e) {
-        try {
-          // Start the insert for the sub-Metadata.
-          // Eventually it will generate a URI and call onEncode(), which will call back here.
-          if (logMINOR) Logger.minor(this, "Main metadata needs resolving: " + e);
-          resolve(e, context);
-          return;
-        } catch (IOException e1) {
-          fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null), context);
-          return;
-        } catch (InsertException e2) {
-          fail(e2, context);
-          return;
-        }
+      } catch (InsertException e2) {
+        fail(e2, context);
+        return;
       }
     }
+
     if (bucket == null) return;
     synchronized (this) {
       if (hasResolvedBase) return;
