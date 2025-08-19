@@ -1319,7 +1319,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
    */
   public long getProbableSendQueueTime() {
     double bandwidth = (getThrottle().getBandwidth() + 1.0);
-    if (shouldThrottle()) bandwidth = Math.min(bandwidth, node.getOutputBandwidthLimit() / 2);
+    if (shouldThrottle())
+      bandwidth = Math.min(bandwidth, (double) node.getOutputBandwidthLimit() / 2);
     long length = getMessageQueueLengthBytes();
     return (long) (1000.0 * length / bandwidth);
   }
@@ -4590,7 +4591,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         double oldRTO = RTO;
         // Initialize
         SRTT = t;
-        RTTVAR = t / 2;
+        RTTVAR = (double) t / 2;
         RTO = SRTT + Math.max(CLOCK_GRANULARITY, RTTVAR * 4);
         // RFC 2988 specifies a 1 second minimum RTT, mostly due to legacy issues,
         // but given that Freenet is mostly used on very slow upstream links, it
@@ -6226,7 +6227,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   public int calculateMaxTransfersOut(int timeout, double nonOverheadFraction) {
     // First get usable bandwidth.
     double bandwidth = (getThrottle().getBandwidth() + 1.0);
-    if (shouldThrottle()) bandwidth = Math.min(bandwidth, node.getOutputBandwidthLimit() / 2);
+    if (shouldThrottle())
+      bandwidth = Math.min(bandwidth, (double) node.getOutputBandwidthLimit() / 2);
     bandwidth *= nonOverheadFraction;
     // Transfers are divided into packets. Packets are 1KB. There are 1-2
     // of these for SSKs and 32 of them for CHKs, but that's irrelevant here.

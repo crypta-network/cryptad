@@ -2017,7 +2017,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /** Standard deviation in ping times */
   static final double PINGS_STDDEV = PINGS / 6.0;
 
-  static final double MAX_PING_TIME = RequestSender.OPENNET_TIMEOUT / 10;
+  static final double MAX_PING_TIME = (double) RequestSender.OPENNET_TIMEOUT / 10;
 
   private long randomDelayFinishOpennetLocal() {
     double pingTime =

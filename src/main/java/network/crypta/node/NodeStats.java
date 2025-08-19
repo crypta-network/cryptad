@@ -3665,7 +3665,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   public double getSentOverheadPerSecond() {
     long uptime = node.getUptime();
     // actually we’d want to convert uptime to seconds here but this is results in better accuracy.
-    return getSentOverhead() * SECONDS.toMillis(1) / uptime;
+    return (double) (getSentOverhead() * SECONDS.toMillis(1)) / uptime;
   }
 
   public synchronized void successfulBlockReceive(boolean realTimeFlag, boolean isLocal) {

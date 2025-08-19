@@ -103,8 +103,8 @@ public class ImageCreatorToadlet extends Toadlet {
       // We position it to the center. Note that this is not the upper left corner
       g2.drawString(
           text,
-          (int) (requiredWidth / 2 - bounds.getWidth() / 2),
-          (int) (requiredHeight / 2 + bounds.getHeight() / 4));
+          (int) ((double) requiredWidth / 2 - bounds.getWidth() / 2),
+          (int) ((double) requiredHeight / 2 + bounds.getHeight() / 4));
 
       // Write the data, and send the modification data to let the client cache it
       Bucket data = ctx.getBucketFactory().makeBucket(-1);

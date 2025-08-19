@@ -1400,7 +1400,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       if (!NO_CLEANER_SLEEP) {
         try {
-          Thread.sleep((int) (CLEANER_PERIOD / 2 + CLEANER_PERIOD * random.nextDouble()));
+          Thread.sleep((int) ((double) CLEANER_PERIOD / 2 + CLEANER_PERIOD * random.nextDouble()));
         } catch (InterruptedException e) {
         }
       }
