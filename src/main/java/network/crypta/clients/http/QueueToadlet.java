@@ -493,7 +493,7 @@ public class QueueToadlet extends Toadlet
           writePermanentRedirect(ctx, "Done", path());
           return;
         }
-        LinkedList<String> success = new LinkedList<String>(), failure = new LinkedList<String>();
+        LinkedList<String> success = new LinkedList<>(), failure = new LinkedList<>();
         boolean filterData = request.isPartSet("filterData");
         String target = request.getPartAsStringFailsafe("target", 128);
         if (target == null) target = "direct";
@@ -1107,7 +1107,7 @@ public class QueueToadlet extends Toadlet
         return;
       } else if (request.isPartSet("recommend_uri")) {
         String description = request.getPartAsStringFailsafe("description", 32768);
-        ArrayList<FreenetURI> uris = new ArrayList<FreenetURI>();
+        ArrayList<FreenetURI> uris = new ArrayList<>();
         for (String part : request.getParts()) {
           if (!part.startsWith("key-")) continue;
           String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
@@ -1474,28 +1474,21 @@ public class QueueToadlet extends Toadlet
       throws PersistenceDisabledException {
 
     // First, get the queued requests, and separate them into different types.
-    LinkedList<DownloadRequestStatus> completedDownloadToDisk =
-        new LinkedList<DownloadRequestStatus>();
-    LinkedList<DownloadRequestStatus> completedDownloadToTemp =
-        new LinkedList<DownloadRequestStatus>();
-    LinkedList<UploadFileRequestStatus> completedUpload = new LinkedList<UploadFileRequestStatus>();
-    LinkedList<UploadDirRequestStatus> completedDirUpload =
-        new LinkedList<UploadDirRequestStatus>();
+    LinkedList<DownloadRequestStatus> completedDownloadToDisk = new LinkedList<>();
+    LinkedList<DownloadRequestStatus> completedDownloadToTemp = new LinkedList<>();
+    LinkedList<UploadFileRequestStatus> completedUpload = new LinkedList<>();
+    LinkedList<UploadDirRequestStatus> completedDirUpload = new LinkedList<>();
 
-    LinkedList<DownloadRequestStatus> failedDownload = new LinkedList<DownloadRequestStatus>();
-    LinkedList<UploadFileRequestStatus> failedUpload = new LinkedList<UploadFileRequestStatus>();
-    LinkedList<UploadDirRequestStatus> failedDirUpload = new LinkedList<UploadDirRequestStatus>();
+    LinkedList<DownloadRequestStatus> failedDownload = new LinkedList<>();
+    LinkedList<UploadFileRequestStatus> failedUpload = new LinkedList<>();
+    LinkedList<UploadDirRequestStatus> failedDirUpload = new LinkedList<>();
 
-    LinkedList<DownloadRequestStatus> uncompletedDownload = new LinkedList<DownloadRequestStatus>();
-    LinkedList<UploadFileRequestStatus> uncompletedUpload =
-        new LinkedList<UploadFileRequestStatus>();
-    LinkedList<UploadDirRequestStatus> uncompletedDirUpload =
-        new LinkedList<UploadDirRequestStatus>();
+    LinkedList<DownloadRequestStatus> uncompletedDownload = new LinkedList<>();
+    LinkedList<UploadFileRequestStatus> uncompletedUpload = new LinkedList<>();
+    LinkedList<UploadDirRequestStatus> uncompletedDirUpload = new LinkedList<>();
 
-    Map<String, LinkedList<DownloadRequestStatus>> failedUnknownMIMEType =
-        new HashMap<String, LinkedList<DownloadRequestStatus>>();
-    Map<String, LinkedList<DownloadRequestStatus>> failedBadMIMEType =
-        new HashMap<String, LinkedList<DownloadRequestStatus>>();
+    Map<String, LinkedList<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
+    Map<String, LinkedList<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
 
     if (logMINOR) Logger.minor(this, "Request count: " + reqs.length);
 
@@ -1535,7 +1528,7 @@ public class QueueToadlet extends Toadlet
             mimeType = ContentFilter.stripMIMEType(mimeType);
             LinkedList<DownloadRequestStatus> list = failedUnknownMIMEType.get(mimeType);
             if (list == null) {
-              list = new LinkedList<DownloadRequestStatus>();
+              list = new LinkedList<>();
               failedUnknownMIMEType.put(mimeType, list);
             }
             list.add(download);
@@ -1551,13 +1544,13 @@ public class QueueToadlet extends Toadlet
                       + " which does not have a handler!");
               list = failedUnknownMIMEType.get(mimeType);
               if (list == null) {
-                list = new LinkedList<DownloadRequestStatus>();
+                list = new LinkedList<>();
                 failedUnknownMIMEType.put(mimeType, list);
               }
             } else {
               list = failedBadMIMEType.get(mimeType);
               if (list == null) {
-                list = new LinkedList<DownloadRequestStatus>();
+                list = new LinkedList<>();
                 failedBadMIMEType.put(mimeType, list);
               }
             }
@@ -1608,11 +1601,13 @@ public class QueueToadlet extends Toadlet
     Logger.minor(this, "Total queued uploads: " + SizeUtil.formatSize(totalQueuedUploadSize));
 
     Comparator<RequestStatus> jobComparator =
-        new Comparator<RequestStatus>() {
+        new Comparator<>() {
           @Override
           public int compare(RequestStatus firstRequest, RequestStatus secondRequest) {
 
-            if (firstRequest == secondRequest) return 0; // Short cut.
+            if (firstRequest == secondRequest) {
+              return 0; // Short cut.
+            }
 
             int result = 0;
             boolean isSet = true;
@@ -1626,8 +1621,9 @@ public class QueueToadlet extends Toadlet
                       firstRequest
                           .getIdentifier()
                           .compareToIgnoreCase(secondRequest.getIdentifier());
-                  if (result == 0)
+                  if (result == 0) {
                     result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
+                  }
                   break;
                 case "size":
                   result =
@@ -1636,9 +1632,11 @@ public class QueueToadlet extends Toadlet
                 case "progress":
                   boolean firstFinalized = firstRequest.isTotalFinalized();
                   boolean secondFinalized = secondRequest.isTotalFinalized();
-                  if (firstFinalized && !secondFinalized) result = 1;
-                  else if (secondFinalized && !firstFinalized) result = -1;
-                  else {
+                  if (firstFinalized && !secondFinalized) {
+                    result = 1;
+                  } else if (secondFinalized && !firstFinalized) {
+                    result = -1;
+                  } else {
                     double firstProgress =
                         ((double) firstRequest.getFetchedBlocks())
                             / ((double) firstRequest.getMinBlocks());
@@ -1660,12 +1658,15 @@ public class QueueToadlet extends Toadlet
                   isSet = false;
                   break;
               }
-            } else isSet = false;
+            } else {
+              isSet = false;
+            }
 
             if (!isSet) {
               result = Fields.compare(firstRequest.getPriority(), secondRequest.getPriority());
-              if (result == 0)
+              if (result == 0) {
                 result = firstRequest.getIdentifier().compareTo(secondRequest.getIdentifier());
+              }
             }
 
             if (result == 0) {
@@ -3384,14 +3385,11 @@ public class QueueToadlet extends Toadlet
   }
 
   /** List of completed request identifiers which the user hasn't acknowledged yet. */
-  private final HashSet<String> completedRequestIdentifiers = new HashSet<String>();
+  private final HashSet<String> completedRequestIdentifiers = new HashSet<>();
 
-  private final Map<String, GetCompletedEvent> completedGets =
-      new LinkedHashMap<String, GetCompletedEvent>();
-  private final Map<String, PutCompletedEvent> completedPuts =
-      new LinkedHashMap<String, PutCompletedEvent>();
-  private final Map<String, PutDirCompletedEvent> completedPutDirs =
-      new LinkedHashMap<String, PutDirCompletedEvent>();
+  private final Map<String, GetCompletedEvent> completedGets = new LinkedHashMap<>();
+  private final Map<String, PutCompletedEvent> completedPuts = new LinkedHashMap<>();
+  private final Map<String, PutDirCompletedEvent> completedPutDirs = new LinkedHashMap<>();
 
   @Override
   public void notifyFailure(ClientRequest req) {

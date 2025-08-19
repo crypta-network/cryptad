@@ -69,7 +69,7 @@ public class ImageElement extends BaseUpdateableElement {
       int height,
       String name,
       boolean pushed) {
-    Map<String, String> attributes = new HashMap<String, String>();
+    Map<String, String> attributes = new HashMap<>();
     attributes.put("src", key.toString());
     if (width != -1) {
       attributes.put("width", String.valueOf(width));
@@ -294,8 +294,8 @@ public class ImageElement extends BaseUpdateableElement {
 
   // FIXME move this to some global utilities class.
   private HTMLNode makeHtmlNodeForParsedTag(ParsedTag pt) {
-    List<String> attributeNames = new ArrayList<String>();
-    List<String> attributeValues = new ArrayList<String>();
+    List<String> attributeNames = new ArrayList<>();
+    List<String> attributeValues = new ArrayList<>();
     for (Entry<String, String> att : pt.getAttributesAsMap().entrySet()) {
       attributeNames.add(att.getKey());
       attributeValues.add(att.getValue());

@@ -49,7 +49,7 @@ public class SlashdotStoreTest {
   public void testSimple()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    new SlashdotStore<CHKBlock>(store, 10, 30 * 1000, 5 * 1000, new TrivialTicker(exec), tbf);
+    new SlashdotStore<>(store, 10, 30 * 1000, 5 * 1000, new TrivialTicker(exec), tbf);
 
     // Encode a block
     String test = "test";

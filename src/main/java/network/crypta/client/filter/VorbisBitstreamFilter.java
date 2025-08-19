@@ -20,7 +20,7 @@ public class VorbisBitstreamFilter extends OggBitstreamFilter {
   OggPage parse(OggPage page) throws IOException {
     page = super.parse(page);
     if (!isValidStream) return null;
-    ArrayList<CodecPacket> parsedPackets = new ArrayList<CodecPacket>();
+    ArrayList<CodecPacket> parsedPackets = new ArrayList<>();
     for (CodecPacket packet : page.asPackets()) {
       packet = parser.parse(packet);
       if (packet != null) parsedPackets.add(packet);

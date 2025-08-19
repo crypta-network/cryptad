@@ -20,8 +20,7 @@ import network.crypta.node.updater.PluginJarUpdater;
  */
 public class OfficialPlugins {
 
-  private final Map<String, OfficialPluginDescription> officialPlugins =
-      new HashMap<String, OfficialPluginDescription>();
+  private final Map<String, OfficialPluginDescription> officialPlugins = new HashMap<>();
 
   public OfficialPlugins() {
     try {

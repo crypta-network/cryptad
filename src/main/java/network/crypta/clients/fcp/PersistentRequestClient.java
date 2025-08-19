@@ -37,16 +37,16 @@ public class PersistentRequestClient {
     if (name == null) throw new NullPointerException();
     this.currentConnection = handler;
     final boolean forever = (persistence == Persistence.FOREVER);
-    runningPersistentRequests = new ArrayList<ClientRequest>();
-    completedUnackedRequests = new ArrayList<ClientRequest>();
-    clientRequestsByIdentifier = new HashMap<String, ClientRequest>();
+    runningPersistentRequests = new ArrayList<>();
+    completedUnackedRequests = new ArrayList<>();
+    clientRequestsByIdentifier = new HashMap<>();
     this.isGlobalQueue = isGlobalQueue;
     this.persistence = persistence;
     assert (persistence == Persistence.FOREVER || persistence == Persistence.REBOOT);
     watchGlobalVerbosityMask = Integer.MAX_VALUE;
     lowLevelClient = new FCPClientRequestClient(this, forever, false);
     lowLevelClientRT = new FCPClientRequestClient(this, forever, true);
-    completionCallbacks = new ArrayList<RequestCompletionCallback>();
+    completionCallbacks = new ArrayList<>();
     if (cb != null) completionCallbacks.add(cb);
     if (persistence == Persistence.FOREVER) {
       assert (root != null);
@@ -353,7 +353,7 @@ public class PersistentRequestClient {
   /** From database */
   private void addPersistentRequestStatus(List<RequestStatus> status, boolean onlyForever) {
     // FIXME OPT merge with addPersistentRequests? Locking looks tricky.
-    List<ClientRequest> reqs = new ArrayList<ClientRequest>();
+    List<ClientRequest> reqs = new ArrayList<>();
     addPersistentRequests(reqs, onlyForever);
     for (ClientRequest req : reqs) {
       try {
@@ -448,7 +448,7 @@ public class PersistentRequestClient {
   private void watch(PersistentRequestClient client) {
     if (!isGlobalQueue) return;
     synchronized (clientsWatchingLock) {
-      if (clientsWatching == null) clientsWatching = new LinkedList<PersistentRequestClient>();
+      if (clientsWatching == null) clientsWatching = new LinkedList<>();
       clientsWatching.add(client);
     }
   }
@@ -496,8 +496,7 @@ public class PersistentRequestClient {
 
   public synchronized void addRequestCompletionCallback(RequestCompletionCallback cb) {
     if (completionCallbacks == null)
-      completionCallbacks =
-          new ArrayList<RequestCompletionCallback>(); // it is transient so it might be null
+      completionCallbacks = new ArrayList<>(); // it is transient so it might be null
     completionCallbacks.add(cb);
   }
 
@@ -506,7 +505,7 @@ public class PersistentRequestClient {
   }
 
   public void removeAll(ClientContext context) {
-    HashSet<ClientRequest> toKill = new HashSet<ClientRequest>();
+    HashSet<ClientRequest> toKill = new HashSet<>();
     if (statusCache != null) statusCache.clear();
     synchronized (this) {
       for (ClientRequest req : runningPersistentRequests) {
@@ -549,7 +548,7 @@ public class PersistentRequestClient {
   private void updateRequestStatusCache(RequestStatusCache cache) {
     if (persistence == Persistence.FOREVER) {
       System.out.println("Loading cache of request statuses...");
-      ArrayList<RequestStatus> statuses = new ArrayList<RequestStatus>();
+      ArrayList<RequestStatus> statuses = new ArrayList<>();
       addPersistentRequestStatus(statuses, true);
       for (RequestStatus status : statuses) {
         if (status instanceof DownloadRequestStatus requestStatus) cache.addDownload(requestStatus);

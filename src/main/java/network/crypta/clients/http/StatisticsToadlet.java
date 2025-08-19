@@ -144,7 +144,7 @@ public class StatisticsToadlet extends Toadlet {
       PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
       Arrays.sort(
           peerNodeStatuses,
-          new Comparator<PeerNodeStatus>() {
+          new Comparator<>() {
             @Override
             public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
               return firstNode.getStatusValue() - secondNode.getStatusValue();
@@ -797,7 +797,7 @@ public class StatisticsToadlet extends Toadlet {
     ClientRequester[] requests = ClientRequester.getAll();
     Arrays.sort(
         requests,
-        new Comparator<ClientRequester>() {
+        new Comparator<>() {
           @Override
           public int compare(ClientRequester a, ClientRequester b) {
             return -Long.signum(a.creationTime - b.creationTime);
@@ -982,7 +982,7 @@ public class StatisticsToadlet extends Toadlet {
     }
     Arrays.sort(
         unclaimedFIFOMessageCountsArray,
-        new Comparator<STMessageCount>() {
+        new Comparator<>() {
           @Override
           public int compare(STMessageCount firstCount, STMessageCount secondCount) {
             return secondCount.messageCount - firstCount.messageCount; // sort in descending order
@@ -1858,7 +1858,7 @@ public class StatisticsToadlet extends Toadlet {
   private void getThreadNames(HTMLNode threadUsageList) {
     Thread[] threads = stats.getThreads();
 
-    LinkedHashMap<String, ThreadBunch> map = new LinkedHashMap<String, ThreadBunch>();
+    LinkedHashMap<String, ThreadBunch> map = new LinkedHashMap<>();
     int totalCount = 0;
     for (Thread thread : threads) {
       if (thread == null) break;
@@ -1874,11 +1874,15 @@ public class StatisticsToadlet extends Toadlet {
     ThreadBunch[] bunches = map.values().toArray(new ThreadBunch[map.size()]);
     Arrays.sort(
         bunches,
-        new Comparator<ThreadBunch>() {
+        new Comparator<>() {
           @Override
           public int compare(ThreadBunch b0, ThreadBunch b1) {
-            if (b0.count > b1.count) return -1;
-            if (b0.count < b1.count) return 1;
+            if (b0.count > b1.count) {
+              return -1;
+            }
+            if (b0.count < b1.count) {
+              return 1;
+            }
             return b0.name.compareTo(b1.name);
           }
         });

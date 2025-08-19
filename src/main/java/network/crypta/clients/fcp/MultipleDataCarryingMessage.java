@@ -13,7 +13,7 @@ import network.crypta.support.io.BucketTools;
 public abstract class MultipleDataCarryingMessage extends BaseDataCarryingMessage {
 
   // The iteration order matters, hence a LinkedHashMap
-  protected Map<String, Bucket> buckets = new LinkedHashMap<String, Bucket>();
+  protected Map<String, Bucket> buckets = new LinkedHashMap<>();
 
   protected boolean freeOnSent;
 

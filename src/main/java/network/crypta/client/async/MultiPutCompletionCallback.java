@@ -77,9 +77,9 @@ public class MultiPutCompletionCallback
     this.cb = cb;
     this.collisionIsOK = collisionIsOK;
     this.finishOnFailure = finishOnFailure;
-    waitingFor = new ArrayList<ClientPutState>();
-    waitingForBlockSet = new ArrayList<ClientPutState>();
-    waitingForFetchable = new ArrayList<ClientPutState>();
+    waitingFor = new ArrayList<>();
+    waitingForBlockSet = new ArrayList<>();
+    waitingForFetchable = new ArrayList<>();
     this.parent = parent;
     this.token = token;
     cancelling = false;
@@ -340,6 +340,6 @@ public class MultiPutCompletionCallback
   }
 
   private synchronized List<ClientPutState> getWaitingFor() {
-    return new ArrayList<ClientPutState>(waitingFor);
+    return new ArrayList<>(waitingFor);
   }
 }

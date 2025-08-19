@@ -13,24 +13,22 @@ public class DefaultMIMETypes {
   public static final String DEFAULT_MIME_TYPE = "application/octet-stream";
 
   /** MIME types: number -> name */
-  private static final Vector<String> mimeTypesByNumber = new Vector<String>();
+  private static final Vector<String> mimeTypesByNumber = new Vector<>();
 
   /** MIME types: name -> number */
-  private static final HashMap<String, Short> mimeTypesByName = new HashMap<String, Short>();
+  private static final HashMap<String, Short> mimeTypesByName = new HashMap<>();
 
   /**
    * MIME types by extension. One extension maps to one MIME type, but not necessarily the other way
    * around.
    */
-  private static final HashMap<String, Short> mimeTypesByExtension = new HashMap<String, Short>();
+  private static final HashMap<String, Short> mimeTypesByExtension = new HashMap<>();
 
   /** Primary extension by MIME type number. */
-  private static final HashMap<Short, String> primaryExtensionByMimeNumber =
-      new HashMap<Short, String>();
+  private static final HashMap<Short, String> primaryExtensionByMimeNumber = new HashMap<>();
 
   /** All extension (String[]) by MIME type number. */
-  private static final HashMap<Short, String[]> allExtensionsByMimeNumber =
-      new HashMap<Short, String[]>();
+  private static final HashMap<Short, String[]> allExtensionsByMimeNumber = new HashMap<>();
 
   /**
    * Add a MIME type, without any extensions.

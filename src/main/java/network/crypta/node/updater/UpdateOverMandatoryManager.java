@@ -142,17 +142,17 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
   public UpdateOverMandatoryManager(NodeUpdateManager manager) {
     this.updateManager = manager;
-    nodesSayKeyRevoked = new HashSet<PeerNode>();
-    nodesSayKeyRevokedFailedTransfer = new HashSet<PeerNode>();
-    nodesSayKeyRevokedTransferring = new HashSet<PeerNode>();
-    nodesOfferedMainJar = new HashSet<PeerNode>();
-    nodesSentMainJar = new HashSet<PeerNode>();
-    nodesAskedSendMainJar = new HashSet<PeerNode>();
-    nodesSendingMainJar = new HashSet<PeerNode>();
-    allNodesOfferedMainJar = new HashSet<PeerNode>();
-    dependencies = new HashMap<ShortBuffer, File>();
-    peersFetchingDependencies = new WeakHashMap<PeerNode, Integer>();
-    dependencyFetchers = new HashMap<ShortBuffer, UOMDependencyFetcher>();
+    nodesSayKeyRevoked = new HashSet<>();
+    nodesSayKeyRevokedFailedTransfer = new HashSet<>();
+    nodesSayKeyRevokedTransferring = new HashSet<>();
+    nodesOfferedMainJar = new HashSet<>();
+    nodesSentMainJar = new HashSet<>();
+    nodesAskedSendMainJar = new HashSet<>();
+    nodesSendingMainJar = new HashSet<>();
+    allNodesOfferedMainJar = new HashSet<>();
+    dependencies = new HashMap<>();
+    peersFetchingDependencies = new WeakHashMap<>();
+    dependencyFetchers = new HashMap<>();
   }
 
   /**
@@ -324,7 +324,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private void tellFetchers(PeerNode source) {
     HashSet<UOMDependencyFetcher> fetchList;
     synchronized (dependencyFetchers) {
-      fetchList = new HashSet<UOMDependencyFetcher>(dependencyFetchers.values());
+      fetchList = new HashSet<>(dependencyFetchers.values());
     }
     for (UOMDependencyFetcher f : fetchList) {
       if (source.isDarknet()) f.peerMaybeFreeSlots(source);
@@ -840,9 +840,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
   }
 
   public PeerNode[][] getNodesSayBlown() {
-    List<PeerNode> nodesConnectedSayRevoked = new ArrayList<PeerNode>();
-    List<PeerNode> nodesDisconnectedSayRevoked = new ArrayList<PeerNode>();
-    List<PeerNode> nodesFailedSayRevoked = new ArrayList<PeerNode>();
+    List<PeerNode> nodesConnectedSayRevoked = new ArrayList<>();
+    List<PeerNode> nodesDisconnectedSayRevoked = new ArrayList<>();
+    List<PeerNode> nodesFailedSayRevoked = new ArrayList<>();
     synchronized (this) {
       PeerNode[] nodesSayRevoked =
           nodesSayKeyRevoked.toArray(new PeerNode[nodesSayKeyRevoked.size()]);
@@ -2562,8 +2562,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
       this.executable = executable;
       this.saveTo = saveTo;
       cb = callback;
-      peersFailed = new WeakHashSet<PeerNode>();
-      peersFetching = new HashSet<PeerNode>();
+      peersFailed = new WeakHashSet<>();
+      peersFetching = new HashSet<>();
     }
 
     /** If a transfer has failed from this peer, retry it. */
@@ -2588,17 +2588,17 @@ public class UpdateOverMandatoryManager implements RequestClient {
         }
         HashSet<PeerNode> uomPeers;
         synchronized (UpdateOverMandatoryManager.this) {
-          uomPeers = new HashSet<PeerNode>(nodesSentMainJar);
+          uomPeers = new HashSet<>(nodesSentMainJar);
         }
         chosen = chooseRandomPeer(uomPeers);
         if (chosen != null) break;
         synchronized (UpdateOverMandatoryManager.this) {
-          uomPeers = new HashSet<PeerNode>(nodesSendingMainJar);
+          uomPeers = new HashSet<>(nodesSendingMainJar);
         }
         chosen = chooseRandomPeer(uomPeers);
         if (chosen != null) break;
         synchronized (UpdateOverMandatoryManager.this) {
-          uomPeers = new HashSet<PeerNode>(allNodesOfferedMainJar);
+          uomPeers = new HashSet<>(allNodesOfferedMainJar);
         }
         chosen = chooseRandomPeer(uomPeers);
         if (chosen != null) break;
@@ -2787,7 +2787,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
           if (logMINOR) Logger.minor(this, "Peer not connected: " + pn);
           continue;
         }
-        if (notTried == null) notTried = new ArrayList<PeerNode>();
+        if (notTried == null) notTried = new ArrayList<>();
         notTried.add(pn);
       }
       if (notTried == null) {

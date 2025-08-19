@@ -241,7 +241,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
       return tmpSize;
     }
 
-    HashMap<String, Object> itemsLeft = new HashMap<String, Object>();
+    HashMap<String, Object> itemsLeft = new HashMap<>();
 
     // Space used by regular files if they are all put in as redirects.
     int minUsageForFiles = 0;

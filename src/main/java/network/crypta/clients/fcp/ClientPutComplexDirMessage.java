@@ -59,8 +59,8 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     // Parse the standard ClientPutDir headers - URI, etc.
     super(fs);
 
-    filesByName = new HashMap<String, Object>();
-    filesToRead = new LinkedList<DirPutFile>();
+    filesByName = new HashMap<>();
+    filesToRead = new LinkedList<>();
     long totalBytes = 0;
     // Now parse the meat
     SimpleFieldSet files = fs.subset("Files");
@@ -118,7 +118,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
               global);
         }
       } else {
-        o = new HashMap<Object, Object>();
+        o = new HashMap<>();
         byName.put(before, o);
         addFile((HashMap<String, Object>) o, after, f);
       }
@@ -161,7 +161,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     // Convert the hierarchical hashmap's of DirPutFile's to hierarchical hashmap's
     // of ManifestElement's.
     // Then simply create the ClientPutDir.
-    HashMap<String, Object> manifestElements = new HashMap<String, Object>();
+    HashMap<String, Object> manifestElements = new HashMap<>();
     convertFilesByNameToManifestElements(filesByName, manifestElements, node);
     handler.startClientPutDir(this, manifestElements, false);
   }
@@ -180,7 +180,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       Object val = entry.getValue();
       if (val instanceof HashMap) {
         HashMap<String, Object> h = (HashMap<String, Object>) val;
-        HashMap<String, Object> manifests = new HashMap<String, Object>();
+        HashMap<String, Object> manifests = new HashMap<>();
         manifestElements.put(tempName, manifests);
         convertFilesByNameToManifestElements(h, manifests, node);
       } else {

@@ -181,7 +181,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       this.currentBucket = cur;
       this.creationTime = now;
       this.osIndex = 0;
-      this.tbis = new ArrayList<TempBucketInputStream>(1);
+      this.tbis = new ArrayList<>(1);
 
       // Register cleaner for safety net (will be cleaned up when free() is called properly)
       this.cleanable = resourceCleaner.register(this, new TempBucketCleanup(this.currentBucket));
@@ -546,7 +546,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       return currentBucket.createShadow();
     }
 
-    private final WeakReference<Migratable> weakRef = new WeakReference<Migratable>(this);
+    private final WeakReference<Migratable> weakRef = new WeakReference<>(this);
 
     public WeakReference<Migratable> getReference() {
       return weakRef;
@@ -828,7 +828,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                       + TimeUtil.formatTime(now - tmpBucket.creationTime())
                       + " old: we will force-migrate it to disk.");
             ramBucketQueue.remove(tmpBucketRef);
-            if (toMigrate == null) toMigrate = new LinkedList<Migratable>();
+            if (toMigrate == null) toMigrate = new LinkedList<>();
             toMigrate.add(tmpBucket);
             force = false;
           }
@@ -855,8 +855,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     return false;
   }
 
-  private final Queue<WeakReference<Migratable>> ramBucketQueue =
-      new LinkedBlockingQueue<WeakReference<Migratable>>();
+  private final Queue<WeakReference<Migratable>> ramBucketQueue = new LinkedBlockingQueue<>();
 
   private RandomAccessBucket _makeFileBucket() throws IOException {
     RandomAccessBucket ret =
@@ -990,7 +989,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
     }
 
-    private final WeakReference<Migratable> weakRef = new WeakReference<Migratable>(this);
+    private final WeakReference<Migratable> weakRef = new WeakReference<>(this);
 
     public WeakReference<Migratable> getReference() {
       return weakRef;

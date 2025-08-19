@@ -6,8 +6,17 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.*;
-import java.util.*;
+import java.security.DigestException;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.Provider;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.Fields;
 import network.crypta.support.Loader;
@@ -29,7 +38,7 @@ public class Util {
 
   static {
     try {
-      HashMap<String, Provider> mdProviders_internal = new HashMap<String, Provider>();
+      HashMap<String, Provider> mdProviders_internal = new HashMap<>();
 
       for (String algo : new String[] {"SHA1", "MD5", "SHA-256", "SHA-384", "SHA-512"}) {
         final Class<?> clazz = Util.class;

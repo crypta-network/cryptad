@@ -295,7 +295,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       PageNode page = ctx.getPageMaker().getPageNode(l10n("sendMessageTitle"), ctx);
       HTMLNode contentNode = page.getContentNode();
       DarknetPeerNode[] peerNodes = node.getDarknetConnections();
-      HashMap<String, String> peers = new HashMap<String, String>();
+      HashMap<String, String> peers = new HashMap<>();
       for (DarknetPeerNode pn : peerNodes) {
         if (request.isPartSet("node_" + pn.hashCode())) {
           String peer_name = pn.getName();

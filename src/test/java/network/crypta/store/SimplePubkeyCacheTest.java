@@ -19,11 +19,11 @@ public class SimplePubkeyCacheTest {
   public void testSimple() {
     final int keys = 10;
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    new RAMFreenetStore<>(pk, keys);
     GetPubkey pubkeys = new SimpleGetPubkey(pk);
     DSAGroup group = Global.DSAgroupBigA;
     Random random = new MersenneTwister(1010101);
-    HashMap<ByteArrayWrapper, DSAPublicKey> map = new HashMap<ByteArrayWrapper, DSAPublicKey>();
+    HashMap<ByteArrayWrapper, DSAPublicKey> map = new HashMap<>();
     for (int i = 0; i < keys; i++) {
       DSAPrivateKey privKey = new DSAPrivateKey(group, random);
       DSAPublicKey key = new DSAPublicKey(group, privKey);

@@ -192,7 +192,7 @@ public class BaseL10n {
 
     public static String[] valuesWithFullNames() {
       LANGUAGE[] allValues = values();
-      ArrayList<String> result = new ArrayList<String>(allValues.length);
+      ArrayList<String> result = new ArrayList<>(allValues.length);
       for (int i = 0; i < allValues.length; i++) {
         // We will return the full names sorted alphabetically. To ensure that the user
         // notices the special "UNLISTED" language code, we add it to the end of the list
@@ -612,7 +612,7 @@ public class BaseL10n {
    * Enumerate strings associated with a key in order of preference, starting with a specified one.
    */
   private Iterable<String> getStrings(final String key, final FallbackState initialState) {
-    return new Iterable<String>() {
+    return new Iterable<>() {
       @Override
       public Iterator<String> iterator() {
         return new L10nStringIterator(key, initialState);
@@ -910,7 +910,7 @@ public class BaseL10n {
     if (fallbackTranslation == null) {
       return new String[] {};
     }
-    List<String> toReturn = new ArrayList<String>();
+    List<String> toReturn = new ArrayList<>();
     Iterator<String> it = fallbackTranslation.keyIterator();
     while (it.hasNext()) {
       String key = it.next();

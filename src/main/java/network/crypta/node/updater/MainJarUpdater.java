@@ -557,7 +557,6 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
   private final FetchContext dependencyCtx;
   private final ClientContext clientContext;
   private final MainJarDependenciesChecker dependencies;
-  private final HashSet<DependencyJarFetcher> fetchers = new HashSet<DependencyJarFetcher>();
-  private final HashSet<DependencyJarFetcher> essentialFetchers =
-      new HashSet<DependencyJarFetcher>();
+  private final HashSet<DependencyJarFetcher> fetchers = new HashSet<>();
+  private final HashSet<DependencyJarFetcher> essentialFetchers = new HashSet<>();
 }

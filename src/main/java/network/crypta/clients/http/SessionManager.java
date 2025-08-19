@@ -112,7 +112,7 @@ public final class SessionManager {
 
     private final UUID mID;
     private final String mUserID;
-    private final Map<String, Object> mAttributes = new HashMap<String, Object>();
+    private final Map<String, Object> mAttributes = new HashMap<>();
 
     private long mExpiresAtTime;
 
@@ -206,8 +206,8 @@ public final class SessionManager {
     }
   }
 
-  private final LRUMap<UUID, Session> mSessionsByID = new LRUMap<UUID, Session>();
-  private final Hashtable<String, Session> mSessionsByUserID = new Hashtable<String, Session>();
+  private final LRUMap<UUID, Session> mSessionsByID = new LRUMap<>();
+  private final Hashtable<String, Session> mSessionsByUserID = new Hashtable<>();
 
   /**
    * Returns the cookie path as specified in the constructor. Returns "/" if the constructor which

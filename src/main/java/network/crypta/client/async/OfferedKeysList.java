@@ -61,8 +61,8 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
       boolean isSSK,
       boolean realTimeFlag) {
     super(false, realTimeFlag);
-    this.keys = new HashSet<Key>();
-    this.keysList = new ArrayList<Key>();
+    this.keys = new HashSet<>();
+    this.keysList = new ArrayList<>();
     this.random = random;
     this.priorityClass = priorityClass;
     this.isSSK = isSSK;

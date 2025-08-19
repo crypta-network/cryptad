@@ -31,7 +31,7 @@ public class Serializer {
 
   public static List<Object> readListFromDataInputStream(Class<?> elementType, DataInput dis)
       throws IOException {
-    LinkedList<Object> ret = new LinkedList<Object>();
+    LinkedList<Object> ret = new LinkedList<>();
     int length = dis.readInt();
     for (int x = 0; x < length; x++) {
       ret.add(readFromDataInputStream(elementType, dis));

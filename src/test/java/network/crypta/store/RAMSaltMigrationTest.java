@@ -193,7 +193,7 @@ public class RAMSaltMigrationTest {
   private void checkRAMStore(boolean newFormat)
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    RAMFreenetStore<CHKBlock> ramFreenetStore = new RAMFreenetStore<CHKBlock>(store, 10);
+    RAMFreenetStore<CHKBlock> ramFreenetStore = new RAMFreenetStore<>(store, 10);
     store.setStore(ramFreenetStore);
 
     // Encode a block
@@ -212,7 +212,7 @@ public class RAMSaltMigrationTest {
   public void testRAMStoreOldBlocks()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    RAMFreenetStore<CHKBlock> ramFreenetStore = new RAMFreenetStore<CHKBlock>(store, 10);
+    RAMFreenetStore<CHKBlock> ramFreenetStore = new RAMFreenetStore<>(store, 10);
     store.setStore(ramFreenetStore);
 
     // Encode a block
@@ -293,8 +293,8 @@ public class RAMSaltMigrationTest {
 
     CHKStore store = new CHKStore();
     File f = getStorePath(testName);
-    List<String> dummyValueActuallyStoredList = new ArrayList<String>(keycount);
-    List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<ClientCHKBlock>(keycount);
+    List<String> dummyValueActuallyStoredList = new ArrayList<>(keycount);
+    List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -310,8 +310,8 @@ public class RAMSaltMigrationTest {
             null)) {
       saltStore.start(null, true);
 
-      List<String> dummyValueInsertedList = new ArrayList<String>(keycount);
-      List<ClientCHKBlock> blockInsertedList = new ArrayList<ClientCHKBlock>(keycount);
+      List<String> dummyValueInsertedList = new ArrayList<>(keycount);
+      List<ClientCHKBlock> blockInsertedList = new ArrayList<>(keycount);
       int collisions =
           insertStandardTestBlocksIntoStore(
               keycount, store, dummyValueInsertedList, blockInsertedList);
@@ -569,14 +569,14 @@ public class RAMSaltMigrationTest {
 
       saltStore.start(null, true);
 
-      List<String> dummyValueInsertedList = new ArrayList<String>(keycount);
-      List<ClientCHKBlock> blockInsertedList = new ArrayList<ClientCHKBlock>(keycount);
+      List<String> dummyValueInsertedList = new ArrayList<>(keycount);
+      List<ClientCHKBlock> blockInsertedList = new ArrayList<>(keycount);
       int collisions =
           insertStandardTestBlocksIntoStore(
               keycount, store, dummyValueInsertedList, blockInsertedList);
 
-      List<String> dummyValueActuallyStoredList = new ArrayList<String>(keycount);
-      List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<ClientCHKBlock>(keycount);
+      List<String> dummyValueActuallyStoredList = new ArrayList<>(keycount);
+      List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
       probeStoreBlocks(
           store,
           dummyValueInsertedList,
@@ -719,8 +719,8 @@ public class RAMSaltMigrationTest {
 
     CHKStore store = new CHKStore();
     SaltedHashFreenetStore.NO_CLEANER_SLEEP = true;
-    List<String> dummyValueActuallyStoredList = new ArrayList<String>(keycount);
-    List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<ClientCHKBlock>(keycount);
+    List<String> dummyValueActuallyStoredList = new ArrayList<>(keycount);
+    List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -736,8 +736,8 @@ public class RAMSaltMigrationTest {
             null)) {
       saltStore.start(ticker, true);
 
-      List<String> dummyValueInsertedList = new ArrayList<String>(keycount);
-      List<ClientCHKBlock> blockInsertedList = new ArrayList<ClientCHKBlock>(keycount);
+      List<String> dummyValueInsertedList = new ArrayList<>(keycount);
+      List<ClientCHKBlock> blockInsertedList = new ArrayList<>(keycount);
       int collisions =
           insertStandardTestBlocksIntoStore(
               keycount, store, dummyValueInsertedList, blockInsertedList);
@@ -789,7 +789,7 @@ public class RAMSaltMigrationTest {
   public void testMigrate()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    RAMFreenetStore<CHKBlock> ramStore = new RAMFreenetStore<CHKBlock>(store, 10);
+    RAMFreenetStore<CHKBlock> ramStore = new RAMFreenetStore<>(store, 10);
     store.setStore(ramStore);
 
     // Encode a block
@@ -832,7 +832,7 @@ public class RAMSaltMigrationTest {
   public void testMigrateKeyed()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    RAMFreenetStore<CHKBlock> ramStore = new RAMFreenetStore<CHKBlock>(store, 10);
+    RAMFreenetStore<CHKBlock> ramStore = new RAMFreenetStore<>(store, 10);
     store.setStore(ramStore);
 
     // Encode a block

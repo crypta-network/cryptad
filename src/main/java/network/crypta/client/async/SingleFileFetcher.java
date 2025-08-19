@@ -171,7 +171,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       this.metaStrings = (ArrayList<String>) metaStrings;
     else
       // Always copy if persistent
-      this.metaStrings = new ArrayList<String>(metaStrings);
+      this.metaStrings = new ArrayList<>(metaStrings);
     this.addedMetaStrings = addedMetaStrings;
     if (logMINOR) Logger.minor(this, "Metadata: " + metadata);
     this.clientMetadata = (metadata != null ? metadata.clone() : new ClientMetadata());
@@ -185,7 +185,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       throw new FetchException(
           FetchExceptionMode.TOO_MUCH_RECURSION,
           "Too much recursion: " + recursionLevel + " > " + ctx.maxRecursionLevel);
-    this.decompressors = new LinkedList<COMPRESSOR_TYPE>();
+    this.decompressors = new LinkedList<>();
     this.topDontCompress = topDontCompress;
     this.topCompatibilityMode = topCompatibilityMode;
     if (parent instanceof ClientGetter getter) {
@@ -243,7 +243,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     this.clientMetadata =
         (fetcher.clientMetadata != null ? fetcher.clientMetadata.clone() : new ClientMetadata());
     this.metadata = newMeta;
-    this.metaStrings = new ArrayList<String>();
+    this.metaStrings = new ArrayList<>();
     this.addedMetaStrings = 0;
     this.recursionLevel = fetcher.recursionLevel + 1;
     if (recursionLevel > ctx.maxRecursionLevel)
@@ -252,7 +252,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     // Do not copy the decompressors. Whether the metadata/container is compressed
     // is independant of whether the final data is; when we find the data we will
     // call back into the original fetcher.
-    this.decompressors = new LinkedList<COMPRESSOR_TYPE>();
+    this.decompressors = new LinkedList<>();
     if (fetcher.uri == null) throw new NullPointerException();
     this.uri = persistent ? fetcher.uri.clone() : fetcher.uri;
     this.metaSnoop = fetcher.metaSnoop;
@@ -1540,7 +1540,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           cb,
           null,
           (ClientKey) key,
-          new ArrayList<String>(uri.listMetaStrings()),
+          new ArrayList<>(uri.listMetaStrings()),
           uri,
           0,
           ctx,
@@ -1565,7 +1565,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           realTimeFlag,
           cb,
           (USK) key,
-          new ArrayList<String>(uri.listMetaStrings()),
+          new ArrayList<>(uri.listMetaStrings()),
           ctx,
           actx,
           maxRetries,

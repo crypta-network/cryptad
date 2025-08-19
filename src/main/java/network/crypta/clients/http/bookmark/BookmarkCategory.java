@@ -8,7 +8,7 @@ import network.crypta.support.SimpleFieldSet;
 public class BookmarkCategory extends Bookmark {
   public static final String NAME = "BookmarkCategory";
 
-  private final List<Bookmark> bookmarks = new ArrayList<Bookmark>();
+  private final List<Bookmark> bookmarks = new ArrayList<>();
 
   public BookmarkCategory(String name) {
     setName(name);
@@ -66,7 +66,7 @@ public class BookmarkCategory extends Bookmark {
   }
 
   public synchronized List<BookmarkItem> getItems() {
-    List<BookmarkItem> items = new ArrayList<BookmarkItem>();
+    List<BookmarkItem> items = new ArrayList<>();
     for (Bookmark b : bookmarks) {
       if (b instanceof BookmarkItem item) {
         items.add(item);
@@ -84,7 +84,7 @@ public class BookmarkCategory extends Bookmark {
   }
 
   public synchronized List<BookmarkCategory> getSubCategories() {
-    List<BookmarkCategory> categories = new ArrayList<BookmarkCategory>();
+    List<BookmarkCategory> categories = new ArrayList<>();
     for (Bookmark b : bookmarks) {
       if (b instanceof BookmarkCategory category) {
         categories.add(category);
@@ -108,7 +108,7 @@ public class BookmarkCategory extends Bookmark {
   // Internal use only
 
   private List<String> toStrings(String prefix) {
-    List<String> strings = new ArrayList<String>();
+    List<String> strings = new ArrayList<>();
     List<BookmarkItem> items = getItems();
     List<BookmarkCategory> subCategories = getSubCategories();
     prefix += this.name + "/";

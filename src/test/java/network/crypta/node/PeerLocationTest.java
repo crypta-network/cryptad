@@ -73,10 +73,10 @@ public class PeerLocationTest {
   @SuppressWarnings("unchecked")
   private Set<Double>[] omit(double[] locs) {
     Set<Double>[] result = (Set<Double>[]) new Set<?>[locs.length + 1];
-    result[locs.length] = new HashSet<Double>();
+    result[locs.length] = new HashSet<>();
     int n = locs.length / 2 + 1;
     for (int i = 0; i < locs.length; i++) {
-      Set<Double> s = new HashSet<Double>();
+      Set<Double> s = new HashSet<>();
       for (int j = 0; j < n; j++) {
         s.add(locs[(i + j) % locs.length]);
       }

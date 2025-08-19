@@ -60,7 +60,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
 
 public class PluginManager {
 
-  private final HashMap<String, FredPlugin> toadletList = new HashMap<String, FredPlugin>();
+  private final HashMap<String, FredPlugin> toadletList = new HashMap<>();
 
   /* All currently starting plugins. */
   private final OfficialPlugins officialPlugins = new OfficialPlugins();
@@ -289,7 +289,7 @@ public class PluginManager {
         return toStart;
       }
     }
-    List<String> v = new ArrayList<String>();
+    List<String> v = new ArrayList<>();
     for (PluginInfoWrapper pi : loadedPlugins.getLoadedPlugins()) {
       v.add(pi.getFilename());
     }
@@ -303,7 +303,7 @@ public class PluginManager {
    * @return All currently starting plugins
    */
   public Set<PluginProgress> getStartingPlugins() {
-    return new HashSet<PluginProgress>(loadedPlugins.getStartingPlugins());
+    return new HashSet<>(loadedPlugins.getStartingPlugins());
   }
 
   // try to guess around...
@@ -858,7 +858,7 @@ public class PluginManager {
   }
 
   public Set<PluginInfoWrapper> getPlugins() {
-    return new TreeSet<PluginInfoWrapper>(loadedPlugins.getLoadedPlugins());
+    return new TreeSet<>(loadedPlugins.getLoadedPlugins());
   }
 
   /**
@@ -1054,7 +1054,7 @@ public class PluginManager {
    * @return A list of all available plugin names
    */
   public List<OfficialPluginDescription> findAvailablePlugins() {
-    List<OfficialPluginDescription> availablePlugins = new ArrayList<OfficialPluginDescription>();
+    List<OfficialPluginDescription> availablePlugins = new ArrayList<>();
     availablePlugins.addAll(officialPlugins.getAll());
     return availablePlugins;
   }
@@ -1403,7 +1403,7 @@ public class PluginManager {
                 }));
     Collections.sort(
         cachedFiles,
-        new Comparator<File>() {
+        new Comparator<>() {
 
           @Override
           public int compare(File file1, File file2) {
@@ -1706,10 +1706,9 @@ public class PluginManager {
 
   private static class LoadedPlugins {
 
-    private final Set<PluginProgress> startingPlugins = new HashSet<PluginProgress>();
-    private final Set<PluginInfoWrapper> loadedPlugins = new HashSet<PluginInfoWrapper>();
-    private final Map<String, PluginLoadFailedUserAlert> failedPluginAlerts =
-        new HashMap<String, PluginLoadFailedUserAlert>();
+    private final Set<PluginProgress> startingPlugins = new HashSet<>();
+    private final Set<PluginInfoWrapper> loadedPlugins = new HashSet<>();
+    private final Map<String, PluginLoadFailedUserAlert> failedPluginAlerts = new HashMap<>();
 
     public void addStartingPlugin(PluginProgress pluginProgress) {
       synchronized (this) {

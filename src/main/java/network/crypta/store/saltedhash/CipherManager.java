@@ -46,7 +46,7 @@ public class CipherManager {
   /** Cache for digested keys */
   @SuppressWarnings("serial")
   private final Map<ByteArrayWrapper, byte[]> digestRoutingKeyCache =
-      new LinkedHashMap<ByteArrayWrapper, byte[]>() {
+      new LinkedHashMap<>() {
         @Override
         protected boolean removeEldestEntry(Map.Entry<ByteArrayWrapper, byte[]> eldest) {
           return size() > 128;

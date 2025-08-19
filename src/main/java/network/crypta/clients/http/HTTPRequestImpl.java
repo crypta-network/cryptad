@@ -47,8 +47,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    * <p>Don't access this map directly, use {@link #getParameterValueList(String)} and {@link
    * #isParameterSet(String)} instead
    */
-  private final Map<String, List<String>> parameterNameValuesMap =
-      new HashMap<String, List<String>>();
+  private final Map<String, List<String>> parameterNameValuesMap = new HashMap<>();
 
   /** the original URI as given to the constructor */
   private final URI uri;
@@ -65,8 +64,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   private boolean freedParts;
 
   /** A map for uploaded files. */
-  private final Map<String, HTTPUploadedFileImpl> uploadedFiles =
-      new HashMap<String, HTTPUploadedFileImpl>();
+  private final Map<String, HTTPUploadedFileImpl> uploadedFiles = new HashMap<>();
 
   private final BucketFactory bucketfactory;
 
@@ -133,7 +131,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     this.headers = ctx.getHeaders();
     this.parseRequestParameters(uri.getRawQuery(), true, false);
     this.data = d;
-    this.parts = new HashMap<String, RandomAccessBucket>();
+    this.parts = new HashMap<>();
     this.bucketfactory = ctx.getBucketFactory();
     this.method = method;
     if (data != null) {
@@ -229,7 +227,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   private List<String> getParameterValueList(String name) {
     List<String> values = this.parameterNameValuesMap.get(name);
     if (values == null) {
-      values = new LinkedList<String>();
+      values = new LinkedList<>();
       this.parameterNameValuesMap.put(name, values);
     }
     return values;
@@ -251,7 +249,7 @@ public class HTTPRequestImpl implements HTTPRequest {
           "queryString is " + queryString + ", doUrlDecoding=" + doUrlDecoding);
 
     /* create result map. */
-    Map<String, List<String>> parameters = new HashMap<String, List<String>>();
+    Map<String, List<String>> parameters = new HashMap<>();
 
     // nothing to do if there was no query string in the URI
     if ((queryString == null) || queryString.isEmpty()) {
@@ -297,7 +295,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
       List<String> values = parameters.get(name);
       if (values == null) {
-        values = new ArrayList<String>();
+        values = new ArrayList<>();
         parameters.put(name, values);
       }
       values.add(value);
@@ -419,7 +417,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     List<String> valueList = this.getParameterValueList(name);
 
     // try parsing all values and put the valid Integers in a new list
-    List<Integer> intValueList = new ArrayList<Integer>();
+    List<Integer> intValueList = new ArrayList<>();
     for (int i = 0; i < valueList.size(); i++) {
       try {
         intValueList.add(Integer.valueOf(valueList.get(i)));

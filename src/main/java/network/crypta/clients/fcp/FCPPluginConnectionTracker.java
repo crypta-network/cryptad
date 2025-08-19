@@ -54,8 +54,7 @@ final class FCPPluginConnectionTracker extends NativeThread {
    * <p>Not a {@link ConcurrentHashMap} because the creation of connections is exposed to the FCP
    * network interface and thus DoS would be possible: Java HashMaps never shrink.
    */
-  private final TreeMap<UUID, ConnectionWeakReference> connectionsByID =
-      new TreeMap<UUID, ConnectionWeakReference>();
+  private final TreeMap<UUID, ConnectionWeakReference> connectionsByID = new TreeMap<>();
 
   /**
    * Lock to guard {@link #connectionsByID} against concurrent modification.<br>
@@ -71,7 +70,7 @@ final class FCPPluginConnectionTracker extends NativeThread {
    * Monitored in {@link #realRun()}.
    */
   private final ReferenceQueue<FCPPluginConnectionImpl> closedConnectionsQueue =
-      new ReferenceQueue<FCPPluginConnectionImpl>();
+      new ReferenceQueue<>();
 
   /**
    * We extend class {@link WeakReference} so we can store the ID of the connection:<br>

@@ -106,7 +106,7 @@ public class DatastoreChecker implements PrioRunnable {
     this.threadName = threadName;
     int priorities = RequestStarter.NUMBER_OF_PRIORITY_CLASSES;
     queue = (ArrayDeque<QueueItem>[]) new ArrayDeque<?>[priorities];
-    for (int i = 0; i < priorities; i++) queue[i] = new ArrayDeque<QueueItem>();
+    for (int i = 0; i < priorities; i++) queue[i] = new ArrayDeque<>();
   }
 
   public void queueRequest(SendableGet getter, BlockSet blocks) {
@@ -122,7 +122,7 @@ public class DatastoreChecker implements PrioRunnable {
               + " keys "
               + checkKeys.length);
     // FIXME check using store.probablyInStore
-    ArrayList<Key> finalKeysToCheck = new ArrayList<Key>(checkKeys.length);
+    ArrayList<Key> finalKeysToCheck = new ArrayList<>(checkKeys.length);
     synchronized (this) {
       Collections.addAll(finalKeysToCheck, checkKeys);
       QueueItem queueItem =

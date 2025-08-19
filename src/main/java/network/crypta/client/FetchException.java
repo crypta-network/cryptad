@@ -375,8 +375,7 @@ public class FetchException extends Exception implements Cloneable {
     else return ret;
   }
 
-  private static final HashMap<Integer, FetchExceptionMode> modes =
-      new HashMap<Integer, FetchExceptionMode>();
+  private static final HashMap<Integer, FetchExceptionMode> modes = new HashMap<>();
 
   // Modes should stay the same even if we remove some elements.
   public enum FetchExceptionMode {

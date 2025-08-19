@@ -71,7 +71,6 @@ import network.crypta.node.NodeStats.PeerLoadStats;
 import network.crypta.node.NodeStats.RequestType;
 import network.crypta.node.NodeStats.RunningRequestsSnapshot;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.node.PeerManager.PeerStatusChangeListener;
 import network.crypta.support.*;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.math.MersenneTwister;
@@ -379,14 +378,13 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   /**
    * Holds a String-Long pair that shows which message types (as name) have been send to this peer.
    */
-  private final Hashtable<String, Long> localNodeSentMessageTypes = new Hashtable<String, Long>();
+  private final Hashtable<String, Long> localNodeSentMessageTypes = new Hashtable<>();
 
   /**
    * Holds a String-Long pair that shows which message types (as name) have been received by this
    * peer.
    */
-  private final Hashtable<String, Long> localNodeReceivedMessageTypes =
-      new Hashtable<String, Long>();
+  private final Hashtable<String, Long> localNodeReceivedMessageTypes = new Hashtable<>();
 
   /** Hold collected IP addresses for handshake attempts, populated by DNSRequestor */
   private Peer[] handshakeIPs;
@@ -471,7 +469,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
    * so there is no need to deregister
    */
   private final Set<PeerManager.PeerStatusChangeListener> listeners =
-      Collections.synchronizedSet(new WeakHashSet<PeerStatusChangeListener>());
+      Collections.synchronizedSet(new WeakHashSet<>());
 
   // NodeCrypto for the relevant node reference for this peer's type (Darknet or Opennet at this
   // time))
@@ -486,7 +484,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
    * For FNP link setup: The initiator has to ensure that nonces send back by the responder in
    * message2 match what was chosen in message 1
    */
-  protected final LinkedList<byte[]> jfkNoncesSent = new LinkedList<byte[]>();
+  protected final LinkedList<byte[]> jfkNoncesSent = new LinkedList<>();
 
   private static volatile boolean logMINOR;
   private static volatile boolean logDEBUG;
@@ -529,7 +527,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
           ReferenceSignatureVerificationException,
           PeerTooOldException {
     boolean noSig = fromLocal || fromAnonymousInitiator();
-    myRef = new WeakReference<PeerNode>(this);
+    myRef = new WeakReference<>(this);
     this.checkStatusAfterBackoff = new PeerNodeBackoffStatusChecker(myRef);
     this.outgoingMangler = crypto.getPacketMangler();
     this.node = node2;
@@ -676,7 +674,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       throw new Error(e1);
     }
 
-    nominalPeer = new ArrayList<Peer>();
+    nominalPeer = new ArrayList<>();
     try {
       String[] physical = fs.getAll("physical.udp");
       if (physical == null) {
@@ -1027,7 +1025,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       }
     }
     // De-dupe
-    HashSet<Peer> ret = new HashSet<Peer>();
+    HashSet<Peer> ret = new HashSet<>();
     Collections.addAll(ret, localHandshakeIPs);
     return ret.toArray(new Peer[0]);
   }
@@ -1084,7 +1082,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     List<Peer> localPeers = null;
     synchronized (this) {
-      localPeers = new ArrayList<Peer>(nominalPeer);
+      localPeers = new ArrayList<>(nominalPeer);
     }
 
     boolean addedLocalhost = false;
@@ -2857,7 +2855,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       if (physical != null) {
         List<Peer> oldNominalPeer = nominalPeer;
 
-        nominalPeer = new ArrayList<Peer>(physical.length);
+        nominalPeer = new ArrayList<>(physical.length);
 
         Peer[] oldPeers = oldNominalPeer.toArray(new Peer[oldNominalPeer.size()]);
 
@@ -3681,14 +3679,14 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   public Hashtable<String, Long> getLocalNodeSentMessagesToStatistic() {
     // Must be synchronized *during the copy*
     synchronized (localNodeSentMessageTypes) {
-      return new Hashtable<String, Long>(localNodeSentMessageTypes);
+      return new Hashtable<>(localNodeSentMessageTypes);
     }
   }
 
   public Hashtable<String, Long> getLocalNodeReceivedMessagesFromStatistic() {
     // Must be synchronized *during the copy*
     synchronized (localNodeReceivedMessageTypes) {
-      return new Hashtable<String, Long>(localNodeReceivedMessageTypes);
+      return new Hashtable<>(localNodeReceivedMessageTypes);
     }
   }
 
@@ -4430,7 +4428,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       return null;
     }
     long loopTime1 = System.currentTimeMillis();
-    List<Peer> validIPs = new ArrayList<Peer>(localHandshakeIPs.length);
+    List<Peer> validIPs = new ArrayList<>(localHandshakeIPs.length);
     boolean allowLocalAddresses = allowLocalAddresses();
     for (Peer peer : localHandshakeIPs) {
       FreenetInetAddress addr = peer.getFreenetAddress();
@@ -4931,7 +4929,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       this.tag = tag;
       this.requestType = type;
       this.offeredKey = offeredKey;
-      this.waitingFor = new HashSet<PeerNode>();
+      this.waitingFor = new HashSet<>();
       this.realTime = realTime;
       this.source = source;
       synchronized (SlotWaiter.class) {
@@ -5060,7 +5058,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     public HashSet<PeerNode> waitingForList() {
       synchronized (this) {
-        return new HashSet<PeerNode>(waitingFor);
+        return new HashSet<>(waitingFor);
       }
     }
 
@@ -5326,14 +5324,13 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   static class SlotWaiterList {
 
-    private final LinkedHashMap<PeerNode, TreeMap<Long, SlotWaiter>> lru =
-        new LinkedHashMap<PeerNode, TreeMap<Long, SlotWaiter>>();
+    private final LinkedHashMap<PeerNode, TreeMap<Long, SlotWaiter>> lru = new LinkedHashMap<>();
 
     public synchronized void put(SlotWaiter waiter) {
       PeerNode source = waiter.source;
       TreeMap<Long, SlotWaiter> map = lru.get(source);
       if (map == null) {
-        lru.put(source, map = new TreeMap<Long, SlotWaiter>());
+        lru.put(source, map = new TreeMap<>());
       }
       map.put(waiter.counter, waiter);
     }
@@ -5369,7 +5366,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     }
 
     public synchronized ArrayList<SlotWaiter> values() {
-      ArrayList<SlotWaiter> list = new ArrayList<SlotWaiter>();
+      ArrayList<SlotWaiter> list = new ArrayList<>();
       for (TreeMap<Long, SlotWaiter> map : lru.values()) {
         list.addAll(map.values());
       }
@@ -5523,7 +5520,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     // FIXME on backoff so that we should add another node???
 
     private final EnumMap<RequestType, SlotWaiterList> slotWaiters =
-        new EnumMap<RequestType, SlotWaiterList>(RequestType.class);
+        new EnumMap<>(RequestType.class);
 
     boolean queueSlotWaiter(SlotWaiter waiter) {
       if (!isRoutable()) {
@@ -6017,8 +6014,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     private final ArrayList<Message> messagesWantSomething;
 
     public MyDecodingMessageGroup(int size) {
-      messages = new ArrayList<Message>(size);
-      messagesWantSomething = new ArrayList<Message>(size);
+      messages = new ArrayList<>(size);
+      messagesWantSomething = new ArrayList<>(size);
     }
 
     @Override
@@ -6080,7 +6077,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (prev != null) prevLoc = prev.getLocation();
     else prevLoc = -1.0;
 
-    Set<Double> excludeLocations = new HashSet<Double>();
+    Set<Double> excludeLocations = new HashSet<>();
     excludeLocations.add(myLoc);
     excludeLocations.add(prevLoc);
     for (PeerNode routedToNode : routedTo) {

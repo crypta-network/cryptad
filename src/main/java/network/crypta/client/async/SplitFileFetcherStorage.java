@@ -489,7 +489,7 @@ public class SplitFileFetcherStorage {
               + ", check blocks: "
               + splitfileCheckBlocks);
     segments = new SplitFileFetcherSegmentStorage[segmentCount]; // initially null on all entries
-    randomSegmentIterator = new RandomArrayIterator<SplitFileFetcherSegmentStorage>(segments);
+    randomSegmentIterator = new RandomArrayIterator<>(segments);
 
     long checkLength =
         (splitfileDataBlocks - (long) segmentCount * crossCheckBlocks) * CHKBlock.DATA_LENGTH;
@@ -907,7 +907,7 @@ public class SplitFileFetcherStorage {
       int decompressorCount = dis.readInt();
       if (decompressorCount < 0)
         throw new StorageFormatException("Invalid decompressor count " + decompressorCount);
-      decompressors = new ArrayList<COMPRESSOR_TYPE>(decompressorCount);
+      decompressors = new ArrayList<>(decompressorCount);
       for (int i = 0; i < decompressorCount; i++) {
         short type = dis.readShort();
         COMPRESSOR_TYPE d = COMPRESSOR_TYPE.getCompressorByMetadataID(type);
@@ -949,7 +949,7 @@ public class SplitFileFetcherStorage {
       if (segmentCount <= 0)
         throw new StorageFormatException("Invalid segment count " + segmentCount);
       this.segments = new SplitFileFetcherSegmentStorage[segmentCount];
-      randomSegmentIterator = new RandomArrayIterator<SplitFileFetcherSegmentStorage>(segments);
+      randomSegmentIterator = new RandomArrayIterator<>(segments);
       long totalDataBlocks = dis.readInt();
       if (totalDataBlocks < 0)
         throw new StorageFormatException("Invalid total data blocks " + totalDataBlocks);
@@ -1067,8 +1067,7 @@ public class SplitFileFetcherStorage {
       }
       if (segment.needsDecode()) needsDecode = true;
       if (needsDecode) {
-        if (segmentsToTryDecode == null)
-          segmentsToTryDecode = new ArrayList<SplitFileFetcherSegmentStorage>();
+        if (segmentsToTryDecode == null) segmentsToTryDecode = new ArrayList<>();
         segmentsToTryDecode.add(segment);
       }
     }
@@ -1655,7 +1654,7 @@ public class SplitFileFetcherStorage {
 
   public Key[] listUnfetchedKeys() {
     try {
-      ArrayList<Key> keys = new ArrayList<Key>();
+      ArrayList<Key> keys = new ArrayList<>();
       for (SplitFileFetcherSegmentStorage segment : segments) segment.getUnfetchedKeys(keys);
       return keys.toArray(new Key[keys.size()]);
     } catch (IOException e) {

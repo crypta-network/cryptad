@@ -1,6 +1,10 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Random;
@@ -11,7 +15,7 @@ public class ListUtilsTest {
 
   @Test
   public void testRemoveByObject() {
-    ArrayList<Integer> list = new ArrayList<Integer>();
+    ArrayList<Integer> list = new ArrayList<>();
     for (int i = 0; i < 10; i++) list.add(i);
     // 0 1 2 3 4 5 6 7 8 9
     assertEquals(list.size(), 10);
@@ -49,7 +53,7 @@ public class ListUtilsTest {
 
   @Test
   public void testRemoveByIndex() {
-    ArrayList<Integer> list = new ArrayList<Integer>();
+    ArrayList<Integer> list = new ArrayList<>();
     for (int i = 0; i < 10; i++) list.add(i);
     // 0 1 2 3 4 5 6 7 8 9
     assertEquals(list.size(), 10);
@@ -95,7 +99,7 @@ public class ListUtilsTest {
 
   @Test
   public void testRemoveByRandom() {
-    ArrayList<Integer> list = new ArrayList<Integer>();
+    ArrayList<Integer> list = new ArrayList<>();
     Random rand = new Random();
     for (int i = 0; i < 10; i++) list.add(i);
     ListUtils.RandomRemoveResult<Integer> res;
@@ -158,7 +162,7 @@ public class ListUtilsTest {
 
   @Test
   public void testRemoveByRandomSimple() {
-    ArrayList<Integer> list = new ArrayList<Integer>();
+    ArrayList<Integer> list = new ArrayList<>();
     Random rand = new Random();
     for (int i = 0; i < 10; i++) list.add(i);
     Integer res;

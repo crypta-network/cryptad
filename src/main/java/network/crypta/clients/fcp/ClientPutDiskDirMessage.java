@@ -84,7 +84,7 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
 
     if (logMINOR) Logger.minor(this, "Listing directory: " + thisdir);
 
-    HashMap<String, Object> ret = new HashMap<String, Object>();
+    HashMap<String, Object> ret = new HashMap<>();
 
     File[] filelist = thisdir.listFiles();
     if (filelist == null)

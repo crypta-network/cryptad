@@ -422,7 +422,7 @@ public final class PageMaker {
         boolean isAdvancedMode = ctx.isAdvancedModeEnabled();
         String uri = ctx.getUri().getQuery();
         Map<String, List<String>> parameters = HTTPRequestImpl.parseUriParameters(uri, true);
-        List<String> newModeSwitchValues = new ArrayList<String>();
+        List<String> newModeSwitchValues = new ArrayList<>();
         newModeSwitchValues.add(String.valueOf(isAdvancedMode ? MODE_SIMPLE : MODE_ADVANCED));
         /* overwrite any previously existing parameter value. */
         parameters.put(MODE_SWITCH_PARAMETER, newModeSwitchValues);
@@ -1011,22 +1011,20 @@ public final class PageMaker {
     private final String defaultNavigationLinkTitle;
 
     private final FredPluginL10n plugin;
-    private final List<String> navigationLinkTexts = new ArrayList<String>();
-    private final List<String> navigationLinkTextsNonFull = new ArrayList<String>();
-    private final Map<String, String> navigationLinkTitles = new HashMap<String, String>();
-    private final Map<String, String> navigationLinks = new HashMap<String, String>();
-    private final Map<String, LinkEnabledCallback> navigationLinkCallbacks =
-        new HashMap<String, LinkEnabledCallback>();
-    private final Map<String, FredPluginL10n> navigationLinkL10n =
-        new HashMap<String, FredPluginL10n>();
+    private final List<String> navigationLinkTexts = new ArrayList<>();
+    private final List<String> navigationLinkTextsNonFull = new ArrayList<>();
+    private final Map<String, String> navigationLinkTitles = new HashMap<>();
+    private final Map<String, String> navigationLinks = new HashMap<>();
+    private final Map<String, LinkEnabledCallback> navigationLinkCallbacks = new HashMap<>();
+    private final Map<String, FredPluginL10n> navigationLinkL10n = new HashMap<>();
   }
 
   /** Parameter for simple/advanced mode switch. */
   private static final String MODE_SWITCH_PARAMETER = "fproxyAdvancedMode";
 
   private final Node node;
-  private final List<SubMenu> menuList = new ArrayList<SubMenu>();
-  private final Map<String, SubMenu> subMenus = new HashMap<String, SubMenu>();
+  private final List<SubMenu> menuList = new ArrayList<>();
+  private final Map<String, SubMenu> subMenus = new HashMap<>();
   private THEME theme;
   private String override;
 }

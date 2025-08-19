@@ -43,8 +43,8 @@ public final class BinaryBlobWriter {
    * @param bf BucketFactory to generate internal buckets from
    */
   public BinaryBlobWriter(BucketFactory bf) {
-    _binaryBlobKeysAddedAlready = new HashSet<Key>();
-    _buckets = new ArrayList<Bucket>();
+    _binaryBlobKeysAddedAlready = new HashSet<>();
+    _buckets = new ArrayList<>();
     _bf = bf;
     _out = null;
     _isSingleBucket = false;
@@ -56,7 +56,7 @@ public final class BinaryBlobWriter {
    * @param out Bucket to write the result to
    */
   public BinaryBlobWriter(Bucket out) {
-    _binaryBlobKeysAddedAlready = new HashSet<Key>();
+    _binaryBlobKeysAddedAlready = new HashSet<>();
     _buckets = null;
     _bf = null;
     assert out != null;

@@ -201,8 +201,8 @@ public class MainJarDependenciesChecker {
    */
   public boolean cleanup(Properties props, final Deployer deployer, int build) {
     // This method should not change anything, but can call the callbacks.
-    HashSet<String> processed = new HashSet<String>();
-    final ArrayList<File> toDelete = new ArrayList<File>();
+    HashSet<String> processed = new HashSet<>();
+    final ArrayList<File> toDelete = new ArrayList<>();
     File[] listMain =
         new File(".")
             .listFiles(
@@ -556,7 +556,7 @@ public class MainJarDependenciesChecker {
   public void deploy() {
     TreeSet<Dependency> f;
     synchronized (this) {
-      f = new TreeSet<Dependency>(dependencies);
+      f = new TreeSet<>(dependencies);
     }
     if (logMINOR) {
       Logger.minor(this, "Deploying build " + build + " with " + f.size() + " dependencies");
@@ -573,7 +573,7 @@ public class MainJarDependenciesChecker {
     // I.e. when we remove a library we put a placeholder in to tell this code to delete it.
     // It's not acceptable to just delete stuff we don't know about.
     clear(build);
-    HashSet<String> processed = new HashSet<String>();
+    HashSet<String> processed = new HashSet<>();
     File[] list =
         new File(".")
             .listFiles(
@@ -877,7 +877,7 @@ public class MainJarDependenciesChecker {
       }
     }
     if (ready()) {
-      return new MainJarDependencies(new TreeSet<Dependency>(dependencies), build);
+      return new MainJarDependencies(new TreeSet<>(dependencies), build);
     } else {
       return null;
     }
@@ -1577,8 +1577,8 @@ public class MainJarDependenciesChecker {
     }
 
     final String name;
-    private final Set<AtomicDependency> dependencies = new HashSet<AtomicDependency>();
-    private final Set<AtomicDependency> dependenciesWaiting = new HashSet<AtomicDependency>();
+    private final Set<AtomicDependency> dependencies = new HashSet<>();
+    private final Set<AtomicDependency> dependenciesWaiting = new HashSet<>();
     private boolean failed;
     private boolean started;
   }
@@ -2131,13 +2131,13 @@ public class MainJarDependenciesChecker {
   private final Deployer deployer;
 
   /** The final filenames we will use in the update, which we have already downloaded. */
-  private final TreeSet<Dependency> dependencies = new TreeSet<Dependency>();
+  private final TreeSet<Dependency> dependencies = new TreeSet<>();
 
   /**
    * The dependency downloads currently running which are required for the next build. Hence
    * non-essential (preload) dependencies are not added to this set.
    */
-  private final HashSet<Downloader> downloaders = new HashSet<Downloader>();
+  private final HashSet<Downloader> downloaders = new HashSet<>();
 
   private final Executor executor;
 

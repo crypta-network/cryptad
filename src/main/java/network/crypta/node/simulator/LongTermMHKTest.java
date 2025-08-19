@@ -61,7 +61,7 @@ public class LongTermMHKTest extends LongTermTest {
 
     boolean dumpOnly = args.length == 2 && "--dump".equalsIgnoreCase(args[1]);
 
-    List<String> csvLine = new ArrayList<String>();
+    List<String> csvLine = new ArrayList<>();
     System.out.println("DATE:" + dateFormat.format(today.getTime()));
     csvLine.add(dateFormat.format(today.getTime()));
 

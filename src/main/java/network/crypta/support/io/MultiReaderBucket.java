@@ -82,7 +82,7 @@ public class MultiReaderBucket implements Serializable {
     synchronized (this) {
       if (closed) return null;
       Bucket d = new ReaderBucket();
-      if (readers == null) readers = new ArrayList<Bucket>(1);
+      if (readers == null) readers = new ArrayList<>(1);
       readers.add(d);
       if (logMINOR)
         Logger.minor(this, "getReaderBucket() returning " + d + " for " + this + " for " + bucket);

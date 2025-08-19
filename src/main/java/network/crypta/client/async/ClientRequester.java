@@ -469,8 +469,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     return client.persistent();
   }
 
-  private static final WeakHashMap<ClientRequester, Object> allRequesters =
-      new WeakHashMap<ClientRequester, Object>();
+  private static final WeakHashMap<ClientRequester, Object> allRequesters = new WeakHashMap<>();
   private static final Object dumbValue = new Object();
   public final long creationTime;
 

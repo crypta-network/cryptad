@@ -37,8 +37,7 @@ public class IntervalPusherManager {
       };
 
   /** The elements that are pushed at a fixed interval */
-  private final List<BaseUpdateableElement> elements =
-      new CopyOnWriteArrayList<BaseUpdateableElement>();
+  private final List<BaseUpdateableElement> elements = new CopyOnWriteArrayList<>();
 
   /**
    * Constructor

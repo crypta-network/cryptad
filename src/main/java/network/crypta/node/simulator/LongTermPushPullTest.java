@@ -94,7 +94,7 @@ public class LongTermPushPullTest extends LongTermTest {
       System.exit(0);
     }
 
-    List<String> csvLine = new ArrayList<String>(3 + 2 * MAX_N);
+    List<String> csvLine = new ArrayList<>(3 + 2 * MAX_N);
     System.out.println("DATE:" + dateFormat.format(today.getTime()));
     csvLine.add(dateFormat.format(today.getTime()));
 
@@ -285,7 +285,7 @@ public class LongTermPushPullTest extends LongTermTest {
     BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING));
     String line = null;
     Calendar prevDate = null;
-    TreeMap<GregorianCalendar, DumpElement> map = new TreeMap<GregorianCalendar, DumpElement>();
+    TreeMap<GregorianCalendar, DumpElement> map = new TreeMap<>();
     while ((line = br.readLine()) != null) {
       DumpElement element;
       // System.out.println("LINE: "+line);
@@ -347,7 +347,7 @@ public class LongTermPushPullTest extends LongTermTest {
       long successTime = 0;
       int noMatch = 0;
       int insertFailure = 0;
-      Map<String, Integer> failureModes = new HashMap<String, Integer>();
+      Map<String, Integer> failureModes = new HashMap<>();
       for (Entry<GregorianCalendar, DumpElement> entry : map.entrySet()) {
         GregorianCalendar date = entry.getKey();
         DumpElement element = entry.getValue();

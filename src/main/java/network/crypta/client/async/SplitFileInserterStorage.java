@@ -413,7 +413,7 @@ public class SplitFileInserterStorage {
             random,
             keysFetching,
             consecutiveRNFsCountAsSuccess);
-    randomSegmentIterator = new RandomArrayIterator<SplitFileInserterSegmentStorage>(segments);
+    randomSegmentIterator = new RandomArrayIterator<>(segments);
     for (SplitFileInserterSegmentStorage segment : segments) {
       totalCheckBlocks += segment.checkBlockCount;
       checkTotalDataBlocks += segment.dataBlockCount;
@@ -784,7 +784,7 @@ public class SplitFileInserterStorage {
     dis.close();
     this.hasPaddedLastBlock = (dataLength % CHKBlock.DATA_LENGTH != 0);
     this.segments = new SplitFileInserterSegmentStorage[segmentCount];
-    randomSegmentIterator = new RandomArrayIterator<SplitFileInserterSegmentStorage>(segments);
+    randomSegmentIterator = new RandomArrayIterator<>(segments);
     if (crossCheckBlocks != 0)
       this.crossSegments = new SplitFileInserterCrossSegmentStorage[segmentCount];
     else crossSegments = null;

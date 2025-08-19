@@ -90,8 +90,8 @@ public class SerialExecutor implements Executor {
   }
 
   public SerialExecutor(int priority, int bound) {
-    if (bound > 0) jobs = new LinkedBlockingQueue<Runnable>(bound);
-    else jobs = new LinkedBlockingQueue<Runnable>();
+    if (bound > 0) jobs = new LinkedBlockingQueue<>(bound);
+    else jobs = new LinkedBlockingQueue<>();
     this.priority = priority;
     this.syncLock = new Object();
   }

@@ -44,7 +44,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
   private final boolean isConfigurablePlugin;
   private final boolean isOfficialPlugin;
   private final String filename;
-  private HashSet<String> toadletLinks = new HashSet<String>();
+  private HashSet<String> toadletLinks = new HashSet<>();
   private volatile boolean stopping = false;
   private volatile boolean unregistered = false;
 
@@ -135,7 +135,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
   }
 
   public synchronized boolean addPluginToadletSymlink(String linkfrom) {
-    if (toadletLinks.isEmpty()) toadletLinks = new HashSet<String>();
+    if (toadletLinks.isEmpty()) toadletLinks = new HashSet<>();
     return toadletLinks.add(linkfrom);
   }
 

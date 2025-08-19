@@ -72,7 +72,7 @@ public class FlacFilter implements ContentDataFilter {
           case METADATA_FOUND:
             if (logMINOR) Logger.minor(this, "Reading audio packet");
             boolean firstHalfOfSyncHeaderFound = false;
-            ArrayList<Byte> buffer = new ArrayList<Byte>();
+            ArrayList<Byte> buffer = new ArrayList<>();
             int data = 0;
             buffer.add((byte) ((frameHeader & 0xFF00) >>> 8));
             buffer.add((byte) (frameHeader & 0x00FF));

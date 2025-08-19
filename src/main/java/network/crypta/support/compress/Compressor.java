@@ -109,7 +109,7 @@ public interface Compressor {
       if (compressordescriptor == null) return null;
       if (compressordescriptor.trim().isEmpty()) return null;
       String[] codecs = compressordescriptor.split(",");
-      ArrayList<COMPRESSOR_TYPE> result = new ArrayList<COMPRESSOR_TYPE>(codecs.length);
+      ArrayList<COMPRESSOR_TYPE> result = new ArrayList<>(codecs.length);
       for (String codec : codecs) {
         codec = codec.trim();
         COMPRESSOR_TYPE ct = getCompressorByName(codec);

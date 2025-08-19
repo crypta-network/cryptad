@@ -16,8 +16,8 @@ public class PrioritizedSerialExecutorTest {
   @Before
   public void setUp() throws Exception {
     realExec = new PooledExecutor();
-    completedJobs = new ArrayList<String>();
-    completingJob = new SynchronousQueue<String>();
+    completedJobs = new ArrayList<>();
+    completingJob = new SynchronousQueue<>();
     exec =
         new PrioritizedSerialExecutor(NativeThread.PriorityLevel.MAX_PRIORITY.value, 10, 5, true);
   }

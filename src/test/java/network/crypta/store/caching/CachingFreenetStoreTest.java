@@ -116,7 +116,7 @@ public class CachingFreenetStoreTest {
           new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
 
         for (int i = 0; i < 5; i++) {
@@ -169,7 +169,7 @@ public class CachingFreenetStoreTest {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(0, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
 
         for (int i = 0; i < 5; i++) {
@@ -237,10 +237,10 @@ public class CachingFreenetStoreTest {
           new WaitableCachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-        List<ClientCHKBlock> chkBlocks = new ArrayList<ClientCHKBlock>();
-        List<String> tests = new ArrayList<String>();
+        List<ClientCHKBlock> chkBlocks = new ArrayList<>();
+        List<String> tests = new ArrayList<>();
 
         store.put(block.getBlock(), false);
         chkBlocks.add(block);
@@ -297,7 +297,7 @@ public class CachingFreenetStoreTest {
           InvalidCompressionCodecException,
           InterruptedException {
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(pk, 10);
+    new RAMFreenetStore<>(pk, 10);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     int sskBlockSize = store.getTotalBlockSize();
@@ -321,7 +321,7 @@ public class CachingFreenetStoreTest {
           new WaitableCachingFreenetStoreTracker(
               (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
@@ -445,7 +445,7 @@ public class CachingFreenetStoreTest {
           InterruptedException {
 
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(pk, 10);
+    new RAMFreenetStore<>(pk, 10);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     int sskBlockSize = store.getTotalBlockSize();
@@ -467,7 +467,7 @@ public class CachingFreenetStoreTest {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
@@ -540,7 +540,7 @@ public class CachingFreenetStoreTest {
           ExecutionException {
 
     PubkeyStore pk = new PubkeyStore();
-    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<DSAPublicKey>(pk, 10);
+    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, 10);
     pk.setStore(ramFreenetStore);
 
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
@@ -563,11 +563,11 @@ public class CachingFreenetStoreTest {
             null)) {
       // Don't let the write complete until we say so...
       WriteBlockableFreenetStore<SSKBlock> delayStore =
-          new WriteBlockableFreenetStore<SSKBlock>(saltStore, true);
+          new WriteBlockableFreenetStore<>(saltStore, true);
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
       try (final CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, delayStore, tracker)) {
+          new CachingFreenetStore<>(store, delayStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
@@ -616,8 +616,8 @@ public class CachingFreenetStoreTest {
         }
 
         FutureTask<Long> future =
-            new FutureTask<Long>(
-                new Callable<Long>() {
+            new FutureTask<>(
+                new Callable<>() {
 
                   @Override
                   public Long call() throws Exception {
@@ -690,7 +690,7 @@ public class CachingFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
 
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
@@ -713,7 +713,7 @@ public class CachingFreenetStoreTest {
           new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
@@ -746,8 +746,8 @@ public class CachingFreenetStoreTest {
 
     CHKStore store = new CHKStore();
     File f = getStorePath("testOnCloseCHK");
-    List<String> tests = new ArrayList<String>();
-    List<ClientCHKBlock> chkBlocks = new ArrayList<ClientCHKBlock>();
+    List<String> tests = new ArrayList<>();
+    List<ClientCHKBlock> chkBlocks = new ArrayList<>();
     CachingFreenetStoreTracker tracker =
         new CachingFreenetStoreTracker(
             cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
@@ -766,7 +766,7 @@ public class CachingFreenetStoreTest {
             ticker,
             null)) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
 
         // Insert Keys
@@ -806,7 +806,7 @@ public class CachingFreenetStoreTest {
             ticker,
             null)) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore2, tracker)) {
+          new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
 
         boolean atLeastOneKey = false;
@@ -868,11 +868,11 @@ public class CachingFreenetStoreTest {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
-          new CachingFreenetStore<CHKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
 
-        List<ClientCHKBlock> chkBlocks = new ArrayList<ClientCHKBlock>();
-        List<String> tests = new ArrayList<String>();
+        List<ClientCHKBlock> chkBlocks = new ArrayList<>();
+        List<String> tests = new ArrayList<>();
 
         // Put five chk blocks
         for (int i = 0; i < 5; i++) {
@@ -940,13 +940,13 @@ public class CachingFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
 
-    List<ClientSSKBlock> sskBlocks = new ArrayList<ClientSSKBlock>();
-    List<String> tests = new ArrayList<String>();
+    List<ClientSSKBlock> sskBlocks = new ArrayList<>();
+    List<String> tests = new ArrayList<>();
     CachingFreenetStoreTracker tracker =
         new CachingFreenetStoreTracker(
             cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
@@ -965,7 +965,7 @@ public class CachingFreenetStoreTest {
             ticker,
             null)) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
@@ -1002,7 +1002,7 @@ public class CachingFreenetStoreTest {
             ticker,
             null)) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore2, tracker)) {
+          new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
 
         boolean atLeastOneKey = false;
@@ -1053,7 +1053,7 @@ public class CachingFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
@@ -1074,12 +1074,12 @@ public class CachingFreenetStoreTest {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 
-        List<ClientSSKBlock> sskBlocks = new ArrayList<ClientSSKBlock>();
-        List<String> tests = new ArrayList<String>();
+        List<ClientSSKBlock> sskBlocks = new ArrayList<>();
+        List<String> tests = new ArrayList<>();
 
         for (int i = 0; i < 5; i++) {
           String test = "test" + i;
@@ -1200,7 +1200,7 @@ public class CachingFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
     pk.setStore(ramFreenetStore);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
@@ -1223,7 +1223,7 @@ public class CachingFreenetStoreTest {
           new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<SSKBlock>(store, saltStore, tracker)) {
+          new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
 

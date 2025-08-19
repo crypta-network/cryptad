@@ -1,6 +1,9 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -33,7 +36,7 @@ public class ByteArrayWrapperTest {
     assertNotEquals(wrapper2, wrapper3);
     assertNotEquals("", wrapper1);
 
-    Map<ByteArrayWrapper, ByteArrayWrapper> map = new HashMap<ByteArrayWrapper, ByteArrayWrapper>();
+    Map<ByteArrayWrapper, ByteArrayWrapper> map = new HashMap<>();
 
     map.put(wrapper1, wrapper1);
     map.put(wrapper2, wrapper2); // should clobber 1 by hashcode

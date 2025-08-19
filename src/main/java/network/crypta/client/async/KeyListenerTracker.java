@@ -77,11 +77,9 @@ class KeyListenerTracker implements KeySalter {
     this.isSSKScheduler = forSSKs;
     this.isRTScheduler = forRT;
     this.sched = sched;
-    keyListeners = new ArrayList<KeyListener>();
+    keyListeners = new ArrayList<>();
     singleKeyListeners =
-        this.isSSKScheduler
-            ? new TreeMap<ByteArrayWrapper, Object>(ByteArrayWrapper.FAST_COMPARATOR)
-            : new HashMap<ByteArrayWrapper, Object>();
+        this.isSSKScheduler ? new TreeMap<>(ByteArrayWrapper.FAST_COMPARATOR) : new HashMap<>();
     if (globalSalt == null) {
       globalSalt = new byte[32];
       random.nextBytes(globalSalt);
@@ -300,7 +298,7 @@ class KeyListenerTracker implements KeySalter {
     } else if (o instanceof KeyListener listener) {
       do {
         if (!listener.probablyWantKey(key, saltedKey)) continue;
-        if (matches == null) matches = new ArrayList<KeyListener>();
+        if (matches == null) matches = new ArrayList<>();
         matches.add(listener);
       } while (false);
     } else {
@@ -308,13 +306,13 @@ class KeyListenerTracker implements KeySalter {
       KeyListener[] listeners = (KeyListener[]) o;
       for (KeyListener listener : listeners) {
         if (!listener.probablyWantKey(key, saltedKey)) continue;
-        if (matches == null) matches = new ArrayList<KeyListener>();
+        if (matches == null) matches = new ArrayList<>();
         matches.add(listener);
       }
     }
     for (KeyListener listener : keyListeners) {
       if (!listener.probablyWantKey(key, saltedKey)) continue;
-      if (matches == null) matches = new ArrayList<KeyListener>();
+      if (matches == null) matches = new ArrayList<>();
       matches.add(listener);
     }
     return matches;
@@ -440,7 +438,7 @@ class KeyListenerTracker implements KeySalter {
   }
 
   public SendableGet[] requestsForKey(Key key, ClientContext context) {
-    ArrayList<SendableGet> list = new ArrayList<SendableGet>();
+    ArrayList<SendableGet> list = new ArrayList<>();
     assert (key instanceof NodeSSK == isSSKScheduler);
     byte[] saltedKey = saltKey(key);
     List<KeyListener> matches = probablyWantKey(key, saltedKey);
@@ -495,7 +493,7 @@ class KeyListenerTracker implements KeySalter {
 
   /** Returns all KeyListeners that return true on probablyWantKey(key, saltedKey) */
   private List<KeyListener> probablyWantKey(Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches = new ArrayList<KeyListener>();
+    ArrayList<KeyListener> matches = new ArrayList<>();
     synchronized (this) {
       for (KeyListener listener : keyListeners) {
         try {

@@ -40,7 +40,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   private static BaseL10n l10n = NodeL10n.getBase();
 
   static {
-    allowedProtocols = new HashSet<String>();
+    allowedProtocols = new HashSet<>();
     allowedProtocols.add("http");
     allowedProtocols.add("https");
     allowedProtocols.add("ftp");

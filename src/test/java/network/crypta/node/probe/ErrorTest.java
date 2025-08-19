@@ -1,6 +1,7 @@
 package network.crypta.node.probe;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 import java.util.HashSet;
 import org.junit.Test;
@@ -29,7 +30,7 @@ public class ErrorTest {
 
   @Test
   public void testInvalidCodes() {
-    HashSet<Byte> validCodes = new HashSet<Byte>();
+    HashSet<Byte> validCodes = new HashSet<>();
     for (network.crypta.node.probe.Error error : network.crypta.node.probe.Error.values()) {
       validCodes.add(error.code);
     }

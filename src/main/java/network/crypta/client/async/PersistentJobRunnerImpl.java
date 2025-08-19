@@ -62,7 +62,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   public PersistentJobRunnerImpl(Executor executor, Ticker ticker, long interval) {
     this.executor = executor;
     this.ticker = ticker;
-    queuedJobs = new ArrayList<QueuedJob>();
+    queuedJobs = new ArrayList<>();
     lastCheckpointed = System.currentTimeMillis();
     this.checkpointInterval = interval;
   }

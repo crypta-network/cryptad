@@ -1660,7 +1660,7 @@ public class Node implements TimeSkewDetectorCallback {
 
       @Override
       public String[] getPossibleValues() {
-        ArrayList<String> array = new ArrayList<String>();
+        ArrayList<String> array = new ArrayList<>();
         for (TrafficClass tc : TrafficClass.values()) array.add(tc.name());
         return array.toArray(new String[0]);
       }
@@ -2378,7 +2378,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
 
     securityLevels.addNetworkThreatLevelListener(
-        new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+        new SecurityLevelListener<>() {
 
           @Override
           public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
@@ -2386,7 +2386,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               OpennetManager om;
               synchronized (Node.this) {
                 om = opennet;
-                if (om != null) opennet = null;
+                if (om != null) {
+                  opennet = null;
+                }
               }
               if (om != null) {
                 om.stop(true);
@@ -2763,7 +2765,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (File.separatorChar == '/'
         && !System.getProperty("os.name").toLowerCase().contains("mac os")) {
       securityLevels.addPhysicalThreatLevelListener(
-          new SecurityLevelListener<SecurityLevels.PHYSICAL_THREAT_LEVEL>() {
+          new SecurityLevelListener<>() {
 
             @Override
             public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
@@ -2779,7 +2781,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
 
     securityLevels.addPhysicalThreatLevelListener(
-        new SecurityLevelListener<SecurityLevels.PHYSICAL_THREAT_LEVEL>() {
+        new SecurityLevelListener<>() {
 
           @Override
           public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
@@ -3180,7 +3182,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     chkSlashdotcache = new CHKStore();
     chkSlashdotcacheStore =
-        new SlashdotStore<CHKBlock>(
+        new SlashdotStore<>(
             chkSlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3189,7 +3191,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             this.clientCore.getTempBucketFactory());
     pubKeySlashdotcache = new PubkeyStore();
     pubKeySlashdotcacheStore =
-        new SlashdotStore<DSAPublicKey>(
+        new SlashdotStore<>(
             pubKeySlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3199,7 +3201,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     getPubKey.setLocalSlashdotcache(pubKeySlashdotcache);
     sskSlashdotcache = new SSKStore(getPubKey);
     sskSlashdotcacheStore =
-        new SlashdotStore<SSKBlock>(
+        new SlashdotStore<>(
             sskSlashdotcache,
             maxSlashdotCacheKeys,
             slashdotCacheLifetime,
@@ -3210,12 +3212,15 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // MAXIMUM seclevel = no slashdot cache.
 
     securityLevels.addNetworkThreatLevelListener(
-        new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+        new SecurityLevelListener<>() {
 
           @Override
           public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-            if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) useSlashdotCache = false;
-            else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) useSlashdotCache = true;
+            if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+              useSlashdotCache = false;
+            } else if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
+              useSlashdotCache = true;
+            }
           }
         });
 
@@ -3655,23 +3660,20 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private void initRAMClientCacheFS() {
     chkClientcache = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(
-        chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(chkClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
     pubKeyClientcache = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(pubKeyClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
     sskClientcache = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(
-        sskClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
+    new RAMFreenetStore<>(sskClientcache, (int) Math.min(Integer.MAX_VALUE, maxClientCacheKeys));
   }
 
   private void initNoClientCacheFS() {
     chkClientcache = new CHKStore();
-    new NullFreenetStore<CHKBlock>(chkClientcache);
+    new NullFreenetStore<>(chkClientcache);
     pubKeyClientcache = new PubkeyStore();
-    new NullFreenetStore<DSAPublicKey>(pubKeyClientcache);
+    new NullFreenetStore<>(pubKeyClientcache);
     sskClientcache = new SSKStore(getPubKey);
-    new NullFreenetStore<SSKBlock>(sskClientcache);
+    new NullFreenetStore<>(sskClientcache);
   }
 
   private String getStoreSuffix() {
@@ -3690,20 +3692,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private void initRAMFS() {
     chkDatastore = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(chkDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     chkDatacache = new CHKStore();
-    new RAMFreenetStore<CHKBlock>(chkDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(chkDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
     pubKeyDatastore = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(pubKeyDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     pubKeyDatacache = new PubkeyStore();
     getPubKey.setDataStore(pubKeyDatastore, pubKeyDatacache);
-    new RAMFreenetStore<DSAPublicKey>(
-        pubKeyDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(pubKeyDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
     sskDatastore = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(sskDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
+    new RAMFreenetStore<>(sskDatastore, (int) Math.min(Integer.MAX_VALUE, maxStoreKeys));
     sskDatacache = new SSKStore(getPubKey);
-    new RAMFreenetStore<SSKBlock>(sskDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
+    new RAMFreenetStore<>(sskDatacache, (int) Math.min(Integer.MAX_VALUE, maxCacheKeys));
   }
 
   private long cachingFreenetStoreMaxSize;
@@ -3957,7 +3957,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             clientCacheMasterKey);
     cb.setStore(fs);
     if (cachingFreenetStoreMaxSize > 0)
-      return new CachingFreenetStore<T>(cb, fs, cachingFreenetStoreTracker);
+      return new CachingFreenetStore<>(cb, fs, cachingFreenetStoreTracker);
     else return fs;
   }
 
@@ -4540,8 +4540,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * @return map that has an entry for each data store instance type and corresponding stats
    */
   public Map<DataStoreInstanceType, DataStoreStats> getDataStoreStats() {
-    Map<DataStoreInstanceType, DataStoreStats> map =
-        new LinkedHashMap<DataStoreInstanceType, DataStoreStats>();
+    Map<DataStoreInstanceType, DataStoreStats> map = new LinkedHashMap<>();
 
     map.put(
         new DataStoreInstanceType(CHK, STORE),
@@ -5085,8 +5084,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return peers.isOutdated();
   }
 
-  private final Map<Integer, NodeToNodeMessageListener> n2nmListeners =
-      new HashMap<Integer, NodeToNodeMessageListener>();
+  private final Map<Integer, NodeToNodeMessageListener> n2nmListeners = new HashMap<>();
 
   public synchronized void registerNodeToNodeMessageListener(
       int type, NodeToNodeMessageListener listener) {
@@ -5592,7 +5590,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * @return A Set of ForwardPort's to be fed to port forward plugins.
    */
   public Set<ForwardPort> getPublicInterfacePorts() {
-    HashSet<ForwardPort> set = new HashSet<ForwardPort>();
+    HashSet<ForwardPort> set = new HashSet<>();
     // FIXME IPv6 support
     set.add(
         new ForwardPort(

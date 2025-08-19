@@ -171,7 +171,7 @@ public final class ISO639_3 {
   }
 
   private static Hashtable<String, LanguageCode> loadFromTabFile() {
-    final Hashtable<String, LanguageCode> codes = new Hashtable<String, LanguageCode>(7705 * 2);
+    final Hashtable<String, LanguageCode> codes = new Hashtable<>(7705 * 2);
 
     try {
       // Returns null on lookup failures:
@@ -267,7 +267,7 @@ public final class ISO639_3 {
   public Hashtable<String, LanguageCode> getLanguagesByScopeAndType(
       LanguageCode.Scope scope, LanguageCode.Type type) {
     final Map<String, LanguageCode> all = getLanguages();
-    final Hashtable<String, LanguageCode> result = new Hashtable<String, LanguageCode>();
+    final Hashtable<String, LanguageCode> result = new Hashtable<>();
 
     for (final LanguageCode c : all.values()) {
       if (c.scope.equals(scope) && c.type.equals(type))

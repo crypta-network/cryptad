@@ -13,7 +13,7 @@ import network.crypta.support.TimeUtil;
 public class Cookie {
   /** FIXME: Where was this taken from? */
   private static final HashSet<Character> invalidValueCharacters =
-      new HashSet<Character>(
+      new HashSet<>(
           Arrays.asList(
               '(', ')', '[', ']', '{', '}', '=', ',', '\"', '/', '\\', '?', '@', ':', ';'));
 
@@ -26,7 +26,7 @@ public class Cookie {
    * TheSeeker: where did you copy that from? <TheSeeker> http://www.ietf.org/rfc/rfc2616.txt
    */
   public static final HashSet<Character> httpSeparatorCharacters =
-      new HashSet<Character>(
+      new HashSet<>(
           Arrays.asList(
               '(', ')', '<', '>', '@', ',', ';', ':', '\\', '\"', '/', '[', ']', '?', '=', '{', '}',
               ' ', '\t'));

@@ -20,7 +20,7 @@ public class ElementInfo {
 
   public static final Set<String> VOID_ELEMENTS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "area",
                   "base",
@@ -44,11 +44,11 @@ public class ElementInfo {
                   "wbr")));
 
   public static final Set<String> HTML_ELEMENTS =
-      Collections.unmodifiableSet(new HashSet<String>(HTMLFilter.getAllowedHTMLTags()));
+      Collections.unmodifiableSet(new HashSet<>(HTMLFilter.getAllowedHTMLTags()));
 
   public static final Set<String> REPLACED_ELEMENTS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "img",
                   "object",
@@ -60,7 +60,7 @@ public class ElementInfo {
 
   public static final Set<String> MEDIA =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "all",
                   "aural",
@@ -76,26 +76,26 @@ public class ElementInfo {
 
   public static final Set<String> VISUALMEDIA =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList("handheld", "print", "projection", "screen", "tty", "tv")));
 
   public static final Set<String> AURALMEDIA =
-      Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("speech", "aural")));
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList("speech", "aural")));
 
   public static final Set<String> VISUALPAGEDMEDIA =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList("embossed", "handheld", "print", "projection", "screen", "tty", "tv")));
 
   public static final Set<String> VISUALINTERACTIVEMEDIA =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "braille", "handheld", "print", "projection", "screen", "speech", "tty", "tv")));
 
   public static final Set<String> FONTS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "arial",
                   "helvetica",
@@ -136,7 +136,7 @@ public class ElementInfo {
   // https://developer.mozilla.org/en-US/docs/Web/CSS/font-family
   public static final Set<String> GENERIC_FONT_KEYWORDS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "serif",
                   "sans-serif",
@@ -153,11 +153,11 @@ public class ElementInfo {
                   "fangsong")));
 
   public static final Set<String> GENERIC_VOICE_KEYWORDS =
-      Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("male", "female", "child")));
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList("male", "female", "child")));
 
   public static final Set<String> PSEUDOCLASS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "first-child",
                   "last-child",
@@ -199,7 +199,7 @@ public class ElementInfo {
 
   public static final Set<String> BANNED_PSEUDOCLASS =
       Collections.unmodifiableSet(
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   // :visited is considered harmful as it may leak browser history to an adversary.
                   // This may not be obvious immediately, but :visited gives an adversary the

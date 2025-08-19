@@ -64,7 +64,7 @@ public class RequestTag extends UIDTag {
     if (!coalesced) {
       sent = true;
     }
-    sender = new WeakReference<RequestSender>(rs);
+    sender = new WeakReference<>(rs);
   }
 
   @Override

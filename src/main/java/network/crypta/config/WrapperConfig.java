@@ -22,7 +22,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  */
 public class WrapperConfig {
 
-  private static final HashMap<String, String> overrides = new HashMap<String, String>();
+  private static final HashMap<String, String> overrides = new HashMap<>();
 
   public static String getWrapperProperty(String name) {
     synchronized (WrapperConfig.class) {

@@ -1,6 +1,6 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,7 +12,7 @@ public class FieldsDurationTest {
 
   /** Duration input with and without various d|h|min|s. With correct result in millis */
   private static final Map<String, Integer> durations =
-      new HashMap<String, Integer>() {
+      new HashMap<>() {
         {
           put("2d", 172_800_000);
           put("3h", 10_800_000);

@@ -52,7 +52,7 @@ public class PproxyToadlet extends Toadlet {
   public void handleMethodPOST(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
 
-    MultiValueTable<String, String> headers = new MultiValueTable<String, String>();
+    MultiValueTable<String, String> headers = new MultiValueTable<>();
 
     if (!ctx.checkFullAccess(this)) return;
 
@@ -405,7 +405,7 @@ public class PproxyToadlet extends Toadlet {
 
         /* sort available plugins into groups. */
         SortedMap<String, List<OfficialPluginDescription>> groupedAvailablePlugins =
-            new TreeMap<String, List<OfficialPluginDescription>>();
+            new TreeMap<>();
         for (OfficialPluginDescription pluginDescription : availablePlugins) {
           if (!advancedModeEnabled
               && (pluginDescription.advanced
@@ -415,8 +415,7 @@ public class PproxyToadlet extends Toadlet {
           }
           String translatedGroup = l10n("pluginGroup." + pluginDescription.group);
           if (!groupedAvailablePlugins.containsKey(translatedGroup)) {
-            groupedAvailablePlugins.put(
-                translatedGroup, new ArrayList<OfficialPluginDescription>());
+            groupedAvailablePlugins.put(translatedGroup, new ArrayList<>());
           }
           groupedAvailablePlugins.get(translatedGroup).add(pluginDescription);
         }
@@ -424,7 +423,7 @@ public class PproxyToadlet extends Toadlet {
             groupedAvailablePlugins.values()) {
           Collections.sort(
               pluginDescriptions,
-              new Comparator<OfficialPluginDescription>() {
+              new Comparator<>() {
                 /** {@inheritDoc} */
                 @Override
                 public int compare(OfficialPluginDescription o1, OfficialPluginDescription o2) {

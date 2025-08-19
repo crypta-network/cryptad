@@ -443,7 +443,7 @@ public class WelcomeToadlet extends Toadlet {
       if (!ctx.checkFormPassword(request)) return;
       String alertsToDump = request.getPartAsStringFailsafe("events", Integer.MAX_VALUE);
       String[] alertAnchors = alertsToDump.split(",");
-      HashSet<String> toDump = new HashSet<String>();
+      HashSet<String> toDump = new HashSet<>();
       Collections.addAll(toDump, alertAnchors);
       ctx.getAlertManager().dumpEvents(toDump);
       redirectToRoot(ctx);

@@ -140,7 +140,7 @@ public class FCPServer implements Runnable, DownloadCache {
     this.assumeUploadDDAIsAllowed = assumeDDAUploadAllowed;
     this.neverDropAMessage = neverDropAMessage;
     this.maxMessageQueueLength = maxMessageQueueLength;
-    rebootClientsByName = new WeakHashMap<String, PersistentRequestClient>();
+    rebootClientsByName = new WeakHashMap<>();
     this.persistentRoot = persistentRoot;
     globalForeverClient = persistentRoot.globalForeverClient;
 
@@ -759,7 +759,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
   public RequestStatus[] getGlobalRequests() throws PersistenceDisabledException {
     if (core.killedDatabase()) throw new PersistenceDisabledException();
-    List<RequestStatus> v = new ArrayList<RequestStatus>();
+    List<RequestStatus> v = new ArrayList<>();
     globalRebootClient.addPersistentRequestStatus(v);
     if (globalForeverClient != null) globalForeverClient.addPersistentRequestStatus(v);
     return v.toArray(new RequestStatus[v.size()]);

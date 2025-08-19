@@ -230,9 +230,9 @@ public class UpdateDeployContext {
 
     String mainRHS = null;
 
-    ArrayList<String> otherLines = new ArrayList<String>();
-    ArrayList<String> classpath = new ArrayList<String>();
-    ArrayList<String> additionalJavaArguments = new ArrayList<String>();
+    ArrayList<String> otherLines = new ArrayList<>();
+    ArrayList<String> classpath = new ArrayList<>();
+    ArrayList<String> additionalJavaArguments = new ArrayList<>();
 
     // We MUST put the ext (and all other dependencies) before the main jar,
     // or auto-update of freenet-ext.jar on Windows won't work.

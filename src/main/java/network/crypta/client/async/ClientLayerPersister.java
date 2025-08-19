@@ -420,7 +420,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
 
   private class PartialLoad {
     private final Map<RequestIdentifier, PartiallyLoadedRequest> partiallyLoadedRequests =
-        new HashMap<RequestIdentifier, PartiallyLoadedRequest>();
+        new HashMap<>();
 
     private byte[] salt;
 

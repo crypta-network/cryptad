@@ -20,7 +20,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
   private final long creationTime;
 
   public DroppedOldPeersUserAlert(File droppedPeersFile) {
-    this.droppedOldPeers = new ArrayList<String>();
+    this.droppedOldPeers = new ArrayList<>();
     this.peersBrokenFile = droppedPeersFile;
     creationTime = System.currentTimeMillis();
     this.droppedOldPeersBuild = 0;

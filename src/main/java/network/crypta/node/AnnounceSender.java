@@ -123,7 +123,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
     // Now route it.
 
-    HashSet<PeerNode> nodesRoutedTo = new HashSet<PeerNode>();
+    HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
     PeerNode next = null;
     while (true) {
       if (logMINOR) Logger.minor(this, "htl=" + htl);

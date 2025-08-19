@@ -108,7 +108,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
       }
     }
     if (!dir.isDirectory()) throw new IOException("Directory is not a directory: " + dir);
-    originalFiles = new HashSet<File>();
+    originalFiles = new HashSet<>();
     File[] files =
         dir.listFiles(
             new FileFilter() {
@@ -126,7 +126,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
       originalFiles.add(f);
     }
 
-    bucketsToFree = new ArrayList<DelayedFree>();
+    bucketsToFree = new ArrayList<>();
     commitID = 1; // Must start > 0.
   }
 

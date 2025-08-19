@@ -145,7 +145,7 @@ public class BucketTools {
   }
 
   public static int[] nullIndices(Bucket[] array) {
-    List<Integer> list = new ArrayList<Integer>();
+    List<Integer> list = new ArrayList<>();
     for (int i = 0; i < array.length; i++) {
       if (array[i] == null) {
         list.add(i);
@@ -160,7 +160,7 @@ public class BucketTools {
   }
 
   public static int[] nonNullIndices(Bucket[] array) {
-    List<Integer> list = new ArrayList<Integer>();
+    List<Integer> list = new ArrayList<>();
     for (int i = 0; i < array.length; i++) {
       if (array[i] != null) {
         list.add(i);
@@ -175,7 +175,7 @@ public class BucketTools {
   }
 
   public static Bucket[] nonNullBuckets(Bucket[] array) {
-    List<Bucket> list = new ArrayList<Bucket>(array.length);
+    List<Bucket> list = new ArrayList<>(array.length);
     for (int i = 0; i < array.length; i++) {
       if (array[i] != null) {
         list.add(array[i]);

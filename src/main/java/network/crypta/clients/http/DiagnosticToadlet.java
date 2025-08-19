@@ -310,7 +310,7 @@ public class DiagnosticToadlet extends Toadlet {
       PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
       Arrays.sort(
           peerNodeStatuses,
-          new Comparator<PeerNodeStatus>() {
+          new Comparator<>() {
             @Override
             public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
               return firstNode.getStatusValue() - secondNode.getStatusValue();

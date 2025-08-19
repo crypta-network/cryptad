@@ -259,7 +259,7 @@ public class Metadata implements Cloneable, Serializable {
       for (int i = 0; i < hashes.length; i++) hashes[i] = orig.hashes[i].clone();
     }
     if (manifestEntries != null) {
-      manifestEntries = new HashMap<String, Metadata>(orig.manifestEntries);
+      manifestEntries = new HashMap<>(orig.manifestEntries);
       for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
         entry.setValue((Metadata) entry.getValue().clone());
       }
@@ -765,7 +765,7 @@ public class Metadata implements Cloneable, Serializable {
       if (manifestEntryCount < 0)
         throw new MetadataParseException("Invalid manifest entry count: " + manifestEntryCount);
 
-      manifestEntries = new HashMap<String, Metadata>();
+      manifestEntries = new HashMap<>();
 
       // Parse the sub-Manifest.
 
@@ -885,7 +885,7 @@ public class Metadata implements Cloneable, Serializable {
     noMIME = true;
     // mimeType = null;
     // clientMetadata = new ClientMetadata(null);
-    manifestEntries = new HashMap<String, Metadata>();
+    manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
       Object o = entry.getValue();
@@ -933,7 +933,7 @@ public class Metadata implements Cloneable, Serializable {
     noMIME = true;
     // mimeType = null;
     // clientMetadata = new ClientMetadata(null);
-    manifestEntries = new HashMap<String, Metadata>();
+    manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
       if (key.indexOf('/') != -1)
@@ -977,7 +977,7 @@ public class Metadata implements Cloneable, Serializable {
     noMIME = true;
     mimeType = null;
     clientMetadata = new ClientMetadata();
-    manifestEntries = new HashMap<String, Metadata>();
+    manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
       Object o = entry.getValue();
@@ -1490,7 +1490,7 @@ public class Metadata implements Cloneable, Serializable {
    * @throws MetadataParseException
    */
   public HashMap<String, Metadata> getDocuments() {
-    HashMap<String, Metadata> docs = new HashMap<String, Metadata>();
+    HashMap<String, Metadata> docs = new HashMap<>();
     for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
       String st = entry.getKey();
       if (!st.isEmpty()) docs.put(st, entry.getValue());
@@ -1755,7 +1755,7 @@ public class Metadata implements Cloneable, Serializable {
               data = meta.writeToByteArray();
             } else {
               kill = true;
-              if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<Metadata>();
+              if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<>();
               unresolvedMetadata.addLast(meta);
             }
           }
@@ -1763,7 +1763,7 @@ public class Metadata implements Cloneable, Serializable {
           dos.write(data);
         } catch (MetadataUnresolvedException e) {
           Metadata[] metas = e.mustResolve;
-          if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<Metadata>();
+          if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<>();
           for (Metadata m : metas) unresolvedMetadata.addFirst(m);
           kill = true;
         }
@@ -1908,7 +1908,7 @@ public class Metadata implements Cloneable, Serializable {
       m = new Metadata();
       m.documentType = DocumentType.SIMPLE_MANIFEST;
       m.noMIME = true;
-      m.manifestEntries = new HashMap<String, Metadata>();
+      m.manifestEntries = new HashMap<>();
     }
 
     /**

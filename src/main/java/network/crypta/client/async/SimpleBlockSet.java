@@ -16,7 +16,7 @@ import network.crypta.support.Logger;
  */
 public class SimpleBlockSet implements BlockSet {
 
-  private final HashMap<Key, KeyBlock> blocksByKey = new HashMap<Key, KeyBlock>();
+  private final HashMap<Key, KeyBlock> blocksByKey = new HashMap<>();
 
   @Override
   public synchronized void add(KeyBlock block) {

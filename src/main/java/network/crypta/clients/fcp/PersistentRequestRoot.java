@@ -37,7 +37,7 @@ public class PersistentRequestRoot {
   public PersistentRequestRoot() {
     globalForeverClient =
         new PersistentRequestClient("Global Queue", null, true, null, Persistence.FOREVER, this);
-    clients = new TreeMap<String, PersistentRequestClient>();
+    clients = new TreeMap<>();
   }
 
   public PersistentRequestClient registerForeverClient(
@@ -78,7 +78,7 @@ public class PersistentRequestRoot {
   }
 
   public ClientRequest[] getPersistentRequests() {
-    List<ClientRequest> requests = new ArrayList<ClientRequest>();
+    List<ClientRequest> requests = new ArrayList<>();
     globalForeverClient.addPersistentRequests(requests, true);
     for (PersistentRequestClient client : clients.values())
       client.addPersistentRequests(requests, true);

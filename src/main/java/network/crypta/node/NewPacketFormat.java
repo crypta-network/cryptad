@@ -116,7 +116,7 @@ public class NewPacketFormat implements PacketFormat {
 
     startedByPrio = new ArrayList<>(DMT.NUM_PRIORITIES);
     for (int i = 0; i < DMT.NUM_PRIORITIES; i++) {
-      startedByPrio.add(new HashMap<Integer, MessageWrapper>());
+      startedByPrio.add(new HashMap<>());
     }
 
     // Make sure the numbers are within the ranges we want

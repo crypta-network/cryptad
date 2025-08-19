@@ -1,6 +1,11 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.Enumeration;
 import org.junit.Test;
@@ -39,7 +44,7 @@ public class LRUMapTest {
    * @return the created LRUMap
    */
   private LRUMap<Object, Object> createSampleHashTable(int size) {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(size);
     for (int i = 0; i < sampleObjects.length; i++)
       methodLRUht.push(sampleObjects[i][0], sampleObjects[i][1]);
@@ -149,7 +154,7 @@ public class LRUMapTest {
    */
   @Test
   public void testPopKey() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++)
@@ -167,7 +172,7 @@ public class LRUMapTest {
    */
   @Test
   public void testPopValue() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++)
@@ -182,7 +187,7 @@ public class LRUMapTest {
   /** Tests popValue() method popping a value from an empty LRUMap. */
   @Test
   public void testPopValueFromEmpty() {
-    LRUMap<?, ?> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<?, ?> methodLRUht = new LRUMap<>();
     assertNull(methodLRUht.popValue());
   }
 
@@ -192,7 +197,7 @@ public class LRUMapTest {
    */
   @Test
   public void testPeekValue() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++)
@@ -212,7 +217,7 @@ public class LRUMapTest {
   /** Tests size() method pushing and popping elements into the LRUMap */
   @Test
   public void testSize() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     assertTrue(methodLRUht.isEmpty());
     // pushing objects
@@ -233,7 +238,7 @@ public class LRUMapTest {
    */
   @Test
   public void testRemoveKey() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++)
@@ -313,7 +318,7 @@ public class LRUMapTest {
   /** Tests keys() method verifying if the Enumeration provided is correct */
   @Test
   public void testKeys() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     Object[][] sampleObjects = createSampleKeyVal(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++)
@@ -332,7 +337,7 @@ public class LRUMapTest {
    */
   @Test
   public void testIsEmpty() {
-    LRUMap<Object, Object> methodLRUht = new LRUMap<Object, Object>();
+    LRUMap<Object, Object> methodLRUht = new LRUMap<>();
     assertTrue(methodLRUht.isEmpty());
     methodLRUht = createSampleHashTable(sampleElemsNumber);
     // popping keys

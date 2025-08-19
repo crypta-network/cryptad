@@ -49,7 +49,7 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
 
   @Override
   protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<String, String>();
+    Hashtable<String, String> fieldPairs = new Hashtable<>();
     String element = set.get("filter-operation");
     if (element != null) {
       fieldPairs.put("filter-operation", element);

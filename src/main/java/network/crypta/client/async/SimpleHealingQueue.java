@@ -48,7 +48,7 @@ public class SimpleHealingQueue extends BaseClientPutter
     super(prio, REQUEST_CLIENT);
     this.ctx = context;
     this.healingDecisionSupplier = healingDecisionSupplier;
-    this.runningInserters = new HashMap<Bucket, SingleBlockInserter>();
+    this.runningInserters = new HashMap<>();
     this.maxRunning = maxRunning;
   }
 

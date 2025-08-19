@@ -22,7 +22,7 @@ public class Config {
   protected final LinkedHashMap<String, SubConfig> configsByPrefix;
 
   public Config() {
-    configsByPrefix = new LinkedHashMap<String, SubConfig>();
+    configsByPrefix = new LinkedHashMap<>();
   }
 
   public void register(SubConfig sc) {

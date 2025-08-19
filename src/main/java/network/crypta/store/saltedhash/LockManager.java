@@ -20,7 +20,7 @@ public class LockManager {
   private static boolean logDEBUG;
   private volatile boolean shutdown;
   private final Lock entryLock = new ReentrantLock();
-  private final Map<Long, Condition> lockMap = new HashMap<Long, Condition>();
+  private final Map<Long, Condition> lockMap = new HashMap<>();
 
   LockManager() {
     logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);

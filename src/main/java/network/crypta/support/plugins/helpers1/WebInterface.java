@@ -15,8 +15,8 @@ public class WebInterface {
   private final PageMaker _pageMaker;
 
   public WebInterface(final PluginContext context) {
-    _toadlets = new Vector<WebInterfaceToadlet>();
-    _categories = new Vector<String>();
+    _toadlets = new Vector<>();
+    _categories = new Vector<>();
     _container = context.pluginRespirator.getToadletContainer();
     _pageMaker = context.pageMaker;
   }

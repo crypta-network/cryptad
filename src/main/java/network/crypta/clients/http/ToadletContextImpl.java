@@ -204,7 +204,7 @@ public class ToadletContextImpl implements ToadletContext {
       boolean disconnect,
       MultiValueTable<String, String> mvt)
       throws IOException {
-    if (mvt == null) mvt = new MultiValueTable<String, String>();
+    if (mvt == null) mvt = new MultiValueTable<>();
     byte[] messageBytes = htmlMessage.getBytes(StandardCharsets.UTF_8);
     sendReplyHeaders(
         os,
@@ -327,7 +327,7 @@ public class ToadletContextImpl implements ToadletContext {
     firstReplySendingException = new Exception();
 
     if (mvt == null) {
-      mvt = new MultiValueTable<String, String>();
+      mvt = new MultiValueTable<>();
     }
     if (replyCookies != null) {
       // We do NOT use "set-cookie2" even though we should according though RFC2965 - Firefox 3.0.14
@@ -486,7 +486,7 @@ public class ToadletContextImpl implements ToadletContext {
 
   @Override
   public void setCookie(Cookie newCookie) {
-    if (replyCookies == null) replyCookies = new ArrayList<Cookie>(4);
+    if (replyCookies == null) replyCookies = new ArrayList<>(4);
 
     replyCookies.add(newCookie);
   }

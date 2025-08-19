@@ -82,7 +82,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * The FIFO itself
    * Get a lock on dhContextFIFO before touching it!
    */
-  private final LinkedList<ECDHLightContext> ecdhContextFIFO = new LinkedList<ECDHLightContext>();
+  private final LinkedList<ECDHLightContext> ecdhContextFIFO = new LinkedList<>();
   private ECDHLightContext ecdhContextToBePrunned;
   private static final ECDH.Curves ecdhCurveToUse = ECDH.Curves.P256;
   private long jfkECDHLastGenerationTimestamp = 0;
@@ -125,7 +125,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     this.node = node;
     this.crypto = crypt;
     this.sock = sock;
-    authenticatorCache = new HashMap<ByteArrayWrapper, byte[]>();
+    authenticatorCache = new HashMap<>();
   }
 
   /**

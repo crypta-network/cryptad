@@ -7,7 +7,7 @@ import org.junit.Test;
 public class TimeSortedHashtableTest {
   @Test
   public void testAddRemove() {
-    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<String>();
+    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<>();
 
     assertFalse(tsh.containsValue("KEY1"));
     assertEquals(0, tsh.countValuesAfter(0));
@@ -68,7 +68,7 @@ public class TimeSortedHashtableTest {
 
   @Test
   public void testAddRemoveTS() {
-    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<String>();
+    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<>();
 
     tsh.push("KEY1", 100); // 100=KEY1
     tsh.push("KEY2", 100); // 100=KEY1, 100=KEY2
@@ -92,7 +92,7 @@ public class TimeSortedHashtableTest {
 
   @Test
   public void testBeforeInclusive() {
-    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<String>();
+    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<>();
 
     tsh.push("KEY1", 100); // 100=KEY1
     tsh.push("KEY2", 100); // 100=KEY1, 100=KEY2
@@ -104,7 +104,7 @@ public class TimeSortedHashtableTest {
 
   @Test
   public void testPairs() {
-    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<String>();
+    TimeSortedHashtable<String> tsh = new TimeSortedHashtable<>();
 
     tsh.push("KEY1", 100); // 100=KEY1
     tsh.push("KEY2", 100); // 100=KEY1, 100=KEY2

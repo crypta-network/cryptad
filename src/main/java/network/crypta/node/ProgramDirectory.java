@@ -19,7 +19,7 @@ public class ProgramDirectory {
   protected File dir = null;
 
   /** Keeps track of all the files saved in this directory */
-  protected final HashSet<String> files = new HashSet<String>();
+  protected final HashSet<String> files = new HashSet<>();
 
   private final StringCallback callback;
   private final String moveErrMsg;

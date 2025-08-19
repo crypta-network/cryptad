@@ -76,7 +76,7 @@ public class PluginTalker {
       throw new PluginNotFoundException();
     }
     Logger.normal(this, "Found fcp plugin: " + pluginname2);
-    return new WeakReference<FredPluginFCP>(plug);
+    return new WeakReference<>(plug);
   }
 
   public void send(final SimpleFieldSet plugparams, final Bucket data2) {

@@ -110,12 +110,12 @@ public class USKManager {
     // okay to use the FAST_COMPARATOR here.
     // That is, even if two USKs are by the same author, they won't necessarily be updated or polled
     // at the same time.
-    latestKnownGoodByClearUSK = new TreeMap<USK, Long>(USK.FAST_COMPARATOR);
-    latestSlotByClearUSK = new TreeMap<USK, Long>(USK.FAST_COMPARATOR);
-    subscribersByClearUSK = new TreeMap<USK, USKCallback[]>(USK.FAST_COMPARATOR);
-    backgroundFetchersByClearUSK = new TreeMap<USK, USKFetcher>(USK.FAST_COMPARATOR);
+    latestKnownGoodByClearUSK = new TreeMap<>(USK.FAST_COMPARATOR);
+    latestSlotByClearUSK = new TreeMap<>(USK.FAST_COMPARATOR);
+    subscribersByClearUSK = new TreeMap<>(USK.FAST_COMPARATOR);
+    backgroundFetchersByClearUSK = new TreeMap<>(USK.FAST_COMPARATOR);
     temporaryBackgroundFetchersLRU = LRUMap.createSafeMap(USK.FAST_COMPARATOR);
-    temporaryBackgroundFetchersPrefetch = new WeakHashMap<USK, Long>();
+    temporaryBackgroundFetchersPrefetch = new WeakHashMap<>();
     executor = core.getExecutor();
   }
 
@@ -406,7 +406,7 @@ public class USKManager {
         USKFetcher fetcher = temporaryBackgroundFetchersLRU.popValue();
         temporaryBackgroundFetchersPrefetch.remove(fetcher.getOriginalUSK().clearCopy());
         if (!fetcher.hasSubscribers()) {
-          if (toCancel == null) toCancel = new ArrayList<USKFetcher>(2);
+          if (toCancel == null) toCancel = new ArrayList<>(2);
           toCancel.add(fetcher);
         } else {
           if (logMINOR)
@@ -461,7 +461,7 @@ public class USKManager {
             for (Map.Entry<USK, Long> entry : temporaryBackgroundFetchersPrefetch.entrySet()) {
               empty = false;
               if (entry.getValue() > 0 && now - entry.getValue() >= PREFETCH_DELAY) {
-                if (toFetch == null) toFetch = new ArrayList<USK>();
+                if (toFetch == null) toFetch = new ArrayList<>();
                 USK clear = entry.getKey();
                 long l = lookupLatestSlot(clear);
                 if (lookupKnownGood(clear) < l) toFetch.add(clear.copy(l));

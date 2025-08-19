@@ -271,14 +271,14 @@ public class PacketSender implements Runnable {
               if (sendTime < lowestUrgentSendTime) {
                 lowestUrgentSendTime = sendTime;
                 if (urgentSendPeers != null) urgentSendPeers.clear();
-                else urgentSendPeers = new ArrayList<PeerNode>();
+                else urgentSendPeers = new ArrayList<>();
               }
               if (sendTime <= lowestUrgentSendTime) urgentSendPeers.add(pn);
             } else if (pn.fullPacketQueued()) {
               if (sendTime < lowestFullPacketSendTime) {
                 lowestFullPacketSendTime = sendTime;
                 if (urgentFullPacketPeers != null) urgentFullPacketPeers.clear();
-                else urgentFullPacketPeers = new ArrayList<PeerNode>();
+                else urgentFullPacketPeers = new ArrayList<>();
               }
               if (sendTime <= lowestFullPacketSendTime) urgentFullPacketPeers.add(pn);
             }
@@ -290,7 +290,7 @@ public class PacketSender implements Runnable {
               if (ackTime < lowestAckTime) {
                 lowestAckTime = ackTime;
                 if (ackPeers != null) ackPeers.clear();
-                else ackPeers = new ArrayList<PeerNode>();
+                else ackPeers = new ArrayList<>();
               }
               if (ackTime <= lowestAckTime) ackPeers.add(pn);
             }
@@ -318,7 +318,7 @@ public class PacketSender implements Runnable {
         if (handshakeTime < lowestHandshakeTime) {
           lowestHandshakeTime = handshakeTime;
           if (handshakePeers != null) handshakePeers.clear();
-          else handshakePeers = new ArrayList<PeerNode>();
+          else handshakePeers = new ArrayList<>();
         }
         if (handshakeTime <= lowestHandshakeTime) handshakePeers.add(pn);
       }

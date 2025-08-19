@@ -68,11 +68,10 @@ public final class ReceivedCookie extends Cookie {
     char[] header = httpHeader.toCharArray();
 
     String currentCookieName = null;
-    Hashtable<String, String> currentCookieContent = new Hashtable<String, String>(16);
+    Hashtable<String, String> currentCookieContent = new Hashtable<>(16);
 
     ArrayList<ReceivedCookie> cookies =
-        new ArrayList<ReceivedCookie>(
-            4); // TODO: Adjust to the usual amount of cookies which fred uses + 1
+        new ArrayList<>(4); // TODO: Adjust to the usual amount of cookies which fred uses + 1
 
     // We do manual parsing instead of using regular expressions for two reasons:
     // 1. The value of cookies can be quoted, therefore it is a context-free language and not a
@@ -195,7 +194,7 @@ public final class ReceivedCookie extends Cookie {
                     currentCookieName, currentCookieContent)); // Store the previous cookie.
 
             currentCookieName = key;
-            currentCookieContent = new Hashtable<String, String>(16);
+            currentCookieContent = new Hashtable<>(16);
             currentCookieContent.put(currentCookieName, value);
           }
         }

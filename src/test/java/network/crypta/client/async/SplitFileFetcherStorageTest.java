@@ -1439,7 +1439,7 @@ public class SplitFileFetcherStorageTest {
       keys.clear();
     }
 
-    private final HashSet<Key> keys = new HashSet<Key>();
+    private final HashSet<Key> keys = new HashSet<>();
   }
 
   static final KeySalter salt = Key::getRoutingKey;

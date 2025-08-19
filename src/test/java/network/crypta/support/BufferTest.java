@@ -1,6 +1,10 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.fail;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -149,7 +153,7 @@ public class BufferTest {
     Buffer b2 = new Buffer("Buffer2".getBytes());
     Buffer b3 = new Buffer("Buffer1".getBytes());
 
-    Map<Buffer, Buffer> hashMap = new HashMap<Buffer, Buffer>();
+    Map<Buffer, Buffer> hashMap = new HashMap<>();
 
     hashMap.put(b1, b1);
     hashMap.put(b2, b2);

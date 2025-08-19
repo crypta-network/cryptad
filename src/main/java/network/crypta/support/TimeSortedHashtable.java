@@ -8,8 +8,8 @@ import java.util.TreeSet;
 /** Variant on LRUMap which provides an efficient how-many-since-time-T operation. */
 public class TimeSortedHashtable<T extends Comparable<T>> {
   public TimeSortedHashtable() {
-    this.elements = new TreeSet<Element<T>>();
-    this.valueToElement = new HashMap<T, Element<T>>();
+    this.elements = new TreeSet<>();
+    this.valueToElement = new HashMap<>();
   }
 
   private static class Element<T extends Comparable<T>> implements Comparable<Element<T>> {
@@ -48,7 +48,7 @@ public class TimeSortedHashtable<T extends Comparable<T>> {
     Element<T> e = valueToElement.get(value);
 
     if (e == null) {
-      e = new Element<T>(now, value);
+      e = new Element<>(now, value);
       elements.add(e);
       valueToElement.put(value, e);
     } else {
@@ -94,7 +94,7 @@ public class TimeSortedHashtable<T extends Comparable<T>> {
    * @return value count
    */
   public synchronized int countValuesAfter(long t) {
-    Set<Element<T>> s = elements.tailSet(new Element<T>(t, null));
+    Set<Element<T>> s = elements.tailSet(new Element<>(t, null));
 
     return s.size();
   }
@@ -102,7 +102,7 @@ public class TimeSortedHashtable<T extends Comparable<T>> {
   /** Remove all entries on or before the given time. */
   public final synchronized void removeBefore(long t) {
     assert (elements.size() == valueToElement.size());
-    Set<Element<T>> s = elements.headSet(new Element<T>(t, null));
+    Set<Element<T>> s = elements.headSet(new Element<>(t, null));
 
     for (Iterator<Element<T>> i = s.iterator(); i.hasNext(); ) {
       Element<T> e = i.next();
@@ -115,7 +115,7 @@ public class TimeSortedHashtable<T extends Comparable<T>> {
 
   // FIXME this is broken if timestamp != -1
   public final synchronized Object[] pairsAfter(long timestamp, T[] valuesArray) {
-    Set<Element<T>> s = elements.tailSet(new Element<T>(timestamp, null));
+    Set<Element<T>> s = elements.tailSet(new Element<>(timestamp, null));
     Long[] timeArray = new Long[s.size()];
 
     int i = 0;

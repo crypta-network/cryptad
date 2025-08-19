@@ -144,7 +144,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
     byte[] routingKey = block.getRoutingKey();
     final ByteArrayWrapper key = new ByteArrayWrapper(routingKey);
 
-    Block<T> storeBlock = new Block<T>();
+    Block<T> storeBlock = new Block<>();
     storeBlock.block = block;
     storeBlock.data = data;
     storeBlock.header = header;

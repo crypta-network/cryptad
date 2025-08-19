@@ -50,8 +50,12 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.support.*;
+import network.crypta.support.HexUtil;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
@@ -1128,7 +1132,7 @@ public class TextModeClientInterface implements Runnable {
 
     System.out.println("Listing dir: " + thisdir);
 
-    HashMap<String, Object> ret = new HashMap<String, Object>();
+    HashMap<String, Object> ret = new HashMap<>();
 
     File[] filelist = thisdir.listFiles();
     if (filelist == null) throw new IllegalArgumentException("No such directory");

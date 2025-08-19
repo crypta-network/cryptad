@@ -387,7 +387,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   private void accumulator_init(String digest) throws NoSuchAlgorithmException {
     fast_pool = MessageDigest.getInstance(digest, Util.mdProviders.get(digest));
     slow_pool = MessageDigest.getInstance(digest, Util.mdProviders.get(digest));
-    entropySeen = new HashMap<EntropySource, int[]>();
+    entropySeen = new HashMap<>();
   }
 
   @Override

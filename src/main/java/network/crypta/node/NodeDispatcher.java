@@ -60,8 +60,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
   final Node node;
   final RequestTracker tracker;
   final Probe probe;
-  final Hashtable<Long, RoutedContext> routedContexts = new Hashtable<Long, RoutedContext>();
-  private final ArrayBlockingQueue<Message> requestQueue = new ArrayBlockingQueue<Message>(100);
+  final Hashtable<Long, RoutedContext> routedContexts = new Hashtable<>();
+  private final ArrayBlockingQueue<Message> requestQueue = new ArrayBlockingQueue<>(100);
   ByteCounter pingCounter =
       new ByteCounter() {
 
@@ -1193,7 +1193,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     RoutedContext(Message msg, PeerNode source, byte[] identity) {
       createdTime = accessTime = System.currentTimeMillis();
       this.source = source;
-      routedTo = new HashSet<PeerNode>();
+      routedTo = new HashSet<>();
       this.msg = msg;
       lastHtl = msg.getShort(DMT.HTL);
       this.identity = identity;

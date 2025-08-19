@@ -98,7 +98,7 @@ public class IPAddressDetector implements Runnable {
   /** Execute a checkpoint - detect our internet IP address and log it */
   protected synchronized boolean checkpoint() {
     final boolean logDEBUG = IPAddressDetector.logDEBUG;
-    List<InetAddress> addrs = new ArrayList<InetAddress>();
+    List<InetAddress> addrs = new ArrayList<>();
 
     Enumeration<java.net.NetworkInterface> interfaces = null;
     try {
@@ -207,7 +207,7 @@ public class IPAddressDetector implements Runnable {
    */
   protected void onGetAddresses(List<InetAddress> addrs) {
     final boolean logDEBUG = IPAddressDetector.logDEBUG;
-    List<InetAddress> output = new ArrayList<InetAddress>();
+    List<InetAddress> output = new ArrayList<>();
     if (logDEBUG)
       Logger.debug(this, "onGetAddresses found " + addrs.size() + " potential addresses)");
     if (addrs.isEmpty()) {

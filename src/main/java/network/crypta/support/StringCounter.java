@@ -23,7 +23,7 @@ public class StringCounter {
   }
 
   public StringCounter() {
-    map = new HashMap<String, Item>();
+    map = new HashMap<>();
   }
 
   public synchronized void inc(String string) {
@@ -49,14 +49,20 @@ public class StringCounter {
     Item[] items = items();
     Arrays.sort(
         items,
-        new Comparator<Item>() {
+        new Comparator<>() {
           @Override
           public int compare(Item it0, Item it1) {
             int ret;
-            if (it0.counter > it1.counter) ret = 1;
-            else if (it0.counter < it1.counter) ret = -1;
-            else ret = it0.string.compareTo(it1.string);
-            if (!ascending) ret = -ret;
+            if (it0.counter > it1.counter) {
+              ret = 1;
+            } else if (it0.counter < it1.counter) {
+              ret = -1;
+            } else {
+              ret = it0.string.compareTo(it1.string);
+            }
+            if (!ascending) {
+              ret = -ret;
+            }
             return ret;
           }
         });

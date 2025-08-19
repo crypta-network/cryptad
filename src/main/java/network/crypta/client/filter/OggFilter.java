@@ -32,8 +32,8 @@ public class OggFilter implements ContentDataFilter {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    HashMap<Integer, OggBitstreamFilter> streamFilters = new HashMap<Integer, OggBitstreamFilter>();
-    LinkedList<OggPage> splitPages = new LinkedList<OggPage>();
+    HashMap<Integer, OggBitstreamFilter> streamFilters = new HashMap<>();
+    LinkedList<OggPage> splitPages = new LinkedList<>();
     CountedOutputStream out = new CountedOutputStream(output);
     DataInputStream in = new DataInputStream(new BufferedInputStream(input, 255));
     OggPage page = null;

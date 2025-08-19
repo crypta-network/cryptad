@@ -64,11 +64,11 @@ public class ListUtils {
     if (size == 1) {
       // short-circuit, avoid expensive random call
       E removed = a.removeFirst();
-      return new RandomRemoveResult<E>(removed, removed);
+      return new RandomRemoveResult<>(removed, removed);
     }
     int idx = random.nextInt(size);
     E removed = a.get(idx);
-    return new RandomRemoveResult<E>(removed, removeBySwapLast(a, idx));
+    return new RandomRemoveResult<>(removed, removeBySwapLast(a, idx));
   }
 
   /**

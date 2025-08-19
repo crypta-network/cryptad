@@ -2,9 +2,13 @@ package network.crypta.node.useralerts;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
 import static org.hamcrest.Matchers.contains;
-import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.matchesPattern;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -152,7 +156,7 @@ public class UserAlertManagerTest {
   }
 
   private Matcher<Node> representsUserAlert(UserAlert userAlert) {
-    return new TypeSafeDiagnosingMatcher<Node>() {
+    return new TypeSafeDiagnosingMatcher<>() {
       @Override
       public void describeTo(Description description) {
         description.appendText("is user alert ").appendValue(userAlert);

@@ -82,8 +82,7 @@ public abstract class ClientPutBase extends ClientRequest
         });
   }
 
-  private static final Map<Integer, UploadFrom> uploadFromByCode =
-      new HashMap<Integer, UploadFrom>();
+  private static final Map<Integer, UploadFrom> uploadFromByCode = new HashMap<>();
 
   public enum UploadFrom { // Codes must be constant at least for migration
     DIRECT(0),

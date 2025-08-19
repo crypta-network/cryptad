@@ -142,7 +142,7 @@ public class OggPage {
     this.bitStreamSerial = oldPage.bitStreamSerial;
     this.pageSequenceNumber = oldPage.pageSequenceNumber;
     this.segments = 0;
-    ArrayList<Byte> segmentSizes = new ArrayList<Byte>();
+    ArrayList<Byte> segmentSizes = new ArrayList<>();
     ByteArrayOutputStream payloadStream = new ByteArrayOutputStream();
     for (CodecPacket packet : packets) {
       int wholeSegments = packet.payload.length / 255;
@@ -285,7 +285,7 @@ public class OggPage {
      * past the hard limit of 255 packets, and will need to create a continuing page
      */
     if (packetSizes == null) {
-      packetSizes = new LinkedList<Integer>();
+      packetSizes = new LinkedList<>();
       packetSizes.push(payload.length);
     }
     segments = 0;
@@ -324,7 +324,7 @@ public class OggPage {
 
   public Collection<CodecPacket> asPackets() {
     Logger.minor(this, "Creating packets for " + byteToUnsigned(segments) + " segments");
-    ArrayList<CodecPacket> packets = new ArrayList<CodecPacket>();
+    ArrayList<CodecPacket> packets = new ArrayList<>();
     int bytesParsed = 0;
     int packetSize = 0;
     for (int i = 0; i < segmentTable.length; i++) {

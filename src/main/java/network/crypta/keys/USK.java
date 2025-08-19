@@ -287,12 +287,15 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
   }
 
   public static final Comparator<USK> FAST_COMPARATOR =
-      new Comparator<USK>() {
+      new Comparator<>() {
 
         @Override
         public int compare(USK o1, USK o2) {
-          if (o1.hashCode > o2.hashCode) return 1;
-          else if (o1.hashCode < o2.hashCode) return -1;
+          if (o1.hashCode > o2.hashCode) {
+            return 1;
+          } else if (o1.hashCode < o2.hashCode) {
+            return -1;
+          }
           return o1.compareTo(o2);
         }
       };

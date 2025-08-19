@@ -33,7 +33,7 @@ public final class FCPPluginMessageEncodeDecodeTest {
    */
   @Test
   public void testEncodeDecode() throws MessageInvalidException, IOException, FSParseException {
-    ArrayList<FCPPluginMessage> messages = new ArrayList<FCPPluginMessage>();
+    ArrayList<FCPPluginMessage> messages = new ArrayList<>();
 
     // Non-reply messages. Can either have a SimpleFieldSet, or a Bucket, or both. We don't use
     // Buckets because the parsing code for those is higher level code, so we only have to use

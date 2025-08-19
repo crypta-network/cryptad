@@ -662,7 +662,7 @@ public class NodeUpdateManager {
         mainUpdater =
             new MainJarUpdater(
                 this, updateURI, Version.currentBuildNumber(), -1, Integer.MAX_VALUE, "main-jar-");
-        pluginUpdaters = new HashMap<String, PluginJarUpdater>();
+        pluginUpdaters = new HashMap<>();
       }
     }
     if (!enable) {
@@ -855,7 +855,7 @@ public class NodeUpdateManager {
       updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
       updater = mainUpdater;
       oldPluginUpdaters = pluginUpdaters;
-      pluginUpdaters = new HashMap<String, PluginJarUpdater>();
+      pluginUpdaters = new HashMap<>();
       if (updater == null) {
         return;
       }

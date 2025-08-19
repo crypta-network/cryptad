@@ -319,15 +319,13 @@ public class OpennetManager {
     this.node = node;
     crypto = new NodeCrypto(node, true, opennetConfig, startupTime, node.isEnableARKs());
 
-    timeLastDropped = new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    connectionAttempts = new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    connectionAttemptsAdded = new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    connectionAttemptsAddedPlentySpace = new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    connectionAttemptsRejectedByPerTypeEnforcement =
-        new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    connectionAttemptsRejectedNoPeersDroppable =
-        new EnumMap<ConnectionType, Long>(ConnectionType.class);
-    successCount = new EnumMap<ConnectionType, Long>(ConnectionType.class);
+    timeLastDropped = new EnumMap<>(ConnectionType.class);
+    connectionAttempts = new EnumMap<>(ConnectionType.class);
+    connectionAttemptsAdded = new EnumMap<>(ConnectionType.class);
+    connectionAttemptsAddedPlentySpace = new EnumMap<>(ConnectionType.class);
+    connectionAttemptsRejectedByPerTypeEnforcement = new EnumMap<>(ConnectionType.class);
+    connectionAttemptsRejectedNoPeersDroppable = new EnumMap<>(ConnectionType.class);
+    successCount = new EnumMap<>(ConnectionType.class);
     for (ConnectionType c : ConnectionType.values()) {
       timeLastDropped.put(c, 0L);
       connectionAttempts.put(c, 0L);
@@ -351,11 +349,9 @@ public class OpennetManager {
         crypto.initCrypto();
       }
     }
-    peersLRUByDistance =
-        new EnumMap<LinkLengthClass, LRUQueue<OpennetPeerNode>>(LinkLengthClass.class);
-    for (LinkLengthClass l : LinkLengthClass.values())
-      peersLRUByDistance.put(l, new LRUQueue<OpennetPeerNode>());
-    oldPeers = new LRUQueue<OpennetPeerNode>();
+    peersLRUByDistance = new EnumMap<>(LinkLengthClass.class);
+    for (LinkLengthClass l : LinkLengthClass.values()) peersLRUByDistance.put(l, new LRUQueue<>());
+    oldPeers = new LRUQueue<>();
     announcer = (enableAnnouncement ? new Announcer(this) : null);
   }
 
@@ -437,23 +433,36 @@ public class OpennetManager {
     OpennetPeerNode[] nodes = node.getPeers().getOpennetPeers();
     Arrays.sort(
         nodes,
-        new Comparator<OpennetPeerNode>() {
+        new Comparator<>() {
           @Override
           public int compare(OpennetPeerNode pn1, OpennetPeerNode pn2) {
-            if (pn1 == pn2) return 0;
+            if (pn1 == pn2) {
+              return 0;
+            }
             long lastSuccess1 = pn1.timeLastSuccess();
             long lastSuccess2 = pn2.timeLastSuccess();
 
-            if (lastSuccess1 > lastSuccess2) return 1;
-            if (lastSuccess2 > lastSuccess1) return -1;
+            if (lastSuccess1 > lastSuccess2) {
+              return 1;
+            }
+            if (lastSuccess2 > lastSuccess1) {
+              return -1;
+            }
 
             boolean neverConnected1 = pn1.neverConnected();
             boolean neverConnected2 = pn2.neverConnected();
-            if (neverConnected1 && (!neverConnected2)) return -1;
-            if ((!neverConnected1) && neverConnected2) return 1;
+            if (neverConnected1 && (!neverConnected2)) {
+              return -1;
+            }
+            if ((!neverConnected1) && neverConnected2) {
+              return 1;
+            }
             // a-b not opposite sign to b-a possible in a corner case (a=0 b=Integer.MIN_VALUE).
-            if (pn1.hashCode > pn2.hashCode) return 1;
-            else if (pn1.hashCode < pn2.hashCode) return -1;
+            if (pn1.hashCode > pn2.hashCode) {
+              return 1;
+            } else if (pn1.hashCode < pn2.hashCode) {
+              return -1;
+            }
             Logger.error(
                 this, "Two OpennetPeerNodes with the same hashcode: " + pn1 + " vs " + pn2);
             return Fields.compareObjectID(pn1, pn2);
@@ -764,7 +773,7 @@ public class OpennetManager {
       return true;
     }
     boolean canAdd = true;
-    ArrayList<OpennetPeerNode> dropList = new ArrayList<OpennetPeerNode>();
+    ArrayList<OpennetPeerNode> dropList = new ArrayList<>();
     maxPeers = getNumberOfConnectedPeersToAim(distance);
     synchronized (this) {
       int size = getSize(distance);
@@ -1072,7 +1081,7 @@ public class OpennetManager {
     }
     synchronized (this) {
       EnumMap<NOT_DROP_REASON, Integer> map = null;
-      if (addingNode) map = new EnumMap<NOT_DROP_REASON, Integer>(NOT_DROP_REASON.class);
+      if (addingNode) map = new EnumMap<>(NOT_DROP_REASON.class);
       // Do we want it?
       OpennetPeerNode[] peers = peersLRU.toArrayOrdered(new OpennetPeerNode[peersLRU.size()]);
       for (OpennetPeerNode pn : peers) {
@@ -1700,7 +1709,7 @@ public class OpennetManager {
   }
 
   private static final long MAX_AGE = DAYS.toMillis(7);
-  private static final TimeSortedHashtable<String> knownIds = new TimeSortedHashtable<String>();
+  private static final TimeSortedHashtable<String> knownIds = new TimeSortedHashtable<>();
 
   private static void registerKnownIdentity(String d) {
     if (logMINOR) Logger.minor(OpennetManager.class, "Known Id: " + d);

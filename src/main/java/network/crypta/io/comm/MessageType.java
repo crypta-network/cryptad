@@ -12,12 +12,12 @@ public class MessageType {
   public static final String VERSION =
       "$Id: MessageType.java,v 1.6 2005/08/25 17:28:19 amphibian Exp $";
 
-  private static final HashMap<Integer, MessageType> _specs = new HashMap<Integer, MessageType>();
+  private static final HashMap<Integer, MessageType> _specs = new HashMap<>();
 
   private final String _name;
-  private final LinkedList<String> _orderedFields = new LinkedList<String>();
-  private final HashMap<String, Class<?>> _fields = new HashMap<String, Class<?>>();
-  private final HashMap<String, Class<?>> _linkedListTypes = new HashMap<String, Class<?>>();
+  private final LinkedList<String> _orderedFields = new LinkedList<>();
+  private final HashMap<String, Class<?>> _fields = new HashMap<>();
+  private final HashMap<String, Class<?>> _linkedListTypes = new HashMap<>();
   private final boolean internalOnly;
   private final short priority;
   private final boolean isLossyPacketMessage;

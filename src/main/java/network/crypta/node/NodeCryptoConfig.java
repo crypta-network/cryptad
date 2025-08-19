@@ -195,7 +195,7 @@ public class NodeCryptoConfig {
 
     if (isOpennet) {
       securityLevels.addNetworkThreatLevelListener(
-          new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+          new SecurityLevelListener<>() {
 
             @Override
             public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
@@ -204,8 +204,12 @@ public class NodeCryptoConfig {
               // It's always off on darknet, since we can reasonably expect to know our peers, even
               // if we are paranoid
               // about them!
-              if (newLevel == NETWORK_THREAT_LEVEL.LOW) oneConnectionPerAddress = false;
-              if (oldLevel == NETWORK_THREAT_LEVEL.LOW) oneConnectionPerAddress = true;
+              if (newLevel == NETWORK_THREAT_LEVEL.LOW) {
+                oneConnectionPerAddress = false;
+              }
+              if (oldLevel == NETWORK_THREAT_LEVEL.LOW) {
+                oneConnectionPerAddress = true;
+              }
             }
           });
     }

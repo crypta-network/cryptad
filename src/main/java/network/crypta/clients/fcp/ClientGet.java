@@ -130,7 +130,7 @@ public class ClientGet extends ClientRequest
         });
   }
 
-  private static final Map<Short, ReturnType> returnTypeByCode = new HashMap<Short, ReturnType>();
+  private static final Map<Short, ReturnType> returnTypeByCode = new HashMap<>();
 
   public enum ReturnType {
     DIRECT((short) 0),
@@ -277,7 +277,7 @@ public class ClientGet extends ClientRequest
     compatMode = new CompatibilityAnalyser();
 
     if (message.allowedMIMETypes != null) {
-      fctx.allowedMIMETypes = new HashSet<String>();
+      fctx.allowedMIMETypes = new HashSet<>();
       Collections.addAll(fctx.allowedMIMETypes, message.allowedMIMETypes);
     }
 

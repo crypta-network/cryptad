@@ -310,11 +310,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
         byte[] pageBytes = page.generate().getBytes(StandardCharsets.UTF_8);
         context.sendReplyHeaders(
-            200,
-            "OK",
-            new MultiValueTable<String, String>(),
-            "text/html; charset=utf-8",
-            pageBytes.length);
+            200, "OK", new MultiValueTable<>(), "text/html; charset=utf-8", pageBytes.length);
         context.writeData(pageBytes);
         return;
       }
@@ -780,7 +776,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       fctx.prefetchHook =
           new FoundURICallback() {
 
-            final List<FreenetURI> uris = new ArrayList<FreenetURI>();
+            final List<FreenetURI> uris = new ArrayList<>();
 
             @Override
             public void foundURI(FreenetURI uri) {

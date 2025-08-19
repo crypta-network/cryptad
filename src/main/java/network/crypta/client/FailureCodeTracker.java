@@ -69,7 +69,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
     if (k == 0) {
       Logger.error(this, "Can't increment 0, not a valid failure mode", new Exception("error"));
     }
-    if (map == null) map = new HashMap<Integer, Integer>();
+    if (map == null) map = new HashMap<>();
     Integer key = k;
     Integer i = map.get(key);
     if (i == null) map.put(key, 1);
@@ -91,7 +91,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
     if (k == 0) {
       Logger.error(this, "Can't increment 0, not a valid failure mode", new Exception("error"));
     }
-    if (map == null) map = new HashMap<Integer, Integer>();
+    if (map == null) map = new HashMap<>();
     Integer i = map.get(k);
     if (i == null) map.put(k, 1);
     else map.put(k, i + val);
@@ -149,7 +149,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
   /** Merge codes from another tracker into this one. */
   public synchronized FailureCodeTracker merge(FailureCodeTracker source) {
     if (source.map == null) return this;
-    if (map == null) map = new HashMap<Integer, Integer>();
+    if (map == null) map = new HashMap<>();
     for (Map.Entry<Integer, Integer> e : source.map.entrySet()) {
       Integer k = e.getKey();
       Integer item = e.getValue();
@@ -310,7 +310,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
       int x = dis.readInt();
       if (x < 0) throw new StorageFormatException("Negative error counts");
       if (x == 0) continue;
-      if (map == null) map = new HashMap<Integer, Integer>();
+      if (map == null) map = new HashMap<>();
       total += x;
       map.put(i, x);
     }

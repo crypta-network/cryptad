@@ -183,7 +183,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * @return Hashtable of all GET params.
    */
   private Hashtable<String, String> readGET(HTTPRequest request) {
-    Hashtable<String, String> set = new Hashtable<String, String>();
+    Hashtable<String, String> set = new Hashtable<>();
     for (String key : request.getParameterNames()) {
       set.put(key, request.getParam(key));
     }
@@ -197,7 +197,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * @return set a Hashtable of all POST parts.
    */
   private Hashtable<String, String> readPOST(HTTPRequest request) {
-    Hashtable<String, String> set = new Hashtable<String, String>();
+    Hashtable<String, String> set = new Hashtable<>();
     for (String key : request.getParts()) {
       set.put(key, request.getPartAsStringFailsafe(key, MAX_POST_SIZE));
     }
@@ -342,7 +342,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
       Arrays.sort(
           files,
-          new Comparator<File>() {
+          new Comparator<>() {
             @Override
             public int compare(File firstFile, File secondFile) {
               /* Put directories above files, sorting each alphabetically and

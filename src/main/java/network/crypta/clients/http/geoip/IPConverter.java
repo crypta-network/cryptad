@@ -24,7 +24,7 @@ public class IPConverter {
   // Local cache
   @SuppressWarnings("serial")
   private final HashMap<Integer, Country> cache =
-      new LinkedHashMap<Integer, Country>() {
+      new LinkedHashMap<>() {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Integer, Country> eldest) {
           return size() > MAX_ENTRIES;
@@ -567,7 +567,7 @@ public class IPConverter {
       if (fullCache != null) memCache = fullCache.get();
       if (memCache == null) {
         if (dbFileCorrupt) return null;
-        fullCache = new SoftReference<Cache>(memCache = readRanges());
+        fullCache = new SoftReference<>(memCache = readRanges());
       }
     }
     return memCache;

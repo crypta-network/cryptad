@@ -82,7 +82,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     addWizardConfiguration(config);
 
     // Add step handlers that aren't set by presets
-    steps = new EnumMap<WIZARD_STEP, Step>(WIZARD_STEP.class);
+    steps = new EnumMap<>(WIZARD_STEP.class);
     steps.put(WIZARD_STEP.WELCOME, new WELCOME(config));
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BROWSER_WARNING());
     steps.put(WIZARD_STEP.NAME_SELECTION, new NAME_SELECTION(config));

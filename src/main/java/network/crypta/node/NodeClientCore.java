@@ -803,7 +803,7 @@ public class NodeClientCore implements Persistable {
 
     node.getSecurityLevels()
         .addPhysicalThreatLevelListener(
-            new SecurityLevelListener<PHYSICAL_THREAT_LEVEL>() {
+            new SecurityLevelListener<>() {
 
               @Override
               public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {
@@ -2528,7 +2528,7 @@ public class NodeClientCore implements Persistable {
     node.getPeers()
         .closerPeer(
             null,
-            new HashSet<PeerNode>(),
+            new HashSet<>(),
             key.toNormalizedDouble(),
             true,
             false,

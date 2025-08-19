@@ -977,14 +977,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         || mode.ordinal() >= CompatibilityMode.COMPAT_1416.ordinal()))
       this.cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     else this.cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
-    runningPutHandlers = new HashSet<PutHandler>();
-    putHandlersWaitingForMetadata = new HashSet<PutHandler>();
-    putHandlersWaitingForFetchable = new HashSet<PutHandler>();
-    putHandlerWaitingForBlockSets = new HashSet<PutHandler>();
-    containerPutHandlers = new HashSet<PutHandler>();
-    perContainerPutHandlersWaitingForMetadata = new HashMap<PutHandler, HashSet<PutHandler>>();
-    putHandlersTransformMap = new HashMap<PutHandler, HashMap<String, Object>>();
-    putHandlersArchiveTransformMap = new HashMap<ArchivePutHandler, ArrayList<PutHandler>>();
+    runningPutHandlers = new HashSet<>();
+    putHandlersWaitingForMetadata = new HashSet<>();
+    putHandlersWaitingForFetchable = new HashSet<>();
+    putHandlerWaitingForBlockSets = new HashSet<>();
+    containerPutHandlers = new HashSet<>();
+    perContainerPutHandlersWaitingForMetadata = new HashMap<>();
+    putHandlersTransformMap = new HashMap<>();
+    putHandlersArchiveTransformMap = new HashMap<>();
     if (defaultName == null) defaultName = findDefaultName(manifestElements);
     makePutHandlers(manifestElements, defaultName);
     // builders are not longer needed after constructor
@@ -1075,7 +1075,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   private PutHandler[] getContainersToStart(boolean excludeRoot) {
     PutHandler[] maybeStartPH =
         containerPutHandlers.toArray(new PutHandler[containerPutHandlers.size()]);
-    ArrayList<PutHandler> phToStart = new ArrayList<PutHandler>();
+    ArrayList<PutHandler> phToStart = new ArrayList<>();
 
     for (PutHandler ph : maybeStartPH) {
       if (perContainerPutHandlersWaitingForMetadata.get(ph).isEmpty()) {
@@ -1533,7 +1533,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     }
 
     ManifestBuilder() {
-      dirStack = new Stack<HashMap<String, Object>>();
+      dirStack = new Stack<>();
     }
 
     public void pushCurrentDir() {
@@ -1563,7 +1563,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (parentDir.containsKey(name)) {
         throw new IllegalStateException("Item '" + name + "' already exist!");
       }
-      HashMap<String, Object> newDir = new HashMap<String, Object>();
+      HashMap<String, Object> newDir = new HashMap<>();
       parentDir.put(name, newDir);
       return newDir;
     }
@@ -1624,7 +1624,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Serial private static final long serialVersionUID = 1L;
 
     protected FreeFormBuilder() {
-      rootDir = new HashMap<String, Object>();
+      rootDir = new HashMap<>();
       currentDir = rootDir;
     }
 
@@ -1690,7 +1690,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (!containerMode) {
         throw new IllegalStateException("You can not add containers in free form mode!");
       }
-      _rootDir = new HashMap<String, Object>();
+      _rootDir = new HashMap<>();
       if (isArchive)
         selfHandle =
             new ArchivePutHandler(
@@ -1715,11 +1715,11 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       } else {
         containerPutHandlers.add(selfHandle);
       }
-      perContainerPutHandlersWaitingForMetadata.put(selfHandle, new HashSet<PutHandler>());
+      perContainerPutHandlersWaitingForMetadata.put(selfHandle, new HashSet<>());
       // perContainerPutHandlersWaitingForFetchable.put(selfHandle, new HashSet<PutHandler>());
       if (isArchive)
         putHandlersArchiveTransformMap.put(
-            (ArchivePutHandler) selfHandle, new ArrayList<PutHandler>());
+            (ArchivePutHandler) selfHandle, new ArrayList<>());
     }
 
     public ContainerBuilder makeSubContainer(String name) {
@@ -1812,7 +1812,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   public static HashMap<String, Object> bucketsByNameToManifestEntries(
       HashMap<String, Object> bucketsByName) {
-    HashMap<String, Object> manifestEntries = new HashMap<String, Object>();
+    HashMap<String, Object> manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : bucketsByName.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
@@ -1829,7 +1829,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   public static ManifestElement[] flatten(HashMap<String, Object> manifestElements) {
-    List<ManifestElement> v = new ArrayList<ManifestElement>();
+    List<ManifestElement> v = new ArrayList<>();
     flatten(manifestElements, v, "");
     return v.toArray(new ManifestElement[v.size()]);
   }

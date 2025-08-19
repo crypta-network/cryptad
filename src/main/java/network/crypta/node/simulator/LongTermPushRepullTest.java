@@ -48,7 +48,7 @@ public class LongTermPushRepullTest extends LongTermTest {
     }
     String uid = args[0];
 
-    List<String> csvLine = new ArrayList<String>(3 + 2 * MAX_N);
+    List<String> csvLine = new ArrayList<>(3 + 2 * MAX_N);
     System.out.println("DATE:" + dateFormat.format(today.getTime()));
     csvLine.add(dateFormat.format(today.getTime()));
 

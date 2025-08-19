@@ -24,7 +24,7 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.plugins.helpers1.WebInterfaceToadlet;
 
 public class PluginRespirator {
-  private static final ArrayList<SessionManager> sessionManagers = new ArrayList<SessionManager>(4);
+  private static final ArrayList<SessionManager> sessionManagers = new ArrayList<>(4);
 
   /**
    * For accessing Freenet: simple fetches and inserts, and the data you need (FetchContext etc) to

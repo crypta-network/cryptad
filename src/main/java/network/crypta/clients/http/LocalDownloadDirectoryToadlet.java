@@ -44,7 +44,7 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
 
   @Override
   protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<String, String>();
+    Hashtable<String, String> fieldPairs = new Hashtable<>();
     // From bulk downloads, set download button.
     if (set.containsKey("bulkDownloads")) {
       fieldPairs.put("bulkDownloads", set.get("bulkDownloads"));

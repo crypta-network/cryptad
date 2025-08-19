@@ -49,7 +49,7 @@ public class FilterUtils {
     }
   }
 
-  private static final HashSet<String> allowedUnits = new HashSet<String>();
+  private static final HashSet<String> allowedUnits = new HashSet<>();
 
   static {
     // W3C CSS Spec Section 5 (http://www.w3.org/TR/css3-values/)
@@ -163,7 +163,7 @@ public class FilterUtils {
     return false;
   }
 
-  private static final HashSet<String> SVGcolorKeywords = new HashSet<String>();
+  private static final HashSet<String> SVGcolorKeywords = new HashSet<>();
 
   static {
     SVGcolorKeywords.add("aliceblue");
@@ -268,7 +268,7 @@ public class FilterUtils {
     SVGcolorKeywords.add("rebeccapurple"); // CSS Colors Level 4: #663399
   }
 
-  private static final HashSet<String> CSScolorKeywords = new HashSet<String>();
+  private static final HashSet<String> CSScolorKeywords = new HashSet<>();
 
   static {
     CSScolorKeywords.add("aqua");
@@ -292,7 +292,7 @@ public class FilterUtils {
     CSScolorKeywords.add("transparent");
   }
 
-  private static final HashSet<String> CSSsystemColorKeywords = new HashSet<String>();
+  private static final HashSet<String> CSSsystemColorKeywords = new HashSet<>();
 
   static {
     CSScolorKeywords.add("activeborder");
@@ -339,7 +339,7 @@ public class FilterUtils {
     return false;
   }
 
-  private static final HashSet<String> cssMedia = new HashSet<String>();
+  private static final HashSet<String> cssMedia = new HashSet<>();
 
   static {
     cssMedia.addAll(
@@ -601,7 +601,7 @@ public class FilterUtils {
 
   public static String[] removeWhiteSpace(String[] values, boolean stripQuotes) {
     if (values == null) return null;
-    ArrayList<String> arrayToReturn = new ArrayList<String>();
+    ArrayList<String> arrayToReturn = new ArrayList<>();
     for (String value : values) {
       value = value.trim();
       if (stripQuotes) value = CSSTokenizerFilter.removeOuterQuotes(value).trim();
@@ -623,7 +623,7 @@ public class FilterUtils {
   }
 
   public static String[] splitOnCharArray(String value, String splitOn) {
-    ArrayList<String> pointPairs = new ArrayList<String>();
+    ArrayList<String> pointPairs = new ArrayList<>();
     // Creating HashMap for faster search operation
     int i;
     int prev = 0;

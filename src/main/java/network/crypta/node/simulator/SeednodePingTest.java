@@ -92,7 +92,7 @@ public class SeednodePingTest extends RealNodeTest {
               false,
               null);
       // Connect & ping
-      List<SeedServerTestPeerNode> seedNodes = new ArrayList<SeedServerTestPeerNode>();
+      List<SeedServerTestPeerNode> seedNodes = new ArrayList<>();
       List<SimpleFieldSet> seedNodesAsSFS =
           Announcer.readSeednodes(new File("/tmp/", NodeFile.Seednodes.getFilename()));
       int numberOfNodesInTheFile = 0;
@@ -150,7 +150,7 @@ public class SeednodePingTest extends RealNodeTest {
                 seednode.getIdentityString() + " is not connected " + seednode.getHandshakeCount());
           }
         }
-        Map<FATE, Integer> totals = new EnumMap<FATE, Integer>(SeedServerTestPeerNode.FATE.class);
+        Map<FATE, Integer> totals = new EnumMap<>(SeedServerTestPeerNode.FATE.class);
         for (SeedServerTestPeerNode seednode : seedNodes) {
           FATE fate = seednode.getFate();
           Integer x = totals.get(fate);
@@ -176,7 +176,7 @@ public class SeednodePingTest extends RealNodeTest {
                 + node.getPeers().countSeednodes());
         Thread.sleep(SECONDS.toMillis(5));
       }
-      Map<FATE, Integer> totals = new EnumMap<FATE, Integer>(SeedServerTestPeerNode.FATE.class);
+      Map<FATE, Integer> totals = new EnumMap<>(SeedServerTestPeerNode.FATE.class);
       for (SeedServerTestPeerNode seednode : seedNodes) {
         FATE fate = seednode.getFate();
         Integer x = totals.get(fate);

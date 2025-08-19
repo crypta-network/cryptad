@@ -166,7 +166,7 @@ public class NodeIPDetector {
   FreenetInetAddress[] detectPrimaryIPAddress(boolean dumpLocalAddresses) {
     boolean addedValidIP = false;
     Logger.minor(this, "Redetecting IPs...");
-    ArrayList<FreenetInetAddress> addresses = new ArrayList<FreenetInetAddress>();
+    ArrayList<FreenetInetAddress> addresses = new ArrayList<>();
     if (overrideIPAddress != null) {
       // If the IP is overridden and the override is valid, the override has to be the first
       // element.
@@ -205,8 +205,7 @@ public class NodeIPDetector {
     }
     lastIPAddress = addresses.toArray(new FreenetInetAddress[addresses.size()]);
     if (dumpLocalAddresses) {
-      ArrayList<FreenetInetAddress> filtered =
-          new ArrayList<FreenetInetAddress>(lastIPAddress.length);
+      ArrayList<FreenetInetAddress> filtered = new ArrayList<>(lastIPAddress.length);
       for (FreenetInetAddress addr : lastIPAddress) {
         if (addr == null) continue;
         if (addr == overrideIPAddress && addr.hasHostnameNoIP()) filtered.add(addr);
@@ -275,8 +274,7 @@ public class NodeIPDetector {
     // Try to pick it up from our connections
     if (node.getPeers() != null) {
       PeerNode[] peerList = node.getPeers().myPeers();
-      HashMap<FreenetInetAddress, Integer> countsByPeer =
-          new HashMap<FreenetInetAddress, Integer>();
+      HashMap<FreenetInetAddress, Integer> countsByPeer = new HashMap<>();
       // FIXME use a standard mutable int object, we have one somewhere
       for (PeerNode pn : peerList) {
         if (!pn.isConnected()) {

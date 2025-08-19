@@ -101,7 +101,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     return lastNode;
   }
 
-  protected HashSet<PeerNode> nodesRoutedTo = new HashSet<PeerNode>();
+  protected HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
 
   private long timeSentRequest;
 
@@ -793,7 +793,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
                   this, "Rejected overload yet expected state was " + expectedAcceptState);
             nodesRoutedTo.remove(next);
             next.noLongerRoutingTo(origTag, false);
-            if (softRejectCount == null) softRejectCount = new HashMap<PeerNode, Integer>();
+            if (softRejectCount == null) softRejectCount = new HashMap<>();
             Integer i = softRejectCount.get(next);
             if (i == null) softRejectCount.put(next, 1);
             else {

@@ -41,7 +41,7 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
 
   @Override
   protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<String, String>();
+    Hashtable<String, String> fieldPairs = new Hashtable<>();
     String message = set.get("message");
     if (message != null) fieldPairs.put("message", message);
     Set<String> keys = set.keySet();

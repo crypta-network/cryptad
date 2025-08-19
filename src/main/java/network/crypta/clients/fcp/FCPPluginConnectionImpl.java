@@ -264,8 +264,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * automatically shrinking HashMap instead once we have one. This is also documented <a
    * href="https://bugs.freenetproject.org/view.php?id=6320">in the bugtracker</a>.
    */
-  private final TreeMap<String, SynchronousSend> synchronousSends =
-      new TreeMap<String, SynchronousSend>();
+  private final TreeMap<String, SynchronousSend> synchronousSends = new TreeMap<>();
 
   /**
    * Shall be used to ensure thread-safety of {@link #synchronousSends}. <br>
@@ -289,7 +288,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * For each possible {@link SendDirection}, this map keeps the responsible adapter.
    */
   private final EnumMap<SendDirection, DefaultSendDirectionAdapter> defaultSendDirectionAdapters =
-      new EnumMap<SendDirection, DefaultSendDirectionAdapter>(SendDirection.class);
+      new EnumMap<>(SendDirection.class);
 
   /**
    * For being used by networked FCP connections:<br>
@@ -316,7 +315,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
     this.executor = executor;
     this.serverPluginName = serverPluginName;
-    this.server = new WeakReference<ServerSideFCPMessageHandler>(serverPlugin);
+    this.server = new WeakReference<>(serverPlugin);
     this.client = null;
     this.clientConnection = clientConnection;
     this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));
@@ -399,7 +398,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
     this.executor = executor;
     this.serverPluginName = serverPluginName;
-    this.server = new WeakReference<ServerSideFCPMessageHandler>(server);
+    this.server = new WeakReference<>(server);
     this.client = client;
     this.clientConnection = null;
     this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));

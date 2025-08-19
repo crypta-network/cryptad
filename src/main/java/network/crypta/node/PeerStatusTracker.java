@@ -20,7 +20,7 @@ class PeerStatusTracker<K extends Object> {
   private final HashMap<K, WeakHashSet<PeerNode>> statuses;
 
   PeerStatusTracker() {
-    statuses = new HashMap<K, WeakHashSet<PeerNode>>();
+    statuses = new HashMap<>();
   }
 
   public synchronized void addStatus(K peerNodeStatus, PeerNode peerNode, boolean noLog) {
@@ -38,7 +38,7 @@ class PeerStatusTracker<K extends Object> {
         return;
       }
       statuses.remove(peerNodeStatus);
-    } else statusSet = new WeakHashSet<PeerNode>();
+    } else statusSet = new WeakHashSet<>();
     if (logMINOR)
       Logger.minor(
           this,

@@ -18,7 +18,7 @@ public class SimpleEventProducer implements ClientEventProducer, Serializable {
 
   /** Create a new SimpleEventProducer */
   public SimpleEventProducer() {
-    listeners = new ArrayList<ClientEventListener>();
+    listeners = new ArrayList<>();
   }
 
   /** Create a new SimpleEventProducer with the given listeners. */

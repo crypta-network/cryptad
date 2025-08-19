@@ -41,7 +41,7 @@ public class SubConfig implements Comparable<SubConfig> {
   public SubConfig(String prefix, Config config) {
     this.config = config;
     this.prefix = prefix;
-    map = new LinkedHashMap<String, Option<?>>();
+    map = new LinkedHashMap<>();
     hasInitialized = false;
     config.register(this);
   }
@@ -628,7 +628,7 @@ public class SubConfig implements Comparable<SubConfig> {
       super(
           SubConfig.this,
           optionName,
-          new ConfigCallback<Void>() {
+          new ConfigCallback<>() {
             @Override
             public Void get() {
               return null;

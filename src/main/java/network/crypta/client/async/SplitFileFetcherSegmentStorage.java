@@ -232,7 +232,7 @@ public class SplitFileFetcherSegmentStorage {
     this.segmentKeyListOffset = segmentKeysOffset;
     this.segmentStatusOffset = segmentStatusOffset;
     // This must be passed in here or we will read the uninitialised keys!
-    keysCache = new SoftReference<SplitFileSegmentKeys>(keys);
+    keysCache = new SoftReference<>(keys);
   }
 
   /**
@@ -336,7 +336,7 @@ public class SplitFileFetcherSegmentStorage {
         throw new IOException(e);
       }
       if (keys == null) return keys;
-      keysCache = new SoftReference<SplitFileSegmentKeys>(keys);
+      keysCache = new SoftReference<>(keys);
       return keys;
     }
   }
@@ -472,7 +472,7 @@ public class SplitFileFetcherSegmentStorage {
         this.slot = slot;
       }
     }
-    ArrayList<SplitFileFetcherBlock> maybeBlocks = new ArrayList<SplitFileFetcherBlock>();
+    ArrayList<SplitFileFetcherBlock> maybeBlocks = new ArrayList<>();
     int fetchedCount = 0;
     synchronized (this) {
       boolean[] used = new boolean[totalBlocks];

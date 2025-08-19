@@ -10,7 +10,7 @@ import java.util.Hashtable;
  */
 public class Loader {
 
-  private static final Hashtable<String, Class<?>> classes = new Hashtable<String, Class<?>>();
+  private static final Hashtable<String, Class<?>> classes = new Hashtable<>();
 
   //  static final public String prefix="freenet.message.";
 

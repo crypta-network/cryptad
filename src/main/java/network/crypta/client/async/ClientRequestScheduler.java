@@ -228,7 +228,7 @@ public class ClientRequestScheduler implements RequestScheduler {
    * that may change under us!). So it can't be a HashSet.
    */
   private final transient IdentityHashSet<SendableRequest> runningPersistentRequests =
-      new IdentityHashSet<SendableRequest>();
+      new IdentityHashSet<>();
 
   @Override
   public void removeRunningRequest(SendableRequest request) {

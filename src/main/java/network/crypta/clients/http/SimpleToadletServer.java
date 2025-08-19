@@ -1063,7 +1063,7 @@ public final class SimpleToadletServer
     fetchKeyBoxAboveBookmarks = fproxyConfig.getBoolean("fetchKeyBoxAboveBookmarks");
 
     this.advancedModeEnabled = fproxyConfig.getBoolean("advancedModeEnabled");
-    toadlets = new LinkedList<ToadletElement>();
+    toadlets = new LinkedList<>();
 
     if (SSL.available()) {
       ssl = fproxyConfig.getBoolean("ssl");
@@ -1139,7 +1139,7 @@ public final class SimpleToadletServer
     core.getNode()
         .getSecurityLevels()
         .addNetworkThreatLevelListener(
-            new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+            new SecurityLevelListener<>() {
 
               @Override
               public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
@@ -1156,7 +1156,7 @@ public final class SimpleToadletServer
     core.getNode()
         .getSecurityLevels()
         .addPhysicalThreatLevelListener(
-            new SecurityLevelListener<PHYSICAL_THREAT_LEVEL>() {
+            new SecurityLevelListener<>() {
 
               @Override
               public void onChange(PHYSICAL_THREAT_LEVEL oldLevel, PHYSICAL_THREAT_LEVEL newLevel) {

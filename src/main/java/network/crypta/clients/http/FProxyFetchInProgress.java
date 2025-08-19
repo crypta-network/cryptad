@@ -92,7 +92,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
   /** Gets notified with every change */
   private final List<FProxyFetchListener> listener =
-      Collections.synchronizedList(new ArrayList<FProxyFetchListener>());
+      Collections.synchronizedList(new ArrayList<>());
 
   /** The data, if we have it */
   private Bucket data;
@@ -179,8 +179,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     FetchContext alteredFctx = new FetchContext(fctx, FetchContext.IDENTICAL_MASK);
     alteredFctx.maxOutputLength = fctx.maxTempLength = maxSize;
     alteredFctx.eventProducer.addEventListener(this);
-    waiters = new ArrayList<FProxyFetchWaiter>();
-    results = new ArrayList<FProxyFetchResult>();
+    waiters = new ArrayList<>();
+    results = new ArrayList<>();
     getter = new ClientGetter(this, uri, alteredFctx, FProxyToadlet.PRIORITY, null, null, null);
   }
 
@@ -417,7 +417,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       } else return;
       wakeWaiters(false);
     } finally {
-      for (FProxyFetchListener l : new ArrayList<FProxyFetchListener>(listener)) {
+      for (FProxyFetchListener l : new ArrayList<>(listener)) {
         l.onEvent();
       }
     }
@@ -432,7 +432,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       w.wakeUp(finished);
     }
     if (finished) {
-      for (FProxyFetchListener l : new ArrayList<FProxyFetchListener>(listener)) {
+      for (FProxyFetchListener l : new ArrayList<>(listener)) {
         l.onEvent();
       }
     }

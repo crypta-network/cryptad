@@ -135,7 +135,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       Ticker exec,
       byte[] masterKey)
       throws IOException {
-    return new SaltedHashFreenetStore<T>(
+    return new SaltedHashFreenetStore<>(
         baseDir,
         name,
         callback,
@@ -1459,12 +1459,14 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       System.out.println("Resizing datastore " + name);
 
       BatchProcessor<T> resizeProcesser =
-          new BatchProcessor<T>() {
-            final Deque<Entry> oldEntryList = new LinkedList<Entry>();
+          new BatchProcessor<>() {
+            final Deque<Entry> oldEntryList = new LinkedList<>();
 
             @Override
             public void init() {
-              if (storeSize > _prevStoreSize) setStoreFileSize(storeSize);
+              if (storeSize > _prevStoreSize) {
+                setStoreFileSize(storeSize);
+              }
 
               configLock.writeLock().lock();
               try {
@@ -1508,7 +1510,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
               try {
                 entry.setHD(readHD(entry.curOffset));
                 oldEntryList.add(entry);
-                if (oldEntryList.size() > RESIZE_MEMORY_ENTRIES) oldEntryList.poll();
+                if (oldEntryList.size() > RESIZE_MEMORY_ENTRIES) {
+                  oldEntryList.poll();
+                }
               } catch (IOException e) {
                 Logger.error(this, "error reading entry (offset=" + entry.curOffset + ")", e);
               }
@@ -1522,14 +1526,22 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
               WrapperManager.signalStarting(
                   (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(30) + SECONDS.toMillis(1)));
 
-              if (i++ % 16 == 0) writeConfigFile();
+              if (i++ % 16 == 0) {
+                writeConfigFile();
+              }
 
               // shrink data file to current size
-              if (storeSize < _prevStoreSize) setStoreFileSize(Math.max(storeSize, entriesLeft));
+              if (storeSize < _prevStoreSize) {
+                setStoreFileSize(Math.max(storeSize, entriesLeft));
+              }
 
               // try to resolve the list
               Iterator<Entry> it = oldEntryList.iterator();
-              while (it.hasNext()) if (resolveOldEntry(it.next())) it.remove();
+              while (it.hasNext()) {
+                if (resolveOldEntry(it.next())) {
+                  it.remove();
+                }
+              }
 
               return _prevStoreSize == prevStoreSize;
             }
@@ -1543,11 +1555,16 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
             public void finish() {
               configLock.writeLock().lock();
               try {
-                if (_prevStoreSize != prevStoreSize) return;
+                if (_prevStoreSize != prevStoreSize) {
+                  return;
+                }
                 prevStoreSize = 0;
                 if (!slotFilterDisabled) {
-                  if (slotFilter.size() != (int) storeSize) slotFilter.resize((int) storeSize);
-                  else slotFilter.forceWrite();
+                  if (slotFilter.size() != (int) storeSize) {
+                    slotFilter.resize((int) storeSize);
+                  } else {
+                    slotFilter.forceWrite();
+                  }
                 }
 
                 flags &= ~FLAG_REBUILD_BLOOM;
@@ -1573,7 +1590,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       Logger.normal(this, "Start rebuilding slot filter (" + name + ")");
 
       BatchProcessor<T> rebuildBloomProcessor =
-          new BatchProcessor<T>() {
+          new BatchProcessor<>() {
             @Override
             public void init() {
               configLock.writeLock().lock();
@@ -1615,9 +1632,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
               WrapperManager.signalStarting(
                   (int) (RESIZE_MEMORY_ENTRIES * SECONDS.toMillis(5) + SECONDS.toMillis(1)));
 
-              if (i++ % 16 == 0) writeConfigFile();
+              if (i++ % 16 == 0) {
+                writeConfigFile();
+              }
               if (i++ % 1024 == 0) {
-                if (!slotFilterDisabled) slotFilter.forceWrite();
+                if (!slotFilterDisabled) {
+                  slotFilter.forceWrite();
+                }
               }
 
               return prevStoreSize == 0;
@@ -2054,7 +2075,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private Map<Long, Condition> lockDigestedKey(byte[] digestedKey, boolean usePrevStoreSize) {
     // use a set to prevent duplicated offsets,
     // a sorted set to prevent deadlocks
-    SortedSet<Long> offsets = new TreeSet<Long>();
+    SortedSet<Long> offsets = new TreeSet<>();
     long[] offsetArray = getOffsetFromDigestedKey(digestedKey, storeSize);
     for (long offset : offsetArray) offsets.add(offset);
     if (usePrevStoreSize && prevStoreSize != 0) {
@@ -2062,7 +2083,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       for (long offset : offsetArray) offsets.add(offset);
     }
 
-    Map<Long, Condition> locked = new TreeMap<Long, Condition>();
+    Map<Long, Condition> locked = new TreeMap<>();
     for (long offset : offsets) {
       Condition condition = lockManager.lockEntry(offset);
       if (condition == null) break;
@@ -2082,7 +2103,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private void unlockDigestedKey(
       byte[] digestedKey, boolean usePrevStoreSize, Map<Long, Condition> lockMap) {
     // use a set to prevent duplicated offsets
-    SortedSet<Long> offsets = new TreeSet<Long>();
+    SortedSet<Long> offsets = new TreeSet<>();
     long[] offsetArray = getOffsetFromDigestedKey(digestedKey, storeSize);
     for (long offset : offsetArray) offsets.add(offset);
     if (usePrevStoreSize && prevStoreSize != 0) {

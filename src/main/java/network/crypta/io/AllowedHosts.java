@@ -10,7 +10,7 @@ import network.crypta.support.Logger;
 /** Implementation of allowedHosts */
 public class AllowedHosts {
 
-  protected final List<AddressMatcher> addressMatchers = new ArrayList<AddressMatcher>();
+  protected final List<AddressMatcher> addressMatchers = new ArrayList<>();
 
   public AllowedHosts(String allowedHosts) {
     setAllowedHosts(allowedHosts);
@@ -26,7 +26,7 @@ public class AllowedHosts {
     if (allowedHosts == null || allowedHosts.isEmpty())
       allowedHosts = NetworkInterface.DEFAULT_BIND_TO;
     StringTokenizer allowedHostsTokens = new StringTokenizer(allowedHosts, ",");
-    List<AddressMatcher> newAddressMatchers = new ArrayList<AddressMatcher>();
+    List<AddressMatcher> newAddressMatchers = new ArrayList<>();
     while (allowedHostsTokens.hasMoreTokens()) {
       String allowedHost = allowedHostsTokens.nextToken().trim();
       String hostname = allowedHost;

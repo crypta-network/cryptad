@@ -20,7 +20,7 @@ public class RandomArrayIteratorTest {
     for (int i = 0; i < NUM_ELEMENTS; i++) {
       objects[i] = i;
     }
-    iter = new RandomArrayIterator<Integer>(objects);
+    iter = new RandomArrayIterator<>(objects);
   }
 
   /** Tests that reset() function correctly, both with non-null and null argument. */

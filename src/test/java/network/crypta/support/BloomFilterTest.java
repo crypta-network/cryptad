@@ -53,7 +53,7 @@ public class BloomFilterTest {
     int K = BloomFilter.optimialK(FILTER_SIZE, PASS);
     BloomFilter filter = BloomFilter.createFilter(FILTER_SIZE, K, true);
 
-    Map<ByteArrayWrapper, byte[]> baseList = new HashMap<ByteArrayWrapper, byte[]>();
+    Map<ByteArrayWrapper, byte[]> baseList = new HashMap<>();
 
     // Add Keys
     for (int i = 0; i < PASS; i++) {
@@ -68,7 +68,7 @@ public class BloomFilterTest {
     }
 
     // Add some FALSE_PASS keys
-    Map<ByteArrayWrapper, byte[]> newList = new HashMap<ByteArrayWrapper, byte[]>();
+    Map<ByteArrayWrapper, byte[]> newList = new HashMap<>();
     int fPos = 0;
     for (int i = 0; i < PASS_REMOVE; i++) {
       byte[] b = new byte[64];
@@ -95,7 +95,7 @@ public class BloomFilterTest {
   }
 
   private void _testFilterFalsePositive(BloomFilter filter) {
-    Set<ByteArrayWrapper> list = new HashSet<ByteArrayWrapper>();
+    Set<ByteArrayWrapper> list = new HashSet<>();
 
     // Add Keys
     for (int i = 0; i < PASS; i++) {

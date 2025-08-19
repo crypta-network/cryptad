@@ -49,7 +49,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
     private final HighLevelSimpleClient client;
     private int runningInserts;
-    private final ArrayList<BatchInsert> inserts = new ArrayList<BatchInsert>();
+    private final ArrayList<BatchInsert> inserts = new ArrayList<>();
 
     public InsertBatch(HighLevelSimpleClient client) {
       this.client = client;
@@ -165,7 +165,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     }
     String uid = args[0];
 
-    List<String> csvLine = new ArrayList<String>();
+    List<String> csvLine = new ArrayList<>();
     System.out.println("DATE:" + dateFormat.format(today.getTime()));
     csvLine.add(dateFormat.format(today.getTime()));
 

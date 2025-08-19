@@ -46,10 +46,10 @@ public class UserAlertManager implements Comparator<UserAlert> {
 
   public UserAlertManager(NodeClientCore core) {
     this.core = core;
-    alerts = new HashSet<UserAlert>();
-    subscribers = new CopyOnWriteArraySet<FCPConnectionHandler>();
-    events = new HashMap<UserEvent.Type, UserEvent>();
-    unregisteredEventTypes = new HashSet<UserEvent.Type>();
+    alerts = new HashSet<>();
+    subscribers = new CopyOnWriteArraySet<>();
+    events = new HashMap<>();
+    unregisteredEventTypes = new HashSet<>();
     lastUpdated = System.currentTimeMillis();
   }
 

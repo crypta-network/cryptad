@@ -38,7 +38,7 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
 
   @Override
   protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<String, String>();
+    Hashtable<String, String> fieldPairs = new Hashtable<>();
     FreenetURI furi = null;
     String key = set.get("key");
     if (key != null) {

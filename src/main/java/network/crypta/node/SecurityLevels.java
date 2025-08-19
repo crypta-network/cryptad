@@ -70,7 +70,7 @@ public class SecurityLevels {
     SubConfig myConfig = config.createSubConfig("security-levels");
     int sortOrder = 0;
     networkThreatLevelCallback =
-        new MyCallback<NETWORK_THREAT_LEVEL>() {
+        new MyCallback<>() {
 
           @Override
           public String get() {
@@ -131,7 +131,7 @@ public class SecurityLevels {
       friendsThreatLevel = null;
     }
     physicalThreatLevelCallback =
-        new MyCallback<PHYSICAL_THREAT_LEVEL>() {
+        new MyCallback<>() {
 
           @Override
           public String get() {
@@ -203,7 +203,7 @@ public class SecurityLevels {
     private final ArrayList<SecurityLevelListener<T>> listeners;
 
     MyCallback() {
-      listeners = new ArrayList<SecurityLevelListener<T>>();
+      listeners = new ArrayList<>();
     }
 
     public void addListener(SecurityLevelListener<T> listener) {

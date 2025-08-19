@@ -32,7 +32,7 @@ public class SectoredRandomGrabArraySimple<MyType, ChildType>
         if (logMINOR)
           Logger.minor(
               this, "Adding new RGAWithClient for " + client + " on " + this + " for " + item);
-        rga = new RandomGrabArrayWithObject<ChildType>(client, this, root);
+        rga = new RandomGrabArrayWithObject<>(client, this, root);
         addElement(client, rga);
       }
       if (logMINOR) Logger.minor(this, "Adding " + item + " to RGA " + rga + " for " + client);

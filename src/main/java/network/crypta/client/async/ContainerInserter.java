@@ -1,6 +1,10 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -119,7 +123,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
     ctx = ctx2;
     dontCompress = dontCompress2;
     reportMetadataOnly = reportMetadataOnly2;
-    containerItems = new ArrayList<ContainerElement>();
+    containerItems = new ArrayList<>();
     this.forceCryptoKey = forceCryptoKey;
     this.cryptoAlgorithm = cryptoAlgorithm;
     this.realTimeFlag = realTimeFlag;
@@ -345,7 +349,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       if (o instanceof HashMap) {
         @SuppressWarnings("unchecked")
         HashMap<String, Object> hm = (HashMap<String, Object>) o;
-        HashMap<String, Object> subMap = new HashMap<String, Object>();
+        HashMap<String, Object> subMap = new HashMap<>();
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
         if (logDEBUG)

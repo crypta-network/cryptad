@@ -53,7 +53,7 @@ public class CachingFreenetStoreTracker {
     this.maxSize = maxSize;
     this.period = period;
     this.queuedJob = false;
-    this.cachingStores = new ArrayList<CachingFreenetStore<?>>();
+    this.cachingStores = new ArrayList<>();
     this.ticker = ticker;
   }
 

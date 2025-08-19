@@ -151,7 +151,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
   @Override
   public DoublyLinkedList<T> shift(int n) {
     if (n > size) n = size;
-    if (n < 1) return new DoublyLinkedListImpl<T>();
+    if (n < 1) return new DoublyLinkedListImpl<>();
 
     T i = _firstItem;
     for (int m = 0; m < n - 1; ++m) i = i.getNext();
@@ -160,7 +160,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
     T newFirstItem = newTailItem.getNext();
     newTailItem.setNext(null);
 
-    DoublyLinkedList<T> newlist = new DoublyLinkedListImpl<T>(_firstItem, newTailItem, n);
+    DoublyLinkedList<T> newlist = new DoublyLinkedListImpl<>(_firstItem, newTailItem, n);
 
     if (newFirstItem != null) {
       newFirstItem.setPrev(null);
@@ -190,7 +190,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
   @Override
   public DoublyLinkedList<T> pop(int n) {
     if (n > size) n = size;
-    if (n < 1) return new DoublyLinkedListImpl<T>();
+    if (n < 1) return new DoublyLinkedListImpl<>();
 
     T i = _lastItem;
     for (int m = 0; m < n - 1; ++m) i = i.getPrev();
@@ -199,7 +199,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
     T newLastItem = newFirstItem.getPrev();
     newFirstItem.setPrev(null);
 
-    DoublyLinkedList<T> newlist = new DoublyLinkedListImpl<T>(newFirstItem, _lastItem, n);
+    DoublyLinkedList<T> newlist = new DoublyLinkedListImpl<>(newFirstItem, _lastItem, n);
 
     if (newLastItem != null) {
       newLastItem.setNext(null);
@@ -463,7 +463,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
 
   @Override
   public Iterator<T> iterator() {
-    return new Iterator<T>() {
+    return new Iterator<>() {
       private final Enumeration<T> e = forwardElements();
 
       @Override
@@ -473,7 +473,9 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
 
       @Override
       public T next() {
-        if (!hasNext()) throw new NoSuchElementException();
+        if (!hasNext()) {
+          throw new NoSuchElementException();
+        }
 
         return e.nextElement();
       }

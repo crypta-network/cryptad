@@ -1,6 +1,8 @@
 package network.crypta.store.saltedhash;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -125,7 +127,7 @@ public class SaltedHashFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    new RAMFreenetStore<>(pk, keys);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     SaltedHashFreenetStore<SSKBlock> saltStore =
@@ -211,7 +213,7 @@ public class SaltedHashFreenetStoreTest {
 
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<DSAPublicKey>(pk, keys);
+    new RAMFreenetStore<>(pk, keys);
     GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
     SSKStore store = new SSKStore(pubkeyCache);
     SaltedHashFreenetStore<SSKBlock> saltStore =

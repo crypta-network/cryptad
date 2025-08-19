@@ -25,7 +25,7 @@ import network.crypta.support.io.FileUtil;
 public class ContentFilter {
 
   static final Hashtable<String, FilterMIMEType> mimeTypesByName =
-      new Hashtable<String, FilterMIMEType>();
+      new Hashtable<>();
 
   /** The HTML mime types are defined here, to allow other modules to identify it */
   public static final String[] HTML_MIME_TYPES =

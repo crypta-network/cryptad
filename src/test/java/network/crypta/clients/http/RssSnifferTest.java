@@ -104,7 +104,7 @@ public class RssSnifferTest {
   }
 
   private Matcher<String> isSniffedAsFeed() {
-    return new TypeSafeDiagnosingMatcher<String>() {
+    return new TypeSafeDiagnosingMatcher<>() {
       @Override
       protected boolean matchesSafely(String item, Description mismatchDescription) {
         if (!RssSniffer.isSniffedAsFeed(item.getBytes(UTF_8))) {

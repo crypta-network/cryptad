@@ -98,13 +98,13 @@ public abstract class UIDTag {
           this,
           "Routing to " + peer + " on " + this + (offeredKey ? " (offered)" : ""),
           new Exception("debug"));
-    if (routedTo == null) routedTo = new HashSet<PeerNode>();
+    if (routedTo == null) routedTo = new HashSet<>();
     routedTo.add(peer);
     if (offeredKey) {
-      if (fetchingOfferedKeyFrom == null) fetchingOfferedKeyFrom = new HashSet<PeerNode>();
+      if (fetchingOfferedKeyFrom == null) fetchingOfferedKeyFrom = new HashSet<>();
       return fetchingOfferedKeyFrom.add(peer);
     } else {
-      if (currentlyRoutingTo == null) currentlyRoutingTo = new HashSet<PeerNode>();
+      if (currentlyRoutingTo == null) currentlyRoutingTo = new HashSet<>();
       return currentlyRoutingTo.add(peer);
     }
   }
@@ -422,7 +422,7 @@ public abstract class UIDTag {
    * @param next
    */
   public synchronized void handlingTimeout(PeerNode next) {
-    if (handlingTimeouts == null) handlingTimeouts = new HashSet<PeerNode>();
+    if (handlingTimeouts == null) handlingTimeouts = new HashSet<>();
     handlingTimeouts.add(next);
   }
 

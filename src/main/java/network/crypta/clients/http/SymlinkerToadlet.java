@@ -20,7 +20,7 @@ import network.crypta.support.api.StringArrCallback;
  * <p>Provide alias to other toadlet URLs by throwing {@link RedirectException}.
  */
 public class SymlinkerToadlet extends Toadlet {
-  private final HashMap<String, String> linkMap = new HashMap<String, String>();
+  private final HashMap<String, String> linkMap = new HashMap<>();
   private final Node node;
   SubConfig tslconfig;
 

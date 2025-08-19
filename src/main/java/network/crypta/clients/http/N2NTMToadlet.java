@@ -69,7 +69,7 @@ public class N2NTMToadlet extends Toadlet {
         this.writeHTMLReply(ctx, 200, "OK", page.generate());
         return;
       }
-      HashMap<String, String> peers = new HashMap<String, String>();
+      HashMap<String, String> peers = new HashMap<>();
       peers.put(input_hashcode_string, peernode_name);
       createN2NTMSendForm(ctx.isAdvancedModeEnabled(), contentNode, ctx, peers);
       this.writeHTMLReply(ctx, 200, "OK", page.generate());

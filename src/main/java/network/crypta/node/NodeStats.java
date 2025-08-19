@@ -536,14 +536,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
     node.getSecurityLevels()
         .addNetworkThreatLevelListener(
-            new SecurityLevelListener<NETWORK_THREAT_LEVEL>() {
+            new SecurityLevelListener<>() {
 
               @Override
               public void onChange(NETWORK_THREAT_LEVEL oldLevel, NETWORK_THREAT_LEVEL newLevel) {
-                if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM)
+                if (newLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
                   ignoreLocalVsRemoteBandwidthLiability = true;
-                if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM)
+                }
+                if (oldLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
                   ignoreLocalVsRemoteBandwidthLiability = false;
+                }
                 // Otherwise leave it as it was. It defaults to false.
               }
             });
@@ -4248,7 +4250,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return (int) Math.max(1, Math.ceil((totalAnnounceForwards * 1.0) / totalAnnouncements));
   }
 
-  private final HashSet<Long> runningAnnouncements = new HashSet<Long>();
+  private final HashSet<Long> runningAnnouncements = new HashSet<>();
 
   // FIXME make configurable, more sophisticated.
 

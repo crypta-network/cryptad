@@ -11,7 +11,7 @@ public class WeakHashSet<E> extends AbstractSet<E> {
   private static final Object placeholder = new Object();
 
   public WeakHashSet() {
-    map = new WeakHashMap<E, Object>();
+    map = new WeakHashMap<>();
   }
 
   @Override

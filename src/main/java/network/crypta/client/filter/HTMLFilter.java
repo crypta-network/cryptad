@@ -187,7 +187,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       this.charset = charset;
       this.cb = cb;
       this.onlyDetectingCharset = onlyDetectingCharset;
-      openElements = new Stack<String>();
+      openElements = new Stack<>();
     }
 
     public void setisXHTML(boolean value) {
@@ -227,7 +227,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
        */
       StringBuilder b = new StringBuilder(100);
       StringBuilder balt = new StringBuilder(4000);
-      List<String> splitTag = new ArrayList<String>();
+      List<String> splitTag = new ArrayList<>();
       String currentTag = null;
       char pprevC = 0;
       char prevC = 0;
@@ -621,8 +621,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             && !pc.wasHeadElementFound) {
           pc.openElements.push("head");
           pc.wasHeadElementFound = true;
-          String headContent =
-              pc.cb.processTag(new ParsedTag("head", new HashMap<String, String>()));
+          String headContent = pc.cb.processTag(new ParsedTag("head", new HashMap<>()));
           if (headContent != null && !pc.onlyDetectingCharset) {
             w.write(headContent);
           }
@@ -640,8 +639,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           // If we found a <body> and no <head> before it, then we insert it
         } else if (t.element.compareTo("body") == 0 && !pc.wasHeadElementFound) {
           pc.wasHeadElementFound = true;
-          String headContent =
-              pc.cb.processTag(new ParsedTag("head", new HashMap<String, String>()));
+          String headContent = pc.cb.processTag(new ParsedTag("head", new HashMap<>()));
           if (headContent != null) {
             if (!pc.onlyDetectingCharset) {
               w.write(headContent + "</head>");
@@ -846,7 +844,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     public Map<String, String> getAttributesAsMap() {
-      Map<String, String> map = new HashMap<String, String>();
+      Map<String, String> map = new HashMap<>();
       for (String attr : unparsedAttrs) {
         String name = attr.substring(0, attr.indexOf('='));
         String value = attr.substring(attr.indexOf('=') + 2, attr.length() - 1);
@@ -887,13 +885,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return Collections.unmodifiableSet(allowedHTMLTags);
   }
 
-  private static final Set<String> allowedHTMLTags = new HashSet<String>();
+  private static final Set<String> allowedHTMLTags = new HashSet<>();
   static final Map<String, TagVerifier> allowedTagsVerifiers =
       Collections.unmodifiableMap(getAllowedTagVerifiers());
   private static final String[] emptyStringArray = new String[0];
 
   private static Map<String, TagVerifier> getAllowedTagVerifiers() {
-    Map<String, TagVerifier> allowedTagsVerifiers = new HashMap<String, TagVerifier>();
+    Map<String, TagVerifier> allowedTagsVerifiers = new HashMap<>();
 
     allowedTagsVerifiers.put("?xml", new XmlTagVerifier());
     allowedTagsVerifiers.put("!doctype", new DocTypeTagVerifier("!doctype"));
@@ -2087,26 +2085,26 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] inlineURIAttrs,
         String[] booleanAttrs) {
       this.tag = tag;
-      this.allowedAttrs = new HashSet<String>();
-      this.parsedAttrs = new HashSet<String>();
+      this.allowedAttrs = new HashSet<>();
+      this.parsedAttrs = new HashSet<>();
       if (allowedAttrs != null) {
         this.allowedAttrs.addAll(Arrays.asList(allowedAttrs));
       }
-      this.uriAttrs = new HashSet<String>();
+      this.uriAttrs = new HashSet<>();
       if (uriAttrs != null) {
         this.uriAttrs.addAll(Arrays.asList(uriAttrs));
       }
-      this.inlineURIAttrs = new HashSet<String>();
+      this.inlineURIAttrs = new HashSet<>();
       if (inlineURIAttrs != null) {
         this.inlineURIAttrs.addAll(Arrays.asList(inlineURIAttrs));
       }
-      this.booleanAttrs = new HashSet<String>();
+      this.booleanAttrs = new HashSet<>();
       if (booleanAttrs != null) {
         this.booleanAttrs.addAll(Arrays.asList(booleanAttrs));
       }
       // https://w3c.github.io/aria/
       this.allowedRole =
-          new HashSet<String>(
+          new HashSet<>(
               Arrays.asList(
                   "alert",
                   "alertdialog",
@@ -2214,7 +2212,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
        * value can be a raw Object if it has no value. "src" is different to "src=". Arguably we
        * should probably use null in the first case and "" in the second case ... FIXME
        */
-      Map<String, Object> h = new LinkedHashMap<String, Object>();
+      Map<String, Object> h = new LinkedHashMap<>();
       boolean equals = false;
       String prevX = "";
       if (t.unparsedAttrs != null)
@@ -2278,7 +2276,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     Map<String, Object> sanitizeHash(Map<String, Object> h, ParsedTag p, HTMLParseContext pc)
         throws DataFilterException {
-      Map<String, Object> hn = new LinkedHashMap<String, Object>();
+      Map<String, Object> hn = new LinkedHashMap<>();
       for (Map.Entry<String, Object> entry : h.entrySet()) {
         if (logDEBUG)
           Logger.debug(
@@ -2618,7 +2616,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] booleanAttrs,
         boolean addStdEvents) {
       super(tag, allowedAttrs, uriAttrs, inlineURIAttrs, booleanAttrs);
-      this.eventAttrs = new HashSet<String>();
+      this.eventAttrs = new HashSet<>();
       if (eventAttrs != null) {
         for (String eventAttr : eventAttrs) {
           this.eventAttrs.add(eventAttr);
@@ -2810,7 +2808,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     // Does not include stylesheet
-    private static final HashSet<String> standardRelTypes = new HashSet<String>();
+    private static final HashSet<String> standardRelTypes = new HashSet<>();
 
     static {
       // FIXME: more valid values from
@@ -2942,7 +2940,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] inlineURIAttrs,
         String[] eventAttrs) {
       super(tag, allowedAttrs, uriAttrs, inlineURIAttrs, eventAttrs, null);
-      this.allowedTypes = new HashSet<String>();
+      this.allowedTypes = new HashSet<>();
       if (types != null) {
         this.allowedTypes.addAll(Arrays.asList(types));
       }
@@ -2984,7 +2982,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private static final HashSet<String> validRobotsValues;
 
     static {
-      validRobotsValues = new HashSet<String>();
+      validRobotsValues = new HashSet<>();
       validRobotsValues.addAll(Arrays.asList(validRobotsValue));
     }
 
@@ -3178,7 +3176,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       super(tag, null);
     }
 
-    private static final Map<String, Object> DTDs = new HashMap<String, Object>();
+    private static final Map<String, Object> DTDs = new HashMap<>();
 
     static {
       DTDs.put(

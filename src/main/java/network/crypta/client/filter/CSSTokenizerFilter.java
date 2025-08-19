@@ -100,9 +100,8 @@ class CSSTokenizerFilter {
   // code, less synchronization, at very little memory cost.
   // FIXME check how many bytes we save by lazy init here.
 
-  private static final Map<String, CSSPropertyVerifier> elementVerifiers =
-      new HashMap<String, CSSPropertyVerifier>();
-  private static final HashSet<String> allelementVerifiers = new HashSet<String>();
+  private static final Map<String, CSSPropertyVerifier> elementVerifiers = new HashMap<>();
+  private static final HashSet<String> allelementVerifiers = new HashSet<>();
 
   // Reference http://www.w3.org/TR/CSS2/propidx.html
   static {
@@ -2675,7 +2674,7 @@ class CSSTokenizerFilter {
         Logger.debug(
             CSSTokenizerFilter.class,
             "attSelection=" + attSelection + "  elementString=" + elementString);
-      if (attSelections == null) attSelections = new ArrayList<String>();
+      if (attSelections == null) attSelections = new ArrayList<>();
       attSelections.add(attSelection);
     }
     if (elementString.indexOf(':') != -1) {
@@ -3952,7 +3951,7 @@ class CSSTokenizerFilter {
   }
 
   private ArrayList<String> commaListFromIdentifiers(ParsedWord[] strparts, int offset) {
-    ArrayList<String> medias = new ArrayList<String>(strparts.length - 1);
+    ArrayList<String> medias = new ArrayList<>(strparts.length - 1);
     if (strparts.length <= offset) {
       // Nothing to munch
     } else if (strparts.length == offset + 1
@@ -4225,7 +4224,7 @@ class CSSTokenizerFilter {
       Logger.debug(
           CSSTokenizerFilter.class,
           "Splitting \"" + input + "\" allowCommaDelimiters=" + allowCommaDelimiters);
-    ArrayList<ParsedWord> words = new ArrayList<ParsedWord>();
+    ArrayList<ParsedWord> words = new ArrayList<>();
     ParsedWord lastWord = null;
     char c = 0;
     // ", ' or 0 (not in string)
@@ -4822,20 +4821,19 @@ class CSSTokenizerFilter {
       this.isTransform = isTransform;
 
       if (allowedValues != null) {
-        this.allowedValues = Collections.unmodifiableSet(new HashSet<String>(allowedValues));
+        this.allowedValues = Collections.unmodifiableSet(new HashSet<>(allowedValues));
       } else {
         this.allowedValues = null;
       }
 
       if (allowedMedia != null) {
-        this.allowedMedia = Collections.unmodifiableSet(new HashSet<String>(allowedMedia));
+        this.allowedMedia = Collections.unmodifiableSet(new HashSet<>(allowedMedia));
       } else {
         this.allowedMedia = null;
       }
 
       if (parseExpression != null) {
-        this.parserExpressions =
-            Collections.unmodifiableList(new ArrayList<String>(parseExpression));
+        this.parserExpressions = Collections.unmodifiableList(new ArrayList<>(parseExpression));
       } else {
         this.parserExpressions = Collections.emptyList();
       }
@@ -5317,7 +5315,7 @@ class CSSTokenizerFilter {
       assert (expression.charAt(0) != 'b');
 
       // Get all the verifiers in one list, we need to check them individually
-      List<CSSPropertyVerifier> propertyVerifierList = new ArrayList<CSSPropertyVerifier>();
+      List<CSSPropertyVerifier> propertyVerifierList = new ArrayList<>();
       for (int i = 0; i <= expression.length(); i++) {
         if (i == expression.length() || expression.charAt(i) == 'b') {
           if (!firstPart.isEmpty()) {
@@ -5671,7 +5669,7 @@ class CSSTokenizerFilter {
 
       if (value[0] instanceof ParsedCounter counter) {
         if (counter.listType != null) {
-          HashSet<String> listStyleType = new HashSet<String>();
+          HashSet<String> listStyleType = new HashSet<>();
           listStyleType.addAll(
               Arrays.asList(
                   "disc",
@@ -5858,7 +5856,7 @@ class CSSTokenizerFilter {
           return false;
         }
       }
-      ArrayList<String> fontWords = new ArrayList<String>();
+      ArrayList<String> fontWords = new ArrayList<>();
       // FIXME delete fonts we don't know about but let through ones we do.
       // Or allow unknown fonts given [a-z][A-Z][0-9] ???
       outer:

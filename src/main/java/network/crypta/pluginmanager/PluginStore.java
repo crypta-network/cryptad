@@ -15,19 +15,19 @@ import network.crypta.support.SimpleFieldSet;
  */
 public class PluginStore {
 
-  public final HashMap<String, PluginStore> subStores = new HashMap<String, PluginStore>();
-  public final HashMap<String, Long> longs = new HashMap<String, Long>();
-  public final HashMap<String, long[]> longsArrays = new HashMap<String, long[]>();
-  public final HashMap<String, Integer> integers = new HashMap<String, Integer>();
-  public final HashMap<String, int[]> integersArrays = new HashMap<String, int[]>();
-  public final HashMap<String, Short> shorts = new HashMap<String, Short>();
-  public final HashMap<String, short[]> shortsArrays = new HashMap<String, short[]>();
-  public final HashMap<String, Boolean> booleans = new HashMap<String, Boolean>();
-  public final HashMap<String, boolean[]> booleansArrays = new HashMap<String, boolean[]>();
-  public final HashMap<String, Byte> bytes = new HashMap<String, Byte>();
-  public final HashMap<String, byte[]> bytesArrays = new HashMap<String, byte[]>();
-  public final HashMap<String, String> strings = new HashMap<String, String>();
-  public final HashMap<String, String[]> stringsArrays = new HashMap<String, String[]>();
+  public final HashMap<String, PluginStore> subStores = new HashMap<>();
+  public final HashMap<String, Long> longs = new HashMap<>();
+  public final HashMap<String, long[]> longsArrays = new HashMap<>();
+  public final HashMap<String, Integer> integers = new HashMap<>();
+  public final HashMap<String, int[]> integersArrays = new HashMap<>();
+  public final HashMap<String, Short> shorts = new HashMap<>();
+  public final HashMap<String, short[]> shortsArrays = new HashMap<>();
+  public final HashMap<String, Boolean> booleans = new HashMap<>();
+  public final HashMap<String, boolean[]> booleansArrays = new HashMap<>();
+  public final HashMap<String, Byte> bytes = new HashMap<>();
+  public final HashMap<String, byte[]> bytesArrays = new HashMap<>();
+  public final HashMap<String, String> strings = new HashMap<>();
+  public final HashMap<String, String[]> stringsArrays = new HashMap<>();
 
   public PluginStore() {
     // Default constructor. See below for constructor from SFS.

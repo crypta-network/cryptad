@@ -201,7 +201,7 @@ public class TranslationToadlet extends Toadlet {
 
     final HTMLNode translatingForBox =
         ctx.getPageMaker().getInfobox(null, l10n("selectTranslation"), contentNode);
-    ArrayList<String> elementsToTranslate = new ArrayList<String>();
+    ArrayList<String> elementsToTranslate = new ArrayList<>();
     elementsToTranslate.add("Node");
     for (PluginInfoWrapper pluginInfo : this.core.getNode().getPluginManager().getPlugins()) {
       if (!pluginInfo.isBaseL10nPlugin()) {

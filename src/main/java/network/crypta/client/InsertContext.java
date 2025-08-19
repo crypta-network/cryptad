@@ -155,7 +155,7 @@ public class InsertContext implements Cloneable, Serializable {
     private static final Map<Short, CompatibilityMode> modesByCode;
 
     static {
-      HashMap<Short, CompatibilityMode> cmodes = new HashMap<Short, CompatibilityMode>();
+      HashMap<Short, CompatibilityMode> cmodes = new HashMap<>();
       for (CompatibilityMode mode : CompatibilityMode.values) {
         if (cmodes.containsKey(mode.code)) throw new Error("Duplicated code!");
         cmodes.put(mode.code, mode);

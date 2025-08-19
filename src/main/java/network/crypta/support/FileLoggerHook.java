@@ -133,7 +133,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
   protected long listBytes = 0;
 
   long maxOldLogfilesDiskUsage;
-  protected final Deque<OldLogFile> logFiles = new ArrayDeque<OldLogFile>();
+  protected final Deque<OldLogFile> logFiles = new ArrayDeque<>();
   private long oldLogFilesDiskSpaceUsage = 0;
 
   private static class OldLogFile {
@@ -848,7 +848,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
     setInterval(logRotateInterval);
 
     MAX_LIST_SIZE = maxListSize;
-    list = new ArrayBlockingQueue<byte[]>(MAX_LIST_SIZE);
+    list = new ArrayBlockingQueue<>(MAX_LIST_SIZE);
 
     setDateFormat(dfmt);
     setLogFormat(fmt);
@@ -858,8 +858,8 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
     if ((fmt == null) || fmt.isEmpty()) fmt = "d:c:h:t:p:m";
     char[] f = fmt.toCharArray();
 
-    ArrayList<Integer> fmtVec = new ArrayList<Integer>();
-    ArrayList<String> strVec = new ArrayList<String>();
+    ArrayList<Integer> fmtVec = new ArrayList<>();
+    ArrayList<String> strVec = new ArrayList<>();
 
     StringBuilder sb = new StringBuilder();
 

@@ -132,7 +132,7 @@ public class SplitFileSegmentKeys implements Cloneable, Serializable {
         continue;
       }
       if (!Fields.byteArrayEqual(routingKeys, rkey, oldX, 0, NodeCHK.KEY_LENGTH)) continue;
-      if (results == null) results = new ArrayList<Integer>();
+      if (results == null) results = new ArrayList<>();
       results.add(i);
     }
     if (results == null) return new int[0];
@@ -287,7 +287,7 @@ public class SplitFileSegmentKeys implements Cloneable, Serializable {
   }
 
   public NodeCHK[] listNodeKeys(boolean[] foundKeys, boolean copy) {
-    ArrayList<NodeCHK> list = new ArrayList<NodeCHK>();
+    ArrayList<NodeCHK> list = new ArrayList<>();
     for (int i = 0; i < dataBlocks + checkBlocks; i++) {
       NodeCHK k = getNodeKey(i, foundKeys, copy);
       if (k == null) continue;

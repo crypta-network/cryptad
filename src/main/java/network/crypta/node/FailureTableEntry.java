@@ -378,7 +378,7 @@ class FailureTableEntry implements TimedOutNodesList {
    * from. Called after a) the data has been stored, and b) this entry has been removed from the FT
    */
   public void offer() {
-    HashSet<PeerNodeUnlocked> set = new HashSet<PeerNodeUnlocked>();
+    HashSet<PeerNodeUnlocked> set = new HashSet<>();
     final boolean logMINOR = FailureTableEntry.logMINOR;
     if (logMINOR)
       Logger.minor(

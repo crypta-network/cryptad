@@ -32,7 +32,7 @@ public class FCPConnectionOutputHandler implements Runnable {
 
   public FCPConnectionOutputHandler(FCPConnectionHandler handler) {
     this.handler = handler;
-    this.outQueue = new ArrayDeque<FCPMessage>();
+    this.outQueue = new ArrayDeque<>();
   }
 
   void start() {

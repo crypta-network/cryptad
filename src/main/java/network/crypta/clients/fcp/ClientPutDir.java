@@ -95,7 +95,7 @@ public class ClientPutDir extends ClientPutBase {
     // objectOnNew is called once, objectOnUpdate is never called, yet manifestElements get blanked
     // anyway!
 
-    this.manifestElements = new HashMap<String, Object>();
+    this.manifestElements = new HashMap<>();
     this.manifestElements.putAll(manifestElements);
 
     //		this.manifestElements = manifestElements;
@@ -276,7 +276,7 @@ public class ClientPutDir extends ClientPutBase {
       File dir, String prefix, boolean allowUnreadableFiles, boolean includeHiddenFiles)
       throws FileNotFoundException {
 
-    HashMap<String, Object> map = new HashMap<String, Object>();
+    HashMap<String, Object> map = new HashMap<>();
     File[] files = dir.listFiles();
 
     if (files == null) throw new IllegalArgumentException("No such directory");

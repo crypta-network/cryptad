@@ -1,6 +1,11 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.Enumeration;
 import java.util.NoSuchElementException;
@@ -10,7 +15,7 @@ import org.junit.Test;
 public class DoublyLinkedListImplTest {
   @Test
   public void testForwardPushPop() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.push(new T(0));
     list.push(new T(1));
     list.push(new T(2));
@@ -40,7 +45,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testForwardShiftUnshift() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.unshift(new T(0));
     list.unshift(new T(1));
     list.unshift(new T(2));
@@ -70,7 +75,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testClearSize() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.unshift(new T(0));
     list.unshift(new T(1));
     list.unshift(new T(2));
@@ -105,7 +110,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testShiftN() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     for (int i = 0; i < 5; i++) {
       list.push(new T(i));
@@ -151,7 +156,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testPopN() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     for (int i = 0; i < 5; i++) {
       list.unshift(new T(i));
@@ -178,7 +183,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testHeadTail() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     assertNull("head() == null", list.head());
     assertNull("tail() == null", list.tail());
@@ -208,7 +213,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testIternator() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
     for (int i = 0; i < 5; i++) {
@@ -262,7 +267,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testRandomRemovePush() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
     for (int i = 0; i < 5; i++) {
@@ -290,7 +295,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testRandomShiftPush() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.push(new T(0));
     list.push(new T(1));
     list.unshift(new T(2));
@@ -308,7 +313,7 @@ public class DoublyLinkedListImplTest {
 
   @Test
   public void testRandomInsert() {
-    DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
     for (int i = 0; i < 5; i++) {
@@ -321,7 +326,7 @@ public class DoublyLinkedListImplTest {
     list.insertNext(array[4], new T(104));
     list.insertNext(array[4], new T(105));
 
-    DoublyLinkedList<T> list2 = new DoublyLinkedListImpl<T>();
+    DoublyLinkedList<T> list2 = new DoublyLinkedListImpl<>();
     T l2 = new T(9999);
     list2.push(l2);
     try {

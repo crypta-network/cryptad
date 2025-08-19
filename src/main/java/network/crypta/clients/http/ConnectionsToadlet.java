@@ -749,8 +749,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       // FOAF locations table.
       if (advancedMode) {
         // requires a location-to-list/count in-memory transform
-        List<Double> locations = new ArrayList<Double>();
-        List<List<PeerNodeStatus>> peerGroups = new ArrayList<List<PeerNodeStatus>>();
+        List<Double> locations = new ArrayList<>();
+        List<List<PeerNodeStatus>> peerGroups = new ArrayList<>();
         {
           for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
             double[] peersLoc = peerNodeStatus.getPeersLocation();
@@ -767,7 +767,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
                 if (i < max && locations.get(i) == location) {
                   peerGroup = peerGroups.get(i);
                 } else {
-                  peerGroup = new ArrayList<PeerNodeStatus>();
+                  peerGroup = new ArrayList<>();
                   locations.add(i, location);
                   peerGroups.add(i, peerGroup);
                 }
@@ -1019,8 +1019,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         // Don't need to add a newline at the end, we will do that later.
       }
       // The peer's additions results
-      Map<PeerAdditionReturnCodes, Integer> results =
-          new HashMap<PeerAdditionReturnCodes, Integer>();
+      Map<PeerAdditionReturnCodes, Integer> results = new HashMap<>();
       for (int i = 0; i < nodesToAdd.length; i++) {
         // We need to trim then concat 'End' to the node's reference, this way we have a normal
         // reference(the split() removes the 'End'-s!)
@@ -1644,8 +1643,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     countHeaderRow.addChild("th", "Message");
     countHeaderRow.addChild("th", "Incoming");
     countHeaderRow.addChild("th", "Outgoing");
-    List<String> messageNames = new ArrayList<String>();
-    Map<String, Long[]> messageCounts = new HashMap<String, Long[]>();
+    List<String> messageNames = new ArrayList<>();
+    Map<String, Long[]> messageCounts = new HashMap<>();
     for (Map.Entry<String, Long> entry : peerNodeStatus.getLocalMessagesReceived().entrySet()) {
       String messageName = entry.getKey();
       Long messageCount = entry.getValue();
@@ -1667,7 +1666,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
     Collections.sort(
         messageNames,
-        new Comparator<String>() {
+        new Comparator<>() {
           @Override
           public int compare(String first, String second) {
             return first.compareToIgnoreCase(second);

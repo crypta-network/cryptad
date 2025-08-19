@@ -72,7 +72,7 @@ public class SimpleFieldSet {
    *     use base64 for the values if they contain such invalid characters.
    */
   public SimpleFieldSet(boolean shortLived, boolean alwaysUseBase64) {
-    values = new HashMap<String, String>();
+    values = new HashMap<>();
     subsets = null;
     this.shortLived = shortLived;
     this.alwaysUseBase64 = alwaysUseBase64;
@@ -106,8 +106,8 @@ public class SimpleFieldSet {
 
   /** Copy constructor */
   public SimpleFieldSet(SimpleFieldSet sfs) {
-    values = new HashMap<String, String>(sfs.values);
-    if (sfs.subsets != null) subsets = new HashMap<String, SimpleFieldSet>(sfs.subsets);
+    values = new HashMap<>(sfs.values);
+    if (sfs.subsets != null) subsets = new HashMap<>(sfs.subsets);
     this.shortLived = false; // it's been copied!
     this.header = sfs.header;
     this.endMarker = sfs.endMarker;
@@ -200,7 +200,7 @@ public class SimpleFieldSet {
       throws IOException {
     boolean firstLine = true;
     boolean headerSection = true;
-    List<String> headers = new ArrayList<String>();
+    List<String> headers = new ArrayList<>();
 
     while (true) {
       String line = br.readLine(maxLength, bufferSize, utfOrIso88591);
@@ -346,7 +346,7 @@ public class SimpleFieldSet {
       values.put(entry.getKey(), entry.getValue()); // overwrite old
     }
     if (fs.subsets == null) return;
-    if (subsets == null) subsets = new HashMap<String, SimpleFieldSet>();
+    if (subsets == null) subsets = new HashMap<>();
     for (Map.Entry<String, SimpleFieldSet> entry : fs.subsets.entrySet()) {
       String key = entry.getKey();
       SimpleFieldSet hisFS = entry.getValue();
@@ -443,7 +443,7 @@ public class SimpleFieldSet {
       String before = key.substring(0, idx);
       String after = key.substring(idx + 1);
       SimpleFieldSet fs = null;
-      if (subsets == null) subsets = new HashMap<String, SimpleFieldSet>();
+      if (subsets == null) subsets = new HashMap<>();
       fs = subsets.get(before);
       if (fs == null) {
         fs = new SimpleFieldSet(shortLived, alwaysUseBase64);
@@ -849,7 +849,7 @@ public class SimpleFieldSet {
     if (fs == null) return; // legal no-op, because used everywhere
     if (fs.isEmpty()) // can't just no-op, because caller might add the FS then populate it...
     throw new IllegalArgumentException("Empty");
-    if (subsets == null) subsets = new HashMap<String, SimpleFieldSet>();
+    if (subsets == null) subsets = new HashMap<>();
     if (subsets.containsKey(key))
       throw new IllegalArgumentException(
           "Already contains " + key + " but trying to add a SimpleFieldSet!");

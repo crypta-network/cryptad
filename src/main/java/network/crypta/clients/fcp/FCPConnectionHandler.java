@@ -116,7 +116,7 @@ public class FCPConnectionHandler implements Closeable {
    * FCPPluginConnectionTracker}, which allows server plugins to query them by their ID.
    */
   private final TreeMap<String, FCPPluginConnectionImpl> pluginConnectionsByServerName =
-      new TreeMap<String, FCPPluginConnectionImpl>();
+      new TreeMap<>();
 
   /**
    * Lock for {@link #pluginConnectionsByServerName}.
@@ -151,10 +151,9 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   // We are confident that the given client can access those
-  private final HashMap<String, DirectoryAccess> checkedDirectories =
-      new HashMap<String, DirectoryAccess>();
+  private final HashMap<String, DirectoryAccess> checkedDirectories = new HashMap<>();
   // DDACheckJobs in flight
-  private final HashMap<File, DDACheckJob> inTestDirectories = new HashMap<File, DDACheckJob>();
+  private final HashMap<File, DDACheckJob> inTestDirectories = new HashMap<>();
   public final RequestClient connectionRequestClientBulk = new RequestClientBuilder().build();
   public final RequestClient connectionRequestClientRT =
       new RequestClientBuilder().realTime().build();
@@ -164,8 +163,8 @@ public class FCPConnectionHandler implements Closeable {
     this.server = server;
     isClosed = false;
     this.bf = server.getCore().getTempBucketFactory();
-    requestsByIdentifier = new HashMap<String, ClientRequest>();
-    uskSubscriptions = new HashMap<String, SubscribeUSK>();
+    requestsByIdentifier = new HashMap<>();
+    uskSubscriptions = new HashMap<>();
     this.inputHandler = new FCPConnectionInputHandler(this);
     this.outputHandler = new FCPConnectionOutputHandler(this);
 

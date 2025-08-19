@@ -704,7 +704,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               topCompatibilityMode,
               hashes);
     if (targetFilename != null) {
-      HashMap<String, Object> hm = new HashMap<String, Object>();
+      HashMap<String, Object> hm = new HashMap<>();
       hm.put(targetFilename, meta);
       meta = Metadata.mkRedirectionManifestWithMetadata(hm);
     }
@@ -1002,7 +1002,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       if (targetFilename != null) {
 
         if (metaBytes.length <= Short.MAX_VALUE) {
-          HashMap<String, Object> hm = new HashMap<String, Object>();
+          HashMap<String, Object> hm = new HashMap<>();
           hm.put(targetFilename, meta);
           meta = Metadata.mkRedirectionManifestWithMetadata(hm);
           metaPutterTargetFilename = null;

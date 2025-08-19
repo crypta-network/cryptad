@@ -161,7 +161,7 @@ public class Probe implements ByteCounter {
 
   public Probe(final Node node) {
     this.node = node;
-    this.accepted = Collections.synchronizedMap(new HashMap<PeerNode, Counter>());
+    this.accepted = Collections.synchronizedMap(new HashMap<>());
     this.timer = new Timer(true);
 
     int sortOrder = 0;

@@ -20,7 +20,7 @@ class CorruptingOutputStream extends OutputStream {
   public CorruptingOutputStream(OutputStream os, long from, long to, int errors, Random random) {
     this.os = os;
     this.random = random;
-    TreeSet<Long> toKill = new TreeSet<Long>();
+    TreeSet<Long> toKill = new TreeSet<>();
     for (int i = 0; i < errors; i++) {
       long offset = from + nextLong(random, to - from);
       if (!toKill.add(offset)) {

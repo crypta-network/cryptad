@@ -21,20 +21,18 @@ public class PushDataManager {
   }
 
   /** What notifications are waiting for the leader */
-  private final Map<String, List<UpdateEvent>> awaitingNotifications =
-      new HashMap<String, List<UpdateEvent>>();
+  private final Map<String, List<UpdateEvent>> awaitingNotifications = new HashMap<>();
 
   /** What elements are on the page */
-  private final Map<String, List<BaseUpdateableElement>> pages =
-      new HashMap<String, List<BaseUpdateableElement>>();
+  private final Map<String, List<BaseUpdateableElement>> pages = new HashMap<>();
 
   /** What pages are on the element. It is redundant with the pages map. */
-  private final Map<String, List<String>> elements = new HashMap<String, List<String>>();
+  private final Map<String, List<String>> elements = new HashMap<>();
 
   /** Stores whether a keepalive was received for a request since the Cleaner last run */
-  private final Map<String, Boolean> isKeepaliveReceived = new HashMap<String, Boolean>();
+  private final Map<String, Boolean> isKeepaliveReceived = new HashMap<>();
 
-  private final Map<String, Boolean> isFirstKeepaliveReceived = new HashMap<String, Boolean>();
+  private final Map<String, Boolean> isFirstKeepaliveReceived = new HashMap<>();
 
   /** The Cleaner that runs periodically and cleanes the failing requests */
   private final Ticker cleaner;
@@ -123,20 +121,20 @@ public class PushDataManager {
     }
     // Add to the pages
     if (!pages.containsKey(requestUniqueId)) {
-      pages.put(requestUniqueId, new ArrayList<BaseUpdateableElement>());
+      pages.put(requestUniqueId, new ArrayList<>());
     }
     pages.get(requestUniqueId).add(element);
     // Add to the elements
     String id = element.getUpdaterId(requestUniqueId);
     if (!elements.containsKey(id)) {
-      elements.put(id, new ArrayList<String>());
+      elements.put(id, new ArrayList<>());
     }
     elements.get(id).add(requestUniqueId);
     // The request needs to be tracked
     isKeepaliveReceived.put(requestUniqueId, true);
 
     if (!awaitingNotifications.containsKey(requestUniqueId)) {
-      awaitingNotifications.put(requestUniqueId, new ArrayList<UpdateEvent>());
+      awaitingNotifications.put(requestUniqueId, new ArrayList<>());
     }
     // If the Cleaner isn't running, then we schedule it to clear this request if failing
     if (!isScheduled) {
@@ -304,8 +302,7 @@ public class PushDataManager {
     isKeepaliveReceived.remove(requestId);
     isFirstKeepaliveReceived.remove(requestId);
     // Iterate over all the pushed elements present on the page
-    for (BaseUpdateableElement element :
-        new ArrayList<BaseUpdateableElement>(pages.get(requestId))) {
+    for (BaseUpdateableElement element : new ArrayList<>(pages.get(requestId))) {
       pages.get(requestId).remove(element);
       // FIXME why can't we just unconditionally remove(requestId) at the end?
       if (pages.get(requestId).isEmpty()) {
@@ -319,8 +316,7 @@ public class PushDataManager {
       element.dispose();
       // Delete all notification originated from the deleted element
       for (String events : awaitingNotifications.keySet()) {
-        for (UpdateEvent updateEvent :
-            new ArrayList<UpdateEvent>(awaitingNotifications.get(events))) {
+        for (UpdateEvent updateEvent : new ArrayList<>(awaitingNotifications.get(events))) {
           if (updateEvent.requestId.compareTo(requestId) == 0) {
             awaitingNotifications.get(events).remove(updateEvent);
           }
@@ -379,8 +375,7 @@ public class PushDataManager {
           Logger.minor(this, "Cleaner running:" + isKeepaliveReceived);
         }
         isScheduled = false;
-        for (Entry<String, Boolean> entry :
-            new HashMap<String, Boolean>(isKeepaliveReceived).entrySet()) {
+        for (Entry<String, Boolean> entry : new HashMap<>(isKeepaliveReceived).entrySet()) {
           if (entry.getValue() == false) {
             if (logMINOR) {
               Logger.minor(this, "Cleaner cleaned request:" + entry.getKey());

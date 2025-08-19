@@ -33,12 +33,12 @@ public class LRUMap<K, V> {
    * We use our own DoublyLinkedList implementation because it improves performance to be able to
    * inherit from and refer to QItem's directly.
    */
-  private final DoublyLinkedListImpl<QItem<K, V>> list = new DoublyLinkedListImpl<QItem<K, V>>();
+  private final DoublyLinkedListImpl<QItem<K, V>> list = new DoublyLinkedListImpl<>();
 
   private final Map<K, QItem<K, V>> hash;
 
   public LRUMap() {
-    hash = new HashMap<K, QItem<K, V>>();
+    hash = new HashMap<>();
   }
 
   /** Takes an arbitrary map */
@@ -51,7 +51,7 @@ public class LRUMap<K, V> {
    * one based on a TreeMap, not a HashMap (think hash collision DoS's).
    */
   public static <K extends Comparable<K>, V> LRUMap<K, V> createSafeMap() {
-    return new LRUMap<K, V>(new TreeMap<K, QItem<K, V>>());
+    return new LRUMap<>(new TreeMap<>());
   }
 
   /**
@@ -59,7 +59,7 @@ public class LRUMap<K, V> {
    * one based on a TreeMap, not a HashMap (think hash collision DoS's).
    */
   public static <K, V> LRUMap<K, V> createSafeMap(Comparator<K> comparator) {
-    return new LRUMap<K, V>(new TreeMap<K, QItem<K, V>>(comparator));
+    return new LRUMap<>(new TreeMap<>(comparator));
   }
 
   /**
@@ -71,7 +71,7 @@ public class LRUMap<K, V> {
     V old = null;
     QItem<K, V> insert = hash.get(key);
     if (insert == null) {
-      insert = new QItem<K, V>(key, value);
+      insert = new QItem<>(key, value);
       hash.put(key, insert);
     } else {
       old = insert.value;

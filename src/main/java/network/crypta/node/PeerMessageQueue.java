@@ -62,7 +62,7 @@ public class PeerMessageQueue {
       long timeLastSent;
 
       Items(long id, long initialTimeLastSent) {
-        items = new LinkedList<MessageItem>();
+        items = new LinkedList<>();
         this.id = id;
         timeLastSent = initialTimeLastSent;
       }
@@ -143,7 +143,7 @@ public class PeerMessageQueue {
     }
 
     private void addToNonUrgent(MessageItem item) {
-      if (itemsNonUrgent == null) itemsNonUrgent = new LinkedList<MessageItem>();
+      if (itemsNonUrgent == null) itemsNonUrgent = new LinkedList<>();
       ListIterator<MessageItem> it = itemsNonUrgent.listIterator(itemsNonUrgent.size());
       // MessageItem's can be created out of order, so the timestamps may not be consistent.
       // CONCURRENCY: This is not a problem in addNonUrgentMessages() because it is always called
@@ -186,9 +186,8 @@ public class PeerMessageQueue {
           if (logMINOR) checkOrder();
           // Move to urgent list
           if (itemsByID == null) {
-            itemsByID = new HashMap<Long, Items>();
-            if (nonEmptyItemsWithID == null)
-              nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+            itemsByID = new HashMap<>();
+            if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
             list = new Items(id, item.submitted);
             addToNonEmptyForward(list);
             itemsByID.put(id, list);
@@ -196,8 +195,7 @@ public class PeerMessageQueue {
           } else {
             if (list == null) {
               list = new Items(id, item.submitted);
-              if (nonEmptyItemsWithID == null)
-                nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+              if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
               addToNonEmptyForward(list);
               itemsByID.put(id, list);
               if (logMINOR) checkOrder();
@@ -243,7 +241,7 @@ public class PeerMessageQueue {
     }
 
     private void addToNonEmptyForward(Items list) {
-      if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+      if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
       Enumeration<Items> it = nonEmptyItemsWithID.elements();
       while (it.hasMoreElements()) {
         Items compare = it.nextElement();
@@ -262,7 +260,7 @@ public class PeerMessageQueue {
     }
 
     private void addToNonEmptyBackward(Items list) {
-      if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+      if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
       Enumeration<Items> it = nonEmptyItemsWithID.reverseElements();
       while (it.hasMoreElements()) {
         Items compare = it.nextElement();
@@ -275,7 +273,7 @@ public class PeerMessageQueue {
     }
 
     private void addToEmptyBackward(Items list) {
-      if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<Items>();
+      if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<>();
       Enumeration<Items> it = emptyItemsWithID.reverseElements();
       while (it.hasMoreElements()) {
         Items compare = it.nextElement();
@@ -301,8 +299,8 @@ public class PeerMessageQueue {
       long id = item.getID();
       Items list;
       if (itemsByID == null) {
-        itemsByID = new HashMap<Long, Items>();
-        if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+        itemsByID = new HashMap<>();
+        if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
         list = new Items(id, -1);
         addToNonEmptyForward(list);
         itemsByID.put(id, list);
@@ -310,7 +308,7 @@ public class PeerMessageQueue {
         list = itemsByID.get(id);
         if (list == null) {
           list = new Items(id, -1);
-          if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+          if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
           nonEmptyItemsWithID.unshift(list);
           itemsByID.put(id, list);
         } else {
@@ -486,7 +484,7 @@ public class PeerMessageQueue {
               if (logDEBUG)
                 Logger.debug(
                     this, "Moving " + tracker + " to end of empty list in addNonUrgentMessages");
-              if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<Items>();
+              if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<>();
               if (parent == null) {
                 Logger.error(this, "Tracker is in itemsByID but not in either list! (empty)");
               } else if (parent == emptyItemsWithID) {
@@ -502,8 +500,7 @@ public class PeerMessageQueue {
                 Logger.debug(
                     this,
                     "Moving " + tracker + " to end of non-empty list in addNonUrgentMessages");
-              if (nonEmptyItemsWithID == null)
-                nonEmptyItemsWithID = new DoublyLinkedListImpl<Items>();
+              if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
               if (parent == null) {
                 Logger.error(this, "Tracker is in itemsByID but not in either list! (non-empty)");
               } else if (parent == nonEmptyItemsWithID) {

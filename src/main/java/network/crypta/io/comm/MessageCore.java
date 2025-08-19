@@ -40,9 +40,9 @@ public class MessageCore {
   private final Executor _executor;
 
   /** _filters serves as lock for both */
-  private final LinkedList<MessageFilter> _filters = new LinkedList<MessageFilter>();
+  private final LinkedList<MessageFilter> _filters = new LinkedList<>();
 
-  private final LinkedList<Message> _unclaimed = new LinkedList<Message>();
+  private final LinkedList<Message> _unclaimed = new LinkedList<>();
   private static final int MAX_UNMATCHED_FIFO_SIZE = 50000;
   private static final long MAX_UNCLAIMED_FIFO_ITEM_LIFETIME =
       MINUTES.toMillis(10); // maybe this should be per message type??
@@ -116,7 +116,7 @@ public class MessageCore {
         if (f.timedOut(tStart)) {
           if (logMINOR) Logger.minor(this, "Removing " + f);
           i.remove();
-          if (timedOutFilters == null) timedOutFilters = new HashSet<MessageFilter>();
+          if (timedOutFilters == null) timedOutFilters = new HashSet<>();
           if (!timedOutFilters.add(f))
             Logger.error(this, "Filter " + f + " is in filter list twice!");
           if (logMINOR) {
@@ -197,7 +197,7 @@ public class MessageCore {
         }
         MATCHED status = f.match(m, false, tStart);
         if (status == MATCHED.TIMED_OUT || status == MATCHED.TIMED_OUT_AND_MATCHED) {
-          if (timedOut == null) timedOut = new ArrayList<MessageFilter>();
+          if (timedOut == null) timedOut = new ArrayList<>();
           timedOut.add(f);
           i.remove();
           continue;
@@ -263,7 +263,7 @@ public class MessageCore {
             match.setMessage(m);
             break; // Only one match permitted per message
           } else if (status == MATCHED.TIMED_OUT || status == MATCHED.TIMED_OUT_AND_MATCHED) {
-            if (timedOut == null) timedOut = new ArrayList<MessageFilter>();
+            if (timedOut == null) timedOut = new ArrayList<>();
             timedOut.add(f);
             i.remove();
             continue;
@@ -340,7 +340,7 @@ public class MessageCore {
       while (i.hasNext()) {
         MessageFilter f = i.next();
         if (f.matchesDroppedConnection(ctx)) {
-          if (droppedFilters == null) droppedFilters = new ArrayList<MessageFilter>();
+          if (droppedFilters == null) droppedFilters = new ArrayList<>();
           droppedFilters.add(f);
           i.remove();
         }
@@ -362,7 +362,7 @@ public class MessageCore {
       while (i.hasNext()) {
         MessageFilter f = i.next();
         if (f.matchesRestartedConnection(ctx)) {
-          if (droppedFilters == null) droppedFilters = new ArrayList<MessageFilter>();
+          if (droppedFilters == null) droppedFilters = new ArrayList<>();
           droppedFilters.add(f);
           i.remove();
         }
@@ -695,7 +695,7 @@ public class MessageCore {
   }
 
   public Map<String, Integer> getUnclaimedFIFOMessageCounts() {
-    Map<String, Integer> messageCounts = new HashMap<String, Integer>();
+    Map<String, Integer> messageCounts = new HashMap<>();
     synchronized (_filters) {
       for (ListIterator<Message> i = _unclaimed.listIterator(); i.hasNext(); ) {
         Message m = i.next();

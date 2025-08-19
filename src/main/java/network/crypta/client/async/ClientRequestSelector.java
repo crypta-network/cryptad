@@ -106,14 +106,13 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     this.isSSKScheduler = isSSKScheduler;
     this.isRTScheduler = isRTScheduler;
     if (!isInsertScheduler) {
-      keysFetching = new HashSet<Key>();
-      transientRequestsWaitingForKeysFetching =
-          new HashMap<Key, WeakReference<BaseSendableGet>[]>();
+      keysFetching = new HashSet<>();
+      transientRequestsWaitingForKeysFetching = new HashMap<>();
       runningInserts = null;
-      recentSuccesses = new ArrayDeque<BaseSendableGet>();
+      recentSuccesses = new ArrayDeque<>();
     } else {
       keysFetching = null;
-      runningInserts = new HashSet<SendableRequestItemKey>();
+      runningInserts = new HashSet<>();
       recentSuccesses = null;
     }
     priorities = new RequestClientRGANode[RequestStarter.NUMBER_OF_PRIORITY_CLASSES];
@@ -640,13 +639,13 @@ public class ClientRequestSelector implements KeysFetchingLocally {
           transientRequestsWaitingForKeysFetching.put(
               key,
               (WeakReference<BaseSendableGet>[])
-                  new WeakReference<?>[] {new WeakReference<BaseSendableGet>(getterWaiting)});
+                  new WeakReference<?>[] {new WeakReference<>(getterWaiting)});
         } else {
           for (WeakReference<BaseSendableGet> ref : waiting) {
             if (ref.get() == getterWaiting) return true;
           }
           WeakReference<BaseSendableGet>[] newWaiting = Arrays.copyOf(waiting, waiting.length + 1);
-          newWaiting[waiting.length] = new WeakReference<BaseSendableGet>(getterWaiting);
+          newWaiting[waiting.length] = new WeakReference<>(getterWaiting);
           transientRequestsWaitingForKeysFetching.put(key, newWaiting);
         }
       }

@@ -142,7 +142,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
 
   @Override
   protected Enumeration<URL> findResources(String name) {
-    return new Enumeration<URL>() {
+    return new Enumeration<>() {
       private final Enumeration<JarEntry> jarFileEntries = tempJarFile.entries();
       private URL nextElement = null;
 

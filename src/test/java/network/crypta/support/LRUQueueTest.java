@@ -33,7 +33,7 @@ public class LRUQueueTest {
    * @return the created LRUQueue
    */
   private LRUQueue<Object> createSampleQueue(int size) {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(size);
     for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
     return methodLRUQueue;
@@ -124,7 +124,7 @@ public class LRUQueueTest {
   /** Tests {@link LRUQueue#pushLeast(Object)} method */
   @Test
   public void testPushLeast() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObj = {new Object(), new Object()};
 
     methodLRUQueue.push(sampleObj[0]);
@@ -146,7 +146,7 @@ public class LRUQueueTest {
    */
   @Test
   public void testPop() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
@@ -164,7 +164,7 @@ public class LRUQueueTest {
   @Test
   public void testSize() {
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertEquals(0, methodLRUQueue.size());
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++) {
@@ -185,7 +185,7 @@ public class LRUQueueTest {
    */
   @Test
   public void testRemove() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
     for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
     // removing all objects in the opposite way used by pop() method
@@ -238,7 +238,7 @@ public class LRUQueueTest {
   @Test
   public void testElements() {
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     // pushing objects
     for (int i = 0; i < sampleObjects.length; i++) methodLRUQueue.push(sampleObjects[i]);
     Enumeration<Object> methodEnumeration = methodLRUQueue.elements();
@@ -255,7 +255,7 @@ public class LRUQueueTest {
    */
   @Test
   public void testToArray() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
 
     // pushing objects
@@ -271,7 +271,7 @@ public class LRUQueueTest {
   /** Tests {@link LRUQueue#toArray(Object[])} method */
   @Test
   public void testToArray2() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
 
     // pushing objects
@@ -288,7 +288,7 @@ public class LRUQueueTest {
   /** Tests {@link LRUQueue#toArrayOrdered()} method */
   @Test
   public void testToArrayOrdered() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
 
     // pushing objects
@@ -304,7 +304,7 @@ public class LRUQueueTest {
   /** Tests <code>toArrayOrdered(Object[])</code> method */
   @Test
   public void testToArrayOrdered2() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     Object[] sampleObjects = createSampleObjects(sampleElemsNumber);
 
     // pushing objects
@@ -321,14 +321,14 @@ public class LRUQueueTest {
   /** Tests toArray() method when the queue is empty */
   @Test
   public void testToArrayEmptyQueue() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertEquals(0, methodLRUQueue.toArray().length);
   }
 
   /** Tests isEmpty() method trying it with an empty queue and then with a sample queue. */
   @Test
   public void testIsEmpty() {
-    LRUQueue<Object> methodLRUQueue = new LRUQueue<Object>();
+    LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     assertTrue(methodLRUQueue.isEmpty());
     methodLRUQueue = createSampleQueue(sampleElemsNumber);
     assertFalse(methodLRUQueue.isEmpty());

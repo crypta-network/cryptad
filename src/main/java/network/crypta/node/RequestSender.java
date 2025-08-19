@@ -83,7 +83,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /** If true, only try to fetch the key from nodes which have offered it */
   private final boolean tryOffersOnly;
 
-  private final ArrayList<RequestSenderListener> listeners = new ArrayList<RequestSenderListener>();
+  private final ArrayList<RequestSenderListener> listeners = new ArrayList<>();
 
   // Terminal status
   // Always set finished AFTER setting the reason flag

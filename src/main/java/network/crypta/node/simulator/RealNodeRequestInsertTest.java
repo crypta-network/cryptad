@@ -325,7 +325,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     }
     StringBuilder load = new StringBuilder("Running UIDs for nodes: ");
     int totalRunningUIDsAlt = 0;
-    List<Long> runningUIDsList = new ArrayList<Long>();
+    List<Long> runningUIDsList = new ArrayList<>();
     for (int i = 0; i < nodes.length; i++) {
       load.append(i);
       load.append(':');

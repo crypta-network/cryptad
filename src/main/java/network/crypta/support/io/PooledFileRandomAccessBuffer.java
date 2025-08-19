@@ -29,8 +29,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   static class FDTracker implements Serializable {
     private int maxOpenFDs;
     private int totalOpenFDs = 0;
-    private final LinkedHashSet<PooledFileRandomAccessBuffer> closables =
-        new LinkedHashSet<PooledFileRandomAccessBuffer>();
+    private final LinkedHashSet<PooledFileRandomAccessBuffer> closables = new LinkedHashSet<>();
 
     FDTracker(int maxOpenFDs) {
       this.maxOpenFDs = maxOpenFDs;
