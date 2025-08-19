@@ -335,7 +335,9 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
           os.write(b);
           currentSize = futureSize;
           if (isRAMBucket()) // We need to re-check because it might have changed!
-          _hasTaken(1);
+          {
+            _hasTaken(1);
+          }
         }
       }
 
@@ -348,7 +350,9 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
           os.write(b, off, len);
           currentSize = futureSize;
           if (isRAMBucket()) // We need to re-check because it might have changed!
-          _hasTaken(len);
+          {
+            _hasTaken(len);
+          }
         }
       }
 
