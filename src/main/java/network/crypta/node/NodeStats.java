@@ -2624,12 +2624,11 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   public Thread[] getThreads() {
     int count = 0;
     Thread[] threads;
-    while (true) {
+    do {
       count = Math.max(rootThreadGroup.activeCount(), count);
       threads = new Thread[count * 2 + 50];
       rootThreadGroup.enumerate(threads);
-      if (threads[threads.length - 1] == null) break;
-    }
+    } while (threads[threads.length - 1] != null);
 
     return threads;
   }

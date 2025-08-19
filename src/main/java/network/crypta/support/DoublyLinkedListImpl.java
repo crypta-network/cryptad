@@ -77,8 +77,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
     T pos = _firstItem;
     T opos;
 
-    while (true) {
-      if (pos == null) break;
+    while (pos != null) {
       pos.setParent(null);
       pos.setPrev(null);
       opos = pos;
