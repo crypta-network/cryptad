@@ -358,10 +358,19 @@ ul.config {
 }
 
 .configprefix {
-  margin-top: .5em;
-  font-family: Tahoma, Geneva, sans-serif;
-  font-size: 100%;
-  border-bottom: 1px solid #eee;
+  margin: 24px 0 16px;
+  padding: 0;
+  font-style: normal;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.4;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-decoration: underline;
 }
 
 .config li {
@@ -497,7 +506,7 @@ ul#navlist li ul li:last-child {
 }
 
 .infobox-header {
-  font-family: Tahoma, Geneva, sans-serif;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 .infobox-content {
@@ -1372,24 +1381,35 @@ body[id*="Sone"] {
 
 
 /*** Page Stats (fproxy) ***/
+/* Use CSS Grid for better content containment */
 #page-_stats_.fproxy-page #content .column > tbody > tr {
-  display: block;
-  float: left;
-  clear: both;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  max-width: 100%;
   overflow: hidden;
+  box-sizing: border-box;
+  clear: both;
 }
 
 #page-_stats_.fproxy-page #content .column > tbody > tr > td {
   display: block;
-  float: left;
+  min-width: 0; /* Allow grid items to shrink below content size */
+  overflow: hidden;
+  box-sizing: border-box;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all; /* Force aggressive word breaking */
+  white-space: normal;
 }
 
 #page-_stats_.fproxy-page #content .column > tbody > tr:first-child {
-  display: -webkit-box;
-  display: -ms-flexbox;
-  display: -webkit-flex;
-  display: -moz-box;
-  display: flex;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 15px;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 #page-_stats_.fproxy-page #content .column > tbody > tr:first-child table {
@@ -1401,6 +1421,49 @@ body[id*="Sone"] {
 #page-_stats_.fproxy-page #content .column > tbody > tr:first-child table td {
   padding: 10px;
 }
+
+/* Fix Thread usage and other long lists from overflowing */
+#page-_stats_ .infobox-content ul {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  white-space: normal;
+  box-sizing: border-box;
+}
+
+#page-_stats_ .infobox-content ul li {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-all;
+}
+
+/* Apply aggressive word breaking to all infobox content in stats page */
+#page-_stats_ .infobox .infobox-content ul li {
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
+  word-wrap: break-word !important;
+  hyphens: auto;
+  line-height: 1.2;
+  max-width: 100% !important;
+  white-space: normal !important;
+}
+
+/* Constrain the main stats table to not exceed content width */
+#page-_stats_.fproxy-page #content .column {
+  max-width: 100% !important;
+  overflow: hidden;
+  table-layout: fixed;
+}
+
+/* Force table cells to respect their width constraints */
+#page-_stats_.fproxy-page #content .column > tbody > tr > td * {
+  max-width: 100%;
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
 
 #page-_stats_.fproxy-page #content .column > tbody > tr:first-child table th {
   padding: 0 10px 5px;
