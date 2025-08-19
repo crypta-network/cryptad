@@ -1743,9 +1743,6 @@ public class DMT {
 
   public static final MessageType FNPVoid = new MessageType("FNPVoid", PRIORITY_LOW, false, true);
 
-  static {
-  }
-
   public static Message createFNPVoid() {
     return new Message(FNPVoid);
   }
@@ -2014,10 +2011,6 @@ public class DMT {
   public static final MessageType FNPRejectIsSoft =
       new MessageType("FNPRejectIsSoft", PRIORITY_HIGH);
 
-  static {
-    // No fields???
-  }
-
   public static Message createFNPRejectIsSoft() {
     return new Message(FNPRejectIsSoft);
   }
@@ -2150,9 +2143,6 @@ public class DMT {
 
   public static final MessageType FNPGetYourFullNoderef =
       new MessageType("FNPGetYourFullNoderef", PRIORITY_LOW);
-
-  static {
-  }
 
   public static Message createFNPGetYourFullNoderef() {
     return new Message(FNPGetYourFullNoderef);
