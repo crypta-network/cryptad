@@ -1,6 +1,8 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -11,7 +13,7 @@ public class LineReadingInputStreamTest {
   public static final String BLOCK = "\ntesting1\ntesting2\r\ntesting3\n\n";
   public static final String[] LINES = new String[] {"", "testing1", "testing2", "testing3", ""};
 
-  public static final String STRESSED_LINE = "\n\u0114\n";
+  public static final String STRESSED_LINE = "\nĔ\n";
   public static final String NULL_LINE = "a\u0000\u0000\u0000\u0000\n";
   public static final String LENGTH_CHECKING_LINE = "a\u0000a\n";
   public static final int LENGTH_CHECKING_LINE_LF = 3;
@@ -25,7 +27,7 @@ public class LineReadingInputStreamTest {
     InputStream is = new ByteArrayInputStream(STRESSED_LINE.getBytes(StandardCharsets.UTF_8));
     LineReadingInputStream instance = new LineReadingInputStream(is);
     assertEquals("", instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
-    assertEquals("\u0114", instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
+    assertEquals("Ĕ", instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
     assertNull(instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
 
     // try ISO-8859-1
@@ -70,7 +72,7 @@ public class LineReadingInputStreamTest {
     InputStream is = new ByteArrayInputStream(STRESSED_LINE.getBytes(StandardCharsets.UTF_8));
     LineReadingInputStream instance = new LineReadingInputStream(is);
     assertEquals("", instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
-    assertEquals("\u0114", instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
+    assertEquals("Ĕ", instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
     assertNull(instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
 
     // try ISO-8859-1

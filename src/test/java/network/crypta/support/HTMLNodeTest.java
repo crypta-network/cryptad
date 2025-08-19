@@ -1,6 +1,9 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 
 import java.util.List;
 import org.junit.Before;
@@ -35,10 +38,10 @@ public class HTMLNodeTest {
   private static final String SAMPLE_WRONG_ATTRIBUTE_NAME = "s\u03a2mpleAttributeName";
 
   // example node attribute value that includes a not ASCII char [Greek epsilon]
-  private static final String SAMPLE_ATTRIBUTE_VALUE = "sampleAttribut\u03b5Value";
+  private static final String SAMPLE_ATTRIBUTE_VALUE = "sampleAttributεValue";
 
   // example node content that includes a not ASCII char [Greek omicron]
-  private static final String SAMPLE_NODE_CONTENT = "sampleNodeC\u03bfntent";
+  private static final String SAMPLE_NODE_CONTENT = "sampleNodeCοntent";
 
   @Before
   public void setUp() throws Exception {

@@ -84,7 +84,7 @@ public class HTMLEncoderDecoderTest {
   /** Tests compact(String) method with each kind of "whitespace" */
   @Test
   public void testCompactMixed() {
-    String toCompact = "\u0020" + "\t" + "\n" + "\r" + "\u200b" + "\u000c";
+    String toCompact = " " + "\t" + "\n" + "\r" + "\u200b" + "\u000c";
     assertEquals(HTMLDecoder.compact(toCompact), " ");
   }
 
@@ -99,7 +99,7 @@ public class HTMLEncoderDecoderTest {
     assertTrue(HTMLDecoder.isWhitespace(ZEROWIDTHSPACE));
   }
 
-  private static final char WHITESPACE = '\u0020';
+  private static final char WHITESPACE = ' ';
   private static final char TAB = '\t';
   private static final char UNIX_NEWLINE = '\n';
   private static final char MAC_NEWLINE = '\r';

@@ -2,7 +2,11 @@ package network.crypta.client.filter;
 
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.equalToIgnoringCase;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -834,8 +838,7 @@ public class CSSParserTest {
         "table { counter-increment: counter1 1}", "table { counter-increment: counter1 1}");
     // Counters with whacky identifiers
     propertyTests.put(
-        "table { counter-increment: \u0202ounter1 1}",
-        "table { counter-increment: \u0202ounter1 1}");
+        "table { counter-increment: Ȃounter1 1}", "table { counter-increment: Ȃounter1 1}");
     propertyTests.put(
         "table { counter-increment: \\202 ounter1 1}",
         "table { counter-increment: \\202 ounter1 1}");
