@@ -209,7 +209,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
 
   @Override
   public boolean equals(Object o) {
-    if (o == null || !(o instanceof USK)) return false;
+    if (!(o instanceof USK)) return false;
     return equals(o, true);
   }
 

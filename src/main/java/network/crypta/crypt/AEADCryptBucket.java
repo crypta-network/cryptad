@@ -1,6 +1,14 @@
 package network.crypta.crypt;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Arrays;
 import network.crypta.client.async.ClientContext;
 import network.crypta.node.NodeStarter;
@@ -121,7 +129,7 @@ public class AEADCryptBucket implements Bucket, Serializable {
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Unknown version " + version);
     int keyLength = dis.readByte();
-    if (keyLength < 0 || !(keyLength == 16 || keyLength == 24 || keyLength == 32))
+    if (!(keyLength == 16 || keyLength == 24 || keyLength == 32))
       throw new StorageFormatException(
           "Unknown key length " + keyLength); // FIXME validate this in a more permanent way
     key = new byte[keyLength];

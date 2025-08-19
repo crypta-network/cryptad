@@ -156,7 +156,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
 
   @Override
   public boolean equals(Object o) {
-    if (o == null || !(o instanceof Key)) return false;
+    if (!(o instanceof Key)) return false;
     return Arrays.equals(routingKey, ((Key) o).routingKey);
   }
 

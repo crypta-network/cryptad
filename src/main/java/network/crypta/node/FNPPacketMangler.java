@@ -37,7 +37,14 @@ import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.comm.SocketHandler;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.support.*;
+import network.crypta.support.ByteArrayWrapper;
+import network.crypta.support.Fields;
+import network.crypta.support.HexUtil;
+import network.crypta.support.LRUMap;
+import network.crypta.support.Logger;
+import network.crypta.support.SerialExecutor;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.InetAddressComparator;
 import network.crypta.support.io.NativeThread;
@@ -1013,8 +1020,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int nonceSize = getNonceSize(negType);
 
     KeyAgreementSchemeContext ctx = pn.getKeyAgreementSchemeContext();
-    if ((ctx == null)
-        || !(ctx instanceof ECDHLightContext)
+    if (!(ctx instanceof ECDHLightContext)
         || ((pn.jfkContextLifetime + DH_GENERATION_INTERVAL * DH_CONTEXT_BUFFER_SIZE) < now)) {
       pn.jfkContextLifetime = now;
       pn.setKeyAgreementSchemeContext(ctx = getECDHLightContext());
@@ -2737,7 +2743,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private void _fillJFKECDHFIFO() {
     synchronized (ecdhContextFIFO) {
       int size = ecdhContextFIFO.size();
-      if ((size > 0) && (size + 1 > DH_CONTEXT_BUFFER_SIZE)) {
+      if ((size + 1 > DH_CONTEXT_BUFFER_SIZE)) {
         ECDHLightContext result = null;
         long oldestSeen = Long.MAX_VALUE;
 

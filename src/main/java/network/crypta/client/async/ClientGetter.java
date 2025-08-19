@@ -1,6 +1,18 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.io.RandomAccessFile;
+import java.io.Serial;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.util.List;
@@ -1238,7 +1250,7 @@ public class ClientGetter extends BaseClientGetter
     synchronized (this) {
       state = currentState;
     }
-    if (state == null || !(state instanceof SplitFileFetcher fetcher)) {
+    if (!(state instanceof SplitFileFetcher fetcher)) {
       dos.writeBoolean(false);
       return false;
     }

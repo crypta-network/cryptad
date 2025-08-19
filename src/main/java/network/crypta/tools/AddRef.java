@@ -60,7 +60,7 @@ public class AddRef {
         String messageName = lis.readLine(128, 128, true);
         sfs = getMessage(lis);
         fcpm = FCPMessage.create(messageName, sfs);
-        if ((fcpm == null) || !(fcpm instanceof NodeHelloMessage)) {
+        if (!(fcpm instanceof NodeHelloMessage)) {
           System.err.println("Not a valid FRED node!");
           System.exit(1);
         }

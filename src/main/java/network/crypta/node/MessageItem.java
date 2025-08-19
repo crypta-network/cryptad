@@ -135,7 +135,7 @@ public class MessageItem {
   private long generateID() {
     if (msg == null) return -1;
     Object o = msg.getObject(DMT.UID);
-    if (o == null || !(o instanceof Long)) {
+    if (!(o instanceof Long)) {
       return -1;
     } else {
       return (Long) o;
