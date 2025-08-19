@@ -2633,15 +2633,15 @@ class CSSTokenizerFilter {
   // FIXME: CSS minimizer often remove space between token and !important
   private int checkImportant(ParsedWord[] words) {
     if (words.length == 0) return 0;
-    if (words.length >= 1 && words[words.length - 1] instanceof SimpleParsedWord) {
-      if (words[words.length - 1].original.equalsIgnoreCase("!important")) return 1;
-    }
+    if (words[words.length - 1] instanceof SimpleParsedWord
+        && words[words.length - 1].original.equalsIgnoreCase("!important")) return 1;
+
     if (words.length >= 2
         && words[words.length - 1] instanceof ParsedIdentifier
-        && words[words.length - 2] instanceof SimpleParsedWord) {
-      if (words[words.length - 2].original.equals("!")
-          && words[words.length - 1].original.equalsIgnoreCase("important")) return 2;
-    }
+        && words[words.length - 2] instanceof SimpleParsedWord
+        && words[words.length - 2].original.equals("!")
+        && words[words.length - 1].original.equalsIgnoreCase("important")) return 2;
+
     return 0;
   }
 
@@ -2831,7 +2831,6 @@ class CSSTokenizerFilter {
     char quoting = 0;
     boolean escaping = false;
     int bracketing = 0;
-    boolean eatLF = false;
     int escapedDigits = 0;
     for (int i = 0; i < selectorString.length(); i++) {
       c = selectorString.charAt(i);
@@ -2860,19 +2859,14 @@ class CSSTokenizerFilter {
         quoting = c;
       } else if (c == quoting && !escaping) {
         quoting = 0;
-      } else if (c == '\n' && eatLF) {
-        // Ok
-        escaping = false;
-        eatLF = false;
       } else if ((c == '\r' || c == '\n' || c == '\f') && !(quoting != 0 && escaping)) {
         // No newlines unless in a string *and* quoted!
         if (logDEBUG)
           Logger.debug(this, "no newlines unless in a string *and* quoted at index " + i);
         return null;
-      } else if (c == '\r' && escaping && escapedDigits == 0) {
+      } else if (c == '\r' && escapedDigits == 0) {
         escaping = false;
-        eatLF = true;
-      } else if ((c == '\n' || c == '\f') && escaping) {
+      } else if (c == '\n' || c == '\f') {
         if (escapedDigits == 0) escaping = false;
         else {
           if (logDEBUG) Logger.debug(this, "invalid newline escaping at char " + i);
@@ -2884,19 +2878,17 @@ class CSSTokenizerFilter {
         if (escapedDigits == 6) escaping = false;
       } else if (escaping && escapedDigits > 0 && (" \t\r\n\f".indexOf(c) != -1)) {
         escaping = false;
-        if (c == '\r') eatLF = true;
       } else if (c == '\\' && !escaping) {
         escaping = true;
-      } else if (c == '\\' && escaping && escapedDigits > 0) {
+      } else if (c == '\\' && escapedDigits > 0) {
         if (logDEBUG) Logger.debug(this, "backslash but already escaping with digits at char " + i);
         return null; // Invalid
-      } else if (c == '\\' && escaping) {
+      } else if (c == '\\') {
         escaping = false;
       } else if (escaping) {
         // Any other character can be escaped.
         escaping = false;
       }
-      eatLF = false;
     }
 
     if (logDEBUG)
@@ -4044,13 +4036,9 @@ class CSSTokenizerFilter {
     private void encodeChar(char c, StringBuilder sb) {
       String s = Integer.toHexString(c);
       sb.append('\\');
-      if (s.length() == 6) sb.append(s);
-      else if (s.length() > 6) throw new IllegalStateException();
-      else {
-        int x = 6 - s.length();
-        for (int i = 0; i < x; i++) sb.append('0');
-        sb.append(s);
-      }
+      int x = 6 - s.length();
+      sb.append("0".repeat(x));
+      sb.append(s);
     }
 
     public String getDecoded() {
@@ -4273,13 +4261,34 @@ class CSSTokenizerFilter {
                 } else lastWord.postComma = true;
                 // Comma is not added to the buffer, so this works even for element , element
               } else {
+                // Process the token before the comma
+                ParsedWord word =
+                    parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
+                if (logDEBUG)
+                  Logger.debug(
+                      CSSTokenizerFilter.class,
+                      "Token before comma: orig: \""
+                          + origToken
+                          + "\" decoded: \""
+                          + decodedToken
+                          + "\" dontLike="
+                          + dontLikeOrigToken
+                          + " couldBeIdentifier="
+                          + couldBeIdentifier
+                          + " parsed "
+                          + word);
+                if (word == null) return null;
                 if (addComma) {
-                  if (logDEBUG)
-                    Logger.debug(
-                        CSSTokenizerFilter.class,
-                        "Extra comma after a comma in \"" + input + "\" i=" + i);
-                  return null;
+                  // This would mean we have two commas with a token between them
+                  word.postComma = true;
                 }
+                words.add(word);
+                origToken.setLength(0);
+                decodedToken.setLength(0);
+                dontLikeOrigToken = false;
+                couldBeIdentifier = true;
+                lastWord = word;
+                // Now mark that we need to add a comma after the next token
                 addComma = true;
               }
             }
@@ -4351,7 +4360,7 @@ class CSSTokenizerFilter {
             origToken.append(c);
             decodedToken.append(c);
           }
-        } else if (escaping && escape.isEmpty()) {
+        } else if (escape.isEmpty()) {
           if (c == '\"' || c == '\'') {
             escaping = false;
             origToken.append(c);
@@ -4423,12 +4432,11 @@ class CSSTokenizerFilter {
             decodedToken.append(c);
           } else if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
             escape.append(c);
-          } else if (c == '\r' || c == '\n' || c == '\f') {
+          } else if (c == '\n') {
             // In a string, an escaped newline is equal to nothing.
             origToken.append(c);
             // Do not add to decodedToken because both the \ and the \n are ignored.
             // Eat the \n if necessary (copy it to the origToken but not the decodedToken)
-            if (c == '\r') eatLF = true;
           } else {
             origToken.append(c);
             decodedToken.append(c);
@@ -4451,11 +4459,6 @@ class CSSTokenizerFilter {
             escape.setLength(0);
             escaping = false;
             // \r terminates the escape but might be followed by a \n
-            if (c == '\r') {
-              eatLF = true;
-              // Messy...
-              dontLikeOrigToken = true;
-            }
           } else {
             // Already started the escape, anything other than a hex digit or whitespace is invalid.
             return null;
@@ -4795,7 +4798,6 @@ class CSSTokenizerFilter {
             isIDSelector = true; // se
           } else if ("sh".equals(possibleValue)) isShape = true; // sh
           else if ("st".equals(possibleValue)) isString = true; // st
-          else if ("co".equals(possibleValue)) isCounter = true; // co
           else if ("id".equals(possibleValue)) isIdentifier = true; // id
           else if ("ti".equals(possibleValue)) isTime = true; // ti
           else if ("fr".equals(possibleValue)) isFrequency = true; // fr
@@ -5487,7 +5489,7 @@ class CSSTokenizerFilter {
                         + secondPart);
               return false;
             }
-          } else if (i == valueParts.length && lowerLimit > 1) return false;
+          } else if (i == valueParts.length) return false;
           ParsedWord[] after = Arrays.copyOfRange(valueParts, i, valueParts.length);
           if (logDEBUG) Logger.debug(this, "rest of tokens: " + toString(after));
           if (recursiveVariableOccuranceVerifier(
@@ -5734,16 +5736,6 @@ class CSSTokenizerFilter {
 
       if (value[0] instanceof ParsedAttr) {
         return true;
-      }
-
-      if (value[0] instanceof ParsedURL rL) {
-        // CONFORMANCE: This is required by the spec, and quite useful in practice.
-        // Browsers in practice only support images here.
-        // However, as long as they respect the MIME type - and if they don't we are screwed anyway
-        // - this should be safe even if it allows including text, CSS and HTML.
-        // Note also that generated content cannot alter the parse tree, so what can be done is
-        // presumably severely limited.
-        return isValidURI(rL, cb);
       }
 
       return false;
