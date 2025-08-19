@@ -50,7 +50,8 @@ public class MultiHashDigesterTest {
     assertEquals("da39a3ee5e6b4b0d3255bfef95601890afd80709", results.get(0).hashAsHex());
     assertEquals("d41d8cd98f00b204e9800998ecf8427e", results.get(1).hashAsHex());
     assertEquals(
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", results.get(2).hashAsHex());
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        results.get(2).hashAsHex());
   }
 
   @Test
@@ -64,6 +65,7 @@ public class MultiHashDigesterTest {
     assertEquals("3cdf2936da2fc556bfa533ab1eb59ce710ac80e5", results.get(0).hashAsHex());
     assertEquals("c3e97dd6e97fb5125688c97f36720cbe", results.get(1).hashAsHex());
     assertEquals(
-        "09fc96082d34c2dfc1295d92073b5ea1dc8ef8da95f14dfded011ffb96d3e54b", results.get(2).hashAsHex());
+        "09fc96082d34c2dfc1295d92073b5ea1dc8ef8da95f14dfded011ffb96d3e54b",
+        results.get(2).hashAsHex());
   }
 }
