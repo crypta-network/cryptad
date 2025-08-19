@@ -48,7 +48,7 @@ public class SubConfig implements Comparable<SubConfig> {
 
   /** Return all the options registered. Each includes its name. Used by e.g. webconfig. */
   public synchronized Option<?>[] getOptions() {
-    return map.values().toArray(new Option<?>[map.size()]);
+    return map.values().toArray(new Option<?>[0]);
   }
 
   public synchronized Option<?> getOption(String option) {

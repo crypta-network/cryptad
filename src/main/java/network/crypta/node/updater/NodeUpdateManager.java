@@ -1556,7 +1556,7 @@ public class NodeUpdateManager {
     PluginJarUpdater[] updaters = null;
     synchronized (this) {
       if (this.pluginUpdaters != null) {
-        updaters = pluginUpdaters.values().toArray(new PluginJarUpdater[pluginUpdaters.size()]);
+        updaters = pluginUpdaters.values().toArray(new PluginJarUpdater[0]);
       }
     }
     boolean restartRevocationFetcher = false;

@@ -862,7 +862,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
         //					}
         //				}
         //				DetectedIP[] list = (DetectedIP[]) map.values().toArray(new DetectedIP[map.size()]);
-        DetectedIP[] list = v.toArray(new DetectedIP[v.size()]);
+        DetectedIP[] list = v.toArray(new DetectedIP[0]);
         int countOpen = 0;
         int countFullCone = 0;
         int countRestricted = 0;

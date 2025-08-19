@@ -2027,7 +2027,7 @@ public class PeerManager {
     PeerStatusTracker<String> peerNodeRoutingBackoffReasons =
         realTime ? peerNodeRoutingBackoffReasonsRT : peerNodeRoutingBackoffReasonsBulk;
     peerNodeRoutingBackoffReasons.addStatusList(list);
-    return list.toArray(new String[list.size()]);
+    return list.toArray(new String[0]);
   }
 
   /** How many PeerNodes have a particular routing backoff reason? */
@@ -2099,7 +2099,7 @@ public class PeerManager {
     for (PeerNode peer : peers) {
       if (peer instanceof DarknetPeerNode) v.add(peer);
     }
-    return v.toArray(new DarknetPeerNode[v.size()]);
+    return v.toArray(new DarknetPeerNode[0]);
   }
 
   /**
@@ -2154,7 +2154,7 @@ public class PeerManager {
     for (PeerNode peer : peers) {
       if (peer instanceof OpennetPeerNode) v.add(peer);
     }
-    return v.toArray(new OpennetPeerNode[v.size()]);
+    return v.toArray(new OpennetPeerNode[0]);
   }
 
   public PeerNode[] getOpennetAndSeedServerPeers() {
@@ -2165,7 +2165,7 @@ public class PeerManager {
       if (peer instanceof OpennetPeerNode) v.add(peer);
       else if (peer instanceof SeedServerPeerNode) v.add(peer);
     }
-    return v.toArray(new PeerNode[v.size()]);
+    return v.toArray(new PeerNode[0]);
   }
 
   public boolean anyConnectedPeerHasAddress(FreenetInetAddress addr, PeerNode pn) {
@@ -2197,7 +2197,7 @@ public class PeerManager {
         keep.add(pn);
         if (pn.isConnected()) conn.add(pn);
       }
-      myPeers = keep.toArray(new PeerNode[keep.size()]);
+      myPeers = keep.toArray(new PeerNode[0]);
       connectedPeers = keep.toArray(new PeerNode[conn.size()]);
     }
     updatePMUserAlert();

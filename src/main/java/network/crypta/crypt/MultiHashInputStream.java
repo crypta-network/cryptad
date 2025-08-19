@@ -43,7 +43,7 @@ public class MultiHashInputStream extends FilterInputStream {
         }
       }
     }
-    this.digesters = digesters.toArray(new Digester[digesters.size()]);
+    this.digesters = digesters.toArray(new Digester[0]);
   }
 
   @Override

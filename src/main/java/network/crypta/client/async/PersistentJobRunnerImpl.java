@@ -238,7 +238,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     synchronized (sync) {
       mustCheckpoint = false;
       writing = false;
-      QueuedJob[] jobs = queuedJobs.toArray(new QueuedJob[queuedJobs.size()]);
+      QueuedJob[] jobs = queuedJobs.toArray(new QueuedJob[0]);
       if (logDEBUG) Logger.debug(this, "Starting " + jobs.length + " queued jobs");
       for (QueuedJob job : jobs) {
         runningJobs++;

@@ -1855,7 +1855,7 @@ public class StatisticsToadlet extends Toadlet {
       }
       totalCount++;
     }
-    ThreadBunch[] bunches = map.values().toArray(new ThreadBunch[map.size()]);
+    ThreadBunch[] bunches = map.values().toArray(new ThreadBunch[0]);
     Arrays.sort(
         bunches,
         (b0, b1) -> {

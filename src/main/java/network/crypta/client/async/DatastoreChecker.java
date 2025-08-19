@@ -125,8 +125,7 @@ public class DatastoreChecker implements PrioRunnable {
     ArrayList<Key> finalKeysToCheck = new ArrayList<>(checkKeys.length);
     synchronized (this) {
       Collections.addAll(finalKeysToCheck, checkKeys);
-      QueueItem queueItem =
-          new QueueItem(finalKeysToCheck.toArray(new Key[finalKeysToCheck.size()]), getter, blocks);
+      QueueItem queueItem = new QueueItem(finalKeysToCheck.toArray(new Key[0]), getter, blocks);
       if (logMINOR && queue[prio].contains(queueItem)) {
         Logger.error(this, "Transient request " + getter + " is already queued!");
         return;

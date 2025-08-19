@@ -789,8 +789,8 @@ public class RequestTracker {
           Long[] uids;
           UIDTag[] tags;
           synchronized (map) {
-            uids = map.keySet().toArray(new Long[map.size()]);
-            tags = map.values().toArray(new UIDTag[map.size()]);
+            uids = map.keySet().toArray(new Long[0]);
+            tags = map.values().toArray(new UIDTag[0]);
           }
           long now = System.currentTimeMillis();
           for (int i = 0; i < uids.length; i++) {
@@ -1038,7 +1038,7 @@ public class RequestTracker {
     synchronized (completedBuffer) {
       completedBuffer.add(id);
       if (completedBuffer.size() < COMPLETED_THRESHOLD) return;
-      list = completedBuffer.toArray(new Long[completedBuffer.size()]);
+      list = completedBuffer.toArray(new Long[0]);
       completedBuffer.clear();
     }
     for (PeerNode pn : peers.myPeers()) {

@@ -203,7 +203,7 @@ public abstract class UIDTag {
   public void postUnlock() {
     PeerNode[] peers;
     synchronized (this) {
-      if (routedTo != null) peers = routedTo.toArray(new PeerNode[routedTo.size()]);
+      if (routedTo != null) peers = routedTo.toArray(new PeerNode[0]);
       else peers = null;
     }
     if (peers != null) for (PeerNode p : peers) p.postUnlock(this);

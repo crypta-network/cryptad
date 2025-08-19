@@ -428,7 +428,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     synchronized (this) {
       if (freed) return;
       freed = true;
-      toClose = streams == null ? null : streams.toArray(new Closeable[streams.size()]);
+      toClose = streams == null ? null : streams.toArray(new Closeable[0]);
       streams = null;
     }
 

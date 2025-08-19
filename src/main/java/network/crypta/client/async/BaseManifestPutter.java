@@ -1027,7 +1027,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     PutHandler[] containers;
 
     synchronized (this) {
-      running = runningPutHandlers.toArray(new PutHandler[runningPutHandlers.size()]);
+      running = runningPutHandlers.toArray(new PutHandler[0]);
       if (containerMode) {
         containers = getContainersToStart(running.length > 0);
       } else {
@@ -1073,8 +1073,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   private PutHandler[] getContainersToStart(boolean excludeRoot) {
-    PutHandler[] maybeStartPH =
-        containerPutHandlers.toArray(new PutHandler[containerPutHandlers.size()]);
+    PutHandler[] maybeStartPH = containerPutHandlers.toArray(new PutHandler[0]);
     ArrayList<PutHandler> phToStart = new ArrayList<>();
 
     for (PutHandler ph : maybeStartPH) {
@@ -1085,7 +1084,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     if ((!excludeRoot) && (maybeStartPH.length == 0)) {
       phToStart.add(rootContainerPutHandler);
     }
-    return phToStart.toArray(new PutHandler[phToStart.size()]);
+    return phToStart.toArray(new PutHandler[0]);
   }
 
   /**
@@ -1299,7 +1298,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   private void cancelAndFinish(ClientContext context) {
     PutHandler[] running;
     synchronized (this) {
-      running = runningPutHandlers.toArray(new PutHandler[runningPutHandlers.size()]);
+      running = runningPutHandlers.toArray(new PutHandler[0]);
     }
 
     if (logMINOR) Logger.minor(this, "PutHandler's to cancel: " + running.length);
@@ -1827,7 +1826,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   public static ManifestElement[] flatten(HashMap<String, Object> manifestElements) {
     List<ManifestElement> v = new ArrayList<>();
     flatten(manifestElements, v, "");
-    return v.toArray(new ManifestElement[v.size()]);
+    return v.toArray(new ManifestElement[0]);
   }
 
   public static void flatten(

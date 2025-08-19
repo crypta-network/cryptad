@@ -320,8 +320,7 @@ public class PersistentRequestClient {
     RequestCompletionCallback[] callbacks = null;
     synchronized (this) {
       if (completionCallbacks != null)
-        callbacks =
-            completionCallbacks.toArray(new RequestCompletionCallback[completionCallbacks.size()]);
+        callbacks = completionCallbacks.toArray(new RequestCompletionCallback[0]);
     }
     if (callbacks != null) {
       for (RequestCompletionCallback cb : callbacks) cb.onRemove(req);
@@ -427,7 +426,7 @@ public class PersistentRequestClient {
     if (isGlobalQueue) {
       synchronized (clientsWatchingLock) {
         if (clientsWatching != null)
-          clients = clientsWatching.toArray(new PersistentRequestClient[clientsWatching.size()]);
+          clients = clientsWatching.toArray(new PersistentRequestClient[0]);
         else clients = null;
       }
       if (clients != null)
@@ -468,8 +467,7 @@ public class PersistentRequestClient {
     RequestCompletionCallback[] callbacks = null;
     synchronized (this) {
       if (completionCallbacks != null)
-        callbacks =
-            completionCallbacks.toArray(new RequestCompletionCallback[completionCallbacks.size()]);
+        callbacks = completionCallbacks.toArray(new RequestCompletionCallback[0]);
     }
     if (callbacks != null) {
       for (RequestCompletionCallback cb : callbacks) cb.notifySuccess(req);
@@ -486,8 +484,7 @@ public class PersistentRequestClient {
     RequestCompletionCallback[] callbacks = null;
     synchronized (this) {
       if (completionCallbacks != null)
-        callbacks =
-            completionCallbacks.toArray(new RequestCompletionCallback[completionCallbacks.size()]);
+        callbacks = completionCallbacks.toArray(new RequestCompletionCallback[0]);
     }
     if (callbacks != null) {
       for (RequestCompletionCallback cb : callbacks) cb.notifyFailure(req);

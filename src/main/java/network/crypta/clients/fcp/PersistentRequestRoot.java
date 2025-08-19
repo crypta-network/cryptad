@@ -82,7 +82,7 @@ public class PersistentRequestRoot {
     globalForeverClient.addPersistentRequests(requests, true);
     for (PersistentRequestClient client : clients.values())
       client.addPersistentRequests(requests, true);
-    return requests.toArray(new ClientRequest[requests.size()]);
+    return requests.toArray(new ClientRequest[0]);
   }
 
   PersistentRequestClient resume(ClientRequest clientRequest, boolean global, String clientName) {

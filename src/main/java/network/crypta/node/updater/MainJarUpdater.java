@@ -114,7 +114,7 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
   public void onStartFetchingUOM() {
     DependencyJarFetcher[] f;
     synchronized (fetchers) {
-      f = fetchers.toArray(new DependencyJarFetcher[fetchers.size()]);
+      f = fetchers.toArray(new DependencyJarFetcher[0]);
     }
     for (DependencyJarFetcher fetcher : f) {
       fetcher.fetchFromUOM();

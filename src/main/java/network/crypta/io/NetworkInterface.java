@@ -191,7 +191,7 @@ public class NetworkInterface implements Closeable {
       lock.unlock();
     }
 
-    return brokenList == null ? null : brokenList.toArray(new String[brokenList.size()]);
+    return brokenList == null ? null : brokenList.toArray(new String[0]);
   }
 
   public void setAllowedHosts(String allowedHosts) {
@@ -278,7 +278,7 @@ public class NetworkInterface implements Closeable {
     Acceptor[] oldAcceptors;
     lock.lock();
     try {
-      oldAcceptors = acceptors.toArray(new Acceptor[acceptors.size()]);
+      oldAcceptors = acceptors.toArray(new Acceptor[0]);
       acceptors.clear();
       return oldAcceptors;
     } finally {
@@ -289,7 +289,7 @@ public class NetworkInterface implements Closeable {
   private Acceptor[] getAcceptors() {
     lock.lock();
     try {
-      return acceptors.toArray(new Acceptor[acceptors.size()]);
+      return acceptors.toArray(new Acceptor[0]);
     } finally {
       lock.unlock();
     }

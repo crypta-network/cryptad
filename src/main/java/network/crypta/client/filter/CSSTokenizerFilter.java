@@ -3131,7 +3131,7 @@ class CSSTokenizerFilter {
                       filteredTokens.append(postSpace);
                       filteredTokens.append("{");
                       valid = true;
-                      currentMedia = medias.toArray(new String[medias.size()]);
+                      currentMedia = medias.toArray(new String[0]);
                     }
                   }
                 } else if (parts[0] instanceof SimpleParsedWord
@@ -4489,7 +4489,7 @@ class CSSTokenizerFilter {
       if (word == null) return null;
       words.add(word);
     }
-    return words.toArray(new ParsedWord[words.size()]);
+    return words.toArray(new ParsedWord[0]);
   }
 
   private static ParsedWord parseToken(
@@ -5904,7 +5904,7 @@ class CSSTokenizerFilter {
             Logger.debug(
                 this,
                 "last word. font words: "
-                    + getStringFromArray(fontWords.toArray(new String[fontWords.size()]))
+                    + getStringFromArray(fontWords.toArray(new String[0]))
                     + " valid="
                     + validFontWords(fontWords));
           return validFontWords(fontWords);
@@ -5929,7 +5929,7 @@ class CSSTokenizerFilter {
                   Logger.debug(
                       this,
                       "font: reached last in inner loop, valid. font words: "
-                          + getStringFromArray(fontWords.toArray(new String[fontWords.size()])));
+                          + getStringFromArray(fontWords.toArray(new String[0])));
                 return true;
               }
             }
@@ -5944,7 +5944,7 @@ class CSSTokenizerFilter {
                   Logger.debug(
                       this,
                       "comma but can't parse font words: "
-                          + Fields.commaList(fontWords.toArray(new String[fontWords.size()])));
+                          + Fields.commaList(fontWords.toArray(new String[0])));
                 return false;
               }
             }

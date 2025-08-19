@@ -768,7 +768,7 @@ public class BlockTransmitter {
   private void cancelItemsPending() {
     MessageItem[] items;
     synchronized (itemsPending) {
-      items = itemsPending.toArray(new MessageItem[itemsPending.size()]);
+      items = itemsPending.toArray(new MessageItem[0]);
       itemsPending.clear();
     }
     for (MessageItem item : items) {

@@ -109,7 +109,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     Logger.debug(this, "Trying to stop all fetches...");
     if (mFetches != null)
       synchronized (mFetches) {
-        ClientGetter[] fetches = mFetches.toArray(new ClientGetter[mFetches.size()]);
+        ClientGetter[] fetches = mFetches.toArray(new ClientGetter[0]);
         int fcounter = 0;
         for (ClientGetter fetch : fetches) {
           /* This calls onFailure which removes the fetch from mFetches on the same thread, therefore we need to copy to an array */
@@ -125,7 +125,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     Logger.debug(this, "Trying to stop all inserts...");
     if (mInserts != null)
       synchronized (mInserts) {
-        BaseClientPutter[] inserts = mInserts.toArray(new BaseClientPutter[mInserts.size()]);
+        BaseClientPutter[] inserts = mInserts.toArray(new BaseClientPutter[0]);
         int icounter = 0;
         for (BaseClientPutter insert : inserts) {
           /* This calls onFailure which removes the fetch from mFetches on the same thread, therefore we need to copy to an array */

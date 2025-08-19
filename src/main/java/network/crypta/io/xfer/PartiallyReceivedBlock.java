@@ -118,9 +118,7 @@ public class PartiallyReceivedBlock {
       _received[position] = true;
 
       // FIXME keep it as as an array
-      prls =
-          _packetReceivedListeners.toArray(
-              new PacketReceivedListener[_packetReceivedListeners.size()]);
+      prls = _packetReceivedListeners.toArray(new PacketReceivedListener[0]);
     }
 
     for (PacketReceivedListener prl : prls) {
@@ -209,9 +207,7 @@ public class PartiallyReceivedBlock {
       _abortedLocally = cancelledLocally;
       _abortReason = reason;
       _abortDescription = description;
-      listeners =
-          _packetReceivedListeners.toArray(
-              new PacketReceivedListener[_packetReceivedListeners.size()]);
+      listeners = _packetReceivedListeners.toArray(new PacketReceivedListener[0]);
       _packetReceivedListeners.clear();
     }
     for (PacketReceivedListener prl : listeners) {

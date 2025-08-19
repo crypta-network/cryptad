@@ -143,7 +143,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
   public UserAlert[] getAlerts() {
     UserAlert[] a;
     synchronized (alerts) {
-      a = alerts.toArray(new UserAlert[alerts.size()]);
+      a = alerts.toArray(new UserAlert[0]);
     }
     Arrays.sort(a, this);
     return a;

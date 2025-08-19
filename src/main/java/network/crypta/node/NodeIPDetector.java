@@ -203,7 +203,7 @@ public class NodeIPDetector {
     synchronized (this) {
       hasValidIP = addedValidIP;
     }
-    lastIPAddress = addresses.toArray(new FreenetInetAddress[addresses.size()]);
+    lastIPAddress = addresses.toArray(new FreenetInetAddress[0]);
     if (dumpLocalAddresses) {
       ArrayList<FreenetInetAddress> filtered = new ArrayList<>(lastIPAddress.length);
       for (FreenetInetAddress addr : lastIPAddress) {
@@ -212,7 +212,7 @@ public class NodeIPDetector {
         else if (addr.hasHostnameNoIP()) {
         } else if (IPUtil.isValidAddress(addr.getAddress(), false)) filtered.add(addr);
       }
-      return filtered.toArray(new FreenetInetAddress[filtered.size()]);
+      return filtered.toArray(new FreenetInetAddress[0]);
     }
     return lastIPAddress;
   }

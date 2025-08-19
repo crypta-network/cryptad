@@ -1819,8 +1819,7 @@ public class QueueToadlet extends Toadlet
       includeNavigationBar = true;
     }
     if (!failedUnknownMIMEType.isEmpty()) {
-      String[] types =
-          failedUnknownMIMEType.keySet().toArray(new String[failedUnknownMIMEType.size()]);
+      String[] types = failedUnknownMIMEType.keySet().toArray(new String[0]);
       Arrays.sort(types);
       for (String type : types) {
         String atype = type.replace("-", "--").replace('/', '-');
@@ -1837,7 +1836,7 @@ public class QueueToadlet extends Toadlet
       }
     }
     if (!failedBadMIMEType.isEmpty()) {
-      String[] types = failedBadMIMEType.keySet().toArray(new String[failedBadMIMEType.size()]);
+      String[] types = failedBadMIMEType.keySet().toArray(new String[0]);
       Arrays.sort(types);
       for (String type : types) {
         String atype = type.replace("-", "--").replace('/', '-');
@@ -2262,7 +2261,7 @@ public class QueueToadlet extends Toadlet
     }
 
     if (!failedBadMIMEType.isEmpty()) {
-      String[] types = failedBadMIMEType.keySet().toArray(new String[failedBadMIMEType.size()]);
+      String[] types = failedBadMIMEType.keySet().toArray(new String[0]);
       Arrays.sort(types);
       for (String type : types) {
         LinkedList<DownloadRequestStatus> getters = failedBadMIMEType.get(type);
@@ -2324,8 +2323,7 @@ public class QueueToadlet extends Toadlet
     }
 
     if (!failedUnknownMIMEType.isEmpty()) {
-      String[] types =
-          failedUnknownMIMEType.keySet().toArray(new String[failedUnknownMIMEType.size()]);
+      String[] types = failedUnknownMIMEType.keySet().toArray(new String[0]);
       Arrays.sort(types);
       for (String type : types) {
         LinkedList<DownloadRequestStatus> getters = failedUnknownMIMEType.get(type);
@@ -3440,9 +3438,7 @@ public class QueueToadlet extends Toadlet
                 String[] identifiers;
                 boolean changed = writeAnyway;
                 synchronized (completedRequestIdentifiers) {
-                  identifiers =
-                      completedRequestIdentifiers.toArray(
-                          new String[completedRequestIdentifiers.size()]);
+                  identifiers = completedRequestIdentifiers.toArray(new String[0]);
                 }
                 for (String identifier : identifiers) {
                   ClientRequest req = fcp.getGlobalRequest(identifier);
@@ -3501,8 +3497,7 @@ public class QueueToadlet extends Toadlet
           BufferedWriter bw = new BufferedWriter(osw)) {
         String[] identifiers;
         synchronized (completedRequestIdentifiers) {
-          identifiers =
-              completedRequestIdentifiers.toArray(new String[completedRequestIdentifiers.size()]);
+          identifiers = completedRequestIdentifiers.toArray(new String[0]);
         }
         for (String identifier : identifiers) bw.write(identifier + '\n');
       }

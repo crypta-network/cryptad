@@ -1061,7 +1061,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     // Don't synchronize while doing lookups which may take a long time!
     synchronized (this) {
-      myNominalPeer = nominalPeer.toArray(new Peer[nominalPeer.size()]);
+      myNominalPeer = nominalPeer.toArray(new Peer[0]);
     }
 
     Peer[] localHandshakeIPs;
@@ -1121,7 +1121,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       localPeers.add(p);
     }
 
-    localHandshakeIPs = localPeers.toArray(new Peer[localPeers.size()]);
+    localHandshakeIPs = localPeers.toArray(new Peer[0]);
     localHandshakeIPs = updateHandshakeIPs(localHandshakeIPs, ignoreHostnames);
     synchronized (this) {
       handshakeIPs = localHandshakeIPs;
@@ -2860,7 +2860,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
         nominalPeer = new ArrayList<>(physical.length);
 
-        Peer[] oldPeers = oldNominalPeer.toArray(new Peer[oldNominalPeer.size()]);
+        Peer[] oldPeers = oldNominalPeer.toArray(new Peer[0]);
 
         for (String phys : physical) {
           Peer p;
@@ -5010,7 +5010,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       notifyAll();
       // Because we are no longer in the slot queue we must remove it.
       // If we want to wait for it again it must be re-queued.
-      PeerNode[] toUnreg = waitingFor.toArray(new PeerNode[waitingFor.size()]);
+      PeerNode[] toUnreg = waitingFor.toArray(new PeerNode[0]);
       waitingFor.clear();
       tag.clearWaitingForSlot();
       return toUnreg;
@@ -5090,7 +5090,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
           fe = null;
           grabbed = true;
         }
-        all = waitingFor.toArray(new PeerNode[waitingFor.size()]);
+        all = waitingFor.toArray(new PeerNode[0]);
         if (ret != null) waitingFor.clear();
         if (grabbed || all.length == 0) tag.clearWaitingForSlot();
       }
@@ -5174,7 +5174,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             fe = null;
           }
           if (shouldGrab()) ret = grab();
-          all = waitingFor.toArray(new PeerNode[waitingFor.size()]);
+          all = waitingFor.toArray(new PeerNode[0]);
           waitingFor.clear();
           failed = false;
           acceptedBy = null;
@@ -5214,7 +5214,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
                 // Bigger problem.
                 // No external entity called us, so waitingFor have not been unregistered.
                 timedOut = true;
-                all = waitingFor.toArray(new PeerNode[waitingFor.size()]);
+                all = waitingFor.toArray(new PeerNode[0]);
                 waitingFor.clear();
                 break;
                 // Now no callers will succeed.
@@ -5250,7 +5250,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
                   + this);
         ret = acceptedBy;
         acceptedBy = null; // Allow for it to wait again if necessary
-        all = waitingFor.toArray(new PeerNode[waitingFor.size()]);
+        all = waitingFor.toArray(new PeerNode[0]);
         waitingFor.clear();
         failed = false;
         fe = null;

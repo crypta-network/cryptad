@@ -45,7 +45,7 @@ public class LoggingConfigHandler {
       ArrayList<String> values = new ArrayList<>(priorities.length + 1);
       for (LogLevel p : priorities) values.add(p.name());
 
-      return values.toArray(new String[values.size()]);
+      return values.toArray(new String[0]);
     }
   }
 

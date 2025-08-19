@@ -47,7 +47,7 @@ public class Config {
     SubConfig[] configs;
     synchronized (this) {
       // FIXME maybe keep a cache of this?
-      configs = configsByPrefix.values().toArray(new SubConfig[configsByPrefix.size()]);
+      configs = configsByPrefix.values().toArray(new SubConfig[0]);
     }
     for (SubConfig config : configs) {
       if (!config.hasFinishedInitialization())
@@ -61,7 +61,7 @@ public class Config {
 
   /** Fetch all the SubConfig's. Used by user-facing config thingies. */
   public synchronized SubConfig[] getConfigs() {
-    return configsByPrefix.values().toArray(new SubConfig[configsByPrefix.size()]);
+    return configsByPrefix.values().toArray(new SubConfig[0]);
   }
 
   public synchronized SubConfig get(String subConfig) {

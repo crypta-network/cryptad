@@ -71,7 +71,7 @@ public class BinaryBlobInserter implements ClientPutState {
       myInserters.add(inserter);
     }
 
-    inserters = myInserters.toArray(new MySendableInsert[myInserters.size()]);
+    inserters = myInserters.toArray(new MySendableInsert[0]);
     parent.addMustSucceedBlocks(inserters.length);
     parent.notifyClients(context);
   }

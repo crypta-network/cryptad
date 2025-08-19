@@ -811,7 +811,7 @@ public class DefaultMIMETypes {
   }
 
   static String[] getMIMETypes() {
-    return mimeTypesByNumber.toArray(new String[mimeTypesByNumber.size()]);
+    return mimeTypesByNumber.toArray(new String[0]);
   }
 
   /** Make sure the filename has the correct extension for the MIME type */

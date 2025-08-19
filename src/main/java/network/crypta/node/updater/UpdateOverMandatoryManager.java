@@ -697,7 +697,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       if (nodesAskedSendMainJar.size() + nodesSendingMainJar.size() >= MAX_NODES_SENDING_JAR)
         return;
       if (nodesOfferedMainJar.isEmpty()) return;
-      offers = nodesOfferedMainJar.toArray(new PeerNode[nodesOfferedMainJar.size()]);
+      offers = nodesOfferedMainJar.toArray(new PeerNode[0]);
     }
     for (PeerNode offer : offers) {
       if (!offer.isConnected()) continue;
@@ -842,8 +842,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     List<PeerNode> nodesDisconnectedSayRevoked = new ArrayList<>();
     List<PeerNode> nodesFailedSayRevoked = new ArrayList<>();
     synchronized (this) {
-      PeerNode[] nodesSayRevoked =
-          nodesSayKeyRevoked.toArray(new PeerNode[nodesSayKeyRevoked.size()]);
+      PeerNode[] nodesSayRevoked = nodesSayKeyRevoked.toArray(new PeerNode[0]);
       for (PeerNode pn : nodesSayRevoked) {
         if (nodesSayKeyRevokedFailedTransfer.contains(pn)) nodesFailedSayRevoked.add(pn);
         else nodesConnectedSayRevoked.add(pn);
@@ -858,9 +857,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
       }
     }
     return new PeerNode[][] {
-      nodesConnectedSayRevoked.toArray(new PeerNode[nodesConnectedSayRevoked.size()]),
-      nodesDisconnectedSayRevoked.toArray(new PeerNode[nodesDisconnectedSayRevoked.size()]),
-      nodesFailedSayRevoked.toArray(new PeerNode[nodesFailedSayRevoked.size()]),
+      nodesConnectedSayRevoked.toArray(new PeerNode[0]),
+      nodesDisconnectedSayRevoked.toArray(new PeerNode[0]),
+      nodesFailedSayRevoked.toArray(new PeerNode[0]),
     };
   }
 
@@ -1251,10 +1250,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
     PeerNode[] started;
     PeerNode[] transferring;
     synchronized (this) {
-      started = nodesSayKeyRevoked.toArray(new PeerNode[nodesSayKeyRevoked.size()]);
-      transferring =
-          nodesSayKeyRevokedTransferring.toArray(
-              new PeerNode[nodesSayKeyRevokedTransferring.size()]);
+      started = nodesSayKeyRevoked.toArray(new PeerNode[0]);
+      transferring = nodesSayKeyRevokedTransferring.toArray(new PeerNode[0]);
     }
     // If a peer is not connected, ignore it.
     // If a peer has already tried 3 times to send the revocation cert, ignore it,
@@ -2500,8 +2497,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   protected void startSomeDependencyFetchers() {
     UOMDependencyFetcher[] fetchers;
     synchronized (this) {
-      fetchers =
-          dependencyFetchers.values().toArray(new UOMDependencyFetcher[dependencyFetchers.size()]);
+      fetchers = dependencyFetchers.values().toArray(new UOMDependencyFetcher[0]);
     }
     for (UOMDependencyFetcher f : fetchers) {
       f.start();
@@ -2515,8 +2511,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   protected void peerMaybeFreeAllSlots(PeerNode fetchFrom) {
     UOMDependencyFetcher[] fetchers;
     synchronized (this) {
-      fetchers =
-          dependencyFetchers.values().toArray(new UOMDependencyFetcher[dependencyFetchers.size()]);
+      fetchers = dependencyFetchers.values().toArray(new UOMDependencyFetcher[0]);
     }
     for (UOMDependencyFetcher f : fetchers) {
       f.peerMaybeFreeSlots(fetchFrom);

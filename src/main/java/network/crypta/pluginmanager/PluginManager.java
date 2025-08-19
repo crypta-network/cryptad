@@ -291,7 +291,7 @@ public class PluginManager {
       v.add(pi.getFilename());
     }
     v.addAll(loadedPlugins.getFailedPluginNames());
-    return v.toArray(new String[v.size()]);
+    return v.toArray(new String[0]);
   }
 
   /**

@@ -228,7 +228,7 @@ public class IPAddressDetector implements Runnable {
         }
       }
     }
-    lastAddressList = output.toArray(new InetAddress[output.size()]);
+    lastAddressList = output.toArray(new InetAddress[0]);
   }
 
   @Override

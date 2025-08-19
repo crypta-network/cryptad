@@ -155,7 +155,7 @@ public class NodeIPPortDetector {
         }
       }
     }
-    lastPeers = addresses.toArray(new Peer[addresses.size()]);
+    lastPeers = addresses.toArray(new Peer[0]);
     if (logMINOR)
       Logger.minor(
           this,

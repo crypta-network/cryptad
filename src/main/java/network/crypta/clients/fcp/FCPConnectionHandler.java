@@ -244,8 +244,7 @@ public class FCPConnectionHandler implements Closeable {
       requests = new ClientRequest[requestsByIdentifier.size()];
       requests = requestsByIdentifier.values().toArray(requests);
       requestsByIdentifier.clear();
-      uskSubscriptions2 =
-          uskSubscriptions.values().toArray(new SubscribeUSK[uskSubscriptions.size()]);
+      uskSubscriptions2 = uskSubscriptions.values().toArray(new SubscribeUSK[0]);
       dupe = killedDupe;
     }
     for (ClientRequest req : requests) req.onLostConnection(server.getCore().getClientContext());

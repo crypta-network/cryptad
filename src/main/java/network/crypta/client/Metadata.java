@@ -1773,7 +1773,7 @@ public class Metadata implements Cloneable, Serializable {
         }
       }
       if (kill) {
-        Metadata[] meta = unresolvedMetadata.toArray(new Metadata[unresolvedMetadata.size()]);
+        Metadata[] meta = unresolvedMetadata.toArray(new Metadata[0]);
         throw new MetadataUnresolvedException(meta, "Manifest data too long and not resolved");
       }
     }

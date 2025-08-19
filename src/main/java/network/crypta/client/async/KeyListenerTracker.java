@@ -463,7 +463,7 @@ class KeyListenerTracker implements KeySalter {
     if (list.isEmpty()) {
       return null;
     }
-    return list.toArray(new SendableGet[list.size()]);
+    return list.toArray(new SendableGet[0]);
   }
 
   @Override

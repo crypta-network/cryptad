@@ -199,7 +199,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
   public DelayedFree[] grabBucketsToFree() {
     synchronized (this) {
       if (bucketsToFree.isEmpty()) return null;
-      DelayedFree[] buckets = bucketsToFree.toArray(new DelayedFree[bucketsToFree.size()]);
+      DelayedFree[] buckets = bucketsToFree.toArray(new DelayedFree[0]);
       bucketsToFree.clear();
       commitID++;
       return buckets;

@@ -762,7 +762,7 @@ public class FCPServer implements Runnable, DownloadCache {
     List<RequestStatus> v = new ArrayList<>();
     globalRebootClient.addPersistentRequestStatus(v);
     if (globalForeverClient != null) globalForeverClient.addPersistentRequestStatus(v);
-    return v.toArray(new RequestStatus[v.size()]);
+    return v.toArray(new RequestStatus[0]);
   }
 
   public boolean removeGlobalRequestBlocking(final String identifier)

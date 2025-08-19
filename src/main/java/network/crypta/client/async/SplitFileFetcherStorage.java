@@ -1636,7 +1636,7 @@ public class SplitFileFetcherStorage {
     try {
       ArrayList<Key> keys = new ArrayList<>();
       for (SplitFileFetcherSegmentStorage segment : segments) segment.getUnfetchedKeys(keys);
-      return keys.toArray(new Key[keys.size()]);
+      return keys.toArray(new Key[0]);
     } catch (IOException e) {
       failOnDiskError(e);
       return new Key[0];

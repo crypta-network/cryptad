@@ -590,7 +590,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
 
   /** Returns a copy of this URI with these meta strings appended. */
   public FreenetURI addMetaStrings(List<String> metaStrings) {
-    return addMetaStrings(metaStrings.toArray(new String[metaStrings.size()]));
+    return addMetaStrings(metaStrings.toArray(new String[0]));
   }
 
   /** Returns a copy of this URI with a new Document name set. */

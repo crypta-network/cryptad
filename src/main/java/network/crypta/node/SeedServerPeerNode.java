@@ -115,7 +115,7 @@ public class SeedServerPeerNode extends PeerNode {
     if (v.isEmpty()) {
       Logger.error(this, "No valid addresses for seed node " + this);
     }
-    return v.toArray(new InetAddress[v.size()]);
+    return v.toArray(new InetAddress[0]);
   }
 
   @Override

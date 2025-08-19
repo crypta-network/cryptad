@@ -2394,7 +2394,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
                 + this);
         return;
       }
-      list = listeners.toArray(new RequestSenderListener[listeners.size()]);
+      list = listeners.toArray(new RequestSenderListener[0]);
       listeners.clear();
     }
     for (RequestSenderListener l : list) {

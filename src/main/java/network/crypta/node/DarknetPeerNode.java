@@ -708,8 +708,7 @@ public class DarknetPeerNode extends PeerNode {
     int nextFileNumber = 0;
     synchronized (extraPeerDataFileNumbers) {
       // Find the first free slot
-      localFileNumbers =
-          extraPeerDataFileNumbers.toArray(new Integer[extraPeerDataFileNumbers.size()]);
+      localFileNumbers = extraPeerDataFileNumbers.toArray(new Integer[0]);
       Arrays.sort(localFileNumbers);
       for (int localFileNumber : localFileNumbers) {
         if (localFileNumber > nextFileNumber) {
@@ -813,8 +812,7 @@ public class DarknetPeerNode extends PeerNode {
     }
     Integer[] localFileNumbers;
     synchronized (extraPeerDataFileNumbers) {
-      localFileNumbers =
-          extraPeerDataFileNumbers.toArray(new Integer[extraPeerDataFileNumbers.size()]);
+      localFileNumbers = extraPeerDataFileNumbers.toArray(new Integer[0]);
     }
     for (Integer localFileNumber : localFileNumbers) {
       deleteExtraPeerDataFile(localFileNumber);
@@ -918,9 +916,7 @@ public class DarknetPeerNode extends PeerNode {
     if (logMINOR) Logger.minor(this, "Sending queued N2NMs for " + shortToString());
     Integer[] localFileNumbers;
     synchronized (queuedToSendN2NMExtraPeerDataFileNumbers) {
-      localFileNumbers =
-          queuedToSendN2NMExtraPeerDataFileNumbers.toArray(
-              new Integer[queuedToSendN2NMExtraPeerDataFileNumbers.size()]);
+      localFileNumbers = queuedToSendN2NMExtraPeerDataFileNumbers.toArray(new Integer[0]);
     }
     Arrays.sort(localFileNumbers);
     for (Integer localFileNumber : localFileNumbers) {

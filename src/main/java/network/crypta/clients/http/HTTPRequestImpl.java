@@ -796,7 +796,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   @Override
   public String[] getParts() {
     if (freedParts) throw new IllegalStateException("Already freed");
-    return parts.keySet().toArray(new String[parts.size()]);
+    return parts.keySet().toArray(new String[0]);
   }
 
   @Override

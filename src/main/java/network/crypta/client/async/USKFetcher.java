@@ -739,7 +739,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
                   + dbrAttempts);
         return; // DBRs
       }
-      attempts = pollingAttempts.values().toArray(new USKAttempt[pollingAttempts.size()]);
+      attempts = pollingAttempts.values().toArray(new USKAttempt[0]);
     }
     for (USKAttempt a : attempts) {
       // All the polling attempts currently running must have entered cooldown once.
@@ -769,7 +769,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     USKCallback[] toCheck;
     synchronized (this) {
       if (cancelled || completed) return;
-      toCheck = subscribers.toArray(new USKCallback[subscribers.size()]);
+      toCheck = subscribers.toArray(new USKCallback[0]);
     }
     for (USKCallback cb : toCheck) {
       if (cb instanceof USKProgressCallback callback) callback.onRoundFinished(context);
@@ -780,7 +780,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     USKCallback[] toCheck;
     synchronized (this) {
       if (cancelled || completed) return;
-      toCheck = subscribers.toArray(new USKCallback[subscribers.size()]);
+      toCheck = subscribers.toArray(new USKCallback[0]);
     }
     for (USKCallback cb : toCheck) {
       if (cb instanceof USKProgressCallback callback) callback.onSendingToNetwork(context);
@@ -865,7 +865,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
       USKFetcherCallback[] cb;
       synchronized (this) {
         completed = true;
-        cb = callbacks.toArray(new USKFetcherCallback[callbacks.size()]);
+        cb = callbacks.toArray(new USKFetcherCallback[0]);
       }
       uskManager.unsubscribe(origUSK, this);
       uskManager.onFinished(this);
@@ -1028,7 +1028,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     USKFetcherCallback[] cb;
     synchronized (this) {
       completed = true;
-      cb = callbacks.toArray(new USKFetcherCallback[callbacks.size()]);
+      cb = callbacks.toArray(new USKFetcherCallback[0]);
     }
     for (USKFetcherCallback c : cb) c.onCancelled(context);
   }
@@ -1238,9 +1238,9 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
       if (cancelled) Logger.error(this, "Already cancelled " + this);
       if (completed) Logger.error(this, "Already completed " + this);
       cancelled = true;
-      attempts = runningAttempts.values().toArray(new USKAttempt[runningAttempts.size()]);
-      polling = pollingAttempts.values().toArray(new USKAttempt[pollingAttempts.size()]);
-      atts = dbrAttempts.toArray(new DBRAttempt[dbrAttempts.size()]);
+      attempts = runningAttempts.values().toArray(new USKAttempt[0]);
+      polling = pollingAttempts.values().toArray(new USKAttempt[0]);
+      atts = dbrAttempts.toArray(new DBRAttempt[0]);
       attemptsToStart.clear();
       runningAttempts.clear();
       pollingAttempts.clear();
@@ -1281,7 +1281,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     synchronized (this) {
       subscribers.add(cb);
       subscriberHints.put(cb, hint);
-      hints = subscriberHints.values().toArray(new Long[subscriberHints.size()]);
+      hints = subscriberHints.values().toArray(new Long[0]);
     }
     updatePriorities();
     watchingKeys.updateSubscriberHints(hints, uskManager.lookupLatestSlot(origUSK));
@@ -1296,10 +1296,10 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     USKCallback[] localCallbacks;
     USKFetcherCallback[] fetcherCallbacks;
     synchronized (this) {
-      localCallbacks = subscribers.toArray(new USKCallback[subscribers.size()]);
+      localCallbacks = subscribers.toArray(new USKCallback[0]);
       // Callbacks also determine the fetcher's priority.
       // Otherwise USKFetcherTag would have no way to tell us the priority we should run at.
-      fetcherCallbacks = callbacks.toArray(new USKFetcherCallback[callbacks.size()]);
+      fetcherCallbacks = callbacks.toArray(new USKFetcherCallback[0]);
     }
     if (localCallbacks.length == 0 && fetcherCallbacks.length == 0) {
       normalPollPriority = DEFAULT_NORMAL_POLL_PRIORITY;
@@ -1364,7 +1364,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     synchronized (this) {
       subscribers.remove(cb);
       subscriberHints.remove(cb);
-      hints = subscriberHints.values().toArray(new Long[subscriberHints.size()]);
+      hints = subscriberHints.values().toArray(new Long[0]);
     }
     updatePriorities();
     watchingKeys.updateSubscriberHints(hints, uskManager.lookupLatestSlot(origUSK));
@@ -1375,7 +1375,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     synchronized (this) {
       subscribers.remove(cb);
       subscriberHints.remove(cb);
-      hints = subscriberHints.values().toArray(new Long[subscriberHints.size()]);
+      hints = subscriberHints.values().toArray(new Long[0]);
     }
     watchingKeys.updateSubscriberHints(hints, uskManager.lookupLatestSlot(origUSK));
   }
@@ -1477,7 +1477,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     USKAttempt[] attempts;
     synchronized (USKFetcher.this) {
       if (cancelled || completed) return;
-      attempts = attemptsToStart.toArray(new USKAttempt[attemptsToStart.size()]);
+      attempts = attemptsToStart.toArray(new USKAttempt[0]);
       attemptsToStart.clear();
     }
 
@@ -1520,7 +1520,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     final USKWatchingKeys.KeyList.StoreSubChecker[] checkers;
 
     public USKStoreChecker(List<USKWatchingKeys.KeyList.StoreSubChecker> c) {
-      checkers = c.toArray(new USKWatchingKeys.KeyList.StoreSubChecker[c.size()]);
+      checkers = c.toArray(new USKWatchingKeys.KeyList.StoreSubChecker[0]);
     }
 
     public USKStoreChecker(USKWatchingKeys.KeyList.StoreSubChecker[] checkers2) {
@@ -1637,7 +1637,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
       synchronized (USKFetcher.this) {
         runningStoreChecker = null;
         // FIXME should we only start the USKAttempt's if the datastore check hasn't made progress?
-        attempts = attemptsToStart.toArray(new USKAttempt[attemptsToStart.size()]);
+        attempts = attemptsToStart.toArray(new USKAttempt[0]);
         attemptsToStart.clear();
         done = true;
         if (cancelled) return true;
@@ -1850,7 +1850,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     this.ctxNoStore.setCooldownTime(time);
     USKAttempt[] pollers;
     synchronized (this) {
-      pollers = pollingAttempts.values().toArray(new USKAttempt[pollingAttempts.size()]);
+      pollers = pollingAttempts.values().toArray(new USKAttempt[0]);
     }
     for (USKAttempt a : pollers) a.reloadPollParameters(context);
   }
@@ -1894,8 +1894,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     class ToFetch {
 
       public ToFetch(List<Lookup> toFetch2, List<Lookup> toPoll2) {
-        toFetch = toFetch2.toArray(new Lookup[toFetch2.size()]);
-        toPoll = toPoll2.toArray(new Lookup[toPoll2.size()]);
+        toFetch = toFetch2.toArray(new Lookup[0]);
+        toPoll = toPoll2.toArray(new Lookup[0]);
       }
 
       public final Lookup[] toFetch;

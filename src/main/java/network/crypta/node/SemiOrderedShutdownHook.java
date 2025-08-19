@@ -70,10 +70,10 @@ public class SemiOrderedShutdownHook extends Thread {
   }
 
   private synchronized Thread[] getEarlyJobs() {
-    return earlyJobs.toArray(new Thread[earlyJobs.size()]);
+    return earlyJobs.toArray(new Thread[0]);
   }
 
   private synchronized Thread[] getLateJobs() {
-    return lateJobs.toArray(new Thread[lateJobs.size()]);
+    return lateJobs.toArray(new Thread[0]);
   }
 }

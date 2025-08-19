@@ -1226,7 +1226,7 @@ public class MainJarDependenciesChecker {
     dependencies.clear();
     broken = false;
     this.build = build;
-    final Downloader[] toCancel = downloaders.toArray(new Downloader[downloaders.size()]);
+    final Downloader[] toCancel = downloaders.toArray(new Downloader[0]);
     executor.execute(
         () -> {
           for (Downloader d : toCancel) {
@@ -1581,7 +1581,7 @@ public class MainJarDependenciesChecker {
     }
 
     private synchronized AtomicDependency[] dependencies() {
-      return dependencies.toArray(new AtomicDependency[dependencies.size()]);
+      return dependencies.toArray(new AtomicDependency[0]);
     }
 
     final String name;

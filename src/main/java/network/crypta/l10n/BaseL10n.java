@@ -203,7 +203,7 @@ public class BaseL10n {
       Collections.sort(result);
       result.add(UNLISTED.fullName);
 
-      return result.toArray(new String[result.size()]);
+      return result.toArray(new String[0]);
     }
 
     public static LANGUAGE getDefault() {
@@ -913,6 +913,6 @@ public class BaseL10n {
         toReturn.add(key);
       }
     }
-    return toReturn.toArray(new String[toReturn.size()]);
+    return toReturn.toArray(new String[0]);
   }
 }

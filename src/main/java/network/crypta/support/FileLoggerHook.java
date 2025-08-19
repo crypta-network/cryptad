@@ -1078,7 +1078,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
   public void listAvailableLogs(OutputStreamWriter writer) throws IOException {
     OldLogFile[] oldLogFiles;
     synchronized (logFiles) {
-      oldLogFiles = logFiles.toArray(new OldLogFile[logFiles.size()]);
+      oldLogFiles = logFiles.toArray(new OldLogFile[0]);
     }
     DateFormat tempDF =
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Locale.ENGLISH);

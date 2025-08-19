@@ -221,7 +221,7 @@ public class SimpleFieldSet {
       } else {
         if (headerSection) {
           if (!headers.isEmpty()) {
-            this.header = headers.toArray(new String[headers.size()]);
+            this.header = headers.toArray(new String[0]);
           }
           headerSection = false;
         }
@@ -584,7 +584,7 @@ public class SimpleFieldSet {
       Writer w, String prefix, boolean noEndMarker, boolean allowOptionalBase64)
       throws IOException {
     writeHeader(w);
-    String[] keys = values.keySet().toArray(new String[values.size()]);
+    String[] keys = values.keySet().toArray(new String[0]);
     int i = 0;
 
     // Sort
@@ -596,7 +596,7 @@ public class SimpleFieldSet {
     }
 
     if (subsets != null) {
-      String[] orderedPrefixes = subsets.keySet().toArray(new String[subsets.size()]);
+      String[] orderedPrefixes = subsets.keySet().toArray(new String[0]);
       // Sort
       Arrays.sort(orderedPrefixes);
 
@@ -926,9 +926,7 @@ public class SimpleFieldSet {
    * Foo.Bar.Bat=1 Baz.Boo=hello Grrr=goodbye End Returns [ "Foo", "Baz" ].
    */
   public String[] namesOfDirectSubsets() {
-    return (subsets == null)
-        ? EMPTY_STRING_ARRAY
-        : subsets.keySet().toArray(new String[subsets.size()]);
+    return (subsets == null) ? EMPTY_STRING_ARRAY : subsets.keySet().toArray(new String[0]);
   }
 
   /**

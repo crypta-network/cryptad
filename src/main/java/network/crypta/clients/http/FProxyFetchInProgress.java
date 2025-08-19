@@ -426,7 +426,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   private void wakeWaiters(boolean finished) {
     FProxyFetchWaiter[] waiting;
     synchronized (this) {
-      waiting = waiters.toArray(new FProxyFetchWaiter[waiters.size()]);
+      waiting = waiters.toArray(new FProxyFetchWaiter[0]);
     }
     for (FProxyFetchWaiter w : waiting) {
       w.wakeUp(finished);

@@ -41,7 +41,7 @@ public class StringCounter {
   }
 
   private synchronized Item[] items() {
-    return map.values().toArray(new Item[map.size()]);
+    return map.values().toArray(new Item[0]);
   }
 
   private synchronized Item[] sortedItems(final boolean ascending) {

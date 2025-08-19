@@ -315,7 +315,7 @@ public class PrioritizedSerialExecutor implements Executor {
 
     synchronized (jobs) {
       for (int i = 0; i < jobs.length; ++i) {
-        ret[i] = jobs[i].toArray(new Runnable[jobs[i].size()]);
+        ret[i] = jobs[i].toArray(new Runnable[0]);
       }
     }
 
