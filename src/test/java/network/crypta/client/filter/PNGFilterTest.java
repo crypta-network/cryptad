@@ -141,10 +141,12 @@ public class PNGFilterTest {
   public void brokencICPChunkIsFiltered() throws IOException {
     // cICP chunks must be 4 bytes long!
     Chunk brokencICPChunk1 = new Chunk("cICP", new byte[0]);
-    writeChunksAndVerifyChunks(asList(brokencICPChunk1), emptyList(), not(hasItem(brokencICPChunk1)));
+    writeChunksAndVerifyChunks(
+        asList(brokencICPChunk1), emptyList(), not(hasItem(brokencICPChunk1)));
     // Unsupported color model other than RGB is specified in PNG!
     Chunk brokencICPChunk2 = new Chunk("cICP", new byte[] {0xC, 0xD, 0x1, 0x1});
-    writeChunksAndVerifyChunks(asList(brokencICPChunk2), emptyList(), not(hasItem(brokencICPChunk2)));
+    writeChunksAndVerifyChunks(
+        asList(brokencICPChunk2), emptyList(), not(hasItem(brokencICPChunk2)));
   }
 
   @Test

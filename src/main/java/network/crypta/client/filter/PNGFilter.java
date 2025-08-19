@@ -312,11 +312,11 @@ public class PNGFilter implements ContentDataFilter {
 
         if (!skip && "cICP".equals(chunkTypeString)) {
           if (length != 4) {
-            throwError("cICP chunks invalid!",
-                "cICP chunks must be 4 bytes long!");
+            throwError("cICP chunks invalid!", "cICP chunks must be 4 bytes long!");
           }
           if (chunkData[2] != 0) {
-            throwError("cICP chunks invalid!",
+            throwError(
+                "cICP chunks invalid!",
                 "Unsupported color model other than RGB is specified in PNG!");
           }
           validChunkType = !(hasSeenPLTE || hasSeenIDAT);
@@ -335,7 +335,8 @@ public class PNGFilter implements ContentDataFilter {
                 validChunkType = true;
                 break;
               } else {
-                throwError("The chunk appeared in an unexpected order!",
+                throwError(
+                    "The chunk appeared in an unexpected order!",
                     "The chunk \"" + chunkTypeString + "\" appeared in an unexpected order!");
               }
             }
