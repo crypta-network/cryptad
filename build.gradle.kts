@@ -6,6 +6,7 @@ plugins {
     java
     `maven-publish`
     alias(libs.plugins.kotlinJvm)
+    id("com.diffplug.spotless") version "7.2.1"
 }
 
 // Set version manually instead of using Nebula Release plugin
@@ -23,11 +24,11 @@ val versionBuildDir = file("$projectDir/build/tmp/compileVersion/")
 val versionSrc = "network/crypta/node/Version.kt"
 
 repositories {
+    mavenCentral()
     flatDir { dirs(uri("${projectDir}/lib")) }
     maven(url = "https://mvn.freenetproject.org") {
         metadataSources { artifact() }
     }
-    mavenCentral()
 }
 
 sourceSets {
@@ -51,6 +52,26 @@ tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 }
 
+// Spotless configuration for code formatting
+spotless {
+    java {
+        // Use Google Java Format
+        googleJavaFormat("1.28.0").reflowLongStrings()
+        // Apply to all Java source files
+        target("src/**/*.java")
+        // Remove unused imports
+        removeUnusedImports()
+        // Remove the ratchet for now to format all files
+        // ratchetFrom("origin/develop")
+    }
+}
+
+// Make compileJava depend on Spotless check and apply formatting to changed files
+tasks.compileJava {
+    // This will automatically format files that have changes according to git
+    dependsOn("spotlessApply")
+}
+
 val gitrev: String = try {
     val cmd = "git describe --always --abbrev=4 --dirty"
     Runtime.getRuntime().exec(cmd, null, rootDir).inputStream.bufferedReader().readText().trim()
@@ -62,15 +83,15 @@ val gitrev: String = try {
 val generateVersionSource by tasks.registering(Copy::class) {
     // Always regenerate to ensure fresh version info
     outputs.upToDateWhen { false }
-    
+
     // Capture version during configuration to avoid deprecation warning
     val buildVersion = project.version.toString()
-    
+
     // Delete old generated version first to ensure clean generation
     doFirst {
         delete(versionBuildDir)
     }
-    
+
     from(sourceSets["main"].java.srcDirs) {
         include(versionSrc)
         filter { line: String ->
@@ -84,11 +105,11 @@ val generateVersionSource by tasks.registering(Copy::class) {
 tasks.named<KotlinCompile>("compileKotlin") {
     dependsOn(generateVersionSource)
     source(versionBuildDir)
-    
+
     // Force recompilation of Version.kt when build number or git rev changes
     inputs.property("buildNumber", project.version.toString())
     inputs.property("gitRevision", gitrev)
-    
+
     // Also track the generated file as an input to ensure recompilation
     inputs.files(generateVersionSource)
 }

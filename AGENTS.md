@@ -43,3 +43,29 @@
 project_type: full-stack
 auto_mcp:
 
+## Spotless + Dependency Verification
+
+When Gradle dependency verification is strict, Spotless may fail to resolve `google-java-format` and other tool artifacts, even with `mavenCentral()` configured.
+
+Steps to update verification-metadata for Spotless
+- Temporarily set verification to lenient:
+  - Edit `gradle.properties` → `org.gradle.dependency.verification=lenient`.
+- Write verification entries (SHA256 + PGP):
+  - `./gradlew --write-verification-metadata sha256,pgp spotlessApply`
+  - Optional: force refresh to capture the exact formatter version:
+    - `./gradlew --refresh-dependencies --write-verification-metadata sha256,pgp spotlessApply`
+  - Faster alternative (no formatting run):
+    - `./gradlew --write-verification-metadata sha256,pgp spotlessInternalRegisterDependencies`
+- Confirm entries in `gradle/verification-metadata.xml`:
+  - Look for components under `com.google.googlejavaformat` and trusted keys for that group.
+- Restore strict mode:
+  - Edit `gradle.properties` → `org.gradle.dependency.verification=strict`.
+- Validate:
+  - `./gradlew spotlessApply` should pass with strict verification.
+ - Export keys (optional, recommended for reproducibility):
+   - `./gradlew --export-keys`
+
+Tips
+- Keep Spotless config at the intended formatter version (currently `googleJavaFormat("1.28.0")`).
+- If verification still blocks resolution, re-run the metadata write with `pgp` and ensure the group-level trusted key entry exists.
+ - Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
