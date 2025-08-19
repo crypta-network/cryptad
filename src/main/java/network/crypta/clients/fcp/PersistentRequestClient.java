@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -501,21 +500,11 @@ public class PersistentRequestClient {
     if (completionCallbacks != null) completionCallbacks.remove(cb);
   }
 
-  public void removeAll(ClientContext context) {
-    HashSet<ClientRequest> toKill = new HashSet<>();
+  public void removeAll() {
     if (statusCache != null) statusCache.clear();
     synchronized (this) {
-      for (ClientRequest req : runningPersistentRequests) {
-        toKill.add(req);
-      }
       runningPersistentRequests.clear();
-      for (ClientRequest req : completedUnackedRequests) {
-        toKill.add(req);
-      }
       completedUnackedRequests.clear();
-      for (ClientRequest req : clientRequestsByIdentifier.values()) {
-        toKill.add(req);
-      }
       clientRequestsByIdentifier.clear();
     }
   }
