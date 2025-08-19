@@ -500,12 +500,9 @@ public class NodeUpdateManager {
       wininstallerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_WINDOWS_INSTALLER_LENGTH);
     }
 
-    // FIXME make configurable
-    boolean updateIPToCountry = true;
-    if (updateIPToCountry) {
-      SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPv4ToCountry);
-      ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
-    }
+    // FIXME make updateIPToCountry configurable
+    SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPv4ToCountry);
+    ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
   }
 
   void broadcastUOMAnnounces() {
@@ -581,7 +578,7 @@ public class NodeUpdateManager {
   }
 
   public void maybeSendUOMAnnounce(PeerNode peer) {
-    boolean shouldSend;
+
     synchronized (broadcastUOMAnnouncesSync) {
       if (!broadcastUOMAnnounces) {
         if (logMINOR) {
@@ -589,7 +586,6 @@ public class NodeUpdateManager {
         }
         return; // nothing worth announcing yet
       }
-      shouldSend = broadcastUOMAnnounces;
     }
     if (hasBeenBlown && !revocationChecker.hasBlown()) {
       if (logMINOR) {
@@ -601,9 +597,7 @@ public class NodeUpdateManager {
     long size = canAnnounceUOMNew();
     try {
       if (Version.isBuildAtLeast(peer.getNodeName(), peer.getBuildNumber(), TRANSITION_VERSION)) {
-        if (shouldSend || hasBeenBlown) {
-          peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
-        }
+        peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
       }
     } catch (NotConnectedException e) {
       // Sad, but ignore it

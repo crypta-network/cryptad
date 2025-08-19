@@ -5256,7 +5256,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         fe = null;
         tag.clearWaitingForSlot();
       }
-      if (timeOutIsFatal && all != null) {
+      if (timeOutIsFatal) {
         for (PeerNode pn : all) {
           pn.outputLoadTracker(realTime).reportFatalTimeoutInWait(isLocal());
         }
@@ -5659,7 +5659,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             acceptState =
                 getRequestLikelyAcceptedState(
                     runningRequests, otherRunningRequests, ignoreLocalVsRemote, loadStats);
-            if (acceptState == null || acceptState == RequestLikelyAcceptedState.UNLIKELY) {
+            if (acceptState == RequestLikelyAcceptedState.UNLIKELY) {
               if (logMINOR)
                 Logger.minor(
                     this, "Accept state is " + acceptState + " - not waking up - type is " + type);
@@ -6351,7 +6351,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         String errCause = "";
         if (hasNoSignature) errCause += " (No signature)";
         if (isECDSAsigInvalid) errCause += " (ECDSA signature is invalid)";
-        if (failed) errCause += " (VERIFICATION FAILED)";
+        errCause += " (VERIFICATION FAILED)";
         Logger.error(
             this,
             "The integrity of the reference has been compromised!"
@@ -6370,7 +6370,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       throw new ReferenceSignatureVerificationException(
           "The node reference you added is invalid: It does not have a valid ECDSA signature.");
     }
-    return !failed;
+    return true;
   }
 
   protected final byte[] getPubKeyHash() {
