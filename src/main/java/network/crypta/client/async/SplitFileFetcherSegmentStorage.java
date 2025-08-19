@@ -1101,7 +1101,7 @@ public class SplitFileFetcherSegmentStorage {
         + checksumLength;
   }
 
-  private final int blocksForDecode() {
+  private int blocksForDecode() {
     return dataBlocks + crossSegmentCheckBlocks;
   }
 

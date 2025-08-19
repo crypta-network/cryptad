@@ -127,7 +127,7 @@ public class Probe implements ByteCounter {
    * @param sigma Proportion change at one standard deviation.
    * @return Value +/- Gaussian percentage.
    */
-  private final double randomNoise(final double input, final double sigma) {
+  private double randomNoise(final double input, final double sigma) {
     return node.getNodeStats().randomNoise(input, sigma);
   }
 
