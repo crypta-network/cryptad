@@ -244,11 +244,11 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
         if (file == null) {
           throw new BadRequestException("filename");
         }
-        filename = file.filename();
+        filename = file.getFilename();
         if (mimeType.isEmpty()) {
-          mimeType = file.contentType();
+          mimeType = file.getContentType();
         }
-        bucket = file.data();
+        bucket = file.getData();
       }
       if (filename.isEmpty()) {
         throw new BadRequestException("filename");

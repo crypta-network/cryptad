@@ -461,8 +461,17 @@ public class SplitFileFetcherSegmentStorage {
     if (allBlocks == null || keys == null) {
       return;
     }
-      record SplitFileFetcherBlock(byte[] buf, int blockNumber, int slot) {
+    class SplitFileFetcherBlock {
+      final byte[] buf;
+      final int blockNumber;
+      final int slot;
+
+      SplitFileFetcherBlock(byte[] buf, int blockNumber, int slot) {
+        this.buf = buf;
+        this.blockNumber = blockNumber;
+        this.slot = slot;
       }
+    }
     ArrayList<SplitFileFetcherBlock> maybeBlocks = new ArrayList<SplitFileFetcherBlock>();
     int fetchedCount = 0;
     synchronized (this) {

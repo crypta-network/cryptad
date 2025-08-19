@@ -1246,7 +1246,7 @@ public class ClientGetter extends BaseClientGetter
       dos.writeBoolean(false);
       return false;
     }
-    return fetcher.writeTrivialProgress(dos);
+    return ((SplitFileFetcher) state).writeTrivialProgress(dos);
   }
 
   public boolean resumeFromTrivialProgress(DataInputStream dis, ClientContext context)

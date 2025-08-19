@@ -153,6 +153,7 @@ public class MainJarUpdater extends NodeUpdater implements Deployer {
       System.err.println(
           "Can't read dependencies file. Other nodes will not be able to use Update Over "
               + "Mandatory through this one.");
+      return;
     }
   }
 

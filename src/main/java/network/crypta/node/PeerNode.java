@@ -4847,33 +4847,38 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     this.messageQueue.removeUIDsFromMessageQueues(list);
   }
 
-    public record IncomingLoadSummaryStats(int runningRequestsTotal, int peerCapacityOutputBytes,
-                                           int peerCapacityInputBytes, int totalCapacityOutputBytes,
-                                           int totalCapacityInputBytes, int usedCapacityOutputBytes,
-                                           int usedCapacityInputBytes, int othersUsedCapacityOutputBytes,
-                                           int othersUsedCapacityInputBytes) {
-        public IncomingLoadSummaryStats(
-                int runningRequestsTotal,
-                double peerCapacityOutputBytes,
-                double peerCapacityInputBytes,
-                double totalCapacityOutputBytes,
-                double totalCapacityInputBytes,
-                double usedCapacityOutputBytes,
-                double usedCapacityInputBytes,
-                double othersUsedCapacityOutputBytes,
-                double othersUsedCapacityInputBytes) {
-            this.runningRequestsTotal = runningRequestsTotal;
-            this.peerCapacityOutputBytes = (int) peerCapacityOutputBytes;
-            this.peerCapacityInputBytes = (int) peerCapacityInputBytes;
-            this.totalCapacityOutputBytes = (int) totalCapacityOutputBytes;
-            this.totalCapacityInputBytes = (int) totalCapacityInputBytes;
-            this.usedCapacityOutputBytes = (int) usedCapacityOutputBytes;
-            this.usedCapacityInputBytes = (int) usedCapacityInputBytes;
-            this.othersUsedCapacityOutputBytes = (int) othersUsedCapacityOutputBytes;
-            this.othersUsedCapacityInputBytes = (int) othersUsedCapacityInputBytes;
-        }
+  public static class IncomingLoadSummaryStats {
+    public IncomingLoadSummaryStats(
+        int totalRequests,
+        double outputBandwidthPeerLimit,
+        double inputBandwidthPeerLimit,
+        double outputBandwidthTotalLimit,
+        double inputBandwidthTotalLimit,
+        double usedOutput,
+        double usedInput,
+        double othersUsedOutput,
+        double othersUsedInput) {
+      runningRequestsTotal = totalRequests;
+      peerCapacityOutputBytes = (int) outputBandwidthPeerLimit;
+      peerCapacityInputBytes = (int) inputBandwidthPeerLimit;
+      totalCapacityOutputBytes = (int) outputBandwidthTotalLimit;
+      totalCapacityInputBytes = (int) inputBandwidthTotalLimit;
+      usedCapacityOutputBytes = (int) usedOutput;
+      usedCapacityInputBytes = (int) usedInput;
+      othersUsedCapacityOutputBytes = (int) othersUsedOutput;
+      othersUsedCapacityInputBytes = (int) othersUsedInput;
+    }
 
-        }
+    public final int runningRequestsTotal;
+    public final int peerCapacityOutputBytes;
+    public final int peerCapacityInputBytes;
+    public final int totalCapacityOutputBytes;
+    public final int totalCapacityInputBytes;
+    public final int usedCapacityOutputBytes;
+    public final int usedCapacityInputBytes;
+    public final int othersUsedCapacityOutputBytes;
+    public final int othersUsedCapacityInputBytes;
+  }
 
   enum RequestLikelyAcceptedState {
     GUARANTEED, // guaranteed to be accepted, under the per-peer guaranteed limit

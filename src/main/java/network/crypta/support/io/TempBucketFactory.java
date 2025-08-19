@@ -56,7 +56,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   // Static nested class for cleaner action to avoid holding reference to the TempBucket instance
   private static class TempBucketCleanup implements Runnable {
-    private final RandomAccessBucket currentBucket;
+    private RandomAccessBucket currentBucket;
 
     TempBucketCleanup(RandomAccessBucket bucket) {
       this.currentBucket = bucket;
@@ -72,19 +72,28 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     }
   }
 
-    // Static nested class for cleaner action for TempRandomAccessBuffer
-    private record TempRABCleanup(long rabId, long size, TempBucketFactory factory) implements Runnable {
+  // Static nested class for cleaner action for TempRandomAccessBuffer
+  private static class TempRABCleanup implements Runnable {
+    private final long rabId;
+    private final long size;
+    private final TempBucketFactory factory;
 
-        @Override
-        public void run() {
-            // Safety net cleanup - this should rarely be called if free() is used properly
-            // Since this is a safety net, we only clean up memory accounting, not the underlying buffer
-            // as it may have complex state that we can't safely clean up without proper synchronization
-            if (factory != null) {
-                factory._cleanerFreedRAM(rabId, size);
-            }
-        }
+    TempRABCleanup(long rabId, long size, TempBucketFactory factory) {
+      this.rabId = rabId;
+      this.size = size;
+      this.factory = factory;
     }
+
+    @Override
+    public void run() {
+      // Safety net cleanup - this should rarely be called if free() is used properly
+      // Since this is a safety net, we only clean up memory accounting, not the underlying buffer
+      // as it may have complex state that we can't safely clean up without proper synchronization
+      if (factory != null) {
+        factory._cleanerFreedRAM(rabId, size);
+      }
+    }
+  }
 
   private final FilenameGenerator filenameGenerator;
   private final PooledFileRandomAccessBufferFactory underlyingDiskRAFFactory;

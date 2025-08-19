@@ -1,16 +1,22 @@
 package network.crypta.client.events;
 
-public record ExpectedMIMEEvent(String expectedMIMEType) implements ClientEvent {
+public class ExpectedMIMEEvent implements ClientEvent {
 
-    static final int CODE = 0x0B;
+  static final int CODE = 0x0B;
 
-    @Override
-    public int getCode() {
-        return CODE;
-    }
+  public final String expectedMIMEType;
 
-    @Override
-    public String getDescription() {
-        return "Expected MIME type: " + expectedMIMEType;
-    }
+  public ExpectedMIMEEvent(String type) {
+    this.expectedMIMEType = type;
+  }
+
+  @Override
+  public int getCode() {
+    return CODE;
+  }
+
+  @Override
+  public String getDescription() {
+    return "Expected MIME type: " + expectedMIMEType;
+  }
 }

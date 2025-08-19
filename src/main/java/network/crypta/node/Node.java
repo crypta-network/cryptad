@@ -1086,7 +1086,7 @@ public class Node implements TimeSkewDetectorCallback {
                   + udpAddr);
           continue;
         } catch (PeerParseException e) {
-          throw new IOException(e);
+          throw (IOException) new IOException(e);
         }
         if (p.getPort() == getDarknetPortNumber()) {
           // DNSRequester doesn't deal with our own node

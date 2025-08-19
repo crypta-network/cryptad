@@ -46,8 +46,15 @@ public class FCPConnectionHandler implements Closeable {
         });
   }
 
-    private record DirectoryAccess(boolean canRead, boolean canWrite) {
+  private static final class DirectoryAccess {
+    final boolean canWrite;
+    final boolean canRead;
+
+    public DirectoryAccess(boolean canRead, boolean canWrite) {
+      this.canRead = canRead;
+      this.canWrite = canWrite;
     }
+  }
 
   public static class DDACheckJob {
     final File directory, readFilename, writeFilename;

@@ -2,20 +2,36 @@ package network.crypta.client.events;
 
 import network.crypta.client.InsertContext.CompatibilityMode;
 
-public record SplitfileCompatibilityModeEvent(CompatibilityMode minCompatibilityMode,
-                                              CompatibilityMode maxCompatibilityMode, byte[] splitfileCryptoKey,
-                                              boolean dontCompress, boolean bottomLayer) implements ClientEvent {
+public class SplitfileCompatibilityModeEvent implements ClientEvent {
 
-    public static final int CODE = 0x0D;
+  public final CompatibilityMode minCompatibilityMode;
+  public final CompatibilityMode maxCompatibilityMode;
+  public final byte[] splitfileCryptoKey;
+  public final boolean dontCompress;
+  public final boolean bottomLayer;
 
-    @Override
-    public int getCode() {
-        return CODE;
-    }
+  public static final int CODE = 0x0D;
 
-    @Override
-    public String getDescription() {
-        return "CompatibilityMode between " + minCompatibilityMode + " and " + maxCompatibilityMode;
-    }
+  @Override
+  public int getCode() {
+    return CODE;
+  }
 
+  @Override
+  public String getDescription() {
+    return "CompatibilityMode between " + minCompatibilityMode + " and " + maxCompatibilityMode;
+  }
+
+  public SplitfileCompatibilityModeEvent(
+      CompatibilityMode min,
+      CompatibilityMode max,
+      byte[] splitfileCryptoKey,
+      boolean dontCompress,
+      boolean bottomLayer) {
+    this.minCompatibilityMode = min;
+    this.maxCompatibilityMode = max;
+    this.splitfileCryptoKey = splitfileCryptoKey;
+    this.dontCompress = dontCompress;
+    this.bottomLayer = bottomLayer;
+  }
 }

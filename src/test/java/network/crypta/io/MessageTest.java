@@ -72,6 +72,6 @@ public class MessageTest {
     assertEquals(doubleVal, msg.getDouble(DOUBLE), 0);
     assertEquals(floatVal, msg.getFloat(FLOAT), 0);
     assertArrayEquals(doubleArrayVal, msg.getDoubleArray(DOUBLE_ARRAY), 0.0);
-      assertArrayEquals(floatArrayVal, msg.getFloatArray(FLOAT_ARRAY), 0.0);
+    assertTrue(Arrays.equals(floatArrayVal, msg.getFloatArray(FLOAT_ARRAY)));
   }
 }

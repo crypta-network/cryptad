@@ -18,7 +18,7 @@ public class ExpectedHashes extends FCPMessage implements Serializable {
   public ExpectedHashes(ExpectedHashesEvent event, String identifier, boolean global) {
     this.identifier = identifier;
     this.global = global;
-    this.hashes = event.hashes();
+    this.hashes = event.hashes;
   }
 
   ExpectedHashes(HashResult[] hashes, String identifier, boolean global) {

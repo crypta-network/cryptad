@@ -2,17 +2,23 @@ package network.crypta.client.events;
 
 import network.crypta.crypt.HashResult;
 
-public record ExpectedHashesEvent(HashResult[] hashes) implements ClientEvent {
+public class ExpectedHashesEvent implements ClientEvent {
 
-    public static final int CODE = 0x0E;
+  public final HashResult[] hashes;
 
-    @Override
-    public int getCode() {
-        return CODE;
-    }
+  public static final int CODE = 0x0E;
 
-    @Override
-    public String getDescription() {
-        return "Expected hashes";
-    }
+  public ExpectedHashesEvent(HashResult[] h) {
+    hashes = h;
+  }
+
+  @Override
+  public int getCode() {
+    return CODE;
+  }
+
+  @Override
+  public String getDescription() {
+    return "Expected hashes";
+  }
 }

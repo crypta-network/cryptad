@@ -511,168 +511,173 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     return finished;
   }
 
-    /**
-     * @param orig Only use when sure it is available!
-     */
-    record MySendableRequestSender(String compressorDescriptor,
-                                   SingleBlockInserter orig) implements SendableRequestSender {
+  static class MySendableRequestSender implements SendableRequestSender {
 
-        @Override
-        public boolean send(
-                NodeClientCore core,
-                RequestScheduler sched,
-                final ClientContext context,
-                final ChosenBlock req) {
-            // Ignore keyNum, key, since we're only sending one block.
-            ClientKeyBlock encodedBlock;
-            KeyBlock b;
-            final ClientKey key;
-            ClientKey k = null;
-            if (SingleBlockInserter.logMINOR) Logger.minor(this, "Starting request");
-            BlockItem block = (BlockItem) req.token;
-            try {
-                try {
-                    encodedBlock =
-                            innerEncode(
-                                    context.random,
-                                    block.uri,
-                                    block.copyBucket,
-                                    block.isMetadata,
-                                    block.compressionCodec,
-                                    block.sourceLength,
-                                    compressorDescriptor,
-                                    block.cryptoAlgorithm,
-                                    block.cryptoKey);
-                    b = encodedBlock.getBlock();
-                } catch (CHKEncodeException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                } catch (SSKEncodeException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                } catch (MalformedURLException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                } catch (InsertException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                } catch (IOException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                } catch (InvalidCompressionCodecException e) {
-                    throw new LowLevelPutException(
-                            LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
-                }
-                if (b == null) {
-                    Logger.error(this, "Asked to send empty block", new Exception("error"));
-                    return false;
-                }
-                key = encodedBlock.getClientKey();
-                k = key;
-                context
-                        .getJobRunner(block.persistent)
-                        .queueNormalOrDrop(
-                                new PersistentJob() {
+    final String compressorDescriptor;
+    // Only use when sure it is available!
+    final SingleBlockInserter orig;
 
-                                    @Override
-                                    public boolean run(ClientContext context) {
-                                        orig.onEncode(key, context);
-                                        return true;
-                                    }
-                                });
-                if (req.localRequestOnly)
-                    try {
-                        core.getNode().store(b, false, req.canWriteClientCache, true, false);
-                    } catch (KeyCollisionException e) {
-                        LowLevelPutException failed = new LowLevelPutException(LowLevelPutException.COLLISION);
-                        KeyBlock collided =
-                                core.getNode()
-                                        .fetch(k.getNodeKey(), true, req.canWriteClientCache, false, false, null);
-                        if (collided == null) {
-                            Logger.error(this, "Collided but no key?!");
-                            // Could be a race condition.
-                            try {
-                                core.getNode().store(b, false, req.canWriteClientCache, true, false);
-                            } catch (KeyCollisionException e2) {
-                                Logger.error(this, "Collided but no key and still collided!");
-                                throw new LowLevelPutException(
-                                        LowLevelPutException.INTERNAL_ERROR,
-                                        "Collided, can't find block, but still collides!",
-                                        e);
-                            }
-                        }
-
-                        failed.setCollidedBlock(collided);
-                        throw failed;
-                    }
-                else
-                    core.realPut(
-                            b,
-                            req.canWriteClientCache,
-                            req.forkOnCacheable,
-                            Node.PREFER_INSERT_DEFAULT,
-                            Node.IGNORE_LOW_BACKOFF_DEFAULT,
-                            req.realTimeFlag);
-            } catch (LowLevelPutException e) {
-                if (logMINOR) Logger.minor(this, "Caught " + e, e);
-                if (e.code == LowLevelPutException.COLLISION) {
-                    // Collision
-                    try {
-                        ClientSSKBlock collided =
-                                ClientSSKBlock.construct(((SSKBlock) e.getCollidedBlock()), (ClientSSK) k);
-                        byte[] data = collided.memoryDecode(true);
-                        byte[] inserting = BucketTools.toByteArray(block.copyBucket);
-                        if (collided.isMetadata() == block.isMetadata
-                                && collided.getCompressionCodec() == block.compressionCodec
-                                && Arrays.equals(data, inserting)) {
-                            if (SingleBlockInserter.logMINOR) Logger.minor(this, "Collided with identical data");
-                            req.onInsertSuccess(k, context);
-                            return true;
-                        } else {
-                            if (SingleBlockInserter.logMINOR)
-                                Logger.minor(
-                                        this,
-                                        "Apparently real collision: collided.isMetadata="
-                                                + collided.isMetadata()
-                                                + " block.isMetadata="
-                                                + block.isMetadata
-                                                + " collided.codec="
-                                                + collided.getCompressionCodec()
-                                                + " block.codec="
-                                                + block.compressionCodec
-                                                + " collided.datalength="
-                                                + data.length
-                                                + " block.datalength="
-                                                + inserting.length
-                                                + " H(collided)="
-                                                + Fields.hashCode(data)
-                                                + " H(inserting)="
-                                                + Fields.hashCode(inserting));
-                        }
-                    } catch (KeyVerifyException e1) {
-                        Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
-                    } catch (KeyDecodeException e1) {
-                        Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
-                    } catch (IOException e1) {
-                        Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
-                    }
-                }
-                req.onFailure(e, context);
-                if (SingleBlockInserter.logMINOR) Logger.minor(this, "Request failed for " + e);
-                return true;
-            } finally {
-                block.copyBucket.free();
-            }
-            if (SingleBlockInserter.logMINOR) Logger.minor(this, "Request succeeded");
-            req.onInsertSuccess(k, context);
-            return true;
-        }
-
-        @Override
-        public boolean sendIsBlocking() {
-            return true;
-        }
+    MySendableRequestSender(String compress, SingleBlockInserter orig) {
+      compressorDescriptor = compress;
+      this.orig = orig;
     }
+
+    @Override
+    public boolean send(
+        NodeClientCore core,
+        RequestScheduler sched,
+        final ClientContext context,
+        final ChosenBlock req) {
+      // Ignore keyNum, key, since we're only sending one block.
+      ClientKeyBlock encodedBlock;
+      KeyBlock b;
+      final ClientKey key;
+      ClientKey k = null;
+      if (SingleBlockInserter.logMINOR) Logger.minor(this, "Starting request");
+      BlockItem block = (BlockItem) req.token;
+      try {
+        try {
+          encodedBlock =
+              innerEncode(
+                  context.random,
+                  block.uri,
+                  block.copyBucket,
+                  block.isMetadata,
+                  block.compressionCodec,
+                  block.sourceLength,
+                  compressorDescriptor,
+                  block.cryptoAlgorithm,
+                  block.cryptoKey);
+          b = encodedBlock.getBlock();
+        } catch (CHKEncodeException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        } catch (SSKEncodeException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        } catch (MalformedURLException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        } catch (InsertException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        } catch (IOException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        } catch (InvalidCompressionCodecException e) {
+          throw new LowLevelPutException(
+              LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
+        }
+        if (b == null) {
+          Logger.error(this, "Asked to send empty block", new Exception("error"));
+          return false;
+        }
+        key = encodedBlock.getClientKey();
+        k = key;
+        context
+            .getJobRunner(block.persistent)
+            .queueNormalOrDrop(
+                new PersistentJob() {
+
+                  @Override
+                  public boolean run(ClientContext context) {
+                    orig.onEncode(key, context);
+                    return true;
+                  }
+                });
+        if (req.localRequestOnly)
+          try {
+            core.getNode().store(b, false, req.canWriteClientCache, true, false);
+          } catch (KeyCollisionException e) {
+            LowLevelPutException failed = new LowLevelPutException(LowLevelPutException.COLLISION);
+            KeyBlock collided =
+                core.getNode()
+                    .fetch(k.getNodeKey(), true, req.canWriteClientCache, false, false, null);
+            if (collided == null) {
+              Logger.error(this, "Collided but no key?!");
+              // Could be a race condition.
+              try {
+                core.getNode().store(b, false, req.canWriteClientCache, true, false);
+              } catch (KeyCollisionException e2) {
+                Logger.error(this, "Collided but no key and still collided!");
+                throw new LowLevelPutException(
+                    LowLevelPutException.INTERNAL_ERROR,
+                    "Collided, can't find block, but still collides!",
+                    e);
+              }
+            }
+
+            failed.setCollidedBlock(collided);
+            throw failed;
+          }
+        else
+          core.realPut(
+              b,
+              req.canWriteClientCache,
+              req.forkOnCacheable,
+              Node.PREFER_INSERT_DEFAULT,
+              Node.IGNORE_LOW_BACKOFF_DEFAULT,
+              req.realTimeFlag);
+      } catch (LowLevelPutException e) {
+        if (logMINOR) Logger.minor(this, "Caught " + e, e);
+        if (e.code == LowLevelPutException.COLLISION) {
+          // Collision
+          try {
+            ClientSSKBlock collided =
+                ClientSSKBlock.construct(((SSKBlock) e.getCollidedBlock()), (ClientSSK) k);
+            byte[] data = collided.memoryDecode(true);
+            byte[] inserting = BucketTools.toByteArray(block.copyBucket);
+            if (collided.isMetadata() == block.isMetadata
+                && collided.getCompressionCodec() == block.compressionCodec
+                && Arrays.equals(data, inserting)) {
+              if (SingleBlockInserter.logMINOR) Logger.minor(this, "Collided with identical data");
+              req.onInsertSuccess(k, context);
+              return true;
+            } else {
+              if (SingleBlockInserter.logMINOR)
+                Logger.minor(
+                    this,
+                    "Apparently real collision: collided.isMetadata="
+                        + collided.isMetadata()
+                        + " block.isMetadata="
+                        + block.isMetadata
+                        + " collided.codec="
+                        + collided.getCompressionCodec()
+                        + " block.codec="
+                        + block.compressionCodec
+                        + " collided.datalength="
+                        + data.length
+                        + " block.datalength="
+                        + inserting.length
+                        + " H(collided)="
+                        + Fields.hashCode(data)
+                        + " H(inserting)="
+                        + Fields.hashCode(inserting));
+            }
+          } catch (KeyVerifyException e1) {
+            Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
+          } catch (KeyDecodeException e1) {
+            Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
+          } catch (IOException e1) {
+            Logger.error(this, "Caught " + e1 + " when checking collision!", e1);
+          }
+        }
+        req.onFailure(e, context);
+        if (SingleBlockInserter.logMINOR) Logger.minor(this, "Request failed for " + e);
+        return true;
+      } finally {
+        block.copyBucket.free();
+      }
+      if (SingleBlockInserter.logMINOR) Logger.minor(this, "Request succeeded");
+      req.onInsertSuccess(k, context);
+      return true;
+    }
+
+    @Override
+    public boolean sendIsBlocking() {
+      return true;
+    }
+  }
 
   @Override
   public SendableRequestSender getSender(ClientContext context) {

@@ -2,17 +2,23 @@ package network.crypta.client.events;
 
 import network.crypta.support.TimeUtil;
 
-public record EnterFiniteCooldownEvent(long wakeupTime) implements ClientEvent {
+public class EnterFiniteCooldownEvent implements ClientEvent {
 
-    static final int CODE = 0x10;
+  public final long wakeupTime;
 
-    @Override
-    public String getDescription() {
-        return "Wake up in " + TimeUtil.formatTime(wakeupTime - System.currentTimeMillis(), 2, true);
-    }
+  static final int CODE = 0x10;
 
-    @Override
-    public int getCode() {
-        return CODE;
-    }
+  public EnterFiniteCooldownEvent(long wakeupTime) {
+    this.wakeupTime = wakeupTime;
+  }
+
+  @Override
+  public String getDescription() {
+    return "Wake up in " + TimeUtil.formatTime(wakeupTime - System.currentTimeMillis(), 2, true);
+  }
+
+  @Override
+  public int getCode() {
+    return CODE;
+  }
 }

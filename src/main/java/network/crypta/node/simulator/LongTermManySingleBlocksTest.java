@@ -169,8 +169,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     System.out.println("DATE:" + dateFormat.format(today.getTime()));
     csvLine.add(dateFormat.format(today.getTime()));
 
-    System.out.println("Version:" + Version.currentBuildNumber());
-    csvLine.add(String.valueOf(Version.currentBuildNumber()));
+    System.out.println("Version:" + (int) Version.currentBuildNumber());
+    csvLine.add(String.valueOf((int) Version.currentBuildNumber()));
 
     int exitCode = 0;
     Node node = null;

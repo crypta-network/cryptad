@@ -32,7 +32,7 @@ public class SerializerTest {
         if (read instanceof double[] doubles) {
           assertArrayEquals((double[]) datum, doubles, 0.0);
         } else if (read instanceof float[] floats) {
-            assertArrayEquals((float[]) datum, floats, 0.0);
+          assertTrue(Arrays.equals((float[]) datum, floats));
         } else {
           assertEquals(datum, read);
         }

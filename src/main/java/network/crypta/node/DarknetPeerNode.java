@@ -1608,10 +1608,10 @@ public class DarknetPeerNode extends PeerNode {
   }
 
   public int sendFileOffer(HTTPUploadedFile file, String message) throws IOException {
-    String fnam = file.filename();
-    String mime = file.contentType();
+    String fnam = file.getFilename();
+    String mime = file.getContentType();
     RandomAccessBuffer data =
-        new ByteArrayRandomAccessBuffer(BucketTools.toByteArray(file.data()));
+        new ByteArrayRandomAccessBuffer(BucketTools.toByteArray(file.getData()));
     return sendFileOffer(fnam, mime, message, data);
   }
 

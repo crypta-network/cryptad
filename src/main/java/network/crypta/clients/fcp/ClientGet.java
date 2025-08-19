@@ -714,7 +714,7 @@ public class ClientGet extends ClientRequest
       if ((verbosity & verbosityMask) == 0) return;
     } else if (ce instanceof ExpectedMIMEEvent event) {
       synchronized (this) {
-        foundDataMimeType = event.expectedMIMEType();
+        foundDataMimeType = event.expectedMIMEType;
       }
       if (client != null) {
         RequestStatusCache cache = client.getRequestStatusCache();
@@ -723,11 +723,11 @@ public class ClientGet extends ClientRequest
         }
       }
       verbosityMask = VERBOSITY_EXPECTED_TYPE;
-      progress = new ExpectedMIME(identifier, global, event.expectedMIMEType());
+      progress = new ExpectedMIME(identifier, global, event.expectedMIMEType);
       if ((verbosity & verbosityMask) == 0) return;
     } else if (ce instanceof ExpectedFileSizeEvent event) {
       synchronized (this) {
-        foundDataLength = event.expectedSize();
+        foundDataLength = event.expectedSize;
       }
       if (client != null) {
         RequestStatusCache cache = client.getRequestStatusCache();
@@ -737,11 +737,11 @@ public class ClientGet extends ClientRequest
       }
       verbosityMask = VERBOSITY_EXPECTED_SIZE;
       if ((verbosity & verbosityMask) == 0) return;
-      progress = new ExpectedDataLength(identifier, global, event.expectedSize());
+      progress = new ExpectedDataLength(identifier, global, event.expectedSize);
     } else if (ce instanceof EnterFiniteCooldownEvent event) {
       verbosityMask = VERBOSITY_ENTER_FINITE_COOLDOWN;
       if ((verbosity & verbosityMask) == 0) return;
-      progress = new EnterFiniteCooldown(identifier, global, event.wakeupTime());
+      progress = new EnterFiniteCooldown(identifier, global, event.wakeupTime);
     } else {
       Logger.error(this, "Unknown event " + ce);
       return; // Don't know what to do with event
@@ -774,11 +774,11 @@ public class ClientGet extends ClientRequest
   private void innerHandleCompatibilityMode(
       SplitfileCompatibilityModeEvent ce, ClientContext context) {
     compatMode.merge(
-            ce.minCompatibilityMode(),
-            ce.maxCompatibilityMode(),
-            ce.splitfileCryptoKey(),
-            ce.dontCompress(),
-            ce.bottomLayer());
+        ce.minCompatibilityMode,
+        ce.maxCompatibilityMode,
+        ce.splitfileCryptoKey,
+        ce.dontCompress,
+        ce.bottomLayer);
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
       if (cache != null) {

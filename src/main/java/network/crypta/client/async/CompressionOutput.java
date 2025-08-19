@@ -4,6 +4,15 @@ import network.crypta.crypt.HashResult;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 
-record CompressionOutput(RandomAccessBucket data, COMPRESSOR_TYPE bestCodec, HashResult[] hashes) {
+class CompressionOutput {
+  public CompressionOutput(
+      RandomAccessBucket bestCompressedData, COMPRESSOR_TYPE bestCodec2, HashResult[] hashes) {
+    this.data = bestCompressedData;
+    this.bestCodec = bestCodec2;
+    this.hashes = hashes;
+  }
 
+  final RandomAccessBucket data;
+  final COMPRESSOR_TYPE bestCodec;
+  final HashResult[] hashes;
 }

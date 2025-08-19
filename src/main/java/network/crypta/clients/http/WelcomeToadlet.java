@@ -803,7 +803,7 @@ public class WelcomeToadlet extends Toadlet {
                 new String[] {"fullVersion", "build", "rev"},
                 new String[] {
                   Long.toString(Version.currentBuildNumber()),
-                  Integer.toString(Version.currentBuildNumber()),
+                  Integer.toString((int) Version.currentBuildNumber()),
                   Version.gitRevision()
                 }));
     versionContent.addChild("br");

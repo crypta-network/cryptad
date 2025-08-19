@@ -140,8 +140,8 @@ public class BANDWIDTH_MONTHLY extends BandwidthManipulator implements Step {
     BandwidthLimit bandwidth = new BandwidthLimit(bytesPerMonth);
 
     try {
-      setBandwidthLimit(Long.toString(bandwidth.downBytes()), false);
-      setBandwidthLimit(Long.toString(bandwidth.upBytes()), true);
+      setBandwidthLimit(Long.toString(bandwidth.downBytes), false);
+      setBandwidthLimit(Long.toString(bandwidth.upBytes), true);
     } catch (InvalidConfigValueException e) {
       target.append(URLEncoder.encode(String.valueOf(GBPerMonth), true));
       target.append("&tooLow=true");

@@ -93,7 +93,7 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
       // Detected limits reasonable; add half of both as recommended option.
       BandwidthLimit usable =
           new BandwidthLimit(
-              detected.downBytes() / 2, detected.upBytes() / 2, "bandwidthDetected", true);
+              detected.downBytes / 2, detected.upBytes / 2, "bandwidthDetected", true);
       addLimitRow(table, helper, usable, true, true);
       addedDefault = true;
     } catch (PluginNotFoundException | IllegalValueException e) {
@@ -223,19 +223,19 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
       boolean recommended,
       boolean useMaybeDefault) {
     HTMLNode row = table.addChild("tr");
-    row.addChild("td", WizardL10n.l10n(limit.descriptionKey()));
+    row.addChild("td", WizardL10n.l10n(limit.descriptionKey));
     String downColumn =
-        SizeUtil.formatSize(limit.downBytes()) + WizardL10n.l10n("bandwidthPerSecond");
-    if (limit.downBytes() >= 32 * 1024) {
+        SizeUtil.formatSize(limit.downBytes) + WizardL10n.l10n("bandwidthPerSecond");
+    if (limit.downBytes >= 32 * 1024) {
       downColumn += " (= ";
-      if (limit.downBytes() < 256 * 1024)
+      if (limit.downBytes < 256 * 1024)
         downColumn +=
-            new DecimalFormat("0.0").format(((double) ((limit.downBytes() * 8))) / (1024 * 1024));
-      else downColumn += ((limit.downBytes() * 8) / (1024 * 1024));
+            new DecimalFormat("0.0").format(((double) ((limit.downBytes * 8))) / (1024 * 1024));
+      else downColumn += ((limit.downBytes * 8) / (1024 * 1024));
       downColumn += "Mbps)";
     }
     row.addChild("td", downColumn);
-    row.addChild("td", SizeUtil.formatSize(limit.upBytes()) + WizardL10n.l10n("bandwidthPerSecond"));
+    row.addChild("td", SizeUtil.formatSize(limit.upBytes) + WizardL10n.l10n("bandwidthPerSecond"));
 
     HTMLNode buttonCell = row.addChild("td");
 
@@ -243,8 +243,8 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
         buttonCell.addChild(
             "input",
             new String[] {"type", "name", "value"},
-            new String[] {"radio", "bandwidth", limit.downBytes() + "/" + limit.upBytes()});
-    if (recommended || (useMaybeDefault && limit.maybeDefault()))
+            new String[] {"radio", "bandwidth", limit.downBytes + "/" + limit.upBytes});
+    if (recommended || (useMaybeDefault && limit.maybeDefault))
       radio.addAttribute("checked", "checked");
     if (recommended) {
       buttonCell.addChild("#", WizardL10n.l10n("autodetectedSuggestedLimit"));

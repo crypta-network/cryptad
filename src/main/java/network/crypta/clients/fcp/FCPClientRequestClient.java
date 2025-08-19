@@ -2,11 +2,26 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.RequestClient;
 
-public record FCPClientRequestClient(PersistentRequestClient client, boolean forever,
-                                     boolean realTimeFlag) implements RequestClient {
+public class FCPClientRequestClient implements RequestClient {
 
-    @Override
-    public boolean persistent() {
-        return forever;
-    }
+  public final PersistentRequestClient client;
+  public final boolean forever;
+  public final boolean realTimeFlag;
+
+  public FCPClientRequestClient(
+      PersistentRequestClient fcpClient, boolean forever2, boolean realTime) {
+    this.client = fcpClient;
+    this.forever = forever2;
+    this.realTimeFlag = realTime;
+  }
+
+  @Override
+  public boolean persistent() {
+    return forever;
+  }
+
+  @Override
+  public boolean realTimeFlag() {
+    return realTimeFlag;
+  }
 }

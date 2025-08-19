@@ -1028,7 +1028,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     for (ForwardPort p : currentPorts) {
       ForwardPortStatus status = statuses.get(p);
       if (status == null) continue;
-      if (status.status() == ForwardPortStatus.DEFINITE_SUCCESS) {
+      if (status.status == ForwardPortStatus.DEFINITE_SUCCESS) {
         Logger.normal(
             this,
             "Succeeded forwarding "
@@ -1038,8 +1038,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                 + " for "
                 + p.protocol
                 + " - port forward definitely succeeded "
-                + status.reasonString());
-      } else if (status.status() == ForwardPortStatus.PROBABLE_SUCCESS) {
+                + status.reasonString);
+      } else if (status.status == ForwardPortStatus.PROBABLE_SUCCESS) {
         Logger.normal(
             this,
             "Probably succeeded forwarding "
@@ -1049,8 +1049,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                 + " for "
                 + p.protocol
                 + " - port forward probably succeeded "
-                + status.reasonString());
-      } else if (status.status() == ForwardPortStatus.MAYBE_SUCCESS) {
+                + status.reasonString);
+      } else if (status.status == ForwardPortStatus.MAYBE_SUCCESS) {
         Logger.normal(
             this,
             "Maybe succeeded forwarding "
@@ -1061,8 +1061,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                 + p.protocol
                 + " - port forward may have succeeded but strongly recommend out of band"
                 + " verification "
-                + status.reasonString());
-      } else if (status.status() == ForwardPortStatus.DEFINITE_FAILURE) {
+                + status.reasonString);
+      } else if (status.status == ForwardPortStatus.DEFINITE_FAILURE) {
         Logger.error(
             this,
             "Failed forwarding "
@@ -1072,8 +1072,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                 + " for "
                 + p.protocol
                 + " - port forward definitely failed "
-                + status.reasonString());
-      } else if (status.status() == ForwardPortStatus.PROBABLE_FAILURE) {
+                + status.reasonString);
+      } else if (status.status == ForwardPortStatus.PROBABLE_FAILURE) {
         Logger.error(
             this,
             "Probably failed forwarding "
@@ -1083,7 +1083,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                 + " for "
                 + p.protocol
                 + " - port forward probably failed "
-                + status.reasonString());
+                + status.reasonString);
       }
       // Not much more we can do / want to do for now
       // FIXME use status.externalPort.

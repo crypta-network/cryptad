@@ -97,19 +97,24 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
     throw new UnsupportedOperationException();
   }
 
-    private record MySendableRequestItem(Key key)
-            implements SendableRequestItem, SendableRequestItemKey {
+  private static class MySendableRequestItem
+      implements SendableRequestItem, SendableRequestItemKey {
+    final Key key;
 
-        @Override
-        public void dump() {
-            // Ignore, we will be GC'ed
-        }
-
-        @Override
-        public SendableRequestItemKey getKey() {
-            return this;
-        }
+    MySendableRequestItem(Key key) {
+      this.key = key;
     }
+
+    @Override
+    public void dump() {
+      // Ignore, we will be GC'ed
+    }
+
+    @Override
+    public SendableRequestItemKey getKey() {
+      return this;
+    }
+  }
 
   @Override
   public synchronized SendableRequestItem chooseKey(

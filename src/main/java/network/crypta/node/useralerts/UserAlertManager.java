@@ -493,66 +493,73 @@ public class UserAlertManager implements Comparator<UserAlert> {
     }
   }
 
-    private record XmlBuilder(Document document, Element element) implements ElementBuilder {
+  private static class XmlBuilder implements ElementBuilder {
 
-        @Override
-        public void addElement(String name, Consumer<ElementBuilder> elementBuilder) {
-            Element element = document.createElement(name);
-            elementBuilder.accept(new XmlBuilder(document, element));
-            ((this.element == null) ? document : this.element).appendChild(element);
-        }
-
-        @Override
-        public void addElement(String name, String content, Consumer<ElementBuilder> elementBuilder) {
-            Element element = document.createElement(name);
-            element.setTextContent(content);
-            elementBuilder.accept(new XmlBuilder(document, element));
-            ((this.element == null) ? document : this.element).appendChild(element);
-        }
-
-        @Override
-        public void addNamespaceElement(
-                String namespace, String name, Consumer<ElementBuilder> elementBuilder) {
-            Element element = document.createElementNS(namespace, name);
-            elementBuilder.accept(new XmlBuilder(document, element));
-            ((this.element == null) ? document : this.element).appendChild(element);
-        }
-
-        @Override
-        public void setAttribute(String name, String value) {
-            if (element != null) {
-                element.setAttribute(name, value);
-            }
-        }
-
-        public String generate() {
-            DOMSource source = new DOMSource(document);
-            try (StringWriter stringWriter = new StringWriter()) {
-                StreamResult result = new StreamResult(stringWriter);
-                transformer.transform(source, result);
-                return stringWriter.toString();
-            } catch (TransformerException | IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        public XmlBuilder() {
-            this(documentBuilder.newDocument(), null);
-        }
-
-        private static final DocumentBuilder documentBuilder;
-        private static final TransformerFactory transformerFactory = TransformerFactory.newInstance();
-        private static final Transformer transformer;
-
-        static {
-            try {
-                documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-                transformer = transformerFactory.newTransformer();
-                transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-                transformer.setOutputProperty("{http://xml.apache.org/xalan}indent-amount", "2");
-            } catch (ParserConfigurationException | TransformerConfigurationException e) {
-                throw new RuntimeException(e);
-            }
-        }
+    @Override
+    public void addElement(String name, Consumer<ElementBuilder> elementBuilder) {
+      Element element = document.createElement(name);
+      elementBuilder.accept(new XmlBuilder(document, element));
+      ((this.element == null) ? document : this.element).appendChild(element);
     }
+
+    @Override
+    public void addElement(String name, String content, Consumer<ElementBuilder> elementBuilder) {
+      Element element = document.createElement(name);
+      element.setTextContent(content);
+      elementBuilder.accept(new XmlBuilder(document, element));
+      ((this.element == null) ? document : this.element).appendChild(element);
+    }
+
+    @Override
+    public void addNamespaceElement(
+        String namespace, String name, Consumer<ElementBuilder> elementBuilder) {
+      Element element = document.createElementNS(namespace, name);
+      elementBuilder.accept(new XmlBuilder(document, element));
+      ((this.element == null) ? document : this.element).appendChild(element);
+    }
+
+    @Override
+    public void setAttribute(String name, String value) {
+      if (element != null) {
+        element.setAttribute(name, value);
+      }
+    }
+
+    public String generate() {
+      DOMSource source = new DOMSource(document);
+      try (StringWriter stringWriter = new StringWriter()) {
+        StreamResult result = new StreamResult(stringWriter);
+        transformer.transform(source, result);
+        return stringWriter.toString();
+      } catch (TransformerException | IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    public XmlBuilder() {
+      this(documentBuilder.newDocument(), null);
+    }
+
+    private XmlBuilder(Document document, Element element) {
+      this.document = document;
+      this.element = element;
+    }
+
+    private final Document document;
+    private final Element element;
+    private static final DocumentBuilder documentBuilder;
+    private static final TransformerFactory transformerFactory = TransformerFactory.newInstance();
+    private static final Transformer transformer;
+
+    static {
+      try {
+        documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        transformer = transformerFactory.newTransformer();
+        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+        transformer.setOutputProperty("{http://xml.apache.org/xalan}indent-amount", "2");
+      } catch (ParserConfigurationException | TransformerConfigurationException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  }
 }

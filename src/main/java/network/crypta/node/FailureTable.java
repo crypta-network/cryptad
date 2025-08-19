@@ -275,31 +275,37 @@ public class FailureTable {
     }
   }
 
-    /**
-     * @param nodeRef       Either offered by or offered to this node
-     * @param authenticator Authenticator
-     * @param bootID        Boot ID when the offer was made
-     */
-    record BlockOffer(WeakReference<PeerNode> nodeRef, long offeredTime, byte[] authenticator, long bootID) {
-        BlockOffer(PeerNode nodeRef, long offeredTime, byte[] authenticator, long bootID) {
-            this.nodeRef = nodeRef.myRef;
-            this.offeredTime = offeredTime;
-            this.authenticator = authenticator;
-            this.bootID = bootID;
-        }
+  static final class BlockOffer {
+    final long offeredTime;
 
-        public PeerNode getPeerNode() {
-            return nodeRef.get();
-        }
+    /** Either offered by or offered to this node */
+    final WeakReference<PeerNode> nodeRef;
 
-        public boolean isExpired(long now) {
-            return nodeRef.get() == null || now > (offeredTime + OFFER_EXPIRY_TIME);
-        }
+    /** Authenticator */
+    final byte[] authenticator;
 
-        public boolean isExpired() {
-            return isExpired(System.currentTimeMillis());
-        }
+    /** Boot ID when the offer was made */
+    final long bootID;
+
+    BlockOffer(PeerNode pn, long now, byte[] authenticator, long bootID) {
+      this.nodeRef = pn.myRef;
+      this.offeredTime = now;
+      this.authenticator = authenticator;
+      this.bootID = bootID;
     }
+
+    public PeerNode getPeerNode() {
+      return nodeRef.get();
+    }
+
+    public boolean isExpired(long now) {
+      return nodeRef.get() == null || now > (offeredTime + OFFER_EXPIRY_TIME);
+    }
+
+    public boolean isExpired() {
+      return isExpired(System.currentTimeMillis());
+    }
+  }
 
   /**
    * Called when a data block is found (after it has been stored; there is a good chance of its

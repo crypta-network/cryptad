@@ -144,13 +144,13 @@ public class PersistentRequestClient {
           shortFailMessage = msg.getShortFailedMessage();
           longFailMessage = msg.getLongFailedMessage();
         }
-        Bucket shadow = download.getBucket();
+        Bucket shadow = ((ClientGet) get).getBucket();
         if (shadow != null) shadow = shadow.createShadow();
         statusCache.finishedDownload(
             get.identifier,
             get.hasSucceeded(),
-            download.getDataSize(),
-            download.getMIMEType(),
+            ((ClientGet) get).getDataSize(),
+            ((ClientGet) get).getMIMEType(),
             failureCode,
             longFailMessage,
             shortFailMessage,
