@@ -1,8 +1,8 @@
 package network.crypta.client.filter;
 
-import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
 import static java.util.Arrays.asList;
 import static java.util.Collections.emptyList;
+import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
@@ -14,11 +14,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 import network.crypta.support.api.Bucket;
-import org.hamcrest.Matcher;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.NullBucket;
 import network.crypta.test.PngUtil;
 import network.crypta.test.PngUtil.Chunk;
+import org.hamcrest.Matcher;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
