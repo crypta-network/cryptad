@@ -483,8 +483,8 @@ public class ArchiveManager {
             int readBytes;
             while ((readBytes = tarIS.read(buf)) > 0) {
               out.write(buf, 0, readBytes);
-              readBytes += realLen;
-              if (readBytes > maxArchivedFileSize) {
+              realLen += readBytes;
+              if (realLen > maxArchivedFileSize) {
                 addErrorElement(
                     ctx,
                     key,
@@ -594,8 +594,8 @@ public class ArchiveManager {
             int readBytes;
             while ((readBytes = zis.read(buf)) > 0) {
               out.write(buf, 0, readBytes);
-              readBytes += realLen;
-              if (readBytes > maxArchivedFileSize) {
+              realLen += readBytes;
+              if (realLen > maxArchivedFileSize) {
                 addErrorElement(
                     ctx,
                     key,
