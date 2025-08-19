@@ -94,8 +94,7 @@ public class MultiHashInputStream extends FilterInputStream {
   }
 
   @Override
-  public void mark(int readlimit) {
-  }
+  public void mark(int readlimit) {}
 
   public HashResult[] getResults() {
     HashResult[] results = new HashResult[digesters.length];
