@@ -17,9 +17,8 @@ public class KnownUnsafeContentTypeException extends UnsafeContentTypeException 
 
   @Override
   public String getMessage() {
-    String sb = l10n("knownUnsafe") + l10n("noFilter");
 
-    return sb;
+    return l10n("knownUnsafe") + l10n("noFilter");
   }
 
   @Override

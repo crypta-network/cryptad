@@ -101,9 +101,7 @@ public class HealingDecisionSupplierTest {
 
   private static HealingDecisionSupplier getHealingDecisionSupplier(
       double nodeLocation, boolean isOpennet, double randomValue) {
-    HealingDecisionSupplier healingDecisionSupplier =
-        new HealingDecisionSupplier(() -> nodeLocation, () -> isOpennet, () -> randomValue);
-    return healingDecisionSupplier;
+    return new HealingDecisionSupplier(() -> nodeLocation, () -> isOpennet, () -> randomValue);
   }
 
   private static void assertHeals(

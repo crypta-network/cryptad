@@ -93,8 +93,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     ctx.localRequestOnly = true;
     FetchWaiter fw = new FetchWaiter(rc);
     client.fetch(uri, FILE_SIZE * 2, fw, ctx, (short) 0);
-    FetchResult result = fw.waitForCompletion();
-    return result;
+    return fw.waitForCompletion();
   }
 
   private static final File dir = new File("test-fetch-pull-single-node");

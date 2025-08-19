@@ -195,8 +195,7 @@ public class LongTermMHKTest extends LongTermTest {
           block = new InsertBlock(mhks[i], new ClientMetadata(), FreenetURI.EMPTY_CHK_URI);
           try {
             t1 = System.currentTimeMillis();
-            FreenetURI thisURI = client.insert(block, false, null);
-            uri = thisURI;
+            uri = client.insert(block, false, null);
             t2 = System.currentTimeMillis();
 
             System.out.println(

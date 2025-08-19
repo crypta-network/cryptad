@@ -45,10 +45,8 @@ public class Bzip2CompressorTest {
   @Test
   public void testBucketDecompress() throws IOException {
 
-    byte[] compressedData = COMPRESSED_DATA_1;
-
     // do bzip2 decompression with buckets
-    byte[] uncompressedData = doBucketDecompress(compressedData);
+    byte[] uncompressedData = doBucketDecompress(COMPRESSED_DATA_1);
 
     // is the (round-tripped) uncompressed string the same as the original?
     String uncompressedString = new String(uncompressedData);

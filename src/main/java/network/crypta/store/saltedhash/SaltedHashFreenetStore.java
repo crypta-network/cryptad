@@ -583,9 +583,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
         if (wrongStore) {
           // Distribute overwrites evenly between the right store and the wrong store.
-          int a = OPTION_MAX_PROBE;
-          int b = wrongStoreCount;
-          if (random.nextInt(a + b) < b)
+          if (random.nextInt(OPTION_MAX_PROBE + wrongStoreCount) < wrongStoreCount)
             // Allow the overwrite to happen in the wrong store.
             indexToOverwrite = firstWrongStoreIndex;
           else
@@ -1731,8 +1729,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         }
 
         long startFileOffset = offset * Entry.METADATA_LENGTH;
-        long entriesToRead = length;
-        long bufLen = Entry.METADATA_LENGTH * entriesToRead;
+        long bufLen = Entry.METADATA_LENGTH * (long) length;
 
         ByteBuffer buf = ByteBuffer.allocate((int) bufLen);
         boolean dirty = false;

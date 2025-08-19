@@ -146,8 +146,7 @@ public class OnionFECCodec extends FECCodec {
   @Override
   public long maxMemoryOverheadDecode(int dataBlocks, int checkBlocks) {
     int n = dataBlocks + checkBlocks;
-    int k = dataBlocks;
-    int matrixSize = n * k * 2; // char[] of n*k
+    int matrixSize = n * dataBlocks * 2; // char[] of n*k
     return matrixSize
         * 3L; // Very approximately, the last one absorbing some columns and fixed overhead.
   }
@@ -155,8 +154,7 @@ public class OnionFECCodec extends FECCodec {
   @Override
   public long maxMemoryOverheadEncode(int dataBlocks, int checkBlocks) {
     int n = dataBlocks + checkBlocks;
-    int k = dataBlocks;
-    int matrixSize = n * k * 2; // char[] of n*k
+    int matrixSize = n * dataBlocks * 2; // char[] of n*k
     return matrixSize
         * 3L; // Very approximately, the last one absorbing some columns and fixed overhead.
   }

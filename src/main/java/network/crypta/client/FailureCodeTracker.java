@@ -92,10 +92,9 @@ public class FailureCodeTracker implements Cloneable, Serializable {
       Logger.error(this, "Can't increment 0, not a valid failure mode", new Exception("error"));
     }
     if (map == null) map = new HashMap<Integer, Integer>();
-    Integer key = k;
-    Integer i = map.get(key);
-    if (i == null) map.put(key, 1);
-    else map.put(key, i + val);
+    Integer i = map.get(k);
+    if (i == null) map.put(k, 1);
+    else map.put(k, i + val);
     total += val;
   }
 

@@ -85,13 +85,11 @@ public class DiskSpaceUserAlert implements UserAlert {
   @Override
   public String getText() {
     Status status = getStatus();
-    String sb =
-        l10n("notEnoughSpaceIn", "where", getWhere(status).toString())
-            + " "
-            + status.getExplanation()
-            + " "
-            + l10n("action");
-    return sb;
+    return l10n("notEnoughSpaceIn", "where", getWhere(status).toString())
+        + " "
+        + status.getExplanation()
+        + " "
+        + l10n("action");
   }
 
   private File getWhere(Status status) {

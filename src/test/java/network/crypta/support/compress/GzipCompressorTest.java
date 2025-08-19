@@ -132,9 +132,8 @@ public class GzipCompressorTest {
     BucketFactory factory = new ArrayBucketFactory();
 
     Bucket outBucket = GZIP.compress(inBucket, factory, 32768, 32768);
-    byte[] outBuffer = BucketTools.toByteArray(outBucket);
 
-    return outBuffer;
+    return BucketTools.toByteArray(outBucket);
   }
 
   private static final byte[] COMPRESSED_DATA_1 = {

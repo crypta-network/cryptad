@@ -973,9 +973,7 @@ public class SimpleFieldSet {
     try (BufferedInputStream bis = new BufferedInputStream(is);
         InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
         BufferedReader br = new BufferedReader(isr)) {
-      SimpleFieldSet fs =
-          new SimpleFieldSet(br, allowMultiple, shortLived, allowBase64, alwaysBase64);
-      return fs;
+      return new SimpleFieldSet(br, allowMultiple, shortLived, allowBase64, alwaysBase64);
     }
   }
 

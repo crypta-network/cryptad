@@ -32,8 +32,7 @@ public class SSKStore extends StoreCallback<SSKBlock> {
     if (knownPublicKey != null) key.setPubKey(knownPublicKey);
     else if (!key.grabPubkey(pubkeyCache, canReadClientCache, canReadSlashdotCache, meta))
       throw new SSKVerifyException("No pubkey found");
-    SSKBlock block = new SSKBlock(data, headers, key, false);
-    return block;
+    return new SSKBlock(data, headers, key, false);
   }
 
   public SSKBlock fetch(

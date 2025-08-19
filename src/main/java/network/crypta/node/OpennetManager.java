@@ -137,8 +137,7 @@ public class OpennetManager {
     LONG {
       @Override
       public int getTargetPeers(int target) {
-        int longPeers = (int) (target * LONG_PROPORTION);
-        return longPeers;
+        return (int) (target * LONG_PROPORTION);
       }
     };
 
@@ -1648,8 +1647,7 @@ public class OpennetManager {
       }
       return null;
     }
-    byte[] noderef = Arrays.copyOf(buf, realLength);
-    return noderef;
+    return Arrays.copyOf(buf, realLength);
   }
 
   public static void rejectRef(long uid, PeerNode source, int reason, ByteCounter ctr) {

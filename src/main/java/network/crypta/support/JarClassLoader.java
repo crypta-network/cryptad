@@ -109,8 +109,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
 
         definePackage(name);
 
-        Class<?> clazz = defineClass(name, classBytes, 0, classBytes.length);
-        return clazz;
+        return defineClass(name, classBytes, 0, classBytes.length);
       }
       throw new ClassNotFoundException("could not find jar entry for class " + name);
     } catch (IOException e) {

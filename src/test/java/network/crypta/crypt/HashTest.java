@@ -295,20 +295,18 @@ public class HashTest {
   @Test
   public void testVerifyHashResultByteArray() {
     for (int i = 0; i < types.length; i++) {
-      byte[] hash1 = helloWorld;
       HashResult hashResult = new HashResult(types[i], Hex.decode(trueHashes[i]));
 
-      assertTrue("HashType: " + types[i].name(), Hash.verify(hashResult, hash1));
+      assertTrue("HashType: " + types[i].name(), Hash.verify(hashResult, helloWorld));
     }
   }
 
   @Test
   public void testVerifyHashResultByteArrayFalse() {
     for (int i = 0; i < types.length; i++) {
-      byte[] hash1 = helloWorld;
       HashResult hashResult = new HashResult(types[i], Hex.decode(falseHashes[i]));
 
-      assertFalse("HashType: " + types[i].name(), Hash.verify(hashResult, hash1));
+      assertFalse("HashType: " + types[i].name(), Hash.verify(hashResult, helloWorld));
     }
   }
 

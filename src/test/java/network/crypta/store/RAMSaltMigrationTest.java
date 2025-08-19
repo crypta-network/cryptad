@@ -779,10 +779,9 @@ public class RAMSaltMigrationTest {
       // If we did open the new size we expect all previously matched keys to be present.
       // If we opend the old size, it causes a resize again, which might create new collisions and
       // keys might be lost again.
-      boolean expectAll = openNewSize;
 
       checkStandardTestBlocks(
-          store, dummyValueActuallyStoredList, blockActuallyStoredList, expectAll);
+          store, dummyValueActuallyStoredList, blockActuallyStoredList, openNewSize);
     }
   }
 

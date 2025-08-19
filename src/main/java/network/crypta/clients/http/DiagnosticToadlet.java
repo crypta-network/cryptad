@@ -100,18 +100,16 @@ public class DiagnosticToadlet extends Toadlet {
       long totalMemory = rt.totalMemory();
       long maxMemory = rt.maxMemory();
       long usedJavaMem = totalMemory - freeMemory;
-      long allocatedJavaMem = totalMemory;
-      long maxJavaMem = maxMemory;
       int availableCpus = rt.availableProcessors();
       int threadCount = stats.getActiveThreadCount();
       textBuilder
           .append(l10n("usedMemory", "memory", SizeUtil.formatSize(usedJavaMem, true)))
           .append("\n");
       textBuilder
-          .append(l10n("allocMemory", "memory", SizeUtil.formatSize(allocatedJavaMem, true)))
+          .append(l10n("allocMemory", "memory", SizeUtil.formatSize(totalMemory, true)))
           .append("\n");
       textBuilder
-          .append(l10n("maxMemory", "memory", SizeUtil.formatSize(maxJavaMem, true)))
+          .append(l10n("maxMemory", "memory", SizeUtil.formatSize(maxMemory, true)))
           .append("\n");
       textBuilder
           .append(
@@ -315,8 +313,7 @@ public class DiagnosticToadlet extends Toadlet {
           new Comparator<PeerNodeStatus>() {
             @Override
             public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-              int statusDifference = firstNode.getStatusValue() - secondNode.getStatusValue();
-              return statusDifference;
+              return firstNode.getStatusValue() - secondNode.getStatusValue();
             }
           });
       int numberOfConnected =

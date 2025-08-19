@@ -342,13 +342,11 @@ public class SECURITY_PHYSICAL implements Step {
     if (type == PASSWORD_PROMPT.DECRYPT_WRONG) {
       System.err.println("Wrong password!");
     }
-    String destination =
-        FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
-            + "&error=pass&newThreatLevel="
-            + newThreatLevel.name()
-            + "&type="
-            + type.name();
-    return destination;
+    return FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
+        + "&error=pass&newThreatLevel="
+        + newThreatLevel.name()
+        + "&type="
+        + type.name();
   }
 
   public void setThreatLevel(

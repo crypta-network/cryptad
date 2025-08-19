@@ -63,10 +63,8 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   /** Setup methods that don't depend on the actual key */
   private void baseSetup(MasterSecret masterKey) {
 
-    MasterSecret masterSecret = masterKey;
-
-    this.headerEncKey = masterSecret.deriveKey(type.encryptKey);
-    this.headerMacKey = masterSecret.deriveKey(type.macKey);
+    this.headerEncKey = masterKey.deriveKey(type.encryptKey);
+    this.headerMacKey = masterKey.deriveKey(type.macKey);
 
     version = type.bitmask;
   }

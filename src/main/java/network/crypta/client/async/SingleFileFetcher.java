@@ -512,8 +512,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           if (!persistent) {
             metadata = metadata.getDefaultDocument();
           } else {
-            Metadata newMeta = metadata.grabDefaultDocument();
-            metadata = newMeta;
+            metadata = metadata.grabDefaultDocument();
           }
           if (metadata == null)
             throw new FetchException(
@@ -1646,32 +1645,30 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           GetCompletionCallback myCB =
               new USKProxyCompletionCallback(usk, cb, requester.persistent());
           // Want to update the latest known good iff the fetch succeeds.
-          SingleFileFetcher sf =
-              new SingleFileFetcher(
-                  requester,
-                  myCB,
-                  null,
-                  usk.getSSK(),
-                  metaStrings,
-                  usk.getURI().addMetaStrings(metaStrings),
-                  0,
-                  ctx,
-                  false,
-                  realTimeFlag,
-                  actx,
-                  null,
-                  null,
-                  maxRetries,
-                  recursionLevel,
-                  dontTellClientGet,
-                  l,
-                  isEssential,
-                  isFinal,
-                  false,
-                  (short) 0,
-                  context,
-                  false);
-          return sf;
+          return new SingleFileFetcher(
+              requester,
+              myCB,
+              null,
+              usk.getSSK(),
+              metaStrings,
+              usk.getURI().addMetaStrings(metaStrings),
+              0,
+              ctx,
+              false,
+              realTimeFlag,
+              actx,
+              null,
+              null,
+              maxRetries,
+              recursionLevel,
+              dontTellClientGet,
+              l,
+              isEssential,
+              isFinal,
+              false,
+              (short) 0,
+              context,
+              false);
         }
       } else {
         cb.onFailure(

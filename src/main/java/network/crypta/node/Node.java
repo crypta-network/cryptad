@@ -3915,10 +3915,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean dontResizeOnStart,
       byte[] clientCacheMasterKey)
       throws IOException {
-    FreenetStore<T> store =
-        makeStore(
-            type, "clientcache", maxClientCacheKeys, cb, dontResizeOnStart, clientCacheMasterKey);
-    return store;
+    return makeStore(
+        type, "clientcache", maxClientCacheKeys, cb, dontResizeOnStart, clientCacheMasterKey);
   }
 
   private <T extends StorableBlock> FreenetStore<T> makeStore(

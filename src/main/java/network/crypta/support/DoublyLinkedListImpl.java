@@ -228,15 +228,13 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
   /** {@inheritDoc} */
   @Override
   public final T next(T i) {
-    T next = i.getNext();
-    return next;
+    return i.getNext();
   }
 
   /** {@inheritDoc} */
   @Override
   public final T prev(T i) {
-    T prev = i.getPrev();
-    return prev;
+    return i.getPrev();
   }
 
   // === insertion and removal of items =======================================

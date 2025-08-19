@@ -64,26 +64,24 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
   //
   public String fingerprintToString() {
     String fphex = HexUtil.bytesToHex(fingerprint());
-    String b =
-        fphex.substring(0, 4)
-            + ' '
-            + fphex.substring(4, 8)
-            + ' '
-            + fphex.substring(8, 12)
-            + ' '
-            + fphex.substring(12, 16)
-            + ' '
-            + fphex.substring(16, 20)
-            + "  "
-            + fphex.substring(20, 24)
-            + ' '
-            + fphex.substring(24, 28)
-            + ' '
-            + fphex.substring(28, 32)
-            + ' '
-            + fphex.substring(32, 36)
-            + ' '
-            + fphex.substring(36, 40);
-    return b;
+    return fphex.substring(0, 4)
+        + ' '
+        + fphex.substring(4, 8)
+        + ' '
+        + fphex.substring(8, 12)
+        + ' '
+        + fphex.substring(12, 16)
+        + ' '
+        + fphex.substring(16, 20)
+        + "  "
+        + fphex.substring(20, 24)
+        + ' '
+        + fphex.substring(24, 28)
+        + ' '
+        + fphex.substring(28, 32)
+        + ' '
+        + fphex.substring(32, 36)
+        + ' '
+        + fphex.substring(36, 40);
   }
 }

@@ -461,8 +461,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public JokerPutHandler(
         BaseManifestPutter bmp, String name, FreenetURI targetURI2, ClientMetadata cm2) {
       super(bmp, null, name, null, null, cm2);
-      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI2, cm2);
-      metadata = m;
+      metadata = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI2, cm2);
     }
 
     /** an archive redirect */
@@ -476,8 +475,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     /** a short symlink */
     public JokerPutHandler(BaseManifestPutter bmp, PutHandler parent, String name, String target) {
       super(bmp, parent, name, name, null, null);
-      Metadata m = new Metadata(DocumentType.SYMBOLIC_SHORTLINK, null, null, target, null);
-      metadata = m;
+      metadata = new Metadata(DocumentType.SYMBOLIC_SHORTLINK, null, null, target, null);
     }
   }
 

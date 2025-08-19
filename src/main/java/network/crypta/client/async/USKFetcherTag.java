@@ -109,18 +109,16 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
       int token,
       boolean hasOwnFetchContext,
       boolean checkStoreOnly) {
-    USKFetcherTag tag =
-        new USKFetcherTag(
-            usk,
-            callback,
-            persistent,
-            realTime,
-            ctx,
-            keepLast,
-            token,
-            hasOwnFetchContext,
-            checkStoreOnly);
-    return tag;
+    return new USKFetcherTag(
+        usk,
+        callback,
+        persistent,
+        realTime,
+        ctx,
+        keepLast,
+        token,
+        hasOwnFetchContext,
+        checkStoreOnly);
   }
 
   synchronized void updatedEdition(long ed) {

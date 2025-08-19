@@ -637,16 +637,14 @@ public class FCPServer implements Runnable, DownloadCache {
   final FCPPluginConnectionImpl createFCPPluginConnectionForNetworkedFCP(
       String serverPluginName, FCPConnectionHandler messageHandler) throws PluginNotFoundException {
 
-    FCPPluginConnectionImpl connection =
-        FCPPluginConnectionImpl.constructForNetworkedFCP(
-            pluginConnectionTracker,
-            node.getExecutor(),
-            node.getPluginManager(),
-            serverPluginName,
-            messageHandler);
     // The constructor function already did this for us
     /* pluginConnectionTracker.registerConnection(connection); */
-    return connection;
+    return FCPPluginConnectionImpl.constructForNetworkedFCP(
+        pluginConnectionTracker,
+        node.getExecutor(),
+        node.getPluginManager(),
+        serverPluginName,
+        messageHandler);
   }
 
   /**

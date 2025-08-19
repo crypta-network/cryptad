@@ -275,32 +275,30 @@ public class HourlyStatsRecord {
     @Override
     public String toString() {
 
-      String sb =
-          chkLocalSuccess.countReports()
-              + "\t"
-              + chkRemoteSuccess.countReports()
-              + "\t"
-              + chkFailure.countReports()
-              + "\t"
-              + sskLocalSuccess.countReports()
-              + "\t"
-              + sskRemoteSuccess.countReports()
-              + "\t"
-              + sskFailure.countReports()
-              + "\t"
-              + fix4p.format(fixNaN(chkLocalSuccess.currentValue()))
-              + "\t"
-              + fix4p.format(fixNaN(chkRemoteSuccess.currentValue()))
-              + "\t"
-              + fix4p.format(fixNaN(chkFailure.currentValue()))
-              + "\t"
-              + fix4p.format(fixNaN(sskLocalSuccess.currentValue()))
-              + "\t"
-              + fix4p.format(fixNaN(sskRemoteSuccess.currentValue()))
-              + "\t"
-              + fix4p.format(fixNaN(sskFailure.currentValue()))
-              + "\t";
-      return sb;
+      return chkLocalSuccess.countReports()
+          + "\t"
+          + chkRemoteSuccess.countReports()
+          + "\t"
+          + chkFailure.countReports()
+          + "\t"
+          + sskLocalSuccess.countReports()
+          + "\t"
+          + sskRemoteSuccess.countReports()
+          + "\t"
+          + sskFailure.countReports()
+          + "\t"
+          + fix4p.format(fixNaN(chkLocalSuccess.currentValue()))
+          + "\t"
+          + fix4p.format(fixNaN(chkRemoteSuccess.currentValue()))
+          + "\t"
+          + fix4p.format(fixNaN(chkFailure.currentValue()))
+          + "\t"
+          + fix4p.format(fixNaN(sskLocalSuccess.currentValue()))
+          + "\t"
+          + fix4p.format(fixNaN(sskRemoteSuccess.currentValue()))
+          + "\t"
+          + fix4p.format(fixNaN(sskFailure.currentValue()))
+          + "\t";
     }
   }
 }

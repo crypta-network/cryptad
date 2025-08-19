@@ -2084,10 +2084,9 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
           Random random) {
         if (logMINOR) Logger.minor(this, "Getting next editions from " + lookedUp);
         if (lookedUp < 0) lookedUp = 0;
-        boolean poll = backgroundPoll;
         for (int i = 1; i <= origMinFailures; i++) {
           long ed = i + lookedUp;
-          if (poll) {
+          if (backgroundPoll) {
             getEditionIfNotAlreadyRunning(toPoll, alreadyRunning, ed, true);
           } else {
             getEditionIfNotAlreadyRunning(toFetch, alreadyRunning, ed, true);

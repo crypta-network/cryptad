@@ -50,9 +50,8 @@ public class FreenetFilePersistentConfig extends FilePersistentConfig {
 
   public static FreenetFilePersistentConfig constructFreenetFilePersistentConfig(File f)
       throws IOException {
-    File filename = f;
     File tempFilename = new File(f.getPath() + ".tmp");
-    return new FreenetFilePersistentConfig(load(filename, tempFilename), filename, tempFilename);
+    return new FreenetFilePersistentConfig(load(f, tempFilename), f, tempFilename);
   }
 
   @Override

@@ -570,12 +570,11 @@ class SingleFileInserter implements ClientPutState, Serializable {
   private void tryCompress(ClientContext context) throws InsertException {
     // First, determine how small it needs to be
     RandomAccessBucket origData = block.getData();
-    RandomAccessBucket data = origData;
     int blockSize;
     int oneBlockCompressedSize;
     boolean dontCompress = ctx.dontCompress;
 
-    long origSize = data.size();
+    long origSize = origData.size();
     String type = block.desiredURI.getKeyType().toUpperCase();
     if (type.equals("SSK") || type.equals("KSK") || type.equals("USK")) {
       blockSize = SSKBlock.DATA_LENGTH;
@@ -598,12 +597,12 @@ class SingleFileInserter implements ClientPutState, Serializable {
       wantHashes |= HashType.SHA256.bitmask;
       // FIXME: If the user requests it, calculate the others for small files.
       // FIXME maybe the thresholds should be configurable.
-      if (data.size() >= 1024 * 1024 && !metadata) {
+      if (origData.size() >= 1024 * 1024 && !metadata) {
         // SHA1 is common and MD5 is cheap.
         wantHashes |= HashType.SHA1.bitmask;
         wantHashes |= HashType.MD5.bitmask;
       }
-      if (data.size() >= 4 * 1024 * 1024 && !metadata) {
+      if (origData.size() >= 4 * 1024 * 1024 && !metadata) {
         // Useful for cross-network, and cheap.
         wantHashes |= HashType.ED2K.bitmask;
         // Very widely supported for cross-network.
@@ -635,14 +634,14 @@ class SingleFileInserter implements ClientPutState, Serializable {
         NullOutputStream nos = new NullOutputStream();
         MultiHashOutputStream hasher = new MultiHashOutputStream(nos, wantHashes);
         try {
-          BucketTools.copyTo(data, hasher, data.size());
+          BucketTools.copyTo(origData, hasher, origData.size());
         } catch (IOException e) {
           throw new InsertException(
               InsertExceptionMode.BUCKET_ERROR, "I/O error generating hashes", e, null);
         }
         hashes = hasher.getResults();
       }
-      final CompressionOutput output = new CompressionOutput(data, null, hashes);
+      final CompressionOutput output = new CompressionOutput(origData, null, hashes);
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(

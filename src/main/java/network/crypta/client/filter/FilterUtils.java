@@ -689,10 +689,9 @@ public class FilterUtils {
       // Check if value has the form "an+b" - where a and b can be any in range integer.
       int nIndex = value.indexOf('n');
       if (nIndex != -1) {
-        int aLength = nIndex;
-        if (aLength == 0
-            || (aLength == 1 && value.charAt(0) == '-')
-            || isIntegerInRange(value.substring(0, aLength), -MAX_NTH, MAX_NTH)) {
+        if (nIndex == 0
+            || (nIndex == 1 && value.charAt(0) == '-')
+            || isIntegerInRange(value.substring(0, nIndex), -MAX_NTH, MAX_NTH)) {
           int bIndex = nIndex + 1;
           int bLength = value.length() - bIndex;
           return bLength == 0

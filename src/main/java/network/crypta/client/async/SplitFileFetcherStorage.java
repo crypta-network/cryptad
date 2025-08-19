@@ -1123,8 +1123,7 @@ public class SplitFileFetcherStorage {
     } catch (IOException e) {
       throw new Error(e);
     }
-    byte[] ret = baos.toByteArray();
-    return ret;
+    return baos.toByteArray();
   }
 
   /**

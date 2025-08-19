@@ -454,8 +454,7 @@ public class PersistentRequestClient {
   }
 
   public synchronized ClientRequest getRequest(String identifier) {
-    ClientRequest req = clientRequestsByIdentifier.get(identifier);
-    return req;
+    return clientRequestsByIdentifier.get(identifier);
   }
 
   @Override

@@ -82,11 +82,9 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     this.cipherRead = this.type.get();
     this.cipherWrite = this.type.get();
 
-    MasterSecret masterSecret = masterKey;
+    this.headerEncKey = masterKey.deriveKey(type.encryptKey);
 
-    this.headerEncKey = masterSecret.deriveKey(type.encryptKey);
-
-    this.headerMacKey = masterSecret.deriveKey(type.macKey);
+    this.headerMacKey = masterKey.deriveKey(type.macKey);
 
     if (underlyingBuffer.size() < type.headerLen) {
       throw new IOException(

@@ -344,22 +344,20 @@ public class FetchException extends Exception implements Cloneable {
 
   @Override
   public String toString() {
-    String sb =
-        "FetchException:"
-            + getMessage(mode)
-            + ':'
-            + newURI
-            + ':'
-            + expectedSize
-            + ':'
-            + expectedMimeType
-            + ':'
-            + finalizedSizeAndMimeType
-            + ':'
-            + errorCodes
-            + ':'
-            + extraMessage;
-    return sb;
+    return "FetchException:"
+        + getMessage(mode)
+        + ':'
+        + newURI
+        + ':'
+        + expectedSize
+        + ':'
+        + expectedMimeType
+        + ':'
+        + finalizedSizeAndMimeType
+        + ':'
+        + errorCodes
+        + ':'
+        + extraMessage;
   }
 
   public String toUserFriendlyString() {

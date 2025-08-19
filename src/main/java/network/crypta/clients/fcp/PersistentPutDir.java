@@ -117,8 +117,7 @@ public class PersistentPutDir extends FCPMessage {
         subset.putSingle("UploadFrom", "redirect");
         subset.putSingle("TargetURI", tempURI.toString());
       } else {
-        Bucket origData = e.getData();
-        Bucket data = origData;
+        Bucket data = e.getData();
         if (data instanceof DelayedFreeBucket bucket1) {
           data = bucket1.getUnderlying();
         } else if (data instanceof DelayedFreeRandomAccessBucket bucket) {

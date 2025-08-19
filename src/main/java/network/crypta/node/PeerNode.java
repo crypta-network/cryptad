@@ -2731,8 +2731,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     InputStreamReader isr = new InputStreamReader(bais, StandardCharsets.UTF_8);
     BufferedReader br = new BufferedReader(isr);
     try {
-      SimpleFieldSet fs = new SimpleFieldSet(br, false, true);
-      return fs;
+      return new SimpleFieldSet(br, false, true);
     } catch (IOException e) {
       throw (FSParseException) new FSParseException("Impossible: " + e).initCause(e);
     }

@@ -147,8 +147,7 @@ public class StatisticsToadlet extends Toadlet {
           new Comparator<PeerNodeStatus>() {
             @Override
             public int compare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-              int statusDifference = firstNode.getStatusValue() - secondNode.getStatusValue();
-              return statusDifference;
+              return firstNode.getStatusValue() - secondNode.getStatusValue();
             }
           });
 
@@ -714,8 +713,6 @@ public class StatisticsToadlet extends Toadlet {
     long maxMemory = rt.maxMemory();
 
     long usedJavaMem = totalMemory - freeMemory;
-    long allocatedJavaMem = totalMemory;
-    long maxJavaMem = maxMemory;
     int availableCpus = rt.availableProcessors();
 
     int threadCount = stats.getActiveThreadCount();
@@ -723,8 +720,8 @@ public class StatisticsToadlet extends Toadlet {
     jvmStatsList.addChild(
         "li", l10n("usedMemory", "memory", SizeUtil.formatSize(usedJavaMem, true)));
     jvmStatsList.addChild(
-        "li", l10n("allocMemory", "memory", SizeUtil.formatSize(allocatedJavaMem, true)));
-    jvmStatsList.addChild("li", l10n("maxMemory", "memory", SizeUtil.formatSize(maxJavaMem, true)));
+        "li", l10n("allocMemory", "memory", SizeUtil.formatSize(totalMemory, true)));
+    jvmStatsList.addChild("li", l10n("maxMemory", "memory", SizeUtil.formatSize(maxMemory, true)));
     jvmStatsList.addChild(
         "li",
         l10n(

@@ -114,13 +114,12 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     }
 
     while (headers == null || data == null || pubKey == null) {
-      MessageFilter mfDataInsertRejected =
+      MessageFilter mf =
           MessageFilter.create()
               .setType(DMT.FNPDataInsertRejected)
               .setField(DMT.UID, uid)
               .setSource(source)
               .setTimeout(DATA_INSERT_TIMEOUT);
-      MessageFilter mf = mfDataInsertRejected;
       if (headers == null) {
         MessageFilter m =
             MessageFilter.create()

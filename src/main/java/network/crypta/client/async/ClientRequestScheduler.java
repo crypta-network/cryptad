@@ -147,8 +147,7 @@ public class ClientRequestScheduler implements RequestScheduler {
       Logger.minor(
           this, "register(" + persistent + "," + hasListener + "," + Fields.commaList(getters));
     if (isInsertScheduler) {
-      IllegalStateException e = new IllegalStateException("finishRegister on an insert scheduler");
-      throw e;
+      throw new IllegalStateException("finishRegister on an insert scheduler");
     }
     final KeyListener listener;
     if (hasListener != null) {

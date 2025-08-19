@@ -374,11 +374,9 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
         // XXX: Add more possible OSes here.
         if (os.equalsIgnoreCase("Linux") || os.equalsIgnoreCase("FreeBSD")) {
-          String[] linuxCandidates = {"/tmp", "/var/tmp"};
-          candidates = linuxCandidates;
+          candidates = new String[] {"/tmp", "/var/tmp"};
         } else if (os.equalsIgnoreCase("Windows")) {
-          String[] windowsCandidates = {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
-          candidates = windowsCandidates;
+          candidates = new String[] {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
         }
 
         if (candidates != null) {

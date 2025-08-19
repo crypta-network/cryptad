@@ -70,8 +70,7 @@ public class SplitFileFetcherGet extends SendableGet implements HasKeyListener {
 
   @Override
   public long getWakeupTime(ClientContext context, long now) {
-    long wakeTime = storage.getCooldownWakeupTime(now);
-    return wakeTime;
+    return storage.getCooldownWakeupTime(now);
   }
 
   @Override

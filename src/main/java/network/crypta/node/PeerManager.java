@@ -1440,8 +1440,7 @@ public class PeerManager {
       // It probably is, but if there is backoff or failure tables involved it might not be.
 
       double loc = p.getLocation();
-      double realDiff = Location.distance(loc, target);
-      double diff = realDiff;
+      double diff = Location.distance(loc, target);
 
       if (p.shallWeRouteAccordingToOurPeersLocation(outgoingHTL)) {
         double l = p.getClosestPeerLocation(target, excludeLocations);

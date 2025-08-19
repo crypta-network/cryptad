@@ -136,8 +136,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
   }
 
   public byte[] asBytesHash() {
-    byte[] hash = SHA256.digest(asBytes());
-    return hash;
+    return SHA256.digest(asBytes());
   }
 
   public byte[] asPaddedBytes() {

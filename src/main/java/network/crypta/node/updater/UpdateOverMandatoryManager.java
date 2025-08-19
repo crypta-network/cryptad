@@ -597,8 +597,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         return;
       }
       if (addOnFail && askedSendJar.size() + sendingJar.size() >= MAX_NODES_SENDING_JAR) {
-        HashSet<PeerNode> offeredJar = nodesOfferedMainJar;
-        if (offeredJar.add(source))
+        if (nodesOfferedMainJar.add(source))
           System.err.println(
               "Offered "
                   + lname

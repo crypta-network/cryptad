@@ -328,8 +328,7 @@ public class SplitFileInserterSegmentStorage {
     }
     byte[] fullBuf = baos.toByteArray();
     byte[] bufNoKeyNumber = Arrays.copyOfRange(fullBuf, 8, fullBuf.length);
-    byte[] ret = checker.appendChecksum(bufNoKeyNumber);
-    return ret;
+    return checker.appendChecksum(bufNoKeyNumber);
   }
 
   static void innerWriteKey(ClientCHK key, DataOutputStream dos, boolean hasSplitfileKey)

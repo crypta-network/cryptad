@@ -1861,8 +1861,7 @@ public class Metadata implements Cloneable, Serializable {
   }
 
   public void setArchiveManifest() {
-    ARCHIVE_TYPE type = ARCHIVE_TYPE.getArchiveType(clientMetadata.getMIMEType());
-    archiveType = type;
+    archiveType = ARCHIVE_TYPE.getArchiveType(clientMetadata.getMIMEType());
     clientMetadata.clear();
     documentType = DocumentType.ARCHIVE_MANIFEST;
   }
