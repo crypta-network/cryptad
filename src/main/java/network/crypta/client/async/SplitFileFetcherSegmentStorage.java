@@ -458,7 +458,7 @@ public class SplitFileFetcherSegmentStorage {
     int totalBlocks = totalBlocks();
     byte[][] allBlocks = readAllBlocks();
     SplitFileSegmentKeys keys = getSegmentKeys();
-    if (allBlocks == null || keys == null) {
+    if (keys == null) {
       return;
     }
     class SplitFileFetcherBlock {
@@ -544,7 +544,7 @@ public class SplitFileFetcherSegmentStorage {
             ClientCHKBlock.encodeSplitfileBlock(
                 buf, decodeKey.getCryptoKey(), decodeKey.getCryptoAlgorithm());
         ClientCHK actualKey = block.getClientKey();
-        if (decodeKey == null || !decodeKey.equals(actualKey)) {
+        if (!decodeKey.equals(actualKey)) {
           // Is it a different block?
           blockNumber = (short) keys.getBlockNumber(actualKey, null);
           if (blockNumber == -1) {
