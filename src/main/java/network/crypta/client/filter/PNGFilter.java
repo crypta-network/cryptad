@@ -35,9 +35,12 @@ public class PNGFilter implements ContentDataFilter {
     // http://www.w3.org/TR/PNG/
     "tRNS",
     "cHRM",
-    "gAMA",
     "iCCP", // FIXME Embedded ICC profile: could this conceivably cause a web lookup?
-    "sBIT", // FIXME rather obscure ??
+    "sBIT", // https://www.w3.org/TR/png/#11sBIT
+    "gAMA", // https://www.w3.org/TR/png/#11gAMA
+    "cICP", // https://www.w3.org/TR/png/#cICP-chunk
+    "mDCV", // https://www.w3.org/TR/png/#mDCV-chunk
+    "cLLI", // https://www.w3.org/TR/png/#cLLI-chunk
     "sRGB",
     "bKGD",
     "hIST",
