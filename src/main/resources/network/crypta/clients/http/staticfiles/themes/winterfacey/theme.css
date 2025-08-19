@@ -287,6 +287,7 @@ select {
   border-radius: 6px;
   transition: border-color 0.2s ease;
   font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 input:focus,
@@ -317,6 +318,7 @@ button {
   box-shadow: none;
   transition: all 0.2s ease;
   cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 /* Style Delete Notification buttons to be less prominent */
@@ -408,6 +410,7 @@ ul.config {
 .config .configshortdesc {
   margin-left: 16px;
   font-size: 100%;
+  color: #E6713B;
 }
 
 .config .configlongdesc {
