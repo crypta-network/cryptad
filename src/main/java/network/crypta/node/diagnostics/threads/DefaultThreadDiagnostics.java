@@ -2,7 +2,12 @@ package network.crypta.node.diagnostics.threads;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import network.crypta.node.NodeStats;
@@ -142,7 +147,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
     List<Long> activeThreads =
         threads.stream()
             .map(NodeThreadInfo::getJobId) // job id might be the same as thread id
-            .collect(Collectors.toList());
+            .toList();
 
     threadSnapshot.keySet().removeIf(key -> !activeThreads.contains(key));
   }

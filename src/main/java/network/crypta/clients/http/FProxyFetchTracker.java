@@ -1,7 +1,6 @@
 package network.crypta.clients.http;
 
 import java.util.List;
-import java.util.stream.Collectors;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.async.ClientContext;
@@ -166,7 +165,7 @@ public class FProxyFetchTracker implements Runnable {
           fetchers.values().stream()
               // FIXME remove on the fly, although cancel must wait
               .filter(FProxyFetchInProgress::canCancel)
-              .collect(Collectors.toList());
+              .toList();
 
       for (FProxyFetchInProgress r : toRemove) {
         if (logMINOR) {

@@ -4,7 +4,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import network.crypta.config.Option;
 import network.crypta.support.MultiValueTable;
 
@@ -22,7 +21,7 @@ public class UriFilterProxyHeaderParser {
     List<String> bindToHosts =
         Arrays.stream(fProxyBindToConfig.getValueString().split(","))
             .map(host -> host.contains(":") ? "[" + host + "]" : host)
-            .collect(Collectors.toList());
+            .toList();
     String firstBindToHost = bindToHosts.getFirst();
     // set default values
     if (firstBindToHost.isEmpty()) {
@@ -33,8 +32,7 @@ public class UriFilterProxyHeaderParser {
     // allow all bindToHosts
     Set<String> safeHosts = new HashSet<>(bindToHosts);
     // also allow bindTo hosts with the fProxyPortConfig added
-    safeHosts.addAll(
-        safeHosts.stream().map(host -> host + ":" + port).collect(Collectors.toList()));
+    safeHosts.addAll(safeHosts.stream().map(host -> host + ":" + port).toList());
 
     // check uri host and headers
     String protocol =
