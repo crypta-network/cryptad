@@ -6,6 +6,7 @@ import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumMap;
+import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.wizardsteps.BANDWIDTH;
 import network.crypta.clients.http.wizardsteps.BANDWIDTH_MONTHLY;
@@ -373,12 +374,10 @@ public class FirstTimeWizardToadlet extends Toadlet {
           // do nothing
       }
     } else if (preset == WIZARD_PRESET.LOW) {
-      switch (currentStep) {
-        case DATASTORE_SIZE:
-          // Go back to the beginning from the datastore page.
-          return WIZARD_STEP.WELCOME;
-        default:
-          // do nothing
+      // do nothing
+      if (Objects.requireNonNull(currentStep)
+          == WIZARD_STEP.DATASTORE_SIZE) {// Go back to the beginning from the datastore page.
+        return WIZARD_STEP.WELCOME;
       }
     }
 

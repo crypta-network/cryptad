@@ -3876,14 +3876,13 @@ class CSSTokenizerFilter {
           // FIXME sanitize (remove potentially dangerous chars) and preserve comments.
           charsetPossible = false;
           if (stopAtDetectedCharset) return;
-          switch (c) {
-            case '/':
-              if (prevc == '*') {
-                currentState = stateBeforeComment;
-                c = 0;
-                if (logDEBUG) Logger.debug(this, "Exiting the comment state " + currentState);
-              }
-              break;
+          if (c == '/') {
+            if (prevc == '*') {
+              currentState = stateBeforeComment;
+              c = 0;
+              if (logDEBUG)
+                Logger.debug(this, "Exiting the comment state " + currentState);
+            }
           }
           break;
       }
