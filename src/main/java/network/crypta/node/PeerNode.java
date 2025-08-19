@@ -82,7 +82,6 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.WeakHashSet;
-import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
 import network.crypta.support.math.TimeDecayingRunningAverage;
@@ -510,7 +509,9 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   }
 
   private PacketFormat packetFormat;
-  MersenneTwister paddingGen;
+
+  /** Non-cryptographic random source scoped to this PeerNode. Thread-safe. */
+  protected final Random random;
 
   protected SimpleFieldSet fullFieldSet;
 
@@ -542,6 +543,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     this.node = node2;
     this.crypto = crypto;
     assert (crypto.isOpennet() == isOpennetForNoderef());
+    this.random = node.createRandom();
     this.peers = node.getPeers();
     this.backedOffPercent = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
     this.backedOffPercentRT = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
@@ -760,12 +762,12 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     probeRequestsInterval =
         new SimpleRunningAverage(50, Node.MIN_INTERVAL_BETWEEN_INCOMING_PROBE_REQUESTS);
 
-    messageQueue = new PeerMessageQueue(node.getFastWeakRandom());
+    messageQueue = new PeerMessageQueue(random);
 
-    decrementHTLAtMaximum = node.getRandom().nextFloat() < Node.DECREMENT_AT_MAX_PROB;
-    decrementHTLAtMinimum = node.getRandom().nextFloat() < Node.DECREMENT_AT_MIN_PROB;
+    decrementHTLAtMaximum = random.nextFloat() < Node.DECREMENT_AT_MAX_PROB;
+    decrementHTLAtMinimum = random.nextFloat() < Node.DECREMENT_AT_MIN_PROB;
 
-    pingNumber = node.getRandom().nextLong();
+    pingNumber = random.nextLong();
 
     // A SimpleRunningAverage would be a bad choice because it would cause oscillations.
     // So go for a filter.
@@ -843,7 +845,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     listeningHandshakeBurstCount = 0;
     listeningHandshakeBurstSize =
         Node.MIN_BURSTING_HANDSHAKE_BURST_SIZE
-            + node.getRandom().nextInt(Node.RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE);
+            + random.nextInt(Node.RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE);
 
     if (isBurstOnly()) {
       Logger.minor(
@@ -866,10 +868,6 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
     bytesInAtStartup = fs.getLong("totalInput", 0);
     bytesOutAtStartup = fs.getLong("totalOutput", 0);
-
-    byte[] buffer = new byte[16];
-    node.getRandom().nextBytes(buffer);
-    paddingGen = new MersenneTwister(buffer);
 
     if (fromLocal) {
       SimpleFieldSet f = fs.subset("full");
@@ -1470,7 +1468,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       timeLastDisconnect = now;
       if (dumpMessageQueue) {
         // Reset the boot ID so that we get different trackers next time.
-        myBootID = node.getFastWeakRandom().nextLong();
+        myBootID = random.nextLong();
         messagesTellDisconnected = grabQueuedMessageItems();
         oldPacketFormat = packetFormat;
         packetFormat = null;
@@ -1510,7 +1508,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
                     synchronized (this) {
                       if (isConnected()) return;
                       // Reset the boot ID so that we get different trackers next time.
-                      myBootID = node.getFastWeakRandom().nextLong();
+                      myBootID = random.nextLong();
                       oldPacketFormat = packetFormat;
                       packetFormat = null;
                     }
@@ -1671,15 +1669,15 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         // Let them know we're here, but have no hope of routing general data to them.
         delay =
             Node.MIN_TIME_BETWEEN_VERSION_SENDS
-                + node.getRandom().nextInt(Node.RANDOMIZED_TIME_BETWEEN_VERSION_SENDS);
+                + random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_VERSION_SENDS);
       } else if (invalidVersion() && !firstHandshake) {
         delay =
             Node.MIN_TIME_BETWEEN_VERSION_PROBES
-                + node.getRandom().nextInt(Node.RANDOMIZED_TIME_BETWEEN_VERSION_PROBES);
+                + random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_VERSION_PROBES);
       } else {
         delay =
             Node.MIN_TIME_BETWEEN_HANDSHAKE_SENDS
-                + node.getRandom().nextInt(Node.RANDOMIZED_TIME_BETWEEN_HANDSHAKE_SENDS);
+                + random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_HANDSHAKE_SENDS);
       }
       // FIXME proper multi-homing support!
       delay /= (handshakeIPs == null ? 1 : handshakeIPs.length);
@@ -1706,15 +1704,15 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (listeningHandshakeBurstCount == 0) { // 0 only if we just reset it above
       delay =
           Node.MIN_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS
-              + node.getRandom().nextInt(Node.RANDOMIZED_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS);
+              + random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS);
       listeningHandshakeBurstSize =
           Node.MIN_BURSTING_HANDSHAKE_BURST_SIZE
-              + node.getRandom().nextInt(Node.RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE);
+              + random.nextInt(Node.RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE);
       isBursting = false;
     } else {
       delay =
           Node.MIN_TIME_BETWEEN_HANDSHAKE_SENDS
-              + node.getRandom().nextInt(Node.RANDOMIZED_TIME_BETWEEN_HANDSHAKE_SENDS);
+              + random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_HANDSHAKE_SENDS);
     }
     // FIXME proper multi-homing support!
     delay /= (handshakeIPs == null ? 1 : handshakeIPs.length);
@@ -1787,7 +1785,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (status == AddressTracker.Status.MAYBE_PORT_FORWARDED) return false;
     long now = System.currentTimeMillis();
     if (now - timeSetBurstNow > UPDATE_BURST_NOW_PERIOD) {
-      burstNow = (node.getRandom().nextInt(P_BURST_IF_DEFINITELY_FORWARDED) == 0);
+      burstNow = (random.nextInt(P_BURST_IF_DEFINITELY_FORWARDED) == 0);
       timeSetBurstNow = now;
     }
     return burstNow;
@@ -2232,7 +2230,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       Logger.minor(
           this,
           "Tracker ID " + trackerID + " isJFK4=" + isJFK4 + " jfk4SameAsOld=" + jfk4SameAsOld);
-    if (trackerID < 0) trackerID = Math.abs(node.getRandom().nextLong());
+    if (trackerID < 0) trackerID = Math.abs(random.nextLong());
 
     // Update sendHandshakeTime; don't send another handshake for a while.
     // If unverified, "a while" determines the timeout; if not, it's just good practice to avoid a
@@ -3283,9 +3281,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       Logger.error(
           this, "Entering mandatory backoff for " + this + (realTime ? " (realtime)" : " (bulk)"));
       mandatoryBackoffUntil =
-          now
-              + (mandatoryBackoffLength / 2)
-              + node.getFastWeakRandom().nextInt(mandatoryBackoffLength / 2);
+          now + (mandatoryBackoffLength / 2) + random.nextInt(mandatoryBackoffLength / 2);
       mandatoryBackoffLength *= MANDATORY_BACKOFF_MULTIPLIER;
       node.getNodeStats().reportMandatoryBackoff(reason, mandatoryBackoffUntil - now, realTime);
       if (realTime) {
@@ -3378,7 +3374,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         routingBackoffLength = routingBackoffLength * BACKOFF_MULTIPLIER;
         if (routingBackoffLength > MAX_ROUTING_BACKOFF_LENGTH)
           routingBackoffLength = MAX_ROUTING_BACKOFF_LENGTH;
-        int x = node.getRandom().nextInt(routingBackoffLength);
+        int x = random.nextInt(routingBackoffLength);
         routingBackedOffUntil = now + x;
         node.getNodeStats().reportRoutingBackoff(reason, x, realTime);
         if (logMINOR) {
@@ -3476,7 +3472,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         transferBackoffLength = transferBackoffLength * TRANSFER_BACKOFF_MULTIPLIER;
         if (transferBackoffLength > MAX_TRANSFER_BACKOFF_LENGTH)
           transferBackoffLength = MAX_TRANSFER_BACKOFF_LENGTH;
-        int x = node.getRandom().nextInt(transferBackoffLength);
+        int x = random.nextInt(transferBackoffLength);
         transferBackedOffUntil = now + x;
         node.getNodeStats().reportTransferBackoff(reason, x, realTime);
         if (logMINOR) {
@@ -4251,7 +4247,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       jfkNoncesSent.clear();
       if (dumpMessageQueue) {
         // Reset the boot ID so that we get different trackers next time.
-        myBootID = node.getFastWeakRandom().nextLong();
+        myBootID = random.nextLong();
         messagesTellDisconnected = grabQueuedMessageItems();
       }
     }
@@ -5961,7 +5957,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   // FIXME move this to PacketFormat eventually.
   @Override
   public Random paddingGen() {
-    return paddingGen;
+    return random;
   }
 
   public synchronized boolean matchesPeerAndPort(Peer peer) {

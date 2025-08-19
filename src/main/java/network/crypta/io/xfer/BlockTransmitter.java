@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -18,6 +18,7 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
+import network.crypta.node.FastRunnable;
 import network.crypta.node.HighHtlAware;
 import network.crypta.node.MessageItem;
 import network.crypta.node.Node;
@@ -110,18 +111,20 @@ public class BlockTransmitter {
   static int runningBlockTransmits = 0;
 
   class BlockSenderJob implements PrioRunnable {
+    private static final int STATE_IDLE = 0; // not running
+    private static final int STATE_RUNNING = 1; // currently running
+    private static final int STATE_WAITING = 2; // waiting for a scheduled delay
 
-    private boolean running = false;
+    private final AtomicInteger state = new AtomicInteger();
     private int count = 0;
 
     @Override
     public void run() {
-      synchronized (this) {
-        if (running) return;
-        running = true;
+      if (!state.compareAndSet(STATE_IDLE, STATE_RUNNING)) {
+        return;
       }
       try {
-        while (true) {
+        while (state.get() == STATE_RUNNING) {
           int packetNo = -1;
           BitArray copy;
           synchronized (_senderThread) {
@@ -152,28 +155,21 @@ public class BlockTransmitter {
             // the variable count is used to count which message is being processed now
             // the HTL is taken into consideration when adding delay too
             count++;
-            if (isHighHtl() && count >= (Node.PACKETS_IN_BLOCK - 1)) {
-              try {
-                wait(
-                    (int)
-                        (ThreadLocalRandom.current().nextDouble()
-                            * MAX_ARTIFICIAL_FINAL_PACKETS_DELAY),
-                    1);
-              } catch (InterruptedException e) {
-                // intentionally left blank: can continue
-              }
+            if (isHighHtl() && count >= (Node.PACKETS_IN_BLOCK - 2)) {
+              state.set(STATE_WAITING);
+              long delayMillis = (long) (Math.random() * MAX_ARTIFICIAL_FINAL_PACKETS_DELAY);
+              _ticker.queueTimedJob((FastRunnable) this::schedule, delayMillis);
             }
           }
           if (!innerRun(packetNo, copy)) return;
         }
       } finally {
-        synchronized (this) {
-          running = false;
-        }
+        state.compareAndSet(STATE_RUNNING, STATE_IDLE);
       }
     }
 
-    public void schedule() {
+    void schedule() {
+      state.compareAndSet(STATE_WAITING, STATE_IDLE);
       if (_failed || _receivedSendCompletion || _completed) {
         if (logMINOR)
           Logger.minor(
@@ -357,7 +353,7 @@ public class BlockTransmitter {
     if (blockSendsPending == 0 && _unsent.isEmpty() && getNumSent() == _prb._packets) {
       timeAllSent = System.currentTimeMillis();
       if (logMINOR) Logger.minor(this, "Sent all blocks, none unsent on " + this);
-      _senderThread.notifyAll();
+      _senderThread.schedule();
       return true;
     }
     if (blockSendsPending == 0 && _failed) {
@@ -663,7 +659,7 @@ public class BlockTransmitter {
     synchronized (_senderThread) {
       timeAllSent = -1;
       _failed = true;
-      _senderThread.notifyAll();
+      _senderThread.schedule();
       fail = maybeFail(reason, description);
     }
     fail.execute();

@@ -113,9 +113,29 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
    * from ClientGet. FIXME: Many times where this is called internally we might be better off using
    * a copy constructor?
    *
-   * @param topCompatibilityMode
-   * @param topDontCompress
-   * @param hasInitialMetadata
+   * @param parent The parent ClientRequester
+   * @param cb The completion callback
+   * @param metadata Client metadata for the fetch
+   * @param key The client key to fetch
+   * @param metaStrings List of metadata strings
+   * @param origURI The original URI
+   * @param addedMetaStrings Number of added metadata strings
+   * @param ctx The fetch context
+   * @param deleteFetchContext Whether to delete the fetch context
+   * @param realTimeFlag Whether this is a real-time fetch
+   * @param actx The archive context
+   * @param ah The archive handler
+   * @param archiveMetadata Archive metadata
+   * @param maxRetries Maximum number of retries
+   * @param recursionLevel Current recursion level
+   * @param dontTellClientGet Whether to tell the client getter
+   * @param l Length parameter
+   * @param isEssential Whether this fetch is essential
+   * @param isFinal Whether this is the final fetch
+   * @param topDontCompress Whether to avoid compression
+   * @param topCompatibilityMode The compatibility mode
+   * @param context The client context
+   * @param hasInitialMetadata Whether initial metadata is available
    */
   public SingleFileFetcher(
       ClientRequester parent,
@@ -347,10 +367,8 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       data.free();
       data = null;
       innerWrapHandleMetadata(false, context);
-    } catch (MetadataParseException e) {
-      onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-    } catch (EOFException e) {
-      // This is a metadata error too.
+    } catch (MetadataParseException | EOFException e) {
+      // EOFException is also a metadata error
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
     } catch (InsufficientDiskSpaceException e) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);

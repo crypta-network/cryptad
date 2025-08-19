@@ -97,13 +97,13 @@ public abstract class ConnectionsToadlet extends Toadlet {
     // xor: check why we do not just return the result of (long1-long2)
     // j16sdiz: (Long.MAX_VALUE - (-1) ) would overflow and become negative
     private int compareLongs(long long1, long long2) {
-      int diff = Long.valueOf(long1).compareTo(long2);
+      int diff = Long.compare(long1, long2);
       if (diff == 0) return 0;
       else return (diff > 0 ? 1 : -1);
     }
 
     private int compareInts(int int1, int int2) {
-      int diff = Integer.valueOf(int1).compareTo(int2);
+      int diff = Integer.compare(int1, int2);
       if (diff == 0) return 0;
       else return (diff > 0 ? 1 : -1);
     }
@@ -1087,8 +1087,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
    *
    * @param nodeReference - The reference to the new node
    * @param privateComment - The private comment when adding a Darknet node
-   * @param trust
-   * @param request To pull any extra fields from
+   * @param trust - The trust level for the peer
+   * @param visibility - The visibility level for the peer
    * @return The result of the addition
    */
   private PeerAdditionReturnCodes addNewNode(
@@ -1120,9 +1120,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         pn = node.createNewDarknetNode(fs, trust, visibility);
         ((DarknetPeerNode) pn).setPrivateDarknetCommentNote(privateComment);
       }
-    } catch (FSParseException e1) {
-      return PeerAdditionReturnCodes.CANT_PARSE;
-    } catch (PeerParseException e1) {
+    } catch (FSParseException | PeerParseException e1) {
       return PeerAdditionReturnCodes.CANT_PARSE;
     } catch (ReferenceSignatureVerificationException e1) {
       return PeerAdditionReturnCodes.INVALID_SIGNATURE;

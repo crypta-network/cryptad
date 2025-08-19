@@ -195,8 +195,6 @@ public class ClientGetter extends BaseClientGetter
    * @param uri The URI to fetch.
    * @param ctx The config settings for the fetch.
    * @param priorityClass The priority at which to schedule the request.
-   * @param clientContext The context object. Used for round-robin query balancing, also indicates
-   *     whether the request is persistent.
    * @param returnBucket The bucket to return the data in. Can be null. If not null, the
    *     ClientGetter must either write the data directly to the bucket, or copy it and free the
    *     original temporary bucket. Preferably the former, obviously!
@@ -204,6 +202,9 @@ public class ClientGetter extends BaseClientGetter
    *     been accessed in the case of redundant structures such as splitfiles) to this binary blob
    *     writer.
    * @param dontFinalizeBlobWriter If true, the caller is responsible for BlobWriter finalization
+   * @param initialMetadata If non-null, initial metadata to use for the request
+   * @param forceCompatibleExtension If set, and filtering is enabled, the MIME type we filter with
+   *     must be compatible with this extension
    */
   public ClientGetter(
       ClientGetCallback client,
@@ -250,9 +251,6 @@ public class ClientGetter extends BaseClientGetter
    *
    * @param restart If true, restart a finished request.
    * @param overrideURI If non-null, change the URI we are fetching (usually when restarting).
-   * @param container The database, null if this is a non-persistent request; if this is a
-   *     persistent request, we must be on the database thread, and we will pass the database handle
-   *     around as needed.
    * @param context The client context, contains important mostly non-persistent global objects.
    * @return True if we restarted, false if we didn't (but only in a few cases).
    * @throws FetchException If we were unable to restart.
@@ -347,21 +345,12 @@ public class ClientGetter extends BaseClientGetter
     context.uskManager.checkUSK(uri, persistent(), false);
     try {
       if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
-    } catch (IOException ioe) {
-      onFailure(
-          new FetchException(
-              FetchExceptionMode.BUCKET_ERROR, "Failed to close binary blob stream: " + ioe),
-          null,
-          context);
-      return;
-    } catch (BinaryBlobAlreadyClosedException e) {
-      onFailure(
-          new FetchException(
-              FetchExceptionMode.BUCKET_ERROR,
-              "Failed to close binary blob stream, already closed: " + e,
-              e),
-          null,
-          context);
+    } catch (IOException | BinaryBlobAlreadyClosedException e) {
+      String msg =
+          e instanceof BinaryBlobAlreadyClosedException
+              ? "Failed to close binary blob stream, already closed: " + e
+              : "Failed to close binary blob stream: " + e;
+      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
       return;
     }
     String mimeType = clientMetadata == null ? null : clientMetadata.getMIMEType();
@@ -495,12 +484,12 @@ public class ClientGetter extends BaseClientGetter
       ex = new FetchException(FetchExceptionMode.TOO_BIG, e);
     } catch (InsufficientDiskSpaceException e) {
       ex = new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-    } catch (IOException e) {
+    } catch (IOException | FetchException e) {
       Logger.error(this, "Caught " + e, e);
-      ex = new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
-    } catch (FetchException e) {
-      Logger.error(this, "Caught " + e, e);
-      ex = e;
+      ex =
+          e instanceof FetchException fe
+              ? fe
+              : new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (Throwable t) {
       Logger.error(this, "Caught " + t, t);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
@@ -530,21 +519,12 @@ public class ClientGetter extends BaseClientGetter
     context.uskManager.checkUSK(uri, persistent(), false);
     try {
       if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
-    } catch (IOException ioe) {
-      onFailure(
-          new FetchException(
-              FetchExceptionMode.BUCKET_ERROR, "Failed to close binary blob stream: " + ioe),
-          null,
-          context);
-      return;
-    } catch (BinaryBlobAlreadyClosedException e) {
-      onFailure(
-          new FetchException(
-              FetchExceptionMode.BUCKET_ERROR,
-              "Failed to close binary blob stream, already closed: " + e,
-              e),
-          null,
-          context);
+    } catch (IOException | BinaryBlobAlreadyClosedException e) {
+      String msg =
+          e instanceof BinaryBlobAlreadyClosedException
+              ? "Failed to close binary blob stream, already closed: " + e
+              : "Failed to close binary blob stream: " + e;
+      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
       return;
     }
     File completionFile = getCompletionFile();
@@ -717,23 +697,22 @@ public class ClientGetter extends BaseClientGetter
         try {
           if (binaryBlobWriter != null && !dontFinalizeBlobWriter)
             binaryBlobWriter.finalizeBucket();
-        } catch (IOException ioe) {
+        } catch (IOException | BinaryBlobAlreadyClosedException ex) {
           // the request is already failed but fblob creation failed too
           // the invalid fblob must be told, more important then an valid but incomplete fblob (ADNF
           // for example)
-          if (e.mode != FetchExceptionMode.CANCELLED && !force)
-            e =
-                new FetchException(
-                    FetchExceptionMode.BUCKET_ERROR, "Failed to close binary blob stream: " + ioe);
-        } catch (BinaryBlobAlreadyClosedException ee) {
-          if (e.mode != FetchExceptionMode.BUCKET_ERROR
-              && e.mode != FetchExceptionMode.CANCELLED
-              && !force)
-            e =
-                new FetchException(
-                    FetchExceptionMode.BUCKET_ERROR,
-                    "Failed to close binary blob stream, already closed: " + ee,
-                    ee);
+          if (e.mode != FetchExceptionMode.CANCELLED && !force) {
+            if (ex instanceof BinaryBlobAlreadyClosedException
+                && e.mode == FetchExceptionMode.BUCKET_ERROR) {
+              // Don't override bucket error with another bucket error
+            } else {
+              String msg =
+                  ex instanceof BinaryBlobAlreadyClosedException
+                      ? "Failed to close binary blob stream, already closed: " + ex
+                      : "Failed to close binary blob stream: " + ex;
+              e = new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, ex);
+            }
+          }
         }
       }
       if (e.errorCodes != null && e.errorCodes.isOneCodeOnly())
@@ -902,9 +881,8 @@ public class ClientGetter extends BaseClientGetter
    * Restart the request.
    *
    * @param redirect Use this URI instead of the old one.
-   * @param filterData
-   * @param context The database. We must be on the database thread! See ClientContext for
-   *     convenience methods.
+   * @param filterData Whether to filter the data
+   * @param context The client context.
    * @return True if we successfully restarted, false if we can't restart.
    * @throws FetchException If something went wrong.
    */

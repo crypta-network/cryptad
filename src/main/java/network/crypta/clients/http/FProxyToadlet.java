@@ -1884,10 +1884,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       } else {
         result[1] = -1;
       }
-    } catch (NumberFormatException nfe) {
-      throw new HTTPRangeException(nfe);
-    } catch (IndexOutOfBoundsException ioobe) {
-      throw new HTTPRangeException(ioobe);
+    } catch (NumberFormatException | IndexOutOfBoundsException e) {
+      throw new HTTPRangeException(e);
     }
     return result;
   }

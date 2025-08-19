@@ -427,10 +427,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         return true;
       }
 
-    } catch (Error e) {
-      tag.unlockHandler();
-      throw e;
-    } catch (RuntimeException e) {
+    } catch (Error | RuntimeException e) {
       tag.unlockHandler();
       throw e;
     } // Otherwise, sendOfferedKey is responsible for unlocking.
@@ -998,7 +995,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
   /**
    * Handle a routed-to-a-specific-node message.
    *
-   * @param m
+   * @param m The message to handle
+   * @param source The peer node that sent the message
    * @return False if we want the message put back on the queue.
    */
   boolean handleRouted(Message m, PeerNode source) {
@@ -1146,8 +1144,10 @@ public class NodeDispatcher implements Dispatcher, Runnable {
    * Deal with a routed-to-node message that landed on this node. This is where
    * message-type-specific code executes.
    *
-   * @param m
-   * @return
+   * @param m The message to dispatch
+   * @param src The source peer node
+   * @param id The message ID
+   * @return True if the message was handled successfully
    */
   private boolean dispatchRoutedMessage(Message m, PeerNode src, long id) {
     if (m.getSpec() == DMT.FNPRoutedPing) {

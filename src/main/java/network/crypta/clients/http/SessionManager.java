@@ -325,11 +325,8 @@ public final class SessionManager {
       ReceivedCookie sessionCookie = context.getCookie(null, mCookiePath, mCookieName);
 
       return sessionCookie == null ? null : UUID.fromString(sessionCookie.getValue());
-    } catch (ParseException e) {
+    } catch (ParseException | IllegalArgumentException e) {
       Logger.error(this, "Getting session cookie failed", e);
-      return null;
-    } catch (IllegalArgumentException e) {
-      Logger.error(this, "Getting the value of the session cookie failed", e);
       return null;
     }
   }
@@ -338,8 +335,8 @@ public final class SessionManager {
    * Stores a session cookie for the given session in the given {@link ToadletContext}'s HTTP
    * headers.
    *
-   * @param session
-   * @param context
+   * @param session The session to create a cookie for
+   * @param context The context to store the cookie in
    */
   private void setSessionCookie(Session session, ToadletContext context) {
     context.setCookie(

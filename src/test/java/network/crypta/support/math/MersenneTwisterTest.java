@@ -167,7 +167,7 @@ public class MersenneTwisterTest {
   @Test
   public void testConsistencySeedFromBytes() throws NoSuchAlgorithmException {
     MessageDigest md = MessageDigest.getInstance("SHA-1");
-    MersenneTwister mt = new MersenneTwister(BYTE_SEED);
+    MersenneTwister mt = MersenneTwister.createUnsynchronized(BYTE_SEED);
     byte[] bytes = new byte[SEED_SIZE];
 
     mt.nextBytes(bytes);

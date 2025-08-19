@@ -67,7 +67,7 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
     assert (maxReports > 0);
     if (fs != null) {
       double d = fs.getDouble("CurrentValue", currentValue);
-      if (!(Double.isNaN(d) || d < min || d > max)) {
+      if (!(Double.isNaN(d) || Double.isInfinite(d) || d < min || d > max)) {
         currentValue = d;
         reports = fs.getLong("Reports", reports);
       }
@@ -108,13 +108,16 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
    */
   @Override
   public synchronized void report(double d) {
-    if (d < min) {
-      if (logDEBUG) Logger.debug(this, "Too low: " + d, new Exception("debug"));
-      d = min;
-    }
-    if (d > max) {
-      if (logDEBUG) Logger.debug(this, "Too high: " + d, new Exception("debug"));
-      d = max;
+    // Check for invalid values and return early without updating
+    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
+      if (logDEBUG) {
+        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
+        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d))
+          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
+      }
+      return; // Don't update the average with invalid values
     }
     reports++;
     double decayFactor = 1.0 / (Math.min(reports, maxReports));
@@ -138,13 +141,16 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
    */
   @Override
   public synchronized double valueIfReported(double d) {
-    if (d < min) {
-      Logger.error(this, "Too low: " + d, new Exception("debug"));
-      d = min;
-    }
-    if (d > max) {
-      Logger.error(this, "Too high: " + d, new Exception("debug"));
-      d = max;
+    // Return current value for invalid inputs
+    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
+      if (logDEBUG) {
+        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
+        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d))
+          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
+      }
+      return currentValue; // Return unchanged value for invalid inputs
     }
     double decayFactor = 1.0 / (Math.min(reports + 1, maxReports));
     return (d * decayFactor) + (currentValue * (1 - decayFactor));

@@ -1,13 +1,27 @@
 package network.crypta.client.filter;
 
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.List;
 import network.crypta.support.api.Bucket;
+import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.NullBucket;
+import network.crypta.test.PngUtil;
+import network.crypta.test.PngUtil.Chunk;
+import org.hamcrest.Matcher;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 public class PNGFilterTest {
   protected static Object[][] testImages = {
@@ -55,7 +69,7 @@ public class PNGFilterTest {
     // NOT PASS  { "./png/broken/length_ihdr.png", false }, //
     {"./png/broken/missing_ihdr.png", false}, //
     // NOT PASS  { "./png/broken/ihdr_image_size.png", false }, //
-    // NOT PASS  { "./png/broken/gama_after_plte.png", false }, //
+    {"./png/broken/gama_after_plte.png", false},
     {"./png/broken/multiple_ihdr.png", false}, //
     // NOT PASS  { "./png/broken/unknown_filter_type.png", false }, //
     // NOT PASS  { "./png/broken/scal_zero.png", false }, //
@@ -63,16 +77,16 @@ public class PNGFilterTest {
     // NOT PASS  { "./png/broken/scal_negative.png", false }, //
     // NOT PASS  { "./png/broken/ster_mode.png", false }, //
     // NOT PASS  { "./png/broken/private_interlace_method.png", false }, //
-    // NOT PASS  { "./png/broken/srgb_after_idat.png", false }, //
+    {"./png/broken/srgb_after_idat.png", false},
     // NOT PASS  { "./png/broken/ster_after_idat.png", false }, //
     // NOT PASS  { "./png/broken/ihdr_16bit_palette.png", false }, //
-    // NOT PASS  { "./png/broken/iccp_after_idat.png", false }, //
+    {"./png/broken/iccp_after_idat.png", false},
     // NOT PASS  { "./png/broken/plte_empty.png", false }, //
     // NOT PASS  { "./png/broken/private_compression_method.png", false }, //
     // NOT PASS  { "./png/broken/offs_unit_specifier.png", false }, //
     // NOT PASS  { "./png/broken/plte_length_mod_three.png", false }, //
     // NOT PASS  { "./png/broken/multiple_offs.png", false }, //
-    // NOT PASS  { "./png/broken/gama_after_idat.png", false }, //
+    {"./png/broken/gama_after_idat.png", false},
     // NOT PASS  { "./png/broken/missing_plte.png", false }, //
     // NOT PASS  { "./png/broken/splt_sample_depth.png", false }, //
     // NOT PASS  { "./png/broken/multiple_pcal.png", false }, //
@@ -122,4 +136,86 @@ public class PNGFilterTest {
       }
     }
   }
+
+  @Test
+  public void brokencICPChunkIsFiltered() throws IOException {
+    // cICP chunks must be 4 bytes long!
+    Chunk brokencICPChunk1 = new Chunk("cICP", new byte[0]);
+    writeChunksAndVerifyChunks(
+        asList(brokencICPChunk1), emptyList(), not(hasItem(brokencICPChunk1)));
+    // Unsupported color model other than RGB is specified in PNG!
+    Chunk brokencICPChunk2 = new Chunk("cICP", new byte[] {0xC, 0xD, 0x1, 0x1});
+    writeChunksAndVerifyChunks(
+        asList(brokencICPChunk2), emptyList(), not(hasItem(brokencICPChunk2)));
+  }
+
+  @Test
+  public void cICPChunkIsNotFiltered() throws IOException {
+    writeChunksAndVerifyChunks(asList(cICPChunk), emptyList(), hasItem(cICPChunk));
+  }
+
+  @Test
+  public void cICPChunkAfterPLTEChunkIsRemoved() throws IOException {
+    writeChunksAndVerifyChunks(asList(PLTEChunk, cICPChunk), emptyList(), not(hasItem(cICPChunk)));
+  }
+
+  @Test
+  public void cICPChunkAfterIDATChunkIsRemoved() throws IOException {
+    writeChunksAndVerifyChunks(emptyList(), asList(cICPChunk), not(hasItem(cICPChunk)));
+  }
+
+  @Test
+  public void mDCVChunkWithCICPChunkIsNotFiltered() throws IOException {
+    writeChunksAndVerifyChunks(asList(cICPChunk, mDCVChunk), emptyList(), hasItem(mDCVChunk));
+  }
+
+  @Test
+  public void mDCVChunkWithoutCICPChunkIsFiltered() throws IOException {
+    writeChunksAndVerifyChunks(asList(mDCVChunk), emptyList(), not(hasItem(mDCVChunk)));
+  }
+
+  @Test
+  public void mDCVChunkAfterPLTEChunkIsRemoved() throws IOException {
+    writeChunksAndVerifyChunks(
+        asList(cICPChunk, PLTEChunk, mDCVChunk), emptyList(), not(hasItem(mDCVChunk)));
+  }
+
+  @Test
+  public void mDCVChunkAfterIDATChunkIsRemoved() throws IOException {
+    writeChunksAndVerifyChunks(asList(cICPChunk), asList(mDCVChunk), not(hasItem(mDCVChunk)));
+  }
+
+  @Test
+  public void cLLIChunkIsNotFiltered() throws IOException {
+    writeChunksAndVerifyChunks(
+        asList(new Chunk("cLLI", new byte[0])),
+        emptyList(),
+        hasItem(new Chunk("cLLI", new byte[0])));
+  }
+
+  private void writeChunksAndVerifyChunks(
+      List<Chunk> preIDATChunks,
+      List<Chunk> postIDATChunks,
+      Matcher<Iterable<? super Chunk>> chunksVerifier)
+      throws IOException {
+    PNGFilter filter = new PNGFilter(false, false, true);
+    File pngFile = temporaryFolder.newFile();
+    PngUtil.createPngFile(pngFile, preIDATChunks, postIDATChunks);
+    File filteredPngFile = temporaryFolder.newFile();
+    Bucket bucket = new FileBucket(pngFile, true, false, false, false);
+    try {
+      try (FileOutputStream outputStream = new FileOutputStream(filteredPngFile)) {
+        filter.readFilter(bucket.getInputStream(), outputStream, "", null, null, null);
+      }
+      assertThat(PngUtil.getChunks(filteredPngFile), chunksVerifier);
+    } catch (DataFilterException e) {
+      assertThat(emptyList(), chunksVerifier);
+    }
+  }
+
+  @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+  private static final Chunk cICPChunk = new Chunk("cICP", new byte[] {0xC, 0xD, 0x0, 0x1});
+  private static final Chunk PLTEChunk = new Chunk("PLTE", new byte[0]);
+  private static final Chunk mDCVChunk = new Chunk("mDCV", new byte[0]);
 }
