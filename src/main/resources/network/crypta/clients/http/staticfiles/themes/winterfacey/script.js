@@ -149,9 +149,54 @@ var addTagMetaViewport = function() {
   document.getElementsByTagName('head')[0].appendChild(meta);
 }
 
+// Make logo clickable - redirects to the same link as "Browsing" menu
+var makeLogoClickable = function() {
+  var navbarElement = document.getElementById('navbar');
+  
+  if (navbarElement) {
+    // Find the Browsing menu link dynamically
+    var browsingLink = document.querySelector('#navlist li a[href]');
+    var browsingHref = browsingLink ? browsingLink.href : '/';
+    
+    // Create a wrapper around the logo pseudo-element area
+    var logoWrapper = document.createElement('a');
+    logoWrapper.className = 'logo-link';
+    logoWrapper.href = browsingHref;  // Same as Browsing menu link (dynamic)
+    logoWrapper.title = 'Browse Crypta';
+    logoWrapper.style.cssText = 'position: absolute; left: 0; width: 40px; height: 40px; margin-right: 20px; cursor: pointer; z-index: 10000;';
+    
+    // Position the logo link based on the navbar's position
+    navbarElement.style.position = 'relative';
+    
+    // Insert the logo link as the first child of navbar
+    navbarElement.insertBefore(logoWrapper, navbarElement.firstChild);
+    
+    // Adjust positioning to cover the :before pseudo-element
+    var updateLogoPosition = function() {
+      // Get the computed style to find where the :before element is
+      var navbarRect = navbarElement.getBoundingClientRect();
+      var styles = window.getComputedStyle(navbarElement, ':before');
+      
+      // Position the clickable area over the logo
+      // Account for flexbox centering
+      var navlistElement = document.getElementById('navlist');
+      if (navlistElement) {
+        var navlistRect = navlistElement.getBoundingClientRect();
+        // Logo is 20px to the left of navlist (margin-right: 20px)
+        logoWrapper.style.left = (navlistRect.left - navbarRect.left - 60) + 'px';
+      }
+    };
+    
+    // Update position on load and resize
+    updateLogoPosition();
+    window.addEventListener('resize', updateLogoPosition);
+  }
+};
+
 document.addEventListener("DOMContentLoaded", addTagMetaViewport);
 document.addEventListener('DOMContentLoaded', removeSizeFromInput);
 document.addEventListener("DOMContentLoaded", mobileMenu);
 document.addEventListener('DOMContentLoaded', toggleInnerMenu);
+document.addEventListener('DOMContentLoaded', makeLogoClickable);
 
 

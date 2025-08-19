@@ -3,6 +3,12 @@ ul#navlist {
   margin: 0;
 }
 
+ul#navlist {
+  display: inline-flex;
+  padding: 0;
+  list-style: none;
+}
+
 
 /*** From baseelements.css ***/
 div.dismiss-all-alerts-container {
@@ -154,7 +160,6 @@ div#navbar {
   left: 0;
   float: none;
   padding: 0;
-  text-align: center;
 }
 
 div#navbar a {
@@ -227,14 +232,22 @@ a:hover {
 
 
 /*** Navbar ***/
+#navbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 #navbar:before {
-  display: block;
-  float: left;
+  display: inline-block;
   width: 40px;
   height: 40px;
   content: "";
-  margin-top: 0;
-  margin-left: 10px;
+  margin-right: 20px;
   background-image: url("/static/logo.png");
   background-size: contain;
   background-repeat: no-repeat;
@@ -247,12 +260,6 @@ div#page div#navbar {
   top: 0;
 }
 
-#navbar {
-  z-index: 9999;
-  background-color: #1a1a1a;
-  border-bottom: 1px solid #333;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
 
 #navbar,
 #navlist,
