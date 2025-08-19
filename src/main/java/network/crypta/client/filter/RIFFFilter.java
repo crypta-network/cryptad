@@ -154,18 +154,10 @@ public abstract class RIFFFilter implements ContentDataFilter {
       // Copy 1MB at a time instead of all at once
       int section;
       int remaining = size;
-      if (remaining > 1024 * 1024) {
-        section = 1024 * 1024;
-      } else {
-        section = remaining;
-      }
+      section = Math.min(remaining, 1024 * 1024);
       byte[] buf = new byte[section];
       while (remaining > 0) {
-        if (remaining > 1024 * 1024) {
-          section = 1024 * 1024;
-        } else {
-          section = remaining;
-        }
+        section = Math.min(remaining, 1024 * 1024);
         in.readFully(buf, 0, section);
         out.write(buf, 0, section);
         remaining -= section;
@@ -206,11 +198,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
       out.write(JUNK);
       writeLittleEndianInt(out, size);
       while (remaining > 0) {
-        if (remaining > 1024 * 1024) {
-          section = 1024 * 1024;
-        } else {
-          section = remaining;
-        }
+        section = Math.min(remaining, 1024 * 1024);
         out.write(zeros, 0, section);
         remaining -= section;
       }
