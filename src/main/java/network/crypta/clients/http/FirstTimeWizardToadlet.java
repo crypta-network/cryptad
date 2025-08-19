@@ -376,7 +376,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     } else if (preset == WIZARD_PRESET.LOW) {
       // do nothing
       if (Objects.requireNonNull(currentStep)
-          == WIZARD_STEP.DATASTORE_SIZE) {// Go back to the beginning from the datastore page.
+          == WIZARD_STEP.DATASTORE_SIZE) { // Go back to the beginning from the datastore page.
         return WIZARD_STEP.WELCOME;
       }
     }
