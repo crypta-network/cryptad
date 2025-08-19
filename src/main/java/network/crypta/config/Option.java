@@ -158,7 +158,6 @@ public abstract class Option<T> {
       case NUMBER -> "number";
       case BOOLEAN -> "boolean";
       case STRING_ARRAY -> "stringArray";
-      default -> null;
     };
   }
 
