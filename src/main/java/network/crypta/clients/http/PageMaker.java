@@ -806,7 +806,7 @@ public final class PageMaker {
       throw new NullPointerException();
     }
 
-    StringBuffer classes = new StringBuffer("infobox");
+    StringBuilder classes = new StringBuilder("infobox");
     if (category != null) {
       classes.append(" ");
       classes.append(category);

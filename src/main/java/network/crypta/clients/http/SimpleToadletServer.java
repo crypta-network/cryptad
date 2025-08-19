@@ -1532,7 +1532,7 @@ public final class SimpleToadletServer
 
   @Override
   public String getURL(String host) {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     if (ssl) sb.append("https");
     else sb.append("http");
     sb.append("://");

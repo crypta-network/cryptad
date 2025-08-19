@@ -1,6 +1,11 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.Random;
 import org.junit.Test;
@@ -413,7 +418,7 @@ public class FieldsTest {
   }
 
   private String generateDigits(Random r, int count) {
-    StringBuffer sb = new StringBuffer(count);
+    StringBuilder sb = new StringBuilder(count);
     for (int i = 0; i < count; i++) {
       char c = '0';
       c += r.nextInt(10);
@@ -425,7 +430,7 @@ public class FieldsTest {
   private String generateNonDigits(Random r, int count) {
     final String ALPHABET = "abcdefghijklmnopqrstuvwxyz";
     final String NONDIGITS = "./\\_=+:" + ALPHABET + ALPHABET.toUpperCase();
-    StringBuffer sb = new StringBuffer(count);
+    StringBuilder sb = new StringBuilder(count);
     for (int i = 0; i < count; i++) sb.append(NONDIGITS.charAt(r.nextInt(NONDIGITS.length())));
     return sb.toString();
   }

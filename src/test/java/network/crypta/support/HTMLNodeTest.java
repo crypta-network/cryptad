@@ -684,7 +684,7 @@ public class HTMLNodeTest {
       String aAttributeValue,
       String aContent,
       boolean indent) {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     sb.append("<" + aName.toLowerCase() + " ");
     sb.append(aAttributeName + "=");
     sb.append("\"" + aAttributeValue + "\">");

@@ -11,7 +11,13 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.text.DecimalFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.AddPeer;
@@ -1002,7 +1008,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       String[] nodesToAdd = ref.toString().split("\nEnd\n");
       for (int i = 0; i < nodesToAdd.length; i++) {
         String[] split = nodesToAdd[i].split("\n");
-        StringBuffer sb = new StringBuffer(nodesToAdd[i].length());
+        StringBuilder sb = new StringBuilder(nodesToAdd[i].length());
         boolean first = true;
         for (String s : split) {
           if (s.equals("End")) break;

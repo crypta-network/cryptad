@@ -2708,7 +2708,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         StringTokenizer tok = new StringTokenizer(rel, " ");
         int i = 0;
         String prevToken = null;
-        StringBuffer sb = new StringBuffer(rel.length());
+        StringBuilder sb = new StringBuilder(rel.length());
         while (tok.hasMoreTokens()) {
           String token = tok.nextToken();
           if (token.equalsIgnoreCase("stylesheet")) {
@@ -2736,11 +2736,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       String rev = getHashString(h, "rev");
       if (rev != null) {
 
-        StringBuffer sb = new StringBuffer(rev.length());
+        StringBuilder sb = new StringBuilder(rev.length());
         rev = rev.toLowerCase();
 
         StringTokenizer tok = new StringTokenizer(rev, " ");
-        sb = new StringBuffer(rev.length());
+        sb = new StringBuilder(rev.length());
 
         while (tok.hasMoreTokens()) {
           String token = tok.nextToken();

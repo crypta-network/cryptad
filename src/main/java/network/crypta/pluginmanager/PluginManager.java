@@ -49,8 +49,13 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginManager.PluginProgress.ProgressState;
-import network.crypta.support.*;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.JarClassLoader;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.SerialExecutor;
+import network.crypta.support.Ticker;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.StringArrCallback;
@@ -275,7 +280,7 @@ public class PluginManager {
   }
 
   private static String pluginList(Collection<PluginInfoWrapper> wrappers) {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     for (PluginInfoWrapper pi : wrappers) {
       sb.append(pi.getFilename());
       sb.append('\n');

@@ -1,7 +1,14 @@
 package network.crypta.client.async;
 
 import java.security.MessageDigest;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SHA256;
 import network.crypta.keys.Key;
@@ -464,7 +471,7 @@ class KeyListenerTracker implements KeySalter {
 
   @Override
   public String toString() {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     sb.append(super.toString());
     sb.append(':');
     if (isInsertScheduler) sb.append("insert:");

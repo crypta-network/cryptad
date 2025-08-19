@@ -816,7 +816,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
   }
 
   private synchronized String runningAttempts() {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     boolean first = true;
     for (USKAttempt a : runningAttempts.values()) {
       if (!first) sb.append(", ");

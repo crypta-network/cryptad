@@ -459,7 +459,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
   @Override
   public synchronized String toString() {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     sb.append(super.toString());
     sb.append(':');
     File f = getFile();
