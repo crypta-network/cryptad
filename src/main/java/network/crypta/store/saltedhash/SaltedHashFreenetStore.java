@@ -1341,7 +1341,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         raf.writeLong(bloomFalsePos.get());
 
         raf.getFD().sync();
-        raf.close();
       }
 
       FileUtil.moveTo(tempConfig, configFile);
