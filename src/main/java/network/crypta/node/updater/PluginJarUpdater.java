@@ -245,10 +245,6 @@ public class PluginJarUpdater extends NodeUpdater {
   }
 
   public void writeJarTo(FetchResult result, File fNew) throws IOException {
-    int fetched;
-    synchronized (this) {
-      fetched = fetchedVersion;
-    }
     synchronized (writeJarSync) {
       if (!fNew.delete() && fNew.exists()) {
         System.err.println("Can't delete " + fNew + "!");
@@ -261,8 +257,6 @@ public class PluginJarUpdater extends NodeUpdater {
 
       fos.flush();
       fos.close();
-    }
-    synchronized (this) {
     }
     System.err.println("Written " + jarName() + " to " + fNew);
   }
