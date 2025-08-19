@@ -109,7 +109,7 @@ public class SparseBitmap implements Iterable<int[]> {
     StringBuilder s = new StringBuilder();
     for (int[] range : this) {
       if (!s.isEmpty()) s.append(", ");
-      s.append(range[0] + "->" + range[1]);
+      s.append(range[0]).append("->").append(range[1]);
     }
     return s.toString();
   }

@@ -48,11 +48,11 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
     StringBuilder l10nBuilder = new StringBuilder("var l10n={\n");
     boolean isNamePresentAtLeastOnce = false;
     for (String key : NodeL10n.getBase().getAllNamesWithPrefix("fproxy.push")) {
-      l10nBuilder.append(
-          key.substring("fproxy.push".length() + 1)
-              + ": \""
-              + HTMLEncoder.encode(NodeL10n.getBase().getString(key))
-              + "\",\n");
+      l10nBuilder
+          .append(key.substring("fproxy.push".length() + 1))
+          .append(": \"")
+          .append(HTMLEncoder.encode(NodeL10n.getBase().getString(key)))
+          .append("\",\n");
       isNamePresentAtLeastOnce = true;
     }
     String l10n =

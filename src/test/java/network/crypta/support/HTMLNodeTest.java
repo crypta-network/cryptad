@@ -684,12 +684,12 @@ public class HTMLNodeTest {
       String aContent,
       boolean indent) {
     StringBuilder sb = new StringBuilder();
-    sb.append("<" + aName.toLowerCase() + " ");
-    sb.append(aAttributeName + "=");
-    sb.append("\"" + aAttributeValue + "\">");
+    sb.append("<").append(aName.toLowerCase()).append(" ");
+    sb.append(aAttributeName).append("=");
+    sb.append("\"").append(aAttributeValue).append("\">");
     String indenting = indent ? "\n\t" : "";
-    if (!aContent.isEmpty()) sb.append(indenting + aContent);
-    sb.append(indenting + ("</" + aName + ">").toLowerCase());
+    if (!aContent.isEmpty()) sb.append(indenting).append(aContent);
+    sb.append(indenting).append(("</" + aName + ">").toLowerCase());
     if (indent) sb.append(indenting);
     return sb.toString();
   }

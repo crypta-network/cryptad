@@ -1,6 +1,14 @@
 package network.crypta.tools;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import network.crypta.support.Logger;
 import network.crypta.support.LoggerHook;
@@ -50,7 +58,7 @@ public class CleanupTranslations {
                       + "\"");
               System.exit(1);
             }
-            sw.append(line + "\n");
+            sw.append(line).append("\n");
             line = br.readLine();
             if (line != null) {
               System.err.println("Content after End: \"" + line + "\"");
@@ -66,7 +74,7 @@ public class CleanupTranslations {
             changed = true;
             continue;
           }
-          sw.append(line + "\n");
+          sw.append(line).append("\n");
         }
       }
 

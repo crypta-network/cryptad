@@ -668,7 +668,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
               pc.writeStyleScriptWithTag = false;
               String style = pc.currentStyleScriptChunk;
               if ((style == null) || style.isEmpty())
-                pc.writeAfterTag.append("<!-- " + l10n("deletedUnknownStyle") + " -->");
+                pc.writeAfterTag.append("<!-- ").append(l10n("deletedUnknownStyle")).append(" -->");
               else w.write(style);
               pc.currentStyleScriptChunk = "";
             }
@@ -2418,7 +2418,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       pc.styleScriptRecurseCount--;
       if (pc.styleScriptRecurseCount < 0) {
         if (deleteErrors)
-          pc.writeAfterTag.append("<!-- " + l10n("tooManyNestedStyleOrScriptTags") + " -->");
+          pc.writeAfterTag
+              .append("<!-- ")
+              .append(l10n("tooManyNestedStyleOrScriptTags"))
+              .append(" -->");
         else throwFilterException(l10n("tooManyNestedStyleOrScriptTagsLong"));
         return null;
       }
@@ -2440,7 +2443,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       pc.styleScriptRecurseCount++;
       if (pc.styleScriptRecurseCount > 1) {
         if (deleteErrors)
-          pc.writeAfterTag.append("<!-- " + l10n("tooManyNestedStyleOrScriptTags") + " -->");
+          pc.writeAfterTag
+              .append("<!-- ")
+              .append(l10n("tooManyNestedStyleOrScriptTags"))
+              .append(" -->");
         else throwFilterException(l10n("tooManyNestedStyleOrScriptTagsLong"));
         return null;
       }
@@ -3136,7 +3142,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
                   hn.put("http-equiv", "refresh");
                   hn.put("content", seconds + "; url=" + HTMLEncoder.encode(url));
                 } catch (CommentException e) {
-                  pc.writeAfterTag.append("<!-- " + e.getMessage() + "-->");
+                  pc.writeAfterTag.append("<!-- ").append(e.getMessage()).append("-->");
                   // Delete
                   return null;
                 }

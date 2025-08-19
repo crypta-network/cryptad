@@ -193,21 +193,21 @@ public class DiagnosticToadlet extends Toadlet {
             .append("  ")
             .append(l10n("readRequests"))
             .append(": ")
+            .append(thousandPoint.format(sessionAccess.readRequests()))
             .append(
-                thousandPoint.format(sessionAccess.readRequests())
-                    + (totalAccess == null
-                        ? ""
-                        : (" (" + thousandPoint.format(totalAccess.readRequests()) + ")")))
+                totalAccess == null
+                    ? ""
+                    : (" (" + thousandPoint.format(totalAccess.readRequests()) + ")"))
             .append("\n");
         textBuilder
             .append("  ")
             .append(l10n("successfulReads"))
             .append(": ")
+            .append(thousandPoint.format(sessionAccess.successfulReads()))
             .append(
-                thousandPoint.format(sessionAccess.successfulReads())
-                    + (totalAccess == null
-                        ? ""
-                        : (" (" + thousandPoint.format(totalAccess.successfulReads()) + ")")))
+                totalAccess == null
+                    ? ""
+                    : (" (" + thousandPoint.format(totalAccess.successfulReads()) + ")"))
             .append("\n");
         try {
           textBuilder.append(fix1p4.format(sessionAccess.successRate())).append("%");
@@ -257,60 +257,65 @@ public class DiagnosticToadlet extends Toadlet {
         textBuilder.append(l10n("noRequests")).append("\n");
       } else {
         if (numCHKInserts > 0 || numSSKInserts > 0) {
-          textBuilder.append(
-              l10n(
+          textBuilder
+              .append(
+                  l10n(
                       "activityInserts",
                       new String[] {"CHKhandlers", "SSKhandlers", "local"},
                       new String[] {
                         Integer.toString(numCHKInserts),
                         Integer.toString(numSSKInserts),
                         numLocalCHKInserts + "/" + numLocalSSKInserts
-                      })
-                  + "\n");
+                      }))
+              .append("\n");
         }
         if (numCHKRequests > 0 || numSSKRequests > 0) {
-          textBuilder.append(
-              l10n(
+          textBuilder
+              .append(
+                  l10n(
                       "activityRequests",
                       new String[] {"CHKhandlers", "SSKhandlers", "local"},
                       new String[] {
                         Integer.toString(numCHKRequests),
                         Integer.toString(numSSKRequests),
                         numLocalCHKRequests + "/" + numLocalSSKRequests
-                      })
-                  + "\n");
+                      }))
+              .append("\n");
         }
         if (numTransferringRequests > 0 || numTransferringRequestHandlers > 0) {
-          textBuilder.append(
-              l10n(
+          textBuilder
+              .append(
+                  l10n(
                       "transferringRequests",
                       new String[] {"senders", "receivers", "turtles"},
                       new String[] {
                         Integer.toString(numTransferringRequests),
                         Integer.toString(numTransferringRequestHandlers),
                         "0"
-                      })
-                  + "\n");
+                      }))
+              .append("\n");
         }
         if (numCHKOfferReplys > 0 || numSSKOfferReplys > 0) {
-          textBuilder.append(
-              l10n(
+          textBuilder
+              .append(
+                  l10n(
                       "offerReplys",
                       new String[] {"chk", "ssk"},
                       new String[] {
                         Integer.toString(numCHKOfferReplys), Integer.toString(numSSKOfferReplys)
-                      })
-                  + "\n");
+                      }))
+              .append("\n");
         }
-        textBuilder.append(
-            l10n(
+        textBuilder
+            .append(
+                l10n(
                     "runningBlockTransfers",
                     new String[] {"sends", "receives"},
                     new String[] {
                       Integer.toString(BlockTransmitter.getRunningSends()),
                       Integer.toString(BlockReceiver.getRunningReceives())
-                    })
-                + "\n");
+                    }))
+            .append("\n");
       }
       textBuilder.append("\n");
 
@@ -476,11 +481,14 @@ public class DiagnosticToadlet extends Toadlet {
       OpennetManager om = node.getOpennet();
       if (om != null) {
         textBuilder
-            .append(
-                l10n("maxTotalPeers") + ": " + om.getNumberOfConnectedPeersToAimIncludingDarknet())
+            .append(l10n("maxTotalPeers"))
+            .append(": ")
+            .append(om.getNumberOfConnectedPeersToAimIncludingDarknet())
             .append("\n");
         textBuilder
-            .append(l10n("maxOpennetPeers") + ": " + om.getNumberOfConnectedPeersToAim())
+            .append(l10n("maxOpennetPeers"))
+            .append(": ")
+            .append(om.getNumberOfConnectedPeersToAim())
             .append("\n");
       }
       textBuilder.append("\n");
@@ -775,7 +783,10 @@ public class DiagnosticToadlet extends Toadlet {
                 .append(" (")
                 .append(pi.getPluginClassName())
                 .append(") - ")
-                .append(pi.getPluginVersion() + " (" + ver + ")")
+                .append(pi.getPluginVersion())
+                .append(" (")
+                .append(ver)
+                .append(")")
                 .append(" ")
                 .append(pi.getThreadName())
                 .append("\n");

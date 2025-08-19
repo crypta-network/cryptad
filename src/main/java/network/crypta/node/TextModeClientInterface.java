@@ -510,10 +510,10 @@ public class TextModeClientInterface implements Runnable {
           }
         }
       } catch (IOException e) {
-        outsb.append("Bucket error?: " + e.getMessage());
+        outsb.append("Bucket error?: ").append(e.getMessage());
         Logger.error(this, "Bucket error?: " + e, e);
       } catch (URISyntaxException e) {
-        outsb.append("Internal error: " + e.getMessage());
+        outsb.append("Internal error: ").append(e.getMessage());
         Logger.error(this, "Internal error: " + e, e);
       } finally {
         input.free();
