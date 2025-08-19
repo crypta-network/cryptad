@@ -1667,15 +1667,6 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Serial private static final long serialVersionUID = 1L;
 
-    /**
-     * Tree containing the status of the insert. Can have ManifestElement's (original files to
-     * insert or bundle inside a container), HashMap's (more subdirs), Metadata (to be put into a
-     * container as metadata for e.g. an external file), a ContainerPutHandler or an
-     * ArchivePutHandler (for containers that are part of the structure, and external containers for
-     * overflow, respectively).
-     */
-    private final HashMap<String, Object> _rootDir;
-
     private final PutHandler selfHandle;
 
     private ContainerBuilder(boolean isRoot) {
@@ -1690,7 +1681,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (!containerMode) {
         throw new IllegalStateException("You can not add containers in free form mode!");
       }
-      _rootDir = new HashMap<>();
+      /**
+       * Tree containing the status of the insert. Can have ManifestElement's (original files to
+       * insert or bundle inside a container), HashMap's (more subdirs), Metadata (to be put into a
+       * container as metadata for e.g. an external file), a ContainerPutHandler or an
+       * ArchivePutHandler (for containers that are part of the structure, and external containers
+       * for overflow, respectively).
+       */
+      HashMap<String, Object> _rootDir = new HashMap<>();
       if (isArchive)
         selfHandle =
             new ArchivePutHandler(

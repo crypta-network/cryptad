@@ -13,7 +13,6 @@ import network.crypta.support.io.FileUtil;
 public class SingleFileStreamGenerator implements StreamGenerator {
 
   private final Bucket bucket;
-  private final boolean persistent;
 
   private static volatile boolean logMINOR;
 
@@ -29,7 +28,6 @@ public class SingleFileStreamGenerator implements StreamGenerator {
 
   SingleFileStreamGenerator(Bucket bucket, boolean persistent) {
     this.bucket = bucket;
-    this.persistent = persistent;
   }
 
   @Override

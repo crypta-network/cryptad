@@ -1,6 +1,10 @@
 package network.crypta.crypt;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
@@ -35,7 +39,6 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
   private transient SkippingStreamCipher cipherRead;
   private transient SkippingStreamCipher cipherWrite;
-  private transient ParametersWithIV cipherParams; // includes key
 
   private transient SecretKey headerMacKey;
 
@@ -135,7 +138,8 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     } catch (InvalidKeyException e) {
       throw new IllegalStateException(e); // Must be a bug.
     }
-    this.cipherParams = tempPram;
+    // includes key
+    ParametersWithIV cipherParams = tempPram;
     cipherRead.init(false, cipherParams);
     cipherWrite.init(true, cipherParams);
   }

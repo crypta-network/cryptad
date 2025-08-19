@@ -47,12 +47,6 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
    */
   public final FilenameGenerator fg;
 
-  /** Cryptographically strong random number generator */
-  private final transient RandomSource strongPRNG;
-
-  /** Weak but fast random number generator. */
-  private final transient Random weakPRNG;
-
   /**
    * Buckets to free. When buckets are freed, we write them to this list, and delete the files
    * *after* the transaction recording the buckets being deleted hits the disk.
@@ -97,8 +91,8 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
   public PersistentTempBucketFactory(
       File dir, final String prefix, RandomSource strongPRNG, Random weakPRNG, boolean encrypt)
       throws IOException {
-    this.strongPRNG = strongPRNG;
-    this.weakPRNG = weakPRNG;
+    /** Cryptographically strong random number generator */
+    /** Weak but fast random number generator. */
     this.encrypt = encrypt;
     this.fg = new FilenameGenerator(weakPRNG, false, dir, prefix);
     if (!dir.exists()) {

@@ -169,13 +169,12 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
     private boolean hasBeenFreed = false;
 
-    private final Throwable tracer;
-
     // Cleaner for safety net resource cleanup
     private final Cleaner.Cleanable cleanable;
 
     public TempBucket(long now, RandomAccessBucket cur) {
       if (cur == null) throw new NullPointerException();
+      Throwable tracer;
       if (TRACE_BUCKET_LEAKS) tracer = new Throwable();
       else tracer = null;
       this.currentBucket = cur;

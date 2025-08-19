@@ -140,8 +140,6 @@ public class NodeUpdateManager {
   private volatile boolean peersSayBlown;
   private boolean updateSeednodes;
   private boolean updateInstallers;
-  // FIXME make configurable
-  private final boolean updateIPToCountry = true;
 
   /** Is there a new main jar ready to deploy? */
   private volatile boolean hasNewMainJar;
@@ -502,6 +500,8 @@ public class NodeUpdateManager {
       wininstallerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_WINDOWS_INSTALLER_LENGTH);
     }
 
+    // FIXME make configurable
+    boolean updateIPToCountry = true;
     if (updateIPToCountry) {
       SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPv4ToCountry);
       ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);

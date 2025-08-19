@@ -29,7 +29,6 @@ public class PluginJarUpdater extends NodeUpdater {
   private FetchResult result;
 
   private final Object writeJarSync = new Object();
-  private int writtenVersion;
 
   /**
    * @return True if the caller should restart the revocation checker.
@@ -264,7 +263,6 @@ public class PluginJarUpdater extends NodeUpdater {
       fos.close();
     }
     synchronized (this) {
-      writtenVersion = fetched;
     }
     System.err.println("Written " + jarName() + " to " + fNew);
   }

@@ -10,14 +10,6 @@ import network.crypta.support.Logger.LogLevel;
 
 public class WebPFilter extends RIFFFilter {
 
-  // These constants are derived from mux_type.h in libwebp
-  private final int ANIMATION_FLAG = 0x00000002;
-  private final int XMP_FLAG = 0x00000004;
-  private final int EXIF_FLAG = 0x00000008;
-  private final int ALPHA_FLAG = 0x00000010;
-  private final int ICCP_FLAG = 0x00000020;
-  private final int ALL_VALID_FLAGS = 0x0000003e;
-
   @Override
   protected byte[] getChunkMagicNumber() {
     return new byte[] {'W', 'E', 'B', 'P'};
@@ -54,6 +46,8 @@ public class WebPFilter extends RIFFFilter {
       throws IOException {
     boolean logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this.getClass());
     WebPFilterContext ctx = (WebPFilterContext) context;
+    // These constants are derived from mux_type.h in libwebp
+    int ANIMATION_FLAG = 0x00000002;
     if (ID[0] == 'V' && ID[1] == 'P' && ID[2] == '8' && ID[3] == ' ') {
       if (ctx.hasVP8 || ctx.hasVP8L || ctx.hasANIM) {
         throw new DataFilterException(
@@ -81,6 +75,7 @@ public class WebPFilter extends RIFFFilter {
           l10n("losslessUnsupportedTitle"),
           l10n("losslessUnsupported"));
     } else if (ID[0] == 'A' && ID[1] == 'L' && ID[2] == 'P' && ID[3] == 'H') {
+      int ALPHA_FLAG = 0x00000010;
       if (ctx.hasVP8L
           || ctx.hasANIM
           || ctx.hasALPH
@@ -221,6 +216,7 @@ public class WebPFilter extends RIFFFilter {
             l10n("invalidTitle"), l10n("invalidTitle"), "Unexpected VP8X chunk was encountered");
       }
       ctx.VP8XFlags = readLittleEndianInt(input);
+      int ALL_VALID_FLAGS = 0x0000003e;
       if ((ctx.VP8XFlags & ~ALL_VALID_FLAGS) != 0) {
         // Has reserved flags or uses unsupported image fragmentation
         throw new DataFilterException(
@@ -232,6 +228,9 @@ public class WebPFilter extends RIFFFilter {
       }
       output.write(ID);
       writeLittleEndianInt(output, size);
+      int ICCP_FLAG = 0x00000020;
+      int EXIF_FLAG = 0x00000008;
+      int XMP_FLAG = 0x00000004;
       ctx.VP8XFlags &= ~(XMP_FLAG | EXIF_FLAG | ICCP_FLAG); // removing ICCP, EXIF and XMP bits
       writeLittleEndianInt(output, ctx.VP8XFlags);
       ctx.hasVP8X = true;

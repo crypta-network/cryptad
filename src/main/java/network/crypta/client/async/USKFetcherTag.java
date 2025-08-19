@@ -48,7 +48,6 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
   private final short pollingPriorityNormal;
   private final short pollingPriorityProgress;
   private boolean finished;
-  private final boolean ownFetchContext;
   private final boolean checkStoreOnly;
   private final int hashCode;
   private final boolean realTimeFlag;
@@ -70,7 +69,6 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     this.ctx = ctx;
     this.keepLastData = keepLastData;
     this.token = token;
-    this.ownFetchContext = hasOwnFetchContext;
     this.realTimeFlag = realTime;
     pollingPriorityNormal = callback.getPollingPriorityNormal();
     pollingPriorityProgress = callback.getPollingPriorityProgress();

@@ -9,17 +9,6 @@ import network.crypta.l10n.NodeL10n;
 public class WAVFilter extends RIFFFilter {
   // RFC 2361
   private final int WAVE_FORMAT_UNKNOWN = 0;
-  private final int WAVE_FORMAT_PCM = 1;
-  private final int WAVE_FORMAT_IEEE_FLOAT = 3;
-  private final int WAVE_FORMAT_ALAW = 6;
-  private final int WAVE_FORMAT_MULAW = 7;
-  // Header sizes (https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html)
-  // fmt header without cbSize field
-  private final int FMT_SIZE_BASIC = 16;
-  // fmt header with cbSize = 0
-  private final int FMT_SIZE_cbSize = 18;
-  // fmt header with cbSize and extensions
-  private final int FMT_SIZE_cbSize_extension = 40;
 
   @Override
   protected byte[] getChunkMagicNumber() {
@@ -59,11 +48,22 @@ public class WAVFilter extends RIFFFilter {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), "Unexpected fmt chunk was encountered");
       }
+      // fmt header with cbSize and extensions
+      int FMT_SIZE_cbSize_extension = 40;
+      // fmt header with cbSize = 0
+      int FMT_SIZE_cbSize = 18;
+      // Header sizes (https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html)
+      // fmt header without cbSize field
+      int FMT_SIZE_BASIC = 16;
       if (size != FMT_SIZE_BASIC && size != FMT_SIZE_cbSize && size != FMT_SIZE_cbSize_extension) {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), "fmt chunk size is invalid");
       }
       ctx.format = Short.reverseBytes(input.readShort());
+      int WAVE_FORMAT_MULAW = 7;
+      int WAVE_FORMAT_ALAW = 6;
+      int WAVE_FORMAT_IEEE_FLOAT = 3;
+      int WAVE_FORMAT_PCM = 1;
       if (ctx.format != WAVE_FORMAT_PCM
           && ctx.format != WAVE_FORMAT_IEEE_FLOAT
           && ctx.format != WAVE_FORMAT_ALAW

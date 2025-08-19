@@ -46,7 +46,6 @@ public class ECDSA {
     /** Maximum (padded) size of a DER-encoded signature (network-format) */
     public final int maxSigSize;
 
-    private final Provider kgProvider;
     private final Provider kfProvider;
     private final Provider sigProvider;
 
@@ -140,7 +139,7 @@ public class ECDSA {
       } catch (SignatureException e) {
         throw new Error(e);
       }
-      this.kgProvider = kg.getProvider();
+      Provider kgProvider = kg.getProvider();
       this.kfProvider = kf.getProvider();
       this.sigProvider = sig.getProvider();
       this.keygen = kg;

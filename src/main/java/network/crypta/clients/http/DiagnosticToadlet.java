@@ -22,7 +22,6 @@ import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.node.Node;
-import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetManager;
@@ -52,11 +51,9 @@ public class DiagnosticToadlet extends Toadlet {
   // private final DecimalFormat fix6p6 = new DecimalFormat("#####0.0#####");
   public static final String TOADLET_URL = "/diagnostic/";
 
-  protected DiagnosticToadlet(
-      Node n, NodeClientCore core, FCPServer fcp, HighLevelSimpleClient client) {
+  protected DiagnosticToadlet(Node n, FCPServer fcp, HighLevelSimpleClient client) {
     super(client);
     this.node = n;
-    this.core = core;
     this.fcp = fcp;
     stats = node.getNodeStats();
     peers = node.getPeers();
@@ -946,7 +943,6 @@ public class DiagnosticToadlet extends Toadlet {
   }
 
   private final Node node;
-  private final NodeClientCore core;
   private final NodeStats stats;
   private final PeerManager peers;
   private final NumberFormat thousandPoint = NumberFormat.getInstance();

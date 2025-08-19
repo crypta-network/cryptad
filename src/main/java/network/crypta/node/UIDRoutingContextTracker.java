@@ -29,16 +29,14 @@ public class UIDRoutingContextTracker {
     /** Request or insert tags */
     private final ArrayList<UIDTag> tags;
 
-    /** The set of nodes this UID has been routed to. This will always be very small. */
-    private final Set<WeakReference<PeerNode>> routedTo;
-
     private boolean finished;
 
     UIDRoutingContext(long uid, boolean insert) {
       this.uid = uid;
       this.insert = insert;
       tags = new ArrayList<>();
-      routedTo = new HashSet<>();
+      /** The set of nodes this UID has been routed to. This will always be very small. */
+      Set<WeakReference<PeerNode>> routedTo = new HashSet<>();
       finished = false;
     }
 

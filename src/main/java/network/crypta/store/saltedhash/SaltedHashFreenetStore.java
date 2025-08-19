@@ -112,7 +112,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private final StoreCallback<T> callback;
   private final boolean collisionPossible;
   private final int headerBlockLength;
-  private final int fullKeyLength;
   private final int dataBlockLength;
   private final Random random;
   private final File bloomFile;
@@ -190,7 +189,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     this.callback = callback;
     collisionPossible = callback.collisionPossible();
     headerBlockLength = callback.headerLength();
-    fullKeyLength = callback.fullKeyLength();
+    int fullKeyLength = callback.fullKeyLength();
     dataBlockLength = callback.dataLength();
 
     hdPadding =

@@ -1023,8 +1023,6 @@ public class Node implements TimeSkewDetectorCallback {
   /* It’s not the field that is deprecated but accessing it directly is. */
   public final long startupTime;
 
-  private final SimpleToadletServer toadlets;
-
   /**
    * @deprecated Use {@link #getClientCore()} instead of accessing this directly.
    */
@@ -1412,6 +1410,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     // FProxy config needs to be here too
     SubConfig fproxyConfig = config.createSubConfig("fproxy");
+    SimpleToadletServer toadlets;
     try {
       toadlets = new SimpleToadletServer(fproxyConfig, new ArrayBucketFactory(), executor, this);
       fproxyConfig.finishedInitialization();
@@ -3506,7 +3505,72 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     this.arkFetcherContext = ctx;
 
+    // Keep track of the fileNumber so we can potentially delete the extra peer data file
+    // later, the file is authoritative
+    // Shouldn't happen
+    NodeToNodeMessageListener fproxyN2NMListener =
+        new NodeToNodeMessageListener() {
+
+          @Override
+          public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
+            if (!fromDarknet) {
+              Logger.error(this, "Got N2NTM from non-darknet node ?!?!?!: from " + src);
+              return;
+            }
+            DarknetPeerNode darkSource = (DarknetPeerNode) src;
+            Logger.normal(this, "Received N2NTM from '" + darkSource.getPeer() + "'");
+            SimpleFieldSet fs = null;
+            try {
+              fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
+            } catch (IOException e) {
+              Logger.error(this, "IOException while parsing node to node message data", e);
+              return;
+            }
+            fs.putOverwrite("n2nType", Integer.toString(type));
+            fs.putOverwrite("receivedTime", Long.toString(System.currentTimeMillis()));
+            fs.putOverwrite("receivedAs", "nodeToNodeMessage");
+            int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
+            if (fileNumber == -1) {
+              Logger.error(
+                  this,
+                  "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
+            }
+            // Keep track of the fileNumber so we can potentially delete the extra peer data file
+            // later, the file is authoritative
+            try {
+              handleNodeToNodeTextMessageSimpleFieldSet(fs, darkSource, fileNumber);
+            } catch (FSParseException e) {
+              // Shouldn't happen
+              throw new Error(e);
+            }
+          }
+        };
     registerNodeToNodeMessageListener(N2N_MESSAGE_TYPE_FPROXY, fproxyN2NMListener);
+    NodeToNodeMessageListener diffNoderefListener =
+        new NodeToNodeMessageListener() {
+
+          @Override
+          public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
+            Logger.normal(
+                this,
+                "Received differential node reference node to node message from " + src.getPeer());
+            SimpleFieldSet fs = null;
+            try {
+              fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
+            } catch (IOException e) {
+              Logger.error(this, "IOException while parsing node to node message data", e);
+              return;
+            }
+            if (fs.get("n2nType") != null) {
+              fs.removeValue("n2nType");
+            }
+            try {
+              src.processDiffNoderef(fs);
+            } catch (FSParseException e) {
+              Logger.error(this, "FSParseException while parsing node to node message data", e);
+            }
+          }
+        };
     registerNodeToNodeMessageListener(Node.N2N_MESSAGE_TYPE_DIFFNODEREF, diffNoderefListener);
 
     // FIXME this is a hack
@@ -5210,70 +5274,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     listener.handleMessage(messageData.getData(), fromDarknet, src, type);
   }
-
-  private final NodeToNodeMessageListener diffNoderefListener =
-      new NodeToNodeMessageListener() {
-
-        @Override
-        public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
-          Logger.normal(
-              this,
-              "Received differential node reference node to node message from " + src.getPeer());
-          SimpleFieldSet fs = null;
-          try {
-            fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
-          } catch (IOException e) {
-            Logger.error(this, "IOException while parsing node to node message data", e);
-            return;
-          }
-          if (fs.get("n2nType") != null) {
-            fs.removeValue("n2nType");
-          }
-          try {
-            src.processDiffNoderef(fs);
-          } catch (FSParseException e) {
-            Logger.error(this, "FSParseException while parsing node to node message data", e);
-          }
-        }
-      };
-
-  private final NodeToNodeMessageListener fproxyN2NMListener =
-      new NodeToNodeMessageListener() {
-
-        @Override
-        public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
-          if (!fromDarknet) {
-            Logger.error(this, "Got N2NTM from non-darknet node ?!?!?!: from " + src);
-            return;
-          }
-          DarknetPeerNode darkSource = (DarknetPeerNode) src;
-          Logger.normal(this, "Received N2NTM from '" + darkSource.getPeer() + "'");
-          SimpleFieldSet fs = null;
-          try {
-            fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
-          } catch (IOException e) {
-            Logger.error(this, "IOException while parsing node to node message data", e);
-            return;
-          }
-          fs.putOverwrite("n2nType", Integer.toString(type));
-          fs.putOverwrite("receivedTime", Long.toString(System.currentTimeMillis()));
-          fs.putOverwrite("receivedAs", "nodeToNodeMessage");
-          int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
-          if (fileNumber == -1) {
-            Logger.error(
-                this,
-                "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
-          }
-          // Keep track of the fileNumber so we can potentially delete the extra peer data file
-          // later, the file is authoritative
-          try {
-            handleNodeToNodeTextMessageSimpleFieldSet(fs, darkSource, fileNumber);
-          } catch (FSParseException e) {
-            // Shouldn't happen
-            throw new Error(e);
-          }
-        }
-      };
 
   /**
    * Handle a node to node text message SimpleFieldSet

@@ -51,7 +51,6 @@ public class InsertCompressor implements CompressJob {
   private transient boolean scheduled;
   private static volatile boolean logMINOR;
   private final long generateHashes;
-  private final boolean pre1254;
   private final Config config;
 
   static {
@@ -81,7 +80,6 @@ public class InsertCompressor implements CompressJob {
     this.persistent = persistent;
     this.compressorDescriptor = inserter.ctx.compressorDescriptor;
     this.generateHashes = generateHashes;
-    this.pre1254 = pre1254;
     this.config = config;
   }
 

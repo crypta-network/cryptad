@@ -2063,7 +2063,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   static class TagVerifier {
-    private final String tag;
+
     // Attributes which need no sanitation
     private final HashSet<String> allowedAttrs;
     // Attributes which will be sanitized by child classes
@@ -2083,7 +2083,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] uriAttrs,
         String[] inlineURIAttrs,
         String[] booleanAttrs) {
-      this.tag = tag;
       this.allowedAttrs = new HashSet<>();
       this.parsedAttrs = new HashSet<>();
       if (allowedAttrs != null) {
@@ -2913,24 +2912,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   static class InputTagVerifier extends CoreTagVerifier {
     private final HashSet<String> allowedTypes;
-    private final String[] types =
-        new String[] {
-          "text",
-          "password",
-          "checkbox",
-          "radio",
-          "submit",
-          "reset",
-          // no ! file
-          "hidden",
-          "image",
-          "button",
-          "email",
-          "number",
-          "search",
-          "tel",
-          "url"
-        };
 
     InputTagVerifier(
         String tag,
@@ -2940,6 +2921,25 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String[] eventAttrs) {
       super(tag, allowedAttrs, uriAttrs, inlineURIAttrs, eventAttrs, null);
       this.allowedTypes = new HashSet<>();
+      // no ! file
+      String[] types =
+          new String[] {
+            "text",
+            "password",
+            "checkbox",
+            "radio",
+            "submit",
+            "reset",
+            // no ! file
+            "hidden",
+            "image",
+            "button",
+            "email",
+            "number",
+            "search",
+            "tel",
+            "url"
+          };
       if (types != null) {
         this.allowedTypes.addAll(Arrays.asList(types));
       }

@@ -1,6 +1,8 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -202,7 +204,9 @@ public class TempBucketTest {
   private static class RealTempBucketTest_ extends BucketTestBase {
     public RealTempBucketTest_(int maxRamSize, int maxTotalRamSize, boolean encrypted)
         throws IOException {
-      fg = new FilenameGenerator(weakPRNG, false, null, "junit");
+      Random weakPRNG = new DummyRandomSource(54321);
+      FilenameGenerator fg = new FilenameGenerator(weakPRNG, false, null, "junit");
+      Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
       tbf =
           new TempBucketFactory(
               exec, fg, maxRamSize, maxTotalRamSize, weakPRNG, encrypted, MIN_DISK_SPACE, secret);
@@ -221,10 +225,6 @@ public class TempBucketTest {
     }
 
     private final RandomSource strongPRNG = new DummyRandomSource(12345);
-    private final Random weakPRNG = new DummyRandomSource(54321);
-    private final Executor exec =
-        new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
-    private final FilenameGenerator fg;
     private final TempBucketFactory tbf;
   }
 

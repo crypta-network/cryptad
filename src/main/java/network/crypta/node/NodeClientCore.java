@@ -277,8 +277,6 @@ public class NodeClientCore implements Persistable {
    */
   private long minDiskFreeShortTerm;
 
-  private final MasterSecret cryptoSecretTransient;
-
   /**
    * @deprecated Use {@link #getClientContext()} instead of accessing this directly.
    */
@@ -562,7 +560,7 @@ public class NodeClientCore implements Persistable {
 
     initDiskSpaceLimits(nodeConfig, sortOrder);
 
-    cryptoSecretTransient = new MasterSecret();
+    MasterSecret cryptoSecretTransient = new MasterSecret();
     tempBucketFactory =
         new TempBucketFactory(
             node.getExecutor(),

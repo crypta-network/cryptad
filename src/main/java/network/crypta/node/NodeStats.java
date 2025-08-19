@@ -335,9 +335,6 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   public final DecayingKeyspaceAverage avgClientCacheSSKSuccess;
   public final DecayingKeyspaceAverage avgStoreSSKSuccess;
 
-  private final boolean enableNewLoadManagementRT = false;
-  private final boolean enableNewLoadManagementBulk = false;
-
   NodeStats(
       Node node, int sortOrder, SubConfig statsConfig, int obwLimit, int ibwLimit, int lastVersion)
       throws NodeInitException {
@@ -4409,6 +4406,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   public boolean enableNewLoadManagement(boolean realTimeFlag) {
+    boolean enableNewLoadManagementBulk = false;
+    boolean enableNewLoadManagementRT = false;
     return realTimeFlag ? enableNewLoadManagementRT : enableNewLoadManagementBulk;
   }
 

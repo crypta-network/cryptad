@@ -36,9 +36,6 @@ public class M3UFilter implements ContentDataFilter {
   static final byte[] CHAR_CARRIAGE_RETURN = {(byte) '\r'};
   static final int MAX_URI_LENGTH = 16384;
   static final String badUriReplacement = "#bad-uri-removed";
-  private final long MAX_LENGTH_NO_PROGRESS =
-      (200L * 1024 * 1024 * 11)
-          / 10; // 200MiB: playlists are a different usecase, and we want to allow transparent
 
   // pass-through for most files accessed via a playlist, likely through an external
   // palyer. See FProxyToadlet.MAX_LENGTH_NO_PROGRESS for the default. This value must
@@ -140,6 +137,8 @@ public class M3UFilter implements ContentDataFilter {
                     } else {
                       filtered += "?";
                     }
+                    // 200MiB: playlists are a different usecase, and we want to allow transparent
+                    long MAX_LENGTH_NO_PROGRESS = (200L * 1024 * 1024 * 11) / 10;
                     filtered += "max-size=" + MAX_LENGTH_NO_PROGRESS;
                   }
 

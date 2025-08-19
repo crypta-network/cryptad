@@ -1,6 +1,9 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -12,7 +15,6 @@ import org.junit.Test;
 public class BitArrayTest {
 
   private final int sampleBitsNumber = 10;
-  private final int oneByteBits = 8;
 
   /**
    * Creates a BitArray with all values set to the boolean argument
@@ -131,6 +133,7 @@ public class BitArrayTest {
    */
   @Test
   public void testFirstOne() {
+    int oneByteBits = 8;
     BitArray methodBitArray = new BitArray(oneByteBits);
     // only one "1"
     for (int i = 0; i < oneByteBits; i++) {

@@ -1,6 +1,7 @@
 package network.crypta.store;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,7 +36,7 @@ public class SlashdotStoreTest {
   public void setUp() throws java.lang.Exception {
     tempDir = new File("tmp-slashdotstoretest");
     tempDir.mkdir();
-    fg = new FilenameGenerator(weakPRNG, true, tempDir, "temp-");
+    FilenameGenerator fg = new FilenameGenerator(weakPRNG, true, tempDir, "temp-");
     tbf = new TempBucketFactory(exec, fg, 4096, 65536, weakPRNG, false, 2 * 1024 * 1024, null);
     exec.start();
   }
@@ -118,7 +119,6 @@ public class SlashdotStoreTest {
   private final RandomSource strongPRNG = new DummyRandomSource(43210);
   private final Random weakPRNG = new Random(12340);
   private final PooledExecutor exec = new PooledExecutor();
-  private FilenameGenerator fg;
   private TempBucketFactory tbf;
   private File tempDir;
 }

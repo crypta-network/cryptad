@@ -1,6 +1,11 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.DataInputStream;
 import java.io.File;
@@ -36,7 +41,7 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
 
   @Before
   public void setUp() throws IOException {
-    fg = new FilenameGenerator(weakPRNG, true, f, "temp-raf-test-");
+    FilenameGenerator fg = new FilenameGenerator(weakPRNG, true, f, "temp-raf-test-");
     factory =
         new TempBucketFactory(exec, fg, 4096, 65536, weakPRNG, false, 1024 * 1024 * 2, secret);
     factory.setEncryption(enableCrypto());
@@ -438,6 +443,5 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
   private final Random weakPRNG = new Random(12340);
   private final Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
   private final File f = new File("temp-bucket-raf-test");
-  private FilenameGenerator fg;
   private TempBucketFactory factory;
 }

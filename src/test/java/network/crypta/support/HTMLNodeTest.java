@@ -17,7 +17,6 @@ import org.junit.Test;
 public class HTMLNodeTest {
 
   private HTMLNode exampleNodeNonEmpty;
-  private HTMLNode exampleNodeEmpty;
 
   /** Example node name in ASCII only. Not permitted to be empty. */
   private static final String SAMPLE_OKAY_NODE_NAME_NON_EMPTY = "sampleNode";
@@ -46,7 +45,7 @@ public class HTMLNodeTest {
   @Before
   public void setUp() throws Exception {
     exampleNodeNonEmpty = null;
-    exampleNodeEmpty = null;
+    HTMLNode exampleNodeEmpty = null;
     try {
       exampleNodeNonEmpty = new HTMLNode(SAMPLE_OKAY_NODE_NAME_NON_EMPTY);
       exampleNodeEmpty = new HTMLNode(SAMPLE_OKAY_NODE_NAME_EMPTY);

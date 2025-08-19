@@ -520,6 +520,7 @@ public class NodeStarter implements WrapperListener {
     java.security.Security.setProperty("networkaddress.cache.ttl", "0");
     java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
+    FreenetFilePersistentConfig cfg;
     try {
       System.out.println("Creating config from " + configFilename);
       cfg = FreenetFilePersistentConfig.constructFreenetFilePersistentConfig(configFilename);
@@ -534,6 +535,7 @@ public class NodeStarter implements WrapperListener {
 
     PooledExecutor executor = new PooledExecutor();
 
+    LoggingConfigHandler logConfigHandler;
     try {
       System.out.println("Creating logger...");
       logConfigHandler = new LoggingConfigHandler(loggingConfig, executor);
@@ -708,7 +710,6 @@ public class NodeStarter implements WrapperListener {
   }
 
   static SemiOrderedShutdownHook shutdownHook;
-  private static LoggingConfigHandler logConfigHandler;
   // experimental osgi support
   private static NodeStarter nodestarter_osgi = null;
   private static boolean isTestingVM;
@@ -718,5 +719,4 @@ public class NodeStarter implements WrapperListener {
   private static SecureRandom globalSecureRandom;
 
   private Node node;
-  private FreenetFilePersistentConfig cfg;
 }

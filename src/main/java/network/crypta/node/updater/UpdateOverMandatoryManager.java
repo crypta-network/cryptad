@@ -2235,9 +2235,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
         oldTempFilesPeerDir.listFiles(
             new FileFilter() {
 
-              private final int lastGoodMainBuildNumber =
-                  Version.MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER;
-
               @Override
               public boolean accept(File file) {
                 String fileName = file.getName();
@@ -2257,6 +2254,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   try {
                     buildNumberStr = mainBuildNumberMatcher.group(1);
                     buildNumber = Integer.parseInt(buildNumberStr);
+                    int lastGoodMainBuildNumber = Version.MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER;
                     if (buildNumber < lastGoodMainBuildNumber) return true;
                   } catch (NumberFormatException e) {
                     Logger.error(this, "Wierd file in persistent temp: " + fileName);

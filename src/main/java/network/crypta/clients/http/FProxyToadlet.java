@@ -57,8 +57,17 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.pluginmanager.PluginInfoWrapper;
-import network.crypta.support.*;
+import network.crypta.support.HTMLEncoder;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.LogThresholdCallback;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.MediaType;
+import network.crypta.support.MultiValueTable;
+import network.crypta.support.SizeUtil;
+import network.crypta.support.URIPreEncoder;
+import network.crypta.support.URLEncoder;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
@@ -1778,8 +1787,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         true,
         null);
 
-    DiagnosticToadlet diagnosticToadlet =
-        new DiagnosticToadlet(node, core, core.getFCPServer(), client);
+    DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(node, core.getFCPServer(), client);
     server.register(
         diagnosticToadlet,
         "FProxyToadlet.categoryStatus",
