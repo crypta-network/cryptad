@@ -298,7 +298,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   /** Version of the node */
   private String version;
-  
+
   /** Cached parsed version components to avoid re-parsing */
   private final AtomicReference<String[]> parsedVersionComponents = new AtomicReference<>();
 
@@ -690,7 +690,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             if (fromLocal)
               Logger.error(
                   this,
-                  "Invalid hostname or IP Address syntax error while parsing peer reference in local peers list: "
+                  "Invalid hostname or IP Address syntax error while parsing peer reference in"
+                      + " local peers list: "
                       + phys);
             System.err.println(
                 "Invalid hostname or IP Address syntax error while parsing peer reference: "
@@ -700,7 +701,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             if (fromLocal)
               Logger.error(
                   this,
-                  "Invalid hostname or IP Address syntax error while parsing peer reference in local peers list: "
+                  "Invalid hostname or IP Address syntax error while parsing peer reference in"
+                      + " local peers list: "
                       + phys);
             System.err.println(
                 "Invalid hostname or IP Address syntax error while parsing peer reference: "
@@ -710,7 +712,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             if (fromLocal)
               Logger.error(
                   this,
-                  "Invalid hostname or IP Address syntax error while parsing peer reference in local peers list: "
+                  "Invalid hostname or IP Address syntax error while parsing peer reference in"
+                      + " local peers list: "
                       + phys);
             System.err.println(
                 "Invalid hostname or IP Address syntax error while parsing peer reference: "
@@ -1265,7 +1268,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (msg.getSource() != null) {
       Logger.error(
           this,
-          "Messages should NOT be relayed as-is, they should always be re-created to clear any sub-messages etc, see comments in Message.java!: "
+          "Messages should NOT be relayed as-is, they should always be re-created to clear any"
+              + " sub-messages etc, see comments in Message.java!: "
               + msg,
           new Exception("error"));
     }
@@ -4084,7 +4088,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   /**
    * Gets the node name from the version string.
-   * 
+   *
    * @return The node name (e.g., "Cryptad", "Fred") or null if the version is invalid
    */
   public String getNodeName() {
@@ -4094,7 +4098,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   /**
    * Helper method to parse and cache version components to avoid repeated parsing.
-   * 
+   *
    * @return Parsed version components array, or empty array if parsing fails
    */
   private String[] getParsedVersionComponents() {
@@ -4102,12 +4106,12 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (cached != null) {
       return cached;
     }
-    
+
     String versionStr = getVersion();
     if (versionStr == null) {
       return new String[0];
     }
-    
+
     try {
       String[] components = network.crypta.support.Fields.commaList(versionStr);
       if (components != null && components.length >= 3) {
@@ -4117,7 +4121,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     } catch (Exception e) {
       // Parsing failed, return empty array
     }
-    
+
     return new String[0];
   }
 
@@ -4450,7 +4454,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
                   + peer
                   + " for "
                   + getPeer()
-                  + " because it's not a real Internet address and metadata.allowLocalAddresses is not true");
+                  + " because it's not a real Internet address and metadata.allowLocalAddresses is"
+                  + " not true");
         continue;
       }
       if (!isConnected()) {
@@ -6096,7 +6101,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             this,
             "The peer "
                 + this
-                + " has published his peer's locations and the closest we have found to the target is "
+                + " has published his peer's locations and the closest we have found to the target"
+                + " is "
                 + distance
                 + " away.");
     }

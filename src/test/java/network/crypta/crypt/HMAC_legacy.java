@@ -1,90 +1,86 @@
 package network.crypta.crypt;
 
-import network.crypta.crypt.SHA256;
-import network.crypta.crypt.Util;
-
 import java.security.MessageDigest;
 
 /**
- * Implements the HMAC Keyed Message Authentication function, as described
- * in the draft FIPS standard.
+ * Implements the HMAC Keyed Message Authentication function, as described in the draft FIPS
+ * standard.
  */
 public class HMAC_legacy {
 
-	protected static final int B = 64;
-	protected static byte[] ipad = new byte[B];
-	protected static byte[] opad = new byte[B];
+  protected static final int B = 64;
+  protected static byte[] ipad = new byte[B];
+  protected static byte[] opad = new byte[B];
 
-	static {
-		for(int i = 0; i < B; i++) {
-			ipad[i] = (byte) 0x36;
-			opad[i] = (byte) 0x5c;
-		}
-	}
-	protected MessageDigest d;
+  static {
+    for (int i = 0; i < B; i++) {
+      ipad[i] = (byte) 0x36;
+      opad[i] = (byte) 0x5c;
+    }
+  }
 
-	public HMAC_legacy(MessageDigest md) {
-		this.d = md;
-	}
+  protected MessageDigest d;
 
-	public boolean verify(byte[] K, byte[] text, byte[] mac) {
-		byte[] mac2 = mac(K, text, mac.length);
+  public HMAC_legacy(MessageDigest md) {
+    this.d = md;
+  }
 
-		// this is constant-time; DO NOT 'optimize'
-		return MessageDigest.isEqual(mac, mac2);
-	}
+  public boolean verify(byte[] K, byte[] text, byte[] mac) {
+    byte[] mac2 = mac(K, text, mac.length);
 
-	public byte[] mac(byte[] K, byte[] text, int macbytes) {
-		byte[] K0 = null;
+    // this is constant-time; DO NOT 'optimize'
+    return MessageDigest.isEqual(mac, mac2);
+  }
 
-		if(K.length == B) // Step 1
-			K0 = K;
-		else {
-			// Step 2
-			if(K.length > B)
-				K0 = K = Util.hashBytes(d, K);
+  public byte[] mac(byte[] K, byte[] text, int macbytes) {
+    byte[] K0 = null;
 
-			if(K.length < B) { // Step 3
-				K0 = new byte[B];
-				System.arraycopy(K, 0, K0, 0, K.length);
-			}
-		}
+    if (K.length == B) // Step 1
+    K0 = K;
+    else {
+      // Step 2
+      if (K.length > B) K0 = K = Util.hashBytes(d, K);
 
-		// Step 4
-		byte[] IS1 = Util.xor(K0, ipad);
+      if (K.length < B) { // Step 3
+        K0 = new byte[B];
+        System.arraycopy(K, 0, K0, 0, K.length);
+      }
+    }
 
-		// Step 5/6
-		d.update(IS1);
-		d.update(text);
-		IS1 = d.digest();
+    // Step 4
+    byte[] IS1 = Util.xor(K0, ipad);
 
-		// Step 7
-		byte[] IS2 = Util.xor(K0, opad);
+    // Step 5/6
+    d.update(IS1);
+    d.update(text);
+    IS1 = d.digest();
 
-		// Step 8/9
-		d.update(IS2);
-		d.update(IS1);
-		IS1 = d.digest();
+    // Step 7
+    byte[] IS2 = Util.xor(K0, opad);
 
-		// Step 10
-		if(macbytes == IS1.length)
-			return IS1;
-		else {
-			byte[] rv = new byte[macbytes];
-			System.arraycopy(IS1, 0, rv, 0, Math.min(rv.length, IS1.length));
-			return rv;
-		}
-	}
+    // Step 8/9
+    d.update(IS2);
+    d.update(IS1);
+    IS1 = d.digest();
 
-	public static byte[] macWithSHA256(byte[] K, byte[] text, int macbytes) {
-		MessageDigest sha256 = SHA256.getMessageDigest();
-		HMAC_legacy hash = new HMAC_legacy(sha256);
-		return hash.mac(K, text, macbytes);
-	}
+    // Step 10
+    if (macbytes == IS1.length) return IS1;
+    else {
+      byte[] rv = new byte[macbytes];
+      System.arraycopy(IS1, 0, rv, 0, Math.min(rv.length, IS1.length));
+      return rv;
+    }
+  }
 
-	public static boolean verifyWithSHA256(byte[] K, byte[] text, byte[] mac) {
-		MessageDigest sha256 = SHA256.getMessageDigest();
-		HMAC_legacy hash = new HMAC_legacy(sha256);
-		return hash.verify(K, text, mac);
-	}
+  public static byte[] macWithSHA256(byte[] K, byte[] text, int macbytes) {
+    MessageDigest sha256 = SHA256.getMessageDigest();
+    HMAC_legacy hash = new HMAC_legacy(sha256);
+    return hash.mac(K, text, macbytes);
+  }
+
+  public static boolean verifyWithSHA256(byte[] K, byte[] text, byte[] mac) {
+    MessageDigest sha256 = SHA256.getMessageDigest();
+    HMAC_legacy hash = new HMAC_legacy(sha256);
+    return hash.verify(K, text, mac);
+  }
 }

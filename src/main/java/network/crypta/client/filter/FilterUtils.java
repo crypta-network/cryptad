@@ -1,766 +1,719 @@
 package network.crypta.client.filter;
 
-import network.crypta.support.Logger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.regex.Pattern;
+import network.crypta.support.Logger;
 
 public class FilterUtils {
-	private static volatile boolean logDEBUG;
-	static {
-	    Logger.registerClass(FilterUtils.class);
-	}
-	
-	private final static int MAX_NTH = 999999;  // Limit range of numbers allowed in isNth, due to incorrect behavior found in webkit based browsers.
+  private static volatile boolean logDEBUG;
 
-	//Basic Data types
-	public static boolean isInteger(String strValue)
-	{
-		try
-		{
-			Integer.parseInt(strValue);
-			return true;
-		}
-		catch(Exception e)
-		{
-			return false;
-		}
-	}
-	public static boolean isNumber(String strNumber)
-	{
-		try
-		{
-			boolean containsE=false;
-			String strDecimal,strInteger=null;
-			if(strNumber.indexOf('e')>0)
-			{
-				containsE=true;
-				strDecimal=strNumber.substring(0,strNumber.indexOf('e'));
-				strInteger=strNumber.substring(strDecimal.indexOf('e')+1);
-			}
-			else if(strNumber.indexOf('E')>0)
-			{
-				containsE=true;
-				strDecimal=strNumber.substring(0,strNumber.indexOf('E'));
-				strInteger=strNumber.substring(strDecimal.indexOf('E')+1);
-			}
-			else
-				strDecimal=strNumber;
-			Double.parseDouble(strDecimal);
-			if(containsE)
-				return isInteger(strInteger);
-			else
-				return true;
-			}
-		catch(Exception e)
-		{
-			return false;
-		}
-	}
-	private final static HashSet<String> allowedUnits=new HashSet<String>();
-	static
-	{
-		// W3C CSS Spec Section 5 (http://www.w3.org/TR/css3-values/)
-		// "Distance Units: the '<length>' type"
-		allowedUnits.add("em");
-		allowedUnits.add("ex");
-		allowedUnits.add("ch");
-		allowedUnits.add("rem");
-		allowedUnits.add("cm");
-		allowedUnits.add("mm");
-		allowedUnits.add("in");
-		allowedUnits.add("pt");
-		allowedUnits.add("pc");
-		allowedUnits.add("px");
-		allowedUnits.add("vw");
-		allowedUnits.add("vh");
-		allowedUnits.add("vmin");
-		allowedUnits.add("vmax");
-	}
-	public static boolean isPercentage(String value)
-	{
-		if (value.length()>=2 && value.charAt(value.length()-1)=='%') //Valid percentage X%
-		{
-			// Percentages are <number>%
-			// That means they can be positive, negative, zero, >100%, and they can contain decimal points.
-			try
-			{
-				Integer.parseInt(value.substring(0,value.length()-1));
-				return true;
-			}
-			catch(Exception e) { }
-			try
-			{
-				Double.parseDouble(value.substring(0,value.length()-1));
-				return true;
-			}
-			catch(Exception e) { }
-		}
-		return false;
-	}
+  static {
+    Logger.registerClass(FilterUtils.class);
+  }
 
-	public static boolean isLength(String value,boolean isSVG) //SVG lengths allow % values
-	{
-		String lengthValue=null;
-		value=value.trim();
-		if (value.isEmpty()) {
-			return false;
-		}
-		if (isSVG) {
-			if (value.charAt(value.length()-1) == '%') {
-				lengthValue = value.substring(0, value.length()-1);
-			}
-		}
-		boolean units = false;
-		if (lengthValue == null) { //Valid unit Vxx[x[x]] (where xx[x[x]] is unit) or V
-			int pos = 0;
-			int len = value.length();
-			for (int i = len - 1; i >= 0; i --) {
-				char c = value.charAt(i);
-				if ((c >= '0' && c <= '9') || c == '.') {
-					pos = i + 1;
-					break;
-				}
-			}
-			if (len - pos > 0 && allowedUnits.contains(value.substring(pos))) {
-				lengthValue = value.substring(0, pos);
-				units = true;
-			} else {
-				lengthValue = value;
-			}
-		}
-		try
-		{
-			int x = Integer.parseInt(lengthValue);
-            return units || isSVG || x == 0;
+  private static final int MAX_NTH =
+      999999; // Limit range of numbers allowed in isNth, due to incorrect behavior found in webkit
+
+  // based browsers.
+
+  // Basic Data types
+  public static boolean isInteger(String strValue) {
+    try {
+      Integer.parseInt(strValue);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  public static boolean isNumber(String strNumber) {
+    try {
+      boolean containsE = false;
+      String strDecimal, strInteger = null;
+      if (strNumber.indexOf('e') > 0) {
+        containsE = true;
+        strDecimal = strNumber.substring(0, strNumber.indexOf('e'));
+        strInteger = strNumber.substring(strDecimal.indexOf('e') + 1);
+      } else if (strNumber.indexOf('E') > 0) {
+        containsE = true;
+        strDecimal = strNumber.substring(0, strNumber.indexOf('E'));
+        strInteger = strNumber.substring(strDecimal.indexOf('E') + 1);
+      } else strDecimal = strNumber;
+      Double.parseDouble(strDecimal);
+      if (containsE) return isInteger(strInteger);
+      else return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private static final HashSet<String> allowedUnits = new HashSet<String>();
+
+  static {
+    // W3C CSS Spec Section 5 (http://www.w3.org/TR/css3-values/)
+    // "Distance Units: the '<length>' type"
+    allowedUnits.add("em");
+    allowedUnits.add("ex");
+    allowedUnits.add("ch");
+    allowedUnits.add("rem");
+    allowedUnits.add("cm");
+    allowedUnits.add("mm");
+    allowedUnits.add("in");
+    allowedUnits.add("pt");
+    allowedUnits.add("pc");
+    allowedUnits.add("px");
+    allowedUnits.add("vw");
+    allowedUnits.add("vh");
+    allowedUnits.add("vmin");
+    allowedUnits.add("vmax");
+  }
+
+  public static boolean isPercentage(String value) {
+    if (value.length() >= 2 && value.charAt(value.length() - 1) == '%') // Valid percentage X%
+    {
+      // Percentages are <number>%
+      // That means they can be positive, negative, zero, >100%, and they can contain decimal
+      // points.
+      try {
+        Integer.parseInt(value.substring(0, value.length() - 1));
+        return true;
+      } catch (Exception e) {
+      }
+      try {
+        Double.parseDouble(value.substring(0, value.length() - 1));
+        return true;
+      } catch (Exception e) {
+      }
+    }
+    return false;
+  }
+
+  public static boolean isLength(String value, boolean isSVG) // SVG lengths allow % values
+      {
+    String lengthValue = null;
+    value = value.trim();
+    if (value.isEmpty()) {
+      return false;
+    }
+    if (isSVG) {
+      if (value.charAt(value.length() - 1) == '%') {
+        lengthValue = value.substring(0, value.length() - 1);
+      }
+    }
+    boolean units = false;
+    if (lengthValue == null) { // Valid unit Vxx[x[x]] (where xx[x[x]] is unit) or V
+      int pos = 0;
+      int len = value.length();
+      for (int i = len - 1; i >= 0; i--) {
+        char c = value.charAt(i);
+        if ((c >= '0' && c <= '9') || c == '.') {
+          pos = i + 1;
+          break;
         }
-		catch(Exception e){ }
-		try
-		{
-			double dval=Double.parseDouble(lengthValue);
-			if(!units && !isSVG && dval != 0) return false;
-			if(!(Double.isInfinite(dval) || Double.isNaN(dval)))
-				return true;
-		}
-		catch(Exception e){ }
-		return false;
-	}
-	public static boolean isAngle(String value)
-	{
-		boolean isValid=true;
-		int index=-1;
-		if(value.contains("deg"))
-		{
-			index=value.indexOf("deg");
-			String secondpart=value.substring(index).trim();
-			if(!("deg".equals(secondpart)))
-				isValid=false;
-		}
-		else if(value.contains("grad"))
-		{
-			index=value.indexOf("grad");
-			String secondpart=value.substring(index).trim();
+      }
+      if (len - pos > 0 && allowedUnits.contains(value.substring(pos))) {
+        lengthValue = value.substring(0, pos);
+        units = true;
+      } else {
+        lengthValue = value;
+      }
+    }
+    try {
+      int x = Integer.parseInt(lengthValue);
+      return units || isSVG || x == 0;
+    } catch (Exception e) {
+    }
+    try {
+      double dval = Double.parseDouble(lengthValue);
+      if (!units && !isSVG && dval != 0) return false;
+      if (!(Double.isInfinite(dval) || Double.isNaN(dval))) return true;
+    } catch (Exception e) {
+    }
+    return false;
+  }
 
-			if(!("grad".equals(secondpart)))
-				isValid=false;
-		}
-		else if(value.contains("rad"))
-		{
-			index=value.indexOf("rad");
-			String secondpart=value.substring(index).trim();
+  public static boolean isAngle(String value) {
+    boolean isValid = true;
+    int index = -1;
+    if (value.contains("deg")) {
+      index = value.indexOf("deg");
+      String secondpart = value.substring(index).trim();
+      if (!("deg".equals(secondpart))) isValid = false;
+    } else if (value.contains("grad")) {
+      index = value.indexOf("grad");
+      String secondpart = value.substring(index).trim();
 
-			if(!("rad".equals(secondpart)))
-				isValid=false;
-		}
-		if(index!=-1 && isValid)
-		{
-			String firstPart=value.substring(0,index);
-			try
-			{
-				Float.parseFloat(firstPart);
-				return true;
-			}
-			catch(Exception e)
-			{
-			}
-		}
-		return false;
-	}
-	private final static HashSet<String> SVGcolorKeywords=new HashSet<String>();
-	static
-	{
-		SVGcolorKeywords.add("aliceblue");
-		SVGcolorKeywords.add("antiquewhite");
-		SVGcolorKeywords.add("aqua");
-		SVGcolorKeywords.add("aquamarine");
-		SVGcolorKeywords.add("azure");
-		SVGcolorKeywords.add("beige");
-		SVGcolorKeywords.add("bisque");
-		SVGcolorKeywords.add("black");
-		SVGcolorKeywords.add("blanchedalmond");
-		SVGcolorKeywords.add("blue");
-		SVGcolorKeywords.add("blueviolet");
-		SVGcolorKeywords.add("brown");
-		SVGcolorKeywords.add("burlywood");
-		SVGcolorKeywords.add("cadetblue");
-		SVGcolorKeywords.add("chartreuse");
-		SVGcolorKeywords.add("chocolate");
-		SVGcolorKeywords.add("coral");
-		SVGcolorKeywords.add("cornflowerblue");
-		SVGcolorKeywords.add("cornsilk");
-		SVGcolorKeywords.add("crimson");
-		SVGcolorKeywords.add("cyan");
-		SVGcolorKeywords.add("darkblue");
-		SVGcolorKeywords.add("darkcyan");
-		SVGcolorKeywords.add("darkgoldenrod");
-		SVGcolorKeywords.add("darkgray");
-		SVGcolorKeywords.add("darkgreen");
-		SVGcolorKeywords.add("darkgrey");
-		SVGcolorKeywords.add("darkkhaki");
-		SVGcolorKeywords.add("darkmagenta");
-		SVGcolorKeywords.add("darkolivegreen");
-		SVGcolorKeywords.add("darkorange");
-		SVGcolorKeywords.add("darkorchid");
-		SVGcolorKeywords.add("darkred");
-		SVGcolorKeywords.add("darksalmon");
-		SVGcolorKeywords.add("darkseagreen");
-		SVGcolorKeywords.add("darkslateblue");
-		SVGcolorKeywords.add("darkslategray");
-		SVGcolorKeywords.add("darkslategrey");
-		SVGcolorKeywords.add("darkturquoise");
-		SVGcolorKeywords.add("darkviolet");
-		SVGcolorKeywords.add("deeppink");
-		SVGcolorKeywords.add("deepskyblue");
-		SVGcolorKeywords.add("dimgray");
-		SVGcolorKeywords.add("dimgrey");
-		SVGcolorKeywords.add("dodgerblue");
-		SVGcolorKeywords.add("firebrick");
-		SVGcolorKeywords.add("floralwhite");
-		SVGcolorKeywords.add("forestgreen");
-		SVGcolorKeywords.add("fuchsia");
-		SVGcolorKeywords.add("gainsboro");
-		SVGcolorKeywords.add("ghostwhite");
-		SVGcolorKeywords.add("gold");
-		SVGcolorKeywords.add("goldenrod");
-		SVGcolorKeywords.add("gray");
-		SVGcolorKeywords.add("grey");
-		SVGcolorKeywords.add("green");
-		SVGcolorKeywords.add("greenyellow");
-		SVGcolorKeywords.add("honeydew");
-		SVGcolorKeywords.add("hotpink");
-		SVGcolorKeywords.add("indianred");
-		SVGcolorKeywords.add("indigo");
-		SVGcolorKeywords.add("ivory");
-		SVGcolorKeywords.add("khaki");
-		SVGcolorKeywords.add("lavender");
-		SVGcolorKeywords.add("lavenderblush");
-		SVGcolorKeywords.add("lawngreen");
-		SVGcolorKeywords.add("lemonchiffon");
-		SVGcolorKeywords.add("lightblue");
-		SVGcolorKeywords.add("lightcoral");
-		SVGcolorKeywords.add("lightcyan");
-		SVGcolorKeywords.add("lightgoldenrodyellow");
-		SVGcolorKeywords.add("lightgray");
-		SVGcolorKeywords.add("lightgreen");
-		SVGcolorKeywords.add("lightgrey");
-		SVGcolorKeywords.add("lightpink");
-		SVGcolorKeywords.add("lightsalmon");
-		SVGcolorKeywords.add("lightseagreen");
-		SVGcolorKeywords.add("lightskyblue");
-		SVGcolorKeywords.add("lightslategray");
-		SVGcolorKeywords.add("lightslategrey");
-		SVGcolorKeywords.add("lightsteelblue");
-		SVGcolorKeywords.add("lightyellow");
-		SVGcolorKeywords.add("lime");
-		SVGcolorKeywords.add("limegreen");
-		SVGcolorKeywords.add("linen");
-		SVGcolorKeywords.add("magenta");
-		SVGcolorKeywords.add("maroon");
-		SVGcolorKeywords.add("mediumaquamarine");
-		SVGcolorKeywords.add("mediumblue");
-		SVGcolorKeywords.add("mediumorchid");
-		SVGcolorKeywords.add("thistle");
-		SVGcolorKeywords.add("tomato");
-		SVGcolorKeywords.add("turquoise");
-		SVGcolorKeywords.add("violet");
-		SVGcolorKeywords.add("wheat");
-		SVGcolorKeywords.add("white");
-		SVGcolorKeywords.add("whitesmoke");
-		SVGcolorKeywords.add("yellow");
-		SVGcolorKeywords.add("yellowgreen");
-		SVGcolorKeywords.add("rebeccapurple"); // CSS Colors Level 4: #663399
-	}
-	private final static HashSet<String> CSScolorKeywords=new HashSet<String>();
-	static
-	{
-		CSScolorKeywords.add("aqua");
-		CSScolorKeywords.add("black");
-		CSScolorKeywords.add("blue");
-		CSScolorKeywords.add("fuchsia");
-		CSScolorKeywords.add("gray");
-		CSScolorKeywords.add("green");
-		CSScolorKeywords.add("lime");
-		CSScolorKeywords.add("maroon");
-		CSScolorKeywords.add("navy");
-		CSScolorKeywords.add("olive");
-		CSScolorKeywords.add("orange");
-		CSScolorKeywords.add("purple");
-		CSScolorKeywords.add("red");
-		CSScolorKeywords.add("silver");
-		CSScolorKeywords.add("teal");
-		CSScolorKeywords.add("white");
-		CSScolorKeywords.add("yellow");
-		// as of CSS3 this is valid: http://www.w3.org/TR/css3-color/#transparent-def
-		CSScolorKeywords.add("transparent");
-	}
-	private final static HashSet<String> CSSsystemColorKeywords=new HashSet<String>();
-	static {
-		CSScolorKeywords.add("activeborder");
-		CSScolorKeywords.add("activecaption");
-		CSScolorKeywords.add("appworkspace");
-		CSScolorKeywords.add("background");
-		CSScolorKeywords.add("buttonface");
-		CSScolorKeywords.add("buttonhighlight");
-		CSScolorKeywords.add("buttonshadow");
-		CSScolorKeywords.add("buttontext");
-		CSScolorKeywords.add("captiontext");
-		CSScolorKeywords.add("graytext");
-		CSScolorKeywords.add("highlight");
-		CSScolorKeywords.add("highlighttext");
-		CSScolorKeywords.add("inactiveborder");
-		CSScolorKeywords.add("inactivecaption");
-		CSScolorKeywords.add("inactivecaptiontext");
-		CSScolorKeywords.add("infobackground");
-		CSScolorKeywords.add("infotext");
-		CSScolorKeywords.add("menu");
-		CSScolorKeywords.add("menutext");
-		CSScolorKeywords.add("scrollbar");
-		CSScolorKeywords.add("threeddarkshadow");
-		CSScolorKeywords.add("threedface");
-		CSScolorKeywords.add("threedhighlight");
-		CSScolorKeywords.add("threedlightshadow");
-		CSScolorKeywords.add("threedshadow");
-		CSScolorKeywords.add("window");
-		CSScolorKeywords.add("windowframe");
-		CSScolorKeywords.add("windowtext");
-	}
-	public static boolean isValidCSSShape(String value)
-	{
-		if(value.indexOf("rect(")==0 && value.indexOf(')')==value.length()-1)
-		{
-			String[] shapeParts=value.substring(5,value.length()-1).split(",");
-			if(shapeParts.length==4)
-			{
-				for(String s : shapeParts)
-				{
-					s = s.trim();
-					if(!(s.equalsIgnoreCase("auto") || isLength(s, false)))
-						return false;
-				}
-				return true;
-			}
-		}
-		return false;
+      if (!("grad".equals(secondpart))) isValid = false;
+    } else if (value.contains("rad")) {
+      index = value.indexOf("rad");
+      String secondpart = value.substring(index).trim();
 
-	}
-	private final static HashSet<String> cssMedia = new HashSet<String>();
-	static {
-	    cssMedia.addAll(Arrays.asList("all", "aural", "braille", "embossed", "handheld", "print", "projection", "screen", "speech", "tty", "tv"));
-	}
-	public static boolean isMedia(String media) {
-		return cssMedia.contains(media);
-	}
-	
-	public static final Pattern hexColorPattern = Pattern.compile("#(?>[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})", Pattern.CASE_INSENSITIVE);
-	
-	public static boolean isColor(String value)
-	{
-		value=value.trim().toLowerCase();
+      if (!("rad".equals(secondpart))) isValid = false;
+    }
+    if (index != -1 && isValid) {
+      String firstPart = value.substring(0, index);
+      try {
+        Float.parseFloat(firstPart);
+        return true;
+      } catch (Exception e) {
+      }
+    }
+    return false;
+  }
 
-		if(CSScolorKeywords.contains(value) || CSSsystemColorKeywords.contains(value) || SVGcolorKeywords.contains(value))
-			return true;
+  private static final HashSet<String> SVGcolorKeywords = new HashSet<String>();
 
-		if(value.indexOf('#')==0)
-		{
-			return hexColorPattern.matcher(value).matches();
-		}
-		if((value.startsWith("rgb(") || value.startsWith("rgba(")) && value.indexOf(')')==value.length()-1)
-		{
-			// rgba is an alias to rgb
-			if(value.contains(","))
-			{
-				// Legacy format rgba(r,g,b,a)
-				String[] colorParts=value.substring(value.indexOf("(")+1,value.length()-1).split(",");
-				if(colorParts.length!=3&&colorParts.length!=4)
-					return false;
-				for(int i=0; i<3; i++)
-				{
-					if(!(isPercentage(colorParts[i].trim()) || isInteger(colorParts[i].trim())))
-						return false;
-				}
-				if(colorParts.length<=3 || isNumber(colorParts[3]))
-					return true;
-			}else{
-				if(value.contains("/")){
-					// Modern format rgba(r g b / a)
-					String alphaPart=value.substring(value.indexOf("/")+1,value.length()-1).trim();
-					if(!alphaPart.isEmpty() && !isPercentage(alphaPart) && !isNumber(alphaPart) && !alphaPart.equalsIgnoreCase("none"))
-						return false;
-					value=value.substring(0,value.indexOf("/"))+")"; // Strip alpha value, proceed to the following tests
-				}
-				// Modern format rgba(r g b)
-				String[] colorParts=value.substring(value.indexOf("(")+1,value.length()-1).split(" ");
-				if(colorParts.length!=3) {
-					return false;
-				}
-				for(int i=0; i<3; i++)
-				{
-					String trimmed = colorParts[i].trim();
-					if(!(trimmed.equalsIgnoreCase("none") || isPercentage(trimmed) || (isInteger(trimmed) && isIntegerInRange(trimmed, 0, 255))))
-						return false;
-				}
-				return true;
-			}
-		}
+  static {
+    SVGcolorKeywords.add("aliceblue");
+    SVGcolorKeywords.add("antiquewhite");
+    SVGcolorKeywords.add("aqua");
+    SVGcolorKeywords.add("aquamarine");
+    SVGcolorKeywords.add("azure");
+    SVGcolorKeywords.add("beige");
+    SVGcolorKeywords.add("bisque");
+    SVGcolorKeywords.add("black");
+    SVGcolorKeywords.add("blanchedalmond");
+    SVGcolorKeywords.add("blue");
+    SVGcolorKeywords.add("blueviolet");
+    SVGcolorKeywords.add("brown");
+    SVGcolorKeywords.add("burlywood");
+    SVGcolorKeywords.add("cadetblue");
+    SVGcolorKeywords.add("chartreuse");
+    SVGcolorKeywords.add("chocolate");
+    SVGcolorKeywords.add("coral");
+    SVGcolorKeywords.add("cornflowerblue");
+    SVGcolorKeywords.add("cornsilk");
+    SVGcolorKeywords.add("crimson");
+    SVGcolorKeywords.add("cyan");
+    SVGcolorKeywords.add("darkblue");
+    SVGcolorKeywords.add("darkcyan");
+    SVGcolorKeywords.add("darkgoldenrod");
+    SVGcolorKeywords.add("darkgray");
+    SVGcolorKeywords.add("darkgreen");
+    SVGcolorKeywords.add("darkgrey");
+    SVGcolorKeywords.add("darkkhaki");
+    SVGcolorKeywords.add("darkmagenta");
+    SVGcolorKeywords.add("darkolivegreen");
+    SVGcolorKeywords.add("darkorange");
+    SVGcolorKeywords.add("darkorchid");
+    SVGcolorKeywords.add("darkred");
+    SVGcolorKeywords.add("darksalmon");
+    SVGcolorKeywords.add("darkseagreen");
+    SVGcolorKeywords.add("darkslateblue");
+    SVGcolorKeywords.add("darkslategray");
+    SVGcolorKeywords.add("darkslategrey");
+    SVGcolorKeywords.add("darkturquoise");
+    SVGcolorKeywords.add("darkviolet");
+    SVGcolorKeywords.add("deeppink");
+    SVGcolorKeywords.add("deepskyblue");
+    SVGcolorKeywords.add("dimgray");
+    SVGcolorKeywords.add("dimgrey");
+    SVGcolorKeywords.add("dodgerblue");
+    SVGcolorKeywords.add("firebrick");
+    SVGcolorKeywords.add("floralwhite");
+    SVGcolorKeywords.add("forestgreen");
+    SVGcolorKeywords.add("fuchsia");
+    SVGcolorKeywords.add("gainsboro");
+    SVGcolorKeywords.add("ghostwhite");
+    SVGcolorKeywords.add("gold");
+    SVGcolorKeywords.add("goldenrod");
+    SVGcolorKeywords.add("gray");
+    SVGcolorKeywords.add("grey");
+    SVGcolorKeywords.add("green");
+    SVGcolorKeywords.add("greenyellow");
+    SVGcolorKeywords.add("honeydew");
+    SVGcolorKeywords.add("hotpink");
+    SVGcolorKeywords.add("indianred");
+    SVGcolorKeywords.add("indigo");
+    SVGcolorKeywords.add("ivory");
+    SVGcolorKeywords.add("khaki");
+    SVGcolorKeywords.add("lavender");
+    SVGcolorKeywords.add("lavenderblush");
+    SVGcolorKeywords.add("lawngreen");
+    SVGcolorKeywords.add("lemonchiffon");
+    SVGcolorKeywords.add("lightblue");
+    SVGcolorKeywords.add("lightcoral");
+    SVGcolorKeywords.add("lightcyan");
+    SVGcolorKeywords.add("lightgoldenrodyellow");
+    SVGcolorKeywords.add("lightgray");
+    SVGcolorKeywords.add("lightgreen");
+    SVGcolorKeywords.add("lightgrey");
+    SVGcolorKeywords.add("lightpink");
+    SVGcolorKeywords.add("lightsalmon");
+    SVGcolorKeywords.add("lightseagreen");
+    SVGcolorKeywords.add("lightskyblue");
+    SVGcolorKeywords.add("lightslategray");
+    SVGcolorKeywords.add("lightslategrey");
+    SVGcolorKeywords.add("lightsteelblue");
+    SVGcolorKeywords.add("lightyellow");
+    SVGcolorKeywords.add("lime");
+    SVGcolorKeywords.add("limegreen");
+    SVGcolorKeywords.add("linen");
+    SVGcolorKeywords.add("magenta");
+    SVGcolorKeywords.add("maroon");
+    SVGcolorKeywords.add("mediumaquamarine");
+    SVGcolorKeywords.add("mediumblue");
+    SVGcolorKeywords.add("mediumorchid");
+    SVGcolorKeywords.add("thistle");
+    SVGcolorKeywords.add("tomato");
+    SVGcolorKeywords.add("turquoise");
+    SVGcolorKeywords.add("violet");
+    SVGcolorKeywords.add("wheat");
+    SVGcolorKeywords.add("white");
+    SVGcolorKeywords.add("whitesmoke");
+    SVGcolorKeywords.add("yellow");
+    SVGcolorKeywords.add("yellowgreen");
+    SVGcolorKeywords.add("rebeccapurple"); // CSS Colors Level 4: #663399
+  }
 
-		if(value.indexOf("hsl(")==0 && value.indexOf(')')==value.length()-1)
-		{
-			String[] colorParts = value.substring(4, value.length() - 1).split(",");
-			if (colorParts.length != 3) {
-			    return false;
-			}
+  private static final HashSet<String> CSScolorKeywords = new HashSet<String>();
 
-			if(isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]))
-			    return true;
-		}
+  static {
+    CSScolorKeywords.add("aqua");
+    CSScolorKeywords.add("black");
+    CSScolorKeywords.add("blue");
+    CSScolorKeywords.add("fuchsia");
+    CSScolorKeywords.add("gray");
+    CSScolorKeywords.add("green");
+    CSScolorKeywords.add("lime");
+    CSScolorKeywords.add("maroon");
+    CSScolorKeywords.add("navy");
+    CSScolorKeywords.add("olive");
+    CSScolorKeywords.add("orange");
+    CSScolorKeywords.add("purple");
+    CSScolorKeywords.add("red");
+    CSScolorKeywords.add("silver");
+    CSScolorKeywords.add("teal");
+    CSScolorKeywords.add("white");
+    CSScolorKeywords.add("yellow");
+    // as of CSS3 this is valid: http://www.w3.org/TR/css3-color/#transparent-def
+    CSScolorKeywords.add("transparent");
+  }
 
-		if(value.indexOf("hsla(")==0 && value.indexOf(')')==value.length()-1)
-		{
-			String[] colorParts = value.substring(5, value.length() - 1).split(",");
-			if (colorParts.length != 4) {
-			    return false;
-			}
+  private static final HashSet<String> CSSsystemColorKeywords = new HashSet<String>();
 
-            return isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]) && isNumber(colorParts[3]);
-		}
+  static {
+    CSScolorKeywords.add("activeborder");
+    CSScolorKeywords.add("activecaption");
+    CSScolorKeywords.add("appworkspace");
+    CSScolorKeywords.add("background");
+    CSScolorKeywords.add("buttonface");
+    CSScolorKeywords.add("buttonhighlight");
+    CSScolorKeywords.add("buttonshadow");
+    CSScolorKeywords.add("buttontext");
+    CSScolorKeywords.add("captiontext");
+    CSScolorKeywords.add("graytext");
+    CSScolorKeywords.add("highlight");
+    CSScolorKeywords.add("highlighttext");
+    CSScolorKeywords.add("inactiveborder");
+    CSScolorKeywords.add("inactivecaption");
+    CSScolorKeywords.add("inactivecaptiontext");
+    CSScolorKeywords.add("infobackground");
+    CSScolorKeywords.add("infotext");
+    CSScolorKeywords.add("menu");
+    CSScolorKeywords.add("menutext");
+    CSScolorKeywords.add("scrollbar");
+    CSScolorKeywords.add("threeddarkshadow");
+    CSScolorKeywords.add("threedface");
+    CSScolorKeywords.add("threedhighlight");
+    CSScolorKeywords.add("threedlightshadow");
+    CSScolorKeywords.add("threedshadow");
+    CSScolorKeywords.add("window");
+    CSScolorKeywords.add("windowframe");
+    CSScolorKeywords.add("windowtext");
+  }
 
-		return false;
-	}
-	
-	public static boolean isCSSTransform(String value) {
-	    value = value.trim();
-	    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform(\""+value+"\")");
-	    
-	    if(value.indexOf("matrix(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String[] parts = value.substring(7, value.length() - 1).split(",");
-		if (parts.length != 6) {
-		    return false;
-		}
+  public static boolean isValidCSSShape(String value) {
+    if (value.indexOf("rect(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] shapeParts = value.substring(5, value.length() - 1).split(",");
+      if (shapeParts.length == 4) {
+        for (String s : shapeParts) {
+          s = s.trim();
+          if (!(s.equalsIgnoreCase("auto") || isLength(s, false))) return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
 
-		boolean isValid = true;
-		for (int i = 0; i < parts.length && isValid; i++) {
-		    if (!isNumber(parts[i].trim())) {
-			isValid = false;
-		    }
-		}
-		if (isValid) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a matrix()");
-		    return true;
-		}
-	    }
+  private static final HashSet<String> cssMedia = new HashSet<String>();
 
-	    if(value.indexOf("translateX(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(11, value.length() - 1);
-		if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateX()");
-		    return true;
-		}
-	    }
+  static {
+    cssMedia.addAll(
+        Arrays.asList(
+            "all",
+            "aural",
+            "braille",
+            "embossed",
+            "handheld",
+            "print",
+            "projection",
+            "screen",
+            "speech",
+            "tty",
+            "tv"));
+  }
 
-	    if(value.indexOf("translateY(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(11, value.length() - 1);
-		if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateY()");
-		    return true;
-		}
-	    }
+  public static boolean isMedia(String media) {
+    return cssMedia.contains(media);
+  }
 
-	    if(value.indexOf("translate(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String[] parts = value.substring(10, value.length() - 1).split(",");
-		if (parts.length == 1 && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
-		    return true;
-		}else if (parts.length == 2 && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false)) && (isPercentage(parts[1].trim()) || isLength(parts[1].trim(), false))) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
-		    return true;
-		}
-	    }
+  public static final Pattern hexColorPattern =
+      Pattern.compile("#(?>[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})", Pattern.CASE_INSENSITIVE);
 
-	    if(value.indexOf("scale(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String[] parts = value.substring(6, value.length() - 1).split(",");
-		if (parts.length == 1 && isNumber(parts[0].trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
-		    return true;
-		}else if (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
-		    return true;
-		}
-	    }
-	    
-	    if(value.indexOf("scaleX(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(7, value.length() - 1);
-		if (isNumber(part.trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleX()");
-		    return true;
-		}
-	    }
+  public static boolean isColor(String value) {
+    value = value.trim().toLowerCase();
 
-	    if(value.indexOf("scaleY(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(7, value.length() - 1);
-		if (isNumber(part.trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleY()");
-		    return true;
-		}
-	    }
+    if (CSScolorKeywords.contains(value)
+        || CSSsystemColorKeywords.contains(value)
+        || SVGcolorKeywords.contains(value)) return true;
 
-	    if(value.indexOf("rotate(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(7, value.length() - 1);
-		if (isAngle(part.trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a rotate()");
-		    return true;
-		}
-	    }
+    if (value.indexOf('#') == 0) {
+      return hexColorPattern.matcher(value).matches();
+    }
+    if ((value.startsWith("rgb(") || value.startsWith("rgba("))
+        && value.indexOf(')') == value.length() - 1) {
+      // rgba is an alias to rgb
+      if (value.contains(",")) {
+        // Legacy format rgba(r,g,b,a)
+        String[] colorParts =
+            value.substring(value.indexOf("(") + 1, value.length() - 1).split(",");
+        if (colorParts.length != 3 && colorParts.length != 4) return false;
+        for (int i = 0; i < 3; i++) {
+          if (!(isPercentage(colorParts[i].trim()) || isInteger(colorParts[i].trim())))
+            return false;
+        }
+        if (colorParts.length <= 3 || isNumber(colorParts[3])) return true;
+      } else {
+        if (value.contains("/")) {
+          // Modern format rgba(r g b / a)
+          String alphaPart = value.substring(value.indexOf("/") + 1, value.length() - 1).trim();
+          if (!alphaPart.isEmpty()
+              && !isPercentage(alphaPart)
+              && !isNumber(alphaPart)
+              && !alphaPart.equalsIgnoreCase("none")) return false;
+          value =
+              value.substring(0, value.indexOf("/"))
+                  + ")"; // Strip alpha value, proceed to the following tests
+        }
+        // Modern format rgba(r g b)
+        String[] colorParts =
+            value.substring(value.indexOf("(") + 1, value.length() - 1).split(" ");
+        if (colorParts.length != 3) {
+          return false;
+        }
+        for (int i = 0; i < 3; i++) {
+          String trimmed = colorParts[i].trim();
+          if (!(trimmed.equalsIgnoreCase("none")
+              || isPercentage(trimmed)
+              || (isInteger(trimmed) && isIntegerInRange(trimmed, 0, 255)))) return false;
+        }
+        return true;
+      }
+    }
 
-	    if(value.indexOf("skewX(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(6, value.length() - 1);
-		if (isNumber(part.trim()) || isAngle(part.trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewX()");
-		    return true;
-		}
-	    }
+    if (value.indexOf("hsl(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] colorParts = value.substring(4, value.length() - 1).split(",");
+      if (colorParts.length != 3) {
+        return false;
+      }
 
-	    if(value.indexOf("skewY(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String part = value.substring(6, value.length() - 1);
-		if (isNumber(part.trim()) || isAngle(part.trim())) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewY()");
-		    return true;
-		}
-	    }
+      if (isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]))
+        return true;
+    }
 
-	    if(value.indexOf("skew(")==0 && value.indexOf(')')==value.length()-1)
-	    {
-		String[] parts = value.substring(5, value.length() - 1).split(",");
-		if (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
-		    return true;
-		}else if (parts.length == 2 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim())) && (isNumber(parts[1].trim()) || isAngle(parts[0].trim()))) {
-		    if(logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
-		    return true;
-		}
-	    }
+    if (value.indexOf("hsla(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] colorParts = value.substring(5, value.length() - 1).split(",");
+      if (colorParts.length != 4) {
+        return false;
+      }
 
-	    return false;
-	}
+      return isNumber(colorParts[0])
+          && isPercentage(colorParts[1])
+          && isPercentage(colorParts[2])
+          && isNumber(colorParts[3]);
+    }
 
-	public static boolean isFrequency(String value)
-	{
-		String firstPart;
-		value=value.trim().toLowerCase();
-		boolean isValidFrequency=true;
-		if(value.contains("khz"))
-		{
-			int index=value.indexOf("khz");
-			firstPart=value.substring(0,index).trim();
-			if(!("khz".equals(value.substring(index).trim())))
-			{
-				isValidFrequency=false;
-			}
+    return false;
+  }
 
-		}
-		else if(value.contains("hz"))
-		{
-			int index=value.indexOf("hz");
-			firstPart=value.substring(0,index).trim();
-			if(!("hz".equals(value.substring(index).trim())))
-			{
-				isValidFrequency=false;
-			}
+  public static boolean isCSSTransform(String value) {
+    value = value.trim();
+    if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform(\"" + value + "\")");
 
-		}
-		else
-			firstPart=value.trim();
-		if(isValidFrequency)
-		{
-			try
-			{
-				float temp=Float.parseFloat(firstPart);
-				if(temp>0)
-					return true;
-			}
-			catch(Exception e)
-			{
-			}
-		}
-		return false;
-	}
-	public static boolean isTime(String value)
-	{
-		value=value.toLowerCase();
-		String intValue;
-		if(value.contains("ms") && value.length()>2)
-			intValue=value.substring(0,value.length()-2);
-		else if(value.indexOf('s')>-1 && value.length()>1)
-			intValue=value.substring(0,value.length()-1);
-		else
-			return false;
-		return isNumber(intValue);
-	}
-	public static String[] removeWhiteSpace(String[] values, boolean stripQuotes)
-	{
-		if(values==null) return null;
-		ArrayList<String> arrayToReturn=new ArrayList<String>();
-		for(String value:values)
-		{
-			value = value.trim();
-			if(stripQuotes)
-				value = CSSTokenizerFilter.removeOuterQuotes(value).trim();
-			if(value!=null && !(value.trim().isEmpty()))
-				arrayToReturn.add(value);
-		}
-		return arrayToReturn.toArray(new String[0]);
-	}
-	public static String sanitizeURI(FilterCallback cb,String URI)
-	{
-		try
-		{
-		return cb.processURI(URI, null);
-		}
-		catch(Exception e)
-		{
-			return "";
-		}
-	}
-	public static boolean isURI(FilterCallback cb,String URI)
-	{
-		return URI.equals(sanitizeURI(cb,URI));
-	}
-	public static String[] splitOnCharArray(String value,String splitOn)
-	{
-		ArrayList<String> pointPairs=new ArrayList<String>();
-		//Creating HashMap for faster search operation
-		int i;
-		int prev=0;
-		for(i=0;i<value.length();i++)
-		{
-			if(splitOn.indexOf(value.charAt(i))!=-1)
-			{
-				pointPairs.add(value.substring(prev,i));
-				while(i<value.length() && splitOn.indexOf(value.charAt(i))!=-1)
-				{
-					i++;
-				}
-				prev=i;
-				i--;
-			}
-		}
-		boolean isLastElement=false;
-		for(i=prev;i<value.length();i++)
-		{
-			if(splitOn.indexOf(value.charAt(i))==-1)
-			{
-				isLastElement=true;
-				break;
-			}
-		}
-		if(isLastElement)
-		{
-			pointPairs.add(value.substring(prev));
-		}
-		return pointPairs.toArray(new String[0]);
-	}
-	public static boolean isPointPair(String value)
-	{
-		String[] pointPairs=splitOnCharArray(value," \n\t");
-		for(String pointPair: pointPairs)
-		{
-			String[] strParts=pointPair.split(",");
-			if(strParts.length!=2)
-				return false;
-			try
-			{
-				Float.parseFloat(strParts[0]);
-				Float.parseFloat(strParts[1]);
-			}
-			catch(Exception e)
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-	public static boolean isIntegerInRange(String strValue, int min, int max)
-	{
-		try
-		{
-			// Strip any leading '+' character, because Integer.parseInt handles it differently between Java 6 (fails) and 7 (succeeds).
-			if(strValue.length()>1 && strValue.charAt(0)=='+' && Character.isDigit(strValue.charAt(1)))
-			{
-				strValue = strValue.substring(1);
-			}
-			
-			int value = Integer.parseInt(strValue);
-			return (value>=min && value<=max);
-		}
-		catch(Exception e)
-		{
-			return false;
-		}
-	}
-	public static boolean isNth(String value)
-	{
-		if(value.equals("odd") || value.equals("even") || isIntegerInRange(value, -MAX_NTH, MAX_NTH))
-		{
-			return true;
-		}
-		else
-		{
-			// Check if value has the form "an+b" - where a and b can be any in range integer.
-			int nIndex=value.indexOf('n');
-			if(nIndex!=-1)
-			{
-				int aLength=nIndex;
-				if(aLength==0 || (aLength==1 && value.charAt(0)=='-') || isIntegerInRange(value.substring(0,aLength), -MAX_NTH, MAX_NTH))
-				{
-					int bIndex=nIndex+1;
-					int bLength=value.length()-bIndex;
-                    return bLength == 0 || ((value.charAt(bIndex) == '+' || value.charAt(bIndex) == '-') && isIntegerInRange(value.substring(bIndex), -MAX_NTH, MAX_NTH));
-				}
-			}
-		}
-		return false;
-	}
-//	public static HTMLNode getHTMLNodeFromElement(Element node)
-//	{
-//		String[] propertyName=new String[node.getAttributes().size()];
-//		String[] propertyValue=new String[node.getAttributes().size()];
-//		int index=0;
-//		List<Attribute> attrList=node.getAttributes();
-//		for(Attribute currentAttr:attrList)
-//		{
-//			propertyName[index]=currentAttr.getName();
-//			propertyValue[index]=currentAttr.getValue();
-//		}
-//		return new HTMLNode(node.getName(),propertyName,propertyValue,node.getValue());
-//	}	
+    if (value.indexOf("matrix(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] parts = value.substring(7, value.length() - 1).split(",");
+      if (parts.length != 6) {
+        return false;
+      }
+
+      boolean isValid = true;
+      for (int i = 0; i < parts.length && isValid; i++) {
+        if (!isNumber(parts[i].trim())) {
+          isValid = false;
+        }
+      }
+      if (isValid) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a matrix()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("translateX(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(11, value.length() - 1);
+      if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateX()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("translateY(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(11, value.length() - 1);
+      if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateY()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("translate(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] parts = value.substring(10, value.length() - 1).split(",");
+      if (parts.length == 1
+          && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
+        return true;
+      } else if (parts.length == 2
+          && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))
+          && (isPercentage(parts[1].trim()) || isLength(parts[1].trim(), false))) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("scale(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] parts = value.substring(6, value.length() - 1).split(",");
+      if (parts.length == 1 && isNumber(parts[0].trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
+        return true;
+      } else if (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("scaleX(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(7, value.length() - 1);
+      if (isNumber(part.trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleX()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("scaleY(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(7, value.length() - 1);
+      if (isNumber(part.trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleY()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("rotate(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(7, value.length() - 1);
+      if (isAngle(part.trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a rotate()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("skewX(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(6, value.length() - 1);
+      if (isNumber(part.trim()) || isAngle(part.trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewX()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("skewY(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String part = value.substring(6, value.length() - 1);
+      if (isNumber(part.trim()) || isAngle(part.trim())) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewY()");
+        return true;
+      }
+    }
+
+    if (value.indexOf("skew(") == 0 && value.indexOf(')') == value.length() - 1) {
+      String[] parts = value.substring(5, value.length() - 1).split(",");
+      if (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
+        return true;
+      } else if (parts.length == 2
+          && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))
+          && (isNumber(parts[1].trim()) || isAngle(parts[0].trim()))) {
+        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public static boolean isFrequency(String value) {
+    String firstPart;
+    value = value.trim().toLowerCase();
+    boolean isValidFrequency = true;
+    if (value.contains("khz")) {
+      int index = value.indexOf("khz");
+      firstPart = value.substring(0, index).trim();
+      if (!("khz".equals(value.substring(index).trim()))) {
+        isValidFrequency = false;
+      }
+
+    } else if (value.contains("hz")) {
+      int index = value.indexOf("hz");
+      firstPart = value.substring(0, index).trim();
+      if (!("hz".equals(value.substring(index).trim()))) {
+        isValidFrequency = false;
+      }
+
+    } else firstPart = value.trim();
+    if (isValidFrequency) {
+      try {
+        float temp = Float.parseFloat(firstPart);
+        if (temp > 0) return true;
+      } catch (Exception e) {
+      }
+    }
+    return false;
+  }
+
+  public static boolean isTime(String value) {
+    value = value.toLowerCase();
+    String intValue;
+    if (value.contains("ms") && value.length() > 2)
+      intValue = value.substring(0, value.length() - 2);
+    else if (value.indexOf('s') > -1 && value.length() > 1)
+      intValue = value.substring(0, value.length() - 1);
+    else return false;
+    return isNumber(intValue);
+  }
+
+  public static String[] removeWhiteSpace(String[] values, boolean stripQuotes) {
+    if (values == null) return null;
+    ArrayList<String> arrayToReturn = new ArrayList<String>();
+    for (String value : values) {
+      value = value.trim();
+      if (stripQuotes) value = CSSTokenizerFilter.removeOuterQuotes(value).trim();
+      if (value != null && !(value.trim().isEmpty())) arrayToReturn.add(value);
+    }
+    return arrayToReturn.toArray(new String[0]);
+  }
+
+  public static String sanitizeURI(FilterCallback cb, String URI) {
+    try {
+      return cb.processURI(URI, null);
+    } catch (Exception e) {
+      return "";
+    }
+  }
+
+  public static boolean isURI(FilterCallback cb, String URI) {
+    return URI.equals(sanitizeURI(cb, URI));
+  }
+
+  public static String[] splitOnCharArray(String value, String splitOn) {
+    ArrayList<String> pointPairs = new ArrayList<String>();
+    // Creating HashMap for faster search operation
+    int i;
+    int prev = 0;
+    for (i = 0; i < value.length(); i++) {
+      if (splitOn.indexOf(value.charAt(i)) != -1) {
+        pointPairs.add(value.substring(prev, i));
+        while (i < value.length() && splitOn.indexOf(value.charAt(i)) != -1) {
+          i++;
+        }
+        prev = i;
+        i--;
+      }
+    }
+    boolean isLastElement = false;
+    for (i = prev; i < value.length(); i++) {
+      if (splitOn.indexOf(value.charAt(i)) == -1) {
+        isLastElement = true;
+        break;
+      }
+    }
+    if (isLastElement) {
+      pointPairs.add(value.substring(prev));
+    }
+    return pointPairs.toArray(new String[0]);
+  }
+
+  public static boolean isPointPair(String value) {
+    String[] pointPairs = splitOnCharArray(value, " \n\t");
+    for (String pointPair : pointPairs) {
+      String[] strParts = pointPair.split(",");
+      if (strParts.length != 2) return false;
+      try {
+        Float.parseFloat(strParts[0]);
+        Float.parseFloat(strParts[1]);
+      } catch (Exception e) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public static boolean isIntegerInRange(String strValue, int min, int max) {
+    try {
+      // Strip any leading '+' character, because Integer.parseInt handles it differently between
+      // Java 6 (fails) and 7 (succeeds).
+      if (strValue.length() > 1
+          && strValue.charAt(0) == '+'
+          && Character.isDigit(strValue.charAt(1))) {
+        strValue = strValue.substring(1);
+      }
+
+      int value = Integer.parseInt(strValue);
+      return (value >= min && value <= max);
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  public static boolean isNth(String value) {
+    if (value.equals("odd") || value.equals("even") || isIntegerInRange(value, -MAX_NTH, MAX_NTH)) {
+      return true;
+    } else {
+      // Check if value has the form "an+b" - where a and b can be any in range integer.
+      int nIndex = value.indexOf('n');
+      if (nIndex != -1) {
+        int aLength = nIndex;
+        if (aLength == 0
+            || (aLength == 1 && value.charAt(0) == '-')
+            || isIntegerInRange(value.substring(0, aLength), -MAX_NTH, MAX_NTH)) {
+          int bIndex = nIndex + 1;
+          int bLength = value.length() - bIndex;
+          return bLength == 0
+              || ((value.charAt(bIndex) == '+' || value.charAt(bIndex) == '-')
+                  && isIntegerInRange(value.substring(bIndex), -MAX_NTH, MAX_NTH));
+        }
+      }
+    }
+    return false;
+  }
+  //	public static HTMLNode getHTMLNodeFromElement(Element node)
+  //	{
+  //		String[] propertyName=new String[node.getAttributes().size()];
+  //		String[] propertyValue=new String[node.getAttributes().size()];
+  //		int index=0;
+  //		List<Attribute> attrList=node.getAttributes();
+  //		for(Attribute currentAttr:attrList)
+  //		{
+  //			propertyName[index]=currentAttr.getName();
+  //			propertyValue[index]=currentAttr.getValue();
+  //		}
+  //		return new HTMLNode(node.getName(),propertyName,propertyValue,node.getValue());
+  //	}
 }

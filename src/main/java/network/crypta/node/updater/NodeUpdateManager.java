@@ -52,8 +52,8 @@ import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.FileUtil;
+import network.crypta.support.io.IOUtils;
 
 /**
  * Supervises NodeUpdater's. Enables us to easily update multiple files, change the URI's on the
@@ -990,7 +990,8 @@ public class NodeUpdateManager {
       Logger.error(this, "DEPLOYING UPDATE FAILED: " + t, t);
       System.err.println("UPDATE FAILED: CAUGHT " + t);
       System.err.println(
-          "YOUR NODE DID NOT UPDATE. THIS IS PROBABLY A BUG OR SERIOUS PROBLEM SUCH AS OUT OF MEMORY.");
+          "YOUR NODE DID NOT UPDATE. THIS IS PROBABLY A BUG OR SERIOUS PROBLEM SUCH AS OUT OF"
+              + " MEMORY.");
       System.err.println("Cause of the problem: " + t);
       t.printStackTrace();
       failUpdate(t.getMessage());
@@ -1226,7 +1227,8 @@ public class NodeUpdateManager {
           // Fail the update - otherwise we will leak disk space
           newMainJar.delete();
           throw new UpdateFailedException(
-              "Cannot write to preferred new jar location and cannot rename temp file over old jar, update failed");
+              "Cannot write to preferred new jar location and cannot rename temp file over old jar,"
+                  + " update failed");
         }
         // Try the hard way
       } else {
@@ -1239,7 +1241,8 @@ public class NodeUpdateManager {
             + newMainJar
             + " rather than "
             + mainJar
-            + " (if Crypta fails to start after the update you could try changing wrapper.conf to use the old jar)");
+            + " (if Crypta fails to start after the update you could try changing wrapper.conf to"
+            + " use the old jar)");
     return true;
   }
 
@@ -1372,7 +1375,8 @@ public class NodeUpdateManager {
           if (disabledNotBlown) {
             System.err.println("THE AUTO-UPDATING SYSTEM HAS BEEN DISABLED!");
             System.err.println(
-                "We do not know whether this is a local problem or the auto-update system has in fact been compromised. What we do know:\n"
+                "We do not know whether this is a local problem or the auto-update system has in"
+                    + " fact been compromised. What we do know:\n"
                     + revocationMessage);
           } else {
             System.err.println("THE AUTO-UPDATING SYSTEM HAS BEEN COMPROMISED!");

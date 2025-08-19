@@ -9,61 +9,72 @@ import network.crypta.support.io.NativeThread;
 
 public class GetRequestStatusMessage extends FCPMessage {
 
-	final String identifier;
-	final boolean global;
-	final boolean onlyData;
-	final static String NAME = "GetRequestStatus";
-	
-	public GetRequestStatusMessage(SimpleFieldSet fs) {
-		this.identifier = fs.get("Identifier");
-		this.global = fs.getBoolean("Global", false);
-		this.onlyData = fs.getBoolean("OnlyData", false);
-	}
+  final String identifier;
+  final boolean global;
+  final boolean onlyData;
+  static final String NAME = "GetRequestStatus";
 
-	@Override
-	public SimpleFieldSet getFieldSet() {
-		SimpleFieldSet fs = new SimpleFieldSet(true);
-		fs.putSingle("Identifier", identifier);
-		return fs;
-	}
+  public GetRequestStatusMessage(SimpleFieldSet fs) {
+    this.identifier = fs.get("Identifier");
+    this.global = fs.getBoolean("Global", false);
+    this.onlyData = fs.getBoolean("OnlyData", false);
+  }
 
-	@Override
-	public String getName() {
-		return NAME;
-	}
+  @Override
+  public SimpleFieldSet getFieldSet() {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle("Identifier", identifier);
+    return fs;
+  }
 
-	@Override
-	public void run(final FCPConnectionHandler handler, Node node)
-			throws MessageInvalidException {
-		ClientRequest req = handler.getRebootRequest(global, handler, identifier);
-		if(req == null) {
-			if(node.getClientCore().killedDatabase()) {
-				// Ignore.
-				return;
-			}
-			try {
-                node.getClientCore().getClientContext().jobRunner.queue(new PersistentJob() {
-                    
-                    @Override
-                    public boolean run(ClientContext context) {
-                        ClientRequest req = handler.getForeverRequest(global, handler, identifier);
-                        if(req == null) {
-                            ProtocolErrorMessage msg = new ProtocolErrorMessage(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);
-                            handler.send(msg);
-                        } else {
-                            req.sendPendingMessages(handler.getOutputHandler(), identifier, true, onlyData);
-                        }
-                        return false;
+  @Override
+  public String getName() {
+    return NAME;
+  }
+
+  @Override
+  public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+    ClientRequest req = handler.getRebootRequest(global, handler, identifier);
+    if (req == null) {
+      if (node.getClientCore().killedDatabase()) {
+        // Ignore.
+        return;
+      }
+      try {
+        node.getClientCore()
+            .getClientContext()
+            .jobRunner
+            .queue(
+                new PersistentJob() {
+
+                  @Override
+                  public boolean run(ClientContext context) {
+                    ClientRequest req = handler.getForeverRequest(global, handler, identifier);
+                    if (req == null) {
+                      ProtocolErrorMessage msg =
+                          new ProtocolErrorMessage(
+                              ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                              false,
+                              null,
+                              identifier,
+                              global);
+                      handler.send(msg);
+                    } else {
+                      req.sendPendingMessages(
+                          handler.getOutputHandler(), identifier, true, onlyData);
                     }
-                    
-                }, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-            } catch (PersistenceDisabledException e) {
-                ProtocolErrorMessage msg = new ProtocolErrorMessage(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);
-                handler.send(msg);
-            }
-		} else {
-			req.sendPendingMessages(handler.getOutputHandler(), identifier, true, onlyData);
-		}
-	}
-
+                    return false;
+                  }
+                },
+                NativeThread.PriorityLevel.NORM_PRIORITY.value);
+      } catch (PersistenceDisabledException e) {
+        ProtocolErrorMessage msg =
+            new ProtocolErrorMessage(
+                ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);
+        handler.send(msg);
+      }
+    } else {
+      req.sendPendingMessages(handler.getOutputHandler(), identifier, true, onlyData);
+    }
+  }
 }

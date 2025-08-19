@@ -5,22 +5,22 @@ import network.crypta.clients.http.FProxyFetchListener;
 /** This listener notifies the PushDataManager when a download make some progress */
 public class NotifierFetchListener implements FProxyFetchListener {
 
-	private final PushDataManager			pushManager;
+  private final PushDataManager pushManager;
 
-	private final BaseUpdateableElement	element;
+  private final BaseUpdateableElement element;
 
-	public NotifierFetchListener(PushDataManager pushManager, BaseUpdateableElement element) {
-		this.pushManager = pushManager;
-		this.element = element;
-	}
+  public NotifierFetchListener(PushDataManager pushManager, BaseUpdateableElement element) {
+    this.pushManager = pushManager;
+    this.element = element;
+  }
 
-	@Override
-	public void onEvent() {
-		pushManager.updateElement(element.getUpdaterId(null));
-	}
+  @Override
+  public void onEvent() {
+    pushManager.updateElement(element.getUpdaterId(null));
+  }
 
-	@Override
-	public String toString() {
-		return "NotifierFetchListener[pushManager:" + pushManager + ",element;" + element + "]";
-	}
+  @Override
+  public String toString() {
+    return "NotifierFetchListener[pushManager:" + pushManager + ",element;" + element + "]";
+  }
 }

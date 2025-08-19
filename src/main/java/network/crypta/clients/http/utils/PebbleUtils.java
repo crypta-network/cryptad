@@ -1,18 +1,16 @@
 package network.crypta.clients.http.utils;
 
-import network.crypta.clients.http.utils.L10nExtension.L10nFunction;
-import network.crypta.l10n.BaseL10n;
-import network.crypta.l10n.NodeL10n;
-import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
-import java.util.Map;
-
 import io.pebbletemplates.pebble.PebbleEngine;
 import io.pebbletemplates.pebble.loader.ClasspathLoader;
 import io.pebbletemplates.pebble.loader.Loader;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
-
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
+import java.util.Map;
+import network.crypta.clients.http.utils.L10nExtension.L10nFunction;
+import network.crypta.l10n.BaseL10n;
+import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
 
 public class PebbleUtils {
@@ -25,15 +23,16 @@ public class PebbleUtils {
     loader.setPrefix(PebbleUtils.TEMPLATE_ROOT_PATH);
     loader.setSuffix(PebbleUtils.TEMPLATE_NAME_SUFFIX);
 
-    templateEngine = new PebbleEngine.Builder().loader(loader).extension(new L10nExtension(NodeL10n.getBase())).build();
+    templateEngine =
+        new PebbleEngine.Builder()
+            .loader(loader)
+            .extension(new L10nExtension(NodeL10n.getBase()))
+            .build();
   }
 
   public static void addChild(
-      HTMLNode parent,
-      String templateName,
-      Map<String, Object> model,
-      String l10nPrefix) throws
-      IOException {
+      HTMLNode parent, String templateName, Map<String, Object> model, String l10nPrefix)
+      throws IOException {
     model.put("l10nPrefix", l10nPrefix);
     PebbleTemplate template = templateEngine.getTemplate(templateName);
 
@@ -44,11 +43,10 @@ public class PebbleUtils {
   }
 
   /**
-   * Sets the {@link BaseL10n l10n provider} to use with the
-   * {@link L10nFunction}. If this method is not called, {@link NodeL10n}’s
-   * {@link NodeL10n#getBase() l10n provider} is used.
-   * <p>
-   * This method should only be called from tests.
+   * Sets the {@link BaseL10n l10n provider} to use with the {@link L10nFunction}. If this method is
+   * not called, {@link NodeL10n}’s {@link NodeL10n#getBase() l10n provider} is used.
+   *
+   * <p>This method should only be called from tests.
    *
    * @param l10n The l10n provider to use
    */
@@ -57,5 +55,4 @@ public class PebbleUtils {
     // registry is a big Map, with the function name as key.
     templateEngine.getExtensionRegistry().addExtension(new L10nExtension(l10n));
   }
-
 }

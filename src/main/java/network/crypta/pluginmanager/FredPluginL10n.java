@@ -10,7 +10,7 @@ import network.crypta.l10n.BaseL10n.LANGUAGE;
  */
 public interface FredPluginL10n {
 
-    String getString(String key);
+  String getString(String key);
 
-    void setLanguage(LANGUAGE newLanguage);
+  void setLanguage(LANGUAGE newLanguage);
 }

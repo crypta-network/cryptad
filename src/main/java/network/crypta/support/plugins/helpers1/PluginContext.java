@@ -8,17 +8,17 @@ import network.crypta.pluginmanager.PluginRespirator;
 
 public class PluginContext {
 
-	public final PluginRespirator pluginRespirator;
-	public final NodeClientCore clientCore;
-	public final PageMaker pageMaker;
-	public final HighLevelSimpleClient hlsc;
-	public final Node node;
+  public final PluginRespirator pluginRespirator;
+  public final NodeClientCore clientCore;
+  public final PageMaker pageMaker;
+  public final HighLevelSimpleClient hlsc;
+  public final Node node;
 
-	public PluginContext(PluginRespirator pluginRespirator2) {
-		this.pluginRespirator = pluginRespirator2;
-		this.clientCore = pluginRespirator.getNode().getClientCore();
-		this.pageMaker = pluginRespirator.getPageMaker();
-		this.hlsc = pluginRespirator.getHLSimpleClient();
-		this.node = pluginRespirator.getNode();
-	}
+  public PluginContext(PluginRespirator pluginRespirator2) {
+    this.pluginRespirator = pluginRespirator2;
+    this.clientCore = pluginRespirator.getNode().getClientCore();
+    this.pageMaker = pluginRespirator.getPageMaker();
+    this.hlsc = pluginRespirator.getHLSimpleClient();
+    this.node = pluginRespirator.getNode();
+  }
 }

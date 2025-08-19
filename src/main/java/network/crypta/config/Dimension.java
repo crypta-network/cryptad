@@ -1,6 +1,7 @@
 package network.crypta.config;
 
 public enum Dimension {
-
-    NOT, SIZE, DURATION
+  NOT,
+  SIZE,
+  DURATION
 }

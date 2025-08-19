@@ -253,8 +253,8 @@ public class PeerManager {
     List<SimpleFieldSet> peerEntries = new ArrayList<>();
     // read the peers file
     try (FileInputStream fis = new FileInputStream(peersFile);
-         InputStreamReader ris = new InputStreamReader(fis, StandardCharsets.UTF_8);
-         BufferedReader br = new BufferedReader(ris)) {
+        InputStreamReader ris = new InputStreamReader(fis, StandardCharsets.UTF_8);
+        BufferedReader br = new BufferedReader(ris)) {
       try {
         while (true) {
           peerEntries.add(new SimpleFieldSet(br, false, true));
@@ -323,7 +323,7 @@ public class PeerManager {
       try {
         brokenPeersFile.delete();
         try (FileOutputStream fos = new FileOutputStream(brokenPeersFile);
-             FileInputStream fis = new FileInputStream(peersFile)) {
+            FileInputStream fis = new FileInputStream(peersFile)) {
           FileUtil.copy(fis, fos, -1);
         }
         System.err.println("Broken peers file copied to " + brokenPeersFile);
@@ -1054,7 +1054,10 @@ public class PeerManager {
         continue;
       }
       if (minVersion > 0
-          && !Version.isBuildAtLeast(p.getNodeName(), Version.parseBuildNumberFromVersionStr(p.getVersion(), -1), minVersion)) {
+          && !Version.isBuildAtLeast(
+              p.getNodeName(),
+              Version.parseBuildNumberFromVersionStr(p.getVersion(), -1),
+              minVersion)) {
         if (logMINOR) Logger.minor(this, "Skipping old version: " + p.getPeer());
         continue;
       }
@@ -1107,7 +1110,8 @@ public class PeerManager {
               this,
               "The peer "
                   + p
-                  + " has published his peer's locations and the closest we have found to the target is "
+                  + " has published his peer's locations and the closest we have found to the"
+                  + " target is "
                   + diff
                   + " away.");
       }
@@ -1453,7 +1457,8 @@ public class PeerManager {
               this,
               "The peer "
                   + p
-                  + " has published his peer's locations and the closest we have found to the target is "
+                  + " has published his peer's locations and the closest we have found to the"
+                  + " target is "
                   + diff
                   + " away.");
       }
@@ -1687,10 +1692,10 @@ public class PeerManager {
         Logger.error(this, "Cannot write peers to disk: Cannot create temp file - " + e2, e2);
         return;
       }
-      
+
       try (FileOutputStream fos = new FileOutputStream(f);
-           OutputStreamWriter w = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
-        
+          OutputStreamWriter w = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+
         w.write(sb);
         w.flush();
         fos.getFD().sync();

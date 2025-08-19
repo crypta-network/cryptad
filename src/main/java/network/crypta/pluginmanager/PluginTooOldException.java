@@ -4,10 +4,9 @@ import java.io.Serial;
 
 public class PluginTooOldException extends PluginNotFoundException {
 
-	@Serial final private static long serialVersionUID = -3104024342634046289L;
+  @Serial private static final long serialVersionUID = -3104024342634046289L;
 
-	public PluginTooOldException(String string) {
-		super(string);
-	}
-
+  public PluginTooOldException(String string) {
+    super(string);
+  }
 }

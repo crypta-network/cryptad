@@ -4,7 +4,6 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -112,7 +111,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
           return compareLocations(firstNode, secondNode);
         case "version":
           return Version.compareBuildNumbers(
-              Version.parseNodeNameFromVersionStr(firstNode.getVersion()), 
+              Version.parseNodeNameFromVersionStr(firstNode.getVersion()),
               Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
               Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
               Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
@@ -619,7 +618,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Other node busy (realtime)? Display: Percentage of time the node is overloaded, Current wait time remaining (0=not overloaded)/total/last overload reason",
+                    "Other node busy (realtime)? Display: Percentage of time the node is"
+                        + " overloaded, Current wait time remaining (0=not overloaded)/total/last"
+                        + " overload reason",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Backoff (realtime)");
@@ -630,7 +631,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Other node busy (bulk)? Display: Percentage of time the node is overloaded, Current wait time remaining (0=not overloaded)/total/last overload reason",
+                    "Other node busy (bulk)? Display: Percentage of time the node is overloaded,"
+                        + " Current wait time remaining (0=not overloaded)/total/last overload"
+                        + " reason",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Backoff (bulk)");
@@ -642,7 +645,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
                   "span",
                   new String[] {"title", "style"},
                   new String[] {
-                    "Probability of the node rejecting a request due to overload or causing a timeout.",
+                    "Probability of the node rejecting a request due to overload or causing a"
+                        + " timeout.",
                     "border-bottom: 1px dotted; cursor: help;"
                   },
                   "Overload Probability");
@@ -1138,7 +1142,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     } else {
       Logger.warning(
           null,
-          "Cannot parse noderef: does not contain lastGoodVersion, trying to replace all spaces with newlines and parsing again.");
+          "Cannot parse noderef: does not contain lastGoodVersion, trying to replace all spaces"
+              + " with newlines and parsing again.");
       return new SimpleFieldSet(nodeReference.replace(" ", "\n"), false, true, true);
     }
   }

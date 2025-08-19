@@ -9,69 +9,75 @@ import network.crypta.keys.Key;
 
 public interface RequestScheduler {
 
-	/**
-	 * Tell the scheduler that a request from a specific RandomGrabArray succeeded.
-	 * Definition of "succeeded" will vary, but the point is most schedulers will run another
-	 * request from the parentGrabArray in the near future on the theory that if one works,
-	 * another may also work. 
-	 * @param get The request we ran, which must be deleted.
-	 * @param persistent
-	 * */
-    void succeeded(BaseSendableGet get, boolean persistent);
+  /**
+   * Tell the scheduler that a request from a specific RandomGrabArray succeeded. Definition of
+   * "succeeded" will vary, but the point is most schedulers will run another request from the
+   * parentGrabArray in the near future on the theory that if one works, another may also work.
+   *
+   * @param get The request we ran, which must be deleted.
+   * @param persistent
+   */
+  void succeeded(BaseSendableGet get, boolean persistent);
 
-	/** Once a key has been requested a few times, don't request it again for 30 minutes. 
-	 * To do so would be pointless given ULPRs, and just waste bandwidth. */
-    long COOLDOWN_PERIOD = MINUTES.toMillis(30);
-	/** The number of times a key can be requested before triggering the cooldown period. 
-	 * Note: If you don't want your requests to be subject to cooldown (e.g. in fproxy), make 
-	 * your max retry count less than this (and more than -1). */
-    int COOLDOWN_RETRIES = 3;
-	
-	long countQueuedRequests();
+  /**
+   * Once a key has been requested a few times, don't request it again for 30 minutes. To do so
+   * would be pointless given ULPRs, and just waste bandwidth.
+   */
+  long COOLDOWN_PERIOD = MINUTES.toMillis(30);
 
-	KeysFetchingLocally fetchingKeys();
+  /**
+   * The number of times a key can be requested before triggering the cooldown period. Note: If you
+   * don't want your requests to be subject to cooldown (e.g. in fproxy), make your max retry count
+   * less than this (and more than -1).
+   */
+  int COOLDOWN_RETRIES = 3;
 
-	void removeFetchingKey(Key key);
-	
-	void callFailure(SendableGet get, LowLevelGetException e, int prio, boolean persistent);
-	
-	void callFailure(SendableInsert insert, LowLevelPutException exception, int prio, boolean persistent);
-	
-	ClientContext getContext();
-	
-	boolean addToFetching(Key key);
+  long countQueuedRequests();
 
-	ChosenBlock grabRequest();
+  KeysFetchingLocally fetchingKeys();
 
-	void removeRunningRequest(SendableRequest request);
+  void removeFetchingKey(Key key);
 
-	/**
-	 * This only works for persistent requests, because transient requests are not
-	 * selected on a SendableRequest level, they are selected on a {SendableRequest, token} level.
-	 */
-    boolean isRunningOrQueuedPersistentRequest(SendableRequest request);
-	
-	/**
-	 * Check whether a key is already being fetched. If it is, optionally remember who is
-	 * asking so we can wake them up (on the cooldown queue) when the key fetch completes.
-	 * @param key
-	 * @param getterWaiting
-	 * @param persistent
-	 * @return
-	 */
-    boolean hasFetchingKey(Key key, BaseSendableGet getterWaiting, boolean persistent);
+  void callFailure(SendableGet get, LowLevelGetException e, int prio, boolean persistent);
 
-	boolean addRunningInsert(SendableInsert insert, SendableRequestItemKey token);
+  void callFailure(
+      SendableInsert insert, LowLevelPutException exception, int prio, boolean persistent);
 
-	void removeRunningInsert(SendableInsert insert, SendableRequestItemKey token);
+  ClientContext getContext();
 
-	void wakeStarter();
+  boolean addToFetching(Key key);
 
-	/* FIXME SECURITY When/if introduce tunneling or similar mechanism for starting requests
-	 * at a distance this will need to be reconsidered. See the comments on the caller in 
-	 * RequestHandler (onAbort() handler). */
-    boolean wantKey(Key key);
+  ChosenBlock grabRequest();
 
-    ClientRequestSelector getSelector();
+  void removeRunningRequest(SendableRequest request);
 
+  /**
+   * This only works for persistent requests, because transient requests are not selected on a
+   * SendableRequest level, they are selected on a {SendableRequest, token} level.
+   */
+  boolean isRunningOrQueuedPersistentRequest(SendableRequest request);
+
+  /**
+   * Check whether a key is already being fetched. If it is, optionally remember who is asking so we
+   * can wake them up (on the cooldown queue) when the key fetch completes.
+   *
+   * @param key
+   * @param getterWaiting
+   * @param persistent
+   * @return
+   */
+  boolean hasFetchingKey(Key key, BaseSendableGet getterWaiting, boolean persistent);
+
+  boolean addRunningInsert(SendableInsert insert, SendableRequestItemKey token);
+
+  void removeRunningInsert(SendableInsert insert, SendableRequestItemKey token);
+
+  void wakeStarter();
+
+  /* FIXME SECURITY When/if introduce tunneling or similar mechanism for starting requests
+   * at a distance this will need to be reconsidered. See the comments on the caller in
+   * RequestHandler (onAbort() handler). */
+  boolean wantKey(Key key);
+
+  ClientRequestSelector getSelector();
 }

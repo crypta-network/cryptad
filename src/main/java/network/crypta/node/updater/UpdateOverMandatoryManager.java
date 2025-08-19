@@ -259,7 +259,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
               this,
               "Node "
                   + source
-                  + " sent us a UOM claiming that the auto-update key was blown, but it used a different key to us: \nour key="
+                  + " sent us a UOM claiming that the auto-update key was blown, but it used a"
+                  + " different key to us: \n"
+                  + "our key="
                   + updateManager.getRevocationURI()
                   + "\nhis key="
                   + revocationURI);
@@ -270,7 +272,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
             this,
             "Node "
                 + source
-                + " sent us a UOMAnnouncement claiming that the auto-update key was blown, but it had an invalid revocation URI: "
+                + " sent us a UOMAnnouncement claiming that the auto-update key was blown, but it"
+                + " had an invalid revocation URI: "
                 + revocationKey
                 + " : "
                 + e,
@@ -278,7 +281,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
         System.err.println(
             "Node "
                 + source.userToString()
-                + " sent us a UOMAnnouncement claiming that the revocation key was blown, but it had an invalid revocation URI: "
+                + " sent us a UOMAnnouncement claiming that the revocation key was blown, but it"
+                + " had an invalid revocation URI: "
                 + revocationKey
                 + " : "
                 + e);
@@ -286,12 +290,14 @@ public class UpdateOverMandatoryManager implements RequestClient {
         System.err.println(
             "Node "
                 + source
-                + " says that the auto-update key was blown, but has now gone offline! Something bad may be happening!");
+                + " says that the auto-update key was blown, but has now gone offline! Something"
+                + " bad may be happening!");
         Logger.error(
             this,
             "Node "
                 + source
-                + " says that the auto-update key was blown, but has now gone offline! Something bad may be happening!");
+                + " says that the auto-update key was blown, but has now gone offline! Something"
+                + " bad may be happening!");
         synchronized (UpdateOverMandatoryManager.this) {
           nodesSayKeyRevoked.remove(source);
           // Might be valid, but no way to tell except if other peers tell us.
@@ -389,7 +395,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
                         + source
                         + " (build #"
                         + source.getSimpleVersion()
-                        + ") said that the auto-update key had been blown, but did not transfer the revocation certificate. The most likely explanation is that the key has not been blown (the node is buggy or malicious), so we are ignoring this.");
+                        + ") said that the auto-update key had been blown, but did not transfer the"
+                        + " revocation certificate. The most likely explanation is that the key has"
+                        + " not been blown (the node is buggy or malicious), so we are ignoring"
+                        + " this.");
                 maybeNotRevoked();
               }
             },
@@ -468,7 +477,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
               this,
               "Node "
                   + source
-                  + " sent us a UOMAnnouncement claiming to have a new ext jar, but it had an invalid URI: "
+                  + " sent us a UOMAnnouncement claiming to have a new ext jar, but it had an"
+                  + " invalid URI: "
                   + jarKey
                   + " : "
                   + e,
@@ -476,7 +486,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
           System.err.println(
               "Node "
                   + source.userToString()
-                  + " sent us a UOMAnnouncement claiming to have a new ext jar, but it had an invalid URI: "
+                  + " sent us a UOMAnnouncement claiming to have a new ext jar, but it had an"
+                  + " invalid URI: "
                   + jarKey
                   + " : "
                   + e);
@@ -505,9 +516,11 @@ public class UpdateOverMandatoryManager implements RequestClient {
                     if (!updateManager.getNode().isOudated()) {
                       Logger.error(
                           this,
-                          "The update process seems to have been stuck for too long; let's switch to UoM! SHOULD NOT HAPPEN! (2) (ext)");
+                          "The update process seems to have been stuck for too long; let's switch"
+                              + " to UoM! SHOULD NOT HAPPEN! (2) (ext)");
                       System.out.println(
-                          "The update process seems to have been stuck for too long; let's switch to UoM! SHOULD NOT HAPPEN! (2) (ext)");
+                          "The update process seems to have been stuck for too long; let's switch"
+                              + " to UoM! SHOULD NOT HAPPEN! (2) (ext)");
                     }
                     maybeRequestMainJar();
                   }
@@ -954,7 +967,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   this,
                   "Peer "
                       + source
-                      + " asked us for the blob file for the revocation key, then disconnected when we tried to send the UOMSendingRevocation");
+                      + " asked us for the blob file for the revocation key, then disconnected when"
+                      + " we tried to send the UOMSendingRevocation");
             }
 
             @Override
@@ -964,7 +978,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   this,
                   "Peer "
                       + source
-                      + " asked us for the blob file for the revocation key, then got a fatal error when we tried to send the UOMSendingRevocation");
+                      + " asked us for the blob file for the revocation key, then got a fatal error"
+                      + " when we tried to send the UOMSendingRevocation");
             }
 
             @Override
@@ -983,7 +998,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
           this,
           "Peer "
               + source
-              + " asked us for the blob file for the revocation key, then disconnected when we tried to send the UOMSendingRevocation: "
+              + " asked us for the blob file for the revocation key, then disconnected when we"
+              + " tried to send the UOMSendingRevocation: "
               + e,
           e);
       return true;
@@ -1052,14 +1068,16 @@ public class UpdateOverMandatoryManager implements RequestClient {
               + source.userToString()
               + " offered us a revocation certificate "
               + SizeUtil.formatSize(length)
-              + " long. This is unacceptably long so we have refused the transfer. No real revocation cert would be this big.");
+              + " long. This is unacceptably long so we have refused the transfer. No real"
+              + " revocation cert would be this big.");
       Logger.error(
           this,
           "Node "
               + source.userToString()
               + " offered us a revocation certificate "
               + SizeUtil.formatSize(length)
-              + " long. This is unacceptably long so we have refused the transfer. No real revocation cert would be this big.");
+              + " long. This is unacceptably long so we have refused the transfer. No real"
+              + " revocation cert would be this big.");
       synchronized (UpdateOverMandatoryManager.this) {
         nodesSayKeyRevoked.remove(source);
         nodesSayKeyRevokedTransferring.remove(source);
@@ -1073,7 +1091,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
       System.err.println(
           "Revocation key is zero bytes from "
               + source
-              + " - ignoring as this is almost certainly a bug or an attack, it is definitely not valid.");
+              + " - ignoring as this is almost certainly a bug or an attack, it is definitely not"
+              + " valid.");
       synchronized (UpdateOverMandatoryManager.this) {
         nodesSayKeyRevoked.remove(source);
         // This is almost certainly not valid, don't add to nodesSayKeyRevokedFailedTransfer.
@@ -1100,11 +1119,13 @@ public class UpdateOverMandatoryManager implements RequestClient {
       temp.deleteOnExit();
     } catch (IOException e) {
       System.err.println(
-          "Cannot save revocation certificate to disk and therefore cannot fetch it from our peer!: "
+          "Cannot save revocation certificate to disk and therefore cannot fetch it from our peer!:"
+              + " "
               + e);
       e.printStackTrace();
       updateManager.blow(
-          "Cannot fetch the revocation certificate from our peer because we cannot write it to disk: "
+          "Cannot fetch the revocation certificate from our peer because we cannot write it to"
+              + " disk: "
               + e,
           true);
       cancelSend(source, uid);
@@ -1119,11 +1140,13 @@ public class UpdateOverMandatoryManager implements RequestClient {
           this,
           "Peer "
               + source
-              + " asked us for the blob file for the revocation key, we have downloaded it but don't have the file even though we did have it when we checked!: "
+              + " asked us for the blob file for the revocation key, we have downloaded it but"
+              + " don't have the file even though we did have it when we checked!: "
               + e,
           e);
       updateManager.blow(
-          "Internal error after fetching the revocation certificate from our peer, maybe out of disk space, file disappeared "
+          "Internal error after fetching the revocation certificate from our peer, maybe out of"
+              + " disk space, file disappeared "
               + temp
               + " : "
               + e,
@@ -1134,11 +1157,13 @@ public class UpdateOverMandatoryManager implements RequestClient {
           this,
           "Peer "
               + source
-              + " asked us for the blob file for the revocation key, we have downloaded it but now can't read the file due to a disk I/O error: "
+              + " asked us for the blob file for the revocation key, we have downloaded it but now"
+              + " can't read the file due to a disk I/O error: "
               + e,
           e);
       updateManager.blow(
-          "Internal error after fetching the revocation certificate from our peer, maybe out of disk space or other disk I/O error, file disappeared "
+          "Internal error after fetching the revocation certificate from our peer, maybe out of"
+              + " disk space or other disk I/O error, file disappeared "
               + temp
               + " : "
               + e,
@@ -1198,7 +1223,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   System.err.println(
                       "Peer "
                           + source
-                          + " said that the revocation key has been blown, but we got an internal error while transferring it:");
+                          + " said that the revocation key has been blown, but we got an internal"
+                          + " error while transferring it:");
                   t.printStackTrace();
                   updateManager.blow(
                       "Internal error while fetching the revocation certificate from our peer "
@@ -1435,7 +1461,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                       + e
                       + (fromDisk
                           ? " : did you change the revocation key?"
-                          : " : this is almost certainly bogus i.e. the auto-update is fine but the node is broken.");
+                          : " : this is almost certainly bogus i.e. the auto-update is fine but the"
+                              + " node is broken.");
               Logger.error(this, message);
               System.err.println(message);
               // This is almost certainly bogus.
@@ -1598,7 +1625,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
     int version;
     FreenetURI uri;
     // Legacy support removed - only serve current version
-    if (!Version.isBuildAtLeast(source.getNodeName(), source.getBuildNumber(), NodeUpdateManager.TRANSITION_VERSION)) {
+    if (!Version.isBuildAtLeast(
+        source.getNodeName(), source.getBuildNumber(), NodeUpdateManager.TRANSITION_VERSION)) {
       // Don't serve updates to very old nodes
       Logger.normal(
           this,
@@ -1643,7 +1671,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 + source
                 + " asked us for the blob file for the "
                 + name
-                + " jar, we have downloaded it but don't have the file even though we did have it when we checked!: "
+                + " jar, we have downloaded it but don't have the file even though we did have it"
+                + " when we checked!: "
                 + e,
             e);
         return;
@@ -2618,7 +2647,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                             saveTo.getName(),
                             NodeUpdateManager.TEMP_FILE_SUFFIX,
                             saveTo.getParentFile());
-                    try (FileRandomAccessBuffer raf = new FileRandomAccessBuffer(tmp, size, false)) {
+                    try (FileRandomAccessBuffer raf =
+                        new FileRandomAccessBuffer(tmp, size, false)) {
                       PartiallyReceivedBulk prb =
                           new PartiallyReceivedBulk(
                               updateManager.getNode().getUSM(), size, Node.PACKET_SIZE, raf, false);

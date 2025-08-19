@@ -4,21 +4,21 @@ import java.io.Serial;
 
 /**
  * Force the download of something to disk
- * 
+ *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class DownloadPluginHTTPException extends PluginHTTPException {
-	@Serial private static final long serialVersionUID = -1;
-	
-	public static final short CODE = 200; // Found
-	public final String filename;
-	public final String mimeType;
-	public final byte[] data;
+  @Serial private static final long serialVersionUID = -1;
 
-	public DownloadPluginHTTPException(byte[] data, String filename, String mimeType) {
-		super("Ok", "none");
-		this.data = data;
-		this.filename = filename;
-		this.mimeType = mimeType;
-	}
+  public static final short CODE = 200; // Found
+  public final String filename;
+  public final String mimeType;
+  public final byte[] data;
+
+  public DownloadPluginHTTPException(byte[] data, String filename, String mimeType) {
+    super("Ok", "none");
+    this.data = data;
+    this.filename = filename;
+    this.mimeType = mimeType;
+  }
 }

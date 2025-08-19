@@ -514,7 +514,8 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
         Logger.error(
             this,
-            "Insert took too long, telling downstream that it's finished and reassigning to self on "
+            "Insert took too long, telling downstream that it's finished and reassigning to self on"
+                + " "
                 + this);
 
         // Still waiting.
@@ -695,14 +696,12 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
               }
               // Cancel the sender
               if (sender != null)
-                sender
-                    .onReceiveFailed(); // tell it to stop if it hasn't already failed... unless
-                                        // it's sending from store
+                sender.onReceiveFailed(); // tell it to stop if it hasn't already failed... unless
+              // it's sending from store
               runThread.interrupt();
-              tag
-                  .timedOutToHandlerButContinued(); // sender is finished, or will be very soon; we
-                                                    // may however be waiting for the sendAborted
-                                                    // downstream.
+              tag.timedOutToHandlerButContinued(); // sender is finished, or will be very soon; we
+              // may however be waiting for the sendAborted
+              // downstream.
               Message msg =
                   DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
               try {

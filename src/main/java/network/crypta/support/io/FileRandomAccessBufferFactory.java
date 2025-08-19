@@ -6,7 +6,6 @@ import java.util.Random;
 
 /** Creates RandomAccessBuffer's from File's. */
 public interface FileRandomAccessBufferFactory {
-    
-    PooledFileRandomAccessBuffer createNewRAF(File file, long size, Random random) throws IOException;
 
+  PooledFileRandomAccessBuffer createNewRAF(File file, long size, Random random) throws IOException;
 }

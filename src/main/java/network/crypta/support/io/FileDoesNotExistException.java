@@ -6,12 +6,11 @@ import java.io.Serial;
 
 /** Thrown when a temp file disappears before we try to use it. */
 public class FileDoesNotExistException extends IOException {
-	@Serial private static final long serialVersionUID = 1L;
-    final File file;
+  @Serial private static final long serialVersionUID = 1L;
+  final File file;
 
-    public FileDoesNotExistException(File f) {
-        super("File does not exist: "+f);
-        this.file = f;
-    }
-
+  public FileDoesNotExistException(File f) {
+    super("File does not exist: " + f);
+    this.file = f;
+  }
 }

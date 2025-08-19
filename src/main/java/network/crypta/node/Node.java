@@ -1077,10 +1077,12 @@ public class Node implements TimeSkewDetectorCallback {
         } catch (HostnameSyntaxException e) {
           Logger.error(
               this,
-              "Invalid hostname or IP Address syntax error while parsing our darknet node reference: "
+              "Invalid hostname or IP Address syntax error while parsing our darknet node"
+                  + " reference: "
                   + udpAddr);
           System.err.println(
-              "Invalid hostname or IP Address syntax error while parsing our darknet node reference: "
+              "Invalid hostname or IP Address syntax error while parsing our darknet node"
+                  + " reference: "
                   + udpAddr);
           continue;
         } catch (PeerParseException e) {
@@ -1373,7 +1375,8 @@ public class Node implements TimeSkewDetectorCallback {
                     System.out.println("/dev/hwrng exists - have you installed rng-tools?");
                   else
                     System.out.println(
-                        "You should consider installing a better random number generator e.g. haveged.");
+                        "You should consider installing a better random number generator e.g."
+                            + " haveged.");
                 }
                 extendTimeouts();
                 for (File root : File.listRoots()) {
@@ -1470,7 +1473,8 @@ public class Node implements TimeSkewDetectorCallback {
             // FIXME l10n
             // FIXME wipe the old one and move
             throw new InvalidConfigValueException(
-                "Node.masterKeyFile cannot be changed on the fly, you must shutdown, wipe the old file and reconfigure");
+                "Node.masterKeyFile cannot be changed on the fly, you must shutdown, wipe the old"
+                    + " file and reconfigure");
           }
         });
     String value = nodeConfig.getString("masterKeyFile");
@@ -1534,7 +1538,8 @@ public class Node implements TimeSkewDetectorCallback {
         databaseKey = keys.createDatabaseKey();
         if (securityLevels.getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.HIGH) {
           System.err.println(
-              "Physical threat level is set to HIGH but no password, resetting to NORMAL - probably timing glitch");
+              "Physical threat level is set to HIGH but no password, resetting to NORMAL - probably"
+                  + " timing glitch");
           securityLevels.resetPhysicalThreatLevel(PHYSICAL_THREAT_LEVEL.NORMAL);
         }
         break;
@@ -1563,7 +1568,7 @@ public class Node implements TimeSkewDetectorCallback {
     File bootIDFile = runDir.file("bootID");
     int BOOT_FILE_LENGTH = 64 / 4; // A long in padded hex bytes
     long oldBootID = -1;
-    
+
     try (RandomAccessFile raf = new RandomAccessFile(bootIDFile, "rw")) {
       if (raf.length() < BOOT_FILE_LENGTH) {
         oldBootID = -1;
@@ -2164,10 +2169,11 @@ public class Node implements TimeSkewDetectorCallback {
     throttleLocalData = nodeConfig.getBoolean("throttleLocalTraffic");
 
     String s =
-        """
-        Testnet mode DISABLED. You may have some level of anonymity. :)
-        Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.
-        In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).""";
+"""
+Testnet mode DISABLED. You may have some level of anonymity. :)
+Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.
+In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).\
+""";
     Logger.normal(this, s);
     System.err.println(s);
 
@@ -3988,9 +3994,15 @@ public class Node implements TimeSkewDetectorCallback {
     } else {
       Logger.error(
           this,
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
+          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
+              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
+              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
+              + " need to be updated.");
       System.out.println(
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf> need to be updated.");
+          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
+              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
+              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
+              + " need to be updated.");
     }
     Logger.normal(this, "Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
     System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
@@ -4309,22 +4321,10 @@ public class Node implements TimeSkewDetectorCallback {
       BlockMetadata meta) {
     if (key instanceof NodeSSK sK)
       return fetch(
-          sK,
-          false,
-          canReadClientCache,
-          canWriteClientCache,
-          canWriteDatastore,
-          forULPR,
-          meta);
+          sK, false, canReadClientCache, canWriteClientCache, canWriteDatastore, forULPR, meta);
     else if (key instanceof NodeCHK hK)
       return fetch(
-          hK,
-          false,
-          canReadClientCache,
-          canWriteClientCache,
-          canWriteDatastore,
-          forULPR,
-          meta);
+          hK, false, canReadClientCache, canWriteClientCache, canWriteDatastore, forULPR, meta);
     else throw new IllegalArgumentException();
   }
 

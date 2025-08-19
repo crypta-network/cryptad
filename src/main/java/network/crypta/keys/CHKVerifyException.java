@@ -4,26 +4,24 @@ import java.io.Serial;
 
 /**
  * @author amphibian
- * 
- * Exception thrown when a CHK doesn't verify.
+ *     <p>Exception thrown when a CHK doesn't verify.
  */
 public class CHKVerifyException extends KeyVerifyException {
-	@Serial private static final long serialVersionUID = -1;
+  @Serial private static final long serialVersionUID = -1;
 
-    public CHKVerifyException() {
-        super();
-    }
+  public CHKVerifyException() {
+    super();
+  }
 
-    public CHKVerifyException(String message) {
-        super(message);
-    }
+  public CHKVerifyException(String message) {
+    super(message);
+  }
 
-    public CHKVerifyException(String message, Throwable cause) {
-        super(message, cause);
-    }
+  public CHKVerifyException(String message, Throwable cause) {
+    super(message, cause);
+  }
 
-    public CHKVerifyException(Throwable cause) {
-        super(cause);
-    }
-
+  public CHKVerifyException(Throwable cause) {
+    super(cause);
+  }
 }

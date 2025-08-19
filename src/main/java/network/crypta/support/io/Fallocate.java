@@ -2,25 +2,24 @@ package network.crypta.support.io;
 
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
-
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-
 import network.crypta.support.Logger;
 
 /**
- * Provides access to operating system-specific {@code fallocate} and
- * {@code posix_fallocate} functions.
+ * Provides access to operating system-specific {@code fallocate} and {@code posix_fallocate}
+ * functions.
  * https://stackoverflow.com/questions/18031841/pre-allocating-drive-space-for-file-storage
  */
 public final class Fallocate {
 
   private static final boolean IS_LINUX = Platform.isLinux();
   private static final boolean IS_WINDOWS = Platform.isWindows();
-  private static final boolean IS_POSIX = !Platform.isWindows() && !Platform.isMac() && !Platform.isOpenBSD();
+  private static final boolean IS_POSIX =
+      !Platform.isWindows() && !Platform.isMac() && !Platform.isOpenBSD();
   private static final boolean IS_ANDROID = Platform.isAndroid();
 
   private static final int FALLOC_FL_KEEP_SIZE = 0x01;
@@ -49,19 +48,21 @@ public final class Fallocate {
    * @throws IllegalArgumentException
    */
   public Fallocate fromOffset(long offset) {
-    if(offset < 0 || offset > final_filesize) throw new IllegalArgumentException();
+    if (offset < 0 || offset > final_filesize) throw new IllegalArgumentException();
     this.offset = offset;
     return this;
   }
 
   /**
    * This method only works for Linux, do not use it.
+   *
    * @throws UnsupportedOperationException
    */
   @Deprecated
   public Fallocate keepSize() {
     if (!IS_LINUX) {
-      throw new UnsupportedOperationException("fallocate keep size is not supported on this file system");
+      throw new UnsupportedOperationException(
+          "fallocate keep size is not supported on this file system");
     }
     mode |= FALLOC_FL_KEEP_SIZE;
     return this;
@@ -72,10 +73,10 @@ public final class Fallocate {
     boolean isUnsupported = false;
     if (fd > 2) {
       if (IS_LINUX) {
-        final int result = FallocateHolder.fallocate(fd, mode, offset, final_filesize-offset);
+        final int result = FallocateHolder.fallocate(fd, mode, offset, final_filesize - offset);
         errno = result == 0 ? 0 : Native.getLastError();
       } else if (IS_POSIX) {
-        errno = FallocateHolderPOSIX.posix_fallocate(fd, offset, final_filesize-offset);
+        errno = FallocateHolderPOSIX.posix_fallocate(fd, offset, final_filesize - offset);
       } else {
         isUnsupported = true;
       }
