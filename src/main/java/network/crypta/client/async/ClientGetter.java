@@ -203,8 +203,8 @@ public class ClientGetter extends BaseClientGetter
    *     writer.
    * @param dontFinalizeBlobWriter If true, the caller is responsible for BlobWriter finalization
    * @param initialMetadata If non-null, initial metadata to use for the request
-   * @param forceCompatibleExtension If set, and filtering is enabled, the MIME type we filter 
-   *     with must be compatible with this extension
+   * @param forceCompatibleExtension If set, and filtering is enabled, the MIME type we filter with
+   *     must be compatible with this extension
    */
   public ClientGetter(
       ClientGetCallback client,
@@ -346,13 +346,11 @@ public class ClientGetter extends BaseClientGetter
     try {
       if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
     } catch (IOException | BinaryBlobAlreadyClosedException e) {
-      String msg = e instanceof BinaryBlobAlreadyClosedException
-          ? "Failed to close binary blob stream, already closed: " + e
-          : "Failed to close binary blob stream: " + e;
-      onFailure(
-          new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e),
-          null,
-          context);
+      String msg =
+          e instanceof BinaryBlobAlreadyClosedException
+              ? "Failed to close binary blob stream, already closed: " + e
+              : "Failed to close binary blob stream: " + e;
+      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
       return;
     }
     String mimeType = clientMetadata == null ? null : clientMetadata.getMIMEType();
@@ -488,7 +486,10 @@ public class ClientGetter extends BaseClientGetter
       ex = new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (IOException | FetchException e) {
       Logger.error(this, "Caught " + e, e);
-      ex = e instanceof FetchException fe ? fe : new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
+      ex =
+          e instanceof FetchException fe
+              ? fe
+              : new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (Throwable t) {
       Logger.error(this, "Caught " + t, t);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
@@ -519,13 +520,11 @@ public class ClientGetter extends BaseClientGetter
     try {
       if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
     } catch (IOException | BinaryBlobAlreadyClosedException e) {
-      String msg = e instanceof BinaryBlobAlreadyClosedException
-          ? "Failed to close binary blob stream, already closed: " + e
-          : "Failed to close binary blob stream: " + e;
-      onFailure(
-          new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e),
-          null,
-          context);
+      String msg =
+          e instanceof BinaryBlobAlreadyClosedException
+              ? "Failed to close binary blob stream, already closed: " + e
+              : "Failed to close binary blob stream: " + e;
+      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
       return;
     }
     File completionFile = getCompletionFile();
@@ -703,12 +702,14 @@ public class ClientGetter extends BaseClientGetter
           // the invalid fblob must be told, more important then an valid but incomplete fblob (ADNF
           // for example)
           if (e.mode != FetchExceptionMode.CANCELLED && !force) {
-            if (ex instanceof BinaryBlobAlreadyClosedException && e.mode == FetchExceptionMode.BUCKET_ERROR) {
+            if (ex instanceof BinaryBlobAlreadyClosedException
+                && e.mode == FetchExceptionMode.BUCKET_ERROR) {
               // Don't override bucket error with another bucket error
             } else {
-              String msg = ex instanceof BinaryBlobAlreadyClosedException 
-                  ? "Failed to close binary blob stream, already closed: " + ex
-                  : "Failed to close binary blob stream: " + ex;
+              String msg =
+                  ex instanceof BinaryBlobAlreadyClosedException
+                      ? "Failed to close binary blob stream, already closed: " + ex
+                      : "Failed to close binary blob stream: " + ex;
               e = new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, ex);
             }
           }

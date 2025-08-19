@@ -1163,7 +1163,9 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     } catch (FetchException e) {
       if (notFinalizedSize) e.setNotFinalizedSize();
       onFailure(e, false, context);
-    } catch (ArchiveFailureException | ArchiveRestartException e) {
+    } catch (ArchiveFailureException e) {
+      onFailure(new FetchException(e), false, context);
+    } catch (ArchiveRestartException e) {
       onFailure(new FetchException(e), false, context);
     }
   }
@@ -1286,7 +1288,10 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           }
         }
         ah.extractToCache(data, actx, element, callback, context.archiveManager, context);
-      } catch (ArchiveFailureException | ArchiveRestartException e) {
+      } catch (ArchiveFailureException e) {
+        SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
+        return;
+      } catch (ArchiveRestartException e) {
         SingleFileFetcher.this.onFailure(new FetchException(e), false, context);
         return;
       } finally {
