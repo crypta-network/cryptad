@@ -570,8 +570,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
         try {
           callback.blockReceived(_prb.getBlock());
           return;
-        } catch (AbortedException e1) {
-          e = e1;
+        } catch (AbortedException ignored) {
         }
         callback.blockReceiveFailed(
             new RetrievalException(_prb._abortReason, _prb._abortDescription));
@@ -590,10 +589,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
           true /* kind of, it shouldn't count towards the stats anyway */);
       callback.blockReceiveFailed(retrievalException);
       decRunningBlockReceives();
-    } catch (RuntimeException e) {
-      decRunningBlockReceives();
-      throw e;
-    } catch (Error e) {
+    } catch (RuntimeException | Error e) {
       decRunningBlockReceives();
       throw e;
     }
