@@ -359,7 +359,7 @@ ul.config {
 
 .configprefix {
   margin: 24px 0 16px;
-  padding: 0;
+  padding: 0 0 0 16px;
   font-style: normal;
   font-size: 16px;
   font-weight: 700;
@@ -406,13 +406,13 @@ ul.config {
 }
 
 .config .configshortdesc {
-  margin-left: 1ex;
+  margin-left: 16px;
   font-size: 100%;
 }
 
 .config .configlongdesc {
   display: block;
-  margin-left: 4ex;
+  margin-left: 32px;
 }
 
 
