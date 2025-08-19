@@ -1,5 +1,7 @@
 package network.crypta.clients.fcp;
 
+import static network.crypta.clients.fcp.RequestIdentifier.RequestType.GET;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -597,10 +599,7 @@ public abstract class ClientRequest implements Serializable {
   public static ClientRequest restartFrom(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
-    return switch (reqID.type) {
-      case GET -> ClientGet.restartFrom(dis, reqID, context, checker);
-      default -> null;
-    };
+    return reqID.type == GET ? ClientGet.restartFrom(dis, reqID, context, checker) : null;
   }
 
   /**
