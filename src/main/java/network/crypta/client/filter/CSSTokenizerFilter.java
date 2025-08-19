@@ -4258,7 +4258,7 @@ class CSSTokenizerFilter {
           if ((" \t\r\n\f".indexOf(c) != -1 || (allowCommaDelimiters && c == ','))
               && bracketCount == 0) {
             if (c == ',') {
-              if (decodedToken.length() == 0) {
+              if (decodedToken.isEmpty()) {
                 if (lastWord == null) {
                   if (logDEBUG)
                     Logger.debug(
@@ -4286,7 +4286,7 @@ class CSSTokenizerFilter {
               }
             }
             // Legal CSS whitespace
-            if (decodedToken.length() > 0) {
+            if (!decodedToken.isEmpty()) {
               ParsedWord word =
                   parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
               if (logDEBUG)
@@ -4341,7 +4341,7 @@ class CSSTokenizerFilter {
             couldBeIdentifier = false;
           } else {
             if (couldBeIdentifier) {
-              if (!((c >= '0' && c <= '9' && origToken.length() > 0)
+              if (!((c >= '0' && c <= '9' && !origToken.isEmpty())
                   || (c >= 'a' && c <= 'z')
                   || (c >= 'A' && c <= 'Z')
                   || c == '-'
@@ -4353,7 +4353,7 @@ class CSSTokenizerFilter {
             origToken.append(c);
             decodedToken.append(c);
           }
-        } else if (escaping && escape.length() == 0) {
+        } else if (escaping && escape.isEmpty()) {
           if (c == '\"' || c == '\'') {
             escaping = false;
             origToken.append(c);
@@ -4418,7 +4418,7 @@ class CSSTokenizerFilter {
           escaping = true;
           escape.setLength(0);
           origToken.append(c);
-        } else if (escaping && escape.length() == 0) {
+        } else if (escaping && escape.isEmpty()) {
           if (c == '\"' || c == '\'') {
             escaping = false;
             origToken.append(c);
@@ -4468,14 +4468,14 @@ class CSSTokenizerFilter {
         }
       }
     }
-    if (escaping && escape.length() > 0) {
+    if (escaping && !escape.isEmpty()) {
       origToken.append(escape);
       decodedToken.append((char) Integer.parseInt(escape.toString(), 16));
     } else if (escaping) {
       // Newline rule?
       dontLikeOrigToken = true;
     }
-    if (origToken.length() > 0) {
+    if (!origToken.isEmpty()) {
       if (logDEBUG)
         Logger.debug(
             CSSTokenizerFilter.class,

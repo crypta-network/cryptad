@@ -675,7 +675,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             }
 
             t.write(w, pc);
-            if (pc.writeAfterTag.length() > 0) {
+            if (!pc.writeAfterTag.isEmpty()) {
               w.write(pc.writeAfterTag.toString());
               pc.writeAfterTag = new StringBuilder(1024);
             }
@@ -684,7 +684,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
       if (t == null || t.startSlash || t.endSlash) {
         if (!pc.openElements.isEmpty()) return pc.openElements.peek();
-        if (pc.writeAfterTag.length() > 0) {
+        if (!pc.writeAfterTag.isEmpty()) {
           w.write(pc.writeAfterTag.toString());
           pc.writeAfterTag = new StringBuilder(1024);
         }
@@ -2722,7 +2722,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           } else if (!isStandardLinkType(token)) continue;
 
           i++;
-          if (sb.length() == 0) sb.append(token);
+          if (sb.isEmpty()) sb.append(token);
           else {
             sb.append(' ');
             sb.append(token);
@@ -2745,7 +2745,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         while (tok.hasMoreTokens()) {
           String token = tok.nextToken();
           if (!isStandardLinkType(token)) continue;
-          if (sb.length() == 0) sb.append(token);
+          if (sb.isEmpty()) sb.append(token);
           else {
             sb.append(' ');
             sb.append(token);
@@ -3033,10 +3033,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             StringBuilder sb = new StringBuilder(content.length());
             for (String token : tokens) {
               if (!validRobotsValues.contains(token.trim().toLowerCase())) continue;
-              if (sb.length() != 0) sb.append(',');
+              if (!sb.isEmpty()) sb.append(',');
               sb.append(token);
             }
-            if (sb.length() > 0) {
+            if (!sb.isEmpty()) {
               hn.put("name", name);
               hn.put("content", sb.toString());
             }

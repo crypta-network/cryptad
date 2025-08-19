@@ -164,7 +164,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
       if (!Character.isDigit(c)) break;
       sb.append(c);
     }
-    if (sb.length() > 0) {
+    if (!sb.isEmpty()) {
       String prefix = sb.toString();
       intervalName = intervalName.substring(prefix.length());
       INTERVAL_MULTIPLIER = Integer.parseInt(prefix);
@@ -868,7 +868,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
       int type = numberOf(fi);
       if (type == UNAME) getUName();
       if (!comment && (type != 0)) {
-        if (sb.length() > 0) {
+        if (!sb.isEmpty()) {
           strVec.add(sb.toString());
           fmtVec.add(0);
           sb = new StringBuilder();
@@ -881,7 +881,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
         sb.append(fi);
       }
     }
-    if (sb.length() > 0) {
+    if (!sb.isEmpty()) {
       strVec.add(sb.toString());
       fmtVec.add(0);
     }

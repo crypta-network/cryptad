@@ -1,10 +1,22 @@
 package network.crypta.keys;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Random;
+import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import network.crypta.client.InsertException;
@@ -875,12 +887,12 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       s = FileUtil.sanitize(s);
       if (logMINOR) Logger.minor(this, "Sanitized name " + i + " = " + s);
       if (!s.isEmpty()) {
-        if (out.length() > 0) out.append('-');
+        if (!out.isEmpty()) out.append('-');
         out.append(s);
       }
     }
     if (logMINOR) Logger.minor(this, "out = " + out);
-    if (out.length() == 0) {
+    if (out.isEmpty()) {
       if (routingKey != null) {
         if (logMINOR) Logger.minor(this, "Returning base64 encoded routing key");
         return Base64.encode(routingKey);

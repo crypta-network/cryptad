@@ -76,8 +76,7 @@ public class ElementInfo {
 
   public static final Set<String> VISUALMEDIA =
       Collections.unmodifiableSet(
-          new HashSet<>(
-              Arrays.asList("handheld", "print", "projection", "screen", "tty", "tv")));
+          new HashSet<>(Arrays.asList("handheld", "print", "projection", "screen", "tty", "tv")));
 
   public static final Set<String> AURALMEDIA =
       Collections.unmodifiableSet(new HashSet<>(Arrays.asList("speech", "aural")));

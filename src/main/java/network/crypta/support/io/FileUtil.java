@@ -519,7 +519,7 @@ public final class FileUtil {
       if (StringValidityChecker.isWindowsReservedFilename(sb.toString())) sb.insert(0, '_');
     }
 
-    if (sb.length() == 0) {
+    if (sb.isEmpty()) {
       sb.append("Invalid filename"); // TODO: L10n
     }
 

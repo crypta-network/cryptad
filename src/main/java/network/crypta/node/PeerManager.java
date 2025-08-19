@@ -166,8 +166,7 @@ public class PeerManager {
    * interface for listening for all of them. (Possibly excluding status changes on seed servers and
    * seed clients).
    */
-  private final List<PeerStatusChangeListener> listeners =
-      new CopyOnWriteArrayList<>();
+  private final List<PeerStatusChangeListener> listeners = new CopyOnWriteArrayList<>();
 
   /**
    * Create a PeerManager by reading a list of peers from a file.

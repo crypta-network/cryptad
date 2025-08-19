@@ -317,7 +317,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     StringBuilder queryString = new StringBuilder();
     for (Entry<String, List<String>> parameter : parameterValues.entrySet()) {
       for (String value : parameter.getValue()) {
-        if (queryString.length() > 0) {
+        if (!queryString.isEmpty()) {
           queryString.append('&');
         }
         queryString.append(URLEncoder.encode(parameter.getKey(), doUrlEncoding));

@@ -67,7 +67,7 @@ public class StringArrOption extends Option<String[]> {
       if (val.isEmpty()) sb.append(":").append(delimiter);
       else sb.append(URLEncoder.encode(arr[i], false)).append(delimiter);
     }
-    if (sb.length() > 0) sb.setLength(sb.length() - 1); // drop surplus delimiter
+    if (!sb.isEmpty()) sb.setLength(sb.length() - 1); // drop surplus delimiter
     return sb.toString();
   }
 

@@ -1718,8 +1718,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       perContainerPutHandlersWaitingForMetadata.put(selfHandle, new HashSet<>());
       // perContainerPutHandlersWaitingForFetchable.put(selfHandle, new HashSet<PutHandler>());
       if (isArchive)
-        putHandlersArchiveTransformMap.put(
-            (ArchivePutHandler) selfHandle, new ArrayList<>());
+        putHandlersArchiveTransformMap.put((ArchivePutHandler) selfHandle, new ArrayList<>());
     }
 
     public ContainerBuilder makeSubContainer(String name) {

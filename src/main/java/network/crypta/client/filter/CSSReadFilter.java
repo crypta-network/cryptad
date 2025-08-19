@@ -185,7 +185,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
         first = false;
       }
     }
-    if (sb.length() != 0) return sb.toString();
+    if (!sb.isEmpty()) return sb.toString();
     else return null;
   }
 

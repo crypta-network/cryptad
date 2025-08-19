@@ -15,7 +15,11 @@ import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.Option;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.node.*;
+import network.crypta.node.MasterKeysFileSizeException;
+import network.crypta.node.MasterKeysWrongPasswordException;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.SecurityLevels;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalValueException;
@@ -303,9 +307,9 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     private Map<String, Object> toModel() {
       HashMap<String, Object> model = new HashMap<>();
-      model.put("knowSomeone", knowSomeone.length() > 0 ? "checked" : "");
-      model.put("connectToStrangers", connectToStrangers.length() > 0 ? "checked" : "");
-      model.put("haveMonthlyLimit", haveMonthlyLimit.length() > 0 ? "checked" : "");
+      model.put("knowSomeone", !knowSomeone.isEmpty() ? "checked" : "");
+      model.put("connectToStrangers", !connectToStrangers.isEmpty() ? "checked" : "");
+      model.put("haveMonthlyLimit", !haveMonthlyLimit.isEmpty() ? "checked" : "");
       model.put("downloadLimit", downloadLimit);
       model.put("uploadLimit", uploadLimit);
       model.put("bandwidthMonthlyLimit", bandwidthMonthlyLimit);
@@ -313,7 +317,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       model.put("storageLimit", storageLimit);
       model.put("minStorageLimit", minStorageLimit);
       if (!isPasswordAlreadySet) {
-        model.put("setPassword", setPassword.length() > 0 ? "checked" : "");
+        model.put("setPassword", !setPassword.isEmpty() ? "checked" : "");
       }
       model.put("isPasswordAlreadySet", isPasswordAlreadySet);
 
