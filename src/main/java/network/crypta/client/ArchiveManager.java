@@ -496,7 +496,7 @@ public class ArchiveManager {
           }
           if (shouldFree) {
             output.free();
-            continue outerTAR;
+            continue;
           }
           if (size <= maxArchivedFileSize) {
             addStoreElement(ctx, key, name, output, gotElement, element, callback, context);
@@ -602,7 +602,7 @@ public class ArchiveManager {
           }
           if (shouldFree) {
             output.free();
-            continue outerZIP;
+            continue;
           }
           if (size <= maxArchivedFileSize) {
             addStoreElement(ctx, key, name, output, gotElement, element, callback, context);
