@@ -357,12 +357,6 @@ public class ClientPutDir extends ClientPutBase {
   }
 
   @Override
-  public void onLostConnection(ClientContext context) {
-    if (persistence == Persistence.CONNECTION) cancel(context);
-    // otherwise ignore
-  }
-
-  @Override
   protected void freeData() {
     if (logMINOR)
       Logger.minor(this, "freeData() on " + this + " persistence type = " + persistence);

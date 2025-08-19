@@ -2000,11 +2000,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     public boolean userCanDismiss() {
       return false;
     }
-
-    @Override
-    public boolean isEventNotification() {
-      return false;
-    }
   }
 
   public void setUserAlertManager(UserAlertManager userAlertManager) {

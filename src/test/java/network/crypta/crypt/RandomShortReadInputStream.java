@@ -16,11 +16,6 @@ public class RandomShortReadInputStream extends FilterInputStream {
   }
 
   @Override
-  public int read() throws IOException {
-    return in.read();
-  }
-
-  @Override
   public int read(byte[] buf) throws IOException {
     return read(buf, 0, buf.length);
   }

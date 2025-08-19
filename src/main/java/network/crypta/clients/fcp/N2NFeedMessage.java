@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
 public abstract class N2NFeedMessage extends FeedMessage {
@@ -33,14 +32,5 @@ public abstract class N2NFeedMessage extends FeedMessage {
     if (sent != -1) fs.put("TimeSent", sent);
     if (received != -1) fs.put("TimeReceived", received);
     return fs;
-  }
-
-  @Override
-  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    throw new MessageInvalidException(
-        ProtocolErrorMessage.INVALID_MESSAGE,
-        getName() + " goes from server to client not the other way around",
-        null,
-        false);
   }
 }

@@ -921,11 +921,6 @@ public class Announcer {
     }
 
     @Override
-    public boolean isEventNotification() {
-      return false;
-    }
-
-    @Override
     public UserEvent.Type getEventType() {
       return UserEvent.Type.Announcer;
     }

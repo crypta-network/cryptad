@@ -13,11 +13,6 @@ public class RandomShortWriteOutputStream extends FilterOutputStream {
   }
 
   @Override
-  public void write(int b) throws IOException {
-    out.write(b);
-  }
-
-  @Override
   public void write(byte[] buf) throws IOException {
     write(buf, 0, buf.length);
   }

@@ -599,11 +599,6 @@ public class PluginManager {
     }
 
     @Override
-    public boolean isEventNotification() {
-      return false;
-    }
-
-    @Override
     public boolean isValid() {
       boolean success = loadedPlugins.isFailedPlugin(filename);
       if (!success) {

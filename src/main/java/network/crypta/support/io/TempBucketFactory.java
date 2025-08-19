@@ -467,11 +467,6 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public boolean markSupported() {
-        return false;
-      }
-
-      @Override
       public final void close() throws IOException {
         synchronized (TempBucket.this) {
           IOUtils.closeQuietly(currentIS);

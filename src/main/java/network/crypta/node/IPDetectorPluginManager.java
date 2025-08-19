@@ -225,11 +225,6 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     public boolean userCanDismiss() {
       return true;
     }
-
-    @Override
-    public boolean isEventNotification() {
-      return false;
-    }
   }
 
   public class MyUserAlert extends AbstractUserAlert {

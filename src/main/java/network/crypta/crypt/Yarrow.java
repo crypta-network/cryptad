@@ -2,7 +2,16 @@ package network.crypta.crypt;
 
 import static java.util.concurrent.TimeUnit.HOURS;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.Serial;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -537,13 +546,6 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     long now = System.currentTimeMillis();
     return acceptEntropy(timer, now - timer.lastVal, 32, bias);
   }
-
-  /**
-   * If entropy estimation is supported, this method will block until the specified number of bits
-   * of entropy are available. If estimation isn't supported, this method will return immediately.
-   */
-  @Override
-  public void waitForEntropy(int bits) {}
 
   /** 5.3 Reseed mechanism */
   private static final int Pt = 5;

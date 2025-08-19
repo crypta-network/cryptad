@@ -87,11 +87,6 @@ public class NodeCHK extends Key {
   }
 
   @Override
-  public byte[] getRoutingKey() {
-    return routingKey;
-  }
-
-  @Override
   public byte[] getFullKey() {
     byte[] buf = new byte[FULL_KEY_LENGTH];
     short type = getType();
