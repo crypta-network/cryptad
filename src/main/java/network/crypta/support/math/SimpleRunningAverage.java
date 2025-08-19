@@ -2,6 +2,7 @@ package network.crypta.support.math;
 
 import java.io.DataOutputStream;
 import java.io.Serial;
+import java.util.Arrays;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 
@@ -32,7 +33,7 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
     curLen = 0;
     totalReports = 0;
     total = 0;
-    for (int i = 0; i < refs.length; i++) refs[i] = 0.0;
+    Arrays.fill(refs, 0.0);
   }
 
   /**

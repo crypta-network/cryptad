@@ -1934,9 +1934,6 @@ public class StatisticsToadlet extends Toadlet {
 
   private void addNodeCircle(HTMLNode circleTable, double myLocation) {
     int[] histogram = new int[HISTOGRAM_LENGTH];
-    for (int i = 0; i < HISTOGRAM_LENGTH; i++) {
-      histogram[i] = 0;
-    }
     HTMLNode nodeCircleTableRow = circleTable.addChild("tr");
     HTMLNode nodeHistogramLegendTableRow = circleTable.addChild("tr");
     HTMLNode nodeHistogramGraphTableRow = circleTable.addChild("tr");

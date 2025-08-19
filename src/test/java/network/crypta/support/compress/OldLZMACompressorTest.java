@@ -1,6 +1,6 @@
 package network.crypta.support.compress;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import network.crypta.keys.ClientSSKBlock;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
@@ -165,9 +166,7 @@ public class OldLZMACompressorTest {
 
     // build 5k array
     byte[] originalUncompressedData = new byte[5 * 1024];
-    for (int i = 0; i < originalUncompressedData.length; i++) {
-      originalUncompressedData[i] = 1;
-    }
+    Arrays.fill(originalUncompressedData, (byte) 1);
 
     byte[] compressedData = doCompress(originalUncompressedData);
     byte[] outUncompressedData = new byte[5 * 1024];
@@ -208,9 +207,7 @@ public class OldLZMACompressorTest {
 
     // build 5k array
     byte[] uncompressedData = new byte[5 * 1024];
-    for (int i = 0; i < uncompressedData.length; i++) {
-      uncompressedData[i] = 1;
-    }
+    Arrays.fill(uncompressedData, (byte) 1);
 
     byte[] compressedData = doCompress(uncompressedData);
 

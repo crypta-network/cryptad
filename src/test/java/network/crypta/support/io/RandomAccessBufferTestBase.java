@@ -1,8 +1,10 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Random;
 import network.crypta.support.api.RandomAccessBuffer;
 import org.junit.Test;
@@ -38,9 +40,7 @@ public abstract class RandomAccessBufferTestBase {
     if (!readOnly) {
       raf.pwrite(start, buf, start, len);
     }
-    for (int i = 0; i < len; i++) {
-      tmp[i] = 0;
-    }
+    Arrays.fill(tmp, (byte) 0);
     raf.pread(start, tmp, 0, len);
     for (int i = 0; i < len; i++) {
       assertEquals(tmp[i], buf[start + i]);

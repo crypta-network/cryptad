@@ -1,6 +1,7 @@
 package network.crypta.io.xfer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.LinkedList;
 import network.crypta.support.Buffer;
@@ -46,9 +47,7 @@ public class PartiallyReceivedBlock {
     }
     _data = data;
     _received = new boolean[packets];
-    for (int x = 0; x < _received.length; x++) {
-      _received[x] = true;
-    }
+    Arrays.fill(_received, true);
     _receivedCount = packets;
     _packets = packets;
     _packetSize = packetSize;

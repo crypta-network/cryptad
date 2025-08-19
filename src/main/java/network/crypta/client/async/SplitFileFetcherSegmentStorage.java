@@ -208,7 +208,7 @@ public class SplitFileFetcherSegmentStorage {
       crossSegmentsByBlock = new SplitFileFetcherCrossSegmentStorage[minFetched];
     else crossSegmentsByBlock = null;
     blocksFetched = new int[minFetched];
-    for (int i = 0; i < blocksFetched.length; i++) blocksFetched[i] = -1;
+    Arrays.fill(blocksFetched, -1);
     segmentStatusPaddedLength =
         paddedStoredSegmentStatusLength(
             dataBlocks,
@@ -296,7 +296,7 @@ public class SplitFileFetcherSegmentStorage {
       crossSegmentsByBlock = new SplitFileFetcherCrossSegmentStorage[minFetched];
     else crossSegmentsByBlock = null;
     blocksFetched = new int[minFetched];
-    for (int i = 0; i < blocksFetched.length; i++) blocksFetched[i] = -1;
+    Arrays.fill(blocksFetched, -1);
     segmentStatusPaddedLength =
         paddedStoredSegmentStatusLength(
             dataBlocks,

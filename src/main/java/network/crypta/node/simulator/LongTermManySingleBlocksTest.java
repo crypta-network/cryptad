@@ -320,7 +320,6 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
         loopOverLines:
         while ((line = br.readLine()) != null) {
 
-          for (int i = 0; i < mhkURIs.length; i++) mhkURIs[i] = null;
           // System.out.println("LINE: "+line);
           String[] split = line.split("!");
           Date date = dateFormat.parse(split[0]);

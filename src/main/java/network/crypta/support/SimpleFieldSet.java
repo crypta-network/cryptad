@@ -308,7 +308,7 @@ public class SimpleFieldSet {
       ;
     if (emptyAtStart == string.length()) {
       String[] ret = new String[string.length()];
-      for (int i = 0; i < ret.length; i++) ret[i] = "";
+      Arrays.fill(ret, "");
       return ret;
     }
     int emptyAtEnd = 0;

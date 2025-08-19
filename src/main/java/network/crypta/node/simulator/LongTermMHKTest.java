@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
@@ -233,7 +234,7 @@ public class LongTermMHKTest extends LongTermTest {
         while ((line = br.readLine()) != null) {
 
           singleURI = null;
-          for (int i = 0; i < mhkURIs.length; i++) mhkURIs[i] = null;
+          Arrays.fill(mhkURIs, null);
           // System.out.println("LINE: "+line);
           String[] split = line.split("!");
           Date date = dateFormat.parse(split[0]);

@@ -97,7 +97,7 @@ public class ResizablePersistentIntBuffer {
    * completely new.
    */
   public void fill(int value) {
-    for (int i = 0; i < buffer.length; i++) buffer[i] = value;
+    Arrays.fill(buffer, value);
   }
 
   private void readBuffer(int size) throws IOException {
