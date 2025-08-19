@@ -442,7 +442,6 @@ public class ArchiveManager {
       HashSet<String> names = new HashSet<>();
       boolean gotMetadata = false;
 
-      outerTAR:
       while (true) {
         try {
           entry = tarIS.getNextEntry();
@@ -450,15 +449,21 @@ public class ArchiveManager {
           // Annoyingly, it can throw this on some corruptions...
           throw new ArchiveFailureException("Error reading archive: " + e.getMessage(), e);
         }
-        if (entry == null) break;
-        if (entry.isDirectory()) continue;
+        if (entry == null) {
+          break;
+        }
+        if (entry.isDirectory()) {
+          continue;
+        }
         String name = stripLeadingSlashes(entry.getName());
         if (names.contains(name)) {
           Logger.error(this, "Duplicate key " + name + " in archive " + key);
           continue;
         }
         long size = entry.getSize();
-        if (name.equals(".metadata")) gotMetadata = true;
+        if (name.equals(".metadata")) {
+          gotMetadata = true;
+        }
         if (size > maxArchivedFileSize && !name.equals(element)) {
           addErrorElement(
               ctx,
@@ -553,18 +558,23 @@ public class ArchiveManager {
       HashSet<String> names = new HashSet<>();
       boolean gotMetadata = false;
 
-      outerZIP:
       while (true) {
         entry = zis.getNextEntry();
-        if (entry == null) break;
-        if (entry.isDirectory()) continue;
+        if (entry == null) {
+          break;
+        }
+        if (entry.isDirectory()) {
+          continue;
+        }
         String name = stripLeadingSlashes(entry.getName());
         if (names.contains(name)) {
           Logger.error(this, "Duplicate key " + name + " in archive " + key);
           continue;
         }
         long size = entry.getSize();
-        if (name.equals(".metadata")) gotMetadata = true;
+        if (name.equals(".metadata")) {
+          gotMetadata = true;
+        }
         if (size > maxArchivedFileSize && !name.equals(element)) {
           addErrorElement(
               ctx,
