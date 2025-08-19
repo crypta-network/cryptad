@@ -14,6 +14,7 @@ import network.crypta.support.SimpleFieldSet;
  * @author Artefact2
  */
 public class PluginStore {
+
   public final HashMap<String, PluginStore> subStores = new HashMap<String, PluginStore>();
   public final HashMap<String, Long> longs = new HashMap<String, Long>();
   public final HashMap<String, long[]> longsArrays = new HashMap<String, long[]>();
@@ -157,11 +158,11 @@ public class PluginStore {
     }
   }
 
-  private static final String encode(String s) {
+  private static String encode(String s) {
     return Base64.encodeUTF8(s);
   }
 
-  private static final String decode(String s) throws IllegalBase64Exception {
+  private static String decode(String s) throws IllegalBase64Exception {
     return Base64.decodeUTF8(s);
   }
 }

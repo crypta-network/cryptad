@@ -173,7 +173,9 @@ public class DMT {
     msg.set(PACKET_NO, packetNo);
     msg.set(SENT, sent);
     msg.set(DATA, data);
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -733,11 +735,15 @@ public class DMT {
   public static final short DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED = 4;
 
   public static String getDataInsertRejectedReason(short reason) {
-    if (reason == DATA_INSERT_REJECTED_VERIFY_FAILED) return "Verify failed";
-    else if (reason == DATA_INSERT_REJECTED_RECEIVE_FAILED) return "Receive failed";
-    else if (reason == DATA_INSERT_REJECTED_SSK_ERROR) return "SSK error";
-    else if (reason == DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED)
+    if (reason == DATA_INSERT_REJECTED_VERIFY_FAILED) {
+      return "Verify failed";
+    } else if (reason == DATA_INSERT_REJECTED_RECEIVE_FAILED) {
+      return "Receive failed";
+    } else if (reason == DATA_INSERT_REJECTED_SSK_ERROR) {
+      return "SSK error";
+    } else if (reason == DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED) {
       return "Timeout waiting for Accepted (moved on)";
+    }
     return "Unknown reason code: " + reason;
   }
 
@@ -775,7 +781,9 @@ public class DMT {
     msg.set(BLOCK_HEADERS, new ShortBuffer(headers));
     msg.set(PUBKEY_HASH, new ShortBuffer(pubKeyHash));
     msg.set(DATA, new ShortBuffer(data));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -811,7 +819,9 @@ public class DMT {
     Message msg = new Message(FNPSSKInsertRequestHeaders);
     msg.set(UID, uid);
     msg.set(BLOCK_HEADERS, new ShortBuffer(headers));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -827,7 +837,9 @@ public class DMT {
     Message msg = new Message(FNPSSKInsertRequestData);
     msg.set(UID, uid);
     msg.set(DATA, new ShortBuffer(data));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -847,7 +859,9 @@ public class DMT {
     Message msg = new Message(FNPSSKDataFoundHeaders);
     msg.set(UID, uid);
     msg.set(BLOCK_HEADERS, new ShortBuffer(headers));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -863,7 +877,9 @@ public class DMT {
     Message msg = new Message(FNPSSKDataFoundData);
     msg.set(UID, uid);
     msg.set(DATA, new ShortBuffer(data));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -894,7 +910,9 @@ public class DMT {
     Message msg = new Message(FNPSSKPubKey);
     msg.set(UID, uid);
     msg.set(PUBKEY_AS_BYTES, new ShortBuffer(pubkey.asPaddedBytes()));
-    if (realTime) msg.boostPriority();
+    if (realTime) {
+      msg.boostPriority();
+    }
     return msg;
   }
 
@@ -1491,13 +1509,13 @@ public class DMT {
         }
       };
 
-  public static final byte bandwidthClassForCapacityUsage(int bandwidthLimit) {
+  public static byte bandwidthClassForCapacityUsage(int bandwidthLimit) {
     bandwidthLimit /= CAPACITY_USAGE_MULTIPLIER;
     bandwidthLimit = Math.min(bandwidthLimit, CAPACITY_USAGE_MAX);
     return (byte) Math.max(bandwidthLimit, CAPACITY_USAGE_MIN);
   }
 
-  public static final Message createProbeOverallBulkOutputCapacityUsage(
+  public static Message createProbeOverallBulkOutputCapacityUsage(
       long uid, byte outputBandwidthClass, float capacityUsage) {
     Message msg = new Message(ProbeOverallBulkOutputCapacityUsage);
     msg.set(UID, uid);
@@ -1919,7 +1937,9 @@ public class DMT {
 
   public static Message createFNPBestRoutesNotTaken(Double[] doubles) {
     double[] locs = new double[doubles.length];
-    for (int i = 0; i < locs.length; i++) locs[i] = doubles[i];
+    for (int i = 0; i < locs.length; i++) {
+      locs[i] = doubles[i];
+    }
     return createFNPBestRoutesNotTaken(locs);
   }
 
@@ -2109,7 +2129,9 @@ public class DMT {
 
   public static boolean getRealTimeFlag(Message m) {
     Message bulk = m.getSubMessage(FNPRealTimeFlag);
-    if (bulk == null) return false;
+    if (bulk == null) {
+      return false;
+    }
     return bulk.getBoolean(REAL_TIME_FLAG);
   }
 

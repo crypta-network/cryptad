@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
  * (pre-9) http://openjdk.java.net/jeps/223 (post-9)
  */
 public class JVMVersion {
+
   /**
    * Java version before which to display an End-of-Life warning. Subsequent releases of Freenet
    * will function with them, but that may soon not be the case.
@@ -49,7 +50,9 @@ public class JVMVersion {
   }
 
   static boolean isEOL(String version) {
-    if (version == null) return false;
+    if (version == null) {
+      return false;
+    }
 
     return compareVersion(version, EOL_THRESHOLD) < 0;
   }
@@ -62,7 +65,7 @@ public class JVMVersion {
     return compareVersion(version, UPDATER_THRESHOLD) < 0;
   }
 
-  public static final boolean is32Bit() {
+  public static boolean is32Bit() {
     boolean is32bitOS = System.getProperty("os.arch").equalsIgnoreCase("x86");
     String prop = System.getProperty("sun.arch.data.model");
     if (prop != null) {
@@ -72,7 +75,7 @@ public class JVMVersion {
     }
   }
 
-  public static final boolean supportsModules() {
+  public static boolean supportsModules() {
     String currentVersion = getCurrent();
     if (currentVersion == null) {
       return false;

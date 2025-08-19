@@ -13,6 +13,7 @@ import network.crypta.support.Logger.LogLevel;
 
 /** RIFF file format filter for several formats, such as AVI, WAV, MID, and WebP */
 public abstract class RIFFFilter implements ContentDataFilter {
+
   private static final byte[] magicNumber = new byte[] {'R', 'I', 'F', 'F'};
 
   @Override
@@ -27,15 +28,17 @@ public abstract class RIFFFilter implements ContentDataFilter {
     DataInputStream in = new DataInputStream(input);
     DataOutputStream out = new DataOutputStream(output);
     for (byte magicCharacter : magicNumber) {
-      if (magicCharacter != in.readByte())
+      if (magicCharacter != in.readByte()) {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), l10n("invalidStream"));
+      }
     }
     int fileSize = readLittleEndianInt(in);
     for (byte magicCharacter : getChunkMagicNumber()) {
-      if (magicCharacter != in.readByte())
+      if (magicCharacter != in.readByte()) {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), l10n("invalidStream"));
+      }
     }
     out.write(magicNumber);
     if (fileSize < 0) {
@@ -143,8 +146,9 @@ public abstract class RIFFFilter implements ContentDataFilter {
   protected void passthroughBytes(DataInputStream in, DataOutputStream out, int size)
       throws DataFilterException, IOException {
     if (size < 0) {
-      if (Logger.shouldLog(LogLevel.WARNING, this.getClass()))
+      if (Logger.shouldLog(LogLevel.WARNING, this.getClass())) {
         Logger.warning(this, "RIFF block size " + size + " is less than 0");
+      }
       throw new DataFilterException(l10n("invalidTitle"), l10n("invalidTitle"), l10n("dataTooBig"));
     } else {
       // Copy 1MB at a time instead of all at once
@@ -186,8 +190,9 @@ public abstract class RIFFFilter implements ContentDataFilter {
       throw new EOFException();
     }
     if (size < 0) {
-      if (Logger.shouldLog(LogLevel.WARNING, this.getClass()))
+      if (Logger.shouldLog(LogLevel.WARNING, this.getClass())) {
         Logger.warning(this, "RIFF block size " + size + " is less than 0");
+      }
       throw new DataFilterException(l10n("invalidTitle"), l10n("invalidTitle"), l10n("dataTooBig"));
     } else {
       // Write 1MB at a time instead of all at once
@@ -219,7 +224,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
    * @return
    * @throws IOException
    */
-  protected static final int readLittleEndianInt(DataInputStream stream) throws IOException {
+  protected static int readLittleEndianInt(DataInputStream stream) throws IOException {
     int a;
     a = stream.readInt();
     return Integer.reverseBytes(a);
@@ -232,8 +237,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
    * @param a
    * @throws IOException
    */
-  protected static final void writeLittleEndianInt(DataOutputStream stream, int a)
-      throws IOException {
+  protected static void writeLittleEndianInt(DataOutputStream stream, int a) throws IOException {
     stream.writeInt(Integer.reverseBytes(a));
   }
 }

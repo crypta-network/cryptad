@@ -16,9 +16,14 @@ import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.crypt.Yarrow;
-import network.crypta.support.*;
+import network.crypta.support.Executor;
+import network.crypta.support.JVMVersion;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.PooledExecutor;
+import network.crypta.support.ProcessPriority;
+import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -461,7 +466,7 @@ public class NodeStarter implements WrapperListener {
    * check whether the OS, JVM and wrapper are 64bits On Windows this will be always true (the
    * wrapper we deploy is 32bits)
    */
-  public static final boolean isSomething32bits() {
+  public static boolean isSomething32bits() {
     Properties wrapperProperties = WrapperManager.getProperties();
     return !JVMVersion.is32Bit()
         && !wrapperProperties.getProperty("wrapper.java.additional.auto_bits").startsWith("32");
@@ -656,6 +661,7 @@ public class NodeStarter implements WrapperListener {
 
   /** TODO FIXME: Someone who understands all the parameters please add sane defaults. */
   public static final class TestNodeParameters {
+
     /** The UDP port number. Each test node must have a different port number. */
     public int port;
 

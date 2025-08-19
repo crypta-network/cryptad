@@ -70,13 +70,17 @@ public abstract class Fields {
    */
   public static long hexToLong(String hex) throws NumberFormatException {
     int len = hex.length();
-    if (len > 16) throw new NumberFormatException();
+    if (len > 16) {
+      throw new NumberFormatException();
+    }
 
     long l = 0;
     for (int i = 0; i < len; i++) {
       l <<= 4;
       int c = Character.digit(hex.charAt(i), 16);
-      if (c < 0) throw new NumberFormatException();
+      if (c < 0) {
+        throw new NumberFormatException();
+      }
       l |= c;
     }
     return l;
@@ -95,13 +99,17 @@ public abstract class Fields {
    */
   public static int hexToInt(String hex) throws NumberFormatException {
     int len = hex.length();
-    if (len > 16) throw new NumberFormatException();
+    if (len > 16) {
+      throw new NumberFormatException();
+    }
 
     int l = 0;
     for (int i = 0; i < len; i++) {
       l <<= 4;
       int c = Character.digit(hex.charAt(i), 16);
-      if (c < 0) throw new NumberFormatException();
+      if (c < 0) {
+        throw new NumberFormatException();
+      }
       l |= c;
     }
     return l;
@@ -118,7 +126,9 @@ public abstract class Fields {
    */
   /* wooo, rocket science! (this is purely abstraction people) */
   public static boolean stringToBool(String s, boolean def) {
-    if (s == null) return def;
+    if (s == null) {
+      return def;
+    }
     return (def ? !s.equalsIgnoreCase("false") : s.equalsIgnoreCase("true"));
   }
 
@@ -130,9 +140,15 @@ public abstract class Fields {
    * @return
    */
   public static boolean stringToBool(String s) throws NumberFormatException {
-    if (s == null) throw new NumberFormatException("Null");
-    if (s.equalsIgnoreCase("false") || s.equalsIgnoreCase("no")) return false;
-    if (s.equalsIgnoreCase("true") || s.equalsIgnoreCase("yes")) return true;
+    if (s == null) {
+      throw new NumberFormatException("Null");
+    }
+    if (s.equalsIgnoreCase("false") || s.equalsIgnoreCase("no")) {
+      return false;
+    }
+    if (s.equalsIgnoreCase("true") || s.equalsIgnoreCase("yes")) {
+      return true;
+    }
     throw new NumberFormatException("Invalid boolean: " + s);
   }
 
@@ -147,7 +163,9 @@ public abstract class Fields {
   }
 
   public static String[] commaList(String ls) {
-    if (ls == null) return null;
+    if (ls == null) {
+      return null;
+    }
     StringTokenizer st = new StringTokenizer(ls, ",");
     String[] r = new String[st.countTokens()];
     for (int i = 0; i < r.length; i++) {
@@ -161,7 +179,9 @@ public abstract class Fields {
   }
 
   public static String textList(String[] ls, char ch) {
-    if (ls.length == 0) return "";
+    if (ls.length == 0) {
+      return "";
+    }
     StringBuilder sb = new StringBuilder();
     for (String s : ls) {
       sb.append(s);
@@ -183,7 +203,9 @@ public abstract class Fields {
   }
 
   public static String numberList(long[] ls) {
-    if (ls.length == 0) return "";
+    if (ls.length == 0) {
+      return "";
+    }
     char[] numberBuf = new char[64];
     StringBuilder listBuf = new StringBuilder(ls.length * 18);
     for (long l : ls) {
@@ -212,21 +234,27 @@ public abstract class Fields {
    */
   public static long dateTime(String date) throws NumberFormatException {
 
-    if (date.isEmpty()) throw new NumberFormatException("Date time empty");
+    if (date.isEmpty()) {
+      throw new NumberFormatException("Date time empty");
+    }
 
     if ((date.charAt(0) == '-') || (date.charAt(0) == '+')) {
       // Relative date
       StringBuilder sb = new StringBuilder(10);
       for (int x = 1; x < date.length(); x++) {
         char c = date.charAt(x);
-        if (Character.isDigit(c)) sb.append(c);
-        else break;
+        if (Character.isDigit(c)) {
+          sb.append(c);
+        } else {
+          break;
+        }
       }
       int num = Integer.parseInt(sb.toString());
       int chop = 1 + sb.length();
       int deltaType = 0;
-      if (date.length() == chop) deltaType = Calendar.DAY_OF_YEAR;
-      else {
+      if (date.length() == chop) {
+        deltaType = Calendar.DAY_OF_YEAR;
+      } else {
         String deltaTypeString = date.substring(chop).toLowerCase();
         switch (deltaTypeString) {
           case "y":
@@ -269,8 +297,9 @@ public abstract class Fields {
 
     int dash = date.indexOf('-');
 
-    if (!((dash == -1) && (date.length() == 8)) && !((dash == 8) && (date.length() == 17)))
+    if (!((dash == -1) && (date.length() == 8)) && !((dash == 8) && (date.length() == 17))) {
       throw new NumberFormatException("Date time: " + date + " not correct.");
+    }
     int year = Integer.parseInt(date.substring(0, 4));
     int month = Integer.parseInt(date.substring(4, 6));
     int day = Integer.parseInt(date.substring(6, 8));
@@ -301,7 +330,9 @@ public abstract class Fields {
     // String dateString = f.format(c.getTime());
     String dateString = f.format(new Date(time * 1000));
 
-    if (dateString.endsWith("-00:00:00")) dateString = dateString.substring(0, 8);
+    if (dateString.endsWith("-00:00:00")) {
+      dateString = dateString.substring(0, 8);
+    }
 
     return dateString;
   }
@@ -309,38 +340,61 @@ public abstract class Fields {
   public static int compareBytes(byte[] b1, byte[] b2) {
     int len = Math.max(b1.length, b2.length);
     for (int i = 0; i < len; ++i) {
-      if (i == b1.length) return i == b2.length ? 0 : -1;
-      else if (i == b2.length) return 1;
-      else if ((0xff & b1[i]) > (0xff & b2[i])) return 1;
-      else if ((0xff & b1[i]) < (0xff & b2[i])) return -1;
+      if (i == b1.length) {
+        return i == b2.length ? 0 : -1;
+      } else if (i == b2.length) {
+        return 1;
+      } else if ((0xff & b1[i]) > (0xff & b2[i])) {
+        return 1;
+      } else if ((0xff & b1[i]) < (0xff & b2[i])) {
+        return -1;
+      }
     }
     return 0;
   }
 
   public static int compareBytes(byte[] a, byte[] b, int aoff, int boff, int len) {
     for (int i = 0; i < len; ++i) {
-      if (i + aoff == a.length) return i + boff == b.length ? 0 : -1;
-      else if (i + boff == b.length) return 1;
-      else if ((0xff & a[i + aoff]) > (0xff & b[i + boff])) return 1;
-      else if ((0xff & a[i + aoff]) < (0xff & b[i + boff])) return -1;
+      if (i + aoff == a.length) {
+        return i + boff == b.length ? 0 : -1;
+      } else if (i + boff == b.length) {
+        return 1;
+      } else if ((0xff & a[i + aoff]) > (0xff & b[i + boff])) {
+        return 1;
+      } else if ((0xff & a[i + aoff]) < (0xff & b[i + boff])) {
+        return -1;
+      }
     }
     return 0;
   }
 
   public static boolean byteArrayEqual(byte[] a, byte[] b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; ++i) if (a[i] != b[i]) return false;
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; ++i) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
     return true;
   }
 
   public static boolean byteArrayEqual(byte[] a, byte[] b, int aoff, int boff, int len) {
-    if ((a.length < aoff + len) || (b.length < boff + len)) return false;
-    for (int i = 0; i < len; ++i) if (a[i + aoff] != b[i + boff]) return false;
+    if ((a.length < aoff + len) || (b.length < boff + len)) {
+      return false;
+    }
+    for (int i = 0; i < len; ++i) {
+      if (a[i + aoff] != b[i + boff]) {
+        return false;
+      }
+    }
     return true;
   }
 
   /** Compares byte arrays lexicographically. */
   public static final class ByteArrayComparator implements Comparator<byte[]> {
+
     @Override
     public int compare(byte[] o1, byte[] o2) {
       return compareBytes(o1, o2);
@@ -387,7 +441,9 @@ public abstract class Fields {
    * @return
    */
   public static String commaList(Object[] addr, char comma) {
-    if (addr.length == 0) return "";
+    if (addr.length == 0) {
+      return "";
+    }
     StringBuilder sb = new StringBuilder();
     for (Object a : addr) {
       sb.append(a);
@@ -426,7 +482,9 @@ public abstract class Fields {
    * @return
    */
   public static long[] bytesToLongs(byte[] buf, int offset, int length) {
-    if (length % 8 != 0) throw new IllegalArgumentException();
+    if (length % 8 != 0) {
+      throw new IllegalArgumentException();
+    }
     long[] longs = new long[length / 8];
     for (int i = 0; i < longs.length; i++) {
       long x = 0;
@@ -446,7 +504,9 @@ public abstract class Fields {
 
   /** Convert an array of bytes to a single long. */
   public static long bytesToLong(byte[] buf, int offset) {
-    if (buf.length < 8 + offset) throw new IllegalArgumentException();
+    if (buf.length < 8 + offset) {
+      throw new IllegalArgumentException();
+    }
     long x = 0;
     for (int j = 7; j >= 0; j--) {
       long y = (buf[j + offset] & 0xff);
@@ -461,7 +521,9 @@ public abstract class Fields {
 
   /** Convert an array of bytes to a single int. */
   public static int bytesToInt(byte[] buf, int offset) {
-    if (buf.length < 4) throw new IllegalArgumentException();
+    if (buf.length < 4) {
+      throw new IllegalArgumentException();
+    }
     int x = 0;
     for (int j = 3; j >= 0; j--) {
       int y = (buf[j + offset] & 0xff);
@@ -472,7 +534,9 @@ public abstract class Fields {
 
   /** Convert an array of bytes to a single int. */
   public static short bytesToShort(byte[] buf, int offset) {
-    if (buf.length < 2) throw new IllegalArgumentException();
+    if (buf.length < 2) {
+      throw new IllegalArgumentException();
+    }
     short x = 0;
     for (int j = 1; j >= 0; j--) {
       short y = (short) (buf[j + offset] & 0xff);
@@ -482,7 +546,9 @@ public abstract class Fields {
   }
 
   public static int[] bytesToInts(byte[] buf, int offset, int length) {
-    if (length % 4 != 0) throw new IllegalArgumentException();
+    if (length % 4 != 0) {
+      throw new IllegalArgumentException();
+    }
     int[] ints = new int[length / 4];
     for (int i = 0; i < ints.length; i++) {
       int x = 0;
@@ -598,7 +664,9 @@ public abstract class Fields {
    */
   public static String trimPerSecond(String limit) {
     limit = limit.trim();
-    if (limit.isEmpty()) return "";
+    if (limit.isEmpty()) {
+      return "";
+    }
     /*
      * IEC endings are case sensitive, so the input string's case should not be modified. However, the
      * qualifiers should not be case sensitive.
@@ -682,14 +750,16 @@ public abstract class Fields {
         double m = Double.parseDouble(multiplier);
         checkLongOverflowWhenMultiply(res, m);
         res *= m;
-        if (logMINOR)
+        if (logMINOR) {
           Logger.minor(Fields.class, "Parsed " + multiplier + " of " + s + " as double: " + res);
+        }
       } else {
         long m = Long.parseLong(multiplier);
         checkLongOverflowWhenMultiply(res, m);
         res *= m;
-        if (logMINOR)
+        if (logMINOR) {
           Logger.minor(Fields.class, "Parsed " + multiplier + " of " + s + " as long: " + res);
+        }
       }
     } catch (ArithmeticException e) {
       throw new NumberFormatException(e.getMessage());
@@ -706,12 +776,16 @@ public abstract class Fields {
   public static String longToString(long val, boolean isSize) {
     String ret = Long.toString(val);
 
-    if (val <= 0) return ret;
+    if (val <= 0) {
+      return ret;
+    }
 
     for (int i = MULTIPLES.length - 1; i >= 0; i--) {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         ret = (val / MULTIPLES[i]) + MULTIPLES_2[i];
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) ret += "iB";
+        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+          ret += "iB";
+        }
         break;
       }
     }
@@ -729,12 +803,16 @@ public abstract class Fields {
   public static String intToString(int val, boolean isSize) {
     String ret = Integer.toString(val);
 
-    if (val <= 0) return ret;
+    if (val <= 0) {
+      return ret;
+    }
 
     for (int i = MULTIPLES.length - 1; i >= 0; i--) {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         ret = (val / MULTIPLES[i]) + MULTIPLES_2[i];
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) ret += "iB";
+        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+          ret += "iB";
+        }
         break;
       }
     }
@@ -744,12 +822,16 @@ public abstract class Fields {
   public static String shortToString(short val, boolean isSize) {
     String ret = Short.toString(val);
 
-    if (val <= 0) return ret;
+    if (val <= 0) {
+      return ret;
+    }
 
     for (int i = MULTIPLES.length - 1; i >= 0; i--) {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         ret = (val / MULTIPLES[i]) + MULTIPLES_2[i];
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) ret += "iB";
+        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+          ret += "iB";
+        }
         break;
       }
     }
@@ -759,13 +841,17 @@ public abstract class Fields {
   public static double[] bytesToDoubles(byte[] data, int offset, int length) {
     long[] longs = bytesToLongs(data, offset, length);
     double[] doubles = new double[longs.length];
-    for (int i = 0; i < longs.length; i++) doubles[i] = Double.longBitsToDouble(longs[i]);
+    for (int i = 0; i < longs.length; i++) {
+      doubles[i] = Double.longBitsToDouble(longs[i]);
+    }
     return doubles;
   }
 
   public static byte[] doublesToBytes(double[] doubles) {
     long[] longs = new long[doubles.length];
-    for (int i = 0; i < longs.length; i++) longs[i] = Double.doubleToLongBits(doubles[i]);
+    for (int i = 0; i < longs.length; i++) {
+      longs[i] = Double.doubleToLongBits(doubles[i]);
+    }
     return longsToBytes(longs);
   }
 
@@ -783,7 +869,9 @@ public abstract class Fields {
     StringBuilder r = new StringBuilder(str.length());
     for (String line : str.split("\n")) {
       line = line.trim();
-      if (line.isEmpty()) continue;
+      if (line.isEmpty()) {
+        continue;
+      }
 
       r.append(line);
       r.append('\n');
@@ -809,18 +897,30 @@ public abstract class Fields {
         yDigits = y.substring(j, j + digits);
         j += digits;
       }
-      if (xDigits != null && yDigits == null) return 1; // numbers > not numbers.
-      if (yDigits != null && xDigits == null) return -1; // numbers > not numbers.
+      if (xDigits != null && yDigits == null) {
+        return 1; // numbers > not numbers.
+      }
+      if (yDigits != null && xDigits == null) {
+        return -1; // numbers > not numbers.
+      }
       if (xDigits != null && yDigits != null) {
         if (!xDigits.equals(yDigits)) {
           if (wantDigits) {
             try {
               long a = Integer.parseInt(xDigits);
               long b = Integer.parseInt(yDigits);
-              if (a > b) return 1;
-              if (a < b) return -1;
-              if (xDigits.length() > yDigits.length()) return -1; // Extra 0's at beginning.
-              if (yDigits.length() > xDigits.length()) return 1; // Extra 0's at beginning.
+              if (a > b) {
+                return 1;
+              }
+              if (a < b) {
+                return -1;
+              }
+              if (xDigits.length() > yDigits.length()) {
+                return -1; // Extra 0's at beginning.
+              }
+              if (yDigits.length() > xDigits.length()) {
+                return 1; // Extra 0's at beginning.
+              }
             } catch (NumberFormatException e) {
               // Too many digits!
               return xDigits.compareTo(yDigits);
@@ -830,7 +930,9 @@ public abstract class Fields {
           }
         }
       }
-      if (i >= x.length() && j >= y.length()) return 0;
+      if (i >= x.length() && j >= y.length()) {
+        return 0;
+      }
       wantDigits = !wantDigits;
     }
   }
@@ -838,7 +940,9 @@ public abstract class Fields {
   static int getDigits(String x, int i, boolean wantDigits) {
     int origI = i;
     for (; i < x.length(); i++) {
-      if (Character.isDigit(x.charAt(i)) != wantDigits) break;
+      if (Character.isDigit(x.charAt(i)) != wantDigits) {
+        break;
+      }
     }
     return i - origI;
   }
@@ -846,27 +950,39 @@ public abstract class Fields {
   public static int compareObjectID(Object o1, Object o2) {
     int id1 = System.identityHashCode(o1);
     int id2 = System.identityHashCode(o2);
-    if (id1 > id2) return 1;
-    if (id2 > id1) return -1;
+    if (id1 > id2) {
+      return 1;
+    }
+    if (id2 > id1) {
+      return -1;
+    }
     return 0;
   }
 
   /** Avoid issues with overflow, 2's complement. E.g. 0-Integer.MIN_VALUE = Integer.MIN_VALUE-0. */
-  public static final int compare(int x, int y) {
-    if (x > y) return 1;
-    if (y > x) return -1;
+  public static int compare(int x, int y) {
+    if (x > y) {
+      return 1;
+    }
+    if (y > x) {
+      return -1;
+    }
     return 0;
   }
 
   /** Avoid issues with overflow, 2's complement. */
-  public static final int compare(long x, long y) {
-    if (x > y) return 1;
-    if (y > x) return -1;
+  public static int compare(long x, long y) {
+    if (x > y) {
+      return 1;
+    }
+    if (y > x) {
+      return -1;
+    }
     return 0;
   }
 
   /** Avoid issues with NaN's. */
-  public static final int compare(double x, double y) {
+  public static int compare(double x, double y) {
     if (Double.isNaN(x)) {
       if (Double.isNaN(y)) {
         return 0; // kind of!
@@ -876,14 +992,17 @@ public abstract class Fields {
     } else if (Double.isNaN(y)) {
       return 1; // first is better
     } else {
-      if (x > y) return 1;
-      else if (x < y) return -1;
+      if (x > y) {
+        return 1;
+      } else if (x < y) {
+        return -1;
+      }
     }
     return 0;
   }
 
   /** Avoid issues with NaN's. */
-  public static final int compare(float x, float y) {
+  public static int compare(float x, float y) {
     if (Float.isNaN(x)) {
       if (Float.isNaN(y)) {
         return 0; // kind of!
@@ -893,13 +1012,16 @@ public abstract class Fields {
     } else if (Float.isNaN(y)) {
       return 1; // first is better
     } else {
-      if (x > y) return 1;
-      else if (x < y) return -1;
+      if (x > y) {
+        return 1;
+      } else if (x < y) {
+        return -1;
+      }
     }
     return 0;
   }
 
-  public static final int compare(Date a, Date b) {
+  public static int compare(Date a, Date b) {
     // Replace null Dates with real ones so we can use Date.compareTo()
     a = (a != null ? a : new Date(0));
     b = (b != null ? b : new Date(0));

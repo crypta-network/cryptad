@@ -13,14 +13,14 @@ import org.junit.Test;
 
 public class BaseL10nTest {
 
-  public static final BaseL10n createL10n(LANGUAGE lang) {
+  public static BaseL10n createL10n(LANGUAGE lang) {
     File overrideFile =
         new File(TestProperty.L10nPath_main, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
         "network/crypta/l10n/", "crypta.l10n.${lang}.properties", overrideFile.getPath(), lang);
   }
 
-  public static final BaseL10n createTestL10n(LANGUAGE lang) {
+  public static BaseL10n createTestL10n(LANGUAGE lang) {
     File overrideFile =
         new File(TestProperty.L10nPath_test, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
