@@ -2,7 +2,6 @@ package network.crypta.crypt;
 
 import java.io.IOException;
 import java.io.InputStream;
-
 import network.crypta.support.io.SkipShieldingInputStream;
 
 public class MultiHashInputStream extends SkipShieldingInputStream {
@@ -34,7 +33,6 @@ public class MultiHashInputStream extends SkipShieldingInputStream {
     readBytes++;
     return ret;
   }
-
 
   @Override
   public boolean markSupported() {
