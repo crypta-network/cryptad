@@ -200,7 +200,6 @@ public class MessageCore {
           if (timedOut == null) timedOut = new ArrayList<>();
           timedOut.add(f);
           i.remove();
-          continue;
         } else if (status == MATCHED.MATCHED) {
           matched = true;
           i.remove();
@@ -266,7 +265,6 @@ public class MessageCore {
             if (timedOut == null) timedOut = new ArrayList<>();
             timedOut.add(f);
             i.remove();
-            continue;
           }
         }
         if (!matched) {

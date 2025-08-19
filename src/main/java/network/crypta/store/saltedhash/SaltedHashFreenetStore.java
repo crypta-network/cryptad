@@ -9,11 +9,23 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.OverlappingFileLockException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Random;
+import java.util.SortedSet;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.*;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.UnsupportedCipherException;
@@ -27,9 +39,18 @@ import network.crypta.node.stats.StoreAccessStats;
 import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
-import network.crypta.store.*;
-import network.crypta.support.*;
+import network.crypta.store.BlockMetadata;
+import network.crypta.store.FreenetStore;
+import network.crypta.store.KeyCollisionException;
+import network.crypta.store.StorableBlock;
+import network.crypta.store.StoreCallback;
+import network.crypta.support.Fields;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.Ticker;
+import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.io.Fallocate;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
@@ -444,7 +465,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       } catch (EOFException e) {
         if (prevStoreSize == 0) // may occur on store shrinking
         Logger.error(this, "EOFException on probeEntry", e);
-        continue;
       }
     }
     return null;

@@ -549,7 +549,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         // STRONGLY suggests somebody is using a bogus charset.
         // This could be in order to break the filter.
         if (logDEBUG) Logger.debug(this, "Removing '" + c + "' from the output stream");
-        continue;
       } else {
         out.append(c);
       }

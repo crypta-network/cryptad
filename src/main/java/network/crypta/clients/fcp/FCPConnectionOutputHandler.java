@@ -104,7 +104,6 @@ public class FCPConnectionOutputHandler implements Runnable {
           if (logMINOR) Logger.minor(this, "Flushing");
           os.flush();
           flushed = true;
-          continue;
         } else {
           break;
         }
@@ -134,7 +133,6 @@ public class FCPConnectionOutputHandler implements Runnable {
         try {
           outQueue.wait(1500);
         } catch (InterruptedException e) {
-          continue;
         }
       }
     }

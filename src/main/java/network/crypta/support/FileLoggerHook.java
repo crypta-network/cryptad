@@ -634,7 +634,6 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
             Logger.normal(this, "Could not parse: " + tokens[j] + " into number from " + name);
             // Broken
             f.delete();
-            continue;
           }
         }
         if (nums.length > 1) gc.set(Calendar.YEAR, nums[1]);

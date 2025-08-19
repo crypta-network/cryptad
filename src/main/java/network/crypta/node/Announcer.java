@@ -11,7 +11,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.l10n.NodeL10n;
@@ -279,16 +283,12 @@ public class Announcer {
         }
       } catch (FSParseException e) {
         Logger.error(this, "Invalid seed in file: " + e + " for\n" + fs, e);
-        continue;
       } catch (PeerParseException e) {
         Logger.error(this, "Invalid seed in file: " + e + " for\n" + fs, e);
-        continue;
       } catch (ReferenceSignatureVerificationException e) {
         Logger.error(this, "Invalid seed in file: " + e + " for\n" + fs, e);
-        continue;
       } catch (PeerTooOldException e) {
         Logger.error(this, "Invalid seed in file: " + e + " for\n" + fs, e);
-        continue;
       }
     }
     if (logMINOR) Logger.minor(this, "connectSomeNodesInner() returning " + count);

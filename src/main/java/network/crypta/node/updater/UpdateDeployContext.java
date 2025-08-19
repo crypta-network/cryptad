@@ -1,6 +1,14 @@
 package network.crypta.node.updater;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Properties;
 import java.util.regex.Pattern;
@@ -49,13 +57,11 @@ public class UpdateDeployContext {
           newMainJar = new File(mainJar.getParent(), "cryptad.jar.new");
           mainJarAbsolute = isAbsolute;
           mainClasspathNo = propNo;
-          continue;
         } else if ((name.startsWith("cryptad") && (name.endsWith(".jar.new")))) {
           mainJar = f;
           newMainJar = new File(mainJar.getParent(), "cryptad.jar");
           mainJarAbsolute = isAbsolute;
           mainClasspathNo = propNo;
-          continue;
         }
       }
       // Else try to match from dependencies.

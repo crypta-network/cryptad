@@ -722,7 +722,6 @@ public class ArchiveManager {
             context);
       } catch (MetadataUnresolvedException e1) {
         x = resolve(e, x, bf, ctx, key, gotElement, element2, callback, context);
-        continue;
       }
     }
     return x;

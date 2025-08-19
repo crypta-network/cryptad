@@ -449,7 +449,6 @@ public class DefaultManifestPutter extends BaseManifestPutter {
           containerBuilder.addExternal(
               name, element.getData(), element.getMimeTypeOverride(), name.equals(defaultName));
         else containerBuilder.addItem(name, prefix + name, element, name.equals(defaultName));
-        continue;
       } else {
         @SuppressWarnings("unchecked")
         HashMap<String, Object> hm = (HashMap<String, Object>) o;

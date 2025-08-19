@@ -545,7 +545,6 @@ public class ElementInfo {
       }
 
       // Allow everything else.
-      continue;
     }
 
     // Still in an escape.

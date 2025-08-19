@@ -25,7 +25,6 @@ class CorruptingOutputStream extends OutputStream {
       long offset = from + nextLong(random, to - from);
       if (!toKill.add(offset)) {
         i--;
-        continue;
       }
     }
     killBytes = new long[errors];

@@ -216,7 +216,6 @@ public class NodeCrypto {
             Logger.normal(this, "Could not use port: " + bindto + ':' + portNo + ": " + e, e);
             System.err.println("Could not use port: " + bindto + ':' + portNo + ": " + e);
             e.printStackTrace();
-            continue;
           }
         }
         if (u == null)

@@ -1,6 +1,14 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -550,7 +558,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           if (metadata == null)
             throw new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE, "can't find " + name);
         }
-        continue; // loop
+        // loop
       } else if (metadata.isArchiveManifest()) {
         if (logMINOR)
           Logger.minor(
@@ -651,7 +659,6 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           return;
         }
         metadataBucket.free();
-        continue;
       } else if (metadata.isArchiveMetadataRedirect()) {
         if (logMINOR) Logger.minor(this, "Is archive-metadata");
         // Fetch it from the archive
@@ -676,7 +683,6 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
           synchronized (this) {
             metadata = newMetadata;
           }
-          continue;
         } else {
           if (logMINOR) Logger.minor(this, "Fetching archive (thisKey=" + thisKey + ')');
           // Metadata cannot contain pointers to files which don't exist.

@@ -229,8 +229,8 @@ public final class StringValidityChecker {
 
   public static boolean isLatinLettersAndNumbersOnly(String text) {
     for (char c : text.toCharArray()) {
-      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= '0' && c <= '9') continue;
-      else return false;
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= '0' && c <= '9') {
+      } else return false;
     }
 
     return true;

@@ -54,7 +54,13 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.support.*;
+import network.crypta.support.HTMLNode;
+import network.crypta.support.HexUtil;
+import network.crypta.support.Logger;
+import network.crypta.support.ShortBuffer;
+import network.crypta.support.SizeUtil;
+import network.crypta.support.TimeUtil;
+import network.crypta.support.WeakHashSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.api.RandomAccessBuffer;
@@ -857,7 +863,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
         nodesDisconnectedSayRevoked.add(pn);
         nodesConnectedSayRevoked.remove(i);
         i--;
-        continue;
       }
     }
     return new PeerNode[][] {

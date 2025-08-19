@@ -1,6 +1,13 @@
 package network.crypta.client;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -804,7 +811,6 @@ public class Metadata implements Cloneable, Serializable {
               "Invalid target name is empty: \"" + new String(buf, StandardCharsets.UTF_8) + "\"");
         if (targetName.charAt(0) == '/') {
           targetName = targetName.substring(1);
-          continue;
         } else break;
       }
       if (logMINOR)
@@ -1039,7 +1045,6 @@ public class Metadata implements Cloneable, Serializable {
                   + arg
                   + "\"",
               new Exception("debug"));
-          continue;
         } else break;
       }
     } else throw new IllegalArgumentException();
@@ -1075,7 +1080,6 @@ public class Metadata implements Cloneable, Serializable {
                   + name
                   + "\"",
               new Exception("debug"));
-          continue;
         } else break;
       }
     } else throw new IllegalArgumentException();

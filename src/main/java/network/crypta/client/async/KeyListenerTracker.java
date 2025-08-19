@@ -348,7 +348,6 @@ class KeyListenerTracker implements KeySalter {
     long count = 0;
     for (Object o : singleKeyListeners.values()) {
       if (o == null) {
-        continue;
       } else if (o instanceof KeyListener listener1) {
         count += listener1.countKeys();
       } else {

@@ -411,7 +411,7 @@ class FailureTableEntry implements TimedOutNodesList {
         PeerNodeUnlocked pn = ref.get();
         if (pn == null) continue;
         if (pn.getBootID() != requestedBootIDs[i]) continue;
-        if (!set.add(pn)) continue;
+        if (!set.add(pn)) {}
       }
     }
     // Do the offers outside the lock.

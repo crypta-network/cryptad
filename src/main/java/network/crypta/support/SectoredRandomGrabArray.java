@@ -249,7 +249,6 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
               return null;
             }
           }
-          continue;
         }
       }
     }

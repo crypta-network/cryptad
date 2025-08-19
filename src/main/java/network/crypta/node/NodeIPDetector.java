@@ -209,8 +209,8 @@ public class NodeIPDetector {
       for (FreenetInetAddress addr : lastIPAddress) {
         if (addr == null) continue;
         if (addr == overrideIPAddress && addr.hasHostnameNoIP()) filtered.add(addr);
-        else if (addr.hasHostnameNoIP()) continue;
-        else if (IPUtil.isValidAddress(addr.getAddress(), false)) filtered.add(addr);
+        else if (addr.hasHostnameNoIP()) {
+        } else if (IPUtil.isValidAddress(addr.getAddress(), false)) filtered.add(addr);
       }
       return filtered.toArray(new FreenetInetAddress[filtered.size()]);
     }

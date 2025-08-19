@@ -397,7 +397,6 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
                   return;
                 }
               }
-              continue;
             }
           }
         }

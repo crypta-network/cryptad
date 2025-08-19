@@ -486,7 +486,6 @@ public class SplitFileFetcherSegmentStorage {
                   + blocksFetched[i]);
           if (blocksFetched[i] != -1) blocksFetched[i] = -1;
           maybeBlocks.add(new SplitFileFetcherBlock(allBlocks[i], (short) -1, i));
-          continue;
         } else if (used[blocksFetched[i]]) {
           Logger.warning(
               this,
@@ -495,7 +494,6 @@ public class SplitFileFetcherSegmentStorage {
                   + " has duplicate block number "
                   + blocksFetched[i]);
           blocksFetched[i] = -1;
-          continue;
         } else {
           if (logMINOR) Logger.minor(this, "Found block " + blocksFetched[i] + " in slot " + i);
           maybeBlocks.add(new SplitFileFetcherBlock(allBlocks[i], blocksFetched[i], i));

@@ -203,7 +203,6 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       // Here FINISHED means accepted, WAIT means try again (soft reject).
       if (action == DO.WAIT) {
         // retriedForLoadManagement = true;
-        continue loadWaiterLoop;
       } else if (action == DO.NEXT_PEER) {
         routeRequests();
         return;
@@ -609,7 +608,6 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       if (action == DO.WAIT) {
         retriedForLoadManagement = true;
         if (logMINOR) Logger.minor(this, "Retrying");
-        continue loadWaiterLoop;
       } else if (action == DO.NEXT_PEER) {
         if (logMINOR) Logger.minor(this, "Trying next peer");
         routeRequests();
