@@ -193,10 +193,56 @@ var makeLogoClickable = function() {
   }
 };
 
+// Make bookmark grid boxes clickable
+var makeBookmarksClickable = function() {
+  var bookmarkTables = document.querySelectorAll('#bookmarks table');
+  
+  bookmarkTables.forEach(function(table) {
+    var rows = table.querySelectorAll('tr');
+    
+    rows.forEach(function(row) {
+      // Find the bookmark title link in this row
+      var titleLink = row.querySelector('a.bookmark-title, a.bookmark-title-updated');
+      if (titleLink) {
+        var bookmarkUrl = titleLink.href;
+        
+        // Make the entire row clickable except for forms and buttons
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', function(e) {
+          // Don't trigger if clicking on a form, input, or button
+          if (e.target.closest('form') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') {
+            return;
+          }
+          
+          // Don't trigger if clicking on an existing link (to avoid double navigation)
+          if (e.target.tagName === 'A' || e.target.closest('a')) {
+            return;
+          }
+          
+          // Navigate to the bookmark URL
+          window.location.href = bookmarkUrl;
+        });
+        
+        // Add hover effect to indicate clickability
+        row.addEventListener('mouseenter', function() {
+          if (!row.style.backgroundColor) {
+            row.style.backgroundColor = '#f8f8f8';
+          }
+        });
+        
+        row.addEventListener('mouseleave', function() {
+          row.style.backgroundColor = '';
+        });
+      }
+    });
+  });
+};
+
 document.addEventListener("DOMContentLoaded", addTagMetaViewport);
 document.addEventListener('DOMContentLoaded', removeSizeFromInput);
 document.addEventListener("DOMContentLoaded", mobileMenu);
 document.addEventListener('DOMContentLoaded', toggleInnerMenu);
 document.addEventListener('DOMContentLoaded', makeLogoClickable);
+document.addEventListener('DOMContentLoaded', makeBookmarksClickable);
 
 
