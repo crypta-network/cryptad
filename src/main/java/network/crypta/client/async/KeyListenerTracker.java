@@ -160,37 +160,36 @@ class KeyListenerTracker implements KeySalter {
     synchronized (this) {
       if (wantedKey != null) {
         Object o = singleKeyListeners.get(wrapper);
-        if (o == null) {
-          // do nothing
-        } else if (o instanceof KeyListener) {
-          if ((ret = (listener == o))) singleKeyListeners.remove(wrapper);
-        } else {
-          @SuppressWarnings("unchecked")
-          KeyListener[] listeners = (KeyListener[]) o;
-          KeyListener[] newListeners = new KeyListener[listeners.length - 1];
-          int x = 0;
-          for (KeyListener l : listeners) {
-            if (listener == l) {
-              assert (!ret);
-              ret = true;
-              continue;
-            }
-            if (x == newListeners.length) {
-              assert (!ret);
-              break;
-            }
-            newListeners[x++] = l;
-          }
-          if (!ret) {
-            // do nothing
+        if (o != null) {
+          if (o instanceof KeyListener) {
+            ret = (listener == o);
+            if (ret) singleKeyListeners.remove(wrapper);
           } else {
-            assert (x == newListeners.length);
-            if (newListeners.length == 0) {
-              singleKeyListeners.remove(wrapper);
-            } else if (newListeners.length == 1) {
-              singleKeyListeners.put(wrapper, newListeners[0]);
-            } else {
-              singleKeyListeners.put(wrapper, newListeners);
+            @SuppressWarnings("unchecked")
+            KeyListener[] listeners = (KeyListener[]) o;
+            KeyListener[] newListeners = new KeyListener[listeners.length - 1];
+            int x = 0;
+            for (KeyListener l : listeners) {
+              if (listener == l) {
+                assert (!ret);
+                ret = true;
+                continue;
+              }
+              if (x == newListeners.length) {
+                assert (!ret);
+                break;
+              }
+              newListeners[x++] = l;
+            }
+            if (ret) {
+              assert (x == newListeners.length);
+              if (newListeners.length == 0) {
+                singleKeyListeners.remove(wrapper);
+              } else if (newListeners.length == 1) {
+                singleKeyListeners.put(wrapper, newListeners[0]);
+              } else {
+                singleKeyListeners.put(wrapper, newListeners);
+              }
             }
           }
         }
@@ -222,53 +221,52 @@ class KeyListenerTracker implements KeySalter {
     synchronized (this) {
       if (wantedKey != null) {
         Object o = singleKeyListeners.get(wrapper);
-        if (o == null) {
-          // do nothing
-        } else if (o instanceof KeyListener listener) {
-          if ((ret = listener.getHasKeyListener() == hasListener)) {
-            singleKeyListeners.remove(wrapper);
-            listener.onRemove();
-          }
-        } else {
-          @SuppressWarnings("unchecked")
-          KeyListener[] listeners = (KeyListener[]) o;
-          KeyListener[] newListeners = new KeyListener[listeners.length - 1];
-          int x = 0;
-          String msg = logMINOR ? "" : null;
-          for (KeyListener l : listeners) {
-            if (l.getHasKeyListener() == hasListener) {
-              ret = true;
-              l.onRemove();
-              if (logMINOR) msg = msg + " : " + l;
-              continue;
-            }
-            if (x == newListeners.length) {
-              assert (!ret);
-              break;
-            }
-            newListeners[x++] = l;
-          }
-          if (!ret) {
-            // do nothing
-          } else {
-            if (x < newListeners.length) newListeners = Arrays.copyOf(newListeners, x);
-            if (newListeners.length == 0) {
+        if (o != null) {
+          if (o instanceof KeyListener listener) {
+            ret = (listener.getHasKeyListener() == hasListener);
+            if (ret) {
               singleKeyListeners.remove(wrapper);
-            } else if (newListeners.length == 1) {
-              singleKeyListeners.put(wrapper, newListeners[0]);
-            } else {
-              singleKeyListeners.put(wrapper, newListeners);
+              listener.onRemove();
             }
-            if (logMINOR)
-              Logger.minor(
-                  this,
-                  "Removed pending keys from "
-                      + this
-                      + " : size now "
-                      + this.keyListeners.size()
-                      + "/"
-                      + singleKeyListeners.size()
-                      + msg);
+          } else {
+            @SuppressWarnings("unchecked")
+            KeyListener[] listeners = (KeyListener[]) o;
+            KeyListener[] newListeners = new KeyListener[listeners.length - 1];
+            int x = 0;
+            String msg = logMINOR ? "" : null;
+            for (KeyListener l : listeners) {
+              if (l.getHasKeyListener() == hasListener) {
+                ret = true;
+                l.onRemove();
+                if (logMINOR) msg = "%s : %s".formatted(msg, l);
+                continue;
+              }
+              if (x == newListeners.length) {
+                assert (!ret);
+                break;
+              }
+              newListeners[x++] = l;
+            }
+            if (ret) {
+              if (x < newListeners.length) newListeners = Arrays.copyOf(newListeners, x);
+              if (newListeners.length == 0) {
+                singleKeyListeners.remove(wrapper);
+              } else if (newListeners.length == 1) {
+                singleKeyListeners.put(wrapper, newListeners[0]);
+              } else {
+                singleKeyListeners.put(wrapper, newListeners);
+              }
+              if (logMINOR)
+                Logger.minor(
+                    this,
+                    "Removed pending keys from "
+                        + this
+                        + " : size now "
+                        + this.keyListeners.size()
+                        + "/"
+                        + singleKeyListeners.size()
+                        + msg);
+            }
           }
         }
         return ret;
@@ -300,21 +298,21 @@ class KeyListenerTracker implements KeySalter {
     ArrayList<KeyListener> matches = null;
     final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
     Object o = singleKeyListeners.get(wrapper);
-    if (o == null) {
-      // do nothing
-    } else if (o instanceof KeyListener listener) {
-      do {
-        if (!listener.probablyWantKey(key, saltedKey)) continue;
-        if (matches == null) matches = new ArrayList<>();
-        matches.add(listener);
-      } while (false);
-    } else {
-      @SuppressWarnings("unchecked")
-      KeyListener[] listeners = (KeyListener[]) o;
-      for (KeyListener listener : listeners) {
-        if (!listener.probablyWantKey(key, saltedKey)) continue;
-        if (matches == null) matches = new ArrayList<>();
-        matches.add(listener);
+    if (o != null) {
+      if (o instanceof KeyListener listener) {
+        do {
+          if (!listener.probablyWantKey(key, saltedKey)) continue;
+          matches = new ArrayList<>();
+          matches.add(listener);
+        } while (false);
+      } else {
+        @SuppressWarnings("unchecked")
+        KeyListener[] listeners = (KeyListener[]) o;
+        for (KeyListener listener : listeners) {
+          if (!listener.probablyWantKey(key, saltedKey)) continue;
+          if (matches == null) matches = new ArrayList<>();
+          matches.add(listener);
+        }
       }
     }
     for (KeyListener listener : keyListeners) {
