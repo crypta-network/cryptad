@@ -41,6 +41,14 @@ div.progressbar {
   border-style: solid;
   border-width: 1px;
   position: relative;
+  height: 20px;
+  overflow: hidden;
+  background-color: #f7f7f7;
+  background-image: linear-gradient(to bottom,#f5f5f5,#f9f9f9);
+  background-repeat: repeat-x;
+  border-radius: 4px;
+  border: none;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
 }
 
 div.progressbar,
@@ -114,6 +122,13 @@ ul.subnavlist-selected > li {
 /*** Only display submenus on hover ***/
 ul.subnavlist,ul.subnavlist-selected {
   display: none;
+  position: absolute !important;
+  top: 2.5em;
+  left: -1.5em !important;
+  z-index: 20 !important;
+  margin: 0 !important;
+  padding: 0 0 0 0 !important;
+  text-align: left !important;
 }
 
 ul.subnavlist:hover,
@@ -164,16 +179,6 @@ li.navlist-not-selected {
 
 
 /*** Adjust positioning of submenus ***/
-ul.subnavlist-selected,
-ul.subnavlist {
-  position: absolute !important;
-  top: 2.5em;
-  left: -1.5em !important;
-  z-index: 20 !important;
-  margin: 0 !important;
-  padding: 0 0 0 0 !important;
-  text-align: left !important;
-}
 
 
 /*** Mostly stolen/adapted from Winterface ***/
@@ -287,9 +292,7 @@ select:focus {
 input[type="text"] {
   max-width: 800px;
   width: 100%;
-  -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
-      box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 input[type="submit"],
@@ -359,6 +362,8 @@ ul.config {
   padding-top: .5em;
   padding-bottom: .5em;
   list-style-type: none;
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .config li:nth-of-type(2n) {
@@ -438,8 +443,7 @@ ul.config {
 }
 
 #navbar ul#navlist li a:hover,
-#navbar ul#navlist li.navlist-not-selected a:hover,
-#navbar ul#navlist li a:hover {
+#navbar ul#navlist li.navlist-not-selected a:hover {
   background: none;
 }
 
@@ -589,32 +593,10 @@ div.infobox-header:before,
 
 
 /*** Progress Bar ***/
-div.progressbar {
-  height: 20px;
-  overflow: hidden;
-  background-color: #f7f7f7;
-  background-image: -webkit-gradient(linear,left top, left bottom,from(#f5f5f5),to(#f9f9f9));
-  background-image: -webkit-linear-gradient(top,#f5f5f5,#f9f9f9);
-  background-image: -moz-linear-gradient(top,#f5f5f5,#f9f9f9);
-  background-image: -o-linear-gradient(top,#f5f5f5,#f9f9f9);
-  background-image: linear-gradient(to bottom,#f5f5f5,#f9f9f9);
-  background-repeat: repeat-x;
-  -webkit-border-radius: 4px;
-    -moz-border-radius: 4px;
-      border-radius: 4px;
-  border: none;
-  -webkit-box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
-    -moz-box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
-      box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
-}
 
 div.progressbar .progressbar-done {
   height: 100%;
   background-color: #E6713B;
-  background-image: -webkit-gradient(linear,left top, left bottom,from(#E6713B),to(#d4521a));
-  background-image: -webkit-linear-gradient(top,#E6713B,#d4521a);
-  background-image: -moz-linear-gradient(top,#E6713B,#d4521a);
-  background-image: -o-linear-gradient(top,#E6713B,#d4521a);
   background-image: linear-gradient(to bottom,#E6713B,#d4521a);
   background-repeat: repeat-x;
 }
@@ -840,6 +822,10 @@ table.directory-listing input {
 
 #bookmarks table td:nth-child(2) {
   margin-bottom: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #666;
 }
 
 #bookmarks table td::after {
@@ -862,13 +848,6 @@ table.directory-listing input {
 
 #bookmarks table td:nth-child(2) a:first-child:hover {
   color: #E6713B;
-}
-
-#bookmarks table td:nth-child(2) {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: #666;
 }
 
 #bookmarks table td a {
@@ -917,9 +896,7 @@ body[id*="Sone"] {
 #sone {
   padding-top: 1em;
   background-color: #fff;
-  -webkit-box-shadow: 0 0 10px rgba(0, 0, 0, .5);
-    -moz-box-shadow: 0 0 10px rgba(0, 0, 0, .5);
-      box-shadow: 0 0 10px rgba(0, 0, 0, .5);
+  box-shadow: 0 0 10px rgba(0, 0, 0, .5);
 }
 
 #page div#content {
@@ -1088,16 +1065,6 @@ body[id*="Sone"] {
 }
 
 /*** Config ***/
-.config li {
-  display: -webkit-box;
-  display: -ms-flexbox;
-  display: -webkit-flex;
-  display: -moz-box;
-  display: flex;
-  -ms-flex-wrap: wrap;
-    -webkit-flex-wrap: wrap;
-      flex-wrap: wrap;
-}
 
 .config li a {
   -ms-flex-preferred-size: 100%;
@@ -1161,9 +1128,7 @@ body[id*="Sone"] {
   min-height: -moz-calc(100vh - 130px);
   min-height: calc(100vh - 130px);
   padding-top: 20px;
-  -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
-      box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 #page-_Freemail_Inbox .messagelist {
@@ -1193,12 +1158,10 @@ body[id*="Sone"] {
   margin: .5em .25em .5em 0;
   padding: .5em .5em .5em .5em;
   clear: both;
-  font: 400 13.3333px Arial;
+  font: 400 13.3333px Arial, sans-serif;
   text-decoration: none;
   color: #fff;
   background-color: #E6713B;
-  -webkit-border-radius: 6px;
-  -moz-border-radius: 6px;
   border-radius: 6px;
   border: none;
 }
@@ -1238,9 +1201,7 @@ body[id*="Sone"] {
   min-height: -moz-calc(100vh - 130px);
   min-height: calc(100vh - 130px);
   padding-top: 20px;
-  -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
-      box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 #page-_Freemail_Message .message {
@@ -1270,13 +1231,11 @@ body[id*="Sone"] {
   clear: both;
   margin: .5em .25em .5em 0;
   padding: .5em .5em .5em .5em;
-  font: 400 13.3333px Arial;
+  font: 400 13.3333px Arial, sans-serif;
   color: #fff;
   text-decoration: none;
   background-color: #E6713B;
   border: none;
-  -webkit-border-radius: 6px;
-  -moz-border-radius: 6px;
   border-radius: 6px;
 }
 
@@ -1348,9 +1307,7 @@ body[id*="Sone"] {
   padding: .5em .5em .5em .5em;
   background-color: #fff;
   border: 1px solid #ccc;
-  -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
-      box-sizing: border-box;
+  box-sizing: border-box;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
   border-radius: 4px;
@@ -1668,8 +1625,7 @@ body[id*="Sone"] {
   }
 
   #navbar ul#navlist li a:hover,
-  #navbar ul#navlist li.navlist-not-selected a:hover,
-  #navbar ul#navlist li a:hover {
+  #navbar ul#navlist li.navlist-not-selected a:hover {
     background: none;
   }
 
