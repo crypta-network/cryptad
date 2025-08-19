@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.io.Serial;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.nio.charset.Charset;
@@ -186,7 +187,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
 
   public static class IntervalParseException extends Exception {
 
-    private static final long serialVersionUID = 69847854744673572L;
+    @Serial private static final long serialVersionUID = 69847854744673572L;
 
     public IntervalParseException(String string) {
       super(string);
