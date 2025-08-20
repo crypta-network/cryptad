@@ -129,6 +129,9 @@
   /* Inputs / textareas */
   --input: var(--text-primary);
   --input-bg: var(--white);
+  --input-disabled: #a0a0a0;
+  --input-disabled-bg: #f5f5f5;
+  --input-disabled-border: #e0e0e0;
 
   /* Cards / panels (e.g., bookmark tiles, plugin panels) */
   --card-bg: var(--white);
@@ -188,6 +191,9 @@
 
     /* Inputs / cards / panels */
     --input-bg: var(--bg-tertiary);
+    --input-disabled: #6a6a6a;
+    --input-disabled-bg: #2a2a2a;
+    --input-disabled-border: #3a3a3a;
     --card-bg: transparent;
     --panel-bg: var(--bg-secondary);
 
@@ -534,6 +540,17 @@ textarea:focus {
   outline: none;
   border-color: var(--accent-color);
   box-shadow: none;
+}
+
+/* Disabled form controls */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  color: var(--input-disabled) !important;
+  background-color: var(--input-disabled-bg) !important;
+  border-color: var(--input-disabled-border) !important;
+  cursor: not-allowed !important;
+  opacity: 0.7;
 }
 
 input[type="text"] { max-width: 800px; width: 100%; box-sizing: border-box; }
