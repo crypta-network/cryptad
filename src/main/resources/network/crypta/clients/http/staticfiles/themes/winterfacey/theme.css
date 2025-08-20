@@ -158,96 +158,94 @@
 /* ==========================================
    DARK THEME TOKENS (variables only)
    ========================================== */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Base surfaces & text */
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #242424;
-    --bg-tertiary: #2a2a2a;
-    --text-primary: #e0e0e0;
-    --text-secondary: #b0b0b0;
-    --text-muted: #808080;
-    --border-color: #3a3a3a;
+:root[data-theme="dark"] {
+  /* Base surfaces & text */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-tertiary: #2a2a2a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #808080;
+  --border-color: #3a3a3a;
 
-    /* Accent & links */
-    --accent-color: #ff8c5a;
-    --accent-hover: #ff7644;
-    --link-color: #ff8c5a;
+  /* Accent & links */
+  --accent-color: #ff8c5a;
+  --accent-hover: #ff7644;
+  --link-color: #ff8c5a;
 
-    /* Component variables that differed in dark rules */
-    --navbar-bg: var(--bg-secondary);
-    --navbar-border: var(--border-color);
-    --navbar-text: var(--accent-hover);
-    --nav-link: var(--accent-color);
-    --nav-link-hover: var(--accent-color);
+  /* Component variables that differed in dark rules */
+  --navbar-bg: var(--bg-secondary);
+  --navbar-border: var(--border-color);
+  --navbar-text: var(--accent-hover);
+  --nav-link: var(--accent-color);
+  --nav-link-hover: var(--accent-color);
 
-    --status-bar-bg: var(--bg-secondary);
-    --status-bar-border: var(--border-color);
+  --status-bar-bg: var(--bg-secondary);
+  --status-bar-border: var(--border-color);
 
-    /* Dropdown menus */
-    --menu-bg: var(--bg-tertiary);
-    --menu-border: var(--border-color);
-    --menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Dropdown menus */
+  --menu-bg: var(--bg-tertiary);
+  --menu-border: var(--border-color);
+  --menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 
-    /* Inputs / cards / panels */
-    --input-bg: var(--bg-tertiary);
-    --input-disabled: #6a6a6a;
-    --input-disabled-bg: #2a2a2a;
-    --input-disabled-border: #3a3a3a;
-    --card-bg: transparent;
-    --panel-bg: var(--bg-secondary);
+  /* Inputs / cards / panels */
+  --input-bg: var(--bg-tertiary);
+  --input-disabled: #6a6a6a;
+  --input-disabled-bg: #2a2a2a;
+  --input-disabled-border: #3a3a3a;
+  --card-bg: transparent;
+  --panel-bg: var(--bg-secondary);
 
-    /* Progress bar */
-    --progressbar-bg: var(--bg-tertiary);
-    --progressbar-gradient: none;
-    --progressbar-border: 1px solid var(--border-color);
-    --progressbar-box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1);
+  /* Progress bar */
+  --progressbar-bg: var(--bg-tertiary);
+  --progressbar-gradient: none;
+  --progressbar-border: 1px solid var(--border-color);
+  --progressbar-box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1);
 
-    /* Infobox */
-    --infobox-header: var(--text-primary);
-    --infobox-alert-bg: rgba(231, 76, 60, 0.1);
-    --infobox-warning-bg: rgba(245, 166, 35, 0.1);
-    --infobox-information-bg: rgba(74, 144, 226, 0.1);
-    --infobox-information: #4a90e2;
+  /* Infobox */
+  --infobox-header: var(--text-primary);
+  --infobox-alert-bg: rgba(231, 76, 60, 0.1);
+  --infobox-warning-bg: rgba(245, 166, 35, 0.1);
+  --infobox-information-bg: rgba(74, 144, 226, 0.1);
+  --infobox-information: #4a90e2;
 
-    /* Bookmarks */
-    --bookmarks-box: var(--text-primary);
-    --bookmarks-desc: var(--text-secondary);
-    --bookmark-row-hover: rgba(255, 255, 255, 0.1);
+  /* Bookmarks */
+  --bookmarks-box: var(--text-primary);
+  --bookmarks-desc: var(--text-secondary);
+  --bookmark-row-hover: rgba(255, 255, 255, 0.1);
 
-    /* Buttons */
-    --button-primary: #cc5a2e;            /* darker base */
-    --button-primary-hover: var(--accent-color);
-    --button-primary-active: var(--accent-hover);
+  /* Buttons */
+  --button-primary: #cc5a2e;            /* darker base */
+  --button-primary-hover: var(--accent-color);
+  --button-primary-active: var(--accent-hover);
 
-    /* Activelink colors for dark mode */
-    --activelink-placeholder-bg: #2a2a2a;
-    --activelink-placeholder-border: #3a3a3a;
-    --activelink-placeholder-hover-bg: #242424;
-    --activelink-placeholder-hover-border: #808080;
-    --activelink-loading-bg: rgba(74, 144, 226, 0.15);
-    --activelink-loading-border: rgba(74, 144, 226, 0.4);
-    --activelink-loading-hover-bg: rgba(74, 144, 226, 0.25);
-    --activelink-loading-text: #4a90e2;
+  /* Activelink colors for dark mode */
+  --activelink-placeholder-bg: #2a2a2a;
+  --activelink-placeholder-border: #3a3a3a;
+  --activelink-placeholder-hover-bg: #242424;
+  --activelink-placeholder-hover-border: #808080;
+  --activelink-loading-bg: rgba(74, 144, 226, 0.15);
+  --activelink-loading-border: rgba(74, 144, 226, 0.4);
+  --activelink-loading-hover-bg: rgba(74, 144, 226, 0.25);
+  --activelink-loading-text: #4a90e2;
 
-    /* Extra */
-    --shadow-dark: rgba(0, 0, 0, 0.3);
-    --theme-toggle-hover-bg: rgba(255, 255, 255, 0.08);
+  /* Extra */
+  --shadow-dark: rgba(0, 0, 0, 0.3);
+  --theme-toggle-hover-bg: rgba(255, 255, 255, 0.08);
 
-    /* Error backgrounds for dark theme */
-    --error-bg-light: rgba(231, 76, 60, 0.1);
+  /* Error backgrounds for dark theme */
+  --error-bg-light: rgba(231, 76, 60, 0.1);
 
-    /* Configuration */
-    --config-li-alt-bg: rgba(255, 255, 255, 0.05);
+  /* Configuration */
+  --config-li-alt-bg: rgba(255, 255, 255, 0.05);
 
-    /* Dismiss buttons for dark mode - more subtle styling */
-    --dismiss-btn-bg: rgba(255, 255, 255, 0.08);
-    --dismiss-btn-color: #888;
-    --dismiss-btn-border: rgba(255, 255, 255, 0.15);
-    --dismiss-btn-hover-bg: rgba(255, 255, 255, 0.12);
-    --dismiss-btn-hover-color: #aaa;
-    --dismiss-btn-hover-border: rgba(255, 255, 255, 0.25);
-  }
+  /* Dismiss buttons for dark mode - more subtle styling */
+  --dismiss-btn-bg: rgba(255, 255, 255, 0.08);
+  --dismiss-btn-color: #888;
+  --dismiss-btn-border: rgba(255, 255, 255, 0.15);
+  --dismiss-btn-hover-bg: rgba(255, 255, 255, 0.12);
+  --dismiss-btn-hover-color: #aaa;
+  --dismiss-btn-hover-border: rgba(255, 255, 255, 0.25);
 }
 
 /* ==========================================
@@ -637,20 +635,18 @@ input[name="dismiss-user-alert"]:hover {
 }
 
 /* Dark mode overrides for dismiss buttons */
-@media (prefers-color-scheme: dark) {
-  button[name="dismiss-user-alert"],
-  input[name="dismiss-user-alert"] {
-    background: var(--dismiss-btn-bg) !important;
-    color: var(--dismiss-btn-color) !important;
-    border: 1px solid var(--dismiss-btn-border) !important;
-  }
+:root[data-theme="dark"] button[name="dismiss-user-alert"],
+:root[data-theme="dark"] input[name="dismiss-user-alert"] {
+  background: var(--dismiss-btn-bg) !important;
+  color: var(--dismiss-btn-color) !important;
+  border: 1px solid var(--dismiss-btn-border) !important;
+}
 
-  button[name="dismiss-user-alert"]:hover,
-  input[name="dismiss-user-alert"]:hover {
-    background: var(--dismiss-btn-hover-bg) !important;
-    color: var(--dismiss-btn-hover-color) !important;
-    border-color: var(--dismiss-btn-hover-border) !important;
-  }
+:root[data-theme="dark"] button[name="dismiss-user-alert"]:hover,
+:root[data-theme="dark"] input[name="dismiss-user-alert"]:hover {
+  background: var(--dismiss-btn-hover-bg) !important;
+  color: var(--dismiss-btn-hover-color) !important;
+  border-color: var(--dismiss-btn-hover-border) !important;
 }
 
 /* ==========================================
@@ -1536,6 +1532,7 @@ a.bookmark-title-updated:hover { color: var(--accent-hover-dark) !important; }
   transition: background var(--transition-speed) ease;
   margin-left: 12px;
   position: relative;
+  --theme-toggle-hover-bg: rgba(255, 255, 255, 0.1);
 }
 
 .theme-toggle:hover { background: var(--theme-toggle-hover-bg); }
@@ -1549,9 +1546,11 @@ a.bookmark-title-updated:hover { color: var(--accent-hover-dark) !important; }
   line-height: 1;
 }
 
-/* Icons for theme states */
-.theme-toggle[data-theme="light"] .theme-toggle-icon::before { content: "☀"; }
-.theme-toggle[data-theme="dark"] .theme-toggle-icon::before { content: "☾"; }
+/* Icons for theme toggle */
+/* Show sun icon when current theme is dark (to switch to light) */
+.theme-toggle[data-icon="light"] .theme-toggle-icon::before { content: "☀"; }
+/* Show moon icon when current theme is light (to switch to dark) */
+.theme-toggle[data-icon="dark"] .theme-toggle-icon::before { content: "☾"; }
 
 /* ==========================================
    RESPONSIVE DESIGN & MEDIA QUERIES

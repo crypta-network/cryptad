@@ -720,82 +720,166 @@ const ActivelinkModule = (() => {
 
 /**
  * Theme switcher module
- * Handles light/dark theme switching functionality
+ * Handles light/dark/auto theme switching functionality
  */
 const ThemeSwitcherModule = (() => {
   let themeSwitcherButton = null;
   let navbarElement = null;
+  let mediaQueryList = null;
   
-  // Theme states: 'light', 'dark'
-  const THEME_STATES = ['light', 'dark'];
-  const STORAGE_KEY = 'winterfacey-theme';
-  const DEFAULT_THEME = 'light';
+  // Theme modes: 'light', 'dark', 'auto'
+  const STORAGE_KEY = 'winterfacey-theme-preference';
+  
+  /**
+   * Detects browser's color scheme preference
+   * @returns {string} 'light' or 'dark'
+   */
+  const getBrowserTheme = () => {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  };
 
   /**
-   * Gets current theme from localStorage or default
-   * @returns {string} Current theme state
+   * Gets saved theme preference from localStorage
+   * @returns {string|null} Saved theme or null if in auto mode
+   */
+  const getSavedPreference = () => {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('Failed to read theme preference from localStorage:', error);
+      return null;
+    }
+  };
+
+  /**
+   * Saves theme preference to localStorage
+   * @param {string|null} theme - Theme to save, or null for auto mode
+   */
+  const savePreference = (theme) => {
+    try {
+      if (theme === null || theme === 'auto') {
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        localStorage.setItem(STORAGE_KEY, theme);
+      }
+    } catch (error) {
+      console.warn('Failed to save theme preference to localStorage:', error);
+    }
+  };
+
+  /**
+   * Gets the current effective theme
+   * @returns {string} Current theme ('light' or 'dark')
    */
   const getCurrentTheme = () => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
-    } catch (error) {
-      console.warn('Failed to read theme from localStorage:', error);
-      return DEFAULT_THEME;
+    const saved = getSavedPreference();
+    if (saved && (saved === 'light' || saved === 'dark')) {
+      return saved;
     }
+    return getBrowserTheme();
   };
 
   /**
-   * Saves theme to localStorage
-   * @param {string} theme - Theme to save
+   * Gets the current mode
+   * @returns {string} 'auto', 'light', or 'dark'
    */
-  const saveTheme = (theme) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch (error) {
-      console.warn('Failed to save theme to localStorage:', error);
-    }
+  const getCurrentMode = () => {
+    const saved = getSavedPreference();
+    if (!saved) return 'auto';
+    return saved;
   };
 
   /**
-   * Toggles between light and dark themes
-   * @param {string} currentTheme - Current theme state
-   * @returns {string} Next theme state
+   * Updates the data-theme attribute on document element
    */
-  const getNextTheme = (currentTheme) => {
-    return currentTheme === 'light' ? 'dark' : 'light';
+  const updateThemeAttribute = () => {
+    const currentTheme = getCurrentTheme();
+    
+    if (currentTheme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
   };
 
   /**
    * Updates the button's data attribute for CSS styling
-   * @param {string} theme - Current theme state
+   * @param {string} theme - Current effective theme ('light' or 'dark')
    */
   const updateButtonState = (theme) => {
     if (themeSwitcherButton) {
-      themeSwitcherButton.setAttribute('data-theme', theme);
+      // Show the opposite icon: if theme is dark, show light icon (and vice versa)
+      const buttonIcon = theme === 'dark' ? 'light' : 'dark';
+      themeSwitcherButton.setAttribute('data-icon', buttonIcon);
+      
+      // Update tooltip to show what clicking will do
+      const nextTheme = theme === 'dark' ? 'light' : 'dark';
+      themeSwitcherButton.setAttribute('title', `Switch to ${nextTheme} theme`);
     }
   };
 
   /**
-   * Applies the theme by updating CSS custom properties or media query preferences
-   * Note: This is just for button state - actual theming is handled by CSS
-   * @param {string} theme - Theme to apply
+   * Applies the theme
    */
-  const applyTheme = (theme) => {
-    // For now, we just update the button state
-    // The actual theme switching logic will be implemented later
+  const applyTheme = () => {
+    updateThemeAttribute();
+    const mode = getCurrentMode();
+    const theme = getCurrentTheme();
     updateButtonState(theme);
-    console.debug(`Theme switcher: Set to ${theme} mode`);
+    console.debug(`Theme: ${mode} mode (displaying ${theme})`);
   };
 
   /**
-   * Handles theme switch button click
+   * Toggles between light and dark themes
    */
-  const handleThemeSwitch = () => {
+  const toggleTheme = () => {
     const currentTheme = getCurrentTheme();
-    const nextTheme = getNextTheme(currentTheme);
+    const browserTheme = getBrowserTheme();
     
-    saveTheme(nextTheme);
-    applyTheme(nextTheme);
+    // Toggle to the opposite theme
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    // If the new theme matches browser preference, switch to auto mode
+    if (newTheme === browserTheme) {
+      savePreference(null); // Auto mode
+      console.debug(`Switched to auto mode (${newTheme} matches browser preference)`);
+    } else {
+      savePreference(newTheme); // Manual mode
+      console.debug(`Manually switched to ${newTheme} theme`);
+    }
+    
+    applyTheme();
+  };
+
+  /**
+   * Handles browser theme change
+   */
+  const handleBrowserThemeChange = () => {
+    // Only update if we're in auto mode
+    if (!getSavedPreference()) {
+      updateThemeAttribute();
+      const theme = getCurrentTheme();
+      updateButtonState(theme);
+      console.debug(`Browser theme changed to ${theme}`);
+    }
+  };
+
+  /**
+   * Check and sync with browser preference on initialization
+   */
+  const checkAndSyncTheme = () => {
+    const saved = getSavedPreference();
+    const browserTheme = getBrowserTheme();
+    
+    // If user has a manual preference that matches browser theme,
+    // switch to auto mode
+    if (saved === browserTheme) {
+      console.debug(`Manual ${saved} matches browser preference, switching to auto mode`);
+      savePreference(null);
+    }
   };
 
   /**
@@ -806,9 +890,7 @@ const ThemeSwitcherModule = (() => {
     const button = document.createElement('button');
     
     button.className = 'theme-toggle';
-    button.setAttribute('data-theme', getCurrentTheme());
     button.setAttribute('aria-label', 'Toggle theme');
-    button.setAttribute('title', 'Toggle between light and dark themes');
     
     // Create icon container
     const iconSpan = document.createElement('span');
@@ -816,17 +898,20 @@ const ThemeSwitcherModule = (() => {
     button.appendChild(iconSpan);
     
     // Add click handler
-    button.addEventListener('click', handleThemeSwitch);
+    button.addEventListener('click', toggleTheme);
     
     return button;
   };
-
 
   /**
    * Initializes the theme switcher functionality
    */
   const init = () => {
     try {
+      // Apply theme early (before button creation)
+      checkAndSyncTheme();
+      applyTheme();
+      
       navbarElement = document.getElementById('navbar');
       const navlistElement = document.getElementById('navlist');
       
@@ -845,9 +930,20 @@ const ThemeSwitcherModule = (() => {
         navbarElement.appendChild(themeSwitcherButton);
       }
       
-      // Apply current theme
-      const currentTheme = getCurrentTheme();
-      applyTheme(currentTheme);
+      // Update button state
+      const theme = getCurrentTheme();
+      updateButtonState(theme);
+      
+      // Listen for browser theme changes
+      if (window.matchMedia) {
+        mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mediaQueryList.addEventListener) {
+          mediaQueryList.addEventListener('change', handleBrowserThemeChange);
+        } else if (mediaQueryList.addListener) {
+          // Fallback for older browsers
+          mediaQueryList.addListener(handleBrowserThemeChange);
+        }
+      }
       
       console.debug('Theme switcher initialized successfully');
     } catch (error) {
@@ -859,9 +955,18 @@ const ThemeSwitcherModule = (() => {
    * Cleanup function for removing event listeners and elements
    */
   const destroy = () => {
+    if (mediaQueryList) {
+      if (mediaQueryList.removeEventListener) {
+        mediaQueryList.removeEventListener('change', handleBrowserThemeChange);
+      } else if (mediaQueryList.removeListener) {
+        mediaQueryList.removeListener(handleBrowserThemeChange);
+      }
+    }
     themeSwitcherButton?.remove();
+    document.documentElement.removeAttribute('data-theme');
     themeSwitcherButton = null;
     navbarElement = null;
+    mediaQueryList = null;
   };
 
   return { init, destroy };
