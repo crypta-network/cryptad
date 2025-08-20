@@ -536,13 +536,14 @@ const BookmarksModule = (() => {
 
 /**
  * Activelink image handling module
- * Replaces failed activelink images with styled placeholder boxes
+ * Shows placeholder while loading, then displays image or keeps placeholder if failed
  */
 const ActivelinkModule = (() => {
   const PROCESSED_ATTRIBUTE = 'data-activelink-processed';
   const PLACEHOLDER_CLASS = 'activelink-placeholder';
+  const LOADING_CLASS = 'activelink-loading';
   const DOCUMENT_ICON = '📄';
-  const RACE_CONDITION_DELAY = 10;
+  const LOADING_ICON = '⏳';
   
   // Default dimensions and styling
   const DEFAULT_DIMENSIONS = { width: '108px', height: '36px' };
@@ -560,7 +561,8 @@ const ActivelinkModule = (() => {
     fontFamily: 'inherit',
     textAlign: 'center',
     opacity: '0.6',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'opacity 0.2s ease'
   };
 
   /**
@@ -577,14 +579,15 @@ const ActivelinkModule = (() => {
   /**
    * Creates a styled placeholder element
    * @param {HTMLImageElement} img - Original image element
+   * @param {boolean} isLoading - Whether this is a loading placeholder
    * @returns {HTMLElement} Placeholder element
    */
-  const createPlaceholderElement = (img) => {
+  const createPlaceholderElement = (img, isLoading = false) => {
     const placeholder = document.createElement('div');
     const dimensions = extractDimensions(img);
     
-    placeholder.className = PLACEHOLDER_CLASS;
-    placeholder.innerHTML = DOCUMENT_ICON;
+    placeholder.className = isLoading ? LOADING_CLASS : PLACEHOLDER_CLASS;
+    placeholder.innerHTML = isLoading ? LOADING_ICON : DOCUMENT_ICON;
     
     // Copy title attribute for tooltip
     if (img.title) {
@@ -598,6 +601,11 @@ const ActivelinkModule = (() => {
       height: dimensions.height,
       margin: dimensions.margin
     });
+    
+    // Add loading animation for loading placeholders
+    if (isLoading) {
+      placeholder.style.animation = 'pulse 1.5s ease-in-out infinite';
+    }
     
     return placeholder;
   };
@@ -630,12 +638,83 @@ const ActivelinkModule = (() => {
   };
 
   /**
-   * Replaces image with placeholder
+   * Replaces placeholder with loaded image
+   * @param {HTMLElement} placeholder - Placeholder to replace
+   * @param {HTMLImageElement} img - Loaded image element
+   */
+  const replaceWithImage = (placeholder, img) => {
+    try {
+      // Fade in the image
+      img.style.opacity = '0';
+      img.style.transition = 'opacity 0.3s ease';
+      
+      placeholder.parentNode?.replaceChild(img, placeholder);
+      
+      // Fade in animation
+      requestAnimationFrame(() => {
+        img.style.opacity = '1';
+      });
+    } catch (error) {
+      console.error('Failed to replace placeholder with image:', error);
+    }
+  };
+
+  /**
+   * Creates and shows a loading placeholder, then loads the image
+   * @param {HTMLImageElement} img - Image to process
+   */
+  const createLoadingPlaceholder = (img) => {
+    try {
+      // Create loading placeholder
+      const placeholder = createPlaceholderElement(img, true);
+      const parentLink = img.closest('a');
+      
+      setupPlaceholderInteractivity(placeholder, parentLink);
+      
+      // Store original image data
+      const originalSrc = img.src;
+      const originalAlt = img.alt;
+      const originalTitle = img.title;
+      
+      // Replace image with loading placeholder immediately
+      img.parentNode?.replaceChild(placeholder, img);
+      
+      // Create a new image element to load in background
+      const newImg = new Image();
+      newImg.src = originalSrc;
+      newImg.alt = originalAlt;
+      newImg.title = originalTitle;
+      
+      // Copy styles from original image
+      newImg.style.width = extractDimensions({ style: img.style }).width;
+      newImg.style.height = extractDimensions({ style: img.style }).height;
+      newImg.style.margin = extractDimensions({ style: img.style }).margin;
+      
+      // Set up load/error handlers
+      newImg.addEventListener('load', () => {
+        // Image loaded successfully, replace placeholder with image
+        replaceWithImage(placeholder, newImg);
+      }, { once: true });
+      
+      newImg.addEventListener('error', () => {
+        // Image failed to load, convert loading placeholder to error placeholder
+        placeholder.className = PLACEHOLDER_CLASS;
+        placeholder.innerHTML = DOCUMENT_ICON;
+        placeholder.style.animation = 'none';
+      }, { once: true });
+      
+    } catch (error) {
+      console.error('Failed to create loading placeholder:', error);
+    }
+  };
+
+  /**
+   * Replaces image with error placeholder
    * @param {HTMLImageElement} img - Image to replace
    */
-  const replaceWithPlaceholder = (img) => {
+  const replaceWithErrorPlaceholder = (img) => {
     try {
-      const placeholder = createPlaceholderElement(img);
+      const placeholder = createPlaceholderElement(img, false);
       const parentLink = img.closest('a');
       
       setupPlaceholderInteractivity(placeholder, parentLink);
@@ -643,7 +722,7 @@ const ActivelinkModule = (() => {
       // Replace the image
       img.parentNode?.replaceChild(placeholder, img);
     } catch (error) {
-      console.error('Failed to create placeholder for activelink image:', error);
+      console.error('Failed to create error placeholder for activelink image:', error);
     }
   };
 
@@ -662,27 +741,6 @@ const ActivelinkModule = (() => {
   const hasImageFailed = (img) => img.complete && img.naturalWidth === 0;
 
   /**
-   * Sets up event listeners for image load/error events
-   * @param {HTMLImageElement} img - Image element
-   * @param {Object} state - Tracking state
-   */
-  const setupImageEventListeners = (img, state) => {
-    const loadHandler = () => {
-      state.imageReplaced = true;
-    };
-    
-    const errorHandler = () => {
-      if (!state.imageReplaced) {
-        replaceWithPlaceholder(img);
-        state.imageReplaced = true;
-      }
-    };
-    
-    img.addEventListener('load', loadHandler, { once: true });
-    img.addEventListener('error', errorHandler, { once: true });
-  };
-
-  /**
    * Processes a single activelink image
    * @param {HTMLImageElement} img - Image to process
    */
@@ -697,33 +755,18 @@ const ActivelinkModule = (() => {
     
     // Handle already loaded images
     if (hasImageLoaded(img)) {
-      return; // Image loaded successfully, no action needed
+      return; // Image already loaded successfully, no action needed
     }
     
+    // Handle images that have already failed
     if (hasImageFailed(img)) {
-      replaceWithPlaceholder(img);
+      replaceWithErrorPlaceholder(img);
       return;
     }
     
-    // Handle images still loading
-    const state = { imageReplaced: false };
-    
-    // Use timeout to handle race conditions with cached images
-    setTimeout(() => {
-      if (hasImageLoaded(img)) {
-        state.imageReplaced = true;
-        return;
-      }
-      
-      if (hasImageFailed(img) && !state.imageReplaced) {
-        replaceWithPlaceholder(img);
-        state.imageReplaced = true;
-        return;
-      }
-      
-      // Set up event listeners for images still loading
-      setupImageEventListeners(img, state);
-    }, RACE_CONDITION_DELAY);
+    // For images that are still loading or haven't started loading,
+    // always show a loading placeholder first
+    createLoadingPlaceholder(img);
   };
 
   /**
