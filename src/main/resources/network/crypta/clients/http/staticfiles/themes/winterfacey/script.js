@@ -238,11 +238,83 @@ var makeBookmarksClickable = function() {
   });
 };
 
+// Create placeholder boxes for failed activelink images
+var handleActivelinkImages = function() {
+  var activelinkImages = document.querySelectorAll('img[alt*="activelink"]');
+  
+  activelinkImages.forEach(function(img) {
+    // Create a placeholder box to replace failed images
+    var createPlaceholder = function() {
+      // Create placeholder element
+      var placeholder = document.createElement('div');
+      placeholder.className = 'activelink-placeholder';
+      
+      // Get the original dimensions from inline styles or defaults
+      var width = img.style.width || '108px';
+      var height = img.style.height || '36px';
+      
+      // Apply styles to placeholder
+      placeholder.style.cssText = 
+        'width: ' + width + '; ' +
+        'height: ' + height + '; ' +
+        'display: inline-flex; ' +
+        'align-items: center; ' +
+        'justify-content: center; ' +
+        'background-color: var(--bg-tertiary, #2a2a2a); ' +
+        'border: 1px solid var(--border-color, #3a3a3a); ' +
+        'border-radius: 4px; ' +
+        'font-size: 10px; ' +
+        'color: var(--text-muted, #808080); ' +
+        'font-family: inherit; ' +
+        'text-align: center; ' +
+        'margin: ' + (img.style.margin || '0 0 12px 0') + '; ' +
+        'opacity: 0.6; ' +
+        'cursor: pointer;';
+      
+      // Add icon or text content
+      placeholder.innerHTML = '📄'; // Simple document icon
+      
+      // Copy any title attribute for tooltip
+      if (img.title) {
+        placeholder.title = img.title;
+      }
+      
+      // Copy any click handlers from the parent link
+      var parentLink = img.closest('a');
+      if (parentLink) {
+        placeholder.addEventListener('click', function() {
+          parentLink.click();
+        });
+        // Add hover effect to indicate clickability
+        placeholder.style.cursor = 'pointer';
+        placeholder.addEventListener('mouseenter', function() {
+          placeholder.style.opacity = '0.8';
+        });
+        placeholder.addEventListener('mouseleave', function() {
+          placeholder.style.opacity = '0.6';
+        });
+      }
+      
+      // Replace the image with placeholder
+      img.parentNode.replaceChild(placeholder, img);
+    };
+    
+    // Check if image has already failed to load
+    if (!img.complete || img.naturalWidth === 0) {
+      createPlaceholder();
+    } else {
+      // Listen for future load errors
+      img.addEventListener('error', createPlaceholder);
+    }
+  });
+};
+
 document.addEventListener("DOMContentLoaded", addTagMetaViewport);
 document.addEventListener('DOMContentLoaded', removeSizeFromInput);
 document.addEventListener("DOMContentLoaded", mobileMenu);
 document.addEventListener('DOMContentLoaded', toggleInnerMenu);
 document.addEventListener('DOMContentLoaded', makeLogoClickable);
 document.addEventListener('DOMContentLoaded', makeBookmarksClickable);
+document.addEventListener('DOMContentLoaded', handleActivelinkImages);
 
 

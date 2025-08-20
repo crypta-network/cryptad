@@ -189,10 +189,10 @@ li.navlist-not-selected {
 /*** Mostly stolen/adapted from Winterface ***/
 body {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  background: #ffffff;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #333333);
   margin: 0;
   padding: 0;
-  color: #1a1a1a;
   line-height: 1.5;
   font-size: 16px;
   font-weight: 400;
@@ -240,6 +240,7 @@ a:hover {
   background-color: #1a1a1a;
   border-bottom: 1px solid #333;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding-right: 20px;
 }
 
 #navbar:before {
@@ -435,7 +436,7 @@ ul.config {
 #navbar #navlist li ul li,
 #navbar #navlist li ul li a {
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary, #333);
   text-transform: none;
 }
 
@@ -468,7 +469,7 @@ ul.config {
 }
 
 #navbar ul#navlist li ul li:hover {
-  color: #333;
+  color: var(--text-primary, #333);
   text-decoration: none;
   background: #f0f0f0;
   border: 1px solid #E6713B;
@@ -480,7 +481,7 @@ ul.config {
 
 #navbar ul#navlist li a:hover,
 #navbar ul#navlist li ul li a:hover {
-  color: #333;
+  color: var(--text-primary, #333);
 }
 
 #navbar ul#navlist > li > a:hover {
@@ -523,14 +524,14 @@ ul#navlist li ul li:last-child {
 
 div.infobox-information div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #4a90e2;
   padding-left: 20px;
 }
 
 div.infobox-warning div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #f5a623;
   padding-left: 20px;
 }
@@ -541,7 +542,7 @@ div.infobox-alert {
 
 div.infobox-alert div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #e74c3c;
   padding-left: 20px;
 }
@@ -552,28 +553,28 @@ div.infobox-error {
 
 div.infobox-error div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #e74c3c;
   padding-left: 20px;
 }
 
 div.infobox-query div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #9b59b6;
   padding-left: 20px;
 }
 
 div.infobox-success div.infobox-header {
   background: none;
-  color: #1a1a1a;
+  color: var(--text-primary, #1a1a1a);
   border-left: 4px solid #27ae60;
   padding-left: 20px;
 }
 
 div.infobox-header {
   margin: 24px 0 16px;
-  padding: 0 0 0 16px;
+  padding: 0 0 0 20px;
   font-style: normal;
   font-size: 16px;
   font-weight: 700;
@@ -632,7 +633,7 @@ div.progressbar .progressbar-min {
 div.progressbar .progress_fraction_finalized {
   font-size: 12px;
   font-weight: bold;
-  color: black;
+  color: var(--text-primary, black);
   text-align: center;
   line-height: 20px;
 }
@@ -822,9 +823,12 @@ table.directory-listing input {
   box-sizing: border-box;
 }
 
-#bookmarks table tr:hover {
-  border-color: #E6713B;
-  background: #fafafa;
+/* Light mode bookmark hover - only in light mode */
+@media (prefers-color-scheme: light) {
+  #bookmarks table tr:hover {
+    border-color: #E6713B;
+    background: #fafafa;
+  }
 }
 
 #bookmarks table td {
@@ -1718,7 +1722,7 @@ body[id*="Sone"] {
   }
 
   #navbar ul#navlist li ul li a:hover {
-    color: #333;
+    color: var(--text-primary, #333);
   }
 
   #navbar ul#navlist li.navlist-selected a {
@@ -1726,7 +1730,7 @@ body[id*="Sone"] {
   }
 
   #navbar ul#navlist li.navlist-selected ul.subnavlist-selected li a {
-    color: #333;
+    color: var(--text-primary, #333);
   }
 
   #navbar ul#navlist li.navlist-selected ul.subnavlist-selected li.submenuitem-selected {
@@ -2109,4 +2113,398 @@ body[id*="Sone"] {
   #page-_downloads_ #queue-legend td {
     font-size: 10px;
   }
+}
+
+/*** Dark Theme ***/
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #242424;
+    --bg-tertiary: #2a2a2a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+    --border-color: #3a3a3a;
+    --accent-color: #ff8c5a;
+    --accent-hover: #ff7644;
+    --link-color: #ff8c5a;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  /* Navigation */
+  #navbar {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  #navlist > li > a {
+    color: var(--text-primary);
+  }
+
+  #navlist > li > a:hover,
+  #navlist > li.navlist-selected > a {
+    color: var(--accent-color);
+  }
+
+  /* Dropdown menus with higher specificity to override light theme styles */
+  #navbar #navlist .subnavlist,
+  #navbar #navlist .subnavlist-selected,
+  #navbar #navlist .subnavlist-not-selected {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .subnavlist a,
+  .subnavlist-selected a {
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+  }
+
+  /* Enhanced hover effects for dropdown menu items */
+  .subnavlist a:hover,
+  .subnavlist-selected a:hover,
+  .submenuitem-selected a {
+    color: var(--accent-color) !important;
+    background-color: var(--bg-secondary) !important;
+  }
+  
+  /* Container styling for submenu items to prevent flashing */
+  .submenuitem-selected {
+    background-color: var(--bg-secondary) !important;
+    transition: background-color 0.2s ease;
+  }
+  
+  .submenuitem-not-selected {
+    background-color: var(--bg-tertiary) !important;
+    transition: background-color 0.2s ease;
+  }
+  
+  /* Hover effects for submenu item containers */
+  .submenuitem-not-selected:hover {
+    background-color: var(--bg-secondary) !important;
+  }
+
+  /* Content */
+  #content {
+    background: var(--bg-primary);
+  }
+
+  /* Infoboxes */
+  .infobox {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+  }
+
+  .infobox-header {
+    color: var(--text-primary);
+    border-left-color: var(--accent-color);
+  }
+
+  .infobox-content {
+    color: var(--text-secondary);
+  }
+
+  .infobox-alert {
+    background-color: rgba(231, 76, 60, 0.1);
+  }
+
+  .infobox-warning {
+    background-color: rgba(245, 166, 35, 0.1);
+  }
+
+  .infobox-information {
+    background-color: rgba(74, 144, 226, 0.1);
+  }
+
+  /* Forms */
+  input,
+  select,
+  textarea {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--accent-color);
+  }
+
+  /* Primary buttons - darker background for better dark mode integration */
+  input[type="submit"]:not([value*="Delete notification"]),
+  input[type="reset"]:not([value*="Delete notification"]),
+  button:not([value*="Delete notification"]) {
+    background: #cc5a2e !important;
+    border-color: #cc5a2e !important;
+  }
+
+  input[type="submit"]:not([value*="Delete notification"]):hover,
+  input[type="reset"]:not([value*="Delete notification"]):hover,
+  button:not([value*="Delete notification"]):hover {
+    background: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+  }
+
+  /* Config page */
+  .configprefix {
+    color: var(--text-primary);
+  }
+
+  .config .configshortdesc {
+    color: var(--accent-color);
+  }
+
+  .config .configlongdesc {
+    color: var(--text-secondary);
+  }
+
+  .config li:nth-of-type(2n) {
+    background: var(--bg-tertiary);
+  }
+
+  /* Tables */
+  table {
+    background: var(--bg-secondary);
+  }
+
+  table tbody tr:nth-child(2n) {
+    background-color: var(--bg-tertiary);
+  }
+
+  th {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+
+  td {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+  }
+
+  /* Links */
+  a {
+    color: var(--link-color);
+  }
+
+  a:hover {
+    color: var(--accent-hover);
+  }
+
+  /* Bookmarks */
+  #bookmarks table tbody tr {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+  }
+
+  /* Dark mode bookmark hover with proper styling */
+  #bookmarks table tr:hover,
+  #bookmarks table tbody tr:hover {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--accent-color) !important;
+  }
+
+  /* Progress bar */
+  .progressbar {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+  }
+
+  .progressbar-done {
+    background-color: var(--accent-color);
+  }
+
+  /* Status bar */
+  #statusbar {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    color: var(--text-secondary);
+  }
+
+  /* Topbar */
+  #topbar {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+
+  /* General content elements */
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+  }
+
+  p, div, span, li {
+    color: var(--text-primary);
+  }
+
+  .infobox-content p, .infobox-content div, .infobox-content span {
+    color: var(--text-secondary);
+  }
+
+  /* Ensure bookmark titles and descriptions use proper colors */
+  #bookmarks table td {
+    color: var(--text-secondary);
+  }
+
+  #bookmarks table td a {
+    color: var(--link-color);
+  }
+
+  /* Content sections */
+  #content ul li {
+    color: var(--text-primary);
+  }
+
+  /* Override any remaining hardcoded colors */
+  .configprefix, .config .configlongdesc {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Bookmark section headers and titles */
+  .bookmarks-header-text {
+    color: var(--text-primary) !important;
+  }
+
+  li.cat {
+    color: var(--text-primary) !important;
+  }
+
+  /* Text labels and descriptions in parentheses */
+  td {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Fetch key section text */
+  .fetch-key-label {
+    color: var(--text-primary) !important;
+  }
+
+  /* Version information */
+  .freenet-full-version, .freenet-ext-version {
+    color: var(--text-primary) !important;
+  }
+
+  /* Style broken image alt text to be less prominent than bookmark titles */
+  img[alt="activelink"],
+  img[alt*="activelink"] {
+    color: var(--text-muted) !important;
+    font-weight: 400 !important;  
+    font-size: 12px !important;
+    opacity: 0.7 !important;
+  }
+
+  /* Also target broken images in bookmark tables specifically */
+  #bookmarks img[alt*="activelink"],
+  .infobox img[alt*="activelink"] {
+    color: var(--text-muted) !important;
+    font-weight: 400 !important;
+    font-size: 12px !important;
+    opacity: 0.7 !important;
+  }
+
+  /* Style for activelink placeholder boxes */
+  .activelink-placeholder {
+    background-color: var(--bg-tertiary) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-muted) !important;
+    transition: opacity 0.2s ease !important;
+  }
+
+  .activelink-placeholder:hover {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--text-muted) !important;
+  }
+
+  /* Fix dark text elements that are invisible */
+  .infobox-header {
+    color: var(--text-primary) !important;
+  }
+
+  /* Make all links orange for better visibility */
+  a {
+    color: var(--link-color) !important;
+  }
+
+  .bookmark-title, .bookmark-title-updated {
+    color: var(--link-color) !important;
+  }
+
+  a:hover {
+    color: var(--accent-hover) !important;
+  }
+
+  /* Override any dark colors for content areas */
+  .infobox-content {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Make sure bookmark links are orange with highest specificity */
+  .infobox-content .bookmark-title,
+  .infobox-content .bookmark-title-updated,
+  a.bookmark-title,
+  a.bookmark-title-updated {
+    color: var(--link-color) !important;
+  }
+
+  /* Style Delete Notification buttons for dark mode - more subtle secondary button */
+  button[value*="Delete notification"],
+  input[value*="Delete notification"] {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid var(--border-color) !important;
+  }
+
+  button[value*="Delete notification"]:hover,
+  input[value*="Delete notification"]:hover {
+    background: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--text-muted) !important;
+  }
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  cursor: pointer;
+  font-size: 20px;
+  color: #E6713B;
+  background: none;
+  border: none;
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  margin-left: auto;
+}
+
+.theme-toggle:hover {
+  background: rgba(230, 113, 59, 0.1);
+}
+
+.theme-toggle-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+}
+
+/* Icons for theme states */
+.theme-toggle[data-theme="auto"] .theme-toggle-icon::before {
+  content: "◐"; /* Half moon for auto */
+}
+
+.theme-toggle[data-theme="light"] .theme-toggle-icon::before {
+  content: "☀"; /* Sun for light */
+}
+
+.theme-toggle[data-theme="dark"] .theme-toggle-icon::before {
+  content: "☾"; /* Moon for dark */
 }
