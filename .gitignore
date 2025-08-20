@@ -38,3 +38,6 @@ output.*
 /split-file-inserter-storage-test
 .DS_Store
 qodana*
+/.claude
+/.gemini
+/.playwright-mcp
