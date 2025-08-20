@@ -239,6 +239,14 @@
 
     /* Configuration */
     --config-li-alt-bg: rgba(255, 255, 255, 0.05);
+
+    /* Dismiss buttons for dark mode - more subtle styling */
+    --dismiss-btn-bg: rgba(255, 255, 255, 0.08);
+    --dismiss-btn-color: #888;
+    --dismiss-btn-border: rgba(255, 255, 255, 0.15);
+    --dismiss-btn-hover-bg: rgba(255, 255, 255, 0.12);
+    --dismiss-btn-hover-color: #aaa;
+    --dismiss-btn-hover-border: rgba(255, 255, 255, 0.25);
   }
 }
 
@@ -604,8 +612,8 @@ button:active {
 }
 
 /* Delete Notification Buttons */
-button[value*="Delete notification"],
-input[value*="Delete notification"] {
+button[name="dismiss-user-alert"],
+input[name="dismiss-user-alert"] {
   padding: 6px 12px !important;
   font-size: var(--font-size-tiny) !important;
   background: var(--gray-light) !important;
@@ -616,11 +624,28 @@ input[value*="Delete notification"] {
   margin: 4px !important;
 }
 
-button[value*="Delete notification"]:hover,
-input[value*="Delete notification"]:hover {
+button[name="dismiss-user-alert"]:hover,
+input[name="dismiss-user-alert"]:hover {
   background: var(--gray-medium) !important;
   color: var(--text-primary) !important;
   border-color: var(--gray-text-light) !important;
+}
+
+/* Dark mode overrides for dismiss buttons */
+@media (prefers-color-scheme: dark) {
+  button[name="dismiss-user-alert"],
+  input[name="dismiss-user-alert"] {
+    background: var(--dismiss-btn-bg) !important;
+    color: var(--dismiss-btn-color) !important;
+    border: 1px solid var(--dismiss-btn-border) !important;
+  }
+
+  button[name="dismiss-user-alert"]:hover,
+  input[name="dismiss-user-alert"]:hover {
+    background: var(--dismiss-btn-hover-bg) !important;
+    color: var(--dismiss-btn-hover-color) !important;
+    border-color: var(--dismiss-btn-hover-border) !important;
+  }
 }
 
 /* ==========================================
