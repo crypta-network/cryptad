@@ -243,6 +243,14 @@ var handleActivelinkImages = function() {
   var activelinkImages = document.querySelectorAll('img[alt*="activelink"]');
   
   activelinkImages.forEach(function(img) {
+    // Skip if this image has already been processed
+    if (img.hasAttribute('data-activelink-processed')) {
+      return;
+    }
+    
+    // Mark as processed to prevent double-processing
+    img.setAttribute('data-activelink-processed', 'true');
+    
     // Create a placeholder box to replace failed images
     var createPlaceholder = function() {
       // Create placeholder element
@@ -299,13 +307,49 @@ var handleActivelinkImages = function() {
       img.parentNode.replaceChild(placeholder, img);
     };
     
-    // Check if image has already failed to load
-    if (!img.complete || img.naturalWidth === 0) {
-      createPlaceholder();
-    } else {
-      // Listen for future load errors
-      img.addEventListener('error', createPlaceholder);
+    // Check if image has already loaded successfully
+    if (img.complete && img.naturalWidth > 0) {
+      // Image loaded successfully, do nothing
+      return;
     }
+    
+    // Check if image has already failed to load
+    if (img.complete && img.naturalWidth === 0) {
+      createPlaceholder();
+      return;
+    }
+    
+    // Image is still loading, set up event listeners
+    var imageReplaced = false;
+    
+    // Add a small delay to avoid race conditions with cached images
+    setTimeout(function() {
+      // Double-check if image loaded during the timeout
+      if (img.complete && img.naturalWidth > 0) {
+        imageReplaced = true;
+        return;
+      }
+      
+      if (img.complete && img.naturalWidth === 0) {
+        if (!imageReplaced) {
+          createPlaceholder();
+          imageReplaced = true;
+        }
+        return;
+      }
+      
+      // Set up event listeners for images still loading
+      img.addEventListener('load', function() {
+        imageReplaced = true;
+      });
+      
+      img.addEventListener('error', function() {
+        if (!imageReplaced) {
+          createPlaceholder();
+          imageReplaced = true;
+        }
+      });
+    }, 10); // Small delay to handle race conditions
   });
 };
 
