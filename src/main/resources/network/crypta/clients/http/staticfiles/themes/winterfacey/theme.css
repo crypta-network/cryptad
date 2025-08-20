@@ -66,24 +66,40 @@
   --font-size-small: 14px;
   --font-size-tiny: 12px;
   --line-height: 1.5;
-}
-
-/* Dark Theme Variables */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #242424;
-    --bg-tertiary: #2a2a2a;
-    --text-primary: #e0e0e0;
-    --text-secondary: #b0b0b0;
-    --text-muted: #808080;
-    --border-color: #3a3a3a;
-    --accent-color: #ff8c5a;
-    --accent-hover: #ff7644;
-    --link-color: #ff8c5a;
-    --status-bar-bg: var(--bg-secondary);
-    --status-bar-border: var(--border-color);
-  }
+  
+  /* Additional colors used throughout the theme */
+  --white: #ffffff;
+  --gray-light: #f5f5f5;
+  --gray-medium: #e8e8e8;
+  --gray-border: #ddd;
+  --gray-text: #666;
+  --gray-muted: #999;
+  --gray-border-medium: #ccc;
+  --gray-border-light: #eee;
+  --gray-text-light: #bbb;
+  --blue-light: #b3d9ff;
+  --blue-accent: #4a90e2;
+  
+  /* Button colors */
+  --button-primary: #ff6b35;
+  --button-primary-hover: #e55a2e;
+  --button-primary-active: #d34a27;
+  
+  /* Gradient colors */
+  --gradient-start: #f5f5f5;
+  --gradient-end: #f9f9f9;
+  
+  /* Semi-transparent overlays */
+  --overlay-light: rgba(0, 0, 0, 0.2);
+  --overlay-subtle: rgba(0, 0, 0, 0.1);
+  
+  /* Additional specific colors */
+  --error-bg-light: #f0e8e8;
+  --blue-bg-light: #f0f8ff;
+  --blue-bg-lighter: #e6f3ff;
+  --blue-border-light: #99ccff;
+  --accent-hover-dark: #d45a1f;
+  --gray-nav: #e2e2e2;
 }
 
 /* ==========================================
@@ -231,8 +247,8 @@ li.navlist-selected:hover ul.subnavlist-selected {
 #navbar #navlist .subnavlist,
 #navbar #navlist .subnavlist-selected,
 #navbar #navlist .subnavlist-not-selected {
-  background-color: #fff;
-  border: 1px solid rgba(0, 0, 0, .2);
+  background-color: var(--white);
+  border: 1px solid var(--overlay-light);
   border-radius: 0;
   box-shadow: none;
   vertical-align: middle;
@@ -250,7 +266,7 @@ li.navlist-selected:hover ul.subnavlist-selected {
 #navbar ul#navlist li ul li {
   text-align: left;
   border: 1px solid transparent;
-  border-bottom: 1px solid rgba(0,0,0,0.2);
+  border-bottom: 1px solid var(--overlay-light);
   position: relative;
 }
 
@@ -264,8 +280,8 @@ li.navlist-selected:hover ul.subnavlist-selected {
 }
 
 #navbar ul#navlist li ul {
-  background-color: #fff;
-  border: 1px solid rgba(0, 0, 0, .2);
+  background-color: var(--white);
+  border: 1px solid var(--overlay-light);
   border-radius: 0;
   box-shadow: none;
 }
@@ -279,7 +295,7 @@ li.navlist-selected:hover ul.subnavlist-selected {
 #navbar ul#navlist li ul li:hover {
   color: var(--text-primary);
   text-decoration: none;
-  background: #f0f0f0;
+  background: var(--bg-tertiary);
   border: 1px solid var(--accent-color);
 }
 
@@ -293,7 +309,7 @@ li.navlist-selected:hover ul.subnavlist-selected {
 }
 
 #navbar ul#navlist > li > a:hover {
-  color: #ddd;
+  color: var(--gray-border);
 }
 
 ul#navlist li ul li:first-child,
@@ -328,7 +344,7 @@ ul#navlist li ul li:last-child {
   display: block;
   width: 100%;
   height: 3px;
-  background: #fff;
+  background: var(--white);
   opacity: 1;
   -webkit-transform: rotate(0deg);
   -moz-transform: rotate(0deg);
@@ -409,7 +425,7 @@ input,
 select {
   margin: 8px 8px 8px 0;
   padding: 12px 16px;
-  background-color: #fff;
+  background-color: var(--white);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   transition: border-color var(--transition-speed) ease;
@@ -441,9 +457,9 @@ input[type="reset"],
 button {
   margin: 8px 8px 8px 0;
   padding: 8px 16px;
-  color: #ffffff;
-  background: #ff6b35;
-  border: 1px solid #ff6b35;
+  color: var(--white);
+  background: var(--button-primary);
+  border: 1px solid var(--button-primary);
   border-radius: 0;
   font-weight: 600;
   font-size: var(--font-size-small);
@@ -457,15 +473,15 @@ button {
 input[type="submit"]:hover,
 input[type="reset"]:hover,
 button:hover {
-  background: #e55a2e;
-  border-color: #e55a2e;
+  background: var(--button-primary-hover);
+  border-color: var(--button-primary-hover);
 }
 
 input[type="submit"]:active,
 input[type="reset"]:active,
 button:active {
-  background: #d34a27;
-  border-color: #d34a27;
+  background: var(--button-primary-active);
+  border-color: var(--button-primary-active);
 }
 
 /* Delete Notification Buttons */
@@ -473,9 +489,9 @@ button[value*="Delete notification"],
 input[value*="Delete notification"] {
   padding: 6px 12px !important;
   font-size: var(--font-size-tiny) !important;
-  background: #f5f5f5 !important;
-  color: #666 !important;
-  border: 1px solid #ddd !important;
+  background: var(--gray-light) !important;
+  color: var(--gray-text) !important;
+  border: 1px solid var(--gray-border) !important;
   font-weight: 400 !important;
   border-radius: 0 !important;
   margin: 4px !important;
@@ -483,9 +499,9 @@ input[value*="Delete notification"] {
 
 button[value*="Delete notification"]:hover,
 input[value*="Delete notification"]:hover {
-  background: #e8e8e8 !important;
-  color: #222 !important;
-  border-color: #bbb !important;
+  background: var(--gray-medium) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--gray-text-light) !important;
 }
 
 /* ==========================================
@@ -516,12 +532,12 @@ div.infobox-header {
   font-style: normal;
   font-size: var(--font-size-base);
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   line-height: 1.4;
   text-align: left;
   background: none;
   border: none;
-  border-left: 3px solid #ff6b35;
+  border-left: 3px solid var(--button-primary);
   border-radius: 0;
   box-shadow: none;
   text-shadow: none;
@@ -550,7 +566,7 @@ div.infobox-warning div.infobox-header {
 }
 
 div.infobox-alert {
-  background-color: #f0e8e8;
+  background-color: var(--error-bg-light);
 }
 
 div.infobox-alert div.infobox-header {
@@ -561,7 +577,7 @@ div.infobox-alert div.infobox-header {
 }
 
 div.infobox-error {
-  background-color: #f0e8e8;
+  background-color: var(--error-bg-light);
 }
 
 div.infobox-error div.infobox-header {
@@ -674,12 +690,12 @@ div.progressbar {
   position: relative;
   height: 20px;
   overflow: hidden;
-  background-color: #f7f7f7;
-  background-image: linear-gradient(to bottom,#f5f5f5,#f9f9f9);
+  background-color: var(--bg-secondary);
+  background-image: linear-gradient(to bottom, var(--gradient-start), var(--gradient-end));
   background-repeat: repeat-x;
   border-radius: 4px;
   border: none;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.1);
+  box-shadow: inset 0 1px 2px var(--overlay-subtle);
 }
 
 div.progressbar,
@@ -744,7 +760,7 @@ a:hover {
   font-size: var(--font-size-base);
   font-weight: 700;
   line-height: 1.3;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   background: none;
   border: none;
   border-radius: 0;
@@ -768,7 +784,7 @@ a:hover {
   font-style: normal;
   font-size: var(--font-size-base);
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   line-height: 1.4;
   text-align: left;
   background: none;
@@ -788,7 +804,7 @@ a:hover {
 }
 
 .config li:nth-of-type(2n) {
-  background: #eee;
+  background: var(--gray-border-light);
 }
 
 .config li input,
@@ -892,7 +908,7 @@ table.queue td {
 
 /* General Table Row Styling */
 table tbody tr:nth-child(2n) {
-  background-color: rgba(0, 0, 0, .1);
+  background-color: var(--overlay-subtle);
 }
 
 /* Priority Colors */
@@ -971,19 +987,17 @@ table.directory-listing input {
   height: auto;
   margin: 0;
   padding: 20px;
-  background: #ffffff;
+  background: var(--white);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   transition: all var(--transition-speed) ease;
   box-sizing: border-box;
 }
 
-/* Light mode bookmark hover - only in light mode */
-@media (prefers-color-scheme: light) {
-  #bookmarks table tr:hover {
-    border-color: var(--accent-color);
-    background: #fafafa;
-  }
+/* Bookmark hover effect */
+#bookmarks table tr:hover {
+  border-color: var(--accent-color);
+  background: var(--bg-secondary);
 }
 
 #bookmarks table td {
@@ -1012,7 +1026,7 @@ table.directory-listing input {
   font-size: var(--font-size-tiny);
   font-weight: 400;
   line-height: 1.4;
-  color: #666;
+  color: var(--gray-text);
 }
 
 #bookmarks table td:nth-child(2) a {
@@ -1024,7 +1038,7 @@ table.directory-listing input {
   font-size: var(--font-size-base);
   font-weight: 600;
   line-height: 1.3;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   text-decoration: none;
   margin-bottom: 4px;
 }
@@ -1040,7 +1054,7 @@ table.directory-listing input {
   line-height: 1.3;
   transition: color var(--transition-speed) ease;
   text-decoration: none;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   text-align: center;
 }
 
@@ -1064,7 +1078,7 @@ table.directory-listing input {
   font-style: normal;
   font-size: var(--font-size-base);
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--navbar-bg);
   line-height: 1.4;
   text-align: left;
   background: none;
@@ -1185,7 +1199,7 @@ table.directory-listing input {
 }
 
 body[id*="Sone"] {
-  background-color: #3a87ad;
+  background-color: var(--blue-accent);
 }
 
 #sone #notification-area {
@@ -1194,7 +1208,7 @@ body[id*="Sone"] {
 
 #sone {
   padding-top: 1em;
-  background-color: #fff;
+  background-color: var(--white);
   box-shadow: 0 0 10px rgba(0, 0, 0, .5);
 }
 
@@ -1226,7 +1240,7 @@ body[id*="Sone"] {
   width: -moz-calc(100% - 80px);
   width: calc(100% - 80px);
   padding-left: 1em;
-  border-left: 1px solid #ccc;
+  border-left: 1px solid var(--gray-border-medium);
 }
 
 #page-_Freemail_Inbox .aside {
@@ -1250,7 +1264,7 @@ body[id*="Sone"] {
   clear: both;
   font: 400 13.3333px Arial, sans-serif;
   text-decoration: none;
-  color: #fff;
+  color: var(--white);
   background-color: var(--accent-color);
   border-radius: var(--border-radius);
   border: none;
@@ -1298,7 +1312,7 @@ body[id*="Sone"] {
   width: -moz-calc(100% - 80px);
   width: calc(100% - 80px);
   padding-left: 1em;
-  border-left: 1px solid #ccc;
+  border-left: 1px solid var(--gray-border-medium);
 }
 
 #page-_Freemail_Message .folderlist {
@@ -1321,7 +1335,7 @@ body[id*="Sone"] {
   margin: .5em .25em .5em 0;
   padding: .5em .5em .5em .5em;
   font: 400 13.3333px Arial, sans-serif;
-  color: #fff;
+  color: var(--white);
   text-decoration: none;
   background-color: var(--accent-color);
   border: none;
@@ -1362,7 +1376,7 @@ body[id*="Sone"] {
 
 #page-_Freemail_Message .message-headers {
   padding-bottom: .5em;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid var(--gray-border-medium);
 }
 
 /* New Message */
@@ -1393,8 +1407,8 @@ body[id*="Sone"] {
   max-width: 100%;
   margin: 1em 0 1em 0;
   padding: .5em .5em .5em .5em;
-  background-color: #fff;
-  border: 1px solid #ccc;
+  background-color: var(--white);
+  border: 1px solid var(--gray-border-medium);
   box-sizing: border-box;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
@@ -1638,29 +1652,29 @@ body[id*="Sone"] {
 /* Light mode activelink placeholder styling */
 .activelink-placeholder,
 .activelink-loading {
-  background-color: #f5f5f5 !important;
-  border: 1px solid #ddd !important;
-  color: #999 !important;
+  background-color: var(--gray-light) !important;
+  border: 1px solid var(--gray-border) !important;
+  color: var(--gray-muted) !important;
   transition: opacity var(--transition-speed) ease !important;
 }
 
 .activelink-placeholder:hover,
 .activelink-loading:hover {
-  background-color: #e8e8e8 !important;
-  border-color: #ccc !important;
+  background-color: var(--gray-medium) !important;
+  border-color: var(--gray-border-medium) !important;
   opacity: 0.8 !important;
 }
 
 /* Loading placeholder with distinct styling */
 .activelink-loading {
-  background-color: #f0f8ff !important;
-  border: 1px solid #b3d9ff !important;
-  color: #4a90e2 !important;
+  background-color: var(--blue-bg-light) !important;
+  border: 1px solid var(--blue-light) !important;
+  color: var(--blue-accent) !important;
 }
 
 .activelink-loading:hover {
-  background-color: #e6f3ff !important;
-  border-color: #99ccff !important;
+  background-color: var(--blue-bg-lighter) !important;
+  border-color: var(--blue-border-light) !important;
 }
 
 /* Pulse animation for loading placeholders */
@@ -1693,7 +1707,7 @@ a.bookmark-title-updated,
 .bookmark-title-updated:hover,
 a.bookmark-title:hover,
 a.bookmark-title-updated:hover {
-  color: #d45a1f !important;
+  color: var(--accent-hover-dark) !important;
 }
 
 /* Theme Toggle Button */
@@ -1719,12 +1733,6 @@ a.bookmark-title-updated:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-@media (prefers-color-scheme: dark) {
-  .theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-}
-
 .theme-toggle-icon {
   display: flex;
   align-items: center;
@@ -1748,6 +1756,36 @@ a.bookmark-title-updated:hover {
    ========================================== */
 
 @media (prefers-color-scheme: dark) {
+  /* Dark Theme Variables */
+  :root {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #242424;
+    --bg-tertiary: #2a2a2a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+    --border-color: #3a3a3a;
+    --accent-color: #ff8c5a;
+    --accent-hover: #ff7644;
+    --link-color: #ff8c5a;
+    --status-bar-bg: var(--bg-secondary);
+    --status-bar-border: var(--border-color);
+    
+    /* Dark theme rgba colors */
+    --shadow-dark: rgba(0, 0, 0, 0.3);
+    --infobox-alert-bg: rgba(231, 76, 60, 0.1);
+    --infobox-warning-bg: rgba(245, 166, 35, 0.1);
+    --infobox-information-bg: rgba(74, 144, 226, 0.1);
+    --progressbar-shadow: rgba(255, 255, 255, 0.1);
+    --activelink-loading-bg: rgba(74, 144, 226, 0.15);
+    --activelink-loading-border: rgba(74, 144, 226, 0.4);
+    --activelink-loading-hover-bg: rgba(74, 144, 226, 0.25);
+    --theme-toggle-hover-bg: rgba(255, 255, 255, 0.08);
+    
+    /* Button colors for dark mode */
+    --button-primary-bg: #cc5a2e;
+  }
+
   body {
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -1774,7 +1812,7 @@ a.bookmark-title-updated:hover {
   #navbar #navlist .subnavlist-not-selected {
     background: var(--bg-tertiary) !important;
     border: 1px solid var(--border-color) !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px var(--shadow-dark);
   }
 
   .subnavlist a,
@@ -1828,15 +1866,15 @@ a.bookmark-title-updated:hover {
   }
 
   .infobox-alert {
-    background-color: rgba(231, 76, 60, 0.1);
+    background-color: var(--infobox-alert-bg);
   }
 
   .infobox-warning {
-    background-color: rgba(245, 166, 35, 0.1);
+    background-color: var(--infobox-warning-bg);
   }
 
   .infobox-information {
-    background-color: rgba(74, 144, 226, 0.1);
+    background-color: var(--infobox-information-bg);
   }
 
   /* Forms */
@@ -1858,8 +1896,8 @@ a.bookmark-title-updated:hover {
   input[type="submit"]:not([value*="Delete notification"]),
   input[type="reset"]:not([value*="Delete notification"]),
   button:not([value*="Delete notification"]):not(.theme-toggle) {
-    background: #cc5a2e !important;
-    border-color: #cc5a2e !important;
+    background: var(--button-primary-bg) !important;
+    border-color: var(--button-primary-bg) !important;
   }
 
   input[type="submit"]:not([value*="Delete notification"]):hover,
@@ -1933,7 +1971,7 @@ a.bookmark-title-updated:hover {
     background: var(--bg-tertiary) !important;
     background-image: none !important;
     border: 1px solid var(--border-color) !important;
-    box-shadow: inset 0 1px 2px rgba(255,255,255,.1) !important;
+    box-shadow: inset 0 1px 2px var(--progressbar-shadow) !important;
   }
 
   .progressbar-done {
@@ -2066,13 +2104,13 @@ a.bookmark-title-updated:hover {
 
   /* Loading placeholder with distinct styling for dark mode */
   .activelink-loading {
-    background-color: rgba(74, 144, 226, 0.15) !important;
-    border: 1px solid rgba(74, 144, 226, 0.4) !important;
+    background-color: var(--activelink-loading-bg) !important;
+    border: 1px solid var(--activelink-loading-border) !important;
     color: var(--infobox-information) !important;
   }
 
   .activelink-loading:hover {
-    background-color: rgba(74, 144, 226, 0.25) !important;
+    background-color: var(--activelink-loading-hover-bg) !important;
     border-color: var(--infobox-information) !important;
   }
 
@@ -2121,6 +2159,11 @@ a.bookmark-title-updated:hover {
     background: var(--bg-secondary) !important;
     color: var(--text-secondary) !important;
     border-color: var(--text-muted) !important;
+  }
+
+  /* Theme toggle hover effect for dark mode */
+  .theme-toggle:hover {
+    background: var(--theme-toggle-hover-bg);
   }
 }
 
@@ -2262,7 +2305,7 @@ a.bookmark-title-updated:hover {
   }
 
   #navbar ul#navlist li a:hover {
-    color: #999;
+    color: var(--gray-muted);
   }
 
   #navbar ul#navlist li ul li a:hover {
@@ -2270,7 +2313,7 @@ a.bookmark-title-updated:hover {
   }
 
   #navbar ul#navlist li.navlist-selected a {
-    color: #fff;
+    color: var(--white);
   }
 
   #navbar ul#navlist li.navlist-selected ul.subnavlist-selected li a {
@@ -2278,7 +2321,7 @@ a.bookmark-title-updated:hover {
   }
 
   #navbar ul#navlist li.navlist-selected ul.subnavlist-selected li.submenuitem-selected {
-    background: #e2e2e2;
+    background: var(--gray-nav);
   }
 
   ul.subnavlist,
@@ -2558,7 +2601,7 @@ a.bookmark-title-updated:hover {
     margin-left: 0;
     padding-top: .5em;
     padding-left: 0;
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--gray-border-medium);
     border-left: 0;
   }
 
@@ -2584,7 +2627,7 @@ a.bookmark-title-updated:hover {
     margin-left: 0;
     padding-top: .5em;
     padding-left: 0;
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--gray-border-medium);
     border-left: 0;
   }
 
