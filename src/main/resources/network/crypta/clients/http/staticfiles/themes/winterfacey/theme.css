@@ -141,6 +141,16 @@ ul.subnavlist-selected > li {
   line-height: var(--navbar-height);
 }
 
+/* Container for navlist and theme toggle to keep them grouped and centered */
+#navbar #navlist {
+  display: inline-flex;
+}
+
+/* Ensure theme toggle appears as part of the navigation group */
+#navbar .theme-toggle {
+  display: inline-flex;
+}
+
 /* Logo */
 #navbar:before {
   display: inline-block;
@@ -1701,25 +1711,30 @@ a.bookmark-title-updated:hover {
   height: var(--navbar-height);
   border-radius: 4px;
   transition: background var(--transition-speed) ease;
-  margin-left: auto;
+  margin-left: 12px;
+  position: relative;
 }
 
 .theme-toggle:hover {
-  background: rgba(230, 113, 59, 0.1);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 
 .theme-toggle-icon {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
   line-height: 1;
 }
 
 /* Icons for theme states */
-.theme-toggle[data-theme="auto"] .theme-toggle-icon::before {
-  content: "◐"; /* Half moon for auto */
-}
-
 .theme-toggle[data-theme="light"] .theme-toggle-icon::before {
   content: "☀"; /* Sun for light */
 }
@@ -1842,14 +1857,14 @@ a.bookmark-title-updated:hover {
   /* Primary buttons - darker background for better dark mode integration */
   input[type="submit"]:not([value*="Delete notification"]),
   input[type="reset"]:not([value*="Delete notification"]),
-  button:not([value*="Delete notification"]) {
+  button:not([value*="Delete notification"]):not(.theme-toggle) {
     background: #cc5a2e !important;
     border-color: #cc5a2e !important;
   }
 
   input[type="submit"]:not([value*="Delete notification"]):hover,
   input[type="reset"]:not([value*="Delete notification"]):hover,
-  button:not([value*="Delete notification"]):hover {
+  button:not([value*="Delete notification"]):not(.theme-toggle):hover {
     background: var(--accent-color) !important;
     border-color: var(--accent-color) !important;
   }
@@ -2091,6 +2106,7 @@ a.bookmark-title-updated:hover {
   a.bookmark-title-updated {
     color: var(--link-color) !important;
   }
+
 
   /* Style Delete Notification buttons for dark mode - more subtle secondary button */
   button[value*="Delete notification"],

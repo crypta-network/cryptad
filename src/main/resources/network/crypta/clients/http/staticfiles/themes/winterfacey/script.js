@@ -788,6 +788,155 @@ const ActivelinkModule = (() => {
 })();
 
 /**
+ * Theme switcher module
+ * Handles light/dark theme switching functionality
+ */
+const ThemeSwitcherModule = (() => {
+  let themeSwitcherButton = null;
+  let navbarElement = null;
+  
+  // Theme states: 'light', 'dark'
+  const THEME_STATES = ['light', 'dark'];
+  const STORAGE_KEY = 'winterfacey-theme';
+  const DEFAULT_THEME = 'light';
+
+  /**
+   * Gets current theme from localStorage or default
+   * @returns {string} Current theme state
+   */
+  const getCurrentTheme = () => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
+    } catch (error) {
+      console.warn('Failed to read theme from localStorage:', error);
+      return DEFAULT_THEME;
+    }
+  };
+
+  /**
+   * Saves theme to localStorage
+   * @param {string} theme - Theme to save
+   */
+  const saveTheme = (theme) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, theme);
+    } catch (error) {
+      console.warn('Failed to save theme to localStorage:', error);
+    }
+  };
+
+  /**
+   * Toggles between light and dark themes
+   * @param {string} currentTheme - Current theme state
+   * @returns {string} Next theme state
+   */
+  const getNextTheme = (currentTheme) => {
+    return currentTheme === 'light' ? 'dark' : 'light';
+  };
+
+  /**
+   * Updates the button's data attribute for CSS styling
+   * @param {string} theme - Current theme state
+   */
+  const updateButtonState = (theme) => {
+    if (themeSwitcherButton) {
+      themeSwitcherButton.setAttribute('data-theme', theme);
+    }
+  };
+
+  /**
+   * Applies the theme by updating CSS custom properties or media query preferences
+   * Note: This is just for button state - actual theming is handled by CSS
+   * @param {string} theme - Theme to apply
+   */
+  const applyTheme = (theme) => {
+    // For now, we just update the button state
+    // The actual theme switching logic will be implemented later
+    updateButtonState(theme);
+    console.debug(`Theme switcher: Set to ${theme} mode`);
+  };
+
+  /**
+   * Handles theme switch button click
+   */
+  const handleThemeSwitch = () => {
+    const currentTheme = getCurrentTheme();
+    const nextTheme = getNextTheme(currentTheme);
+    
+    saveTheme(nextTheme);
+    applyTheme(nextTheme);
+  };
+
+  /**
+   * Creates the theme switcher button element
+   * @returns {HTMLElement} Theme switcher button
+   */
+  const createThemeSwitcherButton = () => {
+    const button = document.createElement('button');
+    
+    button.className = 'theme-toggle';
+    button.setAttribute('data-theme', getCurrentTheme());
+    button.setAttribute('aria-label', 'Toggle theme');
+    button.setAttribute('title', 'Toggle between light and dark themes');
+    
+    // Create icon container
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'theme-toggle-icon';
+    button.appendChild(iconSpan);
+    
+    // Add click handler
+    button.addEventListener('click', handleThemeSwitch);
+    
+    return button;
+  };
+
+
+  /**
+   * Initializes the theme switcher functionality
+   */
+  const init = () => {
+    try {
+      navbarElement = document.getElementById('navbar');
+      const navlistElement = document.getElementById('navlist');
+      
+      if (!navbarElement || !navlistElement) {
+        console.warn('Theme switcher: Required navigation elements not found');
+        return;
+      }
+
+      // Create the theme switcher button
+      themeSwitcherButton = createThemeSwitcherButton();
+      
+      // Position it right after the navlist
+      if (navlistElement.nextSibling) {
+        navbarElement.insertBefore(themeSwitcherButton, navlistElement.nextSibling);
+      } else {
+        navbarElement.appendChild(themeSwitcherButton);
+      }
+      
+      // Apply current theme
+      const currentTheme = getCurrentTheme();
+      applyTheme(currentTheme);
+      
+      console.debug('Theme switcher initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize theme switcher:', error);
+    }
+  };
+
+  /**
+   * Cleanup function for removing event listeners and elements
+   */
+  const destroy = () => {
+    themeSwitcherButton?.remove();
+    themeSwitcherButton = null;
+    navbarElement = null;
+  };
+
+  return { init, destroy };
+})();
+
+/**
  * Main application initialization
  * Coordinates all modules and handles DOM ready state
  */
@@ -802,7 +951,8 @@ const ActivelinkModule = (() => {
     { name: 'Inner Menu', module: InnerMenuModule },
     { name: 'Logo', module: LogoModule },
     { name: 'Bookmarks', module: BookmarksModule },
-    { name: 'Activelink', module: ActivelinkModule }
+    { name: 'Activelink', module: ActivelinkModule },
+    { name: 'Theme Switcher', module: ThemeSwitcherModule }
   ];
 
   /**
