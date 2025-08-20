@@ -7,7 +7,7 @@ const MobileMenuModule = (() => {
   const ACTIVE_CLASS = 'active';
   const HAMBURGER_ID = 'hamburger-box';
   const MOBILE_BREAKPOINT = 991;
-  
+
   // DOM element references
   let navbarElement = null;
   let navlistElement = null;
@@ -86,7 +86,7 @@ const MobileMenuModule = (() => {
    */
   const attachMobileMenu = () => {
     if (!navbarElement || !hamburgerContent) return;
-    
+
     navbarElement.appendChild(hamburgerContent);
     hamburgerElement = document.getElementById(HAMBURGER_ID);
     safeAddEventListener(hamburgerElement, 'click', toggleNavigationClasses);
@@ -121,7 +121,7 @@ const MobileMenuModule = (() => {
     // Cache DOM elements
     navbarElement = document.getElementById('navbar');
     navlistElement = document.getElementById('navlist');
-    
+
     if (!navbarElement || !navlistElement) {
       console.warn('Mobile menu: Required navigation elements not found');
       return;
@@ -129,10 +129,10 @@ const MobileMenuModule = (() => {
 
     // Create hamburger element once
     hamburgerContent = createHamburgerElement();
-    
+
     // Set up resize handler
     resizeHandler = () => handleResponsiveMenu();
-    
+
     // Initial setup
     handleResponsiveMenu();
     window.addEventListener('resize', resizeHandler);
@@ -184,7 +184,7 @@ const InnerMenuModule = (() => {
   const setupClickHandlers = (clickableElements, targetElements) => {
     clickableElements.forEach((clickElement, index) => {
       const targetElement = targetElements[index];
-      
+
       if (!targetElement) return;
 
       clickElement.addEventListener('click', (event) => {
@@ -228,7 +228,7 @@ const InnerMenuModule = (() => {
       // Set up click handlers for both selected and non-selected items
       setupClickHandlers(selectedLinks, selectedItems);
       setupClickHandlers(notSelectedLinks, notSelectedItems);
-      
+
     } catch (error) {
       console.error('Inner menu initialization failed:', error);
     }
@@ -249,13 +249,13 @@ const InputOptimizationModule = (() => {
   const removeSizeFromInputs = () => {
     try {
       const textInputs = document.querySelectorAll('input[type="text"]');
-      
+
       textInputs.forEach(input => {
         if (input.hasAttribute('size')) {
           input.removeAttribute('size');
         }
       });
-      
+
       console.debug(`Removed size attribute from ${textInputs.length} text inputs`);
     } catch (error) {
       console.error('Failed to remove size attributes from inputs:', error);
@@ -263,7 +263,7 @@ const InputOptimizationModule = (() => {
   };
 
   return { init: removeSizeFromInputs };
-})(); 
+})();
 
 /**
  * Viewport meta tag module
@@ -278,7 +278,7 @@ const ViewportModule = (() => {
     try {
       // Check if viewport meta tag already exists
       const existingViewport = document.querySelector('meta[name="viewport"]');
-      
+
       if (existingViewport) {
         console.debug('Viewport meta tag already exists');
         return;
@@ -288,7 +288,7 @@ const ViewportModule = (() => {
       const metaViewport = document.createElement('meta');
       metaViewport.name = 'viewport';
       metaViewport.content = 'width=device-width, initial-scale=1';
-      
+
       // Add to document head
       const head = document.head || document.getElementsByTagName('head')[0];
       if (head) {
@@ -320,13 +320,13 @@ const LogoModule = (() => {
    */
   const createLogoWrapper = (href) => {
     const wrapper = document.createElement('a');
-    
+
     Object.assign(wrapper, {
       className: 'logo-link',
       href,
       title: 'Browse Crypta'
     });
-    
+
     return wrapper;
   };
 
@@ -345,7 +345,7 @@ const LogoModule = (() => {
   const init = () => {
     try {
       navbarElement = document.getElementById('navbar');
-      
+
       if (!navbarElement) {
         console.warn('Logo module: Navbar element not found');
         return;
@@ -353,10 +353,10 @@ const LogoModule = (() => {
 
       const browsingUrl = getBrowsingUrl();
       logoWrapper = createLogoWrapper(browsingUrl);
-      
+
       // Insert logo as first child of navbar
       navbarElement.insertBefore(logoWrapper, navbarElement.firstChild);
-      
+
       console.debug('Logo clickability initialized successfully');
     } catch (error) {
       console.error('Failed to initialize logo clickability:', error);
@@ -393,7 +393,7 @@ const BookmarksModule = (() => {
     if (EXCLUDED_TAGS.has(target.tagName)) {
       return true;
     }
-    
+
     return EXCLUDED_SELECTORS.some(selector => target.closest(selector));
   };
 
@@ -406,7 +406,7 @@ const BookmarksModule = (() => {
     if (shouldExcludeClick(event.target)) {
       return;
     }
-    
+
     try {
       window.location.href = bookmarkUrl;
     } catch (error) {
@@ -422,7 +422,7 @@ const BookmarksModule = (() => {
   const setupClickableRow = (row, bookmarkUrl) => {
     // Set visual indication of clickability
     row.style.cursor = 'pointer';
-    
+
     // Add event listeners
     row.addEventListener('click', createRowClickHandler(bookmarkUrl));
   };
@@ -433,21 +433,21 @@ const BookmarksModule = (() => {
   const processBookmarkTables = () => {
     const bookmarkTables = document.querySelectorAll('#bookmarks table');
     let processedRows = 0;
-    
+
     bookmarkTables.forEach(table => {
       const rows = table.querySelectorAll('tr');
-      
+
       rows.forEach(row => {
         // Find bookmark title link in current row
         const titleLink = row.querySelector('a.bookmark-title, a.bookmark-title-updated');
-        
+
         if (titleLink?.href) {
           setupClickableRow(row, titleLink.href);
           processedRows++;
         }
       });
     });
-    
+
     console.debug(`Made ${processedRows} bookmark rows clickable`);
   };
 
@@ -475,11 +475,11 @@ const ActivelinkModule = (() => {
   const LOADING_CLASS = 'activelink-loading';
   const DOCUMENT_ICON = '📄';
   const LOADING_ICON = '⏳';
-  
+
   // Default dimensions and styling
   const DEFAULT_DIMENSIONS = { width: '108px', height: '36px' };
   const DEFAULT_MARGIN = '0 0 12px 0';
-  
+
   const PLACEHOLDER_STYLES = {
     display: 'inline-flex',
     alignItems: 'center',
@@ -516,15 +516,15 @@ const ActivelinkModule = (() => {
   const createPlaceholderElement = (img, isLoading = false) => {
     const placeholder = document.createElement('div');
     const dimensions = extractDimensions(img);
-    
+
     placeholder.className = isLoading ? LOADING_CLASS : PLACEHOLDER_CLASS;
     placeholder.innerHTML = isLoading ? LOADING_ICON : DOCUMENT_ICON;
-    
+
     // Copy title attribute for tooltip
     if (img.title) {
       placeholder.title = img.title;
     }
-    
+
     // Apply styles
     Object.assign(placeholder.style, {
       ...PLACEHOLDER_STYLES,
@@ -532,12 +532,12 @@ const ActivelinkModule = (() => {
       height: dimensions.height,
       margin: dimensions.margin
     });
-    
+
     // Add loading animation for loading placeholders
     if (isLoading) {
       placeholder.style.animation = 'pulse 1.5s ease-in-out infinite';
     }
-    
+
     return placeholder;
   };
 
@@ -548,7 +548,7 @@ const ActivelinkModule = (() => {
    */
   const setupPlaceholderInteractivity = (placeholder, parentLink) => {
     if (!parentLink) return;
-    
+
     // Click handler
     placeholder.addEventListener('click', () => {
       try {
@@ -557,12 +557,12 @@ const ActivelinkModule = (() => {
         console.error('Failed to trigger parent link click:', error);
       }
     });
-    
+
     // Hover effects
     placeholder.addEventListener('mouseenter', () => {
       placeholder.style.opacity = '0.8';
     });
-    
+
     placeholder.addEventListener('mouseleave', () => {
       placeholder.style.opacity = '0.6';
     });
@@ -578,9 +578,9 @@ const ActivelinkModule = (() => {
       // Fade in the image
       img.style.opacity = '0';
       img.style.transition = 'opacity 0.3s ease';
-      
+
       placeholder.parentNode?.replaceChild(img, placeholder);
-      
+
       // Fade in animation
       requestAnimationFrame(() => {
         img.style.opacity = '1';
@@ -599,41 +599,41 @@ const ActivelinkModule = (() => {
       // Create loading placeholder
       const placeholder = createPlaceholderElement(img, true);
       const parentLink = img.closest('a');
-      
+
       setupPlaceholderInteractivity(placeholder, parentLink);
-      
+
       // Store original image data
       const originalSrc = img.src;
       const originalAlt = img.alt;
       const originalTitle = img.title;
-      
+
       // Replace image with loading placeholder immediately
       img.parentNode?.replaceChild(placeholder, img);
-      
+
       // Create a new image element to load in background
       const newImg = new Image();
       newImg.src = originalSrc;
       newImg.alt = originalAlt;
       newImg.title = originalTitle;
-      
+
       // Copy styles from original image
       newImg.style.width = extractDimensions({ style: img.style }).width;
       newImg.style.height = extractDimensions({ style: img.style }).height;
       newImg.style.margin = extractDimensions({ style: img.style }).margin;
-      
+
       // Set up load/error handlers
       newImg.addEventListener('load', () => {
         // Image loaded successfully, replace placeholder with image
         replaceWithImage(placeholder, newImg);
       }, { once: true });
-      
+
       newImg.addEventListener('error', () => {
         // Image failed to load, convert loading placeholder to error placeholder
         placeholder.className = PLACEHOLDER_CLASS;
         placeholder.innerHTML = DOCUMENT_ICON;
         placeholder.style.animation = 'none';
       }, { once: true });
-      
+
     } catch (error) {
       console.error('Failed to create loading placeholder:', error);
     }
@@ -647,9 +647,9 @@ const ActivelinkModule = (() => {
     try {
       const placeholder = createPlaceholderElement(img, false);
       const parentLink = img.closest('a');
-      
+
       setupPlaceholderInteractivity(placeholder, parentLink);
-      
+
       // Replace the image
       img.parentNode?.replaceChild(placeholder, img);
     } catch (error) {
@@ -680,21 +680,21 @@ const ActivelinkModule = (() => {
     if (img.hasAttribute(PROCESSED_ATTRIBUTE)) {
       return;
     }
-    
+
     // Mark as processed
     img.setAttribute(PROCESSED_ATTRIBUTE, 'true');
-    
+
     // Handle already loaded images
     if (hasImageLoaded(img)) {
       return; // Image already loaded successfully, no action needed
     }
-    
+
     // Handle images that have already failed
     if (hasImageFailed(img)) {
       replaceWithErrorPlaceholder(img);
       return;
     }
-    
+
     // For images that are still loading or haven't started loading,
     // always show a loading placeholder first
     createLoadingPlaceholder(img);
@@ -706,9 +706,9 @@ const ActivelinkModule = (() => {
   const init = () => {
     try {
       const activelinkImages = document.querySelectorAll('img[alt*="activelink"]');
-      
+
       activelinkImages.forEach(processImage);
-      
+
       console.debug(`Processed ${activelinkImages.length} activelink images`);
     } catch (error) {
       console.error('Failed to initialize activelink image handling:', error);
@@ -726,10 +726,10 @@ const ThemeSwitcherModule = (() => {
   let themeSwitcherButton = null;
   let navbarElement = null;
   let mediaQueryList = null;
-  
+
   // Theme modes: 'light', 'dark', 'auto'
-  const STORAGE_KEY = 'winterfacey-theme-preference';
-  
+  const STORAGE_KEY = 'theme-mode';
+
   /**
    * Detects browser's color scheme preference
    * @returns {string} 'light' or 'dark'
@@ -797,7 +797,7 @@ const ThemeSwitcherModule = (() => {
    */
   const updateThemeAttribute = () => {
     const currentTheme = getCurrentTheme();
-    
+
     if (currentTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
     } else {
@@ -814,7 +814,7 @@ const ThemeSwitcherModule = (() => {
       // Show the opposite icon: if theme is dark, show light icon (and vice versa)
       const buttonIcon = theme === 'dark' ? 'light' : 'dark';
       themeSwitcherButton.setAttribute('data-icon', buttonIcon);
-      
+
       // Update tooltip to show what clicking will do
       const nextTheme = theme === 'dark' ? 'light' : 'dark';
       themeSwitcherButton.setAttribute('title', `Switch to ${nextTheme} theme`);
@@ -838,10 +838,10 @@ const ThemeSwitcherModule = (() => {
   const toggleTheme = () => {
     const currentTheme = getCurrentTheme();
     const browserTheme = getBrowserTheme();
-    
+
     // Toggle to the opposite theme
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
+
     // If the new theme matches browser preference, switch to auto mode
     if (newTheme === browserTheme) {
       savePreference(null); // Auto mode
@@ -850,7 +850,7 @@ const ThemeSwitcherModule = (() => {
       savePreference(newTheme); // Manual mode
       console.debug(`Manually switched to ${newTheme} theme`);
     }
-    
+
     applyTheme();
   };
 
@@ -873,7 +873,7 @@ const ThemeSwitcherModule = (() => {
   const checkAndSyncTheme = () => {
     const saved = getSavedPreference();
     const browserTheme = getBrowserTheme();
-    
+
     // If user has a manual preference that matches browser theme,
     // switch to auto mode
     if (saved === browserTheme) {
@@ -888,18 +888,18 @@ const ThemeSwitcherModule = (() => {
    */
   const createThemeSwitcherButton = () => {
     const button = document.createElement('button');
-    
+
     button.className = 'theme-toggle';
     button.setAttribute('aria-label', 'Toggle theme');
-    
+
     // Create icon container
     const iconSpan = document.createElement('span');
     iconSpan.className = 'theme-toggle-icon';
     button.appendChild(iconSpan);
-    
+
     // Add click handler
     button.addEventListener('click', toggleTheme);
-    
+
     return button;
   };
 
@@ -911,10 +911,10 @@ const ThemeSwitcherModule = (() => {
       // Apply theme early (before button creation)
       checkAndSyncTheme();
       applyTheme();
-      
+
       navbarElement = document.getElementById('navbar');
       const navlistElement = document.getElementById('navlist');
-      
+
       if (!navbarElement || !navlistElement) {
         console.warn('Theme switcher: Required navigation elements not found');
         return;
@@ -922,18 +922,18 @@ const ThemeSwitcherModule = (() => {
 
       // Create the theme switcher button
       themeSwitcherButton = createThemeSwitcherButton();
-      
+
       // Position it right after the navlist
       if (navlistElement.nextSibling) {
         navbarElement.insertBefore(themeSwitcherButton, navlistElement.nextSibling);
       } else {
         navbarElement.appendChild(themeSwitcherButton);
       }
-      
+
       // Update button state
       const theme = getCurrentTheme();
       updateButtonState(theme);
-      
+
       // Listen for browser theme changes
       if (window.matchMedia) {
         mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
@@ -944,7 +944,7 @@ const ThemeSwitcherModule = (() => {
           mediaQueryList.addListener(handleBrowserThemeChange);
         }
       }
-      
+
       console.debug('Theme switcher initialized successfully');
     } catch (error) {
       console.error('Failed to initialize theme switcher:', error);
@@ -996,7 +996,7 @@ const ThemeSwitcherModule = (() => {
    */
   const initializeModules = () => {
     console.debug('Initializing WinterFacey theme modules...');
-    
+
     modules.forEach(({ name, module }) => {
       try {
         module.init();
@@ -1005,7 +1005,7 @@ const ThemeSwitcherModule = (() => {
         console.error(`✗ Failed to initialize ${name} module:`, error);
       }
     });
-    
+
     console.debug('WinterFacey theme initialization complete');
   };
 
@@ -1033,5 +1033,3 @@ const ThemeSwitcherModule = (() => {
   // Cleanup on page unload
   window.addEventListener('beforeunload', handlePageUnload, { once: true });
 })();
-
-
