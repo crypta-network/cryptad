@@ -1,364 +1,808 @@
-var mobileMenu = function() {
-
-  // initial main variables
-  var navbarDomElement = document.getElementById('navbar');
-  var navlistDomElement = document.getElementById('navlist');
-  var hamburgerDomElement;
-  var activeClass = 'active';
-  var hamburgerId = 'hamburger-box';
-  var hamburgerContent = document.createElement('div');
-
-
-  hamburgerContent.id = hamburgerId;
-  hamburgerContent.innerHTML = '<span></span><span></span><span></span><span></span>';
-
-  // function toggle class for old browser
-  function toggleClass(element, className){
-    if (!element || !className){
-        return;
-    }
-
-    var classString = element.className, nameIndex = classString.indexOf(className);
-    if (nameIndex == -1) {
-        classString += ' ' + className;
-    }
-    else {
-        classString = classString.substr(0, nameIndex) + classString.substr(nameIndex+className.length);
-    }
-    element.className = classString;
-  }
-
-  // function for check element in page
-  function customAddEventListener(element, eventName, fn) {
-    if (element) {
-      element.addEventListener(eventName, fn);
-    }
-  }
-
-  function customRemoveEventListener(element, eventName, fn) {
-    if (element) {
-      element.removeEventListener(eventName, fn);
-    }
-  }
-
-  function hasClass(element, cssClass) {
-    if (element) {
-      return element.className.match(new RegExp('(\\s|^)' + cssClass + '(\\s|$)'));
-    }
-  }
-
-  function removeClass(element, cssClass) {
-      if (hasClass(element, cssClass) && element) {
-          var reg = new RegExp('(\\s|^)'+ cssClass +'(\\s|$)');
-          element.className = element.className.replace(reg,' ');
-      }
-  }
-
-  function removeElement(elementId) {
-    var element = document.getElementById(elementId);
-
-    if (element) {
-      element.parentNode.removeChild(element);
-    }
-  }
-
-  function toggleCssClasses() {
-    toggleClass(navlistDomElement, activeClass);
-    toggleClass(hamburgerDomElement, activeClass)
-  }
-
-  function attach() {
-    navbarDomElement.appendChild(hamburgerContent);
-    hamburgerDomElement = document.getElementById(hamburgerId);
-    customAddEventListener(hamburgerDomElement, 'click', toggleCssClasses);
-  }
-
-  function detach() {
-    removeClass(navlistDomElement, activeClass);
-    removeClass(hamburgerDomElement, activeClass);
-    customRemoveEventListener(hamburgerDomElement, 'click', toggleCssClasses);
-    removeElement(hamburgerId);
-  }
-
-  function ready() {
-    if ( window.innerWidth < 991 ) {
-      attach()
-    } else {
-      detach()
-    }
-  }
-
-  ready();
-  window.onresize = function(e) { ready() };
-};
-
-var toggleInnerMenu = function() {
-  var selectedList = document.querySelectorAll('#navlist > .navlist-selected');
-  var selectedLinkList = document.querySelectorAll('#navlist > .navlist-selected > a');
-  var notSelectedList = document.querySelectorAll('#navlist > .navlist-not-selected');
-  var notSelectedLinkList = document.querySelectorAll('#navlist > .navlist-not-selected > a');
-
-  // add active class for selected element after load page
-  selectedList[0].className += " active";
-
-  // function toggle (add and remove active class)
-  function toggle(selectedItem) {
-    if (selectedItem.className.search(/active/i) != -1) {
-      selectedItem.className = selectedItem.className.replace(/(?:^|\s)active(?!\S)/g, '' )
-    } else {
-      selectedItem.className += " active";
-    }
-  }
+/**
+ * Mobile menu functionality module
+ * Handles responsive hamburger menu toggle at 991px breakpoint
+ */
+const MobileMenuModule = (() => {
+  // Private constants
+  const ACTIVE_CLASS = 'active';
+  const HAMBURGER_ID = 'hamburger-box';
+  const MOBILE_BREAKPOINT = 991;
   
-  function handleClick(clickedClass, changedClass) {
-    for (var i = 0; i < clickedClass.length; i++) {
-      (function(i){
-        clickedClass[i].addEventListener('click', function(event) {
-          if ( window.innerWidth < 991 ) {
-            event.preventDefault();
-            toggle(changedClass[i]);
-          }
-        });
-      })(i)
+  // DOM element references
+  let navbarElement = null;
+  let navlistElement = null;
+  let hamburgerElement = null;
+  let hamburgerContent = null;
+  let resizeHandler = null;
+
+  /**
+   * Toggles CSS class on element using modern classList API
+   * @param {HTMLElement} element - Target element
+   * @param {string} className - Class name to toggle
+   */
+  const toggleClass = (element, className) => {
+    element?.classList.toggle(className);
+  };
+
+  /**
+   * Adds event listener with null check
+   * @param {HTMLElement} element - Target element
+   * @param {string} eventName - Event type
+   * @param {Function} handler - Event handler function
+   */
+  const safeAddEventListener = (element, eventName, handler) => {
+    element?.addEventListener(eventName, handler);
+  };
+
+  /**
+   * Removes event listener with null check
+   * @param {HTMLElement} element - Target element
+   * @param {string} eventName - Event type
+   * @param {Function} handler - Event handler function
+   */
+  const safeRemoveEventListener = (element, eventName, handler) => {
+    element?.removeEventListener(eventName, handler);
+  };
+
+  /**
+   * Removes CSS class using modern classList API
+   * @param {HTMLElement} element - Target element
+   * @param {string} className - Class name to remove
+   */
+  const removeClass = (element, className) => {
+    element?.classList.remove(className);
+  };
+
+  /**
+   * Removes element from DOM safely
+   * @param {string} elementId - ID of element to remove
+   */
+  const removeElement = (elementId) => {
+    const element = document.getElementById(elementId);
+    element?.remove();
+  };
+
+  /**
+   * Creates hamburger menu HTML structure
+   * @returns {HTMLElement} Hamburger menu element
+   */
+  const createHamburgerElement = () => {
+    const element = document.createElement('div');
+    element.id = HAMBURGER_ID;
+    element.innerHTML = '<span></span><span></span><span></span><span></span>';
+    return element;
+  };
+
+  /**
+   * Toggles active class on navigation elements
+   */
+  const toggleNavigationClasses = () => {
+    toggleClass(navlistElement, ACTIVE_CLASS);
+    toggleClass(hamburgerElement, ACTIVE_CLASS);
+  };
+
+  /**
+   * Attaches hamburger menu to mobile layout
+   */
+  const attachMobileMenu = () => {
+    if (!navbarElement || !hamburgerContent) return;
+    
+    navbarElement.appendChild(hamburgerContent);
+    hamburgerElement = document.getElementById(HAMBURGER_ID);
+    safeAddEventListener(hamburgerElement, 'click', toggleNavigationClasses);
+  };
+
+  /**
+   * Detaches hamburger menu from desktop layout
+   */
+  const detachMobileMenu = () => {
+    removeClass(navlistElement, ACTIVE_CLASS);
+    removeClass(hamburgerElement, ACTIVE_CLASS);
+    safeRemoveEventListener(hamburgerElement, 'click', toggleNavigationClasses);
+    removeElement(HAMBURGER_ID);
+    hamburgerElement = null;
+  };
+
+  /**
+   * Handles responsive menu state based on window width
+   */
+  const handleResponsiveMenu = () => {
+    if (window.innerWidth < MOBILE_BREAKPOINT) {
+      attachMobileMenu();
+    } else {
+      detachMobileMenu();
     }
-  }
+  };
 
-  function ready() {
-    handleClick(selectedLinkList, selectedList);
-    handleClick(notSelectedLinkList, notSelectedList);
-  }
-
-  ready();
-}
-
-function removeSizeFromInput () {
-  var inputs = document.getElementsByTagName('input');
-
-  for(var i = 0; i < inputs.length; i++) {
-    if(inputs[i].type.toLowerCase() == 'text') {
-        inputs[i].removeAttribute('size');
+  /**
+   * Initializes mobile menu functionality
+   */
+  const init = () => {
+    // Cache DOM elements
+    navbarElement = document.getElementById('navbar');
+    navlistElement = document.getElementById('navlist');
+    
+    if (!navbarElement || !navlistElement) {
+      console.warn('Mobile menu: Required navigation elements not found');
+      return;
     }
-  }
-} 
 
-var addTagMetaViewport = function() {
-  var meta = document.createElement('meta');
+    // Create hamburger element once
+    hamburgerContent = createHamburgerElement();
+    
+    // Set up resize handler
+    resizeHandler = () => handleResponsiveMenu();
+    
+    // Initial setup
+    handleResponsiveMenu();
+    window.addEventListener('resize', resizeHandler);
+  };
 
-  meta.name = "viewport";
-  meta.content = "width=device-width, initial-scale=1;";
-  document.getElementsByTagName('head')[0].appendChild(meta);
-}
+  /**
+   * Cleanup function for removing event listeners
+   */
+  const destroy = () => {
+    if (resizeHandler) {
+      window.removeEventListener('resize', resizeHandler);
+      resizeHandler = null;
+    }
+    detachMobileMenu();
+  };
 
-// Make logo clickable - redirects to the same link as "Browsing" menu
-var makeLogoClickable = function() {
-  var navbarElement = document.getElementById('navbar');
-  
-  if (navbarElement) {
-    // Find the Browsing menu link dynamically
-    var browsingLink = document.querySelector('#navlist li a[href]');
-    var browsingHref = browsingLink ? browsingLink.href : '/';
-    
-    // Create a wrapper around the logo pseudo-element area
-    var logoWrapper = document.createElement('a');
-    logoWrapper.className = 'logo-link';
-    logoWrapper.href = browsingHref;  // Same as Browsing menu link (dynamic)
-    logoWrapper.title = 'Browse Crypta';
-    logoWrapper.style.cssText = 'position: absolute; left: 0; width: 40px; height: 40px; margin-right: 20px; cursor: pointer; z-index: 10000;';
-    
-    // Position the logo link based on the navbar's position
-    navbarElement.style.position = 'relative';
-    
-    // Insert the logo link as the first child of navbar
-    navbarElement.insertBefore(logoWrapper, navbarElement.firstChild);
-    
-    // Adjust positioning to cover the :before pseudo-element
-    var updateLogoPosition = function() {
-      // Get the computed style to find where the :before element is
-      var navbarRect = navbarElement.getBoundingClientRect();
-      var styles = window.getComputedStyle(navbarElement, ':before');
+  return { init, destroy };
+})();
+
+/**
+ * Inner menu toggle functionality module
+ * Handles dropdown navigation menu toggles in mobile view
+ */
+const InnerMenuModule = (() => {
+  const ACTIVE_CLASS = 'active';
+  const MOBILE_BREAKPOINT = 991;
+
+  // Selectors for navigation elements
+  const SELECTORS = {
+    selectedItems: '#navlist > .navlist-selected',
+    selectedLinks: '#navlist > .navlist-selected > a',
+    notSelectedItems: '#navlist > .navlist-not-selected',
+    notSelectedLinks: '#navlist > .navlist-not-selected > a'
+  };
+
+  /**
+   * Toggles active class on element using modern classList API
+   * @param {HTMLElement} element - Element to toggle class on
+   */
+  const toggleActiveClass = (element) => {
+    element?.classList.toggle(ACTIVE_CLASS);
+  };
+
+  /**
+   * Sets up click handlers for navigation items
+   * @param {NodeList} clickableElements - Elements that trigger the toggle
+   * @param {NodeList} targetElements - Elements that get toggled
+   */
+  const setupClickHandlers = (clickableElements, targetElements) => {
+    clickableElements.forEach((clickElement, index) => {
+      const targetElement = targetElements[index];
       
-      // Position the clickable area over the logo
-      // Account for flexbox centering
-      var navlistElement = document.getElementById('navlist');
-      if (navlistElement) {
-        var navlistRect = navlistElement.getBoundingClientRect();
-        // Logo is 20px to the left of navlist (margin-right: 20px)
-        logoWrapper.style.left = (navlistRect.left - navbarRect.left - 60) + 'px';
-      }
-    };
-    
-    // Update position on load and resize
-    updateLogoPosition();
-    window.addEventListener('resize', updateLogoPosition);
-  }
-};
+      if (!targetElement) return;
 
-// Make bookmark grid boxes clickable
-var makeBookmarksClickable = function() {
-  var bookmarkTables = document.querySelectorAll('#bookmarks table');
-  
-  bookmarkTables.forEach(function(table) {
-    var rows = table.querySelectorAll('tr');
+      clickElement.addEventListener('click', (event) => {
+        if (window.innerWidth < MOBILE_BREAKPOINT) {
+          event.preventDefault();
+          toggleActiveClass(targetElement);
+        }
+      });
+    });
+  };
+
+  /**
+   * Initializes the first selected item as active
+   * @param {NodeList} selectedItems - List of selected navigation items
+   */
+  const initializeSelectedItem = (selectedItems) => {
+    const firstSelected = selectedItems[0];
+    firstSelected?.classList.add(ACTIVE_CLASS);
+  };
+
+  /**
+   * Initializes inner menu toggle functionality
+   */
+  const init = () => {
+    try {
+      // Get all navigation elements
+      const selectedItems = document.querySelectorAll(SELECTORS.selectedItems);
+      const selectedLinks = document.querySelectorAll(SELECTORS.selectedLinks);
+      const notSelectedItems = document.querySelectorAll(SELECTORS.notSelectedItems);
+      const notSelectedLinks = document.querySelectorAll(SELECTORS.notSelectedLinks);
+
+      // Early return if no elements found
+      if (!selectedItems.length && !notSelectedItems.length) {
+        console.warn('Inner menu: No navigation items found');
+        return;
+      }
+
+      // Initialize first selected item as active
+      initializeSelectedItem(selectedItems);
+
+      // Set up click handlers for both selected and non-selected items
+      setupClickHandlers(selectedLinks, selectedItems);
+      setupClickHandlers(notSelectedLinks, notSelectedItems);
+      
+    } catch (error) {
+      console.error('Inner menu initialization failed:', error);
+    }
+  };
+
+  return { init };
+})();
+
+/**
+ * Input optimization module
+ * Removes size attributes from text inputs for better responsive behavior
+ */
+const InputOptimizationModule = (() => {
+  /**
+   * Removes size attribute from all text input elements
+   * This allows inputs to be more responsive and follow CSS sizing
+   */
+  const removeSizeFromInputs = () => {
+    try {
+      const textInputs = document.querySelectorAll('input[type="text"]');
+      
+      textInputs.forEach(input => {
+        if (input.hasAttribute('size')) {
+          input.removeAttribute('size');
+        }
+      });
+      
+      console.debug(`Removed size attribute from ${textInputs.length} text inputs`);
+    } catch (error) {
+      console.error('Failed to remove size attributes from inputs:', error);
+    }
+  };
+
+  return { init: removeSizeFromInputs };
+})(); 
+
+/**
+ * Viewport meta tag module
+ * Adds responsive viewport meta tag if not already present
+ */
+const ViewportModule = (() => {
+  /**
+   * Adds viewport meta tag for responsive design
+   * Only adds if not already present to avoid duplicates
+   */
+  const addViewportMetaTag = () => {
+    try {
+      // Check if viewport meta tag already exists
+      const existingViewport = document.querySelector('meta[name="viewport"]');
+      
+      if (existingViewport) {
+        console.debug('Viewport meta tag already exists');
+        return;
+      }
+
+      // Create and configure viewport meta tag
+      const metaViewport = document.createElement('meta');
+      metaViewport.name = 'viewport';
+      metaViewport.content = 'width=device-width, initial-scale=1';
+      
+      // Add to document head
+      const head = document.head || document.getElementsByTagName('head')[0];
+      if (head) {
+        head.appendChild(metaViewport);
+        console.debug('Viewport meta tag added successfully');
+      } else {
+        console.warn('Document head not found, cannot add viewport meta tag');
+      }
+    } catch (error) {
+      console.error('Failed to add viewport meta tag:', error);
+    }
+  };
+
+  return { init: addViewportMetaTag };
+})();
+
+/**
+ * Logo clickability module
+ * Makes the navbar logo clickable, linking to the browsing page
+ */
+const LogoModule = (() => {
+  let logoWrapper = null;
+  let resizeHandler = null;
+  let navbarElement = null;
+
+  /**
+   * Updates logo position to align with the CSS pseudo-element
+   */
+  const updateLogoPosition = () => {
+    if (!logoWrapper || !navbarElement) return;
     
-    rows.forEach(function(row) {
-      // Find the bookmark title link in this row
-      var titleLink = row.querySelector('a.bookmark-title, a.bookmark-title-updated');
-      if (titleLink) {
-        var bookmarkUrl = titleLink.href;
+    try {
+      const navlistElement = document.getElementById('navlist');
+      
+      if (navlistElement) {
+        const navbarRect = navbarElement.getBoundingClientRect();
+        const navlistRect = navlistElement.getBoundingClientRect();
         
-        // Make the entire row clickable except for forms and buttons
-        row.style.cursor = 'pointer';
-        row.addEventListener('click', function(e) {
-          // Don't trigger if clicking on a form, input, or button
-          if (e.target.closest('form') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') {
-            return;
-          }
-          
-          // Don't trigger if clicking on an existing link (to avoid double navigation)
-          if (e.target.tagName === 'A' || e.target.closest('a')) {
-            return;
-          }
-          
-          // Navigate to the bookmark URL
-          window.location.href = bookmarkUrl;
-        });
+        // Position logo 60px to the left of navlist to cover the pseudo-element
+        const leftOffset = navlistRect.left - navbarRect.left - 60;
+        logoWrapper.style.left = `${leftOffset}px`;
+      }
+    } catch (error) {
+      console.error('Failed to update logo position:', error);
+    }
+  };
+
+  /**
+   * Creates the clickable logo wrapper element
+   * @param {string} href - URL to link to
+   * @returns {HTMLElement} Logo wrapper element
+   */
+  const createLogoWrapper = (href) => {
+    const wrapper = document.createElement('a');
+    
+    Object.assign(wrapper, {
+      className: 'logo-link',
+      href,
+      title: 'Browse Crypta'
+    });
+    
+    Object.assign(wrapper.style, {
+      position: 'absolute',
+      left: '0',
+      width: '40px',
+      height: '40px',
+      marginRight: '20px',
+      cursor: 'pointer',
+      zIndex: '10000'
+    });
+    
+    return wrapper;
+  };
+
+  /**
+   * Finds the browsing menu link URL
+   * @returns {string} Browsing page URL or fallback
+   */
+  const getBrowsingUrl = () => {
+    const browsingLink = document.querySelector('#navlist li a[href]');
+    return browsingLink?.href || '/';
+  };
+
+  /**
+   * Initializes clickable logo functionality
+   */
+  const init = () => {
+    try {
+      navbarElement = document.getElementById('navbar');
+      
+      if (!navbarElement) {
+        console.warn('Logo module: Navbar element not found');
+        return;
+      }
+
+      const browsingUrl = getBrowsingUrl();
+      logoWrapper = createLogoWrapper(browsingUrl);
+      
+      // Set navbar positioning and insert logo wrapper
+      navbarElement.style.position = 'relative';
+      navbarElement.insertBefore(logoWrapper, navbarElement.firstChild);
+      
+      // Set up resize handler
+      resizeHandler = () => updateLogoPosition();
+      
+      // Initial positioning and resize listener
+      updateLogoPosition();
+      window.addEventListener('resize', resizeHandler);
+      
+      console.debug('Logo clickability initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize logo clickability:', error);
+    }
+  };
+
+  /**
+   * Cleanup function for removing event listeners
+   */
+  const destroy = () => {
+    if (resizeHandler) {
+      window.removeEventListener('resize', resizeHandler);
+      resizeHandler = null;
+    }
+    logoWrapper?.remove();
+    logoWrapper = null;
+    navbarElement = null;
+  };
+
+  return { init, destroy };
+})();
+
+/**
+ * Bookmarks clickability module
+ * Makes entire bookmark table rows clickable for better UX
+ */
+const BookmarksModule = (() => {
+  const HOVER_BACKGROUND_COLOR = '#f8f8f8';
+  
+  // Elements that should not trigger row clicks
+  const EXCLUDED_TAGS = new Set(['INPUT', 'BUTTON', 'A']);
+  const EXCLUDED_SELECTORS = ['form', 'a'];
+
+  /**
+   * Checks if click target should be excluded from row click handling
+   * @param {EventTarget} target - Click event target
+   * @returns {boolean} True if click should be ignored
+   */
+  const shouldExcludeClick = (target) => {
+    if (EXCLUDED_TAGS.has(target.tagName)) {
+      return true;
+    }
+    
+    return EXCLUDED_SELECTORS.some(selector => target.closest(selector));
+  };
+
+  /**
+   * Creates click handler for bookmark rows
+   * @param {string} bookmarkUrl - URL to navigate to
+   * @returns {Function} Click event handler
+   */
+  const createRowClickHandler = (bookmarkUrl) => (event) => {
+    if (shouldExcludeClick(event.target)) {
+      return;
+    }
+    
+    try {
+      window.location.href = bookmarkUrl;
+    } catch (error) {
+      console.error('Failed to navigate to bookmark:', error);
+    }
+  };
+
+  /**
+   * Creates mouse enter handler for hover effect
+   * @param {HTMLElement} row - Table row element
+   * @returns {Function} Mouse enter event handler
+   */
+  const createMouseEnterHandler = (row) => () => {
+    if (!row.style.backgroundColor) {
+      row.style.backgroundColor = HOVER_BACKGROUND_COLOR;
+    }
+  };
+
+  /**
+   * Creates mouse leave handler for hover effect
+   * @param {HTMLElement} row - Table row element
+   * @returns {Function} Mouse leave event handler
+   */
+  const createMouseLeaveHandler = (row) => () => {
+    row.style.backgroundColor = '';
+  };
+
+  /**
+   * Sets up clickable functionality for a bookmark row
+   * @param {HTMLElement} row - Table row element
+   * @param {string} bookmarkUrl - URL to navigate to
+   */
+  const setupClickableRow = (row, bookmarkUrl) => {
+    // Set visual indication of clickability
+    row.style.cursor = 'pointer';
+    
+    // Add event listeners
+    row.addEventListener('click', createRowClickHandler(bookmarkUrl));
+    row.addEventListener('mouseenter', createMouseEnterHandler(row));
+    row.addEventListener('mouseleave', createMouseLeaveHandler(row));
+  };
+
+  /**
+   * Processes all bookmark tables and makes rows clickable
+   */
+  const processBookmarkTables = () => {
+    const bookmarkTables = document.querySelectorAll('#bookmarks table');
+    let processedRows = 0;
+    
+    bookmarkTables.forEach(table => {
+      const rows = table.querySelectorAll('tr');
+      
+      rows.forEach(row => {
+        // Find bookmark title link in current row
+        const titleLink = row.querySelector('a.bookmark-title, a.bookmark-title-updated');
         
-        // Add hover effect to indicate clickability
-        row.addEventListener('mouseenter', function() {
-          if (!row.style.backgroundColor) {
-            row.style.backgroundColor = '#f8f8f8';
-          }
-        });
-        
-        row.addEventListener('mouseleave', function() {
-          row.style.backgroundColor = '';
-        });
+        if (titleLink?.href) {
+          setupClickableRow(row, titleLink.href);
+          processedRows++;
+        }
+      });
+    });
+    
+    console.debug(`Made ${processedRows} bookmark rows clickable`);
+  };
+
+  /**
+   * Initializes bookmark clickability functionality
+   */
+  const init = () => {
+    try {
+      processBookmarkTables();
+    } catch (error) {
+      console.error('Failed to initialize bookmark clickability:', error);
+    }
+  };
+
+  return { init };
+})();
+
+/**
+ * Activelink image handling module
+ * Replaces failed activelink images with styled placeholder boxes
+ */
+const ActivelinkModule = (() => {
+  const PROCESSED_ATTRIBUTE = 'data-activelink-processed';
+  const PLACEHOLDER_CLASS = 'activelink-placeholder';
+  const DOCUMENT_ICON = '📄';
+  const RACE_CONDITION_DELAY = 10;
+  
+  // Default dimensions and styling
+  const DEFAULT_DIMENSIONS = { width: '108px', height: '36px' };
+  const DEFAULT_MARGIN = '0 0 12px 0';
+  
+  const PLACEHOLDER_STYLES = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'var(--bg-tertiary, #2a2a2a)',
+    border: '1px solid var(--border-color, #3a3a3a)',
+    borderRadius: '4px',
+    fontSize: '10px',
+    color: 'var(--text-muted, #808080)',
+    fontFamily: 'inherit',
+    textAlign: 'center',
+    opacity: '0.6',
+    cursor: 'pointer'
+  };
+
+  /**
+   * Extracts dimensions from image element
+   * @param {HTMLImageElement} img - Image element
+   * @returns {Object} Width and height values
+   */
+  const extractDimensions = (img) => ({
+    width: img.style.width || DEFAULT_DIMENSIONS.width,
+    height: img.style.height || DEFAULT_DIMENSIONS.height,
+    margin: img.style.margin || DEFAULT_MARGIN
+  });
+
+  /**
+   * Creates a styled placeholder element
+   * @param {HTMLImageElement} img - Original image element
+   * @returns {HTMLElement} Placeholder element
+   */
+  const createPlaceholderElement = (img) => {
+    const placeholder = document.createElement('div');
+    const dimensions = extractDimensions(img);
+    
+    placeholder.className = PLACEHOLDER_CLASS;
+    placeholder.innerHTML = DOCUMENT_ICON;
+    
+    // Copy title attribute for tooltip
+    if (img.title) {
+      placeholder.title = img.title;
+    }
+    
+    // Apply styles
+    Object.assign(placeholder.style, {
+      ...PLACEHOLDER_STYLES,
+      width: dimensions.width,
+      height: dimensions.height,
+      margin: dimensions.margin
+    });
+    
+    return placeholder;
+  };
+
+  /**
+   * Sets up click handling for placeholder if parent is a link
+   * @param {HTMLElement} placeholder - Placeholder element
+   * @param {HTMLElement} parentLink - Parent link element
+   */
+  const setupPlaceholderInteractivity = (placeholder, parentLink) => {
+    if (!parentLink) return;
+    
+    // Click handler
+    placeholder.addEventListener('click', () => {
+      try {
+        parentLink.click();
+      } catch (error) {
+        console.error('Failed to trigger parent link click:', error);
       }
     });
-  });
-};
+    
+    // Hover effects
+    placeholder.addEventListener('mouseenter', () => {
+      placeholder.style.opacity = '0.8';
+    });
+    
+    placeholder.addEventListener('mouseleave', () => {
+      placeholder.style.opacity = '0.6';
+    });
+  };
 
-// Create placeholder boxes for failed activelink images
-var handleActivelinkImages = function() {
-  var activelinkImages = document.querySelectorAll('img[alt*="activelink"]');
-  
-  activelinkImages.forEach(function(img) {
-    // Skip if this image has already been processed
-    if (img.hasAttribute('data-activelink-processed')) {
-      return;
+  /**
+   * Replaces image with placeholder
+   * @param {HTMLImageElement} img - Image to replace
+   */
+  const replaceWithPlaceholder = (img) => {
+    try {
+      const placeholder = createPlaceholderElement(img);
+      const parentLink = img.closest('a');
+      
+      setupPlaceholderInteractivity(placeholder, parentLink);
+      
+      // Replace the image
+      img.parentNode?.replaceChild(placeholder, img);
+    } catch (error) {
+      console.error('Failed to create placeholder for activelink image:', error);
     }
-    
-    // Mark as processed to prevent double-processing
-    img.setAttribute('data-activelink-processed', 'true');
-    
-    // Create a placeholder box to replace failed images
-    var createPlaceholder = function() {
-      // Create placeholder element
-      var placeholder = document.createElement('div');
-      placeholder.className = 'activelink-placeholder';
-      
-      // Get the original dimensions from inline styles or defaults
-      var width = img.style.width || '108px';
-      var height = img.style.height || '36px';
-      
-      // Apply styles to placeholder
-      placeholder.style.cssText = 
-        'width: ' + width + '; ' +
-        'height: ' + height + '; ' +
-        'display: inline-flex; ' +
-        'align-items: center; ' +
-        'justify-content: center; ' +
-        'background-color: var(--bg-tertiary, #2a2a2a); ' +
-        'border: 1px solid var(--border-color, #3a3a3a); ' +
-        'border-radius: 4px; ' +
-        'font-size: 10px; ' +
-        'color: var(--text-muted, #808080); ' +
-        'font-family: inherit; ' +
-        'text-align: center; ' +
-        'margin: ' + (img.style.margin || '0 0 12px 0') + '; ' +
-        'opacity: 0.6; ' +
-        'cursor: pointer;';
-      
-      // Add icon or text content
-      placeholder.innerHTML = '📄'; // Simple document icon
-      
-      // Copy any title attribute for tooltip
-      if (img.title) {
-        placeholder.title = img.title;
-      }
-      
-      // Copy any click handlers from the parent link
-      var parentLink = img.closest('a');
-      if (parentLink) {
-        placeholder.addEventListener('click', function() {
-          parentLink.click();
-        });
-        // Add hover effect to indicate clickability
-        placeholder.style.cursor = 'pointer';
-        placeholder.addEventListener('mouseenter', function() {
-          placeholder.style.opacity = '0.8';
-        });
-        placeholder.addEventListener('mouseleave', function() {
-          placeholder.style.opacity = '0.6';
-        });
-      }
-      
-      // Replace the image with placeholder
-      img.parentNode.replaceChild(placeholder, img);
+  };
+
+  /**
+   * Checks if image has loaded successfully
+   * @param {HTMLImageElement} img - Image element
+   * @returns {boolean} True if image loaded successfully
+   */
+  const hasImageLoaded = (img) => img.complete && img.naturalWidth > 0;
+
+  /**
+   * Checks if image has failed to load
+   * @param {HTMLImageElement} img - Image element
+   * @returns {boolean} True if image failed to load
+   */
+  const hasImageFailed = (img) => img.complete && img.naturalWidth === 0;
+
+  /**
+   * Sets up event listeners for image load/error events
+   * @param {HTMLImageElement} img - Image element
+   * @param {Object} state - Tracking state
+   */
+  const setupImageEventListeners = (img, state) => {
+    const loadHandler = () => {
+      state.imageReplaced = true;
     };
     
-    // Check if image has already loaded successfully
-    if (img.complete && img.naturalWidth > 0) {
-      // Image loaded successfully, do nothing
+    const errorHandler = () => {
+      if (!state.imageReplaced) {
+        replaceWithPlaceholder(img);
+        state.imageReplaced = true;
+      }
+    };
+    
+    img.addEventListener('load', loadHandler, { once: true });
+    img.addEventListener('error', errorHandler, { once: true });
+  };
+
+  /**
+   * Processes a single activelink image
+   * @param {HTMLImageElement} img - Image to process
+   */
+  const processImage = (img) => {
+    // Skip if already processed
+    if (img.hasAttribute(PROCESSED_ATTRIBUTE)) {
       return;
     }
     
-    // Check if image has already failed to load
-    if (img.complete && img.naturalWidth === 0) {
-      createPlaceholder();
+    // Mark as processed
+    img.setAttribute(PROCESSED_ATTRIBUTE, 'true');
+    
+    // Handle already loaded images
+    if (hasImageLoaded(img)) {
+      return; // Image loaded successfully, no action needed
+    }
+    
+    if (hasImageFailed(img)) {
+      replaceWithPlaceholder(img);
       return;
     }
     
-    // Image is still loading, set up event listeners
-    var imageReplaced = false;
+    // Handle images still loading
+    const state = { imageReplaced: false };
     
-    // Add a small delay to avoid race conditions with cached images
-    setTimeout(function() {
-      // Double-check if image loaded during the timeout
-      if (img.complete && img.naturalWidth > 0) {
-        imageReplaced = true;
+    // Use timeout to handle race conditions with cached images
+    setTimeout(() => {
+      if (hasImageLoaded(img)) {
+        state.imageReplaced = true;
         return;
       }
       
-      if (img.complete && img.naturalWidth === 0) {
-        if (!imageReplaced) {
-          createPlaceholder();
-          imageReplaced = true;
-        }
+      if (hasImageFailed(img) && !state.imageReplaced) {
+        replaceWithPlaceholder(img);
+        state.imageReplaced = true;
         return;
       }
       
       // Set up event listeners for images still loading
-      img.addEventListener('load', function() {
-        imageReplaced = true;
-      });
-      
-      img.addEventListener('error', function() {
-        if (!imageReplaced) {
-          createPlaceholder();
-          imageReplaced = true;
-        }
-      });
-    }, 10); // Small delay to handle race conditions
-  });
-};
+      setupImageEventListeners(img, state);
+    }, RACE_CONDITION_DELAY);
+  };
 
-document.addEventListener("DOMContentLoaded", addTagMetaViewport);
-document.addEventListener('DOMContentLoaded', removeSizeFromInput);
-document.addEventListener("DOMContentLoaded", mobileMenu);
-document.addEventListener('DOMContentLoaded', toggleInnerMenu);
-document.addEventListener('DOMContentLoaded', makeLogoClickable);
-document.addEventListener('DOMContentLoaded', makeBookmarksClickable);
-document.addEventListener('DOMContentLoaded', handleActivelinkImages);
+  /**
+   * Initializes activelink image handling
+   */
+  const init = () => {
+    try {
+      const activelinkImages = document.querySelectorAll('img[alt*="activelink"]');
+      
+      activelinkImages.forEach(processImage);
+      
+      console.debug(`Processed ${activelinkImages.length} activelink images`);
+    } catch (error) {
+      console.error('Failed to initialize activelink image handling:', error);
+    }
+  };
+
+  return { init };
+})();
+
+/**
+ * Main application initialization
+ * Coordinates all modules and handles DOM ready state
+ */
+(() => {
+  'use strict';
+
+  // Module initialization order (important for dependencies)
+  const modules = [
+    { name: 'Viewport', module: ViewportModule },
+    { name: 'Input Optimization', module: InputOptimizationModule },
+    { name: 'Mobile Menu', module: MobileMenuModule },
+    { name: 'Inner Menu', module: InnerMenuModule },
+    { name: 'Logo', module: LogoModule },
+    { name: 'Bookmarks', module: BookmarksModule },
+    { name: 'Activelink', module: ActivelinkModule }
+  ];
+
+  /**
+   * Initializes all application modules
+   */
+  const initializeModules = () => {
+    console.debug('Initializing WinterFacey theme modules...');
+    
+    modules.forEach(({ name, module }) => {
+      try {
+        module.init();
+        console.debug(`✓ ${name} module initialized`);
+      } catch (error) {
+        console.error(`✗ Failed to initialize ${name} module:`, error);
+      }
+    });
+    
+    console.debug('WinterFacey theme initialization complete');
+  };
+
+  /**
+   * Handles cleanup on page unload (for modules that need it)
+   */
+  const handlePageUnload = () => {
+    modules.forEach(({ name, module }) => {
+      try {
+        module.destroy?.();
+      } catch (error) {
+        console.error(`Failed to cleanup ${name} module:`, error);
+      }
+    });
+  };
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeModules, { once: true });
+  } else {
+    // DOM is already loaded
+    initializeModules();
+  }
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', handlePageUnload, { once: true });
+})();
 
 
