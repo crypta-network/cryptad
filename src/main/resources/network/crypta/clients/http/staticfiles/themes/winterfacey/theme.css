@@ -188,7 +188,7 @@
 
     /* Inputs / cards / panels */
     --input-bg: var(--bg-tertiary);
-    --card-bg: var(--bg-secondary);
+    --card-bg: transparent;
     --panel-bg: var(--bg-secondary);
 
     /* Progress bar */
@@ -230,18 +230,9 @@
 
     /* Error backgrounds for dark theme */
     --error-bg-light: rgba(231, 76, 60, 0.1);
-    
+
     /* Configuration */
     --config-li-alt-bg: rgba(255, 255, 255, 0.05);
-  }
-
-  .infobox {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-  }
-
-  .infobox-information {
-    background-color: rgba(74, 144, 226, 0.1);
   }
 }
 
@@ -547,9 +538,9 @@ textarea:focus {
 
 input[type="text"] { max-width: 800px; width: 100%; box-sizing: border-box; }
 
-textarea { 
-  max-width: 50%; 
-  width: 100%; 
+textarea {
+  max-width: 50%;
+  width: 100%;
   margin: 8px 8px 8px 0;
   padding: 12px 16px;
   color: var(--input);
@@ -727,10 +718,6 @@ div.dismiss-all-alerts-container { display: flex; align-items: center; gap: 0.6e
   left: 0;
   z-index: 18;
   color: var(--text-muted);
-  border-bottom-style: solid;
-  border-bottom-width: 1px;
-  border-top-style: solid;
-  border-top-width: 1px;
 }
 
 #statusbar { text-align: center; }
@@ -749,16 +736,25 @@ div.dismiss-all-alerts-container { display: flex; align-items: center; gap: 0.6e
 
 /* Status Bar Styling */
 div#statusbar {
-  background-color: var(--status-bar-bg);
-  border-top: 4px solid var(--status-bar-border);
+  background-color: var(--bg-secondary);
+  border-top: 1px solid var(--status-bar-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
 }
 
-div#statusbar div.progressbar { margin-top: .125em; margin-bottom: .125em; }
+div#statusbar div.progressbar {
+  margin-top: 0;
+  margin-bottom: 0;
+}
 
 div#statusbar #statusbar-alerts,
 div#statusbar .infobox-content { height: 100%; }
 
 #statusbar a { font-size: var(--font-size-small); line-height: 200%; }
+
+#statusbar #statusbar-seclevels { font-size: var(--font-size-small); }
 
 /* Progress Bar */
 div.progressbar {
@@ -847,7 +843,7 @@ a:hover { color: var(--accent-hover); }
   font-style: normal;
   font-size: var(--font-size-base);
   font-weight: 700;
-  color: var(--navbar-bg);
+  color: var(--infobox-header);
   line-height: 1.4;
   text-align: left;
   background: none;
