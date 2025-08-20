@@ -48,7 +48,7 @@
   --priority-6-alt: #8eb1e6;
 
   /* Infobox colors */
-  --infobox-header: var(--navbar-bg)
+  --infobox-header: var(--navbar-bg);
   --infobox-information: #4a90e2;
   --infobox-warning: #f5a623;
   --infobox-alert: #e74c3c;
@@ -634,7 +634,7 @@ div.infobox-header:before { display: none; }
 div.infobox-information div.infobox-header {
   background: none;
   color: var(--text-primary);
-  border-left: 4px solid var(--infobox-information);
+  border-left: 4px solid var(--infobox-information) !important;
   padding-left: 20px;
 }
 
