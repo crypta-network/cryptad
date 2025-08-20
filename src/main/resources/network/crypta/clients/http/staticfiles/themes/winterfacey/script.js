@@ -311,30 +311,7 @@ const ViewportModule = (() => {
  */
 const LogoModule = (() => {
   let logoWrapper = null;
-  let resizeHandler = null;
   let navbarElement = null;
-
-  /**
-   * Updates logo position to align with the CSS pseudo-element
-   */
-  const updateLogoPosition = () => {
-    if (!logoWrapper || !navbarElement) return;
-    
-    try {
-      const navlistElement = document.getElementById('navlist');
-      
-      if (navlistElement) {
-        const navbarRect = navbarElement.getBoundingClientRect();
-        const navlistRect = navlistElement.getBoundingClientRect();
-        
-        // Position logo 60px to the left of navlist to cover the pseudo-element
-        const leftOffset = navlistRect.left - navbarRect.left - 60;
-        logoWrapper.style.left = `${leftOffset}px`;
-      }
-    } catch (error) {
-      console.error('Failed to update logo position:', error);
-    }
-  };
 
   /**
    * Creates the clickable logo wrapper element
@@ -348,16 +325,6 @@ const LogoModule = (() => {
       className: 'logo-link',
       href,
       title: 'Browse Crypta'
-    });
-    
-    Object.assign(wrapper.style, {
-      position: 'absolute',
-      left: '0',
-      width: '40px',
-      height: '40px',
-      marginRight: '20px',
-      cursor: 'pointer',
-      zIndex: '10000'
     });
     
     return wrapper;
@@ -387,16 +354,8 @@ const LogoModule = (() => {
       const browsingUrl = getBrowsingUrl();
       logoWrapper = createLogoWrapper(browsingUrl);
       
-      // Set navbar positioning and insert logo wrapper
-      navbarElement.style.position = 'relative';
+      // Insert logo as first child of navbar
       navbarElement.insertBefore(logoWrapper, navbarElement.firstChild);
-      
-      // Set up resize handler
-      resizeHandler = () => updateLogoPosition();
-      
-      // Initial positioning and resize listener
-      updateLogoPosition();
-      window.addEventListener('resize', resizeHandler);
       
       console.debug('Logo clickability initialized successfully');
     } catch (error) {
@@ -408,10 +367,6 @@ const LogoModule = (() => {
    * Cleanup function for removing event listeners
    */
   const destroy = () => {
-    if (resizeHandler) {
-      window.removeEventListener('resize', resizeHandler);
-      resizeHandler = null;
-    }
     logoWrapper?.remove();
     logoWrapper = null;
     navbarElement = null;

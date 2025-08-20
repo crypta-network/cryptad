@@ -315,17 +315,22 @@ ul.subnavlist-selected > li {
   display: inline-flex;
 }
 
-/* Logo */
-#navbar:before {
+/* Logo link styling */
+.logo-link {
   display: inline-block;
   width: var(--navbar-height);
   height: var(--navbar-height);
-  content: "";
   margin-right: 20px;
   background-image: url("/static/logo.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
+  cursor: pointer;
+  transition: opacity var(--transition-speed) ease;
+}
+
+.logo-link:hover {
+  opacity: 0.8;
 }
 
 /* Sticky Navigation */
