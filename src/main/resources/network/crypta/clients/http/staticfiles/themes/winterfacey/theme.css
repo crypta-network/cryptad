@@ -147,6 +147,9 @@
   --bookmarks-box: var(--navbar-bg);
   --bookmarks-desc: var(--gray-text);
   --bookmark-row-hover: #f8f8f8;
+
+  /* Configuration */
+  --config-li-alt-bg: var(--gray-border-light);
 }
 
 /* ==========================================
@@ -224,6 +227,12 @@
     /* Extra */
     --shadow-dark: rgba(0, 0, 0, 0.3);
     --theme-toggle-hover-bg: rgba(255, 255, 255, 0.08);
+
+    /* Error backgrounds for dark theme */
+    --error-bg-light: rgba(231, 76, 60, 0.1);
+    
+    /* Configuration */
+    --config-li-alt-bg: rgba(255, 255, 255, 0.05);
   }
 
   .infobox {
@@ -529,7 +538,8 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent-color);
   box-shadow: none;
@@ -537,7 +547,20 @@ select:focus {
 
 input[type="text"] { max-width: 800px; width: 100%; box-sizing: border-box; }
 
-textarea { max-width: 50%; width: 100%; background-color: var(--input-bg);  color: var(--input); }
+textarea { 
+  max-width: 50%; 
+  width: 100%; 
+  margin: 8px 8px 8px 0;
+  padding: 12px 16px;
+  color: var(--input);
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  transition: border-color var(--transition-speed) ease;
+  font-size: var(--font-size-small);
+  font-family: var(--font-family);
+  box-sizing: border-box;
+}
 
 /* Buttons */
 input[type="submit"],
@@ -843,7 +866,7 @@ a:hover { color: var(--accent-hover); }
   flex-wrap: wrap;
 }
 
-.config li:nth-of-type(2n) { background: var(--gray-border-light); }
+.config li:nth-of-type(2n) { background: var(--config-li-alt-bg); }
 
 .config li input,
 .config li select { float: right; margin-right: 1ex; }
