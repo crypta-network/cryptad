@@ -145,6 +145,7 @@
   /* Bookmarks */
   --bookmarks-box: var(--navbar-bg);
   --bookmarks-desc: var(--gray-text);
+  --bookmark-row-hover: #f8f8f8;
 }
 
 /* ==========================================
@@ -202,6 +203,7 @@
     /* Bookmarks */
     --bookmarks-box: var(--text-primary);
     --bookmarks-desc: var(--text-secondary);
+    --bookmark-row-hover: rgba(255, 255, 255, 0.1);
 
     /* Buttons */
     --button-primary: #cc5a2e;            /* darker base */
@@ -964,7 +966,10 @@ table.directory-listing input { margin: 0; }
 }
 
 /* Bookmark hover effect */
-#bookmarks table tr:hover { border-color: var(--accent-color); background: var(--bg-secondary); }
+#bookmarks table tr:hover {
+  border-color: var(--accent-color);
+  background: var(--bookmark-row-hover);
+}
 
 #bookmarks table td { display: block; width: 100%; margin: 0; padding: 0; background: none; text-align: center; }
 

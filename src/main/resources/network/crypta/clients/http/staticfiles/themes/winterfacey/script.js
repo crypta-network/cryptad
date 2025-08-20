@@ -425,8 +425,6 @@ const LogoModule = (() => {
  * Makes entire bookmark table rows clickable for better UX
  */
 const BookmarksModule = (() => {
-  const HOVER_BACKGROUND_COLOR = '#f8f8f8';
-  
   // Elements that should not trigger row clicks
   const EXCLUDED_TAGS = new Set(['INPUT', 'BUTTON', 'A']);
   const EXCLUDED_SELECTORS = ['form', 'a'];
@@ -462,26 +460,6 @@ const BookmarksModule = (() => {
   };
 
   /**
-   * Creates mouse enter handler for hover effect
-   * @param {HTMLElement} row - Table row element
-   * @returns {Function} Mouse enter event handler
-   */
-  const createMouseEnterHandler = (row) => () => {
-    if (!row.style.backgroundColor) {
-      row.style.backgroundColor = HOVER_BACKGROUND_COLOR;
-    }
-  };
-
-  /**
-   * Creates mouse leave handler for hover effect
-   * @param {HTMLElement} row - Table row element
-   * @returns {Function} Mouse leave event handler
-   */
-  const createMouseLeaveHandler = (row) => () => {
-    row.style.backgroundColor = '';
-  };
-
-  /**
    * Sets up clickable functionality for a bookmark row
    * @param {HTMLElement} row - Table row element
    * @param {string} bookmarkUrl - URL to navigate to
@@ -492,8 +470,6 @@ const BookmarksModule = (() => {
     
     // Add event listeners
     row.addEventListener('click', createRowClickHandler(bookmarkUrl));
-    row.addEventListener('mouseenter', createMouseEnterHandler(row));
-    row.addEventListener('mouseleave', createMouseLeaveHandler(row));
   };
 
   /**
