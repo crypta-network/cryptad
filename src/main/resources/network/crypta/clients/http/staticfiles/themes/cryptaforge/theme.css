@@ -1733,7 +1733,9 @@ body[id*="Sone"] {
 
 #page-_stats_.fproxy-page #content .column > tbody > tr:first-child {
   display: grid !important;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* The first row has exactly two cells: Node Version Information and Current Activity.
+     Use two equal columns so they span the full width instead of leaving a third empty track. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 15px;
   max-width: 100%;
   overflow: hidden;
@@ -2014,17 +2016,19 @@ a.bookmark-title-updated:hover {
   /* Page Stats (fproxy) */
   #page-_stats_.fproxy-page #content .column > tbody > tr > td {
     display: block;
-    float: left;
+    /* avoid legacy float-based layout inside grid */
+    float: none;
   }
 
+  /* Keep two columns for the first row on large screens */
   #page-_stats_.fproxy-page #content .column > tbody > tr:first-child {
-    -ms-flex-wrap: wrap;
-    -webkit-flex-wrap: wrap;
-    flex-wrap: wrap;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 15px;
   }
 
   #page-_stats_.fproxy-page #content .column > tbody > tr:first-child > td {
-    width: 49%;
+    width: auto;
     padding-right: 15px;
     -webkit-box-sizing: border-box;
     -moz-box-sizing: border-box;
@@ -2072,6 +2076,13 @@ a.bookmark-title-updated:hover {
       z-index 0s linear 0.01s;
     transition: all 0.3s ease-in-out 0s, visibility 0s linear 0.3s,
       z-index 0s linear 0.01s;
+  }
+
+  /* Keep two columns on tablet widths for the first stats row */
+  #page-_stats_.fproxy-page #content .column > tbody > tr:first-child {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   #navlist.active {
@@ -2492,6 +2503,10 @@ a.bookmark-title-updated:hover {
   }
 
   /* Page Stats (fproxy) */
+  /* Stack to one column on small screens */
+  #page-_stats_.fproxy-page #content .column > tbody > tr:first-child {
+    grid-template-columns: 1fr;
+  }
   #page-_stats_.fproxy-page #content .column > tbody > tr:first-child table {
     max-width: 300px;
   }
