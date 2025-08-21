@@ -99,7 +99,7 @@
 
   /* Bookmarks */
   --bookmarks-box: var(--navbar-bg);
-  --bookmarks-desc: var(--gray-text);
+  --desc-color: var(--gray-text);
   --bookmark-row-hover: #f8f8f8;
 
   /* Configuration */
@@ -162,7 +162,7 @@
 
   /* Bookmarks */
   --bookmarks-box: var(--text-primary);
-  --bookmarks-desc: var(--text-secondary);
+  --desc-color: var(--text-secondary);
   --bookmark-row-hover: rgba(255, 255, 255, 0.1);
 
   /* Buttons */
@@ -284,7 +284,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--font-family);
+  font-family: var(--font-family), serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: var(--line-height);
@@ -362,7 +362,6 @@ ul.subnavlist-selected > li {
 
 /* Sticky Navigation */
 div#page div#navbar {
-  position: -webkit-sticky;
   position: sticky;
   top: 0;
 }
@@ -497,10 +496,6 @@ ul#navlist li ul li:last-child {
   height: 30px;
   margin-right: 10px;
   margin-top: 11px;
-  -webkit-transform: rotate(0deg);
-  -moz-transform: rotate(0deg);
-  -ms-transform: rotate(0deg);
-  -o-transform: rotate(0deg);
   transform: rotate(0deg);
   -webkit-transition: 0.5s ease-in-out;
   -o-transition: 0.5s ease-in-out;
@@ -517,10 +512,6 @@ ul#navlist li ul li:last-child {
   height: 3px;
   background: var(--white);
   opacity: 1;
-  -webkit-transform: rotate(0deg);
-  -moz-transform: rotate(0deg);
-  -ms-transform: rotate(0deg);
-  -o-transform: rotate(0deg);
   transform: rotate(0deg);
   -webkit-transition: 0.25s ease-in-out;
   -o-transition: 0.25s ease-in-out;
@@ -542,7 +533,7 @@ ul#navlist li ul li:last-child {
 #hamburger-box.active span:nth-child(1) {
   top: 16px;
   left: 50%;
-  width: 0%;
+  width: 0;
 }
 #hamburger-box.active span:nth-child(2) {
   transform: rotate(45deg);
@@ -553,7 +544,7 @@ ul#navlist li ul li:last-child {
 #hamburger-box.active span:nth-child(4) {
   top: 18px;
   left: 50%;
-  width: 0%;
+  width: 0;
 }
 
 /* ==========================================
@@ -589,7 +580,7 @@ select {
   border-radius: var(--border-radius);
   transition: border-color var(--transition-speed) ease;
   font-size: var(--font-size-small);
-  font-family: var(--font-family);
+  font-family: var(--font-family), monospace;
 }
 
 input:focus,
@@ -628,7 +619,7 @@ textarea {
   border-radius: var(--border-radius);
   transition: border-color var(--transition-speed) ease;
   font-size: var(--font-size-small);
-  font-family: var(--font-family);
+  font-family: var(--font-family), monospace;
   box-sizing: border-box;
 }
 
@@ -648,7 +639,7 @@ button {
   box-shadow: none;
   transition: all var(--transition-speed) ease;
   cursor: pointer;
-  font-family: var(--font-family);
+  font-family: var(--font-family), monospace;
 }
 
 input[type="submit"]:hover,
@@ -710,11 +701,17 @@ input[name="dismiss-user-alert"]:hover {
   padding-right: 2ex;
   padding-bottom: 0.5em;
   padding-left: 0;
-  font-family: var(--font-family);
+  font-family: var(--font-family), monospace;
 }
 
 .infobox-content {
   overflow: hidden;
+}
+
+.infobox-content p > i:first-child {
+  font-size: var(--font-size-small);
+  color: var(--desc-color);
+  font-style: normal;
 }
 
 .infobox-content input[name="search"] {
@@ -995,7 +992,7 @@ a:hover {
 
 .configprefix {
   margin: 24px 0 16px;
-  padding: 0 0 0 24px;
+  padding: 0 0 0 23px;
   font-style: normal;
   font-size: var(--font-size-base);
   font-weight: 700;
@@ -1043,7 +1040,7 @@ a:hover {
 }
 
 .config .configshortdesc {
-  margin-left: 24px;
+  margin-left: 23px;
   font-size: 100%;
   color: var(--accent-color);
 }
@@ -1054,7 +1051,6 @@ a:hover {
 }
 
 .config li a {
-  -ms-flex-preferred-size: 100%;
   -webkit-flex-basis: 100%;
   flex-basis: 100%;
   line-height: var(--line-height);
@@ -1064,13 +1060,10 @@ a:hover {
   max-width: -webkit-calc(100% - 300px);
   max-width: -moz-calc(100% - 300px);
   max-width: calc(100% - 300px);
-  -ms-flex-item-align: start;
-  -ms-grid-row-align: start;
-  -webkit-align-self: start;
-  align-self: start;
+  -webkit-align-self: flex-start;
+  align-self: flex-start;
   -webkit-box-ordinal-group: 2;
   -ms-flex-order: 1;
-  -webkit-order: 1;
   -moz-box-ordinal-group: 2;
   order: 1;
   line-height: 1.3;
@@ -1080,7 +1073,6 @@ a:hover {
   margin-left: auto;
   -webkit-box-ordinal-group: 3;
   -ms-flex-order: 2;
-  -webkit-order: 2;
   -moz-box-ordinal-group: 3;
   order: 2;
 }
@@ -1276,7 +1268,7 @@ table.directory-listing input {
   font-size: var(--font-size-tiny);
   font-weight: 400;
   line-height: 1.4;
-  color: var(--bookmarks-desc);
+  color: var(--desc-color);
 }
 
 #bookmarks table td:nth-child(2) a {
@@ -1795,6 +1787,10 @@ body[id*="Sone"] {
 }
 
 /* Security Levels Page */
+#page-_seclevels_ .config li {
+  margin-left: 24px;
+}
+
 #page-_seclevels_ .config li input,
 #page-_seclevels_ .config li select {
   float: left;
@@ -1857,6 +1853,26 @@ body[id*="Sone"] {
   padding: 0 10px 5px;
 }
 
+#page-_plugins_ .infobox-normal .infobox-content,
+#page-_friends_ .infobox-normal .infobox-content,
+#page-_downloads_ .infobox-information .infobox-content,
+#page-_downloads_ #grouped-downloads .infobox-content,
+#page-_uploads_ .infobox-information .infobox-content,
+#page-_chat_ .infobox-information .infobox-content,
+#page-_addfriend_ .infobox-information .infobox-content,
+.infobox-alert .infobox-content,
+#filterForm .infobox-content,
+#queue-legend .infobox-content,
+.requests_in_progress .infobox-content,
+#insert-queue .infobox-content,
+#filter-file .infobox-content,
+#freesite-insert .infobox-content,
+#page-_alerts_ .infobox-content,
+#connectivity-summary .infobox-content,
+#page-_addfriend_ .infobox-normal .infobox-content {
+  margin-left: 23px;
+}
+
 #page-_addfriend_ pre {
   text-align: justify;
   white-space: pre-wrap;
@@ -1879,7 +1895,19 @@ body[id*="Sone"] {
 }
 
 #page-_plugins_ .plugin-group-title {
-  font-weight: bold;
+  margin: 24px 0 16px;
+  padding: 0;
+  font-style: normal;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--infobox-header);
+  line-height: 1.4;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-decoration: underline;
 }
 
 #masterPasswordForm label {
@@ -2030,8 +2058,6 @@ a.bookmark-title-updated:hover {
   #page-_stats_.fproxy-page #content .column > tbody > tr:first-child > td {
     width: auto;
     padding-right: 15px;
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
     box-sizing: border-box;
   }
 
@@ -2063,10 +2089,6 @@ a.bookmark-title-updated:hover {
     background: var(--navbar-bg);
     visibility: hidden;
     opacity: 0;
-    -webkit-transform: translateY(-50em);
-    -moz-transform: translateY(-50em);
-    -ms-transform: translateY(-50em);
-    -o-transform: translateY(-50em);
     transform: translateY(-50em);
     -webkit-transition: all 0.3s ease-in-out 0s, visibility 0s linear 0.3s,
       z-index 0s linear 0.01s;
@@ -2089,10 +2111,6 @@ a.bookmark-title-updated:hover {
     z-index: 1;
     visibility: visible;
     opacity: 1;
-    -webkit-transform: translateY(0%);
-    -moz-transform: translateY(0%);
-    -ms-transform: translateY(0%);
-    -o-transform: translateY(0%);
     transform: translateY(0%);
     -webkit-transition-delay: 0s, 0s, 0.3s;
     -moz-transition-delay: 0s, 0s, 0.3s;
@@ -2131,10 +2149,6 @@ a.bookmark-title-updated:hover {
   #navbar ul#navlist li ul li {
     text-align: center;
     border-bottom: none;
-    -o-border-image: none;
-    -webkit-border-image: none;
-    -moz-border-image: none;
-    border-image: none;
     -webkit-border-radius: 0;
     -moz-border-radius: 0;
     border-radius: 0;
@@ -2173,11 +2187,11 @@ a.bookmark-title-updated:hover {
     color: var(--text-primary);
   }
 
-  #navbar
-    ul#navlist
-    li.navlist-selected
-    ul.subnavlist-selected
-    li.submenuitem-selected {
+  #navbar,
+  ul#navlist,
+  li.navlist-selected,
+  ul.subnavlist-selected,
+  li.submenuitem-selected {
     background: var(--gray-nav);
   }
 
@@ -2201,10 +2215,6 @@ a.bookmark-title-updated:hover {
     padding: 0;
     visibility: hidden;
     opacity: 0;
-    -webkit-transform: translateY(-2em);
-    -moz-transform: translateY(-2em);
-    -ms-transform: translateY(-2em);
-    -o-transform: translateY(-2em);
     transform: translateY(-2em);
     -webkit-transition: all 0.3s;
     -o-transition: all 0.3s;
@@ -2218,10 +2228,6 @@ a.bookmark-title-updated:hover {
     z-index: 1;
     visibility: visible;
     opacity: 1;
-    -webkit-transform: translateY(0%);
-    -moz-transform: translateY(0%);
-    -ms-transform: translateY(0%);
-    -o-transform: translateY(0%);
     transform: translateY(0%);
   }
 
@@ -2234,10 +2240,6 @@ a.bookmark-title-updated:hover {
     padding: 0;
     visibility: hidden;
     opacity: 0;
-    -webkit-transform: translateY(-2em);
-    -moz-transform: translateY(-2em);
-    -ms-transform: translateY(-2em);
-    -o-transform: translateY(-2em);
     transform: translateY(-2em);
     -webkit-transition: all 0.3s;
     -o-transition: all 0.3s;
@@ -2251,10 +2253,6 @@ a.bookmark-title-updated:hover {
     z-index: 1;
     visibility: visible;
     opacity: 1;
-    -webkit-transform: translateY(0%);
-    -moz-transform: translateY(0%);
-    -ms-transform: translateY(0%);
-    -o-transform: translateY(0%);
     transform: translateY(0%);
   }
 
@@ -2286,8 +2284,6 @@ a.bookmark-title-updated:hover {
   #page-_seclevels_ #configFormSecLevels table tbody tr td input {
     width: 100%;
     margin-bottom: 10px;
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
     box-sizing: border-box;
   }
 
@@ -2322,8 +2318,6 @@ a.bookmark-title-updated:hover {
   #masterPasswordForm input[type="password"] {
     width: 100%;
     margin: 0;
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
     box-sizing: border-box;
   }
 
@@ -2336,47 +2330,47 @@ a.bookmark-title-updated:hover {
     width: 50%;
   }
 
-  #page-_uploads_
-    #request-table-form-completed-upload-file-advanced
-    table.requests {
+  #page-_uploads_,
+  #request-table-form-completed-upload-file-advanced,
+  table.requests {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
   }
 
-  #page-_uploads_
-    #request-table-form-completed-upload-file-advanced
-    table.requests
-    th {
+  #page-_uploads_,
+  #request-table-form-completed-upload-file-advanced,
+  table.requests,
+  th {
     padding: 2px 5px;
   }
 
-  #page-_uploads_
-    #request-table-form-completed-upload-file-advanced
-    table.requests
-    td {
+  #page-_uploads_,
+  #request-table-form-completed-upload-file-advanced,
+  table.requests,
+  td {
     padding: 2px 5px;
   }
 
-  #page-_downloads_
-    #request-table-form-failed-download-file-unknownmime-advanced
-    table.requests {
+  #page-_downloads_,
+  #request-table-form-failed-download-file-unknownmime-advanced,
+  table.requests {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
   }
 
-  #page-_downloads_
-    #request-table-form-failed-download-file-unknownmime-advanced
-    table.requests
-    th {
+  #page-_downloads_,
+  #request-table-form-failed-download-file-unknownmime-advanced,
+  table.requests,
+  th {
     padding: 2px 5px;
   }
 
-  #page-_downloads_
-    #request-table-form-failed-download-file-unknownmime-advanced
-    table.requests
-    td {
+  #page-_downloads_,
+  #request-table-form-failed-download-file-unknownmime-advanced,
+  table.requests,
+  td {
     padding: 2px 5px;
   }
 }
