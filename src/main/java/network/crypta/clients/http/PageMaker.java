@@ -310,6 +310,46 @@ public final class PageMaker {
     headNode.addChild("title", title + " - Crypta");
     // To make something only rendered when javascript is on, then add the jsonly class to it
     headNode.addChild("noscript").addChild("style", " .jsonly {display:none;}");
+    headNode.addChild(
+        new HTMLNode(
+            "%",
+            """
+            <style>
+              :root[data-theme="dark"] {
+                --bg-primary: #1a1a1a;
+                --text-primary: #e0e0e0;
+              }
+              :root[data-theme="light"] {
+                --bg-primary: #fff;
+                --text-primary: #333;
+              }
+            </style>
+
+            <script>
+              try {
+                let current_theme = "light";
+                const m = localStorage.getItem("theme-mode"); // 'light' | 'dark' | 'system' | null
+                const d = document.documentElement;
+
+                if (m === null) {
+                  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    current_theme = "dark";
+                  }
+                } else {
+                  current_theme = m;
+                }
+
+                if (current_theme === "dark") {
+                  d.setAttribute("data-theme", "dark");
+                  d.style.colorScheme = "dark";
+                } else if (current_theme === "light") {
+                  d.setAttribute("data-theme", "light");
+                  d.style.colorScheme = "light";
+                }
+                // If m === 'system', 'auto', or null, leave attribute unset → CSS follows OS prefers-color-scheme
+              } catch {}
+            </script>
+            """));
     if (override != null) {
       headNode.addChild(getOverrideContent());
     } else {

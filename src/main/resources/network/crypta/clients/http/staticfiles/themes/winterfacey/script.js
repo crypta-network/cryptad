@@ -801,7 +801,7 @@ const ThemeSwitcherModule = (() => {
     if (currentTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
     } else {
-      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   };
 
