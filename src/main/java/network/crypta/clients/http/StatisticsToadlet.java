@@ -504,7 +504,7 @@ public class StatisticsToadlet extends Toadlet {
         HTMLNode threadsPriorityInfobox = nextTableCell.addChild("div", "class", "infobox");
         drawThreadPriorityStatsBox(threadsPriorityInfobox);
 
-        nextTableCell = overviewTableRow.addChild("td");
+        //        nextTableCell = overviewTableRow.addChild("td");
 
         // thread usage box
         HTMLNode threadUsageInfobox = nextTableCell.addChild("div", "class", "infobox");

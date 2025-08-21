@@ -1,3 +1,9 @@
+# Cryptaforge Theme
+
+This theme is based on the Winterfacey theme, featuring modern design with dark mode support, clean typography, and responsive layouts.
+
+## CSS Style Guide
+
 Please use the following trees' rules for future changes in CSS to maintain its structure:
 
 ```

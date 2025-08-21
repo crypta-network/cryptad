@@ -22,72 +22,14 @@ public final class PageMaker {
   public static final int MODE_ADVANCED = 2;
 
   public enum THEME {
-    BOXED("boxed", "Boxed (Top menu)", "", false, false),
-    BOXED_CLASSIC("boxed-classic", "Boxed (Classic menu)", "", false, false),
-    BOXED_DROPDOWN("boxed-dropdown", "Boxed (Dropdown menu)", "", false, false),
-    BOXED_DYNAMIC("boxed-classic", "Boxed (Dynamic menu)", "", false, false),
-    BOXED_STATIC("boxed-static", "Boxed (Static menu)", "", false, false),
-    CLEAN("clean", "Clean", "Mr. Proper", false, false),
-    CLEAN_CLASSIC(
-        "clean-classic", "Clean (Classic menu)", "Clean theme with a classic menu.", false, false),
-    CLEAN_DROPDOWN(
-        "clean-dropdown",
-        "Clean (Dropdown menu)",
-        "Clean theme with a dropdown menu.",
-        false,
-        false),
-    CLEAN_STATIC(
-        "clean-static", "Clean (Static menu)", "Clean theme with a static menu.", false, false),
-    CLEAN_TOP("clean-top", "Clean (Top menu)", "Clean theme with a static top menu.", false, false),
-    GRAYANDBLUE("grayandblue", "Gray And Blue (Classic menu)", "", false, false),
-    GRAYANDBLUE_DYNAMIC("grayandblue-dynamic", "Gray And Blue (Dynamic menu)", "", false, false),
-    GRAYANDBLUE_DROPDOWN("grayandblue-dropdown", "Gray And Blue (Dropdown menu)", "", false, false),
-    GRAYANDBLUE_STATIC("grayandblue-static", "Gray And Blue (Static menu)", "", false, false),
-    GRAYANDBLUE_TOP("grayandblue-top", "Gray And Blue (Top menu)", "", false, false),
-    SKY("sky", "Sky (Top menu)", "", false, false),
-    SKY_CLASSIC("sky-classic", "Sky (Classic menu)", "", false, false),
-    SKY_DROPDOWN("sky-dropdown", "Sky (Dropdown menu)", "", false, false),
-    SKY_DYNAMIC("sky-dynamic", "Sky (Dynamic menu)", "", false, false),
-    SKY_STATIC("sky-static", "Sky (Static menu)", "", false, false),
-    SKY_DARK_STATIC("sky-dark-static", "Sky Dark (Static menu)", "", false, false),
-    MINIMALBLUE("minimalblue", "Minimal Blue", "A minimalistic theme in blue", false, false),
-    MINIMALISTIC(
-        "minimalist",
-        "Minimalistic",
-        "A very minimalistic theme based on Google's designs",
+    CRYPTAFORGE(
+        "cryptaforge",
+        "Cryptaforge",
+        "Modern theme with dark mode support and clean design",
         true,
-        true),
-    RABBIT_HOLE("rabbit-hole", "Into the Rabbit Hole", "Simple and clean theme", false, false),
-    WINTERFACEY(
-        "winterfacey", "Winterfacey", "2016th-theme, based on Winterface (Bootstrap)", true, false);
+        false);
 
-    public static final String[] possibleValues = {
-      BOXED.code,
-      BOXED_CLASSIC.code,
-      BOXED_DROPDOWN.code,
-      BOXED_DYNAMIC.code,
-      BOXED_STATIC.code,
-      CLEAN.code,
-      CLEAN_CLASSIC.code,
-      CLEAN_DROPDOWN.code,
-      CLEAN_STATIC.code,
-      CLEAN_TOP.code,
-      GRAYANDBLUE.code,
-      GRAYANDBLUE_DYNAMIC.code,
-      GRAYANDBLUE_DROPDOWN.code,
-      GRAYANDBLUE_STATIC.code,
-      GRAYANDBLUE_TOP.code,
-      SKY.code,
-      SKY_CLASSIC.code,
-      SKY_DROPDOWN.code,
-      SKY_DYNAMIC.code,
-      SKY_STATIC.code,
-      SKY_DARK_STATIC.code,
-      MINIMALBLUE.code,
-      MINIMALISTIC.code,
-      RABBIT_HOLE.code,
-      WINTERFACEY.code
-    };
+    public static final String[] possibleValues = {CRYPTAFORGE.code};
 
     public final String code; // the internal name
     public final String name; // the name in "human form"
@@ -132,7 +74,7 @@ public final class PageMaker {
     }
 
     public static THEME getDefault() {
-      return THEME.WINTERFACEY;
+      return THEME.CRYPTAFORGE;
     }
   }
 
@@ -310,6 +252,46 @@ public final class PageMaker {
     headNode.addChild("title", title + " - Crypta");
     // To make something only rendered when javascript is on, then add the jsonly class to it
     headNode.addChild("noscript").addChild("style", " .jsonly {display:none;}");
+    headNode.addChild(
+        new HTMLNode(
+            "%",
+            """
+            <style>
+              :root[data-theme="dark"] {
+                --bg-primary: #1a1a1a;
+                --text-primary: #e0e0e0;
+              }
+              :root[data-theme="light"] {
+                --bg-primary: #fff;
+                --text-primary: #333;
+              }
+            </style>
+
+            <script>
+              try {
+                let current_theme = "light";
+                const m = localStorage.getItem("theme-mode"); // 'light' | 'dark' | 'system' | null
+                const d = document.documentElement;
+
+                if (m === null) {
+                  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    current_theme = "dark";
+                  }
+                } else {
+                  current_theme = m;
+                }
+
+                if (current_theme === "dark") {
+                  d.setAttribute("data-theme", "dark");
+                  d.style.colorScheme = "dark";
+                } else if (current_theme === "light") {
+                  d.setAttribute("data-theme", "light");
+                  d.style.colorScheme = "light";
+                }
+                // If m === 'system', 'auto', or null, leave attribute unset → CSS follows OS prefers-color-scheme
+              } catch {}
+            </script>
+            """));
     if (override != null) {
       headNode.addChild(getOverrideContent());
     } else {
