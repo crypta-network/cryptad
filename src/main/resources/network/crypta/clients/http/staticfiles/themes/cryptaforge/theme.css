@@ -1,5 +1,5 @@
 /*
- * Winterfacey Theme for Crypta (Refactored)
+ * Cryptaforge Theme for Crypta (Refactored)
  * Dark-mode now handled purely by CSS variables.
  * All component rules read from variables so we only override tokens
  * in the @media (prefers-color-scheme: dark) block.

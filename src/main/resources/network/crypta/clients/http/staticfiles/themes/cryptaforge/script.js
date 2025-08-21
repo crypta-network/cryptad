@@ -995,7 +995,7 @@ const ThemeSwitcherModule = (() => {
    * Initializes all application modules
    */
   const initializeModules = () => {
-    console.debug('Initializing WinterFacey theme modules...');
+    console.debug('Initializing Cryptaforge theme modules...');
 
     modules.forEach(({ name, module }) => {
       try {
@@ -1006,7 +1006,7 @@ const ThemeSwitcherModule = (() => {
       }
     });
 
-    console.debug('WinterFacey theme initialization complete');
+    console.debug('Cryptaforge theme initialization complete');
   };
 
   /**

@@ -58,8 +58,12 @@ public final class PageMaker {
         true,
         true),
     RABBIT_HOLE("rabbit-hole", "Into the Rabbit Hole", "Simple and clean theme", false, false),
-    WINTERFACEY(
-        "winterfacey", "Winterfacey", "2016th-theme, based on Winterface (Bootstrap)", true, false);
+    CRYPTAFORGE(
+        "cryptaforge",
+        "Cryptaforge",
+        "Modern theme with dark mode support and clean design",
+        true,
+        false);
 
     public static final String[] possibleValues = {
       BOXED.code,
@@ -86,7 +90,7 @@ public final class PageMaker {
       MINIMALBLUE.code,
       MINIMALISTIC.code,
       RABBIT_HOLE.code,
-      WINTERFACEY.code
+      CRYPTAFORGE.code
     };
 
     public final String code; // the internal name
@@ -132,7 +136,7 @@ public final class PageMaker {
     }
 
     public static THEME getDefault() {
-      return THEME.WINTERFACEY;
+      return THEME.CRYPTAFORGE;
     }
   }
 
