@@ -434,18 +434,37 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       result.asBucket().free();
     } else {
       // Break locks, don't run filtering on FEC thread etc etc.
+      // Create a defensive copy of the bucket to prevent "Already freed" race condition
+      Bucket originalBucket = result.asBucket();
+      Bucket bucketCopy;
+      try {
+        bucketCopy = context.getBucketFactory(persistent()).makeBucket(originalBucket.size());
+        BucketTools.copy(originalBucket, bucketCopy);
+      } catch (IOException e) {
+        Logger.error(this, "Failed to create defensive copy of bucket: " + e, e);
+        originalBucket.free();
+        rcb.onFailure(
+            new FetchException(FetchExceptionMode.BUCKET_ERROR, "Failed to copy bucket", e),
+            this,
+            context);
+        return;
+      }
+
       context
           .getJobRunner(persistent())
           .queueInternal(
               context1 -> {
                 rcb.onSuccess(
-                    new SingleFileStreamGenerator(result.asBucket(), persistent),
+                    new SingleFileStreamGenerator(bucketCopy, persistent),
                     result.getMetadata(),
                     decompressors,
                     SingleFileFetcher.this,
                     context1);
                 return true;
               });
+
+      // Free the original bucket now that we have a copy
+      originalBucket.free();
     }
   }
 
