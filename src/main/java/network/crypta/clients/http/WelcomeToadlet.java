@@ -90,7 +90,10 @@ public class WelcomeToadlet extends Toadlet {
           String initialKey = item.getKey();
           String key = '/' + initialKey + (initialKey.endsWith("/") ? "" : "/") + "activelink.png";
           cell.addChild("div", "style", "height: 36px; width: 108px;")
-              .addChild("a", "href", '/' + item.getKey())
+              .addChild(
+                  "a",
+                  new String[] {"href", "target"},
+                  new String[] {'/' + item.getKey(), "_blank"})
               .addChild(
                   "img",
                   new String[] {"src", "alt", "style", "title"},
@@ -106,8 +109,8 @@ public class WelcomeToadlet extends Toadlet {
         String linkClass = updated ? "bookmark-title-updated" : "bookmark-title";
         cell.addChild(
             "a",
-            new String[] {"href", "title", "class"},
-            new String[] {'/' + item.getKey(), item.getDescription(), linkClass},
+            new String[] {"href", "title", "class", "target"},
+            new String[] {'/' + item.getKey(), item.getDescription(), linkClass, "_blank"},
             item.getVisibleName());
 
         String explain = item.getShortDescription();
