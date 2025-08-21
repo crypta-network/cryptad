@@ -408,7 +408,7 @@ const BookmarksModule = (() => {
     }
 
     try {
-      window.location.href = bookmarkUrl;
+      window.open(bookmarkUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error('Failed to navigate to bookmark:', error);
     }
@@ -552,7 +552,9 @@ const ActivelinkModule = (() => {
     // Click handler
     placeholder.addEventListener('click', () => {
       try {
-        parentLink.click();
+        if (parentLink.href) {
+          window.open(parentLink.href, '_blank', 'noopener,noreferrer');
+        }
       } catch (error) {
         console.error('Failed to trigger parent link click:', error);
       }
