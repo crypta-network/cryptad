@@ -526,7 +526,11 @@ public final class PageMaker {
     }
 
     topBarDiv.addChild("h1", title);
-    if (renderParameters.isRenderNavigationLinks()) {
+    // Only render navigation when we have a valid ToadletContext.
+    // When ctx is null (e.g., pages generated via old FredPluginHTTP API),
+    // evaluating LinkEnabledCallbacks may dereference the null context
+    // (e.g., LogInToadlet.isEnabled(ctx)), causing NPEs.
+    if (renderParameters.isRenderNavigationLinks() && ctx != null) {
       SubMenu selected = null;
       // Render the full menu.
       HTMLNode navbarDiv = pageDiv.addChild("div", "id", "navbar");
@@ -539,6 +543,7 @@ public final class PageMaker {
           for (String navigationLink :
               fullAccess ? menu.navigationLinkTexts : menu.navigationLinkTextsNonFull) {
             LinkEnabledCallback cb = menu.navigationLinkCallbacks.get(navigationLink);
+            // Harden against null ctx: skip callback evaluation without a context.
             if (cb != null && !cb.isEnabled(ctx)) {
               continue;
             }
@@ -659,7 +664,8 @@ public final class PageMaker {
         for (String navigationLink :
             fullAccess ? selected.navigationLinkTexts : selected.navigationLinkTextsNonFull) {
           LinkEnabledCallback cb = selected.navigationLinkCallbacks.get(navigationLink);
-          if (cb != null && !cb.isEnabled(ctx)) {
+          // Harden against null ctx: skip callback evaluation without a context.
+          if (cb != null && ctx != null && !cb.isEnabled(ctx)) {
             continue;
           }
           nonEmpty = true;
