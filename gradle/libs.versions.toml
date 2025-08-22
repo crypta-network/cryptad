@@ -1,6 +1,5 @@
 [versions]
 kotlin = "2.2.0"
-nebulaRelease = "21.0.0"
 bcprov = "2.73.7"
 jna = "5.17.0"
 freenetExt = "29"
@@ -28,4 +27,3 @@ objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objene
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-nebulaRelease = { id = "nebula.release", version.ref = "nebulaRelease" }
