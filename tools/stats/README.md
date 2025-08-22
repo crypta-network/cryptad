@@ -18,7 +18,7 @@ Requirements
 
 Usage (example)
 1) Start a node locally with console and FCP enabled.
-2) In `contrib/stats/probe_test`, compile `ProbeTester.java` if needed:
+2) In `tools/stats/probe_test`, compile `ProbeTester.java` if needed:
    - `javac MersenneTwister.java ProbeTester.java`
 3) Run a probe batch (e.g., 120 probes per process):
    - `./probe_test.sh 120`
@@ -28,4 +28,3 @@ Usage (example)
 Notes
 - This is optional tooling for monitoring and research; it is not part of the daemon build/runtime.
 - Probing and uploads can create load on your node and network; use responsibly and adjust frequency as needed.
-
