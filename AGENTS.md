@@ -1,8 +1,17 @@
 # Project Configuration
 
+## Project Overview
+
+Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore. It is a fork of
+Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This
+repository contains the reference node implementation (the "Crypta reference daemon") written primarily in Java with
+some Kotlin components.
+
 ## Development Guidelines
 
 - Primary language: Kotlin/Java
+    - New files should be always in Kotlin
+    - Prefer top-level functions over wrapping in objects/classes when appropriate (idiomatic Kotlin)
 - Code style:
     - Kotlin: Official coding convention described [here](https://kotlinlang.org/docs/coding-conventions.html)
     - Java: Google Java Style Guide described [here](https://google.github.io/styleguide/javaguide.html)
@@ -13,6 +22,36 @@
 - Do not use "--no-daemon" for Gradle
 - If the Java Runtime cannot be located, or if any other errors occur when running a command, request approval to
   proceed. Do not skip the command.
+
+When operating as an autonomous or semi-autonomous agent, proactively leverage specialized skills/roles based on the
+current task (e.g., context management, Kotlin/Java expertise, debugging, performance/security review, search, and
+architecture review).
+
+## Development Commands
+
+### Building
+
+- Build the node JAR: `./gradlew buildJar`
+- Clean build: `./gradlew clean buildJar`
+- Build output hash: The build prints the SHA-256 of `build/libs/cryptad.jar`
+
+### Testing
+
+- Run all tests in parallel: `./gradlew --parallel test`
+- Run specific test class: `./gradlew --parallel test --tests *TestClassName`
+- Run specific test method: `./gradlew --parallel test --tests *TestClassName.methodName`
+
+### Code Quality
+
+- Compile only: `./gradlew compileJava`
+- Spotless and dependency verification guidance is provided below
+
+### Running Your Build
+
+1. Build: `./gradlew buildJar`
+2. Stop the running node
+3. Replace the existing node JAR with `build/libs/cryptad.jar`
+4. Restart the node
 
 ## Repository Etiquette
 
@@ -30,11 +69,112 @@
 
 ## Project-Specific Notes
 
+## Architecture Overview
+
+### Core Network Layer (`network.crypta.node`)
+
+- Node coordination: `Node.java`
+- Peer management: `PeerNode`, `PeerManager`
+- Network transport: `PacketSender`, `FNPPacketMangler`
+- Request orchestration: `RequestStarter`, `RequestScheduler`
+- Updates: `NodeUpdateManager`
+
+### Content Storage (`network.crypta.store`)
+
+- Storage abstractions: `FreenetStore`
+- CHK/SSK stores: `CHKStore`, `SSKStore`
+- Caching: `SlashdotStore`
+
+### Cryptography (`network.crypta.crypt`)
+
+- Encryption: Block cipher/AES
+- Signatures: DSA/ECDSA
+- Hashing: SHA-256 and others
+- RNG: `RandomSource`/Yarrow
+
+### Key Management (`network.crypta.keys`)
+
+- Client keys: `ClientCHK`, `ClientSSK`
+- URIs: `FreenetURI`
+- Updatable keys: USK
+
+### Client APIs
+
+- High-level client: `network.crypta.client`
+- FCP: `network.crypta.clients.fcp`
+- HTTP interface: `network.crypta.clients.http`
+
+### Plugin System (`network.crypta.pluginmanager`)
+
+- Management: `PluginManager`
+- Capability interfaces: `FredPlugin*`
+- Catalog: `OfficialPlugins`
+
+### Configuration (`network.crypta.config`)
+
+- Flexible type-safe configuration with persistence
+
+### Supporting Infrastructure (`network.crypta.support`)
+
+- Logging, data structures, threading, and helpers
+
+## Key Design Patterns
+
+### Request Routing
+
+1. `RequestStarter` initiates requests
+2. `RequestScheduler` manages queues and priorities
+3. `SendableRequest` implementations perform request types
+4. Routing uses location-based algorithms for discovery
+
+### Update System
+
+- `NodeUpdateManager` coordinates updates
+- `MainJarUpdater` updates the main application
+- `PluginJarUpdater` manages plugin updates
+- Update-over-Mandatory (UOM) for network-wide updates
+
+### Security Model
+
+- Content-addressed storage with cryptographic verification
+- Encrypted link-level communication; request routing designed to conceal origin/destination
+- Digital signatures for content authentication
+
 ## Key Tools and Instructions for Them
 
 - Kotlin lint: ktlint has been installed
 - Build: ./gradlew build
 - Test: ./gradlew :test --tests [replace with TestClassName]
+
+## Versioning System
+
+- Single integer build number set in `build.gradle.kts` (`version = "<int>"`)
+- Version tokens are replaced into `network/crypta/node/Version.kt` during build (`@build_number@`, `@git_rev@`)
+- Version strings support both Cryptad and Fred formats; compatibility enforces protocol match and minimum builds
+- Freenet interop: uses historical identifiers (e.g., `"Fred,0.7"`) for wire compatibility where applicable
+
+## Build System
+
+- Gradle with Kotlin DSL
+- Targets Java 21+
+- Kotlin components present alongside Java
+- Dependency verification is configured and typically strict (temporarily set to lenient only when updating metadata)
+- Version info (`Version.kt`) generated with current build number and git revision
+
+## Testing Strategy
+
+- Unit tests for core utilities and logic
+- Integration tests for network components and protocols
+- Cryptographic tests for primitives
+- Client API tests (FCP and HTTP)
+
+## Important Notes
+
+- Requires Java 21+ to compile and run
+- Updater supports automatic updates and includes legacy-related utilities (e.g., `LegacyJarFetcher`)
+- Custom crypto implementations; avoid changes without review
+- Network protocol changes must consider backward compatibility
+- Simulator components exist for network behavior testing
 
 ## Auto-MCP Configuration
 
