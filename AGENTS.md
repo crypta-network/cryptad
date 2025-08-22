@@ -20,6 +20,7 @@ some Kotlin components.
 - After editing a Java or Kotlin file, please check for any missing or poorly written JavaDoc/KDoc comments. Add or
   improve them as needed.
 - Do not use "--no-daemon" for Gradle
+- Always request escalated permissions when running any Gradle command
 - If the Java Runtime cannot be located, or if any other errors occur when running a command, request approval to
   proceed. Do not skip the command.
 
@@ -176,13 +177,6 @@ architecture review).
 - Network protocol changes must consider backward compatibility
 - Simulator components exist for network behavior testing
 
-## Auto-MCP Configuration
-
-# Automatically configures MCP servers based on project type
-
-project_type: full-stack
-auto_mcp:
-
 ## Spotless + Dependency Verification
 
 When Gradle dependency verification is strict, Spotless may fail to resolve `google-java-format` and other tool artifacts, even with `mavenCentral()` configured.
@@ -209,3 +203,8 @@ Tips
 - Keep Spotless config at the intended formatter version (currently `googleJavaFormat("1.28.0")`).
 - If verification still blocks resolution, re-run the metadata write with `pgp` and ensure the group-level trusted key entry exists.
  - Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
+
+## Dependency Metadata
+
+- `dependencies.properties`: consumed by Java updater/runtime (e.g., `MainJarDependenciesChecker`), not by Gradle.
+- Gradle dependencies use the version catalog `gradle/libs.versions.toml` and `build.gradle.kts`.
