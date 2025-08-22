@@ -9,7 +9,7 @@ plugins {
     id("com.diffplug.spotless") version "7.2.1"
 }
 
-// Set version manually instead of using Nebula Release plugin
+// Update version manually before a new release development starts
 version = "1"
 
 java {
