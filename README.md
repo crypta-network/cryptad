@@ -1,8 +1,23 @@
 <p align="center"><img src="docs/images/crypta_logo.png" alt="Crypta Logo" width="160"></p>
-<h1 align="center" style="padding-top: 0; margin-top: 0;">Crypta</h1>
+<h1 align="center" style="padding-top: 0; margin-top: 0;"><strong>Crypta</strong></h1>
+<p align="center"><em><strong>Crypta</strong> is a privacy‑first, decentralized datastore and app platform — a modern fork of Hyphanet/Freenet.</em></p>
 
-Crypta is a platform for censorship‑resistant communication and publishing. It is a fork of Hyphanet (formerly Freenet)
-that builds on its core ideas while modernizing usability, performance, and developer experience. Crypta provides a
+<p align="center">
+  <a href="https://github.com/crypta-network/cryptad/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/crypta-network/cryptad/actions/workflows/ci.yml/badge.svg?branch=main" />
+  </a>
+  <a href="https://www.gnu.org/licenses/gpl-3.0">
+    <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
+  </a>
+  <img alt="Java 21+" src="https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk" />
+  <img alt="Kotlin 2.2+" src="https://img.shields.io/badge/Kotlin-2.2%2B-7F52FF?logo=kotlin" />
+  <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
+</p>
+
+## Overview
+
+**Crypta** is a platform for censorship‑resistant communication and publishing. It is a fork of Hyphanet (formerly Freenet)
+that builds on its core ideas while modernizing usability, performance, and developer experience. **Crypta** provides a
 peer‑to‑peer, distributed, encrypted, and decentralized datastore on top of which applications such as forums, chat,
 micro‑blogs, and websites can run without central servers.
 
@@ -16,7 +31,7 @@ frictions hold it back:
 - Observability without compromising privacy: network‑wide performance and health are hard to measure, making tuning and
   evolution slow and error‑prone.
 
-Crypta’s vision is to keep the privacy and resilience, while making it pleasant, fast, and sustainable to use and build
+**Crypta**’s vision is to keep the privacy and resilience, while making it pleasant, fast, and sustainable to use and build
 on:
 
 - User experience first: a modern web UI, sensible defaults, and a one‑click guided onboarding that hides complexity
@@ -29,10 +44,26 @@ on:
 - A better platform: Kotlin‑first codebase, a stable plugin SDK, typed configuration, and testable interfaces to make
   extending the network straightforward.
 
-This repository contains the reference node (the “Crypta reference daemon”) that participates in the network, stores
+This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
 data, and serves applications.
 
-![Crypta UI – Screenshot](docs/images/screenshot.png)
+![**Crypta** UI – Screenshot](docs/images/screenshot.png)
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Building](#building)
+- [Testing](#testing)
+- [Code Quality](#code-quality)
+- [Running Your Build](#running-your-build)
+- [Development Guidelines](#development-guidelines)
+- [Dependencies](#dependencies)
+- [Spotless + Dependency Verification](#spotless--dependency-verification)
+- [Versioning](#versioning)
+- [Branching & Releases](#branching--releases)
+- [Architecture Overview](#architecture-overview)
+- [License](#license)
 
 ## Building
 
@@ -47,11 +78,15 @@ Prerequisites:
 
 Build the node JAR (prints SHA‑256 of the output):
 
-    ./gradlew buildJar
+```bash
+./gradlew buildJar
+```
 
 Clean build:
 
-    ./gradlew clean buildJar
+```bash
+./gradlew clean buildJar
+```
 
 The wrapper is configured to [verify the distribution checksum](gradle/wrapper/gradle-wrapper.properties) from
 `https://services.gradle.org`.
@@ -60,41 +95,51 @@ The wrapper is configured to [verify the distribution checksum](gradle/wrapper/g
 
 - Run all tests in parallel:
 
-  ./gradlew --parallel test
+```bash
+./gradlew --parallel test
+```
 
 - Run a specific test class:
 
-  ./gradlew --parallel test --tests *TestClassName
+```bash
+./gradlew --parallel test --tests *TestClassName
+```
 
 - Run a specific test method:
 
-  ./gradlew --parallel test --tests *TestClassName.methodName
+```bash
+./gradlew --parallel test --tests *TestClassName.methodName
+```
 
 ## Code Quality
 
 - Compile only:
 
-  ./gradlew compileJava
+```bash
+./gradlew compileJava
+```
 
 - Formatting via Spotless is configured; see the Spotless + Dependency Verification section if verification blocks resolution.
 - Gradle daemon is enabled by default; avoid passing `--no-daemon`.
 
 ## Running Your Build
 
-To try your local build of Crypta:
+To try your local build of **Crypta**:
 
 1. Build it with `./gradlew buildJar`.
 2. Stop your running node.
 3. Replace the existing node JAR with `build/libs/cryptad.jar` produced by the build.
 4. Start your node again.
 
-To override Gradle settings, create `gradle.properties` (see
-the [Gradle docs](https://docs.gradle.org/8.11/userguide/build_environment.html)) and add entries like:
+To override Gradle settings, create `gradle.properties` (see the
+[Gradle docs](https://docs.gradle.org/8.11/userguide/build_environment.html)) and add entries like:
 
-    org.gradle.parallel=true
-    org.gradle.daemon=true
-    org.gradle.jvmargs=-Xms256m -Xmx1024m
-    org.gradle.configureondemand=true
+```properties
+org.gradle.parallel=true
+org.gradle.daemon=true
+org.gradle.jvmargs=-Xms256m -Xmx1024m
+org.gradle.configureondemand=true
+```
 
 ## Development Guidelines
 
@@ -142,6 +187,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - During build, tokens are replaced into `network/crypta/node/Version.kt` (e.g., `@build_number@`, `@git_rev@`).
 - Version strings support both Cryptad and Fred formats for wire compatibility; protocol compatibility enforces minimum builds.
 
+## Branching & Releases
+
+- [Standard branching and release workflow](../../wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad)
+- [Release workflow and operations runbook](../../wiki/Cryptad-Release-Workflow-and-Runbook)
+
 ## Architecture Overview
 
 - Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
@@ -159,7 +209,7 @@ distribution process.
 
 ## License
 
-Crypta is free software licensed under the GNU General Public License, version 3 only. See `LICENSE` for the full text.
+**Crypta** is free software licensed under the GNU General Public License, version 3 only. See `LICENSE` for the full text.
 
 Some bundled components may be under permissive licenses (e.g., Apache‑2.0, BSD‑3‑Clause). These are compatible with
 GPLv3 and included under their respective terms.
