@@ -22,7 +22,6 @@ val versionSrc = "network/crypta/node/Version.kt"
 
 repositories {
     mavenCentral()
-    flatDir { dirs(uri("${projectDir}/lib")) }
     maven(url = "https://mvn.freenetproject.org") {
         metadataSources { artifact() }
     }
