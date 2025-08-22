@@ -47,7 +47,11 @@ on:
 This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
 data, and serves applications.
 
-![**Crypta** UI – Screenshot](docs/images/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/screenshot_light.png">
+  <img alt="Fallback image description" src="docs/images/screenshot_dark.png">
+</picture>
 
 ## Table of Contents
 
