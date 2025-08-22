@@ -189,8 +189,8 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 ## Branching & Releases
 
-- [Standard branching and release workflow](/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad)
-- [Release workflow and operations runbook](/crypta-network/cryptad/wiki/Cryptad-Release-Workflow-and-Runbook)
+- [Standard branching and release workflow](https://github.com/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad)
+- [Release workflow and operations runbook](https://github.com/crypta-network/cryptad/wiki/Cryptad-Release-Workflow-and-Runbook)
 
 ## Architecture Overview
 
