@@ -63,7 +63,8 @@ public class Inet6AddressMatcher implements AddressMatcher {
     int endCount = -1;
     if (address.startsWith(":")) {
       if (address.startsWith("::")) {
-        if (address == "::") {
+        // Use equals() for string comparison to correctly detect the :: IPv6 shorthand
+        if ("::".equals(address)) {
           return addressBytes; // Return 0:0:0:0:0:0:0:0
         }
         tokenPosition = 2; // This is an empty token, could be mistaken as duplicate ::
