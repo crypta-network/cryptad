@@ -64,7 +64,7 @@ tasks.compileJava {
 }
 
 val gitrev: String = try {
-    val cmd = "git describe --always --abbrev=4 --dirty"
+    val cmd = "git rev-parse --short HEAD"
     ProcessBuilder(cmd.split(" "))
         .directory(rootDir)
         .start()
