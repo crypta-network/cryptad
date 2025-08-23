@@ -31,7 +31,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
 import network.crypta.node.NodeInitException;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerNode;
 import network.crypta.node.ProgramDirectory;
@@ -1667,10 +1666,6 @@ public class NodeUpdateManager {
   /** What version is the node currently running? */
   public int getMainVersion() {
     return Version.currentBuildNumber();
-  }
-
-  public int getExtVersion() {
-    return NodeStarter.extBuildNumber;
   }
 
   public boolean isArmed() {

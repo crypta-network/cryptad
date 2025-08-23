@@ -22,7 +22,6 @@ import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.node.Node;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
@@ -93,14 +92,6 @@ public class DiagnosticToadlet extends Toadlet {
                     Version.gitRevision()
                   }))
           .append("\n");
-      textBuilder.append(
-          baseL10n.getString(
-              "WelcomeToadlet.extVersion",
-              new String[] {"build", "rev"},
-              new String[] {
-                Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber
-              }));
-      textBuilder.append("\n");
 
       // drawNodeVersionBox
       textBuilder.append("System Information:\n");

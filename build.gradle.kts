@@ -22,9 +22,6 @@ val versionSrc = "network/crypta/node/Version.kt"
 
 repositories {
     mavenCentral()
-    maven(url = "https://mvn.freenetproject.org") {
-        metadataSources { artifact() }
-    }
 }
 
 sourceSets {
@@ -136,8 +133,6 @@ val buildJar by tasks.registering(Jar::class) {
         attributes(
             "Permissions" to "all-permissions",
             "Application-Name" to "Crypta Daemon",
-            "Required-Ext-Version" to 29,
-            "Recommended-Ext-Version" to 29,
             "Compiled-With" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
             "Specification-Title" to "Crypta",
             "Specification-Version" to project.version.toString(),
@@ -287,7 +282,8 @@ dependencies {
     implementation(libs.bcpkix)
     implementation(libs.jna)
     implementation(libs.jnaPlatform)
-    implementation(libs.freenetExt)
+    implementation(libs.commonsCompress)
+    implementation(files("libs/wrapper.jar"))
     implementation(libs.pebble)
     implementation(libs.unbescape)
     implementation(libs.slf4jApi)

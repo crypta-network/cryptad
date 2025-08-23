@@ -2,7 +2,6 @@ package network.crypta.node;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
-import freenet.node.ExtVersion;
 import java.io.File;
 import java.io.IOException;
 import java.security.SecureRandom;
@@ -39,13 +38,6 @@ public class NodeStarter implements WrapperListener {
   (File.separatorChar == '\\') &&
   (System.getProperty("os.arch").toLowerCase().matches("(i?[x0-9]86_64|amd64)")) ? 6 : 2;
    */
-  public static final int extBuildNumber;
-  public static final String extRevisionNumber;
-
-  static {
-    extBuildNumber = ExtVersion.extBuildNumber();
-    extRevisionNumber = ExtVersion.extRevisionNumber();
-  }
 
   /*---------------------------------------------------------------
    * Constructors
@@ -544,18 +536,6 @@ public class NodeStarter implements WrapperListener {
       e.printStackTrace();
       return -2;
     }
-
-    String builtWithMessage =
-        "cryptad.jar built with freenet-ext.jar Build #"
-            + ExtVersion.buildNumber
-            + " r"
-            + ExtVersion.cvsRevision
-            + " running with ext build "
-            + extBuildNumber
-            + " r"
-            + extRevisionNumber;
-    Logger.normal(this, builtWithMessage);
-    System.out.println(builtWithMessage);
 
     System.out.println("Starting executor...");
     executor.start();

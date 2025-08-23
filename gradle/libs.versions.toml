@@ -2,7 +2,7 @@
 kotlin = "2.2.0"
 bcprov = "2.73.7"
 jna = "5.17.0"
-freenetExt = "29"
+commonsCompress = "1.28.0"
 pebble = "3.2.4"
 unbescape = "1.1.6.RELEASE"
 slf4j = "2.0.17"
@@ -16,7 +16,7 @@ bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bc
 bcpkix = { group = "org.bouncycastle", name = "bcpkix-lts8on", version.ref = "bcprov" }
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jnaPlatform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
-freenetExt = { group = "org.freenetproject", name = "freenet-ext", version.ref = "freenetExt" }
+commonsCompress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
 unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
