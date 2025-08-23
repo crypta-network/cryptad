@@ -22,9 +22,6 @@ val versionSrc = "network/crypta/node/Version.kt"
 
 repositories {
     mavenCentral()
-    maven(url = "https://mvn.freenetproject.org") {
-        metadataSources { artifact() }
-    }
 }
 
 sourceSets {
@@ -67,7 +64,7 @@ tasks.compileJava {
 }
 
 val gitrev: String = try {
-    val cmd = "git describe --always --abbrev=4 --dirty"
+    val cmd = "git rev-parse --short HEAD"
     ProcessBuilder(cmd.split(" "))
         .directory(rootDir)
         .start()
@@ -136,8 +133,6 @@ val buildJar by tasks.registering(Jar::class) {
         attributes(
             "Permissions" to "all-permissions",
             "Application-Name" to "Crypta Daemon",
-            "Required-Ext-Version" to 29,
-            "Recommended-Ext-Version" to 29,
             "Compiled-With" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
             "Specification-Title" to "Crypta",
             "Specification-Version" to project.version.toString(),
@@ -189,6 +184,11 @@ val printHashTask by tasks.registering {
 // Make the hash printing run after the JAR is built
 buildJar {
     finalizedBy(printHashTask)
+}
+
+// Ensure the standard lifecycle build produces cryptad.jar
+tasks.named("build") {
+    dependsOn(buildJar)
 }
 
 tasks.test {
@@ -287,7 +287,9 @@ dependencies {
     implementation(libs.bcpkix)
     implementation(libs.jna)
     implementation(libs.jnaPlatform)
-    implementation(libs.freenetExt)
+    implementation(libs.commonsCompress)
+    runtimeOnly(files("libs/db4o-7.4.58.jar"))
+    implementation(files("libs/wrapper.jar"))
     implementation(libs.pebble)
     implementation(libs.unbescape)
     implementation(libs.slf4jApi)

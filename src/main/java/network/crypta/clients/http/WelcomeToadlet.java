@@ -22,7 +22,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.BandwidthManager;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.node.useralerts.UserAlert;
@@ -799,18 +798,6 @@ public class WelcomeToadlet extends Toadlet {
                   Long.toString(Version.currentBuildNumber()),
                   Integer.toString(Version.currentBuildNumber()),
                   Version.gitRevision()
-                }));
-    versionContent.addChild("br");
-    versionContent.addChild(
-        "span",
-        "class",
-        "freenet-ext-version",
-        NodeL10n.getBase()
-            .getString(
-                "WelcomeToadlet.extVersion",
-                new String[] {"build", "rev"},
-                new String[] {
-                  Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber
                 }));
     versionContent.addChild("br");
     if (ctx.isAllowedFullAccess()) {

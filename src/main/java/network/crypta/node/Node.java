@@ -1317,10 +1317,6 @@ public class Node implements TimeSkewDetectorCallback {
             + Version.currentBuildNumber()
             + "+"
             + Version.gitRevision()
-            + " and freenet-ext Build #"
-            + NodeStarter.extBuildNumber
-            + " r"
-            + NodeStarter.extRevisionNumber
             + " with "
             + System.getProperty("java.vendor")
             + " JVM version "
@@ -4126,15 +4122,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     } else {
       Logger.error(
           this,
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
-              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
-              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
-              + " need to be updated.");
+          "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
+              + " are current.");
       System.out.println(
-          "NOT using wrapper (at least not correctly).  Your freenet-ext.jar"
-              + " <http://downloads.freenetproject.org/alpha/freenet-ext.jar> and/or wrapper.conf"
-              + " <https://emu.freenetproject.org/svn/trunk/apps/installer/installclasspath/config/wrapper.conf>"
-              + " need to be updated.");
+          "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
+              + " are current.");
     }
     Logger.normal(this, "Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
     System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());

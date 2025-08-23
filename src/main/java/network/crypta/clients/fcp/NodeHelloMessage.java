@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.Version;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor;
@@ -30,8 +29,6 @@ public class NodeHelloMessage extends FCPMessage {
     sfs.putSingle("Version", Version.getVersionString());
     sfs.put("Build", Version.currentBuildNumber());
     sfs.putSingle("Revision", Version.gitRevision());
-    sfs.put("ExtBuild", NodeStarter.extBuildNumber);
-    sfs.putSingle("ExtRevision", NodeStarter.extRevisionNumber);
     sfs.put("Testnet", Node.isTestnetEnabled());
     sfs.putSingle("CompressionCodecs", Compressor.COMPRESSOR_TYPE.getHelloCompressorDescriptor());
     sfs.putSingle("ConnectionIdentifier", id);

@@ -26,7 +26,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
-import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
@@ -681,15 +680,6 @@ public class StatisticsToadlet extends Toadlet {
                   Long.toString(Version.currentBuildNumber()),
                   Long.toString(Version.currentBuildNumber()),
                   Version.gitRevision()
-                }));
-    versionInfoboxList.addChild(
-        "li",
-        NodeL10n.getBase()
-            .getString(
-                "WelcomeToadlet.extVersion",
-                new String[] {"build", "rev"},
-                new String[] {
-                  Integer.toString(NodeStarter.extBuildNumber), NodeStarter.extRevisionNumber
                 }));
 
     node.getNodeUpdater().addChangelogLinks(Version.currentBuildNumber(), versionInfobox);
