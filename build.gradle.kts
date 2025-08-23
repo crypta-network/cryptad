@@ -186,6 +186,11 @@ buildJar {
     finalizedBy(printHashTask)
 }
 
+// Ensure the standard lifecycle build produces cryptad.jar
+tasks.named("build") {
+    dependsOn(buildJar)
+}
+
 tasks.test {
     // Point tests expecting old layout to new standard resource locations
     systemProperty("test.l10npath_test", "src/test/resources/network/crypta/l10n/")
