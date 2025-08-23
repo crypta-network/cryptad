@@ -1,10 +1,17 @@
 package com.onionnetworks.io;
 
 // import org.apache.log4j.Category;
-import java.io.*;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 
 // Implement Filtering.
-public class RAF {
+public class RAF implements AutoCloseable {
 
   //  static Category cat = Category.getInstance(RAF.class.getName());
 
@@ -163,18 +170,6 @@ public class RAF {
       if (!f.delete()) {
         throw new IOException("Unable to delete file on close");
       }
-    }
-  }
-
-  /**
-   * Cleans up this objects resources by calling close(). This will also cause the file to be
-   * deleted if deleteOnClose() was called.
-   *
-   * @see close()
-   */
-  protected void finalize() throws IOException {
-    if (!closed) {
-      close();
     }
   }
 

@@ -153,7 +153,7 @@ public class Range {
 
   public String toString() {
     if (!negInf && !posInf && min == max) {
-      return new Long(min).toString();
+      return Long.toString(min);
     } else {
       return (negInf ? "(" : "" + min) + "-" + (posInf ? ")" : "" + max);
     }

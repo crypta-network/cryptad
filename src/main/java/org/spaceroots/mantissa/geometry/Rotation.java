@@ -77,6 +77,7 @@ public class Rotation implements Serializable {
    *     non-normalized quaternions, it should be replaced by {@link #Rotation(double, double,
    *     double, double, boolean)}
    */
+  @Deprecated
   public Rotation(double q0, double q1, double q2, double q3) {
     this.q0 = q0;
     this.q1 = q1;

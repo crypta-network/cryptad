@@ -38,7 +38,7 @@ public interface SwitchingFunction extends Serializable {
    *
    * @deprecated replaced by {@link #RESET_STATE} as of mantissa 6.4
    */
-  public static final int RESET = 1;
+  @Deprecated public static final int RESET = 1;
 
   /**
    * Reset state indicator.

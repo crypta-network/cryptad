@@ -74,6 +74,7 @@ public class PolynomialFitter extends AbstractCurveFitter {
    *     org.spaceroots.mantissa.linalg.Matrix,double) SquareMatrix.solve}).
    * @deprecated replaced by {@link #PolynomialFitter(int,Estimator)} as of version 7.0
    */
+  @Deprecated
   public PolynomialFitter(
       int degree,
       int maxIterations,
@@ -111,6 +112,7 @@ public class PolynomialFitter extends AbstractCurveFitter {
    * @deprecated replaced by {@link #PolynomialFitter(PolynomialCoefficient[], Estimator)} as of
    *     version 7.0
    */
+  @Deprecated
   public PolynomialFitter(
       PolynomialCoefficient[] coefficients,
       int maxIterations,

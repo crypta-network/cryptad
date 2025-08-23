@@ -81,8 +81,8 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
 
   /** If you're only asking for an 8 bit code we will NOT give you a 16 bit one. */
   public synchronized FECCode createFECCode(int k, int n) {
-    Integer K = new Integer(k);
-    Integer N = new Integer(n);
+    Integer K = Integer.valueOf(k);
+    Integer N = Integer.valueOf(n);
     Tuple t = new Tuple(K, N);
 
     // See if there is a cached code.

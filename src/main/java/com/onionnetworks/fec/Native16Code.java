@@ -73,8 +73,20 @@ public class Native16Code extends FECCode {
 
   protected static synchronized native void initFEC();
 
-  protected void finalize() throws Throwable {
-    nativeFreeFEC();
+  private volatile boolean closed;
+
+  /** Releases native resources associated with this code instance. Safe to call multiple times. */
+  @Override
+  public void close() {
+    if (closed) return;
+    synchronized (this) {
+      if (closed) return;
+      try {
+        nativeFreeFEC();
+      } finally {
+        closed = true;
+      }
+    }
   }
 
   public String toString() {

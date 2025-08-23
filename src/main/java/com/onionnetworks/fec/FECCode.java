@@ -18,7 +18,7 @@ import com.onionnetworks.util.Buffer;
  *
  * @author Justin F. Chapweske (justin@chapweske.com)
  */
-public abstract class FECCode {
+public abstract class FECCode implements AutoCloseable {
 
   protected int k, n;
 
@@ -32,6 +32,16 @@ public abstract class FECCode {
     this.k = k;
     this.n = n;
   }
+
+  /**
+   * Close and release any underlying native or I/O resources.
+   *
+   * <p>Default implementation is a no-op; concrete implementations that hold native state should
+   * override this and free resources deterministically. Prefer try-with-resources when using
+   * implementations that manage native handles.
+   */
+  @Override
+  public void close() {}
 
   /**
    * This method takes an array of source packets and generates a number of repair packets from

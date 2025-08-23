@@ -65,6 +65,7 @@ public class HarmonicFitter extends AbstractCurveFitter {
    *     org.spaceroots.mantissa.linalg.Matrix,double) SquareMatrix.solve}).
    * @deprecated replaced by {@link #HarmonicFitter(Estimator)} as of version 7.0
    */
+  @Deprecated
   public HarmonicFitter(
       int maxIterations, double convergence, double steadyStateThreshold, double epsilon) {
     this(new GaussNewtonEstimator(maxIterations, convergence, steadyStateThreshold, epsilon));
@@ -91,6 +92,7 @@ public class HarmonicFitter extends AbstractCurveFitter {
    * @deprecated replaced by {@link #HarmonicFitter(EstimatedParameter[], Estimator)} as of version
    *     7.0
    */
+  @Deprecated
   public HarmonicFitter(
       EstimatedParameter[] coefficients,
       int maxIterations,
