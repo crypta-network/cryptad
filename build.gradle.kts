@@ -283,6 +283,7 @@ dependencies {
     implementation(libs.jna)
     implementation(libs.jnaPlatform)
     implementation(libs.commonsCompress)
+    runtimeOnly(files("libs/db4o-7.4.58.jar"))
     implementation(files("libs/wrapper.jar"))
     implementation(libs.pebble)
     implementation(libs.unbescape)
