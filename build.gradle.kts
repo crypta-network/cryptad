@@ -150,8 +150,13 @@ val buildJar by tasks.registering(Jar::class) {
 }
 
 tasks.named<Jar>("jar") {
+    // Fully disable the default jar task — do not wire any dependencies
     enabled = false
-    dependsOn(buildJar)
+}
+
+// Fail fast with a clear error if someone explicitly asks for :jar
+if (gradle.startParameter.taskNames.any { it == "jar" || it.endsWith(":jar") }) {
+    throw GradleException("Task 'jar' is disabled. Use ':buildJar' to build cryptad.jar.")
 }
 
 // Modern approach using task finalization instead of deprecated listeners
