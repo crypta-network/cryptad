@@ -64,9 +64,10 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
   fun setIfMissing(k: String, v: String) {
     if (sfs[k] == null) sfs.putSingle(k, v)
   }
+  val userDir = Path.of(base.getValue("dataDir"), "user").toString()
   setIfMissing("node.install.cfgDir", base.getValue("configDir"))
   setIfMissing("node.install.storeDir", base.getValue("dataDir"))
-  setIfMissing("node.install.userDir", Path.of(base.getValue("dataDir"), "user").toString())
+  setIfMissing("node.install.userDir", userDir)
   setIfMissing(
     "node.install.pluginStoresDir",
     Path.of(base.getValue("dataDir"), "plugin-data").toString(),
@@ -81,6 +82,7 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
   setIfMissing("node.install.runDir", base.getValue("runDir"))
   setIfMissing("node.downloadsDir", Path.of(base.getValue("dataDir"), "downloads").toString())
   setIfMissing("logger.dirname", base.getValue("logsDir"))
+  setIfMissing("node.masterKeyFile", Path.of(userDir, "master.keys").toString())
 }
 
 /**
