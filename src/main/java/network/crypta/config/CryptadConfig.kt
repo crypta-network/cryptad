@@ -112,7 +112,11 @@ fun expandValue(value: String, base: Map<String, String>): String {
     when {
       out == k -> out = v
       out.startsWith("$k/") -> out = Path.of(v, out.removePrefix("$k/")).toString()
-      out.startsWith("$k\\") -> out = Path.of(v, out.removePrefix("$k\\")).toString()
+      out.startsWith("$k\\") -> {
+        // Support Windows-style separators even on POSIX by normalizing to '/'
+        val rem = out.removePrefix("$k\\").replace('\\', '/')
+        out = Path.of(v, rem).normalize().toString()
+      }
     }
   }
 
@@ -130,7 +134,9 @@ fun expandValue(value: String, base: Map<String, String>): String {
     val usesForward = out.startsWith(forward)
     val usesBackward = out.startsWith(v + "\\")
     if (usesForward || usesBackward) {
-      val remainder = if (usesForward) out.removePrefix(forward) else out.removePrefix(v + "\\")
+      val remainderRaw = if (usesForward) out.removePrefix(forward) else out.removePrefix(v + "\\")
+      // Normalize Windows-style separators to POSIX for safe resolution
+      val remainder = if (usesBackward) remainderRaw.replace('\\', '/') else remainderRaw
       val resolved = basePath.resolve(remainder).normalize()
       // Ensure resolved path stays under base
       if (!resolved.startsWith(basePath)) {
