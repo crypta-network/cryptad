@@ -415,37 +415,9 @@ val generateWrapperConf by
     doLast {
       val confDirFile = confDir.get().asFile
       confDirFile.mkdirs()
-      val libDir = wrapperDistDir.get().dir("lib").asFile
-
-      // Collect jars in lib/ to build classpath. Ensure main jar is last.
-      val jars =
-        libDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.toList() ?: emptyList()
-      val (wrapperJar, otherJars) =
-        jars.partition { it.name.equals("wrapper.jar", ignoreCase = true) }
-      val (mainJar, depJars) =
-        otherJars.partition { it.name.equals("cryptad.jar", ignoreCase = true) }
-
-      val classpathLines = mutableListOf<String>()
-      var idx = 1
-      // Dependencies first (alphabetical for determinism)
-      depJars
-        .sortedBy { it.name.lowercase() }
-        .forEach { jar ->
-          classpathLines += "wrapper.java.classpath.${idx}=" + "lib/${jar.name}"
-          idx++
-        }
-      // Main jar last
-      if (mainJar.isNotEmpty()) {
-        classpathLines += "wrapper.java.classpath.${idx}=lib/${mainJar.first().name}"
-        idx++
-      } else {
-        throw GradleException("cryptad.jar not found in lib/. Did buildJar run?")
-      }
-
       val template = file("src/main/templates/wrapper.conf.tpl").readText()
-      val contentT = template.replace("@WRAPPER_CLASSPATH@", classpathLines.joinToString("\n"))
       val confFile = confDirFile.resolve("wrapper.conf")
-      confFile.writeText(contentT)
+      confFile.writeText(template)
       println("Generated " + confFile.absolutePath)
     }
   }

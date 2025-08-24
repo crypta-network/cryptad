@@ -1,7 +1,7 @@
 # Cryptad Wrapper configuration (generated from template)
 
-# Classpath entries (dependencies first, then cryptad.jar). Generated dynamically.
-@WRAPPER_CLASSPATH@
+# Classpath: load all jars from ../lib relative to this conf file
+wrapper.java.classpath.1=../lib/*
 
 # JVM arguments
 wrapper.java.additional.1=-Dnetworkaddress.cache.ttl=0
@@ -44,4 +44,3 @@ wrapper.anchor.poll_interval=1
 
 # Backend type
 wrapper.backend.type=PIPE
-
