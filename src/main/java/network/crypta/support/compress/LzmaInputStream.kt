@@ -10,8 +10,8 @@ import java.util.concurrent.CountDownLatch
 
 /**
  * LZMA [InputStream] compatible with the historical lzmajio API.
- *
- * - Expects an .lzma stream with 5-byte properties followed by 8-byte little-endian uncompressed size.
+ * - Expects an .lzma stream with 5-byte properties followed by 8-byte little-endian uncompressed
+ *   size.
  * - Uses the vendored SevenZip Java decoder to stream decoded bytes via a pipe.
  */
 class LzmaInputStream(private val source: InputStream) : InputStream() {
@@ -62,7 +62,9 @@ class LzmaInputStream(private val source: InputStream) : InputStream() {
     } catch (ioe: IOException) {
       thrown = ioe
       started.countDown()
-      try { pipeOut.close() } catch (_: IOException) {}
+      try {
+        pipeOut.close()
+      } catch (_: IOException) {}
     }
   }
 
@@ -98,4 +100,3 @@ class LzmaInputStream(private val source: InputStream) : InputStream() {
     }
   }
 }
-
