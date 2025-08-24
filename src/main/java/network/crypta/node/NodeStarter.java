@@ -493,6 +493,27 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
+   * Print resolved directories to stdout to help users understand where files are stored. Includes
+   * the configuration file path and the resolved config, data, cache, run, and logs directories.
+   * Reflects environment detection (service vs user) and CLI overrides.
+   */
+  private static void printResolvedDirectories(Resolved r, File configFile, boolean serviceMode) {
+    try {
+      System.out.println(
+          "\nResolved directories (" + (serviceMode ? "service" : "user") + " mode):");
+      System.out.println("  Config file:  " + configFile.getAbsolutePath());
+      System.out.println("  Config dir:   " + r.getConfigDir());
+      System.out.println("  Data dir:     " + r.getDataDir());
+      System.out.println("  Cache dir:    " + r.getCacheDir());
+      System.out.println("  Run dir:      " + r.getRunDir());
+      System.out.println("  Logs dir:     " + r.getLogsDir());
+      System.out.println();
+    } catch (Throwable t) {
+      // Do not fail startup due to printing
+    }
+  }
+
+  /**
    * The start method is called when the WrapperManager is signaled by the native wrapper code that
    * it can start its application. This method call is expected to return, so a new thread should be
    * launched if necessary.
@@ -597,10 +618,7 @@ public class NodeStarter implements WrapperListener {
       Resolved resolved;
       if (serviceMode) {
         ServiceDirs svc = new ServiceDirs(overrides);
-        Resolved r = svc.resolve();
-        resolved =
-            new Resolved(
-                r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
+        resolved = svc.resolve();
       } else {
         Map<String, String> sysMap = new HashMap<>();
         Properties props = System.getProperties();
@@ -611,6 +629,8 @@ public class NodeStarter implements WrapperListener {
         AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
         resolved = dirs.resolve();
       }
+      // Inform the user where data and logs will be stored.
+      printResolvedDirectories(resolved, configFilename, serviceMode);
       SimpleFieldSet sfs =
           CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
       File tmp = new File(configFilename.getPath() + ".tmp");
@@ -681,6 +701,28 @@ public class NodeStarter implements WrapperListener {
 
     try {
       node = new Node(cfg, null, null, logConfigHandler, this, executor);
+      // Ensure seednodes.fref exists at node.install.nodeDir. Install from packaged resource if
+      // missing.
+      try {
+        File seedFile = NodeFile.Seednodes.getFile(node);
+        if (!seedFile.exists()) {
+          try (java.io.InputStream in =
+              NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
+            if (in != null) {
+              java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
+              java.nio.file.Files.copy(in, seedFile.toPath());
+              System.out.println(
+                  "Installed default seednodes from resource at " + seedFile.getAbsolutePath());
+            } else {
+              System.err.println(
+                  "Warning: No default seednodes.fref found in resources; opennet bootstrap may be"
+                      + " delayed.");
+            }
+          }
+        }
+      } catch (Throwable t) {
+        System.err.println("Warning: failed to install seednodes.fref: " + t.getMessage());
+      }
       node.start(false);
       System.out.println("Node initialization completed.");
     } catch (NodeInitException e) {

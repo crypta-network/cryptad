@@ -1,4 +1,7 @@
 import java.io.IOException
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
@@ -219,6 +222,301 @@ tasks.test {
   systemProperty("test.l10npath_main", "src/main/resources/network/crypta/l10n/")
 }
 
+// --- Java Service Wrapper based distribution -----------------------------------------------
+// The daemon is intended to run under the Tanuki Java Service Wrapper. We provide tasks to
+// download the wrapper, assemble a portable distribution (bin/conf/lib), and package it.
+
+val wrapperVersion = "3.6.2"
+val wrapperDeltaPack = "wrapper-delta-pack-$wrapperVersion.tar.gz"
+// SourceForge mirror (original host may be unavailable at times)
+val wrapperBaseUrl =
+  "https://sourceforge.net/projects/wrapper/files/wrapper/Wrapper_3.6.2_20250605/$wrapperDeltaPack/download"
+
+val wrapperWorkDir = layout.buildDirectory.dir("wrapper")
+val wrapperExtractDir = layout.buildDirectory.dir("wrapper/extracted")
+val wrapperDistDir = layout.buildDirectory.dir("cryptad-dist")
+// Seednodes generation settings
+val seedrefsZipUrl = "https://codeload.github.com/hyphanet/seedrefs/zip/refs/heads/master"
+val seedrefsWorkDir = layout.buildDirectory.dir("seedrefs")
+val seedrefsZip = seedrefsWorkDir.map { it.file("seedrefs.zip") }
+val seedrefsExtracted = seedrefsWorkDir.map { it.dir("extracted") }
+val seednodesOut = layout.buildDirectory.file("generated/seednodes/seednodes.fref")
+
+// Download the Wrapper delta pack
+val downloadWrapper by
+  tasks.registering {
+    group = "distribution"
+    description = "Downloads Tanuki Java Service Wrapper delta pack"
+    val outFile = wrapperWorkDir.map { it.file(wrapperDeltaPack) }
+    outputs.file(outFile)
+    doLast {
+      val target = outFile.get().asFile
+      target.parentFile.mkdirs()
+      val url = URI(wrapperBaseUrl).toURL()
+      println("Downloading $wrapperBaseUrl -> " + target.absolutePath)
+      url.openStream().use { input ->
+        Files.copy(input, target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      }
+    }
+  }
+
+// Extract the delta pack
+val extractWrapper by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Extracts the Tanuki Wrapper delta pack"
+    dependsOn(downloadWrapper)
+    val tarFile = wrapperWorkDir.map { it.file(wrapperDeltaPack) }
+    from(tarTree(resources.gzip(tarFile)))
+    into(wrapperExtractDir)
+  }
+
+// Download seedrefs (zip of repo)
+val downloadSeedrefs by
+  tasks.registering {
+    group = "distribution"
+    description = "Downloads hyphanet/seedrefs repository as a zip"
+    outputs.file(seedrefsZip)
+    doLast {
+      val out = seedrefsZip.get().asFile
+      out.parentFile.mkdirs()
+      val url = URI(seedrefsZipUrl).toURL()
+      println("Downloading $seedrefsZipUrl -> " + out.absolutePath)
+      url.openStream().use { input ->
+        Files.copy(input, out.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      }
+    }
+  }
+
+// Extract seedrefs
+val extractSeedrefs by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Extracts seedrefs zip"
+    dependsOn(downloadSeedrefs)
+    from(zipTree(seedrefsZip.get().asFile))
+    into(seedrefsExtracted)
+  }
+
+// Concatenate all seedrefs files into one seednodes.fref
+val generateSeednodesFile by
+  tasks.registering {
+    group = "distribution"
+    description = "Generates seednodes.fref from hyphanet/seedrefs"
+    dependsOn(extractSeedrefs)
+    outputs.file(seednodesOut)
+    doLast {
+      val root = seedrefsExtracted.get().asFile
+      val outFile = seednodesOut.get().asFile
+      outFile.parentFile.mkdirs()
+      val files = root.walkTopDown().filter { it.isFile }.sortedBy { it.name.lowercase() }.toList()
+      if (files.isEmpty()) throw GradleException("No files found in extracted seedrefs")
+      outFile.printWriter().use { pw ->
+        files.forEach { f ->
+          val content = f.readText()
+          pw.println(content.trim())
+          pw.println()
+        }
+      }
+      println(
+        "Generated seednodes file at " + outFile.absolutePath + " with " + files.size + " entries"
+      )
+    }
+  }
+
+// Copy platform wrapper binaries and helper files under bin/
+val copyWrapperBinaries by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Copies Wrapper binaries into distribution bin/"
+    dependsOn(extractWrapper)
+    into(wrapperDistDir.map { it.dir("bin") })
+    // The delta-pack contains top-level 'wrapper-delta-pack-<ver>/bin/*' — copy those files only.
+    from(wrapperExtractDir.map { it.dir("wrapper-delta-pack-$wrapperVersion/bin") }) {
+      include("*")
+      // Drop unsupported platforms
+      exclude("*aix*")
+      exclude("*hpux*")
+      exclude("*linux-ppcle*")
+      exclude("*solaris*")
+      // Drop FreeBSD for now
+      exclude("*freebsd*")
+      // No Windows support for now
+      exclude("*windows*")
+      // Drop Windows scripts and misc demo/test helpers
+      exclude("**/*.bat")
+      exclude("README.txt")
+      exclude("demoapp*")
+      exclude("testwrapper*")
+      exclude("Install*")
+      exclude("Uninstall*")
+      exclude("Start*")
+      exclude("Stop*")
+      exclude("Pause*")
+      exclude("Resume*")
+      exclude("Query*")
+      // Drop 32-bit binaries
+      exclude("*-x86-32*")
+      exclude("*-universal-32*")
+      exclude("*-armel-32*")
+      exclude("*-armhf-32*")
+    }
+  }
+
+// Copy runtime jars into lib/ and build a classpath list for wrapper.conf
+val prepareWrapperLibs by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Copies runtime jars to lib/ for the wrapper distribution"
+    dependsOn(buildJar, extractWrapper)
+    into(wrapperDistDir.map { it.dir("lib") })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // All runtime dependencies
+    from(configurations.runtimeClasspath) { exclude("**/wrapper*.jar") }
+    // The main jar with canonical name
+    from(buildJar) { rename { "cryptad.jar" } }
+    // Include all files required by the wrapper from its lib directory (native libs, etc.)
+    from(wrapperExtractDir.map { it.dir("wrapper-delta-pack-$wrapperVersion/lib") }) {
+      include("*")
+      // Drop unsupported platforms and Windows libs
+      exclude("**/*.dll")
+      exclude("**/*aix*")
+      exclude("**/*hpux*")
+      exclude("**/*solaris*")
+      exclude("**/*freebsd*")
+      exclude("**/*windows*")
+      exclude("**/*-ppcle-*")
+      // Drop obvious demo/test artifacts if present
+      exclude("**/*demo*.*")
+      exclude("**/*test*.*")
+      // Drop 32-bit native libraries
+      exclude("**/*-x86-32.*")
+      exclude("**/*-universal-32.*")
+      exclude("**/*-armel-32.*")
+      exclude("**/*-armhf-32.*")
+      // Generic guard: any "-32." variants
+      exclude("**/*-32.*")
+    }
+    // Ensure a predictable wrapper.jar exists (some packs name it with a version suffix)
+    from(wrapperExtractDir.map { it.dir("wrapper-delta-pack-$wrapperVersion/lib") }) {
+      include("wrapper*.jar")
+      rename { "wrapper.jar" }
+    }
+  }
+
+// Generate conf/wrapper.conf from template, injecting classpath lines
+val generateWrapperConf by
+  tasks.registering {
+    group = "distribution"
+    description = "Generates conf/wrapper.conf from template"
+    dependsOn(prepareWrapperLibs)
+    val confDir = wrapperDistDir.map { it.dir("conf") }
+    outputs.file(confDir.map { it.file("wrapper.conf") })
+    doLast {
+      val confDirFile = confDir.get().asFile
+      confDirFile.mkdirs()
+      val libDir = wrapperDistDir.get().dir("lib").asFile
+
+      // Collect jars in lib/ to build classpath. Ensure main jar is last.
+      val jars =
+        libDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.toList() ?: emptyList()
+      val (wrapperJar, otherJars) =
+        jars.partition { it.name.equals("wrapper.jar", ignoreCase = true) }
+      val (mainJar, depJars) =
+        otherJars.partition { it.name.equals("cryptad.jar", ignoreCase = true) }
+
+      val classpathLines = mutableListOf<String>()
+      var idx = 1
+      // Dependencies first (alphabetical for determinism)
+      depJars
+        .sortedBy { it.name.lowercase() }
+        .forEach { jar ->
+          classpathLines += "wrapper.java.classpath.${idx}=" + "lib/${jar.name}"
+          idx++
+        }
+      // Main jar last
+      if (mainJar.isNotEmpty()) {
+        classpathLines += "wrapper.java.classpath.${idx}=lib/${mainJar.first().name}"
+        idx++
+      } else {
+        throw GradleException("cryptad.jar not found in lib/. Did buildJar run?")
+      }
+
+      val template = file("src/main/templates/wrapper.conf.tpl").readText()
+      val contentT = template.replace("@WRAPPER_CLASSPATH@", classpathLines.joinToString("\n"))
+      val confFile = confDirFile.resolve("wrapper.conf")
+      confFile.writeText(contentT)
+      println("Generated " + confFile.absolutePath)
+    }
+  }
+
+// Generate bin/cryptad launcher from template
+val generateWrapperLaunchers by
+  tasks.registering {
+    group = "distribution"
+    description = "Generates launch scripts from templates"
+    dependsOn(copyWrapperBinaries)
+    val binDir = wrapperDistDir.map { it.dir("bin") }
+    outputs.files(binDir.map { it.file("cryptad") })
+    doLast {
+      val bin = binDir.get().asFile
+      bin.mkdirs()
+      val unix = bin.resolve("cryptad")
+      val templateL = file("src/main/templates/cryptad.sh.tpl").readText()
+      unix.writeText(templateL)
+      unix.setExecutable(true)
+    }
+  }
+
+// Top-level task to assemble the distribution tree under build/cryptad-dist
+val assembleCryptadDist by
+  tasks.registering {
+    group = "distribution"
+    description = "Assembles a portable Cryptad distribution under build/cryptad-dist"
+    dependsOn(
+      copyWrapperBinaries,
+      prepareWrapperLibs,
+      generateWrapperConf,
+      generateWrapperLaunchers,
+    )
+    doLast {
+      println("Cryptad distribution assembled at: ${wrapperDistDir.get().asFile.absolutePath}")
+    }
+  }
+
+// Clean the cryptad-dist directory before assembling to avoid stale files
+val cleanCryptadDist by
+  tasks.registering(Delete::class) {
+    group = "distribution"
+    description = "Cleans the Cryptad distribution directory"
+    delete(wrapperDistDir)
+    // Backward cleanup of obsolete directory name from earlier builds
+    delete(layout.buildDirectory.dir("wrapper-dist"))
+  }
+
+// Ensure cleaning runs before copying/creating files
+tasks.named("assembleCryptadDist") { dependsOn(cleanCryptadDist) }
+
+copyWrapperBinaries { dependsOn(cleanCryptadDist) }
+
+prepareWrapperLibs { dependsOn(cleanCryptadDist) }
+
+generateWrapperConf { dependsOn(cleanCryptadDist) }
+
+generateWrapperLaunchers { dependsOn(cleanCryptadDist) }
+
+// Package the cryptad-dist as a tar.gz
+tasks.register<Tar>("distTarCryptad") {
+  group = "distribution"
+  description = "Packages the Cryptad distribution as a tar.gz"
+  dependsOn(assembleCryptadDist)
+  compression = Compression.GZIP
+  archiveBaseName.set("cryptad-dist")
+  archiveVersion.set(project.version.toString())
+  from(wrapperDistDir)
+  destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+}
+
 // Diagnostic task to print resolved directories
 // Use ./gradlew printDirs -Dcryptad.service.mode=service to print service dirs, you may need sudo
 // permission
@@ -254,7 +552,15 @@ val copyResourcesToClasses2 by
     }
   }
 
-tasks.processResources { dependsOn(copyResourcesToClasses2) }
+tasks.processResources {
+  dependsOn(copyResourcesToClasses2)
+  // Include generated seednodes file in resources under seednodes/seednodes.fref
+  dependsOn(generateSeednodesFile)
+  from(seednodesOut) {
+    into("seednodes")
+    rename { "seednodes.fref" }
+  }
+}
 
 val copyTestResourcesToClasses2 by
   tasks.registering {

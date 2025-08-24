@@ -135,6 +135,34 @@ To try your local build of **Crypta**:
 3. Replace the existing node JAR with `build/libs/cryptad.jar` produced by the build.
 4. Start your node again.
 
+You can run without the native wrapper using the distribution launcher by setting an environment flag:
+
+```
+CRYPTAD_NO_WRAPPER=1 build/cryptad-dist/bin/cryptad
+```
+
+Distribution (Java Service Wrapper):
+
+- Build a portable distribution (downloads the Tanuki wrapper and assembles bin/conf/lib):
+
+```
+./gradlew assembleCryptadDist
+```
+
+- Package it as a tar.gz:
+
+```
+./gradlew distTarCryptad
+```
+
+The resulting tree at `build/cryptad-dist` contains:
+- `bin/cryptad` and wrapper binaries
+- `conf/wrapper.conf` configured to use `lib/*.jar`
+- `lib/cryptad.jar`, runtime dependencies, and `lib/wrapper.jar`
+
+The launcher defers config path resolution to the runtime via `AppEnv` (no hard‑coded
+`cryptad.ini`), adapting to system services or per‑user environments.
+
 To override Gradle settings, create `gradle.properties` (see the
 [Gradle docs](https://docs.gradle.org/8.11/userguide/build_environment.html)) and add entries like:
 
