@@ -207,12 +207,14 @@ tasks.test {
 }
 
 // Diagnostic task to print resolved directories
+// Use ./gradlew printDirs -Dcryptad.service.mode=service to print service dirs, you may need sudo permission
 tasks.register<JavaExec>("printDirs") {
     group = "help"
     description = "Print resolved Cryptad directories (config, data, cache, run, logs)"
     dependsOn("classes")
-    mainClass.set("io.cryptad.tools.PrintDirsKt")
+    mainClass.set("network.crypta.tools.PrintDirsKt")
     classpath = sourceSets.main.get().runtimeClasspath
+    systemProperties(gradle.startParameter.systemPropertiesArgs)
 }
 
 val copyResourcesToClasses2 by tasks.registering {
