@@ -90,4 +90,21 @@ class NodeCliTest {
     assertEquals("/cache", m["cacheDir"])
     assertEquals("/run", m["runDir"])
   }
+
+  @Test
+  fun logsDir_override_collected() {
+    val cli = NodeCli()
+    CommandLine(cli).parseArgs("--logs-dir", "/var/log/cryptad")
+    val m = cli.directoryOverrides()
+    assertEquals("/var/log/cryptad", m["logsDir"])
+  }
+
+  @Test
+  fun logsDir_absent_not_in_map() {
+    val cli = NodeCli()
+    CommandLine(cli).parseArgs()
+    val m = cli.directoryOverrides()
+    // Should not contain logsDir when not provided
+    assertEquals(null, m["logsDir"])
+  }
 }

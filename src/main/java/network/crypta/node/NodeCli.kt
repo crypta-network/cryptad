@@ -99,6 +99,14 @@ class NodeCli {
   )
   var runDir: String? = null
 
+  /** Override the logs directory. */
+  @Option(
+    names = ["-L", "--logs-dir"],
+    paramLabel = "PATH",
+    description = ["Override logs directory (log files destination)."],
+  )
+  var logsDir: String? = null
+
   /** Choose service mode explicitly. */
   @Option(
     names = ["-m", "--service-mode"],
@@ -134,6 +142,7 @@ class NodeCli {
       dataDir?.let { put("dataDir", it) }
       cacheDir?.let { put("cacheDir", it) }
       runDir?.let { put("runDir", it) }
+      logsDir?.let { put("logsDir", it) }
     }
 
   /** Compute the service mode override based on flags, or null. */

@@ -506,8 +506,9 @@ public class NodeStarter implements WrapperListener {
    * --config-dir PATH</code>: Override configuration directory - <code>-d</code>, <code>
    * --data-dir PATH</code>: Override data directory - <code>-x</code>, <code>--cache-dir PATH
    * </code>: Override cache directory - <code>-r</code>, <code>--run-dir PATH</code>: Override run
-   * directory - <code>-m</code>, <code>--service-mode service|user</code>: Explicitly set service
-   * mode - <code>--service</code>, <code>--daemon</code>: Shortcut for service mode - <code>--user
+   * directory - <code>-L</code>, <code>--logs-dir PATH</code>: Override logs directory - <code>-m
+   * </code>, <code>--service-mode service|user</code>: Explicitly set service mode - <code>
+   * --service</code>, <code>--daemon</code>: Shortcut for service mode - <code>--user
    * </code>, <code>--app</code>: Shortcut for user/app mode - positional <code>FILE</code>:
    * Alternative way to specify <code>cryptad.ini</code>
    *
