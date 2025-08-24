@@ -2,13 +2,13 @@
 
 package network.crypta.config
 
-import network.crypta.fs.Resolved
-import network.crypta.support.Logger
-import network.crypta.support.SimpleFieldSet
 import java.io.IOException
 import java.nio.file.*
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import network.crypta.fs.Resolved
+import network.crypta.support.Logger
+import network.crypta.support.SimpleFieldSet
 
 // Local log source class for Logger API
 private object CMLogger
