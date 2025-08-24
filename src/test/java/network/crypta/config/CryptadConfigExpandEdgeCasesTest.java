@@ -62,6 +62,12 @@ public class CryptadConfigExpandEdgeCasesTest {
     assertEquals("prefix-" + b.get("cacheDir") + "-suffix", out);
   }
 
+  @Test(expected = IOException.class)
+  public void placeholder_inMiddle_withTraversal_rejected() {
+    Map<String, String> b = base();
+    CryptadConfig.expandValue("prefix-${dataDir}/../../etc/passwd", b);
+  }
+
   @Test
   public void leadingToken_backslashDot_normalizes() {
     Map<String, String> b = base();

@@ -100,10 +100,12 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
  */
 fun expandValue(value: String, base: Map<String, String>): String {
   var out = value
+  var replacedAny = false
 
   // 1) Replace ${token} placeholders wherever they appear
   base.forEach { (k, v) ->
     val placeholder = "\${$k}"
+    if (out.contains(placeholder)) replacedAny = true
     out = out.replace(placeholder, v)
   }
 
@@ -122,11 +124,13 @@ fun expandValue(value: String, base: Map<String, String>): String {
 
   // 3) If the result starts under any known base directory, normalize and ensure it does not
   //    escape the base via traversal.
+  var anchored = false
   base.values.forEach { v ->
     val basePath = Path.of(v).normalize()
     // Fast-path: exact equality, rewrite to normalized base
     if (out == v) {
       out = basePath.toString()
+      anchored = true
       return@forEach
     }
 
@@ -145,6 +149,18 @@ fun expandValue(value: String, base: Map<String, String>): String {
         )
       }
       out = resolved.toString()
+      anchored = true
+    }
+  }
+
+  // 4) Additional sanitization: If a placeholder was used but the result is not anchored to a
+  //    known base directory, disallow traversal segments to avoid masked injections.
+  if (replacedAny && !anchored) {
+    val traversalPattern = Regex("(^|/)\\.\\.(/|$)")
+    if (traversalPattern.containsMatchIn(out)) {
+      throw IOException(
+        "Illegal path traversal in config value: '$value' (unanchored with '..' segments)"
+      )
     }
   }
 
