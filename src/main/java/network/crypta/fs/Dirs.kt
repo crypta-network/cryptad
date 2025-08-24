@@ -1,5 +1,6 @@
 package network.crypta.fs
 
+import network.crypta.support.Logger
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -33,6 +34,9 @@ const val APP_RUNTIME_SUBPATH = "network/crypta"
 const val USER_HOME = "user.home"
 
 /** Ensure a directory exists with best-effort POSIX permissions when supported. */
+// Local log source for filesystem directory creation/permission setting
+private object FSLogger
+
 private fun ensureDir(path: Path, perms: String) {
   if (!path.exists()) path.createDirectories()
   try {
@@ -40,8 +44,13 @@ private fun ensureDir(path: Path, perms: String) {
       val set: Set<PosixFilePermission> = PosixFilePermissions.fromString(perms)
       Files.setPosixFilePermissions(path, set)
     }
-  } catch (_: Exception) {
-    // Non-POSIX or failure — ignore silently per cross-platform allowance
+  } catch (e: Exception) {
+    // Non-POSIX or failure — log at WARNING to aid debugging but do not fail
+    Logger.warning(
+      FSLogger::class.java,
+      "Failed to set POSIX permissions '$perms' on $path: ${e.message}",
+      e,
+    )
   }
 }
 
