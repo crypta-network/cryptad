@@ -4,9 +4,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
-const val PERM_GROUP_RX = "rwxr-x---"
-const val PERM_USER_RWX = "rwx------"
-const val MACOS_LIBRARY_PATH = "Library"
+// constants PERM_GROUP_RX, PERM_USER_RWX, MACOS_LIBRARY_PATH live in Dirs.kt
 
 /**
  * Environment and platform detection for Cryptad.

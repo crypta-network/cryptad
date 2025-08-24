@@ -56,6 +56,7 @@ import network.crypta.crypt.Yarrow;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -1353,13 +1354,13 @@ public class Node implements TimeSkewDetectorCallback {
     Path defaultRunDir;
     if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
-      ServiceDirs.Resolved serviceResolved = serviceDirs.resolve();
+      Resolved serviceResolved = serviceDirs.resolve();
       defaultConfigDir = serviceResolved.getConfigDir();
       defaultDataDir = serviceResolved.getDataDir();
       defaultRunDir = serviceResolved.getRunDir();
     } else {
       AppDirs dirs = new AppDirs();
-      AppDirs.Resolved appResolved = dirs.resolve();
+      Resolved appResolved = dirs.resolve();
       defaultConfigDir = appResolved.getConfigDir();
       defaultDataDir = appResolved.getDataDir();
       defaultRunDir = appResolved.getRunDir();

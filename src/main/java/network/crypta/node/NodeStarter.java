@@ -27,6 +27,7 @@ import network.crypta.crypt.SSL;
 import network.crypta.crypt.Yarrow;
 import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
@@ -554,12 +555,12 @@ public class NodeStarter implements WrapperListener {
     boolean serviceMode = appEnv.isServiceMode();
     Path configDirPath;
     if (serviceMode) {
-      ServiceDirs svc = new ServiceDirs();
-      ServiceDirs.Resolved r = svc.resolve();
+      ServiceDirs svc = new ServiceDirs(overrides);
+      Resolved r = svc.resolve();
       configDirPath = r.getConfigDir();
     } else {
       AppDirs dirs = new AppDirs(overrides);
-      AppDirs.Resolved r = dirs.resolve();
+      Resolved r = dirs.resolve();
       configDirPath = r.getConfigDir();
     }
     File configFilename;
@@ -569,20 +570,12 @@ public class NodeStarter implements WrapperListener {
 
     // Migrate config if needed and create defaults
     try {
-      AppDirs.Resolved ar;
+      Resolved ar;
       if (serviceMode) {
-        ServiceDirs svc = new ServiceDirs();
-        ServiceDirs.Resolved r = svc.resolve();
-        ar =
-            new AppDirs.Resolved(
-                r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
+        ServiceDirs svc = new ServiceDirs(overrides);
+        ar = svc.resolve();
       } else {
-        Map<String, String> sysMap = new HashMap<>();
-        Properties props = System.getProperties();
-        for (Entry<Object, Object> e : props.entrySet()) {
-          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-        }
-        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+        AppDirs dirs = new AppDirs(overrides);
         ar = dirs.resolve();
       }
       Path exeDir = getExecutableDir();
@@ -600,12 +593,12 @@ public class NodeStarter implements WrapperListener {
     try {
       System.out.println("Loading config from " + configFilename);
       Path cfgPath = configFilename.toPath();
-      AppDirs.Resolved resolved;
+      Resolved resolved;
       if (serviceMode) {
-        ServiceDirs svc = new ServiceDirs();
-        ServiceDirs.Resolved r = svc.resolve();
+        ServiceDirs svc = new ServiceDirs(overrides);
+        Resolved r = svc.resolve();
         resolved =
-            new AppDirs.Resolved(
+            new Resolved(
                 r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
       } else {
         Map<String, String> sysMap = new HashMap<>();
@@ -613,6 +606,7 @@ public class NodeStarter implements WrapperListener {
         for (Entry<Object, Object> e : props.entrySet()) {
           sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
         }
+        // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
         AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
         resolved = dirs.resolve();
       }

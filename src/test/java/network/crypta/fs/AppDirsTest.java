@@ -1,4 +1,4 @@
-package io.cryptad.fs;
+package network.crypta.fs;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -9,10 +9,8 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.config.CryptadConfig;
-import network.crypta.fs.AppDirs;
-import network.crypta.fs.AppEnv;
-import network.crypta.fs.ServiceDirs;
 import network.crypta.support.SimpleFieldSet;
+import org.jetbrains.annotations.NotNull;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -38,7 +36,7 @@ public class AppDirsTest {
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Linux", "tester");
     AppDirs dirs = new AppDirs(env, sysProps(home, t), new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     assertTrue(r.getConfigDir().toString().contains(".config/Cryptad/config"));
     assertTrue(r.getDataDir().toString().contains(".local/share/Cryptad/data"));
     assertTrue(Files.exists(r.getConfigDir()));
@@ -63,7 +61,7 @@ public class AppDirsTest {
     env.put("XDG_CACHE_HOME", xdgCache.toString());
     AppEnv ae = new AppEnv(env, "Linux", "tester");
     AppDirs dirs = new AppDirs(env, sysProps(home, t), new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     assertTrue(r.getConfigDir().startsWith(xdgConfig));
     assertTrue(r.getDataDir().startsWith(xdgData));
     assertTrue(r.getCacheDir().startsWith(xdgCache));
@@ -78,7 +76,7 @@ public class AppDirsTest {
     Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     assertTrue(r.getConfigDir().toString().contains("Library/Application Support/Cryptad/config"));
     assertTrue(r.getCacheDir().toString().contains("Library/Caches/Cryptad"));
   }
@@ -95,7 +93,7 @@ public class AppDirsTest {
     Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     assertTrue(r.getConfigDir().startsWith(xdgConfig));
   }
 
@@ -115,7 +113,7 @@ public class AppDirsTest {
     env.put("XDG_CACHE_HOME", home.resolve(".cache").toString());
     AppEnv ae = new AppEnv(env, "Linux", "user");
     AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     assertTrue(r.getDataDir().startsWith(common.resolve("Cryptad")));
   }
 
@@ -124,6 +122,19 @@ public class AppDirsTest {
     Path root = tmp.getRoot().toPath();
     Path home = root.resolve("home");
     Path xdgConfig = root.resolve("xdg-config");
+    Map<String, String> env = getStringStringMap(root, home, xdgConfig);
+    AppEnv ae = new AppEnv(env, "Linux", "user");
+    AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    assertTrue(r.getConfigDir().startsWith(xdgConfig));
+    assertTrue(
+        r.getRunDir()
+            .toString()
+            .contains("/app/org.example.Cryptad/" + network.crypta.fs.DirsKt.APP_RUNTIME_SUBPATH));
+  }
+
+  @NotNull
+  private static Map<String, String> getStringStringMap(Path root, Path home, Path xdgConfig) {
     Path xdgData = root.resolve("xdg-data");
     Path xdgCache = root.resolve("xdg-cache");
     home.toFile().mkdirs();
@@ -136,11 +147,7 @@ public class AppDirsTest {
     env.put("XDG_DATA_HOME", xdgData.toString());
     env.put("XDG_CACHE_HOME", xdgCache.toString());
     env.put("XDG_RUNTIME_DIR", root.resolve("xdg-rt").toString());
-    AppEnv ae = new AppEnv(env, "Linux", "user");
-    AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().startsWith(xdgConfig));
-    assertTrue(r.getRunDir().toString().contains("/app/org.example.Cryptad/cryptad"));
+    return env;
   }
 
   @Test
@@ -153,7 +160,7 @@ public class AppDirsTest {
     env.put("LOGS_DIRECTORY", root.resolve("log").toString());
     env.put("RUNTIME_DIRECTORY", root.resolve("run").toString());
     ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Linux", "root"));
-    ServiceDirs.Resolved r = svc.resolve();
+    Resolved r = svc.resolve();
     assertTrue(r.getConfigDir().startsWith(root.resolve("etc")));
     assertTrue(r.getDataDir().startsWith(root.resolve("lib")));
     assertTrue(r.getLogsDir().startsWith(root.resolve("log")));
@@ -165,7 +172,7 @@ public class AppDirsTest {
     Map<String, String> env = new HashMap<>();
     env.put("PROGRAMDATA", root.resolve("ProgramData").toString());
     ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Windows 10", "SYSTEM"));
-    ServiceDirs.Resolved r = svc.resolve();
+    Resolved r = svc.resolve();
     assertTrue(r.getConfigDir().toString().contains("ProgramData"));
     assertTrue(r.getLogsDir().toString().contains("ProgramData"));
   }
@@ -174,7 +181,7 @@ public class AppDirsTest {
   public void macDaemon_defaultsApply() {
     Map<String, String> env = new HashMap<>();
     ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Mac OS X", "root"));
-    ServiceDirs.Resolved r = svc.resolve();
+    Resolved r = svc.resolve();
     assertTrue(
         r.getConfigDir().toString().startsWith("/Library/Application Support/Cryptad/config"));
     assertTrue(r.getLogsDir().toString().startsWith("/Library/Logs/Cryptad"));
@@ -188,7 +195,7 @@ public class AppDirsTest {
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Linux", "tester", p -> null);
     AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
-    AppDirs.Resolved r = dirs.resolve();
+    Resolved r = dirs.resolve();
     String[] lines =
         new String[] {
           "node.install.cfgDir=${configDir}",
@@ -199,9 +206,13 @@ public class AppDirsTest {
         };
     SimpleFieldSet sfs = new SimpleFieldSet(lines, true, true, false);
     SimpleFieldSet out = CryptadConfig.expandAll(sfs, r, System.getProperties());
+    System.out.println("DEBUG cfgDir expected=" + r.getConfigDir());
+    System.out.println("DEBUG node.install.cfgDir actual=" + out.get("node.install.cfgDir"));
     assertTrue(out.get("node.install.cfgDir").startsWith(r.getConfigDir().toString()));
     assertEquals(r.getDataDir().toString(), out.get("node.install.storeDir"));
     assertTrue(out.get("node.install.tempDir").startsWith(r.getCacheDir().toString()));
+    System.out.println("DEBUG logsDir expected=" + r.getLogsDir());
+    System.out.println("DEBUG logger.dirname actual=" + out.get("logger.dirname"));
     assertEquals(r.getLogsDir().toString(), out.get("logger.dirname"));
   }
 }

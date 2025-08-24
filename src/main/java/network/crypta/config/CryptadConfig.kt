@@ -2,7 +2,7 @@
 
 package network.crypta.config
 
-import network.crypta.fs.AppDirs
+import network.crypta.fs.Resolved
 import network.crypta.support.SimpleFieldSet
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -16,7 +16,7 @@ import kotlin.io.path.exists
 @Throws(IOException::class)
 fun loadExpandingPlaceholders(
     configFile: Path,
-    dirs: AppDirs.Resolved,
+    dirs: Resolved,
     systemProps: Properties = System.getProperties()
 ): SimpleFieldSet {
     if (!configFile.parent.exists()) configFile.parent.createDirectories()
@@ -31,7 +31,7 @@ fun loadExpandingPlaceholders(
 
 fun expandAll(
     input: SimpleFieldSet,
-    dirs: AppDirs.Resolved,
+    dirs: Resolved,
     systemProps: Properties = System.getProperties()
 ): SimpleFieldSet {
     val home = systemProps.getProperty("user.home")
@@ -51,7 +51,7 @@ fun expandAll(
     val it = out.keyIterator()
     while (it.hasNext()) {
         val key = it.next()
-        val value = out.get(key) ?: continue
+        val value = out[key] ?: continue
         val newVal = expandValue(value, base)
         if (newVal != value) out.putOverwrite(key, newVal)
     }
@@ -60,7 +60,7 @@ fun expandAll(
 }
 
 private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) {
-    fun setIfMissing(k: String, v: String) { if (sfs.get(k) == null) sfs.putSingle(k, v) }
+    fun setIfMissing(k: String, v: String) { if (sfs[k] == null) sfs.putSingle(k, v) }
     setIfMissing("node.install.cfgDir", base.getValue("configDir"))
     setIfMissing("node.install.storeDir", base.getValue("dataDir"))
     setIfMissing("node.install.userDir", base.getValue("configDir"))
@@ -76,11 +76,16 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
 
 fun expandValue(value: String, base: Map<String, String>): String {
     var out = value
-    base.forEach { (k, v) -> out = out.replace("\${'$'}{$k}", v) }
     base.forEach { (k, v) ->
-        if (out == k) out = v
-        else if (out.startsWith("$k/")) out = Path.of(v, out.removePrefix("$k/")).toString()
-        else if (out.startsWith("$k\\")) out = Path.of(v, out.removePrefix("$k\\")).toString()
+        val placeholder = "\${$k}"
+        out = out.replace(placeholder, v)
+    }
+    base.forEach { (k, v) ->
+        when {
+            out == k -> out = v
+            out.startsWith("$k/") -> out = Path.of(v, out.removePrefix("$k/")).toString()
+            out.startsWith("$k\\") -> out = Path.of(v, out.removePrefix("$k\\")).toString()
+        }
     }
     return out
 }
@@ -98,8 +103,10 @@ private fun createAll(sfs: SimpleFieldSet) {
         "node.install.runDir",
         "node.downloadsDir",
         "logger.dirname"
-    ).mapNotNull { sfs.get(it) }.map { Path.of(it) }
-    dirs.forEach { try { if (!Files.exists(it)) Files.createDirectories(it) } catch (_: Exception) {} }
+    ).mapNotNull { sfs[it] }.map { Path.of(it) }
+    dirs.forEach { try { if (!Files.exists(it)) Files.createDirectories(it) } catch (_: Exception) {
+        // Ignore
+    } }
 }
 
 fun defaultTemplate(): String = """

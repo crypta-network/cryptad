@@ -7,11 +7,9 @@ import network.crypta.fs.ServiceDirs
 fun main() {
     val env = System.getenv()
     val appEnv = AppEnv(env)
-    val service = appEnv.isServiceMode()
-    val sys = System.getProperties().entries.associate { (k, v) -> k.toString() to v.toString() }
     println("cryptad.service.mode=${System.getProperty("cryptad.service.mode")}")
-    if (service) {
-        val r = ServiceDirs(env, appEnv).resolve()
+    if (appEnv.isServiceMode()) {
+        val r = ServiceDirs().resolve()
         println("mode=service")
         println("configDir=${r.configDir}")
         println("dataDir=${r.dataDir}")
@@ -19,7 +17,7 @@ fun main() {
         println("runDir=${r.runDir}")
         println("logsDir=${r.logsDir}")
     } else {
-        val r = AppDirs(env, sys, emptyMap(), appEnv).resolve()
+        val r = AppDirs().resolve()
         println("mode=user")
         println("configDir=${r.configDir}")
         println("dataDir=${r.dataDir}")

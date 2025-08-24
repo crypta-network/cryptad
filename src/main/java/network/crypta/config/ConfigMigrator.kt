@@ -2,7 +2,7 @@
 
 package network.crypta.config
 
-import network.crypta.fs.AppDirs
+import network.crypta.fs.Resolved
 import network.crypta.support.SimpleFieldSet
 import java.io.IOException
 import java.nio.file.Files
@@ -14,25 +14,27 @@ import kotlin.io.path.exists
 
 /** Best-effort migration from legacy relative paths to adaptive directories. */
 
+const val CONFIG_FILE = "cryptad.ini"
+
 @Throws(IOException::class)
-fun migrateIfNeeded(dirs: AppDirs.Resolved, executableDir: Path) {
-    val cfgFile = dirs.configDir.resolve("cryptad.ini")
+fun migrateIfNeeded(dirs: Resolved, executableDir: Path) {
+    val cfgFile = dirs.configDir.resolve(CONFIG_FILE)
 
     val cwd = Paths.get("").toAbsolutePath().normalize()
-    val cwdCfg = cwd.resolve("cryptad.ini")
-    val exeCfg = executableDir.resolve("cryptad.ini")
+    val cwdCfg = cwd.resolve(CONFIG_FILE)
+    val exeCfg = executableDir.resolve(CONFIG_FILE)
 
     if (!Files.exists(cfgFile)) {
         if (Files.exists(cwdCfg)) {
             copyIfMissing(cwdCfg, cfgFile)
-            System.out.println("[cryptad] Migrated cryptad.ini from CWD to ${cfgFile}")
+            println("[cryptad] Migrated cryptad.ini from CWD to $cfgFile")
         } else if (Files.exists(exeCfg)) {
             copyIfMissing(exeCfg, cfgFile)
-            System.out.println("[cryptad] Migrated cryptad.ini from executable dir to ${cfgFile}")
+            println("[cryptad] Migrated cryptad.ini from executable dir to $cfgFile")
         } else {
             if (!cfgFile.parent.exists()) cfgFile.parent.createDirectories()
             Files.writeString(cfgFile, defaultTemplate())
-            System.out.println("[cryptad] Created default cryptad.ini at ${cfgFile}")
+            println("[cryptad] Created default cryptad.ini at $cfgFile")
         }
     }
 
@@ -52,7 +54,7 @@ private fun moveIfPresent(src: Path, dst: Path) {
         if (Files.exists(src) && !Files.exists(dst)) {
             if (!Files.exists(dst.parent)) Files.createDirectories(dst.parent)
             Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE)
-            System.out.println("[cryptad] Moved ${src} -> ${dst}")
+            println("[cryptad] Moved $src -> $dst")
         }
     } catch (_: Exception) {
         // Skip on conflicts or failures
@@ -64,22 +66,26 @@ private fun rewriteLegacyPaths(configFile: Path) {
     try {
         val sfs = SimpleFieldSet.readFrom(Files.newInputStream(configFile), true, true)
         fun rewrite(key: String, rel: String, placeholder: String) {
-            val v = sfs.get(key) ?: return
-            if (v == rel || v == "./$rel" || (rel == "." && v == ".")) sfs.putOverwrite(key, placeholder)
+            val v = sfs[key] ?: return
+            if (v == rel || v == "./$rel") sfs.putOverwrite(key, placeholder)
         }
-        rewrite("node.install.cfgDir", ".", "${'$'}{configDir}")
-        rewrite("node.install.userDir", ".", "${'$'}{configDir}")
-        rewrite("node.install.nodeDir", ".", "${'$'}{dataDir}/node")
-        rewrite("node.install.storeDir", "./datastore", "${'$'}{dataDir}/datastore")
-        rewrite("node.install.pluginDir", "./plugins", "${'$'}{dataDir}/plugins")
-        rewrite("node.install.pluginStoresDir", "plugin-data", "${'$'}{dataDir}/plugins")
-        rewrite("node.install.tempDir", "./temp", "${'$'}{cacheDir}/tmp")
-        rewrite("node.install.persistentTempDir", "./persistent-temp", "${'$'}{cacheDir}/persistent-temp")
-        rewrite("node.downloadsDir", "./downloads", "${'$'}{dataDir}/downloads")
-        rewrite("logger.dirname", "./logs", "${'$'}{logsDir}")
+        rewrite("node.install.cfgDir", ".", "\${configDir}")
+        rewrite("node.install.userDir", ".", "\${configDir}")
+        rewrite("node.install.nodeDir", ".", "\${dataDir}/node")
+        rewrite("node.install.storeDir", "./datastore", "\${dataDir}/datastore")
+        rewrite("node.install.pluginDir", "./plugins", "\${dataDir}/plugins")
+        rewrite("node.install.pluginStoresDir", "plugin-data", "\${dataDir}/plugins")
+        rewrite("node.install.tempDir", "./temp", "\${cacheDir}/tmp")
+        rewrite(
+            "node.install.persistentTempDir",
+            "./persistent-temp",
+            "\${cacheDir}/persistent-temp"
+        )
+        rewrite("node.downloadsDir", "./downloads", "\${dataDir}/downloads")
+        rewrite("logger.dirname", "./logs", "\${logsDir}")
 
         Files.newOutputStream(configFile).use { os -> sfs.writeToBigBuffer(os) }
-        System.out.println("[cryptad] Rewrote legacy paths in ${configFile}")
+        println("[cryptad] Rewrote legacy paths in $configFile")
     } catch (_: Exception) {
         // Tolerate parse errors; continue without rewrite
     }

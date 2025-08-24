@@ -42,6 +42,7 @@ import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.io.xfer.AbortedException;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
@@ -388,12 +389,12 @@ public class NodeClientCore implements Persistable {
     Path defaultDataDir;
     if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
-      ServiceDirs.Resolved resolved = serviceDirs.resolve();
+      Resolved resolved = serviceDirs.resolve();
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();
     } else {
       AppDirs dirs = new AppDirs();
-      AppDirs.Resolved resolved = dirs.resolve();
+      Resolved resolved = dirs.resolve();
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();
     }

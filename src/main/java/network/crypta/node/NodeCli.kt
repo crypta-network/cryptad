@@ -1,5 +1,6 @@
 package network.crypta.node
 
+import network.crypta.fs.APP_RUNTIME_SUBPATH
 import picocli.CommandLine
 import picocli.CommandLine.*
 import java.io.PrintWriter
@@ -18,7 +19,7 @@ import java.io.PrintWriter
  * - Force service mode: `cryptad --service` or `cryptad --service-mode=service`
  */
 @Command(
-    name = "network/crypta",
+    name = APP_RUNTIME_SUBPATH,
     mixinStandardHelpOptions = true,
     usageHelpAutoWidth = true,
     sortOptions = false,
@@ -112,7 +113,7 @@ class NodeCli {
         serviceMode?.let { mode ->
             val m = mode.lowercase()
             if (m == "service" || m == "user") return m
-            throw CommandLine.ParameterException(
+            throw ParameterException(
                 CommandLine(this), "--service-mode must be either 'service' or 'user'"
             )
         }
@@ -126,8 +127,8 @@ class NodeCli {
     /** Provides a richer, dynamic version string. */
     class CryptadVersionProvider : IVersionProvider {
         override fun getVersion(): Array<String> = arrayOf(
-            "${NODE_NAME} ${currentBuildNumber()} (${gitRevision()})",
-            "Protocol: ${LAST_GOOD_FRED_PROTOCOL_VERSION}",
+            "$NODE_NAME ${currentBuildNumber()} (${gitRevision()})",
+            "Protocol: $LAST_GOOD_FRED_PROTOCOL_VERSION",
             "Wire: ${getVersionString()}"
         )
     }
@@ -137,15 +138,14 @@ class NodeCli {
         override fun handleExecutionException(
             ex: Exception?,
             commandLine: CommandLine?,
-            parseResult: CommandLine.ParseResult?
+            parseResult: ParseResult?
         ): Int {
             val out: PrintWriter = commandLine?.err ?: PrintWriter(System.err)
             out.println("Error: ${ex?.message}")
             out.println()
             commandLine?.usage(out)
             out.flush()
-            return CommandLine.ExitCode.USAGE
+            return ExitCode.USAGE
         }
     }
 }
-
