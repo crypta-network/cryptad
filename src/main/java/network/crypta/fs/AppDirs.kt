@@ -64,12 +64,12 @@ class AppDirs(
             logsBase = Paths.get(localAppData, "Cryptad", "Logs")
         } else if (appEnv.isMac() && !osxPrefersXdg) {
             // macOS native (GUI/Homebrew default w/o XDG)
-            val appSupport = Paths.get(home, "Library", "Application Support")
+            val appSupport = Paths.get(home, MACOS_LIBRARY_PATH, "Application Support")
             configBase = appSupport
             dataBase = appSupport
-            cacheBase = Paths.get(home, "Library", "Caches")
+            cacheBase = Paths.get(home, MACOS_LIBRARY_PATH, "Caches")
             runtimeBase = cacheBase.resolve("Cryptad").resolve("run")
-            logsBase = Paths.get(home, "Library", "Logs", "Cryptad")
+            logsBase = Paths.get(home, MACOS_LIBRARY_PATH, "Logs", "Cryptad")
         } else {
             // Linux/XDG and macOS when XDG_* set
             val xdgConfig = env["XDG_CONFIG_HOME"] ?: Paths.get(home, ".config").toString()
@@ -116,9 +116,9 @@ class AppDirs(
         }
 
         // Docker: encourage env overrides but default to XDG
-        if (appEnv.isDocker()) {
+        // if (appEnv.isDocker()) {
             // Already using XDG above; env overrides still apply below.
-        }
+        // }
 
         // Apply env/cli overrides
         val finalConfig = cliConfig ?: envConfig ?: configBase.resolve("Cryptad").resolve("config")
@@ -128,11 +128,11 @@ class AppDirs(
         val finalLogs = cliLogs ?: envLogs ?: logsBase
 
         // Ensure exist and set minimal permissions on POSIX
-        ensureDir(finalConfig, perms = "rwx------")
-        ensureDir(finalData, perms = "rwxr-x---")
-        ensureDir(finalCache, perms = "rwxr-x---")
-        ensureDir(finalRun, perms = "rwxr-x---")
-        ensureDir(finalLogs, perms = "rwxr-x---")
+        ensureDir(finalConfig, perms = PERM_USER_RWX)
+        ensureDir(finalData, perms = PERM_GROUP_RX)
+        ensureDir(finalCache, perms = PERM_GROUP_RX)
+        ensureDir(finalRun, perms = PERM_GROUP_RX)
+        ensureDir(finalLogs, perms = PERM_GROUP_RX)
 
         return Resolved(finalConfig, finalData, finalCache, finalRun, finalLogs)
     }

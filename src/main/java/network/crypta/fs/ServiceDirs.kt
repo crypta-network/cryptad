@@ -7,6 +7,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 
+
 /** Service-aware directories based on systemd (Linux), launchd (macOS), and Windows Service. */
 class ServiceDirs @JvmOverloads constructor(
     private val env: Map<String, String> = System.getenv(),
@@ -35,13 +36,14 @@ class ServiceDirs @JvmOverloads constructor(
                 )
             }
             appEnv.isMac() -> {
-                val root = Paths.get("/Library", "Application Support", "Cryptad")
+
+                val root = Paths.get("/$MACOS_LIBRARY_PATH", "Application Support", "Cryptad")
                 tuple(
                     root.resolve("config"),
                     root.resolve("data"),
-                    Paths.get("/Library", "Caches", "Cryptad"),
-                    Paths.get("/Library", "Logs", "Cryptad"),
-                    Paths.get("/Library", "Caches", "Cryptad", "run"),
+                    Paths.get("/$MACOS_LIBRARY_PATH", "Caches", "Cryptad"),
+                    Paths.get("/$MACOS_LIBRARY_PATH", "Logs", "Cryptad"),
+                    Paths.get("/$MACOS_LIBRARY_PATH", "Caches", "Cryptad", "run"),
                 )
             }
             else -> { // Linux systemd
@@ -60,11 +62,11 @@ class ServiceDirs @JvmOverloads constructor(
             }
         }
 
-        ensure(configDir, perms = "rwx------")
-        ensure(stateDir, perms = "rwxr-x---")
-        ensure(cacheDir, perms = "rwxr-x---")
-        ensure(logsDir, perms = "rwxr-x---")
-        ensure(runDir, perms = "rwxr-x---")
+        ensure(configDir, perms = PERM_USER_RWX)
+        ensure(stateDir, perms = PERM_GROUP_RX)
+        ensure(cacheDir, perms = PERM_GROUP_RX)
+        ensure(logsDir, perms = PERM_GROUP_RX)
+        ensure(runDir, perms = PERM_GROUP_RX)
 
         return Resolved(configDir, stateDir, cacheDir, runDir, logsDir)
     }
@@ -76,6 +78,7 @@ class ServiceDirs @JvmOverloads constructor(
                 Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(perms))
             }
         } catch (_: Exception) {
+            // Non-POSIX or failure — ignore silently per cross-platform allowance
         }
     }
 

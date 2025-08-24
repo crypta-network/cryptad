@@ -4,6 +4,10 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
+const val PERM_GROUP_RX = "rwxr-x---"
+const val PERM_USER_RWX = "rwx------"
+const val MACOS_LIBRARY_PATH = "Library"
+
 /**
  * Environment and platform detection for Cryptad.
  *
@@ -40,9 +44,6 @@ class AppEnv @JvmOverloads constructor(
     fun isSystemdService(): Boolean {
         if (!isLinux()) return false
         if (env["CRYPTAD_SERVICE"] == "1") return true
-        // System property override
-        val prop = System.getProperty("cryptad.service")?.lowercase()
-        if (prop == "1" || prop == "true") return true
         // systemd exported envs (present when using RuntimeDirectory= etc.)
         val keys = listOf(
             "CONFIGURATION_DIRECTORY", "STATE_DIRECTORY", "CACHE_DIRECTORY", "LOGS_DIRECTORY", "RUNTIME_DIRECTORY"
@@ -71,9 +72,6 @@ class AppEnv @JvmOverloads constructor(
             "service" -> return true
             "user" -> return false
         }
-        val prop = System.getProperty("cryptad.service")?.lowercase()
-        if (prop == "1" || prop == "true") return true
-        if (prop == "0" || prop == "false") return false
         return env["CRYPTAD_SERVICE"] == "1" || isSystemdService() || isWindowsService() || isMacService()
     }
 }
