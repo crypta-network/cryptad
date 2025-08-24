@@ -36,11 +36,20 @@ constructor(
 
   fun isSnap(): Boolean = env.containsKey("SNAP")
 
+  /**
+   * Detects Docker/container runtime on Linux via cgroup markers.
+   *
+   * Returns true when explicitly overridden by CRYPTAD_DOCKER=1. Otherwise on Linux, checks for
+   * /proc/1/cgroup and looks for common container keywords. Safely returns false when the cgroup
+   * file is missing or unreadable.
+   */
   fun isDocker(): Boolean {
     // Allow explicit override for tests/containers
     if (env["CRYPTAD_DOCKER"] == "1") return true
     if (!isLinux()) return false
-    val cgroup = fileReader(Path.of("/proc/1/cgroup")) ?: return false
+    val cgroupPath = Path.of("/proc/1/cgroup")
+    if (!Files.exists(cgroupPath)) return false
+    val cgroup = fileReader(cgroupPath) ?: return false
     val s = cgroup.lowercase()
     return s.contains("docker") || s.contains("containerd") || s.contains("kubepods")
   }

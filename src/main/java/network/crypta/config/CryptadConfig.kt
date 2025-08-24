@@ -83,12 +83,31 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
   setIfMissing("logger.dirname", base.getValue("logsDir"))
 }
 
+/**
+ * Expand a single configuration value by replacing supported placeholders and leading tokens, then
+ * validate that any resulting path which starts under a known base directory does not escape that
+ * base via path traversal (e.g. "../../").
+ *
+ * Supported placeholders (anywhere in the string): ${configDir}, ${dataDir}, ${stateDir},
+ * ${cacheDir}, ${runDir}, ${logsDir}, ${home}, ${tmp}
+ *
+ * Also supports legacy leading-token forms, e.g. "dataDir/foo" and "dataDir\\foo" which are
+ * rewritten relative to the data directory.
+ *
+ * Path traversal protection: If after expansion the value begins with one of the resolved base
+ * directories, the path is normalized and must remain within that base. Otherwise an [IOException]
+ * is thrown to prevent writing outside the expected directories.
+ */
 fun expandValue(value: String, base: Map<String, String>): String {
   var out = value
+
+  // 1) Replace ${token} placeholders wherever they appear
   base.forEach { (k, v) ->
     val placeholder = "\${$k}"
     out = out.replace(placeholder, v)
   }
+
+  // 2) Support leading-token shorthand (e.g., "dataDir/foo")
   base.forEach { (k, v) ->
     when {
       out == k -> out = v
@@ -96,6 +115,33 @@ fun expandValue(value: String, base: Map<String, String>): String {
       out.startsWith("$k\\") -> out = Path.of(v, out.removePrefix("$k\\")).toString()
     }
   }
+
+  // 3) If the result starts under any known base directory, normalize and ensure it does not
+  //    escape the base via traversal.
+  base.values.forEach { v ->
+    val basePath = Path.of(v).normalize()
+    // Fast-path: exact equality, rewrite to normalized base
+    if (out == v) {
+      out = basePath.toString()
+      return@forEach
+    }
+
+    val forward = "$v/"
+    val usesForward = out.startsWith(forward)
+    val usesBackward = out.startsWith(v + "\\")
+    if (usesForward || usesBackward) {
+      val remainder = if (usesForward) out.removePrefix(forward) else out.removePrefix(v + "\\")
+      val resolved = basePath.resolve(remainder).normalize()
+      // Ensure resolved path stays under base
+      if (!resolved.startsWith(basePath)) {
+        throw IOException(
+          "Illegal path traversal in config value: '$value' (resolved: '$resolved')"
+        )
+      }
+      out = resolved.toString()
+    }
+  }
+
   return out
 }
 
