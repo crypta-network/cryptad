@@ -1,5 +1,7 @@
 package SevenZip.Compression.RangeCoder;
 
+import java.io.IOException;
+
 public class BitTreeDecoder {
   short[] Models;
   int NumBitLevels;
@@ -13,14 +15,14 @@ public class BitTreeDecoder {
     Decoder.InitBitModels(Models);
   }
 
-  public int Decode(Decoder rangeDecoder) throws java.io.IOException {
+  public int Decode(Decoder rangeDecoder) throws IOException {
     int m = 1;
     for (int bitIndex = NumBitLevels; bitIndex != 0; bitIndex--)
       m = (m << 1) + rangeDecoder.DecodeBit(Models, m);
     return m - (1 << NumBitLevels);
   }
 
-  public int ReverseDecode(Decoder rangeDecoder) throws java.io.IOException {
+  public int ReverseDecode(Decoder rangeDecoder) throws IOException {
     int m = 1;
     int symbol = 0;
     for (int bitIndex = 0; bitIndex < NumBitLevels; bitIndex++) {
@@ -33,8 +35,7 @@ public class BitTreeDecoder {
   }
 
   public static int ReverseDecode(
-      short[] Models, int startIndex, Decoder rangeDecoder, int NumBitLevels)
-      throws java.io.IOException {
+      short[] Models, int startIndex, Decoder rangeDecoder, int NumBitLevels) throws IOException {
     int m = 1;
     int symbol = 0;
     for (int bitIndex = 0; bitIndex < NumBitLevels; bitIndex++) {

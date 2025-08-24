@@ -9,7 +9,7 @@ import org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator;
  *
  * <p>The classes which are devoted to integrate scalar samples should implement this interface.
  *
- * @see org.spaceroots.mantissa.functions.scalar.SampledFunctionIterator
+ * @see SampledFunctionIterator
  * @see ComputableFunctionIntegrator
  * @version $Id: SampledFunctionIntegrator.java 1231 2002-03-12 20:07:04Z luc $
  * @author L. Maisonobe

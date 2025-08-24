@@ -1,6 +1,7 @@
 package SevenZip.Compression.RangeCoder;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
 public class Encoder {
   static final int kTopMask = ~((1 << 24) - 1);
@@ -9,7 +10,7 @@ public class Encoder {
   static final int kBitModelTotal = (1 << kNumBitModelTotalBits);
   static final int kNumMoveBits = 5;
 
-  java.io.OutputStream Stream;
+  OutputStream Stream;
 
   long Low;
   int Range;
@@ -18,7 +19,7 @@ public class Encoder {
 
   long _position;
 
-  public void SetStream(java.io.OutputStream stream) {
+  public void SetStream(OutputStream stream) {
     Stream = stream;
   }
 

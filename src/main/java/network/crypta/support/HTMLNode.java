@@ -503,7 +503,7 @@ public class HTMLNode implements XMLCharacterClasses, Cloneable {
     }
 
     /**
-     * @see HTMLNode#generate(java.lang.StringBuilder)
+     * @see HTMLNode#generate(StringBuilder)
      */
     @Override
     public StringBuilder generate(StringBuilder tagBuffer) {

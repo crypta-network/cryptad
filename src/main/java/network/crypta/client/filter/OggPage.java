@@ -335,7 +335,7 @@ public class OggPage {
         byte[] packetPayload = new byte[packetSize];
         try {
           System.arraycopy(payload, bytesParsed, packetPayload, 0, packetSize);
-        } catch (java.lang.ArrayIndexOutOfBoundsException e) {
+        } catch (ArrayIndexOutOfBoundsException e) {
           Logger.error(
               this,
               "Error, Out of Bounds."

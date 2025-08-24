@@ -70,8 +70,7 @@ public class NodeCHK extends Key {
   public boolean equals(Object key) {
     if (key == this) return true;
     if (key instanceof NodeCHK chk) {
-      return java.util.Arrays.equals(chk.routingKey, routingKey)
-          && (cryptoAlgorithm == chk.cryptoAlgorithm);
+      return Arrays.equals(chk.routingKey, routingKey) && (cryptoAlgorithm == chk.cryptoAlgorithm);
     }
     return false;
   }

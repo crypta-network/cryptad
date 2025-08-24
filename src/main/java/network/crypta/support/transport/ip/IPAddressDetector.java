@@ -4,6 +4,7 @@ package network.crypta.support.transport.ip;
 import java.net.DatagramSocket;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -93,9 +94,9 @@ public class IPAddressDetector implements Runnable {
     final boolean logDEBUG = IPAddressDetector.logDEBUG;
     List<InetAddress> addrs = new ArrayList<>();
 
-    Enumeration<java.net.NetworkInterface> interfaces = null;
+    Enumeration<NetworkInterface> interfaces = null;
     try {
-      interfaces = java.net.NetworkInterface.getNetworkInterfaces();
+      interfaces = NetworkInterface.getNetworkInterfaces();
     } catch (SocketException e) {
       Logger.error(this, "SocketException trying to detect NetworkInterfaces: " + e, e);
       addrs.add(oldDetect());
@@ -104,7 +105,7 @@ public class IPAddressDetector implements Runnable {
 
     if (!old) {
       while (interfaces.hasMoreElements()) {
-        java.net.NetworkInterface iface = interfaces.nextElement();
+        NetworkInterface iface = interfaces.nextElement();
         if (logDEBUG) Logger.debug(this, "Scanning NetworkInterface " + iface.getDisplayName());
         int ifaceMTU = 0;
         try {

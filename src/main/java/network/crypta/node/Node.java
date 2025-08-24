@@ -23,14 +23,18 @@ import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.MissingResourceException;
+import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
 import network.crypta.client.FetchContext;
@@ -1348,14 +1352,14 @@ public class Node implements TimeSkewDetectorCallback {
     // Compute adaptive defaults
     AppEnv appEnv = new AppEnv();
     boolean serviceMode = appEnv.isServiceMode();
-    java.util.Map<String, String> systemPropsMap = new java.util.HashMap<>();
-    java.util.Properties props = System.getProperties();
-    for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+    Map<String, String> systemPropsMap = new HashMap<>();
+    Properties props = System.getProperties();
+    for (Entry<Object, Object> e : props.entrySet()) {
       systemPropsMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
     }
-    java.nio.file.Path defaultConfigDir;
-    java.nio.file.Path defaultDataDir;
-    java.nio.file.Path defaultRunDir;
+    Path defaultConfigDir;
+    Path defaultDataDir;
+    Path defaultRunDir;
     if (serviceMode) {
       ServiceDirs serviceDirs = new ServiceDirs();
       ServiceDirs.Resolved serviceResolved = serviceDirs.resolve();
@@ -1363,8 +1367,7 @@ public class Node implements TimeSkewDetectorCallback {
       defaultDataDir = serviceResolved.getDataDir();
       defaultRunDir = serviceResolved.getRunDir();
     } else {
-      AppDirs dirs =
-          new AppDirs(System.getenv(), systemPropsMap, java.util.Collections.emptyMap(), appEnv);
+      AppDirs dirs = new AppDirs(System.getenv(), systemPropsMap, Collections.emptyMap(), appEnv);
       AppDirs.Resolved appResolved = dirs.resolve();
       defaultConfigDir = appResolved.getConfigDir();
       defaultDataDir = appResolved.getDataDir();

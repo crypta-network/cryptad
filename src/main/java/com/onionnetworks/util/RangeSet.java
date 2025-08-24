@@ -1,8 +1,12 @@
 package com.onionnetworks.util;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.text.ParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.StringTokenizer;
 
 /**
  * This class represents a set of integers in a compact form by using ranges. This is essentially
@@ -360,7 +364,7 @@ public class RangeSet {
   }
 
   /**
-   * @see java.util.Arrays#binarySearch
+   * @see Arrays#binarySearch
    */
   private int binarySearch(long key) {
     int low = 0;

@@ -4,7 +4,14 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.SecureRandom;
+import java.security.Security;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.UUID;
 import network.crypta.config.ConfigMigrator;
@@ -138,8 +145,8 @@ public class NodeStarter implements WrapperListener {
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
-    java.security.Security.setProperty("networkaddress.cache.ttl", "0");
-    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0");
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
     // Setup RNG
     RandomSource random = randomSource != null ? randomSource : new Yarrow();
@@ -536,7 +543,7 @@ public class NodeStarter implements WrapperListener {
       return CommandLine.ExitCode.USAGE;
     }
 
-    java.util.Map<String, String> overrides = cli.directoryOverrides();
+    Map<String, String> overrides = cli.directoryOverrides();
     File explicitConfigFile = cli.explicitConfigFile();
     String serviceModeOverride = cli.serviceModeOverride();
     if (serviceModeOverride != null) {
@@ -544,15 +551,15 @@ public class NodeStarter implements WrapperListener {
     }
     AppEnv appEnv = new AppEnv();
     boolean serviceMode = appEnv.isServiceMode();
-    java.nio.file.Path configDirPath;
+    Path configDirPath;
     if (serviceMode) {
       ServiceDirs svc = new ServiceDirs();
       ServiceDirs.Resolved r = svc.resolve();
       configDirPath = r.getConfigDir();
     } else {
-      java.util.Map<String, String> sysMap = new java.util.HashMap<>();
-      java.util.Properties props = System.getProperties();
-      for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+      Map<String, String> sysMap = new HashMap<>();
+      Properties props = System.getProperties();
+      for (Entry<Object, Object> e : props.entrySet()) {
         sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
       }
       AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
@@ -576,15 +583,15 @@ public class NodeStarter implements WrapperListener {
             new AppDirs.Resolved(
                 r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
       } else {
-        java.util.Map<String, String> sysMap = new java.util.HashMap<>();
-        java.util.Properties props = System.getProperties();
-        for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+        Map<String, String> sysMap = new HashMap<>();
+        Properties props = System.getProperties();
+        for (Entry<Object, Object> e : props.entrySet()) {
           sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
         }
         AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
         ar = dirs.resolve();
       }
-      java.nio.file.Path exeDir = getExecutableDir();
+      Path exeDir = getExecutableDir();
       ConfigMigrator.migrateIfNeeded(ar, exeDir);
     } catch (Exception e) {
       System.err.println("Warning: migration encountered an error: " + e.getMessage());
@@ -592,13 +599,13 @@ public class NodeStarter implements WrapperListener {
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
-    java.security.Security.setProperty("networkaddress.cache.ttl", "0");
-    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0");
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
     FreenetFilePersistentConfig cfg;
     try {
       System.out.println("Loading config from " + configFilename);
-      java.nio.file.Path cfgPath = configFilename.toPath();
+      Path cfgPath = configFilename.toPath();
       AppDirs.Resolved resolved;
       if (serviceMode) {
         ServiceDirs svc = new ServiceDirs();
@@ -607,17 +614,17 @@ public class NodeStarter implements WrapperListener {
             new AppDirs.Resolved(
                 r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
       } else {
-        java.util.Map<String, String> sysMap = new java.util.HashMap<>();
-        java.util.Properties props = System.getProperties();
-        for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+        Map<String, String> sysMap = new HashMap<>();
+        Properties props = System.getProperties();
+        for (Entry<Object, Object> e : props.entrySet()) {
           sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
         }
         AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
         resolved = dirs.resolve();
       }
-      network.crypta.support.SimpleFieldSet sfs =
+      SimpleFieldSet sfs =
           CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
-      java.io.File tmp = new java.io.File(configFilename.getPath() + ".tmp");
+      File tmp = new File(configFilename.getPath() + ".tmp");
       cfg = new FreenetFilePersistentConfig(sfs, configFilename, tmp);
     } catch (IOException e) {
       System.out.println("Error : " + e);
@@ -696,16 +703,16 @@ public class NodeStarter implements WrapperListener {
     return null;
   }
 
-  private java.nio.file.Path getExecutableDir() {
+  private Path getExecutableDir() {
     try {
-      java.net.URL url = NodeStarter.class.getProtectionDomain().getCodeSource().getLocation();
-      java.nio.file.Path p = java.nio.file.Paths.get(url.toURI());
+      URL url = NodeStarter.class.getProtectionDomain().getCodeSource().getLocation();
+      Path p = Paths.get(url.toURI());
       if (p.toFile().isFile()) {
         return p.getParent();
       }
       return p;
     } catch (Exception e) {
-      return java.nio.file.Paths.get("").toAbsolutePath();
+      return Paths.get("").toAbsolutePath();
     }
   }
 

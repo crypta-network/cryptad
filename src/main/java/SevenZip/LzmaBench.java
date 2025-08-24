@@ -1,7 +1,11 @@
 package SevenZip;
 
+import SevenZip.Compression.LZMA.Decoder;
+import SevenZip.Compression.LZMA.Encoder;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class LzmaBench {
   static final int kAdditionalSize = (1 << 21);
@@ -115,7 +119,7 @@ public class LzmaBench {
   }
   ;
 
-  static class CrcOutStream extends java.io.OutputStream {
+  static class CrcOutStream extends OutputStream {
     public CRC CRC = new CRC();
 
     public void Init() {
@@ -140,7 +144,7 @@ public class LzmaBench {
   }
   ;
 
-  static class MyOutputStream extends java.io.OutputStream {
+  static class MyOutputStream extends OutputStream {
     byte[] _buffer;
     int _size;
     int _pos;
@@ -165,7 +169,7 @@ public class LzmaBench {
   }
   ;
 
-  static class MyInputStream extends java.io.InputStream {
+  static class MyInputStream extends InputStream {
     byte[] _buffer;
     int _size;
     int _pos;
@@ -278,8 +282,8 @@ public class LzmaBench {
     }
     System.out.print("\n       Compressing                Decompressing\n\n");
 
-    SevenZip.Compression.LZMA.Encoder encoder = new SevenZip.Compression.LZMA.Encoder();
-    SevenZip.Compression.LZMA.Decoder decoder = new SevenZip.Compression.LZMA.Decoder();
+    Encoder encoder = new Encoder();
+    Decoder decoder = new Decoder();
 
     if (!encoder.SetDictionarySize(dictionarySize))
       throw new Exception("Incorrect dictionary size");

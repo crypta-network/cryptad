@@ -10,7 +10,7 @@ import java.io.Serializable;
  * function at this abscissa.
  *
  * @see SampledFunction
- * @see org.spaceroots.mantissa.functions.vectorial.VectorialValuedPair
+ * @see VectorialValuedPair
  * @version $Id: VectorialValuedPair.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */

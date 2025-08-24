@@ -5,8 +5,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FECCodec;
 import network.crypta.client.FetchContext;
@@ -383,21 +389,20 @@ public class NodeClientCore implements Persistable {
 
     // Adaptive default: cacheDir/tmp
     AppEnv appEnv = new AppEnv();
-    java.util.Map<String, String> systemPropsMap = new java.util.HashMap<>();
-    java.util.Properties props = System.getProperties();
-    for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+    Map<String, String> systemPropsMap = new HashMap<>();
+    Properties props = System.getProperties();
+    for (Entry<Object, Object> e : props.entrySet()) {
       systemPropsMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
     }
-    java.nio.file.Path defaultCacheDir;
-    java.nio.file.Path defaultDataDir;
+    Path defaultCacheDir;
+    Path defaultDataDir;
     if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
       ServiceDirs.Resolved resolved = serviceDirs.resolve();
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();
     } else {
-      AppDirs dirs =
-          new AppDirs(System.getenv(), systemPropsMap, java.util.Collections.emptyMap(), appEnv);
+      AppDirs dirs = new AppDirs(System.getenv(), systemPropsMap, Collections.emptyMap(), appEnv);
       AppDirs.Resolved resolved = dirs.resolve();
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();

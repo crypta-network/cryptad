@@ -9,8 +9,8 @@ import java.util.Date;
  *
  * @deprecated use the Java 8 Date-Time APIs instead
  * @see java.time.Instant
- * @see java.time.LocalDate
- * @see java.time.ZoneOffset#UTC
+ * @see LocalDate
+ * @see ZoneOffset#UTC
  */
 @Deprecated
 public class CurrentTimeUTC {

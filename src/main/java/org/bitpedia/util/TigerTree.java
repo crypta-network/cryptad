@@ -114,7 +114,7 @@ public class TigerTree extends MessageDigest {
   /**
    * Method overrides MessageDigest.clone()
    *
-   * @see java.security.MessageDigest#clone()
+   * @see MessageDigest#clone()
    */
   public Object clone() throws CloneNotSupportedException {
     throw new CloneNotSupportedException();

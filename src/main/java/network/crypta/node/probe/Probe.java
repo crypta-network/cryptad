@@ -764,8 +764,8 @@ public class Probe implements ByteCounter {
             linkLengths[i++] = (float) randomNoise(Location.distance(myLoc, peerLoc), 0.01);
           }
         }
-        linkLengths = java.util.Arrays.copyOf(linkLengths, i);
-        java.util.Arrays.sort(linkLengths);
+        linkLengths = Arrays.copyOf(linkLengths, i);
+        Arrays.sort(linkLengths);
         listener.onLinkLengths(linkLengths);
         break;
       case LOCATION:

@@ -7,10 +7,10 @@ import org.spaceroots.mantissa.functions.vectorial.ComputableFunction;
  * This interface represents an integrator for vectorial functions.
  *
  * <p>The classes which are devoted to integrate vectorial functions should implement this
- * interface. The functions which can be handled should implement the {@link
- * org.spaceroots.mantissa.functions.vectorial.ComputableFunction ComputableFunction} interface.
+ * interface. The functions which can be handled should implement the {@link ComputableFunction
+ * ComputableFunction} interface.
  *
- * @see org.spaceroots.mantissa.functions.vectorial.ComputableFunction
+ * @see ComputableFunction
  * @version $Id: ComputableFunctionIntegrator.java 1231 2002-03-12 20:07:04Z luc $
  * @author L. Maisonobe
  */
