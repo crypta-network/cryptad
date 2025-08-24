@@ -1,15 +1,13 @@
 pluginManagement {
-    repositories {
-        gradlePluginPortal()
-        mavenCentral()
-    }
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
+  }
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-    repositories {
-        mavenCentral()
-    }
+  repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+  repositories { mavenCentral() }
 }
 
 rootProject.name = "cryptad"

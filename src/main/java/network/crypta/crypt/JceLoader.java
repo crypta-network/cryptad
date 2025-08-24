@@ -1,6 +1,10 @@
 package network.crypta.crypt;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -119,7 +123,7 @@ public class JceLoader {
 
     private Provider load(boolean atfirst) throws Throwable {
       Provider nssProvider = null;
-      for (Provider p : java.security.Security.getProviders()) {
+      for (Provider p : Security.getProviders()) {
         if (p.getName().matches("^SunPKCS11-(?i)NSS.*$")) {
           nssProvider = p;
           break;

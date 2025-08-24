@@ -4,9 +4,19 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.SecureRandom;
+import java.security.Security;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
+import network.crypta.config.ConfigMigrator;
+import network.crypta.config.CryptadConfig;
 import network.crypta.config.FreenetFilePersistentConfig;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.PersistentConfig;
@@ -15,6 +25,10 @@ import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.crypt.Yarrow;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.Logger;
@@ -26,6 +40,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
+import picocli.CommandLine;
 
 /**
  * @author nextgens
@@ -132,8 +147,8 @@ public class NodeStarter implements WrapperListener {
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
-    java.security.Security.setProperty("networkaddress.cache.ttl", "0");
-    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0");
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
     // Setup RNG
     RandomSource random = randomSource != null ? randomSource : new Yarrow();
@@ -482,6 +497,21 @@ public class NodeStarter implements WrapperListener {
    * it can start its application. This method call is expected to return, so a new thread should be
    * launched if necessary.
    *
+   * <p>CLI is powered by picocli for a better user experience. Standard help and version flags are
+   * supported, along with intuitive options for directory overrides and mode selection.
+   *
+   * <p>Supported CLI options: - <code>-h</code>, <code>--help</code>: Show usage help - <code>-V
+   * </code>, <code>--version</code>: Show version information - <code>-c</code>, <code>
+   * --config-file FILE</code>: Explicit <code>cryptad.ini</code> path - <code>-C</code>, <code>
+   * --config-dir PATH</code>: Override configuration directory - <code>-d</code>, <code>
+   * --data-dir PATH</code>: Override data directory - <code>-x</code>, <code>--cache-dir PATH
+   * </code>: Override cache directory - <code>-r</code>, <code>--run-dir PATH</code>: Override run
+   * directory - <code>-L</code>, <code>--logs-dir PATH</code>: Override logs directory - <code>-m
+   * </code>, <code>--service-mode service|user</code>: Explicitly set service mode - <code>
+   * --service</code>, <code>--daemon</code>: Shortcut for service mode - <code>--user
+   * </code>, <code>--app</code>: Shortcut for user/app mode - positional <code>FILE</code>:
+   * Alternative way to specify <code>cryptad.ini</code>
+   *
    * @param args List of arguments used to initialize the application.
    * @return Any error code if the application should exit on completion of the start method. If
    *     there were no problems then this method should return null.
@@ -495,27 +525,96 @@ public class NodeStarter implements WrapperListener {
       isStarted = true;
       isTestingVM = false;
     }
-    if (args.length > 1) {
-      System.out.println("Usage: $ java network.crypta.node.Node <configFile>");
-      return -1;
+    // Parse CLI using picocli for a better UX
+    NodeCli cli = new NodeCli();
+    CommandLine cmd = new CommandLine(cli);
+    cmd.setExecutionExceptionHandler(new NodeCli.PrettyExceptionHandler());
+    try {
+      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
+      if (parseResult.isVersionHelpRequested()) {
+        cmd.printVersionHelp(System.out);
+        return 0;
+      }
+      if (parseResult.isUsageHelpRequested()) {
+        cmd.usage(System.out);
+        return 0;
+      }
+    } catch (CommandLine.ParameterException ex) {
+      cmd.getErr().println("Error: " + ex.getMessage());
+      cmd.getErr().println();
+      cmd.usage(cmd.getErr());
+      return CommandLine.ExitCode.USAGE;
+    }
+
+    Map<String, String> overrides = cli.directoryOverrides();
+    File explicitConfigFile = cli.explicitConfigFile();
+    String serviceModeOverride = cli.serviceModeOverride();
+    if (serviceModeOverride != null) {
+      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase());
+    }
+    AppEnv appEnv = new AppEnv();
+    boolean serviceMode = appEnv.isServiceMode();
+    Path configDirPath;
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      Resolved r = svc.resolve();
+      configDirPath = r.getConfigDir();
+    } else {
+      AppDirs dirs = new AppDirs(overrides);
+      Resolved r = dirs.resolve();
+      configDirPath = r.getConfigDir();
     }
     File configFilename;
-    if (args.length == 0) {
-      System.out.println("Using default config filename freenet.ini");
-      configFilename = new File("cryptad.ini");
-    } else {
-      configFilename = new File(args[0]);
+    configFilename =
+        Objects.requireNonNullElseGet(
+            explicitConfigFile, () -> configDirPath.resolve("cryptad.ini").toFile());
+
+    // Migrate config if needed and create defaults
+    try {
+      Resolved ar;
+      if (serviceMode) {
+        ServiceDirs svc = new ServiceDirs(overrides);
+        ar = svc.resolve();
+      } else {
+        AppDirs dirs = new AppDirs(overrides);
+        ar = dirs.resolve();
+      }
+      Path exeDir = getExecutableDir();
+      ConfigMigrator.migrateIfNeeded(ar, exeDir);
+    } catch (Exception e) {
+      System.err.println("Warning: migration encountered an error: " + e.getMessage());
     }
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
-    java.security.Security.setProperty("networkaddress.cache.ttl", "0");
-    java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0");
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
     FreenetFilePersistentConfig cfg;
     try {
-      System.out.println("Creating config from " + configFilename);
-      cfg = FreenetFilePersistentConfig.constructFreenetFilePersistentConfig(configFilename);
+      System.out.println("Loading config from " + configFilename);
+      Path cfgPath = configFilename.toPath();
+      Resolved resolved;
+      if (serviceMode) {
+        ServiceDirs svc = new ServiceDirs(overrides);
+        Resolved r = svc.resolve();
+        resolved =
+            new Resolved(
+                r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
+      } else {
+        Map<String, String> sysMap = new HashMap<>();
+        Properties props = System.getProperties();
+        for (Entry<Object, Object> e : props.entrySet()) {
+          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+        }
+        // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
+        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+        resolved = dirs.resolve();
+      }
+      SimpleFieldSet sfs =
+          CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
+      File tmp = new File(configFilename.getPath() + ".tmp");
+      cfg = new FreenetFilePersistentConfig(sfs, configFilename, tmp);
     } catch (IOException e) {
       System.out.println("Error : " + e);
       e.printStackTrace();
@@ -591,6 +690,19 @@ public class NodeStarter implements WrapperListener {
     }
 
     return null;
+  }
+
+  private Path getExecutableDir() {
+    try {
+      URL url = NodeStarter.class.getProtectionDomain().getCodeSource().getLocation();
+      Path p = Paths.get(url.toURI());
+      if (p.toFile().isFile()) {
+        return p.getParent();
+      }
+      return p;
+    } catch (Exception e) {
+      return Paths.get("").toAbsolutePath();
+    }
   }
 
   /**

@@ -21,6 +21,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Deque;
@@ -601,7 +602,7 @@ public class FileLoggerHook extends LoggerHook implements Closeable {
     }
     File[] files = dir.listFiles();
     if (files == null) return;
-    java.util.Arrays.sort(files);
+    Arrays.sort(files);
     long lastStartTime = -1;
     File oldFile = null;
     if (latestFile.exists()) FileUtil.moveTo(latestFile, previousFile);

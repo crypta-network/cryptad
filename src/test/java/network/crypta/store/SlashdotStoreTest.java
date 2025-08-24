@@ -33,7 +33,7 @@ import org.junit.Test;
 public class SlashdotStoreTest {
 
   @Before
-  public void setUp() throws java.lang.Exception {
+  public void setUp() throws Exception {
     tempDir = new File("tmp-slashdotstoretest");
     tempDir.mkdir();
     FilenameGenerator fg = new FilenameGenerator(weakPRNG, true, tempDir, "temp-");

@@ -3,6 +3,7 @@ package network.crypta.client.filter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Array;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,8 +84,7 @@ class CSSTokenizerFilter {
       return a;
     }
     @SuppressWarnings("unchecked")
-    final T[] result =
-        (T[]) java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), alen + blen);
+    final T[] result = (T[]) Array.newInstance(a.getClass().getComponentType(), alen + blen);
     System.arraycopy(a, 0, result, 0, alen);
     System.arraycopy(b, 0, result, alen, blen);
     return result;

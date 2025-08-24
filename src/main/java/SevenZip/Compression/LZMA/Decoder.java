@@ -3,6 +3,8 @@ package SevenZip.Compression.LZMA;
 import SevenZip.Compression.LZ.OutWindow;
 import SevenZip.Compression.RangeCoder.BitTreeDecoder;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class Decoder {
   class LenDecoder {
@@ -171,7 +173,7 @@ public class Decoder {
     m_RangeDecoder.Init();
   }
 
-  public boolean Code(java.io.InputStream inStream, java.io.OutputStream outStream, long outSize)
+  public boolean Code(InputStream inStream, OutputStream outStream, long outSize)
       throws IOException {
     m_RangeDecoder.SetStream(inStream);
     m_OutWindow.SetStream(outStream);

@@ -23,6 +23,7 @@ import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,6 +54,10 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.Yarrow;
 import network.crypta.crypt.ciphers.Rijndael;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.FreenetInetAddress;
@@ -1342,15 +1347,39 @@ public class Node implements TimeSkewDetectorCallback {
 
     int sortOrder = 0;
 
+    // Compute adaptive defaults
+    AppEnv appEnv = new AppEnv();
+    Path defaultConfigDir;
+    Path defaultDataDir;
+    Path defaultRunDir;
+    if (appEnv.isServiceMode()) {
+      ServiceDirs serviceDirs = new ServiceDirs();
+      Resolved serviceResolved = serviceDirs.resolve();
+      defaultConfigDir = serviceResolved.getConfigDir();
+      defaultDataDir = serviceResolved.getDataDir();
+      defaultRunDir = serviceResolved.getRunDir();
+    } else {
+      AppDirs dirs = new AppDirs();
+      Resolved appResolved = dirs.resolve();
+      defaultConfigDir = appResolved.getConfigDir();
+      defaultDataDir = appResolved.getDataDir();
+      defaultRunDir = appResolved.getRunDir();
+    }
+
     // Directory for node-related files other than store
     this.userDir =
         setupProgramDir(
-            installConfig, "userDir", ".", "Node.userDir", "Node.userDirLong", nodeConfig);
+            installConfig,
+            "userDir",
+            defaultConfigDir.toString(),
+            "Node.userDir",
+            "Node.userDirLong",
+            nodeConfig);
     this.cfgDir =
         setupProgramDir(
             installConfig,
             "cfgDir",
-            getUserDir().toString(),
+            defaultConfigDir.toString(),
             "Node.cfgDir",
             "Node.cfgDirLong",
             nodeConfig);
@@ -1358,7 +1387,7 @@ public class Node implements TimeSkewDetectorCallback {
         setupProgramDir(
             installConfig,
             "nodeDir",
-            getUserDir().toString(),
+            defaultDataDir.resolve("node").toString(),
             "Node.nodeDir",
             "Node.nodeDirLong",
             nodeConfig);
@@ -1366,7 +1395,7 @@ public class Node implements TimeSkewDetectorCallback {
         setupProgramDir(
             installConfig,
             "runDir",
-            getUserDir().toString(),
+            defaultRunDir.toString(),
             "Node.runDir",
             "Node.runDirLong",
             nodeConfig);
@@ -1374,7 +1403,7 @@ public class Node implements TimeSkewDetectorCallback {
         setupProgramDir(
             installConfig,
             "pluginDir",
-            userDir().file("plugins").toString(),
+            defaultDataDir.resolve("plugins").toString(),
             "Node.pluginDir",
             "Node.pluginDirLong",
             nodeConfig);
@@ -2781,7 +2810,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         setupProgramDir(
             installConfig,
             "storeDir",
-            userDir().file("datastore").getPath(),
+            defaultDataDir.toString(),
             "Node.storeDirectory",
             "Node.storeDirectoryLong",
             nodeConfig);

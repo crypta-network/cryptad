@@ -191,12 +191,11 @@ public class MersenneTwister extends Random {
   /**
    * Generate next pseudorandom number.
    *
-   * <p>This method is the core generation algorithm. As per {@link java.util.Random Random }
-   * contract, it is used by all the public generation methods for the various primitive types
-   * {@link java.util.Random#nextBoolean nextBoolean}, {@link java.util.Random#nextBytes nextBytes},
-   * {@link java.util.Random#nextDouble nextDouble}, {@link java.util.Random#nextFloat nextFloat},
-   * {@link java.util.Random#nextGaussian nextGaussian}, {@link java.util.Random#nextInt() nextInt}
-   * and {@link java.util.Random#nextLong nextLong}.
+   * <p>This method is the core generation algorithm. As per {@link Random Random } contract, it is
+   * used by all the public generation methods for the various primitive types {@link
+   * Random#nextBoolean nextBoolean}, {@link Random#nextBytes nextBytes}, {@link Random#nextDouble
+   * nextDouble}, {@link Random#nextFloat nextFloat}, {@link Random#nextGaussian nextGaussian},
+   * {@link Random#nextInt() nextInt} and {@link Random#nextLong nextLong}.
    *
    * @param bits number of random bits to produce
    */

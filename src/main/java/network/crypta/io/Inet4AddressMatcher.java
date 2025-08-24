@@ -62,7 +62,7 @@ public class Inet4AddressMatcher implements AddressMatcher {
    * @param address The address to convert
    * @return The IP address as 32-bit value
    * @throws NumberFormatException if a part of the string can not be parsed using {@link
-   *     Integer#parseInt(java.lang.String)}
+   *     Integer#parseInt(String)}
    * @throws java.util.NoSuchElementException if <code>address</code> contains less than 3 dots
    */
   public static int convertToBytes(String address) {

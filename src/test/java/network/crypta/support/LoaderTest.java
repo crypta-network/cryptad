@@ -1,6 +1,7 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.lang.reflect.InvocationTargetException;
 import org.junit.Test;
@@ -30,6 +31,6 @@ public class LoaderTest {
       fail("unexpected exception" + e.getMessage());
     }
 
-    assertTrue(o instanceof java.lang.String);
+    assertTrue(o instanceof String);
   }
 }

@@ -16,6 +16,7 @@ import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EncryptedRandomAccessBucket;
@@ -106,8 +107,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   // Tracking for cleanup safety net to prevent double-freeing
   private static volatile long nextRABId = 1;
-  private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> freedRABIds =
-      new java.util.concurrent.ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Long, Boolean> freedRABIds = new ConcurrentHashMap<>();
 
   /** How big can the defaultSize be for us to consider using RAMBuckets? */
   private long maxRAMBucketSize;

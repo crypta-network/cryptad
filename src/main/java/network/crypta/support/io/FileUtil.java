@@ -45,7 +45,7 @@ public final class FileUtil {
    * @param logfile The file to open
    * @param byteLimit The maximum number of bytes to read
    * @return A line reader for the trailing portion of the file
-   * @throws java.io.IOException if an I/O error occurs
+   * @throws IOException if an I/O error occurs
    */
   public static LineReadingInputStream getLogTailReader(File logfile, long byteLimit)
       throws IOException {

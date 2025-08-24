@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashSet;
 import network.crypta.client.ArchiveManager;
@@ -39,6 +40,10 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
 import network.crypta.io.xfer.AbortedException;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
@@ -378,11 +383,27 @@ public class NodeClientCore implements Persistable {
 
     // Temp files
 
+    // Adaptive default: cacheDir/tmp
+    AppEnv appEnv = new AppEnv();
+    Path defaultCacheDir;
+    Path defaultDataDir;
+    if (appEnv.isServiceMode()) {
+      ServiceDirs serviceDirs = new ServiceDirs();
+      Resolved resolved = serviceDirs.resolve();
+      defaultCacheDir = resolved.getCacheDir();
+      defaultDataDir = resolved.getDataDir();
+    } else {
+      AppDirs dirs = new AppDirs();
+      Resolved resolved = dirs.resolve();
+      defaultCacheDir = resolved.getCacheDir();
+      defaultDataDir = resolved.getDataDir();
+    }
+
     this.tempDir =
         node.setupProgramDir(
             installConfig,
             "tempDir",
-            node.runDir().file("temp").toString(),
+            defaultCacheDir.resolve("tmp").toString(),
             "NodeClientCore.tempDir",
             "NodeClientCore.tempDirLong",
             nodeConfig);
@@ -438,7 +459,7 @@ public class NodeClientCore implements Persistable {
         node.setupProgramDir(
             installConfig,
             "persistentTempDir",
-            node.userDir().file("persistent-temp").toString(),
+            defaultCacheDir.resolve("persistent-temp").toString(),
             "NodeClientCore.persistentTempDir",
             "NodeClientCore.persistentTempDirLong",
             nodeConfig);
@@ -839,7 +860,7 @@ public class NodeClientCore implements Persistable {
         node.setupProgramDir(
             nodeConfig,
             "downloadsDir",
-            node.userDir().file("downloads").getPath(),
+            defaultDataDir.resolve("downloads").toString(),
             "NodeClientCore.downloadsDir",
             "NodeClientCore.downloadsDirLong",
             l10n("couldNotFindOrCreateDir"),

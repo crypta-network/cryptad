@@ -651,7 +651,7 @@ public class LocationManager implements ByteCounter {
 
         byte[] rehash = md.digest(hisBuf);
 
-        if (!java.util.Arrays.equals(rehash, hisHash)) {
+        if (!Arrays.equals(rehash, hisHash)) {
           Logger.error(this, "Bad hash in SwapCommit - malicious node? on " + uid);
           return;
         }
@@ -869,7 +869,7 @@ public class LocationManager implements ByteCounter {
 
         byte[] rehash = SHA256.digest(hisBuf);
 
-        if (!java.util.Arrays.equals(rehash, hisHash)) {
+        if (!Arrays.equals(rehash, hisHash)) {
           Logger.error(this, "Bad hash in SwapComplete - malicious node? on " + uid);
           return;
         }

@@ -65,7 +65,7 @@ public class SaltedHashFreenetStoreTest {
   private File tempDir;
 
   @Before
-  public void setUp() throws java.lang.Exception {
+  public void setUp() throws Exception {
     tempDir = new File("tmp-saltedHashfreenetstoretest");
     tempDir.mkdir();
     exec.start();

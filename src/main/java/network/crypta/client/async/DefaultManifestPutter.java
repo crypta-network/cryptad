@@ -93,7 +93,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    * Implements the pack logic.
    *
    * @throws TooManyFilesInsertException
-   * @see BaseManifestPutter#makePutHandlers(java.util.HashMap, String)
+   * @see BaseManifestPutter#makePutHandlers(HashMap, String)
    */
   @Override
   protected void makePutHandlers(HashMap<String, Object> manifestElements, String defaultName)

@@ -1,8 +1,11 @@
 package SevenZip.Compression.LZMA;
 
+import SevenZip.Compression.LZ.BinTree;
 import SevenZip.Compression.RangeCoder.BitTreeEncoder;
 import SevenZip.ICodeProgress;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class Encoder {
   public static final int EMatchFinderTypeBT2 = 0;
@@ -270,7 +273,7 @@ public class Encoder {
   ;
 
   Optimal[] _optimum = new Optimal[kNumOpts];
-  SevenZip.Compression.LZ.BinTree _matchFinder = null;
+  BinTree _matchFinder = null;
   SevenZip.Compression.RangeCoder.Encoder _rangeEncoder =
       new SevenZip.Compression.RangeCoder.Encoder();
 
@@ -322,7 +325,7 @@ public class Encoder {
 
   long nowPos64;
   boolean _finished;
-  java.io.InputStream _inStream;
+  InputStream _inStream;
 
   int _matchFinderType = EMatchFinderTypeBT4;
   boolean _writeEndMark = false;
@@ -331,7 +334,7 @@ public class Encoder {
 
   void Create() {
     if (_matchFinder == null) {
-      SevenZip.Compression.LZ.BinTree bt = new SevenZip.Compression.LZ.BinTree();
+      BinTree bt = new BinTree();
       int numHashBytes = 4;
       if (_matchFinderType == EMatchFinderTypeBT2) numHashBytes = 2;
       bt.SetType(numHashBytes);
@@ -381,7 +384,7 @@ public class Encoder {
     _additionalOffset = 0;
   }
 
-  int ReadMatchDistances() throws java.io.IOException {
+  int ReadMatchDistances() throws IOException {
     int lenRes = 0;
     _numDistancePairs = _matchFinder.GetMatches(_matchDistances);
     if (_numDistancePairs > 0) {
@@ -397,7 +400,7 @@ public class Encoder {
     return lenRes;
   }
 
-  void MovePos(int num) throws java.io.IOException {
+  void MovePos(int num) throws IOException {
     if (num > 0) {
       _matchFinder.Skip(num);
       _additionalOffset += num;
@@ -1087,7 +1090,7 @@ public class Encoder {
     }
   }
 
-  void SetOutStream(java.io.OutputStream outStream) {
+  void SetOutStream(OutputStream outStream) {
     _rangeEncoder.SetStream(outStream);
   }
 
@@ -1100,8 +1103,7 @@ public class Encoder {
     ReleaseOutStream();
   }
 
-  void SetStreams(
-      java.io.InputStream inStream, java.io.OutputStream outStream, long inSize, long outSize) {
+  void SetStreams(InputStream inStream, OutputStream outStream, long inSize, long outSize) {
     _inStream = inStream;
     _finished = false;
     Create();
@@ -1127,8 +1129,8 @@ public class Encoder {
   boolean[] finished = new boolean[1];
 
   public void Code(
-      java.io.InputStream inStream,
-      java.io.OutputStream outStream,
+      InputStream inStream,
+      OutputStream outStream,
       long inSize,
       long outSize,
       ICodeProgress progress)
@@ -1152,7 +1154,7 @@ public class Encoder {
   public static final int kPropSize = 5;
   byte[] properties = new byte[kPropSize];
 
-  public void WriteCoderProperties(java.io.OutputStream outStream) throws IOException {
+  public void WriteCoderProperties(OutputStream outStream) throws IOException {
     properties[0] =
         (byte) ((_posStateBits * 5 + _numLiteralPosStateBits) * 9 + _numLiteralContextBits);
     for (int i = 0; i < 4; i++) properties[1 + i] = (byte) (_dictionarySize >> (8 * i));

@@ -4101,7 +4101,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     }
 
     try {
-      String[] components = network.crypta.support.Fields.commaList(versionStr);
+      String[] components = Fields.commaList(versionStr);
       if (components != null && components.length >= 3) {
         parsedVersionComponents.set(components);
         return components;

@@ -1,6 +1,9 @@
 package com.onionnetworks.util;
 
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 /**
@@ -93,9 +96,7 @@ public abstract class FilteringIterator implements Iterator {
 
   /** Test and example. */
   public static void main(String[] args) {
-    java.util.List l =
-        new java.util.LinkedList(
-            java.util.Arrays.asList(new String[] {"a", null, "was", null})); // the test array
+    List l = new LinkedList(Arrays.asList(new String[] {"a", null, "was", null})); // the test array
     Iterator i = l.iterator();
     Iterator f =
         new FilteringIterator(i) {

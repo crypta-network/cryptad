@@ -778,7 +778,7 @@ public class PeerManager {
       }
     }
     // Wipe out any information contained in the order
-    java.util.Arrays.sort(locs, 0, x);
+    Arrays.sort(locs, 0, x);
     if (x != locs.length) return Arrays.copyOf(locs, x);
     else return locs;
   }

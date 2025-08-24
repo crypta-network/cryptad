@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -143,7 +144,7 @@ public class NullBasePeerNode implements BasePeerNode {
     if (decryptedMessages == null) {
       throw new UnsupportedOperationException();
     } else {
-      decryptedMessages.add(java.util.Arrays.copyOfRange(data, offset, offset + length));
+      decryptedMessages.add(Arrays.copyOfRange(data, offset, offset + length));
     }
   }
 

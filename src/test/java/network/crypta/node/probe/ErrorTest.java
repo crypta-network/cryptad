@@ -11,11 +11,11 @@ public class ErrorTest {
 
   @Test
   public void testValidCodes() {
-    for (network.crypta.node.probe.Error t : network.crypta.node.probe.Error.values()) {
+    for (Error t : Error.values()) {
       final byte code = t.code;
       if (Type.isValid(code)) {
         try {
-          network.crypta.node.probe.Error error = network.crypta.node.probe.Error.valueOf(code);
+          Error error = Error.valueOf(code);
           // Code of enum should match.
           assertEquals(error.code, code);
         } catch (IllegalArgumentException e) {
@@ -31,7 +31,7 @@ public class ErrorTest {
   @Test
   public void testInvalidCodes() {
     HashSet<Byte> validCodes = new HashSet<>();
-    for (network.crypta.node.probe.Error error : network.crypta.node.probe.Error.values()) {
+    for (Error error : Error.values()) {
       validCodes.add(error.code);
     }
 

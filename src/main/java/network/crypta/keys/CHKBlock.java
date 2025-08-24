@@ -85,7 +85,7 @@ public class CHKBlock implements KeyBlock {
     } else {
       chk = key;
       byte[] check = chk.routingKey;
-      if (!java.util.Arrays.equals(hash, check)) {
+      if (!Arrays.equals(hash, check)) {
         throw new CHKVerifyException("Hash does not verify");
       }
       // Otherwise it checks out

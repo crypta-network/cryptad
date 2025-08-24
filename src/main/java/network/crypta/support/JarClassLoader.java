@@ -91,7 +91,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    * <p>This method searches the temporary copy of the jar file for an entry that is specified by
    * the given class name.
    *
-   * @see java.lang.ClassLoader#findClass(java.lang.String)
+   * @see ClassLoader#findClass(String)
    */
   @Override
   protected Class<?> findClass(String name) throws ClassNotFoundException {
@@ -183,7 +183,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    * <p>If the resource is found in this jar, opens the stream using ZipEntry's, so when tempJarFile
    * is closed, so are all the streams, hence we can delete the jar on Windows.
    *
-   * @see java.lang.ClassLoader#getResourceAsStream(java.lang.String)
+   * @see ClassLoader#getResourceAsStream(String)
    */
   @Override
   public InputStream getResourceAsStream(String name) {

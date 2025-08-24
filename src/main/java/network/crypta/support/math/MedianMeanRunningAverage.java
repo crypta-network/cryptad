@@ -2,6 +2,7 @@ package network.crypta.support.math;
 
 import java.io.Serial;
 import java.util.ArrayList;
+import java.util.Collections;
 
 /**
  * A RunningAverage that tracks both the median and mean of a series of values. WARNING: Uses memory
@@ -52,7 +53,7 @@ public final class MedianMeanRunningAverage implements RunningAverage, Cloneable
   public synchronized double currentValue() {
     int size = reports.size();
     int middle = size / 2;
-    java.util.Collections.sort(reports);
+    Collections.sort(reports);
     return reports.get(middle);
   }
 
