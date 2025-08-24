@@ -274,7 +274,7 @@ val copyResourcesToClasses2 by
 
 tasks.processResources {
   dependsOn(copyResourcesToClasses2)
-  dependsOn(tasks.named("generateSeednodesFile"))
+  dependsOn(generateSeednodesFile)
   from(seednodesOut) {
     into("seednodes")
     rename { "seednodes.fref" }

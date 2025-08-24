@@ -21,8 +21,10 @@ val gitrev: String =
 val buildJar by
   tasks.registering(Jar::class) {
     dependsOn(tasks.processResources, tasks.compileJava, tasks.named("compileKotlin"))
-    from(sourceSets.main.get().output.classesDirs)
-    from(sourceSets.main.get().resources)
+    // Include compiled classes and PROCESSED resources (from processResources)
+    // Using sourceSets.main.output ensures generated resources under build/resources/** are
+    // packaged
+    from(sourceSets.main.get().output)
     archiveFileName.set("cryptad.jar")
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
