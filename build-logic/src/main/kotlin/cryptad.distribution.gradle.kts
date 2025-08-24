@@ -188,7 +188,9 @@ val generateWrapperLaunchers by
       val unix = bin.resolve("cryptad")
       val templateL = file("src/main/templates/cryptad.sh.tpl").readText()
       unix.writeText(templateL)
-      unix.setExecutable(true)
+      // Ensure executable for all, plus readable for all
+      unix.setReadable(true, false)
+      unix.setExecutable(true, false)
     }
   }
 

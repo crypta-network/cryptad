@@ -1,0 +1,9 @@
+# Placeholder file for Snap Store exported login used by JReleaser.
+# When publishing, replace this placeholder with a real login export, e.g.:
+#
+#   snapcraft export-login \
+#     --snaps cryptad \
+#     --channels stable \
+#     tools/packaging/jreleaser/snapcraft-exported-login
+#
+# This file is required by JReleaser validation when the Snap packager is active.
