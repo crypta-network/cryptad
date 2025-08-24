@@ -12,6 +12,7 @@ import java.security.Security;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
 import network.crypta.config.ConfigMigrator;
@@ -557,21 +558,14 @@ public class NodeStarter implements WrapperListener {
       ServiceDirs.Resolved r = svc.resolve();
       configDirPath = r.getConfigDir();
     } else {
-      Map<String, String> sysMap = new HashMap<>();
-      Properties props = System.getProperties();
-      for (Entry<Object, Object> e : props.entrySet()) {
-        sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-      }
-      AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+      AppDirs dirs = new AppDirs(overrides);
       AppDirs.Resolved r = dirs.resolve();
       configDirPath = r.getConfigDir();
     }
     File configFilename;
-    if (explicitConfigFile != null) {
-      configFilename = explicitConfigFile;
-    } else {
-      configFilename = configDirPath.resolve("cryptad.ini").toFile();
-    }
+    configFilename =
+        Objects.requireNonNullElseGet(
+            explicitConfigFile, () -> configDirPath.resolve("cryptad.ini").toFile());
 
     // Migrate config if needed and create defaults
     try {

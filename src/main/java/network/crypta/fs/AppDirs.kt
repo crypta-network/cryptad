@@ -13,10 +13,10 @@ import kotlin.io.path.exists
  * Applies XDG for Linux/Flatpak/Snap, macOS conventions, and Windows.
  * Supports env overrides and CLI overrides.
  */
-class AppDirs(
+class AppDirs @JvmOverloads constructor(
+    private val cliOverrides: Map<String, String> = emptyMap(),
     private val env: Map<String, String> = System.getenv(),
     private val systemProperties: Map<String, String> = System.getProperties().entries.associate { (k, v) -> k.toString() to v.toString() },
-    private val cliOverrides: Map<String, String> = emptyMap(),
     private val appEnv: AppEnv = AppEnv(env)
 ) {
 

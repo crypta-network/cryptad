@@ -26,15 +26,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.MissingResourceException;
-import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
 import network.crypta.client.FetchContext;
@@ -1351,23 +1348,17 @@ public class Node implements TimeSkewDetectorCallback {
 
     // Compute adaptive defaults
     AppEnv appEnv = new AppEnv();
-    boolean serviceMode = appEnv.isServiceMode();
-    Map<String, String> systemPropsMap = new HashMap<>();
-    Properties props = System.getProperties();
-    for (Entry<Object, Object> e : props.entrySet()) {
-      systemPropsMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-    }
     Path defaultConfigDir;
     Path defaultDataDir;
     Path defaultRunDir;
-    if (serviceMode) {
+    if (appEnv.isServiceMode()) {
       ServiceDirs serviceDirs = new ServiceDirs();
       ServiceDirs.Resolved serviceResolved = serviceDirs.resolve();
       defaultConfigDir = serviceResolved.getConfigDir();
       defaultDataDir = serviceResolved.getDataDir();
       defaultRunDir = serviceResolved.getRunDir();
     } else {
-      AppDirs dirs = new AppDirs(System.getenv(), systemPropsMap, Collections.emptyMap(), appEnv);
+      AppDirs dirs = new AppDirs();
       AppDirs.Resolved appResolved = dirs.resolve();
       defaultConfigDir = appResolved.getConfigDir();
       defaultDataDir = appResolved.getDataDir();

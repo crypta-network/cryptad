@@ -7,12 +7,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FECCodec;
 import network.crypta.client.FetchContext;
@@ -389,11 +384,6 @@ public class NodeClientCore implements Persistable {
 
     // Adaptive default: cacheDir/tmp
     AppEnv appEnv = new AppEnv();
-    Map<String, String> systemPropsMap = new HashMap<>();
-    Properties props = System.getProperties();
-    for (Entry<Object, Object> e : props.entrySet()) {
-      systemPropsMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-    }
     Path defaultCacheDir;
     Path defaultDataDir;
     if (appEnv.isServiceMode()) {
@@ -402,7 +392,7 @@ public class NodeClientCore implements Persistable {
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();
     } else {
-      AppDirs dirs = new AppDirs(System.getenv(), systemPropsMap, Collections.emptyMap(), appEnv);
+      AppDirs dirs = new AppDirs();
       AppDirs.Resolved resolved = dirs.resolve();
       defaultCacheDir = resolved.getCacheDir();
       defaultDataDir = resolved.getDataDir();
