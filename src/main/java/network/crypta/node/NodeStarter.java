@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Properties;
 import java.util.UUID;
+import network.crypta.config.ConfigMigrator;
+import network.crypta.config.CryptadConfig;
 import network.crypta.config.FreenetFilePersistentConfig;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.PersistentConfig;
@@ -15,6 +17,9 @@ import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.crypt.Yarrow;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
 import network.crypta.support.Logger;
@@ -26,6 +31,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
+import picocli.CommandLine;
 
 /**
  * @author nextgens
@@ -482,6 +488,20 @@ public class NodeStarter implements WrapperListener {
    * it can start its application. This method call is expected to return, so a new thread should be
    * launched if necessary.
    *
+   * <p>CLI is powered by picocli for a better user experience. Standard help and version flags are
+   * supported, along with intuitive options for directory overrides and mode selection.
+   *
+   * <p>Supported CLI options: - <code>-h</code>, <code>--help</code>: Show usage help - <code>-V
+   * </code>, <code>--version</code>: Show version information - <code>-c</code>, <code>
+   * --config-file FILE</code>: Explicit <code>cryptad.ini</code> path - <code>-C</code>, <code>
+   * --config-dir PATH</code>: Override configuration directory - <code>-d</code>, <code>
+   * --data-dir PATH</code>: Override data directory - <code>-x</code>, <code>--cache-dir PATH
+   * </code>: Override cache directory - <code>-r</code>, <code>--run-dir PATH</code>: Override run
+   * directory - <code>-m</code>, <code>--service-mode service|user</code>: Explicitly set service
+   * mode - <code>--service</code>, <code>--daemon</code>: Shortcut for service mode - <code>--user
+   * </code>, <code>--app</code>: Shortcut for user/app mode - positional <code>FILE</code>:
+   * Alternative way to specify <code>cryptad.ini</code>
+   *
    * @param args List of arguments used to initialize the application.
    * @return Any error code if the application should exit on completion of the start method. If
    *     there were no problems then this method should return null.
@@ -495,16 +515,79 @@ public class NodeStarter implements WrapperListener {
       isStarted = true;
       isTestingVM = false;
     }
-    if (args.length > 1) {
-      System.out.println("Usage: $ java network.crypta.node.Node <configFile>");
-      return -1;
+    // Parse CLI using picocli for a better UX
+    NodeCli cli = new NodeCli();
+    CommandLine cmd = new CommandLine(cli);
+    cmd.setExecutionExceptionHandler(new NodeCli.PrettyExceptionHandler());
+    try {
+      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
+      if (parseResult.isVersionHelpRequested()) {
+        cmd.printVersionHelp(System.out);
+        return 0;
+      }
+      if (parseResult.isUsageHelpRequested()) {
+        cmd.usage(System.out);
+        return 0;
+      }
+    } catch (CommandLine.ParameterException ex) {
+      cmd.getErr().println("Error: " + ex.getMessage());
+      cmd.getErr().println();
+      cmd.usage(cmd.getErr());
+      return CommandLine.ExitCode.USAGE;
+    }
+
+    java.util.Map<String, String> overrides = cli.directoryOverrides();
+    File explicitConfigFile = cli.explicitConfigFile();
+    String serviceModeOverride = cli.serviceModeOverride();
+    if (serviceModeOverride != null) {
+      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase());
+    }
+    AppEnv appEnv = new AppEnv();
+    boolean serviceMode = appEnv.isServiceMode();
+    java.nio.file.Path configDirPath;
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs();
+      ServiceDirs.Resolved r = svc.resolve();
+      configDirPath = r.getConfigDir();
+    } else {
+      java.util.Map<String, String> sysMap = new java.util.HashMap<>();
+      java.util.Properties props = System.getProperties();
+      for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+        sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+      }
+      AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+      AppDirs.Resolved r = dirs.resolve();
+      configDirPath = r.getConfigDir();
     }
     File configFilename;
-    if (args.length == 0) {
-      System.out.println("Using default config filename freenet.ini");
-      configFilename = new File("cryptad.ini");
+    if (explicitConfigFile != null) {
+      configFilename = explicitConfigFile;
     } else {
-      configFilename = new File(args[0]);
+      configFilename = configDirPath.resolve("cryptad.ini").toFile();
+    }
+
+    // Migrate config if needed and create defaults
+    try {
+      AppDirs.Resolved ar;
+      if (serviceMode) {
+        ServiceDirs svc = new ServiceDirs();
+        ServiceDirs.Resolved r = svc.resolve();
+        ar =
+            new AppDirs.Resolved(
+                r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
+      } else {
+        java.util.Map<String, String> sysMap = new java.util.HashMap<>();
+        java.util.Properties props = System.getProperties();
+        for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+        }
+        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+        ar = dirs.resolve();
+      }
+      java.nio.file.Path exeDir = getExecutableDir();
+      ConfigMigrator.migrateIfNeeded(ar, exeDir);
+    } catch (Exception e) {
+      System.err.println("Warning: migration encountered an error: " + e.getMessage());
     }
 
     // set Java's DNS cache not to cache forever, since many people
@@ -514,8 +597,28 @@ public class NodeStarter implements WrapperListener {
 
     FreenetFilePersistentConfig cfg;
     try {
-      System.out.println("Creating config from " + configFilename);
-      cfg = FreenetFilePersistentConfig.constructFreenetFilePersistentConfig(configFilename);
+      System.out.println("Loading config from " + configFilename);
+      java.nio.file.Path cfgPath = configFilename.toPath();
+      AppDirs.Resolved resolved;
+      if (serviceMode) {
+        ServiceDirs svc = new ServiceDirs();
+        ServiceDirs.Resolved r = svc.resolve();
+        resolved =
+            new AppDirs.Resolved(
+                r.getConfigDir(), r.getDataDir(), r.getCacheDir(), r.getRunDir(), r.getLogsDir());
+      } else {
+        java.util.Map<String, String> sysMap = new java.util.HashMap<>();
+        java.util.Properties props = System.getProperties();
+        for (java.util.Map.Entry<Object, Object> e : props.entrySet()) {
+          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+        }
+        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+        resolved = dirs.resolve();
+      }
+      network.crypta.support.SimpleFieldSet sfs =
+          CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
+      java.io.File tmp = new java.io.File(configFilename.getPath() + ".tmp");
+      cfg = new FreenetFilePersistentConfig(sfs, configFilename, tmp);
     } catch (IOException e) {
       System.out.println("Error : " + e);
       e.printStackTrace();
@@ -591,6 +694,19 @@ public class NodeStarter implements WrapperListener {
     }
 
     return null;
+  }
+
+  private java.nio.file.Path getExecutableDir() {
+    try {
+      java.net.URL url = NodeStarter.class.getProtectionDomain().getCodeSource().getLocation();
+      java.nio.file.Path p = java.nio.file.Paths.get(url.toURI());
+      if (p.toFile().isFile()) {
+        return p.getParent();
+      }
+      return p;
+    } catch (Exception e) {
+      return java.nio.file.Paths.get("").toAbsolutePath();
+    }
   }
 
   /**

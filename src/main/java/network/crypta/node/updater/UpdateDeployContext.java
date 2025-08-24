@@ -52,12 +52,12 @@ public class UpdateDeployContext {
           continue;
         }
         // Try to match it
-        if ((name.startsWith("cryptad") && (name.endsWith(".jar")))) {
+        if ((name.startsWith("network/crypta") && (name.endsWith(".jar")))) {
           mainJar = f;
           newMainJar = new File(mainJar.getParent(), "cryptad.jar.new");
           mainJarAbsolute = isAbsolute;
           mainClasspathNo = propNo;
-        } else if ((name.startsWith("cryptad") && (name.endsWith(".jar.new")))) {
+        } else if ((name.startsWith("network/crypta") && (name.endsWith(".jar.new")))) {
           mainJar = f;
           newMainJar = new File(mainJar.getParent(), "cryptad.jar");
           mainJarAbsolute = isAbsolute;

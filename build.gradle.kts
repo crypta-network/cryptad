@@ -24,6 +24,13 @@ repositories {
     mavenCentral()
 }
 
+// Allow Kotlin sources to live under src/main/java and src/test/java
+// (the project keeps mixed Java/Kotlin in Java source roots)
+kotlin {
+    sourceSets.getByName("main").kotlin.srcDir("src/main/java")
+    sourceSets.getByName("test").kotlin.srcDir("src/test/java")
+}
+
 sourceSets {
     main {
         // Rely on Gradle's default directories (src/main/java, src/main/resources)
@@ -61,6 +68,8 @@ spotless {
 tasks.compileJava {
     // This will automatically format files that have changes according to git
     dependsOn("spotlessApply")
+    // Ensure Kotlin sources compile before Java when Java depends on Kotlin types
+    dependsOn(tasks.named("compileKotlin"))
 }
 
 val gitrev: String = try {
@@ -197,6 +206,15 @@ tasks.test {
     systemProperty("test.l10npath_main", "src/main/resources/network/crypta/l10n/")
 }
 
+// Diagnostic task to print resolved directories
+tasks.register<JavaExec>("printDirs") {
+    group = "help"
+    description = "Print resolved Cryptad directories (config, data, cache, run, logs)"
+    dependsOn("classes")
+    mainClass.set("io.cryptad.tools.PrintDirsKt")
+    classpath = sourceSets.main.get().runtimeClasspath
+}
+
 val copyResourcesToClasses2 by tasks.registering {
     inputs.files(sourceSets["main"].allSource)
     outputs.dir(layout.buildDirectory.dir("classes/java/main/"))
@@ -293,6 +311,8 @@ dependencies {
     implementation(libs.pebble)
     implementation(libs.unbescape)
     implementation(libs.slf4jApi)
+    // CLI parsing and UX
+    implementation("info.picocli:picocli:4.7.7")
 
     testImplementation(libs.junit4)
     testImplementation(libs.mockitoCore)
