@@ -66,7 +66,7 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
   }
   setIfMissing("node.install.cfgDir", base.getValue("configDir"))
   setIfMissing("node.install.storeDir", base.getValue("dataDir"))
-  setIfMissing("node.install.userDir", base.getValue("configDir"))
+  setIfMissing("node.install.userDir", Path.of(base.getValue("dataDir"), "user").toString())
   setIfMissing(
     "node.install.pluginStoresDir",
     Path.of(base.getValue("dataDir"), "plugin-data").toString(),
@@ -196,17 +196,6 @@ private fun createAll(sfs: SimpleFieldSet) {
 fun defaultTemplate(): String =
   """
     # Cryptad config (auto-generated)
-    node.install.nodeDir=stateDir/node
-    node.install.cfgDir=configDir
-    node.install.userDir=configDir
-    node.install.runDir=runDir
-    node.install.storeDir=stateDir
-    node.install.pluginStoresDir=stateDir/plugin-data
-    node.install.pluginDir=stateDir/plugins
-    node.install.tempDir=cacheDir/tmp
-    node.install.persistentTempDir=cacheDir/persistent-temp
-    node.downloadsDir=stateDir/downloads
-    logger.dirname=logsDir
     logger.priority=NORMAL
     node.updater.enabled=false
     node.updater.autoupdate=false
