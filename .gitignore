@@ -42,3 +42,4 @@ qodana*
 /.gemini
 /.playwright-mcp
 /.kotlin
+build-logic/build/
