@@ -721,7 +721,16 @@ public class NodeStarter implements WrapperListener {
           }
         }
       } catch (Throwable t) {
-        System.err.println("Warning: failed to install seednodes.fref: " + t.getMessage());
+        // Always print a concise warning to stdout for immediate visibility
+        System.out.printf(
+            "Warning: failed to install seednodes.fref: %s: %s%n",
+            t.getClass().getSimpleName(), t.getMessage());
+        // Log full stack trace for debugging instead of only the message
+        try {
+          Logger.error(this, "Warning: failed to install seednodes.fref", t);
+        } catch (Throwable ignored) {
+          // ignored
+        }
       }
       node.start(false);
       System.out.println("Node initialization completed.");
