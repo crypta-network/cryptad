@@ -41,4 +41,8 @@ qodana*
 /.claude
 /.gemini
 /.playwright-mcp
-/.kotlin
+.kotlin
+.jreleaser
+multipass-client-certificate
+out/jreleaser
+build-logic/build/

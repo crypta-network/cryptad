@@ -42,6 +42,15 @@ public class CryptadConfigExpandEdgeCasesTest {
     assertEquals(Path.of(b.get("cacheDir"), "persist").toString(), out);
   }
 
+  // Mixed separators after a leading token should be handled uniformly.
+  // This verifies cross-platform behavior when '/' and '\\' are interleaved.
+  @Test
+  public void leadingToken_mixedSeparators_normalizesWithinBase() {
+    Map<String, String> b = base();
+    String out = CryptadConfig.expandValue("dataDir/foo\\bar/baz", b);
+    assertEquals(Path.of(b.get("dataDir"), "foo", "bar", "baz").toString(), out);
+  }
+
   @Test
   public void placeholder_equality_resolvesToBase() {
     Map<String, String> b = base();
@@ -73,5 +82,34 @@ public class CryptadConfigExpandEdgeCasesTest {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("runDir\\.", b);
     assertEquals(Path.of(b.get("runDir")).normalize().toString(), out);
+  }
+
+  // When the configured base looks like a Windows path, inputs that mix
+  // Windows ('\\') and POSIX ('/') separators should still anchor and
+  // normalize correctly under that base.
+  @Test
+  public void anchored_mixedSeparators_withWindowsStyleBase_normalizes() {
+    Map<String, String> b = new HashMap<>();
+    b.put("dataDir", "C:\\base\\dir");
+    String out = CryptadConfig.expandValue("C:/base/dir\\x/y\\z", b);
+    // Expect it to anchor to the provided base and resolve the mixed remainder
+    assertEquals(Path.of(b.get("dataDir"), "x", "y", "z").toString(), out);
+  }
+
+  // Even with a POSIX-looking base, incoming backslashes are normalized in
+  // comparisons and resolution so that anchoring and normalization are consistent.
+  @Test
+  public void anchored_mixedSeparators_withPosixBase_normalizes() {
+    Map<String, String> b = base();
+    String out = CryptadConfig.expandValue(b.get("dataDir") + "\\x\\y", b);
+    assertEquals(Path.of(b.get("dataDir"), "x", "y").toString(), out);
+  }
+
+  // Mixed traversal using interleaved separators must be rejected when it would
+  // escape the base directory after normalization.
+  @Test(expected = IOException.class)
+  public void leadingToken_mixedTraversal_rejected() {
+    Map<String, String> b = base();
+    CryptadConfig.expandValue("dataDir/..\\..\\evil", b);
   }
 }
