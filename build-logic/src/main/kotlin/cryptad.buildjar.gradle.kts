@@ -56,6 +56,10 @@ val printHashTask by
   tasks.registering {
     description = "Prints SHA-256 hashes of built JAR files"
     group = "verification"
+
+    inputs.file(buildJar.flatMap { it.archiveFile })
+    outputs.upToDateWhen { false }
+
     doLast {
       fun hash(file: File) {
         val sha256 = MessageDigest.getInstance("SHA-256")
@@ -72,7 +76,7 @@ val printHashTask by
         )
       }
 
-      val jarFile = buildJar.get().outputs.files.singleFile
+      val jarFile = buildJar.get().archiveFile.get().asFile
       if (jarFile.exists()) hash(jarFile)
     }
   }
