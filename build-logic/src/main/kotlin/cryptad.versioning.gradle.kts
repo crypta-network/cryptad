@@ -23,14 +23,17 @@ val sourceSetsContainer = extensions.getByType(SourceSetContainer::class.java)
 
 val generateVersionSource by
   tasks.registering(Copy::class) {
-    // Always regenerate to ensure fresh version info
-    outputs.upToDateWhen { false }
-
     // Capture version during configuration to avoid deprecation warning
     val buildVersion = project.version.toString()
 
-    // Delete old generated version first to ensure clean generation
-    doFirst { delete(versionBuildDir) }
+    // Inputs: the template file and dynamic properties that impact content
+    val templateInputs = sourceSetsContainer["main"].java.srcDirs.map { it.resolve(versionSrc) }
+    inputs.files(templateInputs)
+    inputs.property("buildVersion", buildVersion)
+    inputs.property("gitRevision", gitrev)
+
+    // Output: the generated Version.kt in the build dir
+    outputs.file(file(versionBuildDir.resolve(versionSrc)))
 
     from(sourceSetsContainer["main"].java.srcDirs) {
       include(versionSrc)
