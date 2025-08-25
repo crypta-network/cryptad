@@ -86,87 +86,107 @@ private fun ensureFinalDefaults(sfs: SimpleFieldSet, base: Map<String, String>) 
 }
 
 /**
- * Expand a single configuration value by replacing supported placeholders and leading tokens, then
- * validate that any resulting path which starts under a known base directory does not escape that
- * base via path traversal (e.g. "../../").
+ * Expands a single configuration value by:
+ * - Replacing placeholders like ${configDir}, ${dataDir}, etc.
+ * - Expanding leading-token shorthand like `dataDir/foo` or `dataDir\foo`.
+ * - Anchoring to known base directories and normalizing the path.
+ * - Enforcing traversal protection: paths anchored to a base must remain within it.
  *
- * Supported placeholders (anywhere in the string): ${configDir}, ${dataDir}, ${stateDir},
- * ${cacheDir}, ${runDir}, ${logsDir}, ${home}, ${tmp}
- *
- * Also supports legacy leading-token forms, e.g. "dataDir/foo" and "dataDir\\foo" which are
- * rewritten relative to the data directory.
- *
- * Path traversal protection: If after expansion the value begins with one of the resolved base
- * directories, the path is normalized and must remain within that base. Otherwise an [IOException]
- * is thrown to prevent writing outside the expected directories.
+ * Notes
+ * - Mixed separators (both `\\` and `/`) are supported on all platforms. Comparisons are made on a
+ *   normalized representation with forward slashes, then paths are resolved/normalized via `Path`
+ *   for the final result.
  */
 fun expandValue(value: String, base: Map<String, String>): String {
-  var out = value
-  var replacedAny = false
+  val (afterPlaceholders, replacedAny) = replacePlaceholders(value, base)
+  val afterLeadingToken = expandLeadingToken(afterPlaceholders, base)
+  val (anchored, isAnchored) = anchorAndNormalize(afterLeadingToken, base, original = value)
+  validateUnanchoredTraversal(anchored, isAnchored, replacedAny, original = value)
+  return anchored
+}
 
-  // 1) Replace ${token} placeholders wherever they appear
+// --- Implementation helpers ---
+
+private fun normSep(s: String): String = s.replace('\\', '/')
+
+private fun replacePlaceholders(input: String, base: Map<String, String>): Pair<String, Boolean> {
+  var out = input
+  var replacedAny = false
   base.forEach { (k, v) ->
     val placeholder = "\${$k}"
     if (out.contains(placeholder)) replacedAny = true
     out = out.replace(placeholder, v)
   }
+  return out to replacedAny
+}
 
-  // 2) Support leading-token shorthand (e.g., "dataDir/foo")
+private fun expandLeadingToken(input: String, base: Map<String, String>): String {
+  var out = input
   base.forEach { (k, v) ->
     when {
       out == k -> out = v
-      out.startsWith("$k/") -> out = Path.of(v, out.removePrefix("$k/")).toString()
-      out.startsWith("$k\\") -> {
-        // Support Windows-style separators even on POSIX by normalizing to '/'
-        val rem = out.removePrefix("$k\\").replace('\\', '/')
-        out = Path.of(v, rem).normalize().toString()
+      out.startsWith("$k/") || out.startsWith("$k\\") -> {
+        val rem = out.substring(k.length + 1)
+        val remNorm = normSep(rem)
+        // Use OS-specific joining, deferring normalization to the anchoring pass.
+        out = Path.of(v, remNorm).toString()
       }
     }
   }
+  return out
+}
 
-  // 3) If the result starts under any known base directory, normalize and ensure it does not
-  //    escape the base via traversal.
+private fun anchorAndNormalize(
+  input: String,
+  base: Map<String, String>,
+  original: String,
+): Pair<String, Boolean> {
+  var out = input
   var anchored = false
+  val outNorm = normSep(out)
+
   base.values.forEach { v ->
     val basePath = Path.of(v).normalize()
-    // Fast-path: exact equality, rewrite to normalized base
-    if (out == v) {
+    val vNorm = normSep(v).trimEnd('/')
+
+    // Exact equality (with or without trailing slash) => normalize to base path
+    if (outNorm == vNorm || outNorm == "$vNorm/") {
       out = basePath.toString()
       anchored = true
       return@forEach
     }
 
-    val forward = "$v/"
-    val usesForward = out.startsWith(forward)
-    val usesBackward = out.startsWith(v + "\\")
-    if (usesForward || usesBackward) {
-      val remainderRaw = if (usesForward) out.removePrefix(forward) else out.removePrefix(v + "\\")
-      // Normalize Windows-style separators to POSIX for safe resolution
-      val remainder = if (usesBackward) remainderRaw.replace('\\', '/') else remainderRaw
+    val prefix = "$vNorm/"
+    if (outNorm.startsWith(prefix)) {
+      val remainder = outNorm.removePrefix(prefix)
       val resolved = basePath.resolve(remainder).normalize()
-      // Ensure resolved path stays under base
       if (!resolved.startsWith(basePath)) {
         throw IOException(
-          "Illegal path traversal in config value: '$value' (resolved: '$resolved')"
+          "Illegal path traversal in config value: '$original' (resolved: '$resolved')"
         )
       }
       out = resolved.toString()
       anchored = true
     }
   }
+  return out to anchored
+}
 
-  // 4) Additional sanitization: If a placeholder was used but the result is not anchored to a
-  //    known base directory, disallow traversal segments to avoid masked injections.
+private fun validateUnanchoredTraversal(
+  out: String,
+  anchored: Boolean,
+  replacedAny: Boolean,
+  original: String,
+) {
   if (replacedAny && !anchored) {
+    val safe = normSep(out)
     val traversalPattern = Regex("(^|/)\\.\\.(/|$)")
-    if (traversalPattern.containsMatchIn(out)) {
+    if (traversalPattern.containsMatchIn(safe)) {
       throw IOException(
-        "Illegal path traversal in config value: '$value' (unanchored with '..' segments)"
+        "Illegal path traversal in config value: '$original' (unanchored with '..' segments)"
       )
     }
   }
-
-  return out
 }
 
 private fun createAll(sfs: SimpleFieldSet) {
