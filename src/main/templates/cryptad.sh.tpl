@@ -16,7 +16,7 @@ if [ ! -f "$CONF" ]; then
 fi
 
 # Friendly warning when running as root in interactive mode
-if [ "$EUID" -eq 0 ] && [ -z "$CRYPTAD_ALLOW_ROOT" ]; then
+if [ "$EUID" -eq 0 ] && [ -z "${CRYPTAD_ALLOW_ROOT:-}" ]; then
   echo "Refusing to run as root. Create a service or use a non-root user." >&2
   echo "Set CRYPTAD_ALLOW_ROOT=1 to override." >&2
   exit 1
@@ -41,7 +41,8 @@ normalize_os() {
 
 # Prefer Snap and distro hints when available
 detect_arch() {
-  local snap_arch="$SNAP_ARCH"  # set by Snap: amd64, arm64, armhf, ppc64el, s390x, riscv64
+  # Use default expansion to be compatible with 'set -u' when SNAP_ARCH is not set
+  local snap_arch="${SNAP_ARCH:-}"  # set by Snap: amd64, arm64, armhf, ppc64el, s390x, riscv64
   local dpkg_arch=""
   if command -v dpkg >/dev/null 2>&1; then
     dpkg_arch=$(dpkg --print-architecture 2>/dev/null || true)
