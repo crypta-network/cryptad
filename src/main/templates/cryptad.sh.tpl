@@ -82,12 +82,36 @@ detect_arch() {
 DIST_OS=$(normalize_os "$OS_RAW")
 IFS=":" read -r DIST_ARCH DIST_BIT ARCH_SRC ARCH_INPUT < <(detect_arch)
 
+# Map to distribution wrapper naming (what files are called in bin/)
+# Examples present in distrib:
+#  - wrapper-linux-arm-64
+#  - wrapper-linux-x86-64
+#  - wrapper-macosx-arm-64
+#  - wrapper-macosx-universal-64
+WRAP_OS="$DIST_OS"
+WRAP_ARCH="$DIST_ARCH"
+WRAP_BIT="$DIST_BIT"
+case "$DIST_OS" in
+  linux)
+    case "$DIST_ARCH" in
+      aarch64|arm64|armhf|arm*) WRAP_ARCH=arm ;;
+      x86|amd64|x86_64|i386|i486|i586|i686) WRAP_ARCH=x86 ;;
+    esac
+    ;;
+  macosx)
+    case "$DIST_ARCH" in
+      aarch64|arm64|arm*) WRAP_ARCH=arm ; WRAP_BIT=64 ;;
+      *) WRAP_ARCH=universal ; WRAP_BIT=64 ;;
+    esac
+    ;;
+esac
+
 # Try generic wrapper first
 if [ ! -x "$WRAPPER" ]; then
   CANDIDATES=(
+    "$BIN_DIR/wrapper-$WRAP_OS-$WRAP_ARCH-$WRAP_BIT"
     "$BIN_DIR/wrapper-$DIST_OS-$DIST_ARCH-$DIST_BIT"
     "$BIN_DIR/wrapper-$DIST_OS-universal-$DIST_BIT"
-    # Common alternate spellings for some platforms
     "$BIN_DIR/wrapper-$DIST_OS-arm64-$DIST_BIT"
     "$BIN_DIR/wrapper-$DIST_OS-amd64-$DIST_BIT"
   )
@@ -107,6 +131,7 @@ echo "  TMP_DIR=$TMP_DIR"
 echo "  WRAPPER=$WRAPPER"
 echo "  DETECTED_OS=$DIST_OS (raw=$OS_RAW)"
 echo "  DETECTED_ARCH=$DIST_ARCH (bits=$DIST_BIT source=$ARCH_SRC input=$ARCH_INPUT raw=$ARCH_RAW)"
+echo "  WRAP_TARGET=$WRAP_OS-$WRAP_ARCH-$WRAP_BIT"
 
 if [ -x "$WRAPPER" ]; then
   exec "$WRAPPER" -c "$CONF" "$@"
