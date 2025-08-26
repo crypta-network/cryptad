@@ -4,6 +4,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.config.Config;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
@@ -14,6 +18,16 @@ public class DatastoreUtil {
   public static final long oneMiB = 1024 * 1024;
   public static final long oneGiB = 1024 * 1024 * 1024;
 
+  /**
+   * Compute the maximum datastore size based on two constraints: - Memory: limit slot filter memory
+   * usage derived from the JVM max memory. - Disk: cap by available space on the Cryptad data
+   * directory (not the CWD).
+   *
+   * <p>The disk check resolves the data directory using the same service/user mode logic as
+   * NodeStarter and then queries its underlying FileStore for free space.
+   *
+   * @return Maximum datastore size in bytes.
+   */
   public static long maxDatastoreSize() {
     long maxDatastoreSize;
 
@@ -37,9 +51,12 @@ public class DatastoreUtil {
       maxDatastoreSize = slots * Node.sizePerKey; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
     }
 
-    // check free disc space
+    // check free disk space of the Cryptad data directory, not the current working directory
     try {
-      long unallocatedSpace = Files.getFileStore(Path.of("")).getUnallocatedSpace();
+      AppEnv env = new AppEnv();
+      Resolved dirs = env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
+      Path dataDirPath = dirs.getDataDir();
+      long unallocatedSpace = Files.getFileStore(dataDirPath).getUnallocatedSpace();
       // TODO: leave some free space
       // probably limit 256GB see comments of the autodetectDatastoreSize method
       return Math.min(unallocatedSpace, maxDatastoreSize);
