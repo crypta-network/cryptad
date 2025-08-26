@@ -35,7 +35,5 @@ dependencies {
 tasks.register("printVersion") {
   group = "help"
   description = "Prints the project version"
-  doLast {
-    println(project.version.toString())
-  }
+  doLast { println(project.version.toString()) }
 }
