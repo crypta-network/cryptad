@@ -30,3 +30,12 @@ dependencies {
 
   runtimeOnly(files("libs/db4o-7.4.58.jar"))
 }
+
+// Utility task to print the project version
+tasks.register("printVersion") {
+  group = "help"
+  description = "Prints the project version"
+  doLast {
+    println(project.version.toString())
+  }
+}
