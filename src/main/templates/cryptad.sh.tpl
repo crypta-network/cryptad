@@ -28,10 +28,14 @@ OS_RAW=$(uname -s 2>/dev/null || echo unknown)
 ARCH_RAW=$(uname -m 2>/dev/null || echo unknown)
 
 normalize_os() {
-  case "${1,,}" in
+  # Lowercase argument in a Bash-3 compatible way (macOS ships Bash 3.2)
+  # Avoids ${var,,} which is Bash 4+ only.
+  local in
+  in=$(printf "%s" "$1" | tr '[:upper:]' '[:lower:]')
+  case "$in" in
     darwin) echo macosx ;;
     linux|gnu/linux|linux-gnu) echo linux ;;
-    *) echo "$1" ;;
+    *) echo "$in" ;;
   esac
 }
 
