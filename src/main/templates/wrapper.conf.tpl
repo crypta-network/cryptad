@@ -19,6 +19,10 @@ wrapper.java.mainclass=network.crypta.node.NodeStarter
 # Console and log
 wrapper.console.format=PM
 wrapper.console.loglevel=INFO
+wrapper.console.error_to_stderr=FALSE
+wrapper.console.fatal_to_stderr=FALSE
+wrapper.console.warn_to_stderr=FALSE
+
 wrapper.logfile=
 wrapper.logfile.format=LPTM
 wrapper.logfile.loglevel=INFO
