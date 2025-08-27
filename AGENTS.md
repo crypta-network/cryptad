@@ -28,18 +28,6 @@ When operating as an autonomous or semi-autonomous agent, proactively leverage s
 current task (e.g., context management, Kotlin/Java expertise, debugging, performance/security review, search, and
 architecture review).
 
-### apply_patch — REQUIRED (important)
-
-- Virtual tool: `apply_patch` is implemented inside the Codex executable (invoked via `--codex-run-as-apply-patch`). There is no standalone `apply_patch` binary on `PATH`.
-- Preferred invocation (structured command array):
-    - `["apply_patch", "*** Begin Patch\n*** Update File: path/to/file\n@@\n- old\n+ new\n*** End Patch\n"]`
-    - Explanation: pass the full patch text as the second element (including `*** Begin Patch`/`*** End Patch`).
-- If you must use a heredoc, wrap it with `bash -lc` so the runner interprets the heredoc as shell would:
-    - `["bash","-lc","apply_patch <<'EOF'\n*** Begin Patch\n...\n*** End Patch\nEOF\n"]`
-    - Avoid passing the heredoc markers as a literal argv string (e.g. `["apply_patch","<<'EOF'...EOF"]`) because that may be interpreted literally and is not reliably parsed.
-- Command name variants: do not use `apply-patch` (with a hyphen) or other unapproved variants; detection expects `apply_patch` (and in limited cases `applypatch`).
-- If you need to run a small script that includes `apply_patch` (for example `cd repo && apply_patch <<'EOF'...EOF`), prefer wrapping the entire script in `bash -lc`, or pass the patch text directly as the second argument.
-
 ## Development Commands
 
 ### Building
