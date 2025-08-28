@@ -149,10 +149,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
         launchBtn.isEnabled = st.isRunning && st.knownPort != null && !st.isShuttingDown
         // Update tooltip with actual port when known
         launchBtn.toolTipText =
-          if (st.knownPort != null)
-            "Open http://localhost:${st.knownPort}/ in your browser"
-          else
-            "Open http://localhost:<port>/ in your browser"
+          if (st.knownPort != null) "Open http://localhost:${st.knownPort}/ in your browser"
+          else "Open http://localhost:<port>/ in your browser"
       }
     }
 
