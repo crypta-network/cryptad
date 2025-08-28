@@ -59,6 +59,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   @Volatile private var knownPort: Int? = null
   @Volatile private var autoOpenedBrowserOnce: Boolean = false
   @Volatile private var shuttingDown: Boolean = false
+  @Volatile private var stopping: Boolean = false
 
   // Auto-scroll tracking
   @Volatile private var autoScrollEnabled: Boolean = true
@@ -84,7 +85,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       }
       KeyEvent.VK_S -> {
         if (!shuttingDown) {
-          if (!running) startCryptad() else stopCryptad()
+          if (!running) startCryptad() else if (!stopping) stopCryptadAsync()
         }
         e.consume()
         return@KeyEventDispatcher true
@@ -94,17 +95,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
         e.consume()
         return@KeyEventDispatcher true
       }
-      KeyEvent.VK_ENTER,
-      KeyEvent.VK_SPACE -> {
-        val buttons = listOf(startStopBtn, launchBtn, quitBtn)
-        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-        val btn = buttons.firstOrNull { it === focusOwner }
-        if (btn != null) {
-          btn.doClick()
-          e.consume()
-          return@KeyEventDispatcher true
-        }
-      }
+      // Do not intercept ENTER/SPACE to avoid double-activating Swing buttons
       KeyEvent.VK_UP -> {
         scrollRows(-1)
         e.consume()
@@ -150,7 +141,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     add(statusLabel, BorderLayout.SOUTH)
 
     // Wire actions
-    startStopBtn.addActionListener { if (!running) startCryptad() else stopCryptad() }
+    startStopBtn.addActionListener { if (!running) startCryptad() else stopCryptadAsync() }
     launchBtn.addActionListener { launchBrowser() }
     quitBtn.addActionListener { quitApp() }
 
@@ -279,14 +270,33 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     setRunning(false)
   }
 
-  private fun stopCryptad() {
+  private fun stopCryptadAsync() {
     val p = process ?: return
     if (!p.isAlive) {
       setRunning(false)
       return
     }
-    startStopBtn.isEnabled = false
-    launchBtn.isEnabled = false
+    if (stopping) return
+    stopping = true
+    SwingUtilities.invokeLater {
+      startStopBtn.isEnabled = false
+      launchBtn.isEnabled = false
+    }
+    Thread(
+        {
+          try {
+            stopCryptadBlocking(p)
+          } finally {
+            stopping = false
+            SwingUtilities.invokeLater { startStopBtn.isEnabled = true }
+          }
+        },
+        "cryptad-stop-thread",
+      )
+      .start()
+  }
+
+  private fun stopCryptadBlocking(p: Process) {
     try {
       val pid = p.pid()
       appendLog(ts() + " Sending SIGINT to PID $pid ...")
@@ -310,8 +320,6 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       }
     } catch (t: Throwable) {
       appendLog(ts() + " ERROR: Failed to stop process: ${t.message}")
-    } finally {
-      startStopBtn.isEnabled = true
     }
   }
 
@@ -369,21 +377,27 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     startStopBtn.isEnabled = false
     launchBtn.isEnabled = false
     quitBtn.isEnabled = false
+    // Try to stop daemon in background, but do not block app exit
+    process?.let { p ->
+      if (p.isAlive) {
+        Thread({ stopCryptadBlocking(p) }, "cryptad-stop-on-quit").start()
+      }
+    }
+    // Exit shortly regardless to avoid UI hanging if daemon ignores signals
     Thread(
         {
           try {
-            stopCryptad()
-          } finally {
-            // Remove dispatcher to avoid lingering during shutdown hooks
-            KeyboardFocusManager.getCurrentKeyboardFocusManager()
-              .removeKeyEventDispatcher(globalDispatcher)
-            SwingUtilities.invokeLater {
-              dispose()
-              kotlin.system.exitProcess(0)
-            }
-          }
+            Thread.sleep(200)
+          } catch (_: InterruptedException) {}
+          KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            .removeKeyEventDispatcher(globalDispatcher)
+          // Dispose on EDT but proceed to exit regardless
+          try {
+            SwingUtilities.invokeLater { dispose() }
+          } catch (_: Throwable) {}
+          kotlin.system.exitProcess(0)
         },
-        "quit-thread",
+        "quit-exit-thread",
       )
       .start()
   }
