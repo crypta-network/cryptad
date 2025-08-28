@@ -191,6 +191,55 @@ val generateWrapperLaunchers by
       // Ensure executable for all, plus readable for all
       unix.setReadable(true, false)
       unix.setExecutable(true, false)
+
+      // --- Generate Swing launcher start scripts (Unix + Windows) ---
+      val launcherUnix = bin.resolve("cryptad-launcher")
+      val launcherBat = bin.resolve("cryptad-launcher.bat")
+
+      val launcherUnixContent =
+        """
+        |#!/usr/bin/env bash
+        |set -euo pipefail
+        |
+        |# Resolve script directory without altering working directory
+        |DIR="$(cd "$(dirname "$0")" && pwd)"
+        |JAVA_EXE="${'$'}{JAVA_HOME:-}/bin/java"
+        |if [ ! -x "${'$'}JAVA_EXE" ]; then JAVA_EXE="java"; fi
+        |CP="${'$'}DIR/../lib/*"
+        |
+        |exec "${'$'}JAVA_EXE" -cp "${'$'}CP" network.crypta.launcher.LauncherKt "${'$'}@"
+        |"""
+          .trimMargin()
+
+      val launcherBatContent =
+        """
+        |@echo off
+        |setlocal enableextensions
+        |set DIR=%~dp0
+        |set CP=%DIR%..\\lib\\*
+        |set JAVA_EXE=%JAVA_HOME%\\bin\\java.exe
+        |if not exist "%JAVA_EXE%" set JAVA_EXE=java
+        |"%JAVA_EXE%" -cp "%CP%" network.crypta.launcher.LauncherKt %*
+        |"""
+          .trimMargin()
+
+      launcherUnix.writeText(launcherUnixContent)
+      launcherUnix.setReadable(true, false)
+      launcherUnix.setExecutable(true, false)
+      launcherBat.writeText(launcherBatContent)
+
+      // Optional dev aid: override cryptad with a dummy script when -PuseDummyCryptad=true
+      if (project.findProperty("useDummyCryptad")?.toString()?.toBoolean() == true) {
+        val dummy = file("tools/cryptad-dummy.sh")
+        if (dummy.isFile) {
+          println("Overriding bin/cryptad with tools/cryptad-dummy.sh for testing")
+          unix.writeText(dummy.readText())
+          unix.setReadable(true, false)
+          unix.setExecutable(true, false)
+        } else {
+          println("WARNING: -PuseDummyCryptad was set but tools/cryptad-dummy.sh not found")
+        }
+      }
     }
   }
 
