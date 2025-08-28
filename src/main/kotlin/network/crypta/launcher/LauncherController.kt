@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,8 @@ class LauncherController(
   private var process: Process? = null
   private var tailJob: Job? = null
   private var autoOpenedBrowser = false
+  // Separate shutdown scope so quit can proceed even if the UI scope is cancelled
+  private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob() + io)
 
   fun start() {
     if (_state.value.isRunning || process?.isAlive == true) return
@@ -118,7 +121,23 @@ class LauncherController(
   fun shutdown() {
     if (_state.value.isShuttingDown) return
     updateState { it.copy(isShuttingDown = true) }
-    scope.launch(io) { process?.let { p -> if (p.isAlive) stopProcessGracefully(p) } }
+    shutdownScope.launch { process?.let { p -> if (p.isAlive) stopProcessGracefully(p) } }
+  }
+
+  /**
+   * Shutdown and suspend until the wrapper process has exited (or been force-killed). Safe to call
+   * multiple times; subsequent calls return immediately.
+   */
+  suspend fun shutdownAndWait() {
+    if (_state.value.isShuttingDown) {
+      // If already shutting down, just wait until not running
+      return withContext(io) {
+        val p = process
+        if (p != null && p.isAlive) stopProcessGracefully(p)
+      }
+    }
+    updateState { it.copy(isShuttingDown = true) }
+    withContext(io) { process?.let { p -> if (p.isAlive) stopProcessGracefully(p) } }
   }
 
   // --- internals ---

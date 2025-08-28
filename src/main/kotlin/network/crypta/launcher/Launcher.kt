@@ -195,8 +195,13 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   private fun clamp(value: Int, min: Int, max: Int): Int = Math.max(min, Math.min(max, value))
 
   private fun quitApp() {
-    controller.shutdown()
+    // Disable UI while quitting
+    startStopBtn.isEnabled = false
+    launchBtn.isEnabled = false
+    quitBtn.isEnabled = false
     uiScope.launch {
+      // Wait for wrapper to exit before quitting the launcher
+      controller.shutdownAndWait()
       try {
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
           .removeKeyEventDispatcher(globalDispatcher)
