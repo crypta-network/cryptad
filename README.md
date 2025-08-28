@@ -69,6 +69,33 @@ data, and serves applications.
 - [Architecture Overview](#architecture-overview)
 - [License](#license)
 
+## Quick Start
+
+Build the portable distribution and run the Swing launcher:
+
+```bash
+./gradlew assembleCryptadDist
+build/cryptad-dist/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
+```
+
+The launcher automatically starts the daemon, streams live logs, detects the FProxy port from lines like
+`Starting FProxy on ...:<port>`, and opens `http://localhost:<port>/` on the first successful start.
+
+Top‑row buttons and shortcuts:
+- Start/Stop: toggles the daemon (Stop sends SIGINT; waits up to 20s before forcing).
+- Launch in Browser: enabled after the port is known (parsed from logs).
+- Quit: exits the launcher immediately (shutdown continues in background).
+
+Shortcuts (global):
+- ↑/↓ one row; PgUp/PgDn one page.
+- ←/→ move focus among the three buttons (wrap‑around).
+- Enter/Space click focused button; s start/stop; q quit.
+
+Notes
+- Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear
+  while the wrapper is running.
+- On Unix/macOS the launcher uses a pseudo‑tty (via `script`) when available to reduce buffering.
+
 ## Building
 
 We use the [Gradle Wrapper](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html). If you trust the committed
@@ -135,10 +162,12 @@ To try your local build of **Crypta**:
 3. Replace the existing node JAR with `build/libs/cryptad.jar` produced by the build.
 4. Start your node again.
 
-You can run without the native wrapper using the distribution launcher by setting an environment flag:
+If you want to test the launcher without the real daemon, build with a dummy script that simulates
+output (including the FProxy line):
 
 ```
-CRYPTAD_NO_WRAPPER=1 build/cryptad-dist/bin/cryptad
+./gradlew -PuseDummyCryptad=true assembleCryptadDist
+build/cryptad-dist/bin/cryptad-launcher
 ```
 
 Distribution (Java Service Wrapper):
@@ -157,6 +186,7 @@ Distribution (Java Service Wrapper):
 
 The resulting tree at `build/cryptad-dist` contains:
 - `bin/cryptad` and wrapper binaries
+- `bin/cryptad-launcher` (and `cryptad-launcher.bat` on Windows)
 - `conf/wrapper.conf` configured to use `lib/*.jar`
 - `lib/cryptad.jar`, runtime dependencies, and `lib/wrapper.jar`
 
@@ -192,6 +222,9 @@ org.gradle.configureondemand=true
   `dependencies.properties`.
 - Dependency verification is enabled; update both the `dependencies` and `dependencyVerification` blocks in
   `build.gradle.kts` when adding libraries.
+
+Launcher adds:
+- `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` for Swing + coroutine integration.
 
 ### Spotless + Dependency Verification
 

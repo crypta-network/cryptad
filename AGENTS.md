@@ -70,6 +70,21 @@ architecture review).
 
 ## Project-Specific Notes
 
+### Swing Launcher (Kotlin)
+
+- Package: `network.crypta.launcher`. Entry: top‑level `fun main()`.
+- UI: Java Swing (3 rows — buttons, scrolling log, status bar). System LAF, 900×600.
+- Start: launches `bin/cryptad` (wrapper) located next to the launcher script. Stop sends SIGINT (Unix) / `taskkill` (Windows) with a 20s grace period.
+- Logs: streams combined stdout+stderr and also tails `wrapper.log` when configured; enables `wrapper.console.flush=TRUE` in generated `wrapper.conf`.
+- FProxy port detection: parses `Starting FProxy on ...:<port>` from logs; enables “Launch in Browser” and auto‑opens the first time per app session.
+- Keyboard: global shortcuts via `KeyEventDispatcher`:
+  - ↑/↓ row; PgUp/PgDn page; ←/→ focus buttons (wrap‑around); Enter/Space click; `s` start/stop; `q` quit.
+- Coroutines: `kotlinx-coroutines-swing:1.10.2` with `Dispatchers.Main.immediate` for UI, `Dispatchers.IO` for process I/O and file tailing. Dedicated `shutdownScope` for quit.
+- Unix PTY fallback: if `script` exists, wraps the process to reduce buffering.
+- Build scripts: created during `assembleCryptadDist`:
+  - `build/cryptad-dist/bin/cryptad-launcher` and `cryptad-launcher.bat`.
+- Testing aid: `-PuseDummyCryptad=true` replaces `bin/cryptad` with `tools/cryptad-dummy.sh` in the dist for local testing.
+
 ## Architecture Overview
 
 ### Core Network Layer (`network.crypta.node`)
