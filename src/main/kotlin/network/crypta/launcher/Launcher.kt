@@ -30,6 +30,14 @@ import javax.swing.JTextArea
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.WindowConstants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Crypta Swing Launcher.
@@ -60,6 +68,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   @Volatile private var autoOpenedBrowserOnce: Boolean = false
   @Volatile private var shuttingDown: Boolean = false
   @Volatile private var stopping: Boolean = false
+  private val uiScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
   // Auto-scroll tracking
   @Volatile private var autoScrollEnabled: Boolean = true
@@ -203,11 +212,11 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       process = p
       setRunning(true)
 
-      // Reader thread: consume combined output, parse port
-      Thread({ readProcessOutput(p) }, "cryptad-log-reader").start()
+      // Reader coroutine: consume combined output, parse port
+      uiScope.launch(Dispatchers.IO) { readProcessOutput(p) }
 
-      // Watcher thread: wait for termination
-      Thread({ watchProcess(p) }, "cryptad-watcher").start()
+      // Watcher coroutine: wait for termination
+      uiScope.launch(Dispatchers.IO) { watchProcess(p) }
     } catch (t: Throwable) {
       appendLog(ts() + " ERROR: Failed to start 'cryptad': ${t.message}")
       setRunning(false)
@@ -282,18 +291,14 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       startStopBtn.isEnabled = false
       launchBtn.isEnabled = false
     }
-    Thread(
-        {
-          try {
-            stopCryptadBlocking(p)
-          } finally {
-            stopping = false
-            SwingUtilities.invokeLater { startStopBtn.isEnabled = true }
-          }
-        },
-        "cryptad-stop-thread",
-      )
-      .start()
+    uiScope.launch {
+      try {
+        withContext(Dispatchers.IO) { stopCryptadBlocking(p) }
+      } finally {
+        stopping = false
+        startStopBtn.isEnabled = true
+      }
+    }
   }
 
   private fun stopCryptadBlocking(p: Process) {
@@ -380,26 +385,22 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     // Try to stop daemon in background, but do not block app exit
     process?.let { p ->
       if (p.isAlive) {
-        Thread({ stopCryptadBlocking(p) }, "cryptad-stop-on-quit").start()
+        GlobalScope.launch(Dispatchers.IO) { stopCryptadBlocking(p) }
       }
     }
     // Exit shortly regardless to avoid UI hanging if daemon ignores signals
-    Thread(
-        {
-          try {
-            Thread.sleep(200)
-          } catch (_: InterruptedException) {}
-          KeyboardFocusManager.getCurrentKeyboardFocusManager()
-            .removeKeyEventDispatcher(globalDispatcher)
-          // Dispose on EDT but proceed to exit regardless
-          try {
-            SwingUtilities.invokeLater { dispose() }
-          } catch (_: Throwable) {}
-          kotlin.system.exitProcess(0)
-        },
-        "quit-exit-thread",
-      )
-      .start()
+    GlobalScope.launch(Dispatchers.Main) {
+      delay(200)
+      try {
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+          .removeKeyEventDispatcher(globalDispatcher)
+      } catch (_: Throwable) {}
+      try {
+        dispose()
+      } catch (_: Throwable) {}
+      uiScope.cancel()
+      kotlin.system.exitProcess(0)
+    }
   }
 
   // No root-pane InputMap/ActionMap bindings; globalDispatcher handles all shortcuts.
