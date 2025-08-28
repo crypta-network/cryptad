@@ -32,7 +32,6 @@ import javax.swing.UIManager
 import javax.swing.WindowConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -68,7 +67,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   @Volatile private var autoOpenedBrowserOnce: Boolean = false
   @Volatile private var shuttingDown: Boolean = false
   @Volatile private var stopping: Boolean = false
-  private val uiScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+  private val uiScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+  private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob())
 
   // Auto-scroll tracking
   @Volatile private var autoScrollEnabled: Boolean = true
@@ -385,11 +385,11 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     // Try to stop daemon in background, but do not block app exit
     process?.let { p ->
       if (p.isAlive) {
-        GlobalScope.launch(Dispatchers.IO) { stopCryptadBlocking(p) }
+        shutdownScope.launch(Dispatchers.IO) { stopCryptadBlocking(p) }
       }
     }
     // Exit shortly regardless to avoid UI hanging if daemon ignores signals
-    GlobalScope.launch(Dispatchers.Main) {
+    shutdownScope.launch(Dispatchers.Main.immediate) {
       delay(200)
       try {
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
@@ -399,6 +399,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
         dispose()
       } catch (_: Throwable) {}
       uiScope.cancel()
+      shutdownScope.cancel()
       kotlin.system.exitProcess(0)
     }
   }
