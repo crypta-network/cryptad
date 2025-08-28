@@ -223,40 +223,84 @@ class LauncherController(
   private suspend fun stopProcessGracefully(p: Process) {
     try {
       val pid = p.pid()
-      logLine(ts() + " Sending SIGINT to PID $pid ...")
       val isWindows = System.getProperty("os.name").lowercase().contains("win")
-      val ok = if (isWindows) killWindows(pid) else killUnix(pid)
-      if (!ok) {
-        logLine(ts() + " WARN: Could not send graceful signal; destroying process ...")
-        p.destroy()
+      // Snapshot descendants before we start signaling to avoid losing them if the root dies early
+      val snapshot = getDescendantTreePids(pid)
+      val allPids = listOf(pid) + snapshot
+
+      if (isWindows) {
+        runCmd("cmd", "/c", "taskkill /PID $pid /T")
+        if (!waitForPidsToExit(allPids, 20_000)) {
+          runCmd("cmd", "/c", "taskkill /F /PID $pid /T")
+          waitForPidsToExit(allPids, 5_000)
+        }
+      } else {
+        logLine(ts() + " Sending SIGINT to wrapper tree (root PID $pid) ...")
+        killUnixSignalPids(allPids, "INT")
+        if (!waitForPidsToExit(allPids, 20_000)) {
+          logLine(ts() + " Escalating: sending SIGTERM to remaining processes ...")
+          killUnixSignalPids(allPids.filter { isPidAlive(it) }, "TERM")
+          if (!waitForPidsToExit(allPids, 5_000)) {
+            logLine(ts() + " Escalating: sending SIGKILL to remaining processes ...")
+            killUnixSignalPids(allPids.filter { isPidAlive(it) }, "KILL")
+            waitForPidsToExit(allPids, 2_000)
+          }
+        }
       }
-      val deadline = System.nanoTime() + 20_000_000_000L
-      while (p.isAlive && System.nanoTime() < deadline) {
-        try {
-          Thread.sleep(200)
-        } catch (_: InterruptedException) {}
-      }
-      if (p.isAlive) {
-        logLine(ts() + " Forcibly terminating PID $pid ...")
-        p.destroyForcibly()
-      }
+
+      if (p.isAlive) p.destroyForcibly()
     } catch (t: Throwable) {
       logLine(ts() + " ERROR: Failed to stop process: ${t.message}")
     }
   }
 
-  private fun killUnix(pid: Long): Boolean =
-    try {
-      val sh = ProcessBuilder("sh", "-lc", "kill -INT $pid").start()
-      sh.waitFor() == 0
+  private fun getDescendantTreePids(rootPid: Long): List<Long> {
+    return try {
+      val opt = java.lang.ProcessHandle.of(rootPid)
+      if (!opt.isPresent) emptyList()
+      else {
+        val root = opt.get()
+        root
+          .descendants()
+          .map(java.util.function.Function<java.lang.ProcessHandle, Long> { it.pid() })
+          .toList()
+      }
+    } catch (_: Throwable) {
+      emptyList()
+    }
+  }
+
+  private fun isPidAlive(pid: Long): Boolean {
+    return try {
+      java.lang.ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
     } catch (_: Throwable) {
       false
     }
+  }
 
-  private fun killWindows(pid: Long): Boolean =
+  private fun waitForPidsToExit(pids: List<Long>, millis: Long): Boolean {
+    val deadline = System.nanoTime() + millis * 1_000_000
+    while (System.nanoTime() < deadline) {
+      if (pids.none { isPidAlive(it) }) return true
+      try {
+        Thread.sleep(200)
+      } catch (_: InterruptedException) {}
+    }
+    return pids.none { isPidAlive(it) }
+  }
+
+  private fun killUnixSignalPids(pids: List<Long>, signal: String) {
+    pids.forEach { pid ->
+      try {
+        runCmd("sh", "-lc", "kill -$signal $pid")
+      } catch (_: Throwable) {}
+    }
+  }
+
+  private fun runCmd(vararg args: String): Boolean =
     try {
-      val cmd = ProcessBuilder("cmd", "/c", "taskkill /PID $pid /T").start()
-      cmd.waitFor() == 0
+      val pr = ProcessBuilder(*args).start()
+      pr.waitFor() == 0
     } catch (_: Throwable) {
       false
     }
