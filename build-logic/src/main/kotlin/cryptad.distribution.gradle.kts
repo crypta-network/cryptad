@@ -228,17 +228,49 @@ generateWrapperConf { dependsOn(cleanCryptadDist) }
 
 generateWrapperLaunchers { dependsOn(cleanCryptadDist) }
 
-// Package the cryptad-dist as a tar.gz
+// Package the distribution as tar.gz with a clean, portable name
 tasks.register<Tar>("distTarCryptad") {
   group = "distribution"
   description = "Packages the Cryptad distribution as a tar.gz"
   dependsOn(assembleCryptadDist)
   compression = Compression.GZIP
-  archiveBaseName.set("cryptad-dist")
-  archiveVersion.set(project.version.toString())
+  // Produce cryptad-<version>.tar.gz (avoid the previous -dist suffix)
+  archiveBaseName.set("cryptad")
+  // Prefix version with 'v' in the filename
+  archiveVersion.set("v${project.version}")
+  // Ensure .tar.gz extension across Gradle versions
+  archiveFileName.set("cryptad-v${project.version}.tar.gz")
   from(wrapperDistDir)
   destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+  isPreserveFileTimestamps = true
+  isReproducibleFileOrder = true
 }
+
+// Package the same distribution as a ZIP for broad platform compatibility
+tasks.register<Zip>("distZipCryptad") {
+  group = "distribution"
+  description = "Packages the Cryptad distribution as a zip"
+  dependsOn(assembleCryptadDist)
+  archiveBaseName.set("cryptad")
+  // Prefix version with 'v' in the filename
+  archiveVersion.set("v${project.version}")
+  archiveFileName.set("cryptad-v${project.version}.zip")
+  from(wrapperDistDir)
+  destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+  isPreserveFileTimestamps = true
+  isReproducibleFileOrder = true
+}
+
+// Aggregate distribution lifecycle task
+val dist by
+  tasks.registering {
+    group = "distribution"
+    description = "Builds all Cryptad distribution artifacts (tar.gz and zip)"
+    dependsOn("distTarCryptad", "distZipCryptad")
+  }
+
+// Ensure standard build also produces the distribution archives
+tasks.named("build") { dependsOn(dist) }
 
 // Diagnostic: print resolved directories
 tasks.register<JavaExec>("printDirs") {

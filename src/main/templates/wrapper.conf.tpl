@@ -19,7 +19,11 @@ wrapper.java.mainclass=network.crypta.node.NodeStarter
 # Console and log
 wrapper.console.format=PM
 wrapper.console.loglevel=INFO
-wrapper.logfile=wrapper.log
+wrapper.console.error_to_stderr=FALSE
+wrapper.console.fatal_to_stderr=FALSE
+wrapper.console.warn_to_stderr=FALSE
+
+wrapper.logfile=
 wrapper.logfile.format=LPTM
 wrapper.logfile.loglevel=INFO
 wrapper.logfile.maxsize=2M
@@ -40,7 +44,6 @@ wrapper.java.library.path.1=lib
 
 # Lifecycle
 wrapper.restart.reload_configuration=TRUE
-wrapper.anchorfile=Crypta.anchor
 wrapper.anchor.poll_interval=1
 
 # Backend type
