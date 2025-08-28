@@ -69,6 +69,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   @Volatile private var stopping: Boolean = false
   private val uiScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob())
+  @Volatile private var tailJob: kotlinx.coroutines.Job? = null
 
   // Auto-scroll tracking
   @Volatile private var autoScrollEnabled: Boolean = true
@@ -205,7 +206,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       knownPort = null
       launchBtn.isEnabled = false
 
-      val pb = ProcessBuilder(cryptadPath.toString())
+      val pb = buildProcess(cryptadPath)
       pb.redirectErrorStream(true)
       pb.directory(Paths.get(System.getProperty("user.dir")).toFile())
       val p = pb.start()
@@ -217,6 +218,12 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
 
       // Watcher coroutine: wait for termination
       uiScope.launch(Dispatchers.IO) { watchProcess(p) }
+
+      // Try to tail wrapper log file if present (helps when wrapper buffers JVM output)
+      tailJob?.cancel()
+      guessWrapperLogFile(cryptadPath)?.let { logPath ->
+        tailJob = uiScope.launch(Dispatchers.IO) { tailFile(logPath) }
+      }
     } catch (t: Throwable) {
       appendLog(ts() + " ERROR: Failed to start 'cryptad': ${t.message}")
       setRunning(false)
@@ -229,6 +236,134 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     // Per requirements: resolve relative to current working directory
     val cwd = Paths.get(System.getProperty("user.dir"))
     return cwd.resolve("cryptad")
+  }
+
+  // On Unix, if `script` is available, run under a PTY to reduce buffering; otherwise run directly.
+  private fun buildProcess(cryptadPath: Path): ProcessBuilder {
+    val os = System.getProperty("os.name").lowercase()
+    if (!os.contains("win")) {
+      val scriptCmd = findOnPath("script")
+      if (scriptCmd != null) {
+        // Use a portable invocation that works on BSD/macOS and Linux: script -q /dev/null sh -lc
+        // <cmd>
+        return ProcessBuilder(scriptCmd, "-q", "/dev/null", "sh", "-lc", cryptadPath.toString())
+      }
+    }
+    return ProcessBuilder(cryptadPath.toString())
+  }
+
+  private fun findOnPath(cmd: String): String? {
+    val path = System.getenv("PATH") ?: return null
+    val sep = if (System.getProperty("os.name").lowercase().contains("win")) ";" else ":"
+    path.split(sep).forEach { dir ->
+      try {
+        val f = Paths.get(dir).resolve(cmd)
+        if (Files.isRegularFile(f) && Files.isExecutable(f)) return f.toString()
+      } catch (_: Exception) {}
+    }
+    return null
+  }
+
+  // Heuristics to locate wrapper.conf and derive the wrapper.logfile path to tail.
+  private fun guessWrapperLogFile(cryptadPath: Path): Path? {
+    val scriptDir = cryptadPath.parent ?: return null
+    val confDefault = scriptDir.resolve("../conf/wrapper.conf").normalize()
+    val conf =
+      when {
+        Files.isRegularFile(confDefault) -> confDefault
+        Files.isRegularFile(cryptadPath) -> parseConfFromScript(cryptadPath) ?: confDefault
+        else -> confDefault
+      }
+    if (!Files.isRegularFile(conf)) return null
+    val confDir = conf.parent
+    var logfile = readProperty(conf, "wrapper.logfile")?.trim().orEmpty()
+    if (logfile.isEmpty()) {
+      // Upstream default
+      logfile = "../logs/wrapper.log"
+    }
+    val p = Paths.get(logfile)
+    return if (p.isAbsolute) p else confDir.resolve(p).normalize()
+  }
+
+  private fun parseConfFromScript(script: Path): Path? {
+    return try {
+      val lines = Files.readAllLines(script, StandardCharsets.UTF_8)
+      val re1 = Regex("""CONF="([^"]*wrapper\.conf)"""")
+      val re2 = Regex("""-c\s+"([^"]*wrapper\.conf)"""")
+      for (line in lines.take(200)) {
+        re1.find(line)?.let { m ->
+          return Paths.get(m.groupValues[1]).normalize()
+        }
+        re2.find(line)?.let { m ->
+          return Paths.get(m.groupValues[1]).normalize()
+        }
+      }
+      null
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun readProperty(conf: Path, key: String): String? {
+    try {
+      Files.newBufferedReader(conf, StandardCharsets.UTF_8).use { br ->
+        while (true) {
+          val raw = br.readLine() ?: break
+          val line = raw.trim()
+          if (line.isEmpty() || line.startsWith("#")) continue
+          val idx = line.indexOf('=')
+          if (idx <= 0) continue
+          val k = line.substring(0, idx).trim()
+          if (k == key) return line.substring(idx + 1).trim()
+        }
+      }
+    } catch (_: Exception) {}
+    return null
+  }
+
+  private suspend fun tailFile(path: Path) {
+    // Start reading from current end, then stream new data
+    var pos = 0L
+    var leftover = StringBuilder()
+    while (process?.isAlive == true && !shuttingDown) {
+      try {
+        if (!Files.exists(path)) {
+          delay(200)
+          continue
+        }
+        java.io.RandomAccessFile(path.toFile(), "r").use { raf ->
+          val len = raf.length()
+          if (pos == 0L) pos = len // start at end to avoid dumping huge history
+          if (len < pos) pos = 0L // rotated or truncated
+          if (len > pos) {
+            raf.seek(pos)
+            val toRead = (len - pos).coerceAtMost(64 * 1024)
+            val buf = ByteArray(toRead.toInt())
+            val r = raf.read(buf)
+            if (r > 0) {
+              pos += r
+              val text = String(buf, 0, r, StandardCharsets.UTF_8)
+              val parts = text.split("\n")
+              if (parts.size == 1) {
+                leftover.append(parts[0])
+              } else {
+                // complete first line
+                leftover.append(parts[0])
+                appendLog(leftover.toString())
+                leftover = StringBuilder()
+                // middle lines
+                for (i in 1 until parts.size - 1) appendLog(parts[i])
+                // last partial
+                leftover.append(parts.last())
+              }
+            }
+          }
+        }
+      } catch (_: Exception) {
+        // Ignore transient issues (rotation), retry
+      }
+      delay(200)
+    }
   }
 
   private fun readProcessOutput(p: Process) {
