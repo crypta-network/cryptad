@@ -211,6 +211,32 @@ org.gradle.jvmargs=-Xms256m -Xmx1024m
 org.gradle.configureondemand=true
 ```
 
+### JLink Runtime Distribution
+
+Build a minimal JRE image that embeds the Cryptad distribution using direct jlink/jdeps tasks (no external runtime plugin):
+
+```bash
+# 1) Build the wrapper-based dist the jlink step consumes
+./gradlew assembleCryptadDist
+
+# 2) Create the jlink image and zip/tar.gz archives
+./gradlew distJlinkCryptad
+
+# Result:
+#  - build/cryptad-jlink-image/           (runnable image)
+#  - build/distributions/cryptad-jlink-v<version>.zip
+#  - build/distributions/cryptad-jlink-v<version>.tar.gz
+
+# Launch using the embedded runtime (no system JRE required):
+build/cryptad-jlink-image/bin/cryptad-jlink   # Windows: cryptad-jlink.bat
+```
+
+Notes
+- The jlink image includes a launcher that always uses the embedded `bin/java` and a classpath of `lib/*`.
+- We explicitly include key modules (e.g., `jdk.crypto.ec`, `java.net.http`, `jdk.unsupported`, `java.desktop`) and call `jlink` directly.
+- This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
+- `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
+
 ## Development Guidelines
 
 - Primary languages: Kotlin/Java

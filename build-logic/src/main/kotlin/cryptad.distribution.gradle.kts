@@ -203,8 +203,15 @@ val generateWrapperLaunchers by
         |
         |# Resolve script directory without altering working directory
         |DIR="$(cd "$(dirname "$0")" && pwd)"
-        |JAVA_EXE="${JAVA_HOME:-}/bin/java"
-        |if [ ! -x "$JAVA_EXE" ]; then JAVA_EXE="java"; fi
+        |
+        |# Prefer embedded jlink runtime when available (image/bin/java)
+        |if [ -x "$DIR/java" ]; then
+        |  JAVA_EXE="$DIR/java"
+        |else
+        |  JAVA_EXE="${JAVA_HOME:-}/bin/java"
+        |  if [ ! -x "$JAVA_EXE" ]; then JAVA_EXE="java"; fi
+        |fi
+        |
         |CP="$DIR/../lib/*"
         |
         |# Start the launcher without replacing this shell, so we can trap Ctrl+C
@@ -238,9 +245,17 @@ val generateWrapperLaunchers by
         |@echo off
         |setlocal enableextensions
         |set DIR=%~dp0
-        |set CP=%DIR%..\\lib\\*
-        |set JAVA_EXE=%JAVA_HOME%\\bin\\java.exe
-        |if not exist "%JAVA_EXE%" set JAVA_EXE=java
+        |set CP=%DIR%..\lib\*
+        |
+        |rem Prefer embedded jlink runtime when available (image\bin\java.exe)
+        |set JAVA_EXE=%DIR%java.exe
+        |if not exist "%JAVA_EXE%" (
+        |  set JAVA_EXE=%JAVA_HOME%\bin\java.exe
+        |)
+        |if not exist "%JAVA_EXE%" (
+        |  set JAVA_EXE=java
+        |)
+        |
         |"%JAVA_EXE%" -cp "%CP%" network.crypta.launcher.LauncherKt %*
         |"""
           .trimMargin()

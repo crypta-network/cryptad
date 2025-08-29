@@ -5,6 +5,7 @@ plugins {
   id("cryptad.versioning")
   id("cryptad.buildjar")
   id("cryptad.distribution")
+  id("cryptad.runtime")
 }
 
 // Update version manually before a new release development starts
