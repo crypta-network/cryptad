@@ -42,8 +42,8 @@ fun parseWrapperProperties(lines: List<String>): Map<String, String> = buildMap 
     if (line.isEmpty() || line.startsWith('#')) return@forEach
     val idx = line.indexOf('=')
     if (idx <= 0) return@forEach
-    val k = line.take(idx).trim()
-    val v = line.substring(idx + 1).trim()
+    val k = line.substringBefore('=', "").trim()
+    val v = line.substringAfter('=', "").trim()
     put(k, v)
   }
 }
@@ -62,7 +62,7 @@ fun upsertWrapperProperty(lines: List<String>, key: String, value: String): List
           if (trimmed.isNotEmpty() && !trimmed.startsWith('#')) {
             val idx = trimmed.indexOf('=')
             if (idx > 0) {
-              val k = trimmed.take(idx).trim()
+              val k = trimmed.substringBefore('=', "").trim()
               if (k == key) {
                 replaced = true
                 return@map "$key=$value"
@@ -187,7 +187,7 @@ internal fun findCurrentCryptadJarPath(): Path? {
 /** Find a `cryptad*.jar` on the given Java class path string. */
 internal fun findCryptadJarInClassPath(classPath: String): Path? {
   if (classPath.isBlank()) return null
-  val sep = File.pathSeparator ?: ":"
+  val sep = File.pathSeparator
   val entries = classPath.split(sep)
   val re = Regex("^cryptad(?:[-.].*)?\\.jar$", RegexOption.IGNORE_CASE)
   for (raw in entries) {
@@ -217,7 +217,7 @@ fun buildCryptadCommand(cryptadPath: Path): List<String> {
 
 fun findOnPath(cmd: String): String? {
   val path = System.getenv("PATH") ?: return null
-  val sep = if (System.getProperty("os.name").lowercase().contains("win")) ";" else ":"
+  val sep = File.pathSeparator
   path.split(sep).forEach { dir ->
     try {
       val f = Paths.get(dir).resolve(cmd)

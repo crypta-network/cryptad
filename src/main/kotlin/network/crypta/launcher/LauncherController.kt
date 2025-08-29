@@ -317,8 +317,8 @@ class LauncherController(
           if (line.isEmpty() || line.startsWith("#")) continue
           val idx = line.indexOf('=')
           if (idx <= 0) continue
-          val k = line.substring(0, idx).trim()
-          if (k == key) return line.substring(idx + 1).trim()
+          val k = line.substringBefore('=', "").trim()
+          if (k == key) return line.substringAfter('=', "").trim()
         }
       }
       null
