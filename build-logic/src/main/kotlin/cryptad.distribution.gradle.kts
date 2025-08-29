@@ -197,39 +197,39 @@ val generateWrapperLaunchers by
       val launcherBat = bin.resolve("cryptad-launcher.bat")
 
       val launcherUnixContent =
-        """
+        $$"""
         |#!/usr/bin/env bash
         |set -euo pipefail
         |
         |# Resolve script directory without altering working directory
         |DIR="$(cd "$(dirname "$0")" && pwd)"
-        |JAVA_EXE="${'$'}{JAVA_HOME:-}/bin/java"
-        |if [ ! -x "${'$'}JAVA_EXE" ]; then JAVA_EXE="java"; fi
-        |CP="${'$'}DIR/../lib/*"
+        |JAVA_EXE="${JAVA_HOME:-}/bin/java"
+        |if [ ! -x "$JAVA_EXE" ]; then JAVA_EXE="java"; fi
+        |CP="$DIR/../lib/*"
         |
         |# Start the launcher without replacing this shell, so we can trap Ctrl+C
-        |"${'$'}JAVA_EXE" -cp "${'$'}CP" network.crypta.launcher.LauncherKt "${'$'}@" &
-        |LAUNCHER_PID=${'$'}!
+        |"$JAVA_EXE" -cp "$CP" network.crypta.launcher.LauncherKt "$@" &
+        |LAUNCHER_PID=$!
         |
         |cleanup() {
-        |  if kill -0 "${'$'}LAUNCHER_PID" 2>/dev/null; then
+        |  if kill -0 "$LAUNCHER_PID" 2>/dev/null; then
         |    echo "[cryptad-launcher] Requesting graceful shutdown (TERM, waiting up to 40s)..." >&2
         |    # Send SIGTERM to the Java process; JVM will run the shutdown hook and stop wrapper
-        |    kill -TERM "${'$'}LAUNCHER_PID" 2>/dev/null || true
+        |    kill -TERM "$LAUNCHER_PID" 2>/dev/null || true
         |    # Give the launcher time to stop the wrapper (INT->20s, TERM->5s, KILL->2s)
         |    for i in {1..80}; do  # 80 * 0.5s = 40s
-        |      if ! kill -0 "${'$'}LAUNCHER_PID" 2>/dev/null; then break; fi
+        |      if ! kill -0 "$LAUNCHER_PID" 2>/dev/null; then break; fi
         |      sleep 0.5
         |    done
-        |    if kill -0 "${'$'}LAUNCHER_PID" 2>/dev/null; then
+        |    if kill -0 "$LAUNCHER_PID" 2>/dev/null; then
         |      echo "[cryptad-launcher] Still running; forcing termination with KILL ..." >&2
-        |      kill -KILL "${'$'}LAUNCHER_PID" 2>/dev/null || true
+        |      kill -KILL "$LAUNCHER_PID" 2>/dev/null || true
         |    fi
         |  fi
         |}
         |
         |trap cleanup INT TERM
-        |wait "${'$'}LAUNCHER_PID"
+        |wait "$LAUNCHER_PID"
         |"""
           .trimMargin()
 

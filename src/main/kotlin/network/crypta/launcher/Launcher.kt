@@ -1,7 +1,6 @@
 package network.crypta.launcher
 
 import java.awt.*
-import java.awt.desktop.AboutHandler
 import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
@@ -156,7 +155,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
 
         // Custom About dialog (macOS system menu About handler)
         try {
-          d.setAboutHandler(AboutHandler { SwingUtilities.invokeLater { showAboutDialog() } })
+          d.setAboutHandler { SwingUtilities.invokeLater { showAboutDialog() } }
         } catch (_: Throwable) {}
 
         // Ensure clicking the Dock icon on macOS re-shows the window if hidden.
