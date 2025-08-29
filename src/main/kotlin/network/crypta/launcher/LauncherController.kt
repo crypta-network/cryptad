@@ -278,13 +278,15 @@ class LauncherController(
     }
   }
 
-  private fun waitForPidsToExit(pids: List<Long>, millis: Long): Boolean {
+  /**
+   * Suspend until all `pids` have exited or until `millis` has elapsed. Uses coroutines (`delay`)
+   * instead of blocking the thread.
+   */
+  private suspend fun waitForPidsToExit(pids: List<Long>, millis: Long): Boolean {
     val deadline = System.nanoTime() + millis * 1_000_000
     while (System.nanoTime() < deadline) {
       if (pids.none { isPidAlive(it) }) return true
-      try {
-        Thread.sleep(200)
-      } catch (_: InterruptedException) {}
+      delay(200)
     }
     return pids.none { isPidAlive(it) }
   }
