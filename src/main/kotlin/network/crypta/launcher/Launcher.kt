@@ -86,7 +86,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
 
   init {
     defaultCloseOperation = DO_NOTHING_ON_CLOSE
-    minimumSize = Dimension(900, 600)
+    // Allow shrinking to half of the default size
+    minimumSize = Dimension(450, 300)
     layout = BorderLayout()
 
     // Top row: buttons
