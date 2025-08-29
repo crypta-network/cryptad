@@ -262,6 +262,11 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
 
 /** Application entry point. */
 fun main() {
+  // Set macOS application menu name before any AWT/Swing initialization
+  try {
+    System.setProperty("apple.awt.application.name", "Crypta Launcher")
+    System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Crypta Launcher")
+  } catch (_: Exception) {}
   try {
     UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
   } catch (_: Exception) {}
