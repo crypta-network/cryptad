@@ -7,7 +7,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+
+// Log buffering strategy
+// - Keep a small replay window so late subscribers get recent lines
+// - Cap extra capacity and drop oldest entries under backpressure to stay memory-bounded
+private const val LOG_REPLAY: Int = 200
+private const val LOG_EXTRA_CAPACITY: Int = 300
 
 /** Controller for the Crypta launcher. Manages the daemon process and exposes state and logs. */
 class LauncherController(
@@ -18,8 +25,22 @@ class LauncherController(
   private val _state = MutableStateFlow(AppState())
   val state: StateFlow<AppState> = _state.stateIn(scope, SharingStarted.Eagerly, _state.value)
 
-  private val _logs = MutableSharedFlow<String>(extraBufferCapacity = 1024)
-  val logs = _logs.asSharedFlow()
+  /**
+   * Bounded, drop-older log stream.
+   *
+   * We keep a small replay window so late subscribers (e.g., UI created after controller) still see
+   * the latest lines, and we cap total in-memory buffering to avoid memory pressure when the daemon
+   * is very chatty or the UI is momentarily stalled.
+   *
+   * Total buffer = [LOG_REPLAY] + [LOG_EXTRA_CAPACITY]. When full, the oldest entries are dropped.
+   */
+  private val _logs =
+    MutableSharedFlow<String>(
+      replay = LOG_REPLAY,
+      extraBufferCapacity = LOG_EXTRA_CAPACITY,
+      onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+  val logs: SharedFlow<String> = _logs.asSharedFlow()
 
   private var process: Process? = null
   private var tailJob: Job? = null
@@ -331,6 +352,8 @@ class LauncherController(
   }
 
   private fun logLine(s: String) {
+    // Non-suspending emission; when buffers are full the oldest entries are dropped per
+    // BufferOverflow.DROP_OLDEST.
     _logs.tryEmit(s)
   }
 }
