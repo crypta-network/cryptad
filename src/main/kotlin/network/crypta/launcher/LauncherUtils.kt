@@ -209,11 +209,23 @@ fun buildCryptadCommand(cryptadPath: Path): List<String> {
   if (!os.contains("win")) {
     val script = findOnPath("script")
     if (script != null) {
-      return listOf(script, "-q", "/dev/null", "sh", "-lc", cryptadPath.toString())
+      val isLinux = os.contains("linux")
+      return if (isLinux) {
+        // util-linux script(1): use -c "cmd" FILE
+        val cmd = "exec ${shellQuote(cryptadPath.toString())}"
+        listOf(script, "-q", "-c", cmd, "/dev/null")
+      } else {
+        // BSD/macOS script(1): FILE [command ...]
+        listOf(script, "-q", "/dev/null", cryptadPath.toString())
+      }
     }
   }
   return listOf(cryptadPath.toString())
 }
+
+/** Minimal POSIX shell quoting for a single argument. */
+internal fun shellQuote(s: String): String =
+  if (s.isEmpty()) "''" else "'" + s.replace("'", "'\"'\"'") + "'"
 
 fun findOnPath(cmd: String): String? {
   val path = System.getenv("PATH") ?: return null
