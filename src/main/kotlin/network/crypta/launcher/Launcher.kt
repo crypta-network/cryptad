@@ -17,6 +17,10 @@ import kotlinx.coroutines.flow.collectLatest
  * keyboard shortcuts and UI behavior identical to the original implementation.
  */
 class CryptaLauncher : JFrame("Crypta Launcher") {
+  companion object {
+    @Volatile var instance: CryptaLauncher? = null
+  }
+
   private val startStopBtn = JButton("Start")
   private val launchBtn = JButton("Launch in Browser")
   private val quitBtn = JButton("Quit")
@@ -89,6 +93,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   }
 
   init {
+    instance = this
     defaultCloseOperation = DO_NOTHING_ON_CLOSE
     // Allow shrinking to half of the default size
     minimumSize = Dimension(450, 300)
@@ -358,6 +363,13 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     dialog.isResizable = false
     dialog.isVisible = true
   }
+
+  /** Called from JVM shutdown hook (e.g., SIGINT) to stop wrapper gracefully. */
+  fun shutdownFromSignal() {
+    try {
+      runBlocking { controller.shutdownAndWait() }
+    } catch (_: Throwable) {}
+  }
 }
 
 /** Application entry point. */
@@ -390,4 +402,18 @@ fun main() {
     f.setLocation((screen.width - size.width) / 2, (screen.height - size.height) / 2)
     f.isVisible = true
   }
+
+  // Ensure graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script)
+  try {
+    Runtime.getRuntime()
+      .addShutdownHook(
+        Thread {
+          try {
+            CryptaLauncher.instance?.shutdownFromSignal()
+          } catch (_: Throwable) {}
+        }
+      )
+  } catch (_: Throwable) {}
+
+  // Rely on the JVM shutdown hook (above). External TERM will trigger it.
 }
