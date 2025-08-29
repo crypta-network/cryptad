@@ -29,52 +29,7 @@ val syncRuntimeJar by
 // No external runtime plugin configuration; jlink is invoked below
 
 // Our existing bin/cryptad script (Tanuki Wrapper) isn't patched by the plugin.
-// Provide a lightweight launcher that always uses the embedded runtime's java.
-val generateJlinkLaunchers by
-  tasks.registering {
-    group = "distribution"
-    description = "Generates jlink launchers inside the runtime image"
-    // The launcher requires a prepared image; we will depend on our custom image task defined
-    // below.
-    dependsOn(prepareJlinkImage)
-    doLast {
-      val image = jlinkImageDir.get().asFile
-      val binDir = image.resolve("bin")
-      val libDir = image.resolve("lib")
-      require(binDir.isDirectory) { "Missing bin/ in jlink image at ${binDir.absolutePath}" }
-      require(libDir.isDirectory) { "Missing lib/ in jlink image at ${libDir.absolutePath}" }
-
-      // Unix launcher
-      val unix = binDir.resolve("cryptad-jlink")
-      unix.writeText(
-        $$"""
-        |#!/usr/bin/env bash
-        |set -euo pipefail
-        |SCRIPT_DIR="$(cd "$(dirname \"$0\")" && pwd)"
-        |JAVA="$SCRIPT_DIR/java"
-        |CLASSPATH="$SCRIPT_DIR/../lib/*"
-        |exec "$JAVA" -cp "$CLASSPATH" network.crypta.node.Node "$@"
-        |"""
-          .trimMargin()
-      )
-      unix.setReadable(true, false)
-      unix.setExecutable(true, false)
-
-      // Windows launcher
-      val bat = binDir.resolve("cryptad-jlink.bat")
-      bat.writeText(
-        """
-        |@echo off
-        |setlocal enableextensions
-        |set SCRIPT_DIR=%~dp0
-        |set JAVA=%SCRIPT_DIR%java.exe
-        |set CP=%SCRIPT_DIR%..\lib\*
-        |"%JAVA%" -cp "%CP" network.crypta.node.Node %*
-        |"""
-          .trimMargin()
-      )
-    }
-  }
+// No separate jlink-specific launchers; we reuse dist/bin scripts and wrapper binaries
 
 // Discover Java modules with jdeps for the assembled app classpath
 val computeJlinkModules by
@@ -244,7 +199,7 @@ val distZipCryptadJlink by
   tasks.registering(Zip::class) {
     group = "distribution"
     description = "Packages the jlink runtime image as a zip"
-    dependsOn(generateJlinkLaunchers)
+    dependsOn(prepareJlinkImage)
     archiveBaseName.set("cryptad-jlink")
     archiveVersion.set("v${project.version}")
     archiveFileName.set("cryptad-jlink-v${project.version}.zip")
@@ -259,7 +214,7 @@ val distTarCryptadJlink by
   tasks.registering(Tar::class) {
     group = "distribution"
     description = "Packages the jlink runtime image as a tar.gz"
-    dependsOn(generateJlinkLaunchers)
+    dependsOn(prepareJlinkImage)
     compression = Compression.GZIP
     archiveBaseName.set("cryptad-jlink")
     archiveVersion.set("v${project.version}")

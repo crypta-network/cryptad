@@ -228,11 +228,11 @@ Build a minimal JRE image that embeds the Cryptad distribution using direct jlin
 #  - build/distributions/cryptad-jlink-v<version>.tar.gz
 
 # Launch using the embedded runtime (no system JRE required):
-build/cryptad-jlink-image/bin/cryptad-jlink   # Windows: cryptad-jlink.bat
+build/cryptad-jlink-image/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
 ```
 
 Notes
-- The jlink image includes a launcher that always uses the embedded `bin/java` and a classpath of `lib/*`.
+- The jlink image includes `bin/cryptad-launcher` which prefers the embedded `bin/java` and uses `lib/*` for classpath.
 - We explicitly include key modules (e.g., `jdk.crypto.ec`, `java.net.http`, `jdk.unsupported`, `java.desktop`) and call `jlink` directly.
 - This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
 - `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
