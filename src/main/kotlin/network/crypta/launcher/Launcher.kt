@@ -1,7 +1,10 @@
 package network.crypta.launcher
 
 import java.awt.*
+import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import javax.swing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -116,6 +119,63 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     // Keyboard shortcuts through a global dispatcher (avoid root-pane bindings to prevent
     // duplicates)
     KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(globalDispatcher)
+
+    // Handle window manager close button (e.g., Ubuntu). We keep DO_NOTHING to ensure we can
+    // stop the wrapper first, but trigger our quit sequence on close requests.
+    addWindowListener(
+      object : WindowAdapter() {
+        override fun windowClosing(e: WindowEvent?) {
+          val os = System.getProperty("os.name").lowercase()
+          if (os.contains("mac")) {
+            // On macOS, close should only hide the window, not quit the app.
+            isVisible = false
+          } else {
+            // On Linux/Windows, close should quit and stop the wrapper.
+            quitApp()
+          }
+        }
+      }
+    )
+
+    // Handle macOS Command+Q (app quit). Use Desktop quit handler to route through our shutdown.
+    try {
+      if (Desktop.isDesktopSupported()) {
+        val d = Desktop.getDesktop()
+        // If unsupported on this platform, setQuitHandler will throw; guard with try/catch.
+        d.setQuitHandler { _, response: QuitResponse ->
+          // Defer default quit until we've stopped the wrapper cleanly.
+          response.cancelQuit()
+          SwingUtilities.invokeLater { quitApp() }
+        }
+
+        // Ensure clicking the Dock icon on macOS re-shows the window if hidden.
+        try {
+          d.addAppEventListener(
+            object : java.awt.desktop.AppReopenedListener {
+              override fun appReopened(e: java.awt.desktop.AppReopenedEvent?) {
+                SwingUtilities.invokeLater {
+                  if (!isVisible) isVisible = true
+                  toFront()
+                  requestFocus()
+                }
+              }
+            }
+          )
+          d.addAppEventListener(
+            object : java.awt.desktop.AppForegroundListener {
+              override fun appRaisedToForeground(e: java.awt.desktop.AppForegroundEvent?) {
+                SwingUtilities.invokeLater {
+                  if (!isVisible) isVisible = true
+                  toFront()
+                }
+              }
+
+              override fun appMovedToBackground(e: java.awt.desktop.AppForegroundEvent?) {}
+            }
+          )
+        } catch (_: Throwable) {}
+      }
+    } catch (_: Throwable) {}
 
     // Track manual scroll: disable auto-scroll when the user scrolls away from bottom
     val vbar: JScrollBar = scrollPane.verticalScrollBar
