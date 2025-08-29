@@ -160,14 +160,16 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     val fm = logArea.getFontMetrics(logArea.font)
     val pixels = fm.height * deltaRows
     val vbar = scrollPane.verticalScrollBar
-    vbar.value = clamp(vbar.value + pixels, 0, vbar.maximum - vbar.visibleAmount)
+    val upper = (vbar.maximum - vbar.visibleAmount).coerceAtLeast(0)
+    vbar.value = (vbar.value + pixels).coerceIn(0, upper)
   }
 
   private fun scrollPage(deltaPages: Int) {
     val vp = scrollPane.viewport
     val pixels = vp.extentSize.height * deltaPages
     val vbar = scrollPane.verticalScrollBar
-    vbar.value = clamp(vbar.value + pixels, 0, vbar.maximum - vbar.visibleAmount)
+    val upper = (vbar.maximum - vbar.visibleAmount).coerceAtLeast(0)
+    vbar.value = (vbar.value + pixels).coerceIn(0, upper)
   }
 
   private fun cycleFocus(direction: Int) {
@@ -177,9 +179,6 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     val next = if (idx == -1) 0 else (idx + direction + buttons.size) % buttons.size
     buttons[next].requestFocusInWindow()
   }
-
-  private fun clamp(value: Int, min: Int, max: Int): Int =
-    min.coerceAtLeast(max.coerceAtMost(value))
 
   private fun quitApp() {
     // Disable UI while quitting
