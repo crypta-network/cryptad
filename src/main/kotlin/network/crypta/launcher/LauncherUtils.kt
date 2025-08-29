@@ -1,11 +1,13 @@
 package network.crypta.launcher
 
+import java.awt.Image
 import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import javax.imageio.ImageIO
 
 /** Small pure helpers used by the launcher controller and tests. */
 
@@ -236,5 +238,28 @@ fun findOnPath(cmd: String): String? {
       if (Files.isRegularFile(f) && Files.isExecutable(f)) return f.toString()
     } catch (_: Exception) {}
   }
+  return null
+}
+
+/**
+ * Load the application icon image. Preferred source is a classpath resource at
+ * `network/crypta/launcher/crypta-launcher-icon.png`. Falls back to `docs/images/crypta_logo.png`
+ * when running from source.
+ */
+fun loadAppIconImage(): Image? {
+  val cl = Thread.currentThread().contextClassLoader
+  val res = cl.getResource("network/crypta/launcher/crypta-launcher-icon.png")
+  if (res != null) {
+    try {
+      return ImageIO.read(res)
+    } catch (_: Exception) {}
+  }
+  // Fallback for dev runs: use the README logo if present
+  try {
+    val fallback = Paths.get("docs/images/crypta_logo.png")
+    if (Files.isRegularFile(fallback)) {
+      return ImageIO.read(fallback.toFile())
+    }
+  } catch (_: Exception) {}
   return null
 }

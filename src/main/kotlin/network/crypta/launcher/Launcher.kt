@@ -273,6 +273,17 @@ fun main() {
 
   SwingUtilities.invokeLater {
     val f = CryptaLauncher()
+    // Set icon for window and Dock (where supported)
+    try {
+      val img = loadAppIconImage()
+      if (img != null) {
+        f.iconImage = img
+        try {
+          val tb = Taskbar.getTaskbar()
+          if (tb.isSupported(Taskbar.Feature.ICON_IMAGE)) tb.iconImage = img
+        } catch (_: Throwable) {}
+      }
+    } catch (_: Throwable) {}
     val screen = Toolkit.getDefaultToolkit().screenSize
     val size = Dimension(900, 600)
     f.size = size
