@@ -20,6 +20,8 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
+  // Coroutines (Swing Main dispatcher)
+  implementation(libs.kotlinxCoroutinesSwing)
   // CLI parsing and UX
   implementation(libs.picocli)
 

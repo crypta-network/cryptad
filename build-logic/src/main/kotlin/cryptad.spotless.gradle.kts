@@ -15,7 +15,7 @@ spotless {
   }
   kotlinGradle {
     target("**/*.gradle.kts")
-    ktfmt().googleStyle()
+    ktfmt("0.58").googleStyle()
   }
 }
 
