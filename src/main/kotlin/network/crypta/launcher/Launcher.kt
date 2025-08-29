@@ -1,6 +1,7 @@
 package network.crypta.launcher
 
 import java.awt.*
+import java.awt.desktop.AboutHandler
 import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
@@ -148,6 +149,11 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
           SwingUtilities.invokeLater { quitApp() }
         }
 
+        // Custom About dialog (macOS system menu About handler)
+        try {
+          d.setAboutHandler(AboutHandler { SwingUtilities.invokeLater { showAboutDialog() } })
+        } catch (_: Throwable) {}
+
         // Ensure clicking the Dock icon on macOS re-shows the window if hidden.
         try {
           d.addAppEventListener(
@@ -257,6 +263,100 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       uiScope.cancel()
       kotlin.system.exitProcess(0)
     }
+  }
+
+  private fun showAboutDialog() {
+    val dialog = JDialog(this, "About Crypta Launcher", true)
+    dialog.layout = BorderLayout(12, 12)
+    val content = JPanel(BorderLayout(12, 12))
+    content.border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
+
+    // Left icon
+    val iconLabel =
+      JLabel().also { lbl ->
+        loadAppIconImage()?.let { img ->
+          val size = 96
+          val scaled = img.getScaledInstance(size, size, Image.SCALE_SMOOTH)
+          lbl.icon = ImageIcon(scaled)
+        }
+      }
+    content.add(iconLabel, BorderLayout.WEST)
+
+    // Right info column (compact, predictable width)
+    val right = JPanel(GridBagLayout())
+    val gbc =
+      GridBagConstraints().apply {
+        gridx = 0
+        fill = GridBagConstraints.HORIZONTAL
+        anchor = GridBagConstraints.FIRST_LINE_START
+        weightx = 1.0
+        insets = Insets(0, 0, 6, 0)
+      }
+
+    val title = JLabel("Crypta Launcher").apply { font = font.deriveFont(Font.BOLD, 20f) }
+    right.add(title, gbc)
+
+    val javaVer = System.getProperty("java.runtime.version") ?: System.getProperty("java.version")
+    val os = System.getProperty("os.name") + " " + (System.getProperty("os.version") ?: "")
+    val build = runCatching { network.crypta.node.currentBuildNumber() }.getOrDefault(0)
+    val git =
+      runCatching {
+          network.crypta.node.gitRevision().let { rev ->
+            if (rev.startsWith("@") && rev.endsWith("@")) "unknown" else rev.take(12)
+          }
+        }
+        .getOrDefault("unknown")
+
+    val infoFont = UIManager.getFont("Label.font").deriveFont(13f)
+    val row1 =
+      JPanel(FlowLayout(FlowLayout.LEFT, 12, 0)).apply {
+        add(JLabel("Build: $build").apply { font = infoFont })
+        add(JLabel("Git: $git").apply { font = infoFont })
+      }
+    val row2 =
+      JPanel(FlowLayout(FlowLayout.LEFT, 12, 0)).apply {
+        add(JLabel("Java: $javaVer").apply { font = infoFont })
+        add(JLabel("OS: $os").apply { font = infoFont })
+      }
+    gbc.gridy = 1
+    right.add(row1, gbc)
+    gbc.gridy = 2
+    right.add(row2, gbc)
+
+    gbc.gridy = 3
+    right.add(JLabel("© 2025 Crypta contributors").apply { font = infoFont }, gbc)
+
+    // GPLv3 license text in a wrapping area with a fixed column width
+    val license =
+      JTextArea().apply {
+        isEditable = false
+        isOpaque = false
+        lineWrap = true
+        wrapStyleWord = true
+        columns = 48
+        rows = 4
+        font = UIManager.getFont("Label.font")
+        text =
+          "Crypta Launcher is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License version 3 (GPLv3) only.\n" +
+            "This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the LICENSE file or https://www.gnu.org/licenses/gpl-3.0.html."
+      }
+    gbc.gridy = 4
+    right.add(license, gbc)
+
+    content.add(right, BorderLayout.CENTER)
+
+    val btn = JButton("OK")
+    btn.addActionListener { dialog.dispose() }
+    dialog.rootPane.defaultButton = btn
+    val south = JPanel(FlowLayout(FlowLayout.RIGHT))
+    south.add(btn)
+
+    dialog.add(content, BorderLayout.CENTER)
+    dialog.add(south, BorderLayout.SOUTH)
+    dialog.pack()
+    dialog.setLocationRelativeTo(this)
+    dialog.isResizable = false
+    dialog.isVisible = true
   }
 }
 
