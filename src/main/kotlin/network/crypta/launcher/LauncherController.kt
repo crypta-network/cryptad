@@ -6,21 +6,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 
 /** Controller for the Crypta launcher. Manages the daemon process and exposes state and logs. */
 class LauncherController(
@@ -256,13 +243,13 @@ class LauncherController(
 
   private fun getDescendantTreePids(rootPid: Long): List<Long> {
     return try {
-      val opt = java.lang.ProcessHandle.of(rootPid)
+      val opt = ProcessHandle.of(rootPid)
       if (!opt.isPresent) emptyList()
       else {
         val root = opt.get()
         root
           .descendants()
-          .map(java.util.function.Function<java.lang.ProcessHandle, Long> { it.pid() })
+          .map(java.util.function.Function<ProcessHandle, Long> { it.pid() })
           .toList()
       }
     } catch (_: Throwable) {
@@ -272,7 +259,7 @@ class LauncherController(
 
   private fun isPidAlive(pid: Long): Boolean {
     return try {
-      java.lang.ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
+      ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
     } catch (_: Throwable) {
       false
     }

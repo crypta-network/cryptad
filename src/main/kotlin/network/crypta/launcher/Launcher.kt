@@ -1,28 +1,10 @@
 package network.crypta.launcher
 
-import java.awt.BorderLayout
-import java.awt.Dimension
-import java.awt.Font
-import java.awt.KeyEventDispatcher
-import java.awt.KeyboardFocusManager
-import java.awt.Toolkit
+import java.awt.*
 import java.awt.event.KeyEvent
-import javax.swing.JButton
-import javax.swing.JFrame
-import javax.swing.JLabel
-import javax.swing.JPanel
-import javax.swing.JScrollBar
-import javax.swing.JScrollPane
-import javax.swing.JTextArea
-import javax.swing.SwingUtilities
-import javax.swing.UIManager
-import javax.swing.WindowConstants
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import javax.swing.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 /**
  * Crypta Swing Launcher (View).
@@ -103,7 +85,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   }
 
   init {
-    defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
+    defaultCloseOperation = DO_NOTHING_ON_CLOSE
     minimumSize = Dimension(900, 600)
     layout = BorderLayout()
 
@@ -196,7 +178,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     buttons[next].requestFocusInWindow()
   }
 
-  private fun clamp(value: Int, min: Int, max: Int): Int = Math.max(min, Math.min(max, value))
+  private fun clamp(value: Int, min: Int, max: Int): Int =
+    min.coerceAtLeast(max.coerceAtMost(value))
 
   private fun quitApp() {
     // Disable UI while quitting

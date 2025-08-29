@@ -42,7 +42,7 @@ fun parseWrapperProperties(lines: List<String>): Map<String, String> = buildMap 
     if (line.isEmpty() || line.startsWith('#')) return@forEach
     val idx = line.indexOf('=')
     if (idx <= 0) return@forEach
-    val k = line.substring(0, idx).trim()
+    val k = line.take(idx).trim()
     val v = line.substring(idx + 1).trim()
     put(k, v)
   }
@@ -62,7 +62,7 @@ fun upsertWrapperProperty(lines: List<String>, key: String, value: String): List
           if (trimmed.isNotEmpty() && !trimmed.startsWith('#')) {
             val idx = trimmed.indexOf('=')
             if (idx > 0) {
-              val k = trimmed.substring(0, idx).trim()
+              val k = trimmed.take(idx).trim()
               if (k == key) {
                 replaced = true
                 return@map "$key=$value"
@@ -94,8 +94,7 @@ fun guessWrapperConfPathForCryptadScript(cryptadPath: Path): Path? {
   if (Files.isRegularFile(defaultConf)) return defaultConf
   if (!Files.isRegularFile(cryptadPath)) return defaultConf
   return try {
-    Files.readAllLines(cryptadPath, StandardCharsets.UTF_8).let { scanWrapperConfPath(it) }
-      ?: defaultConf
+    scanWrapperConfPath(Files.readAllLines(cryptadPath, StandardCharsets.UTF_8)) ?: defaultConf
   } catch (_: Exception) {
     defaultConf
   }
