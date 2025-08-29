@@ -12,9 +12,12 @@ import kotlinx.coroutines.flow.*
 
 // Log buffering strategy
 // - Keep a small replay window so late subscribers get recent lines
-// - Cap extra capacity and drop oldest entries under backpressure to stay memory-bounded
+// - Cap extra capacity and drop the oldest entries under backpressure to stay memory-bounded
 private const val LOG_REPLAY: Int = 200
 private const val LOG_EXTRA_CAPACITY: Int = 300
+private const val TAIL_BASE_DELAY_MS: Long = 200
+private const val TAIL_MAX_DELAY_MS: Long = 1500
+private const val TAIL_READ_CHUNK: Int = 64 * 1024
 
 /** Controller for the Crypta launcher. Manages the daemon process and exposes state and logs. */
 class LauncherController(
@@ -185,46 +188,92 @@ class LauncherController(
   }
 
   private suspend fun tailFileWhileAlive(path: Path) {
+    // Keep a single RAF open to avoid repeated open/close churn. Add exponential backoff when no
+    // new data arrives to reduce filesystem pressure. Re-open on file rotation or truncation.
     withContext(io) {
+      var raf: java.io.RandomAccessFile? = null
+      var currentKey: Any? = null
       var pos = 0L
       var leftover = StringBuilder()
+      var idleCount = 0 // consecutive loops without new data
+
+      fun calcDelayMs(): Long {
+        val shifts = idleCount.coerceAtMost(3) // 200, 400, 800, 1600ms
+        val d = TAIL_BASE_DELAY_MS shl shifts
+        return d.coerceAtMost(TAIL_MAX_DELAY_MS)
+      }
+
       while (scope.isActive && (process?.isAlive == true)) {
         try {
           if (!Files.exists(path)) {
-            delay(200)
+            raf?.close()
+            raf = null
+            currentKey = null
+            idleCount++
+            delay(calcDelayMs())
             continue
           }
-          java.io.RandomAccessFile(path.toFile(), "r").use { raf ->
-            val len = raf.length()
-            if (pos == 0L) pos = len
-            if (len < pos) pos = 0L
-            if (len > pos) {
-              raf.seek(pos)
-              val toRead = (len - pos).coerceAtMost(64 * 1024)
-              val buf = ByteArray(toRead.toInt())
-              val r = raf.read(buf)
-              if (r > 0) {
-                pos += r
-                val text = String(buf, 0, r, StandardCharsets.UTF_8)
-                val parts = text.split('\n')
-                if (parts.size == 1) {
-                  leftover.append(parts[0])
-                } else {
-                  val first = leftover.append(parts[0]).toString()
-                  if (first.isNotEmpty()) logLine(first)
-                  leftover = StringBuilder()
-                  for (i in 1 until parts.size - 1) logLine(parts[i])
-                  val last = parts.last()
-                  if (text.endsWith("\n")) logLine(last) else leftover.append(last)
-                }
+
+          // Detect rotation by file key if available
+          val newKey =
+            try {
+              Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java)
+                .fileKey()
+            } catch (_: Throwable) {
+              null
+            }
+
+          if (raf == null || (currentKey != null && newKey != null && currentKey != newKey)) {
+            // Open (or re-open after rotation). Start from end to avoid dumping historical logs.
+            runCatching { raf?.close() }
+            raf = java.io.RandomAccessFile(path.toFile(), "r")
+            currentKey = newKey
+            val len = runCatching { raf.length() }.getOrDefault(0L)
+            pos = len
+          }
+
+          val handle = raf
+
+          val len = runCatching { handle.length() }.getOrDefault(0L)
+          if (len < pos) pos = 0L // truncation
+
+          var madeProgress = false
+          if (len > pos) {
+            handle.seek(pos)
+            val toRead = (len - pos).coerceAtMost(TAIL_READ_CHUNK.toLong()).toInt()
+            val buf = ByteArray(toRead)
+            val r = runCatching { handle.read(buf) }.getOrDefault(-1)
+            if (r > 0) {
+              pos += r
+              val text = String(buf, 0, r, StandardCharsets.UTF_8)
+              val parts = text.split('\n')
+              if (parts.size == 1) {
+                leftover.append(parts[0])
+              } else {
+                val first = leftover.append(parts[0]).toString()
+                if (first.isNotEmpty()) logLine(first)
+                leftover = StringBuilder()
+                for (i in 1 until parts.size - 1) logLine(parts[i])
+                val last = parts.last()
+                if (text.endsWith("\n")) logLine(last) else leftover.append(last)
               }
+              madeProgress = true
             }
           }
+
+          if (madeProgress) idleCount = 0 else idleCount++
         } catch (_: Throwable) {
-          // ignore tail errors
+          // On any error, force re-open next loop.
+          runCatching { raf?.close() }
+          raf = null
+          currentKey = null
+          idleCount++
         }
-        delay(200)
+
+        delay(calcDelayMs())
       }
+
+      runCatching { raf?.close() }
     }
   }
 
