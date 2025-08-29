@@ -96,6 +96,14 @@ Notes
   while the wrapper is running.
 - On Unix/macOS the launcher uses a pseudo‑tty (via `script`) when available to reduce buffering.
 
+### Launcher script resolution
+
+- Env override: set `CRYPTAD_PATH` to an absolute path or a path relative to your current working directory to force a specific wrapper script, e.g. `export CRYPTAD_PATH=bin/cryptad`.
+- Default resolution order (first match wins):
+  - From the running `cryptad.jar` directory: `<jarDir>/cryptad`.
+  - From the assembled distribution layout: `<jarDir>/../bin/cryptad`.
+  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
+
 ## Building
 
 We use the [Gradle Wrapper](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html). If you trust the committed

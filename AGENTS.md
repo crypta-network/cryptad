@@ -74,7 +74,11 @@ architecture review).
 
 - Package: `network.crypta.launcher`. Entry: top‑level `fun main()`.
 - UI: Java Swing (3 rows — buttons, scrolling log, status bar). System LAF, 900×600.
-- Start: launches `bin/cryptad` (wrapper) located next to the launcher script. Stop sends SIGINT (Unix) / `taskkill` (Windows) with a 20s grace period.
+- Start: launches the wrapper script with this resolution order (first match wins). Stop sends SIGINT (Unix) / `taskkill` (Windows) with a 20s grace period.
+  - Env override: `CRYPTAD_PATH` (absolute or relative to `user.dir`).
+  - From running `cryptad.jar` directory: `<jarDir>/cryptad`.
+  - From assembled dist layout: `<jarDir>/../bin/cryptad`.
+  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
 - Logs: streams combined stdout+stderr and also tails `wrapper.log` when configured; enables `wrapper.console.flush=TRUE` in generated `wrapper.conf`.
 - FProxy port detection: parses `Starting FProxy on ...:<port>` from logs; enables “Launch in Browser” and auto‑opens the first time per app session.
 - Keyboard: global shortcuts via `KeyEventDispatcher`:
