@@ -1,5 +1,20 @@
 import java.io.ByteArrayOutputStream
+import javax.inject.Inject
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.support.serviceOf
+import org.gradle.process.ExecOperations
 
 plugins { java }
 
@@ -32,87 +47,117 @@ val syncRuntimeJar by
 // No separate jlink-specific launchers; we reuse dist/bin scripts and wrapper binaries
 
 // Discover Java modules with jdeps for the assembled app classpath
+@CacheableTask
+abstract class ComputeJlinkModules @Inject constructor(
+  private val execOps: ExecOperations,
+) : DefaultTask() {
+  @get:InputFile
+  abstract val cryptadJar: RegularFileProperty
+
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val classpath: ConfigurableFileCollection
+
+  @get:Input
+  abstract val javaLanguageVersion: Property<Int>
+
+  @get:OutputFile
+  abstract val modulesFile: RegularFileProperty
+
+  @get:Input
+  abstract val baselineModules: ListProperty<String>
+
+  @TaskAction
+  fun compute() {
+    val jarFile = cryptadJar.get().asFile
+    require(jarFile.isFile) { "Missing ${jarFile.absolutePath}" }
+
+    val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
+    val launcher =
+      toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(javaLanguageVersion.get())) }.get()
+    val javaHome = launcher.metadata.installationPath.asFile
+    val jdeps =
+      javaHome.resolve(
+        "bin/jdeps" + if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+      )
+
+    val classpathArg =
+      classpath.files
+        .filter { it.isFile && it.extension == "jar" && it.name != jarFile.name }
+        .joinToString(File.pathSeparator) { it.absolutePath }
+
+    val args =
+      mutableListOf(jdeps.absolutePath, "--ignore-missing-deps", "--print-module-deps", "-q").apply {
+        if (classpathArg.isNotBlank()) addAll(listOf("-cp", classpathArg))
+        add(jarFile.absolutePath)
+      }
+
+    val out = ByteArrayOutputStream()
+    val result = execOps.exec {
+      commandLine(args)
+      standardOutput = out
+      isIgnoreExitValue = true
+    }
+    val exit = result.exitValue
+    val detected = out.toString().trim().removeSuffix(",")
+
+    val baseline = baselineModules.get().toSet()
+    val modules: Set<String> =
+      if (exit == 0 && detected.isNotBlank())
+        detected.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet() + baseline
+      else
+        baseline +
+          setOf(
+            "java.base",
+            "java.logging",
+            "java.management",
+            "java.naming",
+            "java.prefs",
+            "java.rmi",
+            "java.scripting",
+            "java.security.jgss",
+            "java.security.sasl",
+            "java.sql",
+            "java.xml",
+          )
+
+    val outFile = modulesFile.get().asFile
+    outFile.parentFile.mkdirs()
+    outFile.writeText(modules.sorted().joinToString(","))
+    println("jdeps modules -> ${outFile.absolutePath}:\n" + modules.sorted().joinToString(","))
+  }
+}
+
 val computeJlinkModules by
-  tasks.registering {
+  tasks.registering(ComputeJlinkModules::class) {
     group = "distribution"
     description = "Computes required Java modules using jdeps and writes build/jlink/modules.list"
     dependsOn(syncRuntimeJar, tasks.named("assembleCryptadDist"))
-    doLast {
-      val libsDir = cryptadDistDir.get().dir("lib").asFile
-      val cryptadJar = libsDir.resolve("cryptad.jar")
-      require(cryptadJar.isFile) { "Missing ${cryptadJar.absolutePath}" }
 
-      val classpath =
-        libsDir
-          .listFiles { f -> f.isFile && f.name.endsWith(".jar") && f.name != "cryptad.jar" }
-          ?.joinToString(File.pathSeparator) { it.absolutePath } ?: ""
+    // Inputs: jars from the assembled distribution
+    val libsDirProvider = cryptadDistDir.map { it.dir("lib").asFile }
+    cryptadJar.set(project.layout.file(libsDirProvider.map { it.resolve("cryptad.jar") }))
+    classpath.from(project.provider {
+      val d = libsDirProvider.get()
+      d.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.toList() ?: emptyList()
+    })
 
-      val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
-      val launcher =
-        toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }.get()
-      val javaHome = launcher.metadata.installationPath.asFile
-      val jdeps =
-        javaHome.resolve(
-          "bin/jdeps" +
-            if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
-        )
+    // Output
+    modulesFile.set(layout.buildDirectory.file("jlink/modules.list"))
 
-      val args =
-        mutableListOf(jdeps.absolutePath, "--ignore-missing-deps", "--print-module-deps", "-q")
-      if (classpath.isNotBlank()) {
-        args += listOf("-cp", classpath)
-      }
-      args += cryptadJar.absolutePath
-
-      val out = ByteArrayOutputStream()
-      val execOps = project.serviceOf<ExecOperations>()
-      val result =
-        execOps.exec {
-          commandLine(args)
-          standardOutput = out
-          isIgnoreExitValue = true
-        }
-      val exit = result.exitValue
-      val detected = out.toString().trim().removeSuffix(",")
-
-      val baseline =
-        setOf(
-          "jdk.crypto.ec",
-          "jdk.charsets",
-          "jdk.localedata",
-          "jdk.unsupported",
-          "jdk.zipfs",
-          "java.net.http",
-          "java.desktop",
-        )
-
-      val modules: Set<String> =
-        if (exit == 0 && detected.isNotBlank())
-          detected.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet() + baseline
-        else
-          baseline +
-            setOf(
-              "java.base",
-              "java.logging",
-              "java.management",
-              "java.naming",
-              "java.prefs",
-              "java.rmi",
-              "java.scripting",
-              "java.security.jgss",
-              "java.security.sasl",
-              "java.sql",
-              "java.xml",
-            )
-
-      val outDir = layout.buildDirectory.dir("jlink").get().asFile
-      outDir.mkdirs()
-      val modulesFile = outDir.resolve("modules.list")
-      modulesFile.writeText(modules.sorted().joinToString(","))
-      println(
-        "jdeps modules -> ${modulesFile.absolutePath}:\n" + modules.sorted().joinToString(",")
+    // Toolchain + baseline
+    javaLanguageVersion.set(21)
+    baselineModules.set(
+      listOf(
+        "jdk.crypto.ec",
+        "jdk.charsets",
+        "jdk.localedata",
+        "jdk.unsupported",
+        "jdk.zipfs",
+        "java.net.http",
+        "java.desktop",
       )
-    }
+    )
   }
 
 // --- Custom jlink flow for Gradle 9 compatibility ---
