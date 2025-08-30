@@ -70,7 +70,11 @@ class LauncherController(
       // Log the effective command and working directory for diagnostics
       logLine(
         ts() +
-          " exec: " + formatCommandForLog(cmd) + " (cwd=" + cwd.toAbsolutePath().toString() + ")"
+          " exec: " +
+          formatCommandForLog(cmd) +
+          " (cwd=" +
+          cwd.toAbsolutePath().toString() +
+          ")"
       )
       val pb = ProcessBuilder(cmd)
       pb.redirectErrorStream(true)

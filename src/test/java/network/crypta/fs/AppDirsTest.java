@@ -37,8 +37,8 @@ public class AppDirsTest {
     AppEnv ae = new AppEnv(env, "Linux", "tester");
     AppDirs dirs = new AppDirs(env, sysProps(home, t), new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().toString().contains(".config/Cryptad/config"));
-    assertTrue(r.getDataDir().toString().contains(".local/share/Cryptad/data"));
+    assertTrue(r.getConfigDir().toString().contains(".config/cryptad/config"));
+    assertTrue(r.getDataDir().toString().contains(".local/share/cryptad/data"));
     assertTrue(Files.exists(r.getConfigDir()));
   }
 
@@ -114,7 +114,7 @@ public class AppDirsTest {
     AppEnv ae = new AppEnv(env, "Linux", "user");
     AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getDataDir().startsWith(common.resolve("Cryptad")));
+    assertTrue(r.getDataDir().startsWith(common.resolve("cryptad")));
   }
 
   @Test
