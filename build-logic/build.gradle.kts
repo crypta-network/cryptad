@@ -14,7 +14,11 @@ java {
 
 kotlin { jvmToolchain(21) }
 
-repositories { mavenCentral() }
+repositories {
+  // Needed to resolve plugin marker artifacts like org.beryx:badass-runtime-plugin
+  gradlePluginPortal()
+  mavenCentral()
+}
 
 dependencies {
   // Allow precompiled plugins to apply these without specifying versions in their scripts

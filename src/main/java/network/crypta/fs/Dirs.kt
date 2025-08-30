@@ -54,6 +54,77 @@ private fun ensureDir(path: Path, perms: String) {
   }
 }
 
+// --- Dedup helpers -----------------------------------------------------------
+
+/** Base XDG or platform roots before app subdirectories are applied. */
+private data class Bases(val config: Path, val data: Path, val cache: Path)
+
+/** Compose a Resolved from base roots plus runtime and logs. */
+private fun buildResolved(b: Bases, appDirName: String, runtime: Path, logs: Path): Resolved =
+  Resolved(
+    b.config.resolve(appDirName).resolve("config"),
+    b.data.resolve(appDirName).resolve("data"),
+    b.cache.resolve(appDirName),
+    runtime,
+    logs,
+  )
+
+/** Compute XDG base roots for config/data/cache given env and home. */
+private fun xdgBases(env: Map<String, String>, home: String): Bases =
+  Bases(
+    config = Paths.get(env["XDG_CONFIG_HOME"] ?: Paths.get(home, ".config").toString()),
+    data = Paths.get(env["XDG_DATA_HOME"] ?: Paths.get(home, ".local", "share").toString()),
+    cache = Paths.get(env["XDG_CACHE_HOME"] ?: Paths.get(home, ".cache").toString()),
+  )
+
+/** Standard (non-Snap) XDG runtime resolution, including Flatpak handling. */
+private fun computeStandardXdgRuntime(
+  env: Map<String, String>,
+  systemProperties: Map<String, String>,
+  appEnv: AppEnv,
+  cacheBase: Path,
+): Path {
+  val xdgRuntime = env["XDG_RUNTIME_DIR"]?.let { Paths.get(it) }
+  return when {
+    appEnv.isFlatpak() -> {
+      val appId = env["FLATPAK_ID"] ?: "network.crypta.Cryptad"
+      (xdgRuntime ?: Paths.get("/run/user", (systemProperties["user.name"] ?: "0")))
+        .resolve("app")
+        .resolve(appId)
+        .resolve(APP_RUNTIME_SUBPATH)
+    }
+    xdgRuntime != null -> xdgRuntime.resolve(APP_RUNTIME_SUBPATH)
+    else -> {
+      val uidBased =
+        Paths.get("/run/user")
+          .resolve(System.getProperty("user.name") ?: "0")
+          .resolve(APP_RUNTIME_SUBPATH)
+      if (Files.isWritable(uidBased.parent)) uidBased else cacheBase.resolve("rt")
+    }
+  }
+}
+
+/** Snap-specific runtime directory under /run/user/<uid>/snap.<instance>. */
+private fun computeSnapRuntime(env: Map<String, String>, cacheBase: Path): Path {
+  val uidEnv = env["UID"]
+  val inst = env["SNAP_INSTANCE_NAME"] ?: env["SNAP_NAME"]
+  val uid =
+    uidEnv
+      ?: run {
+        val rd = env["XDG_RUNTIME_DIR"] ?: ""
+        val m = Regex("^/run/user/(\\d+)/").find(rd)
+        m?.groupValues?.getOrNull(1) ?: "0"
+      }
+  val snapInstance = inst ?: "cryptad"
+  val candidate = Paths.get("/run/user", uid, "snap.$snapInstance")
+  return try {
+    val parent = candidate.parent
+    if (parent != null && Files.isWritable(parent)) candidate else cacheBase.resolve("rt")
+  } catch (_: Exception) {
+    cacheBase.resolve("rt")
+  }
+}
+
 data class Overrides(
   val config: Path? = null,
   val data: Path? = null,
@@ -100,8 +171,12 @@ abstract class BaseDirs(
 }
 
 /**
- * Computes directory locations for user-session (non-service) mode. Applies XDG for
- * Linux/Flatpak/Snap, macOS conventions, and Windows. Supports env overrides and CLI overrides.
+ * Computes directory locations for user-session (non-service) mode.
+ * - Linux/XDG and macOS with XDG_* set: use lowercase app dir name `cryptad` under the XDG bases.
+ * - macOS native (no XDG_*): use `Cryptad` under Library conventions.
+ * - Windows: use `Cryptad` under `%APPDATA%`/`%LOCALAPPDATA%`.
+ *
+ * Supports env overrides and CLI overrides.
  */
 class AppDirs(
   env: Map<String, String>,
@@ -134,82 +209,43 @@ class AppDirs(
       env.containsKey("XDG_CONFIG_HOME") ||
         env.containsKey("XDG_DATA_HOME") ||
         env.containsKey("XDG_CACHE_HOME")
+    // Choose app directory casing: XDG on Linux and macOS with XDG_* set use lowercase
+    val appDirName =
+      if (appEnv.isWindows() || (appEnv.isMac() && !osxPrefersXdg)) "Cryptad" else "cryptad"
     val home = systemProperties[USER_HOME] ?: System.getProperty(USER_HOME)
-    val tmp = systemProperties["java.io.tmpdir"] ?: System.getProperty("java.io.tmpdir")
-
-    var configBase: Path
-    var dataBase: Path
-    var cacheBase: Path
-    var runtimeBase: Path
-    var logsBase: Path
-
     if (appEnv.isWindows()) {
       val appData = env["APPDATA"] ?: Paths.get(home, "AppData", "Roaming").toString()
       val localAppData = env["LOCALAPPDATA"] ?: Paths.get(home, "AppData", "Local").toString()
-      configBase = Paths.get(appData)
-      dataBase = Paths.get(localAppData)
-      cacheBase = Paths.get(localAppData, "Cache")
-      runtimeBase = Paths.get(localAppData, "Cryptad", "Run")
-      logsBase = Paths.get(localAppData, "Cryptad", "Logs")
+      val bases =
+        Bases(Paths.get(appData), Paths.get(localAppData), Paths.get(localAppData, "Cache"))
+      val runtimeBase = Paths.get(localAppData, "Cryptad", "Run")
+      val logsBase = Paths.get(localAppData, "Cryptad", "Logs")
+      return buildResolved(bases, appDirName, runtimeBase, logsBase)
     } else if (appEnv.isMac() && !osxPrefersXdg) {
       // macOS native (GUI/Homebrew default w/o XDG)
       val appSupport = Paths.get(home, MACOS_LIBRARY_PATH, "Application Support")
-      configBase = appSupport
-      dataBase = appSupport
-      cacheBase = Paths.get(home, MACOS_LIBRARY_PATH, "Caches")
-      runtimeBase = cacheBase.resolve("Cryptad").resolve("run")
-      logsBase = Paths.get(home, MACOS_LIBRARY_PATH, "Logs", "Cryptad")
+      val bases = Bases(appSupport, appSupport, Paths.get(home, MACOS_LIBRARY_PATH, "Caches"))
+      val runtimeBase = bases.cache.resolve("Cryptad").resolve("run")
+      val logsBase = Paths.get(home, MACOS_LIBRARY_PATH, "Logs", "Cryptad")
+      return buildResolved(bases, appDirName, runtimeBase, logsBase)
     } else {
       // Linux/XDG and macOS when XDG_* set
-      val xdgConfig = env["XDG_CONFIG_HOME"] ?: Paths.get(home, ".config").toString()
-      val xdgData = env["XDG_DATA_HOME"] ?: Paths.get(home, ".local", "share").toString()
-      val xdgCache = env["XDG_CACHE_HOME"] ?: Paths.get(home, ".cache").toString()
-      configBase = Paths.get(xdgConfig)
-      dataBase = Paths.get(xdgData)
-      cacheBase = Paths.get(xdgCache)
-
-      val xdgRuntime = env["XDG_RUNTIME_DIR"]?.let { Paths.get(it) }
-      runtimeBase =
-        when {
-          appEnv.isFlatpak() -> {
-            val appId = env["FLATPAK_ID"] ?: "network.crypta.Cryptad"
-            (xdgRuntime ?: Paths.get("/run/user", (systemProperties["user.name"] ?: "0")))
-              .resolve("app")
-              .resolve(appId)
-              .resolve(APP_RUNTIME_SUBPATH)
-          }
-          appEnv.isSnap() -> {
-            val rd = xdgRuntime ?: Paths.get(env["SNAP_USER_DATA"] ?: tmp)
-            rd.resolve(APP_RUNTIME_SUBPATH)
-          }
-          xdgRuntime != null -> xdgRuntime.resolve(APP_RUNTIME_SUBPATH)
-          else -> {
-            val uidBased =
-              Paths.get("/run/user")
-                .resolve(System.getProperty("user.name") ?: "0")
-                .resolve(APP_RUNTIME_SUBPATH)
-            if (Files.isWritable(uidBased.parent)) uidBased else cacheBase.resolve("rt")
-          }
+      var bases = xdgBases(env, home)
+      if (appEnv.isSnap()) {
+        val snapCommon = env["SNAP_USER_COMMON"]
+        if (!snapCommon.isNullOrBlank()) {
+          bases =
+            Bases(Paths.get(snapCommon), Paths.get(snapCommon), Paths.get(snapCommon, ".cache"))
+          val runtimeBase = computeSnapRuntime(env, bases.cache)
+          val logsBase = bases.data.resolve(appDirName).resolve("logs")
+          return buildResolved(bases, appDirName, runtimeBase, logsBase)
         }
-
-      logsBase = dataBase.resolve("Cryptad").resolve("logs")
-    }
-
-    // Snap strict: prefer SNAP_USER_COMMON for data persistence across refreshes
-    if (appEnv.isSnap() && env["CRYPTAD_SNAP_PER_REV"] != "1") {
-      val common = env["SNAP_USER_COMMON"]
-      if (!common.isNullOrBlank()) {
-        dataBase = Paths.get(common, "Cryptad")
       }
-    }
 
-    return Resolved(
-      configBase.resolve("Cryptad").resolve("config"),
-      dataBase.resolve("Cryptad").resolve("data"),
-      cacheBase.resolve("Cryptad"),
-      runtimeBase,
-      logsBase,
-    )
+      val runtimeBase = computeStandardXdgRuntime(env, systemProperties, appEnv, bases.cache)
+      val logsBase = bases.data.resolve(appDirName).resolve("logs")
+      return buildResolved(bases, appDirName, runtimeBase, logsBase)
+    }
   }
 
   override fun envOverrides(): Overrides {

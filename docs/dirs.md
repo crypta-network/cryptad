@@ -5,11 +5,11 @@ This document summarizes where Cryptad places its files on each OS and how to ov
 ## User-Session Mode
 
 - Linux (XDG):
-  - config: `$XDG_CONFIG_HOME/Cryptad/config` or `~/.config/Cryptad/config`
-  - data: `$XDG_DATA_HOME/Cryptad/data` or `~/.local/share/Cryptad/data`
-  - cache: `$XDG_CACHE_HOME/Cryptad` or `~/.cache/Cryptad`
-  - runtime: `$XDG_RUNTIME_DIR/cryptad` (else `/run/user/<uid>/cryptad` or `~/.cache/Cryptad/rt`)
-  - logs: `~/.local/share/Cryptad/logs`
+  - config: `$XDG_CONFIG_HOME/cryptad/config` or `~/.config/cryptad/config`
+  - data: `$XDG_DATA_HOME/cryptad/data` or `~/.local/share/cryptad/data`
+  - cache: `$XDG_CACHE_HOME/cryptad` or `~/.cache/cryptad`
+  - runtime: `$XDG_RUNTIME_DIR/cryptad` (else `/run/user/<uid>/cryptad` or `~/.cache/cryptad/rt`)
+  - logs: `~/.local/share/cryptad/logs`
 
 - macOS (native GUI):
   - config: `~/Library/Application Support/Cryptad/config`
@@ -31,7 +31,7 @@ This document summarizes where Cryptad places its files on each OS and how to ov
 - Snap (strict):
   - Detect via `SNAP` env.
   - `config`: XDG (`$SNAP_USER_DATA/.config`)
-  - `data`: `$SNAP_USER_COMMON/Cryptad` (persistent across refreshes)
+  - `data`: `$SNAP_USER_COMMON/cryptad` (persistent across refreshes)
   - `cache`: XDG cache
   - `runtime`: `$XDG_RUNTIME_DIR/cryptad` (fallback `$SNAP_USER_DATA/tmp`)
   - Opt-out (per-revision data): set `CRYPTAD_SNAP_PER_REV=1`.
@@ -103,4 +103,3 @@ On first run with the new feature:
 ## Diagnostics
 
 Run `./gradlew printDirs` to print resolved directories for the current environment.
-
