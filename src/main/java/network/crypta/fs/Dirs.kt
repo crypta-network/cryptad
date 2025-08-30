@@ -168,6 +168,45 @@ class AppDirs(
       dataBase = Paths.get(xdgData)
       cacheBase = Paths.get(xdgCache)
 
+      // Snap: recalculate all bases to prefer SNAP_USER_COMMON and a stable runtime dir
+      if (appEnv.isSnap()) {
+        val snapCommon = env["SNAP_USER_COMMON"]
+        if (!snapCommon.isNullOrBlank()) {
+          configBase = Paths.get(snapCommon, ".config")
+          dataBase = Paths.get(snapCommon)
+          cacheBase = Paths.get(snapCommon, ".cache")
+
+          val uidEnv = env["UID"]
+          val inst = env["SNAP_INSTANCE_NAME"] ?: env["SNAP_NAME"]
+          val uid =
+            uidEnv
+              ?: run {
+                // Try to infer from XDG_RUNTIME_DIR like /run/user/1000/snap.<inst>
+                val rd = env["XDG_RUNTIME_DIR"] ?: ""
+                val m = Regex("^/run/user/(\\d+)/").find(rd)
+                m?.groupValues?.getOrNull(1) ?: "0"
+              }
+          val snapInstance = inst ?: "cryptad"
+          val candidate = Paths.get("/run/user", uid, "snap.$snapInstance")
+          runtimeBase =
+            try {
+              val parent = candidate.parent
+              if (parent != null && Files.isWritable(parent)) candidate else cacheBase.resolve("rt")
+            } catch (_: Exception) {
+              cacheBase.resolve("rt")
+            }
+          logsBase = dataBase.resolve("Cryptad").resolve("logs")
+
+          return Resolved(
+            configBase.resolve("Cryptad").resolve("config"),
+            dataBase.resolve("Cryptad").resolve("data"),
+            cacheBase.resolve("Cryptad"),
+            runtimeBase,
+            logsBase,
+          )
+        }
+      }
+
       val xdgRuntime = env["XDG_RUNTIME_DIR"]?.let { Paths.get(it) }
       runtimeBase =
         when {
@@ -177,10 +216,6 @@ class AppDirs(
               .resolve("app")
               .resolve(appId)
               .resolve(APP_RUNTIME_SUBPATH)
-          }
-          appEnv.isSnap() -> {
-            val rd = xdgRuntime ?: Paths.get(env["SNAP_USER_DATA"] ?: tmp)
-            rd.resolve(APP_RUNTIME_SUBPATH)
           }
           xdgRuntime != null -> xdgRuntime.resolve(APP_RUNTIME_SUBPATH)
           else -> {
@@ -195,13 +230,7 @@ class AppDirs(
       logsBase = dataBase.resolve("Cryptad").resolve("logs")
     }
 
-    // Snap strict: prefer SNAP_USER_COMMON for data persistence across refreshes
-    if (appEnv.isSnap() && env["CRYPTAD_SNAP_PER_REV"] != "1") {
-      val common = env["SNAP_USER_COMMON"]
-      if (!common.isNullOrBlank()) {
-        dataBase = Paths.get(common, "Cryptad")
-      }
-    }
+    // Note: Snap-specific bases handled above; keep legacy per-revision override removed.
 
     return Resolved(
       configBase.resolve("Cryptad").resolve("config"),
