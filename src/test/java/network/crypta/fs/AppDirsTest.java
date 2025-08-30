@@ -118,6 +118,119 @@ public class AppDirsTest {
   }
 
   @Test
+  public void snapWithoutCommon_usesXdgAndRuntimeUnderXdgRt() {
+    Path root = tmp.getRoot().toPath();
+    Path home = root.resolve("home");
+    Path xdgConfig = root.resolve("xdg-config");
+    Path xdgData = root.resolve("xdg-data");
+    Path xdgCache = root.resolve("xdg-cache");
+    Path xdgRt = root.resolve("xdg-rt");
+    home.toFile().mkdirs();
+    xdgConfig.toFile().mkdirs();
+    xdgData.toFile().mkdirs();
+    xdgCache.toFile().mkdirs();
+    xdgRt.toFile().mkdirs();
+    Map<String, String> env = new HashMap<>();
+    env.put("SNAP", "/snap/app");
+    env.put("XDG_CONFIG_HOME", xdgConfig.toString());
+    env.put("XDG_DATA_HOME", xdgData.toString());
+    env.put("XDG_CACHE_HOME", xdgCache.toString());
+    env.put("XDG_RUNTIME_DIR", xdgRt.toString());
+    AppEnv ae = new AppEnv(env, "Linux", "user");
+    AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    assertTrue(r.getConfigDir().startsWith(xdgConfig.resolve("cryptad/config")));
+    assertTrue(r.getDataDir().startsWith(xdgData.resolve("cryptad/data")));
+    assertTrue(r.getCacheDir().startsWith(xdgCache.resolve("cryptad")));
+    assertTrue(r.getRunDir().startsWith(xdgRt.resolve(network.crypta.fs.DirsKt.APP_RUNTIME_SUBPATH)));
+  }
+
+  @Test
+  public void snapWithCommon_runtimeFallsBackToCacheWhenUnwritable() {
+    Path root = tmp.getRoot().toPath();
+    Path home = root.resolve("home");
+    Path common = root.resolve("snap-common");
+    Path xdgCache = common.resolve(".cache");
+    home.toFile().mkdirs();
+    common.toFile().mkdirs();
+    xdgCache.toFile().mkdirs();
+    Map<String, String> env = new HashMap<>();
+    env.put("SNAP", "/snap/app");
+    env.put("UID", "99999");
+    env.put("SNAP_INSTANCE_NAME", "cryptad.test");
+    env.put("SNAP_USER_COMMON", common.toString());
+    // Do not set XDG_RUNTIME_DIR; computeSnapRuntime will attempt /run (unwritable in tests) and
+    // fall back to cache/rt.
+    AppEnv ae = new AppEnv(env, "Linux", "user");
+    AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    assertTrue(r.getConfigDir().startsWith(common.resolve("cryptad/config")));
+    assertTrue(r.getDataDir().startsWith(common.resolve("cryptad/data")));
+    assertTrue(r.getCacheDir().startsWith(xdgCache.resolve("cryptad")));
+    assertTrue(r.getRunDir().startsWith(xdgCache.resolve("rt")));
+    assertTrue(r.getLogsDir().startsWith(common.resolve("cryptad/logs")));
+  }
+
+  @Test
+  public void macXdgCasing_isLowercaseCryptad() {
+    Path home = tmp.getRoot().toPath().resolve("home");
+    Path xdgConfig = tmp.getRoot().toPath().resolve("xdg");
+    home.toFile().mkdirs();
+    xdgConfig.toFile().mkdirs();
+    Map<String, String> env = new HashMap<>();
+    env.put("XDG_CONFIG_HOME", xdgConfig.toString());
+    AppEnv ae = new AppEnv(env, "Mac OS X", "user");
+    Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
+    sp.put("os.name", "Mac OS X");
+    AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    assertTrue(r.getConfigDir().toString().contains("/cryptad/config"));
+  }
+
+  @Test
+  public void windowsAppDirs_casingIsCryptad() {
+    Path root = tmp.getRoot().toPath();
+    Path home = root.resolve("home");
+    Path roaming = home.resolve("AppData/Roaming");
+    Path local = home.resolve("AppData/Local");
+    roaming.toFile().mkdirs();
+    local.toFile().mkdirs();
+    Map<String, String> env = new HashMap<>();
+    env.put("APPDATA", roaming.toString());
+    env.put("LOCALAPPDATA", local.toString());
+    AppEnv ae = new AppEnv(env, "Windows 10", "user");
+    Map<String, String> sp = sysProps(home, root);
+    sp.put("os.name", "Windows 10");
+    AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    assertTrue(r.getConfigDir().toString().contains("Cryptad\\/config".replace("\\/", "/"))
+        || r.getConfigDir().toString().contains("Cryptad/config"));
+    assertTrue(r.getCacheDir().toString().contains("Cryptad"));
+  }
+
+  @Test
+  public void xdgRuntimeMissing_fallsBackToCacheRt() {
+    Path root = tmp.getRoot().toPath();
+    Path home = root.resolve("home");
+    Path xdgCache = root.resolve("xdg-cache");
+    Path xdgConfig = root.resolve("xdg-config");
+    Path xdgData = root.resolve("xdg-data");
+    home.toFile().mkdirs();
+    xdgCache.toFile().mkdirs();
+    xdgConfig.toFile().mkdirs();
+    xdgData.toFile().mkdirs();
+    Map<String, String> env = new HashMap<>();
+    env.put("XDG_CONFIG_HOME", xdgConfig.toString());
+    env.put("XDG_DATA_HOME", xdgData.toString());
+    env.put("XDG_CACHE_HOME", xdgCache.toString());
+    AppEnv ae = new AppEnv(env, "Linux", "user");
+    AppDirs dirs = new AppDirs(env, sysProps(home, root), new HashMap<>(), ae);
+    Resolved r = dirs.resolve();
+    // Without XDG_RUNTIME_DIR and without writable /run parent, runDir should be <cache>/rt
+    assertTrue(r.getRunDir().startsWith(xdgCache.resolve("rt")));
+  }
+
+  @Test
   public void flatpakHonorsXdg() {
     Path root = tmp.getRoot().toPath();
     Path home = root.resolve("home");
