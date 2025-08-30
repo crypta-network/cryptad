@@ -14,6 +14,11 @@ fi
 
 CP="$DIR/../lib/*"
 
+# If running inside a Snap, prefer user-writable working directory
+if [ -n "${SNAP_USER_COMMON:-}" ]; then
+  cd "$SNAP_USER_COMMON"
+fi
+
 # Start the launcher without replacing this shell, so we can trap Ctrl+C
 "$JAVA_EXE" -cp "$CP" network.crypta.launcher.LauncherKt "$@" &
 LAUNCHER_PID=$!
@@ -37,4 +42,3 @@ cleanup() {
 
 trap cleanup INT TERM
 wait "$LAUNCHER_PID"
-
