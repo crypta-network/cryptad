@@ -1,5 +1,6 @@
 package network.crypta.fs
 
+import network.crypta.support.Logger
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -7,7 +8,6 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
-import network.crypta.support.Logger
 
 /**
  * Shared filesystem definitions and directory resolvers for Cryptad.
@@ -236,7 +236,7 @@ class AppDirs(
         if (!snapCommon.isNullOrBlank()) {
           bases =
             Bases(
-              Paths.get(snapCommon, ".config"),
+              Paths.get(snapCommon),
               Paths.get(snapCommon),
               Paths.get(snapCommon, ".cache"),
             )
