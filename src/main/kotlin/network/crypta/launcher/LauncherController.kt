@@ -196,11 +196,28 @@ class LauncherController(
     }
   }
 
+  /**
+   * Tail the given file while the wrapper process stays alive, emitting appended lines to the UI
+   * log stream. Uses a single `RandomAccessFile` instance to reduce open/close churn and reopens on
+   * rotation/truncation. All resource operations are guarded and closed in `finally` to avoid leaks
+   * on exceptions or coroutine cancellation.
+   */
   private suspend fun tailFileWhileAlive(path: Path) {
     // Keep a single RAF open to avoid repeated open/close churn. Add exponential backoff when no
     // new data arrives to reduce filesystem pressure. Re-open on file rotation or truncation.
     withContext(io) {
       var raf: java.io.RandomAccessFile? = null
+
+      fun closeQuietlyAndNull() {
+        val toClose = raf
+        raf = null
+        try {
+          toClose?.close()
+        } catch (_: Throwable) {
+          // best-effort close; ignore
+        }
+      }
+
       var currentKey: Any? = null
       var pos = 0L
       var leftover = StringBuilder()
@@ -212,77 +229,78 @@ class LauncherController(
         return d.coerceAtMost(TAIL_MAX_DELAY_MS)
       }
 
-      while (scope.isActive && (process?.isAlive == true)) {
-        try {
-          if (!Files.exists(path)) {
-            raf?.close()
-            raf = null
+      try {
+        while (scope.isActive && (process?.isAlive == true)) {
+          try {
+            if (!Files.exists(path)) {
+              closeQuietlyAndNull()
+              currentKey = null
+              idleCount++
+              delay(calcDelayMs())
+              continue
+            }
+
+            // Detect rotation by file key if available
+            val newKey =
+              try {
+                Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java)
+                  .fileKey()
+              } catch (_: Throwable) {
+                null
+              }
+
+            if (raf == null || (currentKey != null && newKey != null && currentKey != newKey)) {
+              // Open (or re-open after rotation). Start from end to avoid dumping historical logs.
+              closeQuietlyAndNull()
+              val opened = java.io.RandomAccessFile(path.toFile(), "r")
+              raf = opened
+              currentKey = newKey
+              val len = runCatching { opened.length() }.getOrDefault(0L)
+              pos = len
+            }
+
+            val handle = raf ?: continue
+
+            val len = runCatching { handle.length() }.getOrDefault(0L)
+            if (len < pos) pos = 0L // truncation
+
+            var madeProgress = false
+            if (len > pos) {
+              handle.seek(pos)
+              val toRead = (len - pos).coerceAtMost(TAIL_READ_CHUNK.toLong()).toInt()
+              val buf = ByteArray(toRead)
+              val r = runCatching { handle.read(buf) }.getOrDefault(-1)
+              if (r > 0) {
+                pos += r
+                val text = String(buf, 0, r, StandardCharsets.UTF_8)
+                val parts = text.split('\n')
+                if (parts.size == 1) {
+                  leftover.append(parts[0])
+                } else {
+                  val first = leftover.append(parts[0]).toString()
+                  if (first.isNotEmpty()) logLine(first)
+                  leftover = StringBuilder()
+                  for (i in 1 until parts.size - 1) logLine(parts[i])
+                  val last = parts.last()
+                  if (text.endsWith("\n")) logLine(last) else leftover.append(last)
+                }
+                madeProgress = true
+              }
+            }
+
+            if (madeProgress) idleCount = 0 else idleCount++
+          } catch (_: Throwable) {
+            // On any error, force re-open next loop.
+            closeQuietlyAndNull()
             currentKey = null
             idleCount++
-            delay(calcDelayMs())
-            continue
           }
 
-          // Detect rotation by file key if available
-          val newKey =
-            try {
-              Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java)
-                .fileKey()
-            } catch (_: Throwable) {
-              null
-            }
-
-          if (raf == null || (currentKey != null && newKey != null && currentKey != newKey)) {
-            // Open (or re-open after rotation). Start from end to avoid dumping historical logs.
-            runCatching { raf?.close() }
-            raf = java.io.RandomAccessFile(path.toFile(), "r")
-            currentKey = newKey
-            val len = runCatching { raf.length() }.getOrDefault(0L)
-            pos = len
-          }
-
-          val handle = raf
-
-          val len = runCatching { handle.length() }.getOrDefault(0L)
-          if (len < pos) pos = 0L // truncation
-
-          var madeProgress = false
-          if (len > pos) {
-            handle.seek(pos)
-            val toRead = (len - pos).coerceAtMost(TAIL_READ_CHUNK.toLong()).toInt()
-            val buf = ByteArray(toRead)
-            val r = runCatching { handle.read(buf) }.getOrDefault(-1)
-            if (r > 0) {
-              pos += r
-              val text = String(buf, 0, r, StandardCharsets.UTF_8)
-              val parts = text.split('\n')
-              if (parts.size == 1) {
-                leftover.append(parts[0])
-              } else {
-                val first = leftover.append(parts[0]).toString()
-                if (first.isNotEmpty()) logLine(first)
-                leftover = StringBuilder()
-                for (i in 1 until parts.size - 1) logLine(parts[i])
-                val last = parts.last()
-                if (text.endsWith("\n")) logLine(last) else leftover.append(last)
-              }
-              madeProgress = true
-            }
-          }
-
-          if (madeProgress) idleCount = 0 else idleCount++
-        } catch (_: Throwable) {
-          // On any error, force re-open next loop.
-          runCatching { raf?.close() }
-          raf = null
-          currentKey = null
-          idleCount++
+          delay(calcDelayMs())
         }
-
-        delay(calcDelayMs())
+      } finally {
+        closeQuietlyAndNull()
       }
-
-      runCatching { raf?.close() }
     }
   }
 
