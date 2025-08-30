@@ -9,6 +9,11 @@ CONF_DIR="$ROOT_DIR/conf"
 LIB_DIR="$ROOT_DIR/lib"
 TMP_DIR="$ROOT_DIR/tmp"
 
+# If running inside a Snap, prefer user-writable working directory
+if [ -n "${SNAP_USER_COMMON:-}" ]; then
+  cd "$SNAP_USER_COMMON"
+fi
+
 CONF="$CONF_DIR/wrapper.conf"
 if [ ! -f "$CONF" ]; then
   echo "Missing configuration at $CONF" >&2
