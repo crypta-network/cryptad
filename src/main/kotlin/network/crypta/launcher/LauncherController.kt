@@ -67,6 +67,11 @@ class LauncherController(
       tryEnableConsoleFlush(cryptadPath)
 
       val cmd = buildCryptadCommand(cryptadPath)
+      // Log the effective command and working directory for diagnostics
+      logLine(
+        ts() +
+          " exec: " + formatCommandForLog(cmd) + " (cwd=" + cwd.toAbsolutePath().toString() + ")"
+      )
       val pb = ProcessBuilder(cmd)
       pb.redirectErrorStream(true)
       pb.directory(cwd.toFile())
@@ -404,6 +409,19 @@ class LauncherController(
     // Non-suspending emission; when buffers are full the oldest entries are dropped per
     // BufferOverflow.DROP_OLDEST.
     _logs.tryEmit(s)
+  }
+
+  private fun formatCommandForLog(cmd: List<String>): String {
+    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    return cmd.joinToString(" ") { arg ->
+      if (isWindows) {
+        if (arg.any { it.isWhitespace() || it == '"' }) "\"" + arg.replace("\"", "\\\"") + "\""
+        else arg
+      } else {
+        if (arg.any { it.isWhitespace() || it == '\'' || it == '"' || it == '\\' }) shellQuote(arg)
+        else arg
+      }
+    }
   }
 }
 
