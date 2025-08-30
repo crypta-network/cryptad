@@ -215,10 +215,10 @@ fun buildCryptadCommand(cryptadPath: Path): List<String> {
       return if (isLinux) {
         // util-linux script(1): use -c "cmd" FILE
         val cmd = "exec ${shellQuote(cryptadPath.toString())}"
-        listOf("script", "-q", "-c", cmd, "/dev/null")
+        listOf(script, "-q", "-c", cmd, "/dev/null")
       } else {
         // BSD/macOS script(1): FILE [command ...]
-        listOf("script", "-q", "/dev/null", cryptadPath.toString())
+        listOf(script, "-q", "/dev/null", cryptadPath.toString())
       }
     }
   }
