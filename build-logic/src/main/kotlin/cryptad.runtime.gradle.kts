@@ -1,5 +1,5 @@
-import org.gradle.kotlin.dsl.support.serviceOf
 import java.io.ByteArrayOutputStream
+import org.gradle.kotlin.dsl.support.serviceOf
 
 plugins { java }
 
@@ -60,7 +60,7 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
     val javaHome = File(javaHomePath.get())
     val jdeps =
       javaHome.resolve(
-          "bin/jdeps${
+        "bin/jdeps${
               if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
           }"
       )
