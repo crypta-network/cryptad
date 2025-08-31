@@ -10,7 +10,22 @@ plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-  repositories { mavenCentral() }
+  repositories {
+    mavenCentral {
+      metadataSources {
+        mavenPom()
+        artifact()
+        ignoreGradleMetadataRedirection()
+      }
+    }
+    maven("https://jitpack.io") {
+      metadataSources {
+        mavenPom()
+        artifact()
+        ignoreGradleMetadataRedirection()
+      }
+    }
+  }
 }
 
 rootProject.name = "cryptad"

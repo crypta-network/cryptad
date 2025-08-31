@@ -13,6 +13,8 @@ hamcrest = "3.0"
 objenesis = "3.4"
 picocli = "4.7.7"
 spotless = "7.2.1"
+flatlaf = "3.6.1"
+jsystemTheme = "ea2f8582ea"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -29,6 +31,8 @@ hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest"
 objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
 picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
 kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
+flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
+jsystemThemeDetector = { group = "com.github.Dansoftowner", name = "jSystemThemeDetector", version.ref = "jsystemTheme" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

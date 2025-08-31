@@ -265,6 +265,9 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       } catch (_: Throwable) {}
       dispose()
       uiScope.cancel()
+      try {
+        ThemeSwitcher.shutdown()
+      } catch (_: Throwable) {}
       kotlin.system.exitProcess(0)
     }
   }
@@ -368,19 +371,33 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     try {
       runBlocking { controller.shutdownAndWait() }
     } catch (_: Throwable) {}
+    try {
+      ThemeSwitcher.shutdown()
+    } catch (_: Throwable) {}
   }
 }
 
-/** Application entry point. */
+/**
+ * Application entry point.
+ *
+ * Installs FlatLaf as the Swing Look & Feel (macOS‑optimized theme on macOS, Flat Light elsewhere)
+ * before creating any Swing components.
+ */
 fun main() {
   // Set macOS application menu name before any AWT/Swing initialization
   try {
     System.setProperty("apple.awt.application.name", "Crypta Launcher")
     System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Crypta Launcher")
   } catch (_: Exception) {}
+
+  // Install FlatLaf with OS theme detection + live switching
   try {
-    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
-  } catch (_: Exception) {}
+    ThemeSwitcher.install()
+  } catch (_: Exception) {
+    try {
+      UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+    } catch (_: Exception) {}
+  }
 
   SwingUtilities.invokeLater {
     val f = CryptaLauncher()
