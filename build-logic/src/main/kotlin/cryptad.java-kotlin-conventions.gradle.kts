@@ -10,7 +10,22 @@ java {
   targetCompatibility = JavaVersion.VERSION_21
 }
 
-repositories { mavenCentral() }
+repositories {
+  mavenCentral {
+    metadataSources {
+      mavenPom()
+      artifact()
+      ignoreGradleMetadataRedirection()
+    }
+  }
+  maven("https://jitpack.io") {
+    metadataSources {
+      mavenPom()
+      artifact()
+      ignoreGradleMetadataRedirection()
+    }
+  }
+}
 
 // Allow Kotlin sources to live under src/main/java and src/test/java, and exclude Version.kt
 extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension>(

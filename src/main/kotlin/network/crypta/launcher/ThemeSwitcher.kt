@@ -5,19 +5,19 @@ import com.formdev.flatlaf.FlatLaf
 import com.formdev.flatlaf.FlatLightLaf
 import com.formdev.flatlaf.themes.FlatMacDarkLaf
 import com.formdev.flatlaf.themes.FlatMacLightLaf
-import com.github.weisj.darklaf.platform.preferences.SystemPreferencesManager
-import com.github.weisj.darklaf.theme.spec.ColorToneRule
-import com.github.weisj.darklaf.theme.spec.PreferredThemeStyle
+import com.jthemedetecor.OsThemeDetector
+import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.FontUIResource
 
 /**
- * Installs FlatLaf matching the current OS theme and switches live on changes. Uses Darklaf's
- * platform-preferences module for cross-platform OS theme detection.
+ * Installs FlatLaf matching the current OS theme and switches live on changes. Uses
+ * jSystemThemeDetector (OsThemeDetector) for cross‑platform OS theme detection.
  */
 object ThemeSwitcher {
-  @Volatile private var manager: SystemPreferencesManager? = null
+  @Volatile private var detector: OsThemeDetector? = null
+  @Volatile private var listener: Consumer<Boolean>? = null
 
   /** Initialize OS theme detection and apply the matching FlatLaf before UI creation. */
   fun install() {
@@ -26,26 +26,29 @@ object ThemeSwitcher {
       System.setProperty("apple.awt.application.appearance", "system")
     } catch (_: Exception) {}
 
-    val mgr = SystemPreferencesManager()
-    manager = mgr
+    val det = OsThemeDetector.getDetector()
+    detector = det
 
     // Apply current theme synchronously (must happen before any Swing components are created)
-    applyFor(mgr.preferredThemeStyle, synchronous = true)
+    applyFor(det.isDark, synchronous = true)
 
     // Listen for changes and switch LAF live
-    mgr.addListener { style -> applyFor(style) }
-    mgr.enableReporting(true)
+    val consumer = Consumer<Boolean> { isDark -> applyFor(isDark) }
+    listener = consumer
+    det.registerListener(consumer)
   }
 
   /** Stop OS theme change reporting (call on shutdown to avoid leaks). */
   fun shutdown() {
-    manager?.enableReporting(false)
-    manager = null
+    val det = detector
+    val c = listener
+    if (det != null && c != null) det.removeListener(c)
+    detector = null
+    listener = null
   }
 
-  private fun applyFor(style: PreferredThemeStyle?, synchronous: Boolean = false) {
+  private fun applyFor(useDark: Boolean, synchronous: Boolean = false) {
     val mac = isMac()
-    val useDark = style?.colorToneRule == ColorToneRule.DARK
     val laf =
       if (mac) {
         if (useDark) FlatMacDarkLaf() else FlatMacLightLaf()

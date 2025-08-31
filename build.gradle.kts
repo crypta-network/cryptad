@@ -26,9 +26,7 @@ dependencies {
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
-  implementation(libs.darklafPlatformPreferences)
-  implementation(libs.darklafCore)
-  implementation(libs.darklafThemeSpec)
+  implementation(libs.jsystemThemeDetector)
   // CLI parsing and UX
   implementation(libs.picocli)
 
