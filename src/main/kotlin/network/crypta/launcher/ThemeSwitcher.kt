@@ -3,10 +3,14 @@ package network.crypta.launcher
 import com.formdev.flatlaf.FlatDarkLaf
 import com.formdev.flatlaf.FlatLaf
 import com.formdev.flatlaf.FlatLightLaf
+import com.formdev.flatlaf.themes.FlatMacDarkLaf
+import com.formdev.flatlaf.themes.FlatMacLightLaf
 import com.github.weisj.darklaf.platform.preferences.SystemPreferencesManager
 import com.github.weisj.darklaf.theme.spec.ColorToneRule
 import com.github.weisj.darklaf.theme.spec.PreferredThemeStyle
 import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import javax.swing.plaf.FontUIResource
 
 /**
  * Installs FlatLaf matching the current OS theme and switches live on changes. Uses Darklaf's
@@ -25,8 +29,8 @@ object ThemeSwitcher {
     val mgr = SystemPreferencesManager()
     manager = mgr
 
-    // Apply current theme synchronously
-    applyFor(mgr.preferredThemeStyle)
+    // Apply current theme synchronously (must happen before any Swing components are created)
+    applyFor(mgr.preferredThemeStyle, synchronous = true)
 
     // Listen for changes and switch LAF live
     mgr.addListener { style -> applyFor(style) }
@@ -39,19 +43,30 @@ object ThemeSwitcher {
     manager = null
   }
 
-  private fun applyFor(style: PreferredThemeStyle?) {
+  private fun applyFor(style: PreferredThemeStyle?, synchronous: Boolean = false) {
+    val mac = isMac()
     val useDark = style?.colorToneRule == ColorToneRule.DARK
-    val laf = if (useDark) FlatDarkLaf() else FlatLightLaf()
+    val laf =
+      if (mac) {
+        if (useDark) FlatMacDarkLaf() else FlatMacLightLaf()
+      } else {
+        if (useDark) FlatDarkLaf() else FlatLightLaf()
+      }
 
-    // Switch on EDT; update all open windows
-    SwingUtilities.invokeLater {
+    val apply: () -> Unit = {
       try {
+        if (mac) {
+          // Work around JDK-8355079: set a sane default logical font on macOS
+          UIManager.put("defaultFont", FontUIResource("SansSerif", java.awt.Font.PLAIN, 13))
+        }
         FlatLaf.setup(laf)
-        // Prefer native window decorations where supported (kept idempotent across switches)
-        if (!isMac()) FlatLaf.setUseNativeWindowDecorations(true)
-        FlatLaf.updateUI()
+        if (!mac) FlatLaf.setUseNativeWindowDecorations(true)
+        // For live switches after startup, refresh UI
+        if (!synchronous) FlatLaf.updateUI()
       } catch (_: Exception) {}
     }
+
+    if (synchronous) apply() else SwingUtilities.invokeLater(apply)
   }
 
   private fun isMac(): Boolean =
