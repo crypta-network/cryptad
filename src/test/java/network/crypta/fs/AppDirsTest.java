@@ -142,7 +142,8 @@ public class AppDirsTest {
     assertTrue(r.getConfigDir().startsWith(xdgConfig.resolve("cryptad/config")));
     assertTrue(r.getDataDir().startsWith(xdgData.resolve("cryptad/data")));
     assertTrue(r.getCacheDir().startsWith(xdgCache.resolve("cryptad")));
-    assertTrue(r.getRunDir().startsWith(xdgRt.resolve(network.crypta.fs.DirsKt.APP_RUNTIME_SUBPATH)));
+    assertTrue(
+        r.getRunDir().startsWith(xdgRt.resolve(network.crypta.fs.DirsKt.APP_RUNTIME_SUBPATH)));
   }
 
   @Test
@@ -203,8 +204,9 @@ public class AppDirsTest {
     sp.put("os.name", "Windows 10");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().toString().contains("Cryptad\\/config".replace("\\/", "/"))
-        || r.getConfigDir().toString().contains("Cryptad/config"));
+    assertTrue(
+        r.getConfigDir().toString().contains("Cryptad\\/config".replace("\\/", "/"))
+            || r.getConfigDir().toString().contains("Cryptad/config"));
     assertTrue(r.getCacheDir().toString().contains("Cryptad"));
   }
 
