@@ -1,13 +1,17 @@
 package network.crypta.launcher
 
+import com.formdev.flatlaf.FlatLaf
+import com.formdev.flatlaf.FlatLightLaf
+import com.formdev.flatlaf.themes.FlatMacLightLaf
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import java.awt.*
 import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import javax.swing.*
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.collectLatest
+import javax.swing.plaf.FontUIResource
 
 /**
  * Crypta Swing Launcher (View).
@@ -371,16 +375,38 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   }
 }
 
-/** Application entry point. */
+/**
+ * Application entry point.
+ *
+ * Installs FlatLaf as the Swing Look & Feel (macOS‑optimized theme on macOS, Flat Light elsewhere)
+ * before creating any Swing components.
+ */
 fun main() {
   // Set macOS application menu name before any AWT/Swing initialization
   try {
     System.setProperty("apple.awt.application.name", "Crypta Launcher")
     System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Crypta Launcher")
   } catch (_: Exception) {}
+
+  // Apply FlatLaf (modern, actively maintained Swing L&F)
   try {
-    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
-  } catch (_: Exception) {}
+    val os = System.getProperty("os.name").lowercase()
+    if (os.contains("mac")) {
+      // See: JDK-8338429 JDK-8355079
+      UIManager.put("defaultFont", FontUIResource("SansSerif", Font.PLAIN, 13))
+      // macOS-optimized theme for better native integration
+      FlatMacLightLaf.setup()
+    } else {
+      // Cross‑platform light theme; enable native window decorations where supported
+      FlatLightLaf.setup()
+      FlatLaf.setUseNativeWindowDecorations(true)
+    }
+  } catch (_: Exception) {
+    // Fallback to the system LAF if FlatLaf initialization fails for any reason
+    try {
+      UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+    } catch (_: Exception) {}
+  }
 
   SwingUtilities.invokeLater {
     val f = CryptaLauncher()

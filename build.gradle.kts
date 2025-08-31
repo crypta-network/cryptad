@@ -23,6 +23,8 @@ dependencies {
   implementation(libs.slf4jApi)
   // Coroutines (Swing Main dispatcher)
   implementation(libs.kotlinxCoroutinesSwing)
+  // FlatLaf (modern Swing Look & Feel)
+  implementation(libs.flatlaf)
   // CLI parsing and UX
   implementation(libs.picocli)
 
