@@ -164,10 +164,12 @@ val generateWrapperConf by
     dependsOn(prepareWrapperLibs)
     val confDir = wrapperDistDir.map { it.dir("conf") }
     outputs.file(confDir.map { it.file("wrapper.conf") })
+    // Capture template file at configuration time to avoid Task.project access at execution
+    val confTemplate = layout.projectDirectory.file("src/main/templates/wrapper.conf.tpl")
     doLast {
       val confDirFile = confDir.get().asFile
       confDirFile.mkdirs()
-      val template = file("src/main/templates/wrapper.conf.tpl").readText()
+      val template = confTemplate.asFile.readText()
       val confFile = confDirFile.resolve("wrapper.conf")
       confFile.writeText(template)
       println("Generated " + confFile.absolutePath)
@@ -182,11 +184,19 @@ val generateWrapperLaunchers by
     dependsOn(copyWrapperBinaries)
     val binDir = wrapperDistDir.map { it.dir("bin") }
     outputs.files(binDir.map { it.file("cryptad") })
+    // Resolve inputs up front (configuration time) to be config-cache friendly
+    val launcherTemplateUnix =
+      layout.projectDirectory.file("src/main/templates/cryptad-launcher.sh.tpl")
+    val launcherTemplateBat =
+      layout.projectDirectory.file("src/main/templates/cryptad-launcher.bat.tpl")
+    val mainScriptTemplate = layout.projectDirectory.file("src/main/templates/cryptad.sh.tpl")
+    val dummyCryptad = layout.projectDirectory.file("tools/cryptad-dummy.sh")
+    val useDummy = providers.gradleProperty("useDummyCryptad").map { it.toBoolean() }.orElse(false)
     doLast {
       val bin = binDir.get().asFile
       bin.mkdirs()
       val unix = bin.resolve("cryptad")
-      val templateL = file("src/main/templates/cryptad.sh.tpl").readText()
+      val templateL = mainScriptTemplate.asFile.readText()
       unix.writeText(templateL)
       // Ensure executable for all, plus readable for all
       unix.setReadable(true, false)
@@ -196,8 +206,8 @@ val generateWrapperLaunchers by
       val launcherUnix = bin.resolve("cryptad-launcher")
       val launcherBat = bin.resolve("cryptad-launcher.bat")
 
-      val tmplUnix = file("src/main/templates/cryptad-launcher.sh.tpl")
-      val tmplBat = file("src/main/templates/cryptad-launcher.bat.tpl")
+      val tmplUnix = launcherTemplateUnix.asFile
+      val tmplBat = launcherTemplateBat.asFile
       if (!tmplUnix.isFile) throw GradleException("Missing template: ${tmplUnix.path}")
       if (!tmplBat.isFile) throw GradleException("Missing template: ${tmplBat.path}")
 
@@ -209,8 +219,8 @@ val generateWrapperLaunchers by
       // Templates are authoritative; no inline fallbacks remain.
 
       // Optional dev aid: override cryptad with a dummy script when -PuseDummyCryptad=true
-      if (project.findProperty("useDummyCryptad")?.toString()?.toBoolean() == true) {
-        val dummy = file("tools/cryptad-dummy.sh")
+      if (useDummy.get()) {
+        val dummy = dummyCryptad.asFile
         if (dummy.isFile) {
           println("Overriding bin/cryptad with tools/cryptad-dummy.sh for testing")
           unix.writeText(dummy.readText())
