@@ -217,13 +217,13 @@ private fun createAll(sfs: SimpleFieldSet) {
 
 fun defaultTemplate(): String =
   """
-    # Cryptad config (auto-generated)
-    logger.priority=NORMAL
-    node.updater.enabled=false
-    node.updater.autoupdate=false
-    node.updater.updateInstallers=false
-    End
-"""
+      # Cryptad config (auto-generated)
+      logger.priority=NORMAL
+      node.updater.enabled=false
+      node.updater.autoupdate=false
+      node.updater.updateInstallers=false
+      End
+  """
     .trimIndent() + "\n"
 
 @Throws(IOException::class)

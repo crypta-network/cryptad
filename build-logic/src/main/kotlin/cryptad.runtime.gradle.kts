@@ -1,21 +1,5 @@
-import java.io.ByteArrayOutputStream
-import javax.inject.Inject
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Classpath
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.TaskAction
-import org.gradle.jvm.toolchain.JavaLanguageVersion
-import org.gradle.jvm.toolchain.JavaToolchainService
 import org.gradle.kotlin.dsl.support.serviceOf
-import org.gradle.process.ExecOperations
+import java.io.ByteArrayOutputStream
 
 plugins { java }
 
@@ -76,7 +60,9 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
     val javaHome = File(javaHomePath.get())
     val jdeps =
       javaHome.resolve(
-        "bin/jdeps" + if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+          "bin/jdeps${
+              if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+          }"
       )
 
     val classpathArg =
