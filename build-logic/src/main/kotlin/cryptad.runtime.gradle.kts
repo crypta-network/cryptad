@@ -1,20 +1,5 @@
-import java.io.ByteArrayOutputStream
-import javax.inject.Inject
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.support.serviceOf
-import org.gradle.process.ExecOperations
+import java.io.ByteArrayOutputStream
 
 plugins { java }
 
@@ -32,10 +17,13 @@ val syncRuntimeJar by
     group = "build"
     description = "Copies cryptad.jar to build/libs/cryptad-<version>.jar for jdeps"
     dependsOn(tasks.named("buildJar"))
+    // Capture values during configuration to avoid Task.project access at execution
+    val libsDir = layout.buildDirectory.dir("libs")
+    val versionStr = providers.provider { project.version.toString() }
     doLast {
-      val libsDir = layout.buildDirectory.dir("libs").get().asFile
-      val src = libsDir.resolve("cryptad.jar")
-      val dst = libsDir.resolve("cryptad-${project.version}.jar")
+      val libs = libsDir.get().asFile
+      val src = libs.resolve("cryptad.jar")
+      val dst = libs.resolve("cryptad-${versionStr.get()}.jar")
       if (!src.isFile) throw GradleException("Expected JAR not found: ${src.absolutePath}")
       src.copyTo(dst, overwrite = true)
     }
@@ -48,37 +36,33 @@ val syncRuntimeJar by
 
 // Discover Java modules with jdeps for the assembled app classpath
 @CacheableTask
-abstract class ComputeJlinkModules @Inject constructor(
-  private val execOps: ExecOperations,
-) : DefaultTask() {
-  @get:InputFile
-  abstract val cryptadJar: RegularFileProperty
+abstract class ComputeJlinkModules @Inject constructor(private val execOps: ExecOperations) :
+  DefaultTask() {
+  // The JAR content determines the jdeps output; path should not.
+  @get:InputFile @get:Classpath abstract val cryptadJar: RegularFileProperty
 
-  @get:InputFiles
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val classpath: ConfigurableFileCollection
+  // Treat the classpath as a content-addressed input for caching across machines.
+  @get:InputFiles @get:Classpath abstract val classpath: ConfigurableFileCollection
 
-  @get:Input
-  abstract val javaLanguageVersion: Property<Int>
+  @get:Input abstract val javaLanguageVersion: Property<Int>
+  // Provide JDK home explicitly to avoid accessing Project services during execution
+  @get:Input abstract val javaHomePath: Property<String>
 
-  @get:OutputFile
-  abstract val modulesFile: RegularFileProperty
+  @get:OutputFile abstract val modulesFile: RegularFileProperty
 
-  @get:Input
-  abstract val baselineModules: ListProperty<String>
+  @get:Input abstract val baselineModules: ListProperty<String>
 
   @TaskAction
   fun compute() {
     val jarFile = cryptadJar.get().asFile
     require(jarFile.isFile) { "Missing ${jarFile.absolutePath}" }
 
-    val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
-    val launcher =
-      toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(javaLanguageVersion.get())) }.get()
-    val javaHome = launcher.metadata.installationPath.asFile
+    val javaHome = File(javaHomePath.get())
     val jdeps =
       javaHome.resolve(
-        "bin/jdeps" + if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+          "bin/jdeps${
+              if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+          }"
       )
 
     val classpathArg =
@@ -87,17 +71,19 @@ abstract class ComputeJlinkModules @Inject constructor(
         .joinToString(File.pathSeparator) { it.absolutePath }
 
     val args =
-      mutableListOf(jdeps.absolutePath, "--ignore-missing-deps", "--print-module-deps", "-q").apply {
-        if (classpathArg.isNotBlank()) addAll(listOf("-cp", classpathArg))
-        add(jarFile.absolutePath)
-      }
+      mutableListOf(jdeps.absolutePath, "--ignore-missing-deps", "--print-module-deps", "-q")
+        .apply {
+          if (classpathArg.isNotBlank()) addAll(listOf("-cp", classpathArg))
+          add(jarFile.absolutePath)
+        }
 
     val out = ByteArrayOutputStream()
-    val result = execOps.exec {
-      commandLine(args)
-      standardOutput = out
-      isIgnoreExitValue = true
-    }
+    val result =
+      execOps.exec {
+        commandLine(args)
+        standardOutput = out
+        isIgnoreExitValue = true
+      }
     val exit = result.exitValue
     val detected = out.toString().trim().removeSuffix(",")
 
@@ -137,16 +123,22 @@ val computeJlinkModules by
     // Inputs: jars from the assembled distribution
     val libsDirProvider = cryptadDistDir.map { it.dir("lib").asFile }
     cryptadJar.set(project.layout.file(libsDirProvider.map { it.resolve("cryptad.jar") }))
-    classpath.from(project.provider {
-      val d = libsDirProvider.get()
-      d.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.toList() ?: emptyList()
-    })
+    classpath.from(
+      project.provider {
+        val d = libsDirProvider.get()
+        d.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.toList() ?: emptyList()
+      }
+    )
 
     // Output
     modulesFile.set(layout.buildDirectory.file("jlink/modules.list"))
 
     // Toolchain + baseline
     javaLanguageVersion.set(21)
+    // Resolve toolchain at configuration time and pass JDK home path as input
+    val toolchains = project.serviceOf<JavaToolchainService>()
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    javaHomePath.set(launcher.map { it.metadata.installationPath.asFile.absolutePath })
     baselineModules.set(
       listOf(
         "jdk.crypto.ec",
@@ -167,21 +159,25 @@ val createJreImage by
     group = "distribution"
     description = "Creates a minimal JRE with jlink into build/jre"
     dependsOn(computeJlinkModules)
+    // Resolve toolchain and static inputs at configuration time to avoid Task.project access
+    val toolchains = project.serviceOf<JavaToolchainService>()
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val javaHomePath = launcher.map { it.metadata.installationPath.asFile.absolutePath }
+    val jreDirProvider = layout.buildDirectory.dir("jre")
+    val modulesFileProvider = layout.buildDirectory.dir("jlink").map { it.file("modules.list") }
+    val execOps = project.serviceOf<ExecOperations>()
     doLast {
-      val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
-      val launcher =
-        toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }.get()
-      val javaHome = launcher.metadata.installationPath.asFile
+      val javaHome = File(javaHomePath.get())
       val jlink =
         javaHome.resolve(
           "bin/jlink${if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""}"
         )
       val jmods = javaHome.resolve("jmods")
 
-      val jreDir = layout.buildDirectory.dir("jre").get().asFile
+      val jreDir = jreDirProvider.get().asFile
       if (jreDir.exists()) jreDir.deleteRecursively()
 
-      val modulesFile = layout.buildDirectory.dir("jlink").get().asFile.resolve("modules.list")
+      val modulesFile = modulesFileProvider.get().asFile
       val modulesArg = if (modulesFile.isFile) modulesFile.readText().trim() else "java.base"
 
       val args =
@@ -189,8 +185,9 @@ val createJreImage by
           jlink.absolutePath,
           "-v",
           "--strip-debug",
+          // Use non-deprecated compression syntax (replaces numeric level 2)
           "--compress",
-          "2",
+          "zip-6",
           "--no-header-files",
           "--no-man-pages",
           "--module-path",
@@ -202,7 +199,6 @@ val createJreImage by
         )
 
       println("Executing jlink: ${args.joinToString(" ")}")
-      val execOps = project.serviceOf<ExecOperations>()
       execOps.exec { commandLine(args) }
     }
   }

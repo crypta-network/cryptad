@@ -23,4 +23,7 @@ pluginManagement {
   }
 }
 
+// Ensure toolchain download repositories are configured for this included build too
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
+
 rootProject.name = "build-logic"

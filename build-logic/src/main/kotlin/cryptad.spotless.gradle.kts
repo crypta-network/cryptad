@@ -9,7 +9,7 @@ spotless {
   kotlin {
     target("**/*.kt")
     targetExclude("**/Version.kt")
-    ktfmt().googleStyle()
+    ktfmt("0.58").googleStyle()
     trimTrailingWhitespace()
     endWithNewline()
   }
