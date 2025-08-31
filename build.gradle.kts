@@ -25,6 +25,10 @@ dependencies {
   implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
+  // OS theme detection + change events (no LAF dependency)
+  implementation(libs.darklafPlatformPreferences)
+  implementation(libs.darklafCore)
+  implementation(libs.darklafThemeSpec)
   // CLI parsing and UX
   implementation(libs.picocli)
 

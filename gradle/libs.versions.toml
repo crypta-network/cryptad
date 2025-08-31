@@ -14,6 +14,7 @@ objenesis = "3.4"
 picocli = "4.7.7"
 spotless = "7.2.1"
 flatlaf = "3.6.1"
+darklaf = "3.0.2"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -31,6 +32,9 @@ objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objene
 picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
 kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
+darklafPlatformPreferences = { group = "com.github.weisj", name = "darklaf-platform-preferences", version.ref = "darklaf" }
+darklafCore = { group = "com.github.weisj", name = "darklaf-core", version.ref = "darklaf" }
+darklafThemeSpec = { group = "com.github.weisj", name = "darklaf-theme-spec", version.ref = "darklaf" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
