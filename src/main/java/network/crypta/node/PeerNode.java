@@ -1031,10 +1031,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         localHandshakeIP.getHandshakeAddress();
       }
     }
-    // De-dupe
-    HashSet<Peer> ret = new HashSet<>();
-    Collections.addAll(ret, localHandshakeIPs);
-    return ret.toArray(new Peer[0]);
+    // De-dupe while preserving encounter order
+    return Arrays.stream(localHandshakeIPs).distinct().toArray(Peer[]::new);
   }
 
   /** Do occasional DNS requests, but ignoreHostnames should be true on PeerNode construction */
