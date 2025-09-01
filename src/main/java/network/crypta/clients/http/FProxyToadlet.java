@@ -691,6 +691,12 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       } catch (URISyntaxException e) {
         throw new Error(e);
       }
+    } else if (ks.equals("/favicon.svg")) {
+      try {
+        throw new RedirectException(StaticToadlet.ROOT_URL + "favicon.svg");
+      } catch (URISyntaxException e) {
+        throw new Error(e);
+      }
     } else if (ks.startsWith("/feed/") || ks.equals("/feed")) {
       String schemeHostAndPort = getSchemeHostAndPort(ctx);
       String atom = ctx.getAlertManager().getAtom(schemeHostAndPort);

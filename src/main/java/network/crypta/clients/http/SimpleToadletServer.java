@@ -1249,7 +1249,8 @@ public final class SimpleToadletServer
           || path.startsWith(FirstTimeWizardNewToadlet.TOADLET_URL)
           || path.startsWith(StaticToadlet.ROOT_URL)
           || path.startsWith(ExternalLinkToadlet.PATH)
-          || path.equals("/favicon.ico"))) {
+          || path.equals("/favicon.ico")
+          || path.equals("/favicon.svg"))) {
         try {
           throw new PermanentRedirectException(
               new URI(

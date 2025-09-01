@@ -250,6 +250,15 @@ public final class PageMaker {
         new String[] {"http-equiv", "content"},
         new String[] {"Content-Type", "text/html; charset=utf-8"});
     headNode.addChild("title", title + " - Crypta");
+    // Favicons: prefer modern SVG, fallback to .ico for legacy browsers
+    headNode.addChild(
+        "link",
+        new String[] {"rel", "href", "type"},
+        new String[] {"icon", "/static/favicon.svg", "image/svg+xml"});
+    headNode.addChild(
+        "link",
+        new String[] {"rel", "href", "sizes"},
+        new String[] {"icon", "/favicon.ico", "any"});
     // To make something only rendered when javascript is on, then add the jsonly class to it
     headNode.addChild("noscript").addChild("style", " .jsonly {display:none;}");
     headNode.addChild(
