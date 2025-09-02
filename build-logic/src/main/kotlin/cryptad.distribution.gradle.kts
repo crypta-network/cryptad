@@ -1,6 +1,17 @@
+import java.io.File
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import javax.inject.Inject
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
 
 plugins { java }
 
@@ -12,6 +23,19 @@ val wrapperBaseUrl =
 val wrapperWorkDir = layout.buildDirectory.dir("wrapper")
 val wrapperExtractDir = layout.buildDirectory.dir("wrapper/extracted")
 val wrapperDistDir = layout.buildDirectory.dir("cryptad-dist")
+
+// Windows wrapper binaries are not present in the delta pack. We fetch them from the latest
+// release of crypta-network/wrapper-windows-build.
+val wrapperWindowsRepo = "crypta-network/wrapper-windows-build"
+val wrapperWindowsApiLatest =
+  providers
+    .gradleProperty("wrapperWinApiUrl")
+    .orElse("https://api.github.com/repos/$wrapperWindowsRepo/releases/latest")
+val wrapperWindowsWorkDir = layout.buildDirectory.dir("wrapper/windows")
+val wrapperWindowsAmd64Zip = wrapperWindowsWorkDir.map { it.file("windows-amd64.tar.gz") }
+val wrapperWindowsArm64Zip = wrapperWindowsWorkDir.map { it.file("windows-arm64.tar.gz") }
+val wrapperWindowsAmd64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-amd64") }
+val wrapperWindowsArm64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-arm64") }
 
 // Seednodes generation settings
 val seedrefsZipUrl = "https://codeload.github.com/hyphanet/seedrefs/zip/refs/heads/master"
@@ -120,6 +144,148 @@ val copyWrapperBinaries by
     }
   }
 
+// --- Windows wrapper: locate asset URLs (newest GitHub release) and download ---
+
+abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
+  @get:Input abstract val apiUrl: Property<String>
+  @get:Input @get:Optional abstract val amd64UrlOverride: Property<String>
+  @get:Input @get:Optional abstract val arm64UrlOverride: Property<String>
+  @get:OutputFile abstract val amd64Zip: RegularFileProperty
+  @get:OutputFile abstract val arm64Zip: RegularFileProperty
+
+  @TaskAction
+  fun run() {
+    amd64Zip.get().asFile.parentFile.mkdirs()
+    arm64Zip.get().asFile.parentFile.mkdirs()
+
+    val amd64Url =
+      amd64UrlOverride.orNull?.takeIf { it.isNotBlank() }
+        ?: findAssetUrl(apiUrl.get(), setOf("amd64", "x86_64", "x64"))
+    val arm64Url =
+      arm64UrlOverride.orNull?.takeIf { it.isNotBlank() }
+        ?: findAssetUrl(apiUrl.get(), setOf("arm64", "aarch64"))
+
+    download(amd64Url, amd64Zip.get().asFile)
+    download(arm64Url, arm64Zip.get().asFile)
+  }
+
+  private fun httpGet(url: String): String {
+    val conn = URL(url).openConnection() as HttpURLConnection
+    // Optional: use GITHUB_TOKEN when present to raise rate limits
+    val token = System.getenv("GITHUB_TOKEN")
+    if (!token.isNullOrBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.connectTimeout = 30_000
+    conn.readTimeout = 30_000
+    conn.inputStream.bufferedReader().use { br ->
+      return br.readText()
+    }
+  }
+
+  private fun findAssetUrl(apiUrl: String, archHints: Set<String>): String {
+    val json = httpGet(apiUrl)
+    // Very small JSON picker: find the first browser_download_url for Windows and the arch hints
+    // We avoid adding a JSON parser dependency here.
+    val re = Regex("""\"browser_download_url\"\s*:\s*\"([^\"]+)\"""", RegexOption.IGNORE_CASE)
+    val all = re.findAll(json).map { it.groupValues[1] }.toList()
+    val candidate =
+      all.firstOrNull { u ->
+        val l = u.lowercase()
+        (l.endsWith(".zip") || l.endsWith(".tar.gz")) &&
+          l.contains("win") &&
+          archHints.any { hint -> l.contains(hint) }
+      }
+    if (candidate == null)
+      throw GradleException("Could not find Windows asset for $archHints in $apiUrl")
+    return candidate
+  }
+
+  private fun download(url: String, out: File) {
+    val u = URL(url)
+    println("Downloading $url -> ${out.absolutePath}")
+    u.openStream().use { input ->
+      Files.copy(input, out.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+  }
+}
+
+val downloadWindowsWrapper by
+  tasks.registering(DownloadWindowsWrapper::class) {
+    group = "distribution"
+    description = "Downloads Windows wrapper (amd64 + arm64) from latest GitHub release"
+    apiUrl.set(wrapperWindowsApiLatest)
+    amd64UrlOverride.set(providers.gradleProperty("wrapperWinAmd64Url").orNull)
+    arm64UrlOverride.set(providers.gradleProperty("wrapperWinArm64Url").orNull)
+    amd64Zip.set(wrapperWindowsAmd64Zip)
+    arm64Zip.set(wrapperWindowsArm64Zip)
+  }
+
+val extractWindowsWrapperAmd64 by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Extracts Windows amd64 wrapper archive"
+    dependsOn(downloadWindowsWrapper)
+    from(tarTree(resources.gzip(wrapperWindowsAmd64Zip.get().asFile)))
+    into(wrapperWindowsAmd64Extract)
+  }
+
+val extractWindowsWrapperArm64 by
+  tasks.registering(Copy::class) {
+    group = "distribution"
+    description = "Extracts Windows arm64 wrapper archive"
+    dependsOn(downloadWindowsWrapper)
+    from(tarTree(resources.gzip(wrapperWindowsArm64Zip.get().asFile)))
+    into(wrapperWindowsArm64Extract)
+  }
+
+// Copy Windows wrapper binaries into dist:
+//  - bin/wrapper-windows-amd64.exe and bin/wrapper-windows-arm64.exe
+//  - lib/windows/amd64/wrapper.dll and lib/windows/arm64/wrapper.dll
+val copyWindowsWrapperBinaries by
+  tasks.registering {
+    group = "distribution"
+    description = "Copies Windows wrapper executables and DLLs into the distribution"
+    dependsOn(extractWindowsWrapperAmd64, extractWindowsWrapperArm64)
+    doLast {
+      val binDir = wrapperDistDir.get().dir("bin").asFile
+      val libDir = wrapperDistDir.get().dir("lib").asFile
+      binDir.mkdirs()
+      libDir.mkdirs()
+
+      fun pickExe(root: java.io.File): java.io.File? {
+        val files =
+          root.walkTopDown().filter { it.isFile && it.name.lowercase().endsWith(".exe") }.toList()
+        // Prefer names starting with wrapper
+        val preferred = files.firstOrNull { it.name.lowercase().startsWith("wrapper") }
+        return preferred ?: files.firstOrNull()
+      }
+
+      fun pickDll(root: java.io.File): java.io.File? {
+        val files =
+          root.walkTopDown().filter { it.isFile && it.name.equals("wrapper.dll", true) }.toList()
+        return files.firstOrNull()
+      }
+
+      // amd64
+      run {
+        val from = wrapperWindowsAmd64Extract.get().asFile
+        val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
+        val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
+        exe.copyTo(binDir.resolve("wrapper-windows-amd64.exe"), overwrite = true)
+        dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
+      }
+
+      // arm64
+      run {
+        val from = wrapperWindowsArm64Extract.get().asFile
+        val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
+        val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
+        exe.copyTo(binDir.resolve("wrapper-windows-arm64.exe"), overwrite = true)
+        dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
+      }
+    }
+  }
+
 // Copy runtime jars into lib/ and build a classpath list for wrapper.conf
 val prepareWrapperLibs by
   tasks.registering(Copy::class) {
@@ -183,13 +349,14 @@ val generateWrapperLaunchers by
     description = "Generates launch scripts from templates"
     dependsOn(copyWrapperBinaries)
     val binDir = wrapperDistDir.map { it.dir("bin") }
-    outputs.files(binDir.map { it.file("cryptad") })
+    outputs.files(binDir.map { it.file("cryptad") }, binDir.map { it.file("cryptad.bat") })
     // Resolve inputs up front (configuration time) to be config-cache friendly
     val launcherTemplateUnix =
       layout.projectDirectory.file("src/main/templates/cryptad-launcher.sh.tpl")
     val launcherTemplateBat =
       layout.projectDirectory.file("src/main/templates/cryptad-launcher.bat.tpl")
     val mainScriptTemplate = layout.projectDirectory.file("src/main/templates/cryptad.sh.tpl")
+    val mainScriptBatTemplate = layout.projectDirectory.file("src/main/templates/cryptad.bat.tpl")
     val dummyCryptad = layout.projectDirectory.file("tools/cryptad-dummy.sh")
     val useDummy = providers.gradleProperty("useDummyCryptad").map { it.toBoolean() }.orElse(false)
     doLast {
@@ -201,6 +368,12 @@ val generateWrapperLaunchers by
       // Ensure executable for all, plus readable for all
       unix.setReadable(true, false)
       unix.setExecutable(true, false)
+
+      // Windows main script
+      val winBat = bin.resolve("cryptad.bat")
+      val tmplBatMain = mainScriptBatTemplate.asFile
+      if (!tmplBatMain.isFile) throw GradleException("Missing template: ${tmplBatMain.path}")
+      winBat.writeText(tmplBatMain.readText())
 
       // --- Generate Swing launcher start scripts (Unix + Windows) ---
       val launcherUnix = bin.resolve("cryptad-launcher")
@@ -240,6 +413,7 @@ val assembleCryptadDist by
     description = "Assembles a portable Cryptad distribution under build/cryptad-dist"
     dependsOn(
       copyWrapperBinaries,
+      copyWindowsWrapperBinaries,
       prepareWrapperLibs,
       generateWrapperConf,
       generateWrapperLaunchers,

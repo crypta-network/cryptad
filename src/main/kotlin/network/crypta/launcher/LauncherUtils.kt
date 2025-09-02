@@ -118,13 +118,16 @@ fun scanWrapperConfPath(lines: List<String>): Path? {
 }
 
 /**
- * Resolve the default `cryptad` wrapper script path.
+ * Resolve the default wrapper launcher path (`cryptad` on Unix, `cryptad.bat` on Windows).
  *
  * If the `CRYPTAD_PATH` environment variable is set, that path is used first (absolute or resolved
  * relative to `cwd`). Otherwise the resolution order (first existing/executable wins):
- * - From the currently running `cryptad.jar` location (same directory), i.e. `<jarDir>/cryptad`.
- * - From the distribution layout relative to `cryptad.jar`, i.e. `<jarDir>/../bin/cryptad`.
- * - From the current working directory: `bin/cryptad`, then `./cryptad`.
+ * - From the currently running `cryptad.jar` location (same directory), i.e. `<jarDir>/cryptad` on
+ *   Unix or `<jarDir>/cryptad.bat` on Windows.
+ * - From the distribution layout relative to `cryptad.jar`, i.e. `<jarDir>/../bin/cryptad` on Unix
+ *   or `<jarDir>/../bin/cryptad.bat` on Windows.
+ * - From the current working directory: `bin/cryptad` (Unix) or `bin/cryptad.bat` (Windows), then
+ *   `./cryptad` or `./cryptad.bat` respectively.
  *
  * This avoids relying on the user's home or working directory when launched from the assembled
  * distribution (bin/ + lib/).
@@ -152,17 +155,34 @@ internal fun resolveCryptadPathWithEnv(
   findCurrentCryptadJarPath()?.let { jar ->
     val jarDir = jar.parent
     if (jarDir != null) {
-      val sameDir = jarDir.resolve("cryptad").normalize()
-      if (Files.isRegularFile(sameDir) && Files.isExecutable(sameDir)) return sameDir
-
-      val siblingBin = jarDir.resolve("../bin/cryptad").normalize()
-      if (Files.isRegularFile(siblingBin) && Files.isExecutable(siblingBin)) return siblingBin
+      val isWindows = System.getProperty("os.name").lowercase().contains("win")
+      val candidates = buildList {
+        if (isWindows) {
+          add(jarDir.resolve("cryptad.bat").normalize())
+          add(jarDir.resolve("../bin/cryptad.bat").normalize())
+        }
+        add(jarDir.resolve("cryptad").normalize())
+        add(jarDir.resolve("../bin/cryptad").normalize())
+      }
+      for (p in candidates) {
+        if (Files.isRegularFile(p) && Files.isExecutable(p)) return p
+      }
     }
   }
 
   // 2) Fallback to resolving from the working directory (legacy behavior)
-  val bin = cwd.resolve("bin/cryptad")
-  if (Files.isRegularFile(bin) && Files.isExecutable(bin)) return bin
+  run {
+    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val candidates = buildList {
+      if (isWindows) add(cwd.resolve("bin/cryptad.bat"))
+      add(cwd.resolve("bin/cryptad"))
+      if (isWindows) add(cwd.resolve("cryptad.bat"))
+      add(cwd.resolve("cryptad"))
+    }
+    for (p in candidates) {
+      if (Files.isRegularFile(p) && Files.isExecutable(p)) return p
+    }
+  }
   return cwd.resolve("cryptad")
 }
 

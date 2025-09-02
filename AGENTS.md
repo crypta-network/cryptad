@@ -76,9 +76,13 @@ architecture review).
 - UI: Java Swing (3 rows — buttons, scrolling log, status bar). System LAF, 900×600.
 - Start: launches the wrapper script with this resolution order (first match wins). Stop sends SIGINT (Unix) / `taskkill` (Windows) with a 20s grace period.
   - Env override: `CRYPTAD_PATH` (absolute or relative to `user.dir`).
-  - From running `cryptad.jar` directory: `<jarDir>/cryptad`.
-  - From assembled dist layout: `<jarDir>/../bin/cryptad`.
-  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
+  - From running `cryptad.jar` directory:
+    - Unix: `<jarDir>/cryptad`; Windows: `<jarDir>/cryptad.bat`.
+  - From assembled dist layout:
+    - Unix: `<jarDir>/../bin/cryptad`; Windows: `<jarDir>/../bin/cryptad.bat`.
+  - Fallbacks from `user.dir`:
+    - Unix: `./bin/cryptad`, then `./cryptad`.
+    - Windows: `./bin/cryptad.bat`, then `./cryptad.bat`.
 - Logs: streams combined stdout+stderr and also tails `wrapper.log` when configured; enables `wrapper.console.flush=TRUE` in generated `wrapper.conf`.
 - FProxy port detection: parses `Starting FProxy on ...:<port>` from logs; enables “Launch in Browser” and auto‑opens the first time per app session.
 - Keyboard: global shortcuts via `KeyEventDispatcher`:
@@ -88,6 +92,19 @@ architecture review).
 - Build scripts: created during `assembleCryptadDist`:
   - `build/cryptad-dist/bin/cryptad-launcher` and `cryptad-launcher.bat`.
 - Testing aid: `-PuseDummyCryptad=true` replaces `bin/cryptad` with `tools/cryptad-dummy.sh` in the dist for local testing.
+
+#### Windows details
+
+- The distribution includes Windows-native wrapper binaries built from the latest release of `crypta-network/wrapper-windows-build`:
+  - `bin/wrapper-windows-amd64.exe` and `bin/wrapper-windows-arm64.exe`.
+  - DLLs are placed directly in `lib/` as `wrapper-windows-x86-64.dll` and `wrapper-windows-arm-64.dll`.
+- The main Windows launcher is `bin/cryptad.bat`:
+  - Detects `AMD64` vs `ARM64` and runs the matching `wrapper-windows-<arch>.exe`.
+  - Temporarily prepends `lib/windows/<arch>` to `PATH` so `wrapper.dll` is found consistently.
+  - Accepts the same arguments as the Unix script and uses `conf/wrapper.conf`.
+  - The GUI launcher is `bin/cryptad-launcher.bat`.
+  
+Tip: If GitHub API rate limits are hit during builds, set `GITHUB_TOKEN` in the environment.
 
 ## Architecture Overview
 
@@ -180,6 +197,19 @@ architecture review).
 - Kotlin components present alongside Java
 - Dependency verification is configured and typically strict (temporarily set to lenient only when updating metadata)
 - Version info (`Version.kt`) generated with current build number and git revision
+
+### Distributions and Windows wrapper sources
+
+- `assembleCryptadDist` creates a portable layout under `build/cryptad-dist` with `bin/`, `lib/`, and `conf/`.
+  - Non‑Windows wrapper files come from the upstream Tanuki delta pack.
+  - Windows x86_64/arm64 wrapper exe/DLL are fetched from the newest GitHub release of `crypta-network/wrapper-windows-build`.
+  - Override points (optional):
+    - `-PwrapperWinApiUrl=<api-url>` to pin a specific release API.
+    - `-PwrapperWinAmd64Url=<asset-url>` / `-PwrapperWinArm64Url=<asset-url>` to force asset URLs.
+- Archives:
+  - `distZipCryptad` / `distTarCryptad` → `build/distributions/cryptad-v<version>.(zip|tar.gz)`.
+  - `distJlinkCryptad` → `build/distributions/cryptad-jlink-v<version>.(zip|tar.gz)`.
+  - Both include the Windows launchers and binaries above.
 
 ## Testing Strategy
 
