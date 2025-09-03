@@ -1,14 +1,14 @@
 package network.crypta.launcher
 
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
 import java.awt.Desktop
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.*
 
 // Log buffering strategy
 // - Keep a small replay window so late subscribers get recent lines
@@ -398,42 +398,53 @@ class LauncherController(
 
   /**
    * Windows-only: Request a graceful shutdown by removing the Tanuki Wrapper anchor file declared
-   * in wrapper.conf (wrapper.anchorfile). Returns true if the request was issued and all processes
-   * exited within the grace period.
+   * in `wrapper.conf` (`wrapper.anchorfile`). Attempts the deletion without a prior existence check
+   * to avoid TOCTOU race conditions.
+   *
+   * @return true only if the anchor file was successfully deleted and all tracked processes exited
+   *   within the grace period; returns false immediately if the anchor did not exist or deletion
+   *   failed.
    */
   private suspend fun tryWindowsGracefulStopViaAnchor(allPids: List<Long>): Boolean {
     // Prefer anchorfile from wrapper.conf, but fall back to our batch default:
     //   "%LOCALAPPDATA%\Cryptad.anchor".
     val conf = wrapperConfPath
     val anchorPath: Path =
-      try {
-        var p: Path? = null
-        if (conf != null) {
-          val anchorSpec = readWrapperProperty(conf, "wrapper.anchorfile")
-          val workingDir = readWrapperProperty(conf, "wrapper.working.dir")
-          p = computeWrapperFilePath(conf, anchorSpec, workingDir)
+      runCatching {
+          var p: Path? = null
+          if (conf != null) {
+            val anchorSpec = readWrapperProperty(conf, "wrapper.anchorfile")
+            val workingDir = readWrapperProperty(conf, "wrapper.working.dir")
+            p = computeWrapperFilePath(conf, anchorSpec, workingDir)
+          }
+          if (p == null) {
+            val lad = System.getenv("LOCALAPPDATA")
+            if (lad.isNullOrBlank()) return false
+            p = Paths.get(lad).resolve("Cryptad.anchor").normalize()
+          }
+          requireNotNull(p)
         }
-        if (p == null) {
-          val lad = System.getenv("LOCALAPPDATA")
-          if (lad.isNullOrBlank()) return false
-          p = Paths.get(lad).resolve("Cryptad.anchor").normalize()
+        .getOrElse {
+          return false
         }
-        p
-      } catch (_: Throwable) {
-        return false
-      }
 
-    if (!Files.exists(anchorPath)) {
-      logLine(ts() + " Anchor file not found at ${anchorPath}; skipping anchor stop.")
+    val deleted: Boolean =
+      runCatching { Files.deleteIfExists(anchorPath) }
+        .onFailure {
+          logLine(ts() + " WARN: Failed to delete anchor file at $anchorPath: ${it.message}")
+        }
+        .getOrDefault(false)
+    if (deleted) {
+      logLine(ts() + " Requested graceful shutdown via anchor: ${anchorPath.fileName} ...")
+      // Give the wrapper time to observe deletion and stop the JVM
+      return waitForPidsToExit(allPids, 25_000)
+    } else {
+      logLine(
+        ts() +
+          " Anchor file not found or not deleted at $anchorPath; skipping wait for anchor stop."
+      )
       return false
     }
-    logLine(ts() + " Requesting graceful shutdown via anchor: ${anchorPath.fileName} ...")
-    runCatching { Files.deleteIfExists(anchorPath) }
-      .onFailure {
-        logLine(ts() + " WARN: Failed to delete anchor file at $anchorPath: ${it.message}")
-      }
-    // Give the wrapper time to observe deletion and stop the JVM
-    return waitForPidsToExit(allPids, 25_000)
   }
 
   private fun tryEnableConsoleFlush(cryptadPath: Path) {
