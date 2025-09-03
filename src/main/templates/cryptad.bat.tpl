@@ -24,7 +24,9 @@ if /I "%ARCH%"=="x86" (
 )
 
 REM Prefer arch-specific wrapper exe; fallback to wrapper.exe if present
-set "WRAPPER_EXE=%BIN_DIR%\wrapper-windows-%ARCH%.exe"
+set "WRAPPER_EXE="
+if /I "%ARCH%"=="amd64" set "WRAPPER_EXE=%BIN_DIR%\wrapper-windows-x86-64.exe"
+if /I "%ARCH%"=="arm64" set "WRAPPER_EXE=%BIN_DIR%\wrapper-windows-arm-64.exe"
 if not exist "%WRAPPER_EXE%" set "WRAPPER_EXE=%BIN_DIR%\wrapper.exe"
 if not exist "%WRAPPER_EXE%" (
   echo No Windows native wrapper found in "%BIN_DIR%" for arch %ARCH% 1>&2

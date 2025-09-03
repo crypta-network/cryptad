@@ -239,8 +239,8 @@ val extractWindowsWrapperArm64 by
   }
 
 // Copy Windows wrapper binaries into dist:
-//  - bin/wrapper-windows-amd64.exe and bin/wrapper-windows-arm64.exe
-//  - lib/windows/amd64/wrapper.dll and lib/windows/arm64/wrapper.dll
+//  - bin/wrapper-windows-x86-64.exe and bin/wrapper-windows-arm-64.exe
+//  - lib/wrapper-windows-x86-64.dll and lib/wrapper-windows-arm-64.dll
 val copyWindowsWrapperBinaries by
   tasks.registering {
     group = "distribution"
@@ -266,12 +266,12 @@ val copyWindowsWrapperBinaries by
         return files.firstOrNull()
       }
 
-      // amd64
+      // x86_64 (amd64)
       run {
         val from = wrapperWindowsAmd64Extract.get().asFile
         val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
         val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
-        exe.copyTo(binDir.resolve("wrapper-windows-amd64.exe"), overwrite = true)
+        exe.copyTo(binDir.resolve("wrapper-windows-x86-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
       }
 
@@ -280,7 +280,7 @@ val copyWindowsWrapperBinaries by
         val from = wrapperWindowsArm64Extract.get().asFile
         val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
         val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
-        exe.copyTo(binDir.resolve("wrapper-windows-arm64.exe"), overwrite = true)
+        exe.copyTo(binDir.resolve("wrapper-windows-arm-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
       }
     }

@@ -96,10 +96,10 @@ architecture review).
 #### Windows details
 
 - The distribution includes Windows-native wrapper binaries built from the latest release of `crypta-network/wrapper-windows-build`:
-  - `bin/wrapper-windows-amd64.exe` and `bin/wrapper-windows-arm64.exe`.
+  - `bin/wrapper-windows-x86-64.exe` and `bin/wrapper-windows-arm-64.exe`.
   - DLLs are placed directly in `lib/` as `wrapper-windows-x86-64.dll` and `wrapper-windows-arm-64.dll`.
 - The main Windows launcher is `bin/cryptad.bat`:
-  - Detects `AMD64` vs `ARM64` and runs the matching `wrapper-windows-<arch>.exe`.
+  - Detects `AMD64` vs `ARM64` and runs the matching `wrapper-windows-x86-64.exe` or `wrapper-windows-arm-64.exe`.
   - Temporarily prepends `lib/windows/<arch>` to `PATH` so `wrapper.dll` is found consistently.
   - Accepts the same arguments as the Unix script and uses `conf/wrapper.conf`.
   - The GUI launcher is `bin/cryptad-launcher.bat`.
