@@ -409,17 +409,15 @@ class LauncherController(
     // Prefer anchorfile from wrapper.conf, but fall back to our batch default:
     //   "%LOCALAPPDATA%\Cryptad.anchor".
     val conf = wrapperConfPath
+    val anchorSpec = if (conf != null) readWrapperProperty(conf, "wrapper.anchorfile") else null
+    val workingDir = if (conf != null) readWrapperProperty(conf, "wrapper.working.dir") else null
     val anchorPath: Path =
       runCatching {
-          var p: Path? = null
-          if (conf != null) {
-            val anchorSpec = readWrapperProperty(conf, "wrapper.anchorfile")
-            val workingDir = readWrapperProperty(conf, "wrapper.working.dir")
-            p = computeWrapperFilePath(conf, anchorSpec, workingDir)
-          }
+          var p: Path? =
+            if (conf != null) computeWrapperFilePath(conf, anchorSpec, workingDir) else null
           if (p == null) {
             val lad = System.getenv("LOCALAPPDATA")
-            if (lad.isNullOrBlank()) return false
+            require(!lad.isNullOrBlank()) { "LOCALAPPDATA not set" }
             p = Paths.get(lad).resolve("Cryptad.anchor").normalize()
           }
           requireNotNull(p)
@@ -461,22 +459,27 @@ class LauncherController(
     }
   }
 
-  private fun readWrapperProperty(conf: Path, key: String): String? =
-    try {
-      Files.newBufferedReader(conf, StandardCharsets.UTF_8).use { br ->
-        while (true) {
-          val raw = br.readLine() ?: break
-          val line = raw.trim()
-          if (line.isEmpty() || line.startsWith("#")) continue
-          val idx = line.indexOf('=')
-          if (idx <= 0) continue
-          val k = line.substringBefore('=', "").trim()
-          if (k == key) return line.substringAfter('=', "").trim()
+  /**
+   * Read a single property from `wrapper.conf` on the I/O dispatcher to avoid blocking the caller
+   * context. Returns null on any error or when the key is not present.
+   */
+  private suspend fun readWrapperProperty(conf: Path, key: String): String? =
+    withContext(io) {
+      runCatching {
+          Files.newBufferedReader(conf, StandardCharsets.UTF_8).use { br ->
+            while (true) {
+              val raw = br.readLine() ?: break
+              val line = raw.trim()
+              if (line.isEmpty() || line.startsWith("#")) continue
+              val idx = line.indexOf('=')
+              if (idx <= 0) continue
+              val k = line.substringBefore('=', "").trim()
+              if (k == key) return@use line.substringAfter('=', "").trim()
+            }
+            null
+          }
         }
-      }
-      null
-    } catch (_: Throwable) {
-      null
+        .getOrNull()
     }
 
   private fun updateState(block: (AppState) -> AppState) {
