@@ -1,5 +1,7 @@
 # Cryptad Wrapper configuration (generated from template)
 
+wrapper.java.version.min=21
+
 # Classpath: load all jars from ../lib relative to this conf file
 wrapper.java.classpath.1=lib/*
 
