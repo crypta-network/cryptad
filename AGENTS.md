@@ -74,7 +74,9 @@ architecture review).
 
 - Package: `network.crypta.launcher`. Entry: top‑level `fun main()`.
 - UI: Java Swing (3 rows — buttons, scrolling log, status bar). System LAF, 900×600.
-- Start: launches the wrapper script with this resolution order (first match wins). Stop sends SIGINT (Unix) / `taskkill` (Windows) with a 20s grace period.
+- Start: launches the wrapper script with this resolution order (first match wins).
+  - Stop (Unix/macOS): sends SIGINT to the wrapper/JVM; if still alive after ~20s, escalates to TERM then KILL.
+  - Stop (Windows): deletes a per‑user anchor file to request a graceful Wrapper shutdown and waits up to ~25s; if still alive, falls back to `taskkill` (soft then `/F`).
   - Env override: `CRYPTAD_PATH` (absolute or relative to `user.dir`).
   - From running `cryptad.jar` directory:
     - Unix: `<jarDir>/cryptad`; Windows: `<jarDir>/cryptad.bat`.
@@ -100,6 +102,8 @@ architecture review).
   - DLLs are placed directly in `lib/` as `wrapper-windows-x86-64.dll` and `wrapper-windows-arm-64.dll`.
 - The main Windows launcher is `bin/cryptad.bat`:
   - Detects `AMD64` vs `ARM64` and runs the matching `wrapper-windows-x86-64.exe` or `wrapper-windows-arm-64.exe`.
+  - Passes a per‑user anchor on the command line so the GUI can stop gracefully by deleting it:
+    - `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"` (command‑line property overrides any value in `wrapper.conf`).
   - Temporarily prepends `lib/windows/<arch>` to `PATH` so `wrapper.dll` is found consistently.
   - Accepts the same arguments as the Unix script and uses `conf/wrapper.conf`.
   - The GUI launcher is `bin/cryptad-launcher.bat`.

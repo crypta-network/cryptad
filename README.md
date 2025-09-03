@@ -82,7 +82,9 @@ The launcher automatically starts the daemon, streams live logs, detects the FPr
 `Starting FProxy on ...:<port>`, and opens `http://localhost:<port>/` on the first successful start.
 
 Top‑row buttons and shortcuts:
-- Start/Stop: toggles the daemon (Stop sends SIGINT; waits up to 20s before forcing).
+- Start/Stop: toggles the daemon.
+  - Unix/macOS: sends SIGINT to the wrapper/JVM; waits up to ~20s before escalating (TERM→KILL).
+  - Windows: requests a graceful stop by deleting an anchor file and waits up to ~25s; only then falls back to `taskkill`.
 - Launch in Browser: enabled after the port is known (parsed from logs).
 - Quit: exits the launcher immediately (shutdown continues in background).
 
@@ -95,6 +97,13 @@ Notes
 - Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear
   while the wrapper is running.
 - On Unix/macOS the launcher uses a pseudo‑tty (via `script`) when available to reduce buffering.
+
+### Windows shutdown behavior
+
+- The Windows batch launcher (`bin/cryptad.bat`) passes a per‑user anchor location to the wrapper: `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"`.
+- The Swing launcher requests a graceful stop by deleting that file; the Java Service Wrapper notices and shuts down the JVM cleanly (running shutdown hooks, flushing logs, etc.).
+- If the process tree is still alive after ~25 seconds, the launcher escalates to `taskkill` (first without `/F`, then with `/F`).
+- Advanced: If you need to change the anchor path, you can customize the batch file or pass a different property on the command line; a value in `wrapper.conf` (if present) is overridden by the batch property.
 
 ### Launcher script resolution
 

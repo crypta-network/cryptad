@@ -48,6 +48,7 @@ class LauncherController(
   private var process: Process? = null
   private var tailJob: Job? = null
   private var autoOpenedBrowser = false
+  private var wrapperConfPath: Path? = null
   // Separate shutdown scope so quit can proceed even if the UI scope is cancelled
   private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob() + io)
 
@@ -89,6 +90,7 @@ class LauncherController(
       // Tail wrapper.log if present
       tailJob?.cancel()
       guessWrapperConfPathForCryptadScript(cryptadPath)?.let { conf ->
+        wrapperConfPath = conf
         val logSpec = readWrapperProperty(conf, "wrapper.logfile")
         val logPath = computeWrapperLogPath(conf, logSpec)
         tailJob = scope.launch(io) { tailFileWhileAlive(logPath) }
@@ -313,10 +315,13 @@ class LauncherController(
       val allPids = listOf(pid) + snapshot
 
       if (isWindows) {
-        runCmd("cmd", "/c", "taskkill /PID $pid /T")
-        if (!waitForPidsToExit(allPids, 20_000)) {
-          runCmd("cmd", "/c", "taskkill /F /PID $pid /T")
-          waitForPidsToExit(allPids, 5_000)
+        // Prefer a graceful stop via Wrapper anchor file on Windows. Falls back to taskkill.
+        if (!tryWindowsGracefulStopViaAnchor(allPids)) {
+          runCmd("cmd", "/c", "taskkill /PID $pid /T")
+          if (!waitForPidsToExit(allPids, 20_000)) {
+            runCmd("cmd", "/c", "taskkill /F /PID $pid /T")
+            waitForPidsToExit(allPids, 5_000)
+          }
         }
       } else {
         logLine(ts() + " Sending SIGINT to wrapper tree (root PID $pid) ...")
@@ -391,6 +396,55 @@ class LauncherController(
       false
     }
 
+  /**
+   * Windows-only: Request a graceful shutdown by removing the Tanuki Wrapper anchor file declared
+   * in `wrapper.conf` (`wrapper.anchorfile`). Attempts the deletion without a prior existence check
+   * to avoid TOCTOU race conditions.
+   *
+   * @return true only if the anchor file was successfully deleted and all tracked processes exited
+   *   within the grace period; returns false immediately if the anchor did not exist or deletion
+   *   failed.
+   */
+  private suspend fun tryWindowsGracefulStopViaAnchor(allPids: List<Long>): Boolean {
+    // Prefer anchorfile from wrapper.conf, but fall back to our batch default:
+    //   "%LOCALAPPDATA%\Cryptad.anchor".
+    val conf = wrapperConfPath
+    val anchorSpec = if (conf != null) readWrapperProperty(conf, "wrapper.anchorfile") else null
+    val workingDir = if (conf != null) readWrapperProperty(conf, "wrapper.working.dir") else null
+    val anchorPath: Path =
+      runCatching {
+          var p: Path? =
+            if (conf != null) computeWrapperFilePath(conf, anchorSpec, workingDir) else null
+          if (p == null) {
+            val lad = System.getenv("LOCALAPPDATA")
+            require(!lad.isNullOrBlank()) { "LOCALAPPDATA not set" }
+            p = Paths.get(lad).resolve("Cryptad.anchor").normalize()
+          }
+          requireNotNull(p)
+        }
+        .getOrElse {
+          return false
+        }
+
+    val deleted: Boolean =
+      runCatching { Files.deleteIfExists(anchorPath) }
+        .onFailure {
+          logLine(ts() + " WARN: Failed to delete anchor file at $anchorPath: ${it.message}")
+        }
+        .getOrDefault(false)
+    if (deleted) {
+      logLine(ts() + " Requested graceful shutdown via anchor: ${anchorPath.fileName} ...")
+      // Give the wrapper time to observe deletion and stop the JVM
+      return waitForPidsToExit(allPids, 25_000)
+    } else {
+      logLine(
+        ts() +
+          " Anchor file not found or not deleted at $anchorPath; skipping wait for anchor stop."
+      )
+      return false
+    }
+  }
+
   private fun tryEnableConsoleFlush(cryptadPath: Path) {
     try {
       val conf = guessWrapperConfPathForCryptadScript(cryptadPath) ?: return
@@ -405,22 +459,27 @@ class LauncherController(
     }
   }
 
-  private fun readWrapperProperty(conf: Path, key: String): String? =
-    try {
-      Files.newBufferedReader(conf, StandardCharsets.UTF_8).use { br ->
-        while (true) {
-          val raw = br.readLine() ?: break
-          val line = raw.trim()
-          if (line.isEmpty() || line.startsWith("#")) continue
-          val idx = line.indexOf('=')
-          if (idx <= 0) continue
-          val k = line.substringBefore('=', "").trim()
-          if (k == key) return line.substringAfter('=', "").trim()
+  /**
+   * Read a single property from `wrapper.conf` on the I/O dispatcher to avoid blocking the caller
+   * context. Returns null on any error or when the key is not present.
+   */
+  private suspend fun readWrapperProperty(conf: Path, key: String): String? =
+    withContext(io) {
+      runCatching {
+          Files.newBufferedReader(conf, StandardCharsets.UTF_8).use { br ->
+            while (true) {
+              val raw = br.readLine() ?: break
+              val line = raw.trim()
+              if (line.isEmpty() || line.startsWith("#")) continue
+              val idx = line.indexOf('=')
+              if (idx <= 0) continue
+              val k = line.substringBefore('=', "").trim()
+              if (k == key) return@use line.substringAfter('=', "").trim()
+            }
+            null
+          }
         }
-      }
-      null
-    } catch (_: Throwable) {
-      null
+        .getOrNull()
     }
 
   private fun updateState(block: (AppState) -> AppState) {

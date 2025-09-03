@@ -38,5 +38,6 @@ REM  - wrapper-windows-x86-64.dll
 REM  - wrapper-windows-arm-64.dll
 REM They are resolved via wrapper.java.library.path=lib in wrapper.conf.
 
-REM Run Tanuki wrapper with our config
-"%WRAPPER_EXE%" -c "%CONF%" %*
+REM Run Tanuki wrapper with our config and set anchorfile to a per-user path
+REM (Command-line properties override wrapper.conf and handle spaces if quoted as one arg.)
+"%WRAPPER_EXE%" -c "%CONF%" "wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor" %*
