@@ -87,6 +87,25 @@ fun computeWrapperLogPath(confPath: Path, logSpec: String?): Path {
 }
 
 /**
+ * Compute an effective file path declared in `wrapper.conf` taking into account
+ * `wrapper.working.dir` when the specification is relative. If `fileSpec` is null or blank, returns
+ * null.
+ */
+fun computeWrapperFilePath(confPath: Path, fileSpec: String?, workingDirSpec: String?): Path? {
+  val spec = fileSpec?.takeUnless { it.isBlank() } ?: return null
+  val p = Paths.get(spec)
+  if (p.isAbsolute) return p.normalize()
+  val base =
+    workingDirSpec
+      ?.takeUnless { it.isBlank() }
+      ?.let { wdRaw ->
+        val wd = Paths.get(wdRaw)
+        if (wd.isAbsolute) wd.normalize() else confPath.parent.resolve(wd).normalize()
+      } ?: confPath.parent
+  return base.resolve(p).normalize()
+}
+
+/**
  * Guess wrapper.conf path for a `cryptad` wrapper script path. Tries `../conf/wrapper.conf` and
  * also scans the script for an explicit `-c ".../wrapper.conf"` or `CONF=".../wrapper.conf"`.
  */

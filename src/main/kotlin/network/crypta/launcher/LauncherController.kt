@@ -1,14 +1,14 @@
 package network.crypta.launcher
 
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.*
 import java.awt.Desktop
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.*
 
 // Log buffering strategy
 // - Keep a small replay window so late subscribers get recent lines
@@ -48,6 +48,7 @@ class LauncherController(
   private var process: Process? = null
   private var tailJob: Job? = null
   private var autoOpenedBrowser = false
+  private var wrapperConfPath: Path? = null
   // Separate shutdown scope so quit can proceed even if the UI scope is cancelled
   private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob() + io)
 
@@ -89,6 +90,7 @@ class LauncherController(
       // Tail wrapper.log if present
       tailJob?.cancel()
       guessWrapperConfPathForCryptadScript(cryptadPath)?.let { conf ->
+        wrapperConfPath = conf
         val logSpec = readWrapperProperty(conf, "wrapper.logfile")
         val logPath = computeWrapperLogPath(conf, logSpec)
         tailJob = scope.launch(io) { tailFileWhileAlive(logPath) }
@@ -313,10 +315,13 @@ class LauncherController(
       val allPids = listOf(pid) + snapshot
 
       if (isWindows) {
-        runCmd("cmd", "/c", "taskkill /PID $pid /T")
-        if (!waitForPidsToExit(allPids, 20_000)) {
-          runCmd("cmd", "/c", "taskkill /F /PID $pid /T")
-          waitForPidsToExit(allPids, 5_000)
+        // Prefer a graceful stop via Wrapper anchor file on Windows. Falls back to taskkill.
+        if (!tryWindowsGracefulStopViaAnchor(allPids)) {
+          runCmd("cmd", "/c", "taskkill /PID $pid /T")
+          if (!waitForPidsToExit(allPids, 20_000)) {
+            runCmd("cmd", "/c", "taskkill /F /PID $pid /T")
+            waitForPidsToExit(allPids, 5_000)
+          }
         }
       } else {
         logLine(ts() + " Sending SIGINT to wrapper tree (root PID $pid) ...")
@@ -390,6 +395,46 @@ class LauncherController(
     } catch (_: Throwable) {
       false
     }
+
+  /**
+   * Windows-only: Request a graceful shutdown by removing the Tanuki Wrapper anchor file declared
+   * in wrapper.conf (wrapper.anchorfile). Returns true if the request was issued and all processes
+   * exited within the grace period.
+   */
+  private suspend fun tryWindowsGracefulStopViaAnchor(allPids: List<Long>): Boolean {
+    // Prefer anchorfile from wrapper.conf, but fall back to our batch default:
+    //   "%LOCALAPPDATA%\Cryptad.anchor".
+    val conf = wrapperConfPath
+    val anchorPath: Path =
+      try {
+        var p: Path? = null
+        if (conf != null) {
+          val anchorSpec = readWrapperProperty(conf, "wrapper.anchorfile")
+          val workingDir = readWrapperProperty(conf, "wrapper.working.dir")
+          p = computeWrapperFilePath(conf, anchorSpec, workingDir)
+        }
+        if (p == null) {
+          val lad = System.getenv("LOCALAPPDATA")
+          if (lad.isNullOrBlank()) return false
+          p = Paths.get(lad).resolve("Cryptad.anchor").normalize()
+        }
+        p
+      } catch (_: Throwable) {
+        return false
+      }
+
+    if (!Files.exists(anchorPath)) {
+      logLine(ts() + " Anchor file not found at ${anchorPath}; skipping anchor stop.")
+      return false
+    }
+    logLine(ts() + " Requesting graceful shutdown via anchor: ${anchorPath.fileName} ...")
+    runCatching { Files.deleteIfExists(anchorPath) }
+      .onFailure {
+        logLine(ts() + " WARN: Failed to delete anchor file at $anchorPath: ${it.message}")
+      }
+    // Give the wrapper time to observe deletion and stop the JVM
+    return waitForPidsToExit(allPids, 25_000)
+  }
 
   private fun tryEnableConsoleFlush(cryptadPath: Path) {
     try {
