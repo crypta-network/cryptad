@@ -1,4 +1,4 @@
-name: Build cryptad.jar
+name: Build cryptad artifacts
 
 on:
   workflow_call:
@@ -40,12 +40,20 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle Wrapper (buildJar)
-        run: ./gradlew buildJar
+      - name: Build with Gradle Wrapper (build)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./gradlew build
 
-      - name: Upload build artifacts
+      - name: Upload cryptad.jar
         id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
           name: cryptad
           path: build/libs/cryptad.jar
+
+      - name: Upload jlink tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptad-jlink
+          path: build/distributions/cryptad-jlink-v*.tar.gz
