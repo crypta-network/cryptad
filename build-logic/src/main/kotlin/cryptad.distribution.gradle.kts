@@ -213,7 +213,7 @@ val downloadWindowsWrapper by
   }
 
 // Helper to detect archive type and configure extraction dynamically at execution time.
-fun org.gradle.api.tasks.Copy.fromAutoArchive(file: File) {
+fun Copy.fromAutoArchive(file: File) {
   // Detect by magic bytes: ZIP starts with 'PK', GZIP starts with 0x1F 0x8B.
   val magic = ByteArray(2)
   file.inputStream().use { it.read(magic) }
