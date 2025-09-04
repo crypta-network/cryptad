@@ -317,6 +317,12 @@ val copyWindowsWrapperBinaries by
     description = "Copies Windows wrapper executables and DLLs into the distribution"
     // Only need downloads; we parse archives directly (no pre-extract step required)
     dependsOn(downloadWindowsWrapper)
+    // Declare outputs so other Copy/Sync tasks don’t treat these as unknown files
+    val binExeX64 = wrapperDistDir.map { it.file("bin/wrapper-windows-x86-64.exe") }
+    val binExeArm = wrapperDistDir.map { it.file("bin/wrapper-windows-arm-64.exe") }
+    val libDllX64 = wrapperDistDir.map { it.file("lib/wrapper-windows-x86-64.dll") }
+    val libDllArm = wrapperDistDir.map { it.file("lib/wrapper-windows-arm-64.dll") }
+    outputs.files(binExeX64, binExeArm, libDllX64, libDllArm)
     doLast {
       val binDir = wrapperDistDir.get().dir("bin").asFile
       val libDir = wrapperDistDir.get().dir("lib").asFile
