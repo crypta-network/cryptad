@@ -243,11 +243,17 @@ val extractWindowsWrapperAmd64 by
     group = "distribution"
     description = "Extracts Windows amd64 wrapper archive"
     dependsOn(downloadWindowsWrapper)
+    // Declare inputs/outputs so Gradle executes even when sources are configured late
+    inputs.file(wrapperWindowsAmd64Archive)
+    outputs.dir(wrapperWindowsAmd64Extract)
     into(wrapperWindowsAmd64Extract)
     doFirst {
       // Configure sources just-in-time to account for the actual downloaded format
-      fromAutoArchive(wrapperWindowsAmd64Archive.get().asFile)
+      val f = wrapperWindowsAmd64Archive.get().asFile
+      println("[dist][debug] Extracting AMD64 from ${f.absolutePath}")
+      fromAutoArchive(f)
     }
+    doLast { println("[dist][debug] Extracted AMD64 into ${wrapperWindowsAmd64Extract.get().asFile.absolutePath}") }
   }
 
 val extractWindowsWrapperArm64 by
@@ -255,10 +261,15 @@ val extractWindowsWrapperArm64 by
     group = "distribution"
     description = "Extracts Windows arm64 wrapper archive"
     dependsOn(downloadWindowsWrapper)
+    inputs.file(wrapperWindowsArm64Archive)
+    outputs.dir(wrapperWindowsArm64Extract)
     into(wrapperWindowsArm64Extract)
     doFirst {
-      fromAutoArchive(wrapperWindowsArm64Archive.get().asFile)
+      val f = wrapperWindowsArm64Archive.get().asFile
+      println("[dist][debug] Extracting ARM64 from ${f.absolutePath}")
+      fromAutoArchive(f)
     }
+    doLast { println("[dist][debug] Extracted ARM64 into ${wrapperWindowsArm64Extract.get().asFile.absolutePath}") }
   }
 
 // Copy Windows wrapper binaries into dist:
