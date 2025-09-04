@@ -1,4 +1,3 @@
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
@@ -592,12 +591,13 @@ val cleanCryptadDist by
     group = "distribution"
     description = "Cleans the Cryptad distribution directory"
     delete(wrapperDistDir)
-    delete(layout.buildDirectory.dir("wrapper-dist"))
   }
 
-tasks.named("assembleCryptadDist") { dependsOn(cleanCryptadDist) }
+assembleCryptadDist { dependsOn(cleanCryptadDist) }
 
 copyWrapperBinaries { dependsOn(cleanCryptadDist) }
+
+copyWindowsWrapperBinaries { dependsOn(cleanCryptadDist) }
 
 prepareWrapperLibs { dependsOn(cleanCryptadDist) }
 
