@@ -300,8 +300,9 @@ public class AppDirsTest {
     ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Mac OS X", "root"));
     Resolved r = svc.resolve();
     assertTrue(
-        r.getConfigDir().toString().startsWith("/Library/Application Support/Cryptad/config"));
-    assertTrue(r.getLogsDir().toString().startsWith("/Library/Logs/Cryptad"));
+        norm(r.getConfigDir().toString())
+            .startsWith("/Library/Application Support/Cryptad/config"));
+    assertTrue(norm(r.getLogsDir().toString()).startsWith("/Library/Logs/Cryptad"));
   }
 
   @Test
