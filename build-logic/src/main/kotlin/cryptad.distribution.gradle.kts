@@ -31,8 +31,10 @@ val wrapperWindowsApiLatest =
     .gradleProperty("wrapperWinApiUrl")
     .orElse("https://api.github.com/repos/$wrapperWindowsRepo/releases/latest")
 val wrapperWindowsWorkDir = layout.buildDirectory.dir("wrapper/windows")
-val wrapperWindowsAmd64Zip = wrapperWindowsWorkDir.map { it.file("windows-amd64.tar.gz") }
-val wrapperWindowsArm64Zip = wrapperWindowsWorkDir.map { it.file("windows-arm64.tar.gz") }
+// We don't assume a specific archive extension from GitHub assets (.zip or .tar.gz).
+// Download to a neutral extension; extraction tasks will auto-detect type by magic bytes.
+val wrapperWindowsAmd64Archive = wrapperWindowsWorkDir.map { it.file("windows-amd64.bin") }
+val wrapperWindowsArm64Archive = wrapperWindowsWorkDir.map { it.file("windows-arm64.bin") }
 val wrapperWindowsAmd64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-amd64") }
 val wrapperWindowsArm64Extract = wrapperWindowsWorkDir.map { it.dir("extracted-arm64") }
 
@@ -149,13 +151,13 @@ abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
   @get:Input abstract val apiUrl: Property<String>
   @get:Input @get:Optional abstract val amd64UrlOverride: Property<String>
   @get:Input @get:Optional abstract val arm64UrlOverride: Property<String>
-  @get:OutputFile abstract val amd64Zip: RegularFileProperty
-  @get:OutputFile abstract val arm64Zip: RegularFileProperty
+  @get:OutputFile abstract val amd64Archive: RegularFileProperty
+  @get:OutputFile abstract val arm64Archive: RegularFileProperty
 
   @TaskAction
   fun run() {
-    amd64Zip.get().asFile.parentFile.mkdirs()
-    arm64Zip.get().asFile.parentFile.mkdirs()
+    amd64Archive.get().asFile.parentFile.mkdirs()
+    arm64Archive.get().asFile.parentFile.mkdirs()
 
     val amd64Url =
       amd64UrlOverride.orNull?.takeIf { it.isNotBlank() }
@@ -164,8 +166,8 @@ abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
       arm64UrlOverride.orNull?.takeIf { it.isNotBlank() }
         ?: findAssetUrl(apiUrl.get(), setOf("arm64", "aarch64"))
 
-    download(amd64Url, amd64Zip.get().asFile)
-    download(arm64Url, arm64Zip.get().asFile)
+    download(amd64Url, amd64Archive.get().asFile)
+    download(arm64Url, arm64Archive.get().asFile)
   }
 
   private fun httpGet(url: String): String {
@@ -215,17 +217,37 @@ val downloadWindowsWrapper by
     apiUrl.set(wrapperWindowsApiLatest)
     amd64UrlOverride.set(providers.gradleProperty("wrapperWinAmd64Url").orNull)
     arm64UrlOverride.set(providers.gradleProperty("wrapperWinArm64Url").orNull)
-    amd64Zip.set(wrapperWindowsAmd64Zip)
-    arm64Zip.set(wrapperWindowsArm64Zip)
+    amd64Archive.set(wrapperWindowsAmd64Archive)
+    arm64Archive.set(wrapperWindowsArm64Archive)
   }
+
+// Helper to detect archive type and configure extraction dynamically at execution time.
+fun org.gradle.api.tasks.Copy.fromAutoArchive(file: File) {
+  // Detect by magic bytes: ZIP starts with 'PK', GZIP starts with 0x1F 0x8B.
+  val magic = ByteArray(2)
+  file.inputStream().use { it.read(magic) }
+  val isZip = magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
+  val isGzip = magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte()
+  if (isZip) {
+    from(zipTree(file))
+  } else if (isGzip) {
+    // GitHub assets are .tar.gz when not zip
+    from(tarTree(resources.gzip(file)))
+  } else {
+    throw GradleException("Unsupported archive format for Windows wrapper: ${file.name}")
+  }
+}
 
 val extractWindowsWrapperAmd64 by
   tasks.registering(Copy::class) {
     group = "distribution"
     description = "Extracts Windows amd64 wrapper archive"
     dependsOn(downloadWindowsWrapper)
-    from(tarTree(resources.gzip(wrapperWindowsAmd64Zip.get().asFile)))
     into(wrapperWindowsAmd64Extract)
+    doFirst {
+      // Configure sources just-in-time to account for the actual downloaded format
+      fromAutoArchive(wrapperWindowsAmd64Archive.get().asFile)
+    }
   }
 
 val extractWindowsWrapperArm64 by
@@ -233,8 +255,10 @@ val extractWindowsWrapperArm64 by
     group = "distribution"
     description = "Extracts Windows arm64 wrapper archive"
     dependsOn(downloadWindowsWrapper)
-    from(tarTree(resources.gzip(wrapperWindowsArm64Zip.get().asFile)))
     into(wrapperWindowsArm64Extract)
+    doFirst {
+      fromAutoArchive(wrapperWindowsArm64Archive.get().asFile)
+    }
   }
 
 // Copy Windows wrapper binaries into dist:
