@@ -558,7 +558,25 @@ val assembleCryptadDist by
       generateWrapperLaunchers,
     )
     doLast {
-      println("Cryptad distribution assembled at: ${wrapperDistDir.get().asFile.absolutePath}")
+      val distRoot = wrapperDistDir.get().asFile
+      println("Cryptad distribution assembled at: ${distRoot.absolutePath}")
+
+      if (!distRoot.exists()) {
+        println("[dist] WARNING: distribution directory not found: ${distRoot.absolutePath}")
+        return@doLast
+      }
+
+      // Recursively list all files under build/cryptad-dist with paths relative to the root
+      val files =
+        distRoot
+          .walkTopDown()
+          .filter { it.isFile }
+          .map { it.relativeTo(distRoot).invariantSeparatorsPath }
+          .toList()
+          .sorted()
+
+      println("[dist] cryptad-dist contents (" + files.size + " files):")
+      files.forEach { rel -> println("  $rel") }
     }
   }
 
