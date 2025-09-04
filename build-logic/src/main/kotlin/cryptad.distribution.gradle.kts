@@ -276,24 +276,52 @@ val copyWindowsWrapperBinaries by
       libDir.mkdirs()
 
       fun pickExe(root: java.io.File): java.io.File? {
-        val files =
-          root.walkTopDown().filter { it.isFile && it.name.lowercase().endsWith(".exe") }.toList()
-        // Prefer names starting with wrapper
-        val preferred = files.firstOrNull { it.name.lowercase().startsWith("wrapper") }
-        return preferred ?: files.firstOrNull()
+        val allExe =
+          root
+            .walkTopDown()
+            .filter { it.isFile && it.name.lowercase().endsWith(".exe") }
+            .toList()
+        if (allExe.isEmpty()) return null
+        val lower = allExe.associateBy { it.name.lowercase() }
+        val prefs = listOf(
+          "wrapper-windows-x86-64.exe",
+          "wrapper-windows-arm-64.exe",
+          "wrapper.exe"
+        )
+        for (p in prefs) if (p in lower) return lower[p]
+        return allExe.firstOrNull { it.name.lowercase().startsWith("wrapper") } ?: allExe.first()
       }
 
       fun pickDll(root: java.io.File): java.io.File? {
-        val files =
-          root.walkTopDown().filter { it.isFile && it.name.equals("wrapper.dll", true) }.toList()
-        return files.firstOrNull()
+        val allDll =
+          root
+            .walkTopDown()
+            .filter { it.isFile && it.name.lowercase().endsWith(".dll") }
+            .toList()
+        if (allDll.isEmpty()) return null
+        val lower = allDll.associateBy { it.name.lowercase() }
+        val prefs = listOf(
+          "wrapper.dll",
+          "wrapper-windows-x86-64.dll",
+          "wrapper-windows-arm-64.dll"
+        )
+        for (p in prefs) if (p in lower) return lower[p]
+        return allDll.firstOrNull { it.name.lowercase().contains("wrapper") } ?: allDll.first()
       }
 
       // x86_64 (amd64)
       run {
         val from = wrapperWindowsAmd64Extract.get().asFile
-        val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
-        val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
+        val exe = pickExe(from) ?: run {
+          val list =
+            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
+          throw GradleException("No .exe found in $from. Files:\n$list")
+        }
+        val dll = pickDll(from) ?: run {
+          val list =
+            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
+          throw GradleException("No wrapper DLL found in $from. Files:\n$list")
+        }
         exe.copyTo(binDir.resolve("wrapper-windows-x86-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
       }
@@ -301,8 +329,16 @@ val copyWindowsWrapperBinaries by
       // arm64
       run {
         val from = wrapperWindowsArm64Extract.get().asFile
-        val exe = pickExe(from) ?: throw GradleException("No .exe found in $from")
-        val dll = pickDll(from) ?: throw GradleException("No wrapper.dll found in $from")
+        val exe = pickExe(from) ?: run {
+          val list =
+            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
+          throw GradleException("No .exe found in $from. Files:\n$list")
+        }
+        val dll = pickDll(from) ?: run {
+          val list =
+            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
+          throw GradleException("No wrapper DLL found in $from. Files:\n$list")
+        }
         exe.copyTo(binDir.resolve("wrapper-windows-arm-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
       }
