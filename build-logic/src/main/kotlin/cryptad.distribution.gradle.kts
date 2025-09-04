@@ -1,3 +1,4 @@
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
@@ -212,20 +213,51 @@ val downloadWindowsWrapper by
     arm64Archive.set(wrapperWindowsArm64Archive)
   }
 
-// Helper to detect archive type and configure extraction dynamically at execution time.
-fun Copy.fromAutoArchive(file: File) {
-  // Detect by magic bytes: ZIP starts with 'PK', GZIP starts with 0x1F 0x8B.
+// --- Archive detection helpers (shared) ---
+
+enum class ArchiveType {
+  ZIP,
+  TAR_GZ,
+}
+
+fun detectArchiveType(file: File): ArchiveType {
+  if (!file.exists() || !file.isFile) {
+    throw GradleException("Archive not found or not a file: ${file.absolutePath}")
+  }
+  val size = file.length()
+  if (size < 2) {
+    throw GradleException(
+      "Archive appears empty or truncated (<2 bytes): ${file.name} (size=$size)"
+    )
+  }
   val magic = ByteArray(2)
-  file.inputStream().use { it.read(magic) }
+  val read = file.inputStream().use { it.read(magic) }
+  if (read < 2) {
+    throw GradleException("Failed to read magic bytes from archive: ${file.name} (read=$read)")
+  }
   val isZip = magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
   val isGzip = magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte()
-  if (isZip) {
-    from(zipTree(file))
-  } else if (isGzip) {
-    // GitHub assets are .tar.gz when not zip
-    from(tarTree(resources.gzip(file)))
-  } else {
-    throw GradleException("Unsupported archive format for Windows wrapper: ${file.name}")
+  return when {
+    isZip -> ArchiveType.ZIP
+    isGzip -> ArchiveType.TAR_GZ
+    else ->
+      throw GradleException(
+        "Unsupported or unrecognized archive format for Windows wrapper: ${file.name}"
+      )
+  }
+}
+
+fun fileTreeFromArchive(file: File): FileTree =
+  when (detectArchiveType(file)) {
+    ArchiveType.ZIP -> zipTree(file)
+    ArchiveType.TAR_GZ -> tarTree(resources.gzip(file))
+  }
+
+// Helper to detect archive type and configure extraction dynamically at execution time.
+fun Copy.fromAutoArchive(file: File) {
+  when (detectArchiveType(file)) {
+    ArchiveType.ZIP -> from(zipTree(file))
+    ArchiveType.TAR_GZ -> from(tarTree(resources.gzip(file)))
   }
 }
 
@@ -276,18 +308,6 @@ val copyWindowsWrapperBinaries by
 
       val amd64Archive = wrapperWindowsAmd64Archive.get().asFile
       val arm64Archive = wrapperWindowsArm64Archive.get().asFile
-
-      fun fileTreeFromArchive(file: File): FileTree {
-        val magic = ByteArray(2)
-        file.inputStream().use { it.read(magic) }
-        val isZip = magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
-        val isGzip = magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte()
-        return when {
-          isZip -> zipTree(file)
-          isGzip -> tarTree(resources.gzip(file))
-          else -> throw GradleException("Unsupported Windows wrapper archive format: ${file.name}")
-        }
-      }
 
       fun firstN(tree: FileTree, n: Int): String =
         tree.files.take(n).joinToString("\n") { f -> f.toString() }
