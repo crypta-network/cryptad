@@ -599,6 +599,15 @@ copyWrapperBinaries { dependsOn(cleanCryptadDist) }
 
 copyWindowsWrapperBinaries { dependsOn(cleanCryptadDist) }
 
+// Ensure Windows binaries are copied after other bin/lib population tasks,
+// so they are not inadvertently removed/overwritten by later copies.
+copyWindowsWrapperBinaries {
+  mustRunAfter(copyWrapperBinaries)
+  mustRunAfter(prepareWrapperLibs)
+  mustRunAfter(generateWrapperConf)
+  mustRunAfter(generateWrapperLaunchers)
+}
+
 prepareWrapperLibs { dependsOn(cleanCryptadDist) }
 
 generateWrapperConf { dependsOn(cleanCryptadDist) }
