@@ -1,7 +1,6 @@
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import javax.inject.Inject
@@ -170,7 +169,7 @@ abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
   }
 
   private fun httpGet(url: String): String {
-    val conn = URL(url).openConnection() as HttpURLConnection
+    val conn = URI(url).toURL().openConnection() as HttpURLConnection
     // Optional: use GITHUB_TOKEN when present to raise rate limits
     val token = System.getenv("GITHUB_TOKEN")
     if (!token.isNullOrBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
@@ -201,7 +200,7 @@ abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
   }
 
   private fun download(url: String, out: File) {
-    val u = URL(url)
+    val u = URI(url).toURL()
     println("Downloading $url -> ${out.absolutePath}")
     u.openStream().use { input ->
       Files.copy(input, out.toPath(), StandardCopyOption.REPLACE_EXISTING)
