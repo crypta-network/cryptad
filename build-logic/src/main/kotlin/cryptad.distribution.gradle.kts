@@ -279,111 +279,82 @@ val copyWindowsWrapperBinaries by
   tasks.registering {
     group = "distribution"
     description = "Copies Windows wrapper executables and DLLs into the distribution"
-    dependsOn(extractWindowsWrapperAmd64, extractWindowsWrapperArm64)
+    // Only need downloads; we parse archives directly (no pre-extract step required)
+    dependsOn(downloadWindowsWrapper)
     doLast {
       val binDir = wrapperDistDir.get().dir("bin").asFile
       val libDir = wrapperDistDir.get().dir("lib").asFile
       binDir.mkdirs()
       libDir.mkdirs()
 
-      fun debugList(root: java.io.File, label: String) {
-        println("[dist][debug] Listing $label at ${root.absolutePath}")
-        if (!root.exists()) {
-          println("[dist][debug] -> MISSING")
-          return
-        }
-        val items =
-          root
-            .walkTopDown()
-            .maxDepth(3)
-            .take(150)
-            .toList()
-            .joinToString("\n") { f ->
-              val rel = f.relativeToOrSelf(root).path
-              (if (f.isDirectory) "[D]" else "[F]") + " " + rel
-            }
-        if (items.isBlank()) println("[dist][debug] -> (no entries)") else println(items)
-      }
-
-      // Print archive info and extracted trees for diagnostics
       val amd64Archive = wrapperWindowsAmd64Archive.get().asFile
       val arm64Archive = wrapperWindowsArm64Archive.get().asFile
       println("[dist][debug] AMD64 archive: ${amd64Archive.absolutePath} (exists=${amd64Archive.exists()}, size=${amd64Archive.length()} bytes)")
       println("[dist][debug] ARM64 archive: ${arm64Archive.absolutePath} (exists=${arm64Archive.exists()}, size=${arm64Archive.length()} bytes)")
 
-      val amd64Root = wrapperWindowsAmd64Extract.get().asFile
-      val arm64Root = wrapperWindowsArm64Extract.get().asFile
-      debugList(amd64Root, "extracted-amd64")
-      debugList(arm64Root, "extracted-arm64")
-
-      fun pickExe(root: java.io.File): java.io.File? {
-        val allExe =
-          root
-            .walkTopDown()
-            .filter { it.isFile && it.name.lowercase().endsWith(".exe") }
-            .toList()
-        if (allExe.isEmpty()) return null
-        val lower = allExe.associateBy { it.name.lowercase() }
-        val prefs = listOf(
-          "wrapper-windows-x86-64.exe",
-          "wrapper-windows-arm-64.exe",
-          "wrapper.exe"
-        )
-        for (p in prefs) if (p in lower) return lower[p]
-        return allExe.firstOrNull { it.name.lowercase().startsWith("wrapper") } ?: allExe.first()
+      fun fileTreeFromArchive(file: File): FileTree {
+        val magic = ByteArray(2)
+        file.inputStream().use { it.read(magic) }
+        val isZip = magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte()
+        val isGzip = magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte()
+        return when {
+          isZip -> zipTree(file)
+          isGzip -> tarTree(resources.gzip(file))
+          else -> throw GradleException("Unsupported Windows wrapper archive format: ${file.name}")
+        }
       }
 
-      fun pickDll(root: java.io.File): java.io.File? {
-        val allDll =
-          root
-            .walkTopDown()
-            .filter { it.isFile && it.name.lowercase().endsWith(".dll") }
-            .toList()
-        if (allDll.isEmpty()) return null
-        val lower = allDll.associateBy { it.name.lowercase() }
-        val prefs = listOf(
-          "wrapper.dll",
-          "wrapper-windows-x86-64.dll",
-          "wrapper-windows-arm-64.dll"
-        )
+      fun firstN(tree: FileTree, n: Int): String =
+        tree.files.take(n).joinToString("\n") { f -> f.toString() }
+
+      fun pickExe(tree: FileTree): File? {
+        val exeFiles = tree.matching { include("**/*.exe") }.files.toList()
+        if (exeFiles.isEmpty()) return null
+        val lower = exeFiles.associateBy { it.name.lowercase() }
+        val prefs = listOf("wrapper-windows-x86-64.exe", "wrapper-windows-arm-64.exe", "wrapper.exe")
         for (p in prefs) if (p in lower) return lower[p]
-        return allDll.firstOrNull { it.name.lowercase().contains("wrapper") } ?: allDll.first()
+        return exeFiles.firstOrNull { it.name.lowercase().startsWith("wrapper") } ?: exeFiles.first()
       }
 
-      // x86_64 (amd64)
+      fun pickDll(tree: FileTree): File? {
+        val dllFiles = tree.matching { include("**/*.dll") }.files.toList()
+        if (dllFiles.isEmpty()) return null
+        val lower = dllFiles.associateBy { it.name.lowercase() }
+        val prefs = listOf("wrapper.dll", "wrapper-windows-x86-64.dll", "wrapper-windows-arm-64.dll")
+        for (p in prefs) if (p in lower) return lower[p]
+        return dllFiles.firstOrNull { it.name.lowercase().contains("wrapper") } ?: dllFiles.first()
+      }
+
+      // amd64
       run {
-        val from = amd64Root
-        val exe = pickExe(from) ?: run {
-          val list =
-            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
-          throw GradleException("No .exe found in $from. Files:\n$list")
+        val tree = fileTreeFromArchive(amd64Archive)
+        val exe = pickExe(tree) ?: run {
+          val listing = firstN(tree, 64)
+          throw GradleException("No .exe found inside amd64 archive. Entries (first 64):\n$listing")
         }
-        val dll = pickDll(from) ?: run {
-          val list =
-            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
-          throw GradleException("No wrapper DLL found in $from. Files:\n$list")
+        val dll = pickDll(tree) ?: run {
+          val listing = firstN(tree, 64)
+          throw GradleException("No DLL found inside amd64 archive. Entries (first 64):\n$listing")
         }
-        println("[dist][debug] Selected amd64 exe: ${exe.absolutePath}")
-        println("[dist][debug] Selected amd64 dll: ${dll.absolutePath}")
+        println("[dist][debug] Selected amd64 exe: ${exe}")
+        println("[dist][debug] Selected amd64 dll: ${dll}")
         exe.copyTo(binDir.resolve("wrapper-windows-x86-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
       }
 
       // arm64
       run {
-        val from = arm64Root
-        val exe = pickExe(from) ?: run {
-          val list =
-            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
-          throw GradleException("No .exe found in $from. Files:\n$list")
+        val tree = fileTreeFromArchive(arm64Archive)
+        val exe = pickExe(tree) ?: run {
+          val listing = firstN(tree, 64)
+          throw GradleException("No .exe found inside arm64 archive. Entries (first 64):\n$listing")
         }
-        val dll = pickDll(from) ?: run {
-          val list =
-            from.walkTopDown().maxDepth(3).filter { it.isFile }.joinToString("\n") { it.name }
-          throw GradleException("No wrapper DLL found in $from. Files:\n$list")
+        val dll = pickDll(tree) ?: run {
+          val listing = firstN(tree, 64)
+          throw GradleException("No DLL found inside arm64 archive. Entries (first 64):\n$listing")
         }
-        println("[dist][debug] Selected arm64 exe: ${exe.absolutePath}")
-        println("[dist][debug] Selected arm64 dll: ${dll.absolutePath}")
+        println("[dist][debug] Selected arm64 exe: ${exe}")
+        println("[dist][debug] Selected arm64 dll: ${dll}")
         exe.copyTo(binDir.resolve("wrapper-windows-arm-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
       }
