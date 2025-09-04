@@ -155,10 +155,10 @@ public class M3UFilter implements ContentDataFilter {
                 } catch (Exception e) {
                   dos.write(badUriReplacement.getBytes(StandardCharsets.UTF_8));
                 }
-              }
-              // write the newline if we're not at EOF
-              if (readcount != -1) {
-                dos.write(nextbyte);
+                // write a canonical newline for non-empty lines (normalize EOL)
+                if (readcount != -1) {
+                  dos.write(CHAR_NEWLINE);
+                }
               }
             }
           }

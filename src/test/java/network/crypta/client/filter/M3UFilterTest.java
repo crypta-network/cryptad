@@ -41,7 +41,7 @@ public class M3UFilterTest {
             null,
             SCHEME_HOST_PORT,
             new GenericReadFilterCallback(new URI(BASE_URI), null, null, null));
-        String result = ibprocessed.toString();
+        String result = normalizeEol(ibprocessed.toString());
 
         assertEquals(
             original
@@ -62,6 +62,10 @@ public class M3UFilterTest {
   }
 
   protected String bucketToString(ArrayBucket bucket) throws IOException {
-    return new String(bucket.toByteArray());
+    return normalizeEol(new String(bucket.toByteArray()));
+  }
+
+  private static String normalizeEol(String s) {
+    return s.replace("\r\n", "\n");
   }
 }

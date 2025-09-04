@@ -143,6 +143,16 @@ abstract class BaseDirs(
 
   protected open fun envOverrides(): Overrides = Overrides()
 
+  /**
+   * Whether to actually create the resolved directories on disk.
+   *
+   * Defaults to true. Subclasses may override in order to avoid creating absolute, system-level
+   * directories when simulating a different target platform than the current host OS (e.g., running
+   * macOS service path tests on Linux CI). This keeps tests hermetic and avoids
+   * AccessDeniedException on unwritable roots.
+   */
+  protected open fun shouldEnsureDirectories(): Boolean = true
+
   private fun cliOverrides(): Overrides =
     Overrides(
       config = cliOverrides["configDir"]?.let { Paths.get(it) },
@@ -161,11 +171,13 @@ abstract class BaseDirs(
     val finalCache = cliO.cache ?: envO.cache ?: base.cacheDir
     val finalRun = cliO.run ?: envO.run ?: base.runDir
     val finalLogs = cliO.logs ?: envO.logs ?: base.logsDir
-    ensureDir(finalConfig, PERM_USER_RWX)
-    ensureDir(finalData, PERM_GROUP_RX)
-    ensureDir(finalCache, PERM_GROUP_RX)
-    ensureDir(finalRun, PERM_GROUP_RX)
-    ensureDir(finalLogs, PERM_GROUP_RX)
+    if (shouldEnsureDirectories()) {
+      ensureDir(finalConfig, PERM_USER_RWX)
+      ensureDir(finalData, PERM_GROUP_RX)
+      ensureDir(finalCache, PERM_GROUP_RX)
+      ensureDir(finalRun, PERM_GROUP_RX)
+      ensureDir(finalLogs, PERM_GROUP_RX)
+    }
     return Resolved(finalConfig, finalData, finalCache, finalRun, finalLogs)
   }
 }
@@ -362,5 +374,18 @@ class ServiceDirs(
         run = env["RUNTIME_DIRECTORY"]?.let { Paths.get(it) },
         logs = env["LOGS_DIRECTORY"]?.let { Paths.get(it) },
       )
+  }
+
+  override fun shouldEnsureDirectories(): Boolean {
+    // Only ensure directories when the target platform matches the host OS. This avoids attempts
+    // to create system-level paths like "/Library/..." on Linux or \\ProgramData on Unix during
+    // cross-platform testing where we simulate another OS via AppEnv.
+    val hostOs = (systemProperties["os.name"] ?: System.getProperty("os.name") ?: "").lowercase()
+    val hostIsWindows = hostOs.contains("win")
+    val hostIsMac = hostOs.contains("mac") || hostOs.contains("darwin")
+    val hostIsLinux = !hostIsWindows && !hostIsMac
+    return (appEnv.isWindows() && hostIsWindows) ||
+      (appEnv.isMac() && hostIsMac) ||
+      (appEnv.isLinux() && hostIsLinux)
   }
 }

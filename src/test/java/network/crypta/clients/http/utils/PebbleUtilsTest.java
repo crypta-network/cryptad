@@ -20,7 +20,7 @@ public class PebbleUtilsTest {
   @Test
   public void addChildAddsCorrectlyEvaluatedSimpleTemplateToHtmlNode() throws IOException {
     PebbleUtils.addChild(emptyParentNode, "pebble-utils-test-simple", model, null);
-    assertThat(emptyParentNode.generate(), equalTo("Test!\n"));
+    assertThat(normalizeEol(emptyParentNode.generate()), equalTo("Test!\n"));
   }
 
   @Test
@@ -32,4 +32,9 @@ public class PebbleUtilsTest {
 
   private final HTMLNode emptyParentNode = new HTMLNode("#");
   private final Map<String, Object> model = new HashMap<>();
+
+  private static String normalizeEol(String s) {
+    // Make assertions robust across Windows/Unix newlines
+    return s.replace("\r\n", "\n");
+  }
 }

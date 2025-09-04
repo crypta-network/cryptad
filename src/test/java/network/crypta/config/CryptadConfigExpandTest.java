@@ -12,6 +12,6 @@ public class CryptadConfigExpandTest {
     Map<String, String> base = new HashMap<>();
     base.put("configDir", "/tmp/cfg");
     String out = CryptadConfig.expandValue("${configDir}", base);
-    assertEquals("/tmp/cfg", out);
+    assertEquals("/tmp/cfg", out.replace('\\', '/'));
   }
 }
