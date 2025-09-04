@@ -19,6 +19,10 @@ public class AppDirsTest {
 
   @Rule public TemporaryFolder tmp = new TemporaryFolder();
 
+  private static String norm(String s) {
+    return s.replace('\\', '/');
+  }
+
   private Map<String, String> sysProps(Path home, Path tmpdir) {
     Map<String, String> p = new HashMap<>();
     p.put("user.home", home.toString());
@@ -37,8 +41,8 @@ public class AppDirsTest {
     AppEnv ae = new AppEnv(env, "Linux", "tester");
     AppDirs dirs = new AppDirs(env, sysProps(home, t), new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().toString().contains(".config/cryptad/config"));
-    assertTrue(r.getDataDir().toString().contains(".local/share/cryptad/data"));
+    assertTrue(norm(r.getConfigDir().toString()).contains(".config/cryptad/config"));
+    assertTrue(norm(r.getDataDir().toString()).contains(".local/share/cryptad/data"));
     assertTrue(Files.exists(r.getConfigDir()));
   }
 
@@ -77,8 +81,9 @@ public class AppDirsTest {
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().toString().contains("Library/Application Support/Cryptad/config"));
-    assertTrue(r.getCacheDir().toString().contains("Library/Caches/Cryptad"));
+    assertTrue(
+        norm(r.getConfigDir().toString()).contains("Library/Application Support/Cryptad/config"));
+    assertTrue(norm(r.getCacheDir().toString()).contains("Library/Caches/Cryptad"));
   }
 
   @Test
@@ -185,7 +190,7 @@ public class AppDirsTest {
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(r.getConfigDir().toString().contains("/cryptad/config"));
+    assertTrue(norm(r.getConfigDir().toString()).contains("/cryptad/config"));
   }
 
   @Test
@@ -204,10 +209,8 @@ public class AppDirsTest {
     sp.put("os.name", "Windows 10");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
-    assertTrue(
-        r.getConfigDir().toString().contains("Cryptad\\/config".replace("\\/", "/"))
-            || r.getConfigDir().toString().contains("Cryptad/config"));
-    assertTrue(r.getCacheDir().toString().contains("Cryptad"));
+    assertTrue(norm(r.getConfigDir().toString()).contains("/Cryptad/config"));
+    assertTrue(norm(r.getCacheDir().toString()).contains("/Cryptad"));
   }
 
   @Test
@@ -243,8 +246,7 @@ public class AppDirsTest {
     Resolved r = dirs.resolve();
     assertTrue(r.getConfigDir().startsWith(xdgConfig));
     assertTrue(
-        r.getRunDir()
-            .toString()
+        norm(r.getRunDir().toString())
             .contains("/app/org.example.Cryptad/" + network.crypta.fs.DirsKt.APP_RUNTIME_SUBPATH));
   }
 
