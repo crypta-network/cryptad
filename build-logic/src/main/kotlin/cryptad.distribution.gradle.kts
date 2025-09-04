@@ -309,6 +309,33 @@ val copyWindowsWrapperBinaries by
       val amd64Archive = wrapperWindowsAmd64Archive.get().asFile
       val arm64Archive = wrapperWindowsArm64Archive.get().asFile
 
+      println("[dist] copyWindowsWrapperBinaries: starting")
+      fun humanSize(bytes: Long): String {
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var b = bytes.toDouble()
+        var i = 0
+        while (b >= 1024 && i < units.lastIndex) {
+          b /= 1024
+          i++
+        }
+        return String.format("%.1f %s", b, units[i])
+      }
+      try {
+        val amdType = detectArchiveType(amd64Archive)
+        val armType = detectArchiveType(arm64Archive)
+        println(
+          "[dist] windows archives:\n" +
+            "  amd64: ${amd64Archive.absolutePath} (" +
+            humanSize(amd64Archive.length()) +
+            ", type=$amdType)\n" +
+            "  arm64: ${arm64Archive.absolutePath} (" +
+            humanSize(arm64Archive.length()) +
+            ", type=$armType)"
+        )
+      } catch (e: Exception) {
+        println("[dist] archive detection warning: ${e.message}")
+      }
+
       fun firstN(tree: FileTree, n: Int): String =
         tree.files.take(n).joinToString("\n") { f -> f.toString() }
 
@@ -336,6 +363,7 @@ val copyWindowsWrapperBinaries by
       // amd64
       run {
         val tree = fileTreeFromArchive(amd64Archive)
+        println("[dist] amd64: sample entries:\n" + firstN(tree, 12))
         val exe =
           pickExe(tree)
             ?: run {
@@ -353,13 +381,20 @@ val copyWindowsWrapperBinaries by
               )
             }
 
-        exe.copyTo(binDir.resolve("wrapper-windows-x86-64.exe"), overwrite = true)
-        dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
+        println("[dist] amd64: selected exe=${exe.absolutePath}")
+        println("[dist] amd64: selected dll=${dll.absolutePath}")
+        val exeOut = binDir.resolve("wrapper-windows-x86-64.exe")
+        val dllOut = libDir.resolve("wrapper-windows-x86-64.dll")
+        exe.copyTo(exeOut, overwrite = true)
+        dll.copyTo(dllOut, overwrite = true)
+        println("[dist] amd64: copied exe -> ${exeOut.absolutePath}")
+        println("[dist] amd64: copied dll -> ${dllOut.absolutePath}")
       }
 
       // arm64
       run {
         val tree = fileTreeFromArchive(arm64Archive)
+        println("[dist] arm64: sample entries:\n" + firstN(tree, 12))
         val exe =
           pickExe(tree)
             ?: run {
@@ -377,9 +412,16 @@ val copyWindowsWrapperBinaries by
               )
             }
 
-        exe.copyTo(binDir.resolve("wrapper-windows-arm-64.exe"), overwrite = true)
-        dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
+        println("[dist] arm64: selected exe=${exe.absolutePath}")
+        println("[dist] arm64: selected dll=${dll.absolutePath}")
+        val exeOut = binDir.resolve("wrapper-windows-arm-64.exe")
+        val dllOut = libDir.resolve("wrapper-windows-arm-64.dll")
+        exe.copyTo(exeOut, overwrite = true)
+        dll.copyTo(dllOut, overwrite = true)
+        println("[dist] arm64: copied exe -> ${exeOut.absolutePath}")
+        println("[dist] arm64: copied dll -> ${dllOut.absolutePath}")
       }
+      println("[dist] copyWindowsWrapperBinaries: done")
     }
   }
 
