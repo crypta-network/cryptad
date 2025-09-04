@@ -250,10 +250,8 @@ val extractWindowsWrapperAmd64 by
     doFirst {
       // Configure sources just-in-time to account for the actual downloaded format
       val f = wrapperWindowsAmd64Archive.get().asFile
-      println("[dist][debug] Extracting AMD64 from ${f.absolutePath}")
       fromAutoArchive(f)
     }
-    doLast { println("[dist][debug] Extracted AMD64 into ${wrapperWindowsAmd64Extract.get().asFile.absolutePath}") }
   }
 
 val extractWindowsWrapperArm64 by
@@ -266,10 +264,8 @@ val extractWindowsWrapperArm64 by
     into(wrapperWindowsArm64Extract)
     doFirst {
       val f = wrapperWindowsArm64Archive.get().asFile
-      println("[dist][debug] Extracting ARM64 from ${f.absolutePath}")
       fromAutoArchive(f)
     }
-    doLast { println("[dist][debug] Extracted ARM64 into ${wrapperWindowsArm64Extract.get().asFile.absolutePath}") }
   }
 
 // Copy Windows wrapper binaries into dist:
@@ -289,8 +285,6 @@ val copyWindowsWrapperBinaries by
 
       val amd64Archive = wrapperWindowsAmd64Archive.get().asFile
       val arm64Archive = wrapperWindowsArm64Archive.get().asFile
-      println("[dist][debug] AMD64 archive: ${amd64Archive.absolutePath} (exists=${amd64Archive.exists()}, size=${amd64Archive.length()} bytes)")
-      println("[dist][debug] ARM64 archive: ${arm64Archive.absolutePath} (exists=${arm64Archive.exists()}, size=${arm64Archive.length()} bytes)")
 
       fun fileTreeFromArchive(file: File): FileTree {
         val magic = ByteArray(2)
@@ -336,8 +330,7 @@ val copyWindowsWrapperBinaries by
           val listing = firstN(tree, 64)
           throw GradleException("No DLL found inside amd64 archive. Entries (first 64):\n$listing")
         }
-        println("[dist][debug] Selected amd64 exe: ${exe}")
-        println("[dist][debug] Selected amd64 dll: ${dll}")
+        
         exe.copyTo(binDir.resolve("wrapper-windows-x86-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-x86-64.dll"), overwrite = true)
       }
@@ -353,8 +346,7 @@ val copyWindowsWrapperBinaries by
           val listing = firstN(tree, 64)
           throw GradleException("No DLL found inside arm64 archive. Entries (first 64):\n$listing")
         }
-        println("[dist][debug] Selected arm64 exe: ${exe}")
-        println("[dist][debug] Selected arm64 dll: ${dll}")
+        
         exe.copyTo(binDir.resolve("wrapper-windows-arm-64.exe"), overwrite = true)
         dll.copyTo(libDir.resolve("wrapper-windows-arm-64.dll"), overwrite = true)
       }
