@@ -274,6 +274,8 @@ Details
 - Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
 - Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). The installer filename also includes the friendly label `v<project.version>+<gitShort>`.
+- Windows WiX: MSI builds require WiX 3.x. WiX tools are discovered on `PATH` or via the `WIX` (also `WIX_HOME`/`WIX_PATH`) environment variable pointing to the WiX installation root (its `bin/` is used).
+ - Windows UX: Installer allows choosing the install directory and prompts to create a desktop shortcut.
 
 Troubleshooting (macOS)
 

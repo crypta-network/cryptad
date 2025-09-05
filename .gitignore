@@ -46,3 +46,4 @@ qodana*
 multipass-client-certificate
 out/jreleaser
 build-logic/build/
+tmp*

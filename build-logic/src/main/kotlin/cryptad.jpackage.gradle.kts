@@ -44,7 +44,18 @@ val appVersionLabel = providers.provider { "v${project.version}+${gitRevShort()}
 fun numericAppVersion(): String {
   val raw = project.version.toString()
   val m = Regex("\\d+(?:\\.\\d+){0,3}").find(raw)
-  return (m?.value ?: raw.filter { it.isDigit() }.ifBlank { "1" })
+  var v = (m?.value ?: raw.filter { it.isDigit() }.ifBlank { "1" })
+  // Windows installers (MSI/EXE) require 2..4 components in ProductVersion
+  if (currentOs() == "win") {
+    val parts = v.split('.')
+    v =
+      when {
+        parts.size < 2 -> parts.firstOrNull()?.let { "$it.0" } ?: "1.0"
+        parts.size > 4 -> parts.take(4).joinToString(".")
+        else -> v
+      }
+  }
+  return v
 }
 
 // Prepare resources for jpackage from root files and src/jpackage assets
@@ -88,7 +99,14 @@ fun hasExe(name: String): Boolean =
 fun resolveInstallerType(os: String): String =
   when (os) {
     "mac" -> "dmg"
-    "win" -> if (hasExe("candle.exe") && hasExe("light.exe")) "msi" else "exe"
+    "win" -> {
+      // Prefer MSI when WiX is available, either on PATH or via WIX/WIX_HOME/WIX_PATH
+      val wixBin = wixBinFromEnv()
+      val hasOnPath = hasExe("candle.exe") && hasExe("light.exe")
+      val hasViaEnv =
+        wixBin?.let { File(it, "candle.exe").isFile && File(it, "light.exe").isFile } ?: false
+      if (hasOnPath || hasViaEnv) "msi" else "exe"
+    }
     else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
   }
 
@@ -98,6 +116,24 @@ fun iconPathForOs(): String =
     "win" -> project.file("src/jpackage/windows/cryptad.ico").absolutePath
     else -> project.file("src/jpackage/linux/cryptad.png").absolutePath
   }
+
+/**
+ * Resolve WiX installation "bin" directory from common environment variables. Recognizes WIX,
+ * WIX_HOME, and WIX_PATH. Returns the bin directory when both candle.exe and light.exe are present,
+ * or null otherwise.
+ */
+fun wixBinFromEnv(): File? {
+  val names = listOf("WIX", "WIX_HOME", "WIX_PATH")
+  for (name in names) {
+    val raw = System.getenv(name)?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+    val base = File(raw)
+    val bin = if (base.name.equals("bin", ignoreCase = true)) base else File(base, "bin")
+    val candle = File(bin, "candle.exe")
+    val light = File(bin, "light.exe")
+    if (candle.isFile && light.isFile) return bin
+  }
+  return null
+}
 
 // Build an app image using the toolchain JDK's jpackage
 val jpackageImageCryptad by
@@ -175,7 +211,7 @@ val jpackageImageCryptad by
         )
       args.addAll(iconArg)
 
-      // OS-specific tweaks
+      // OS-specific tweaks (only flags valid for app-image)
       when (os) {
         "mac" -> {
           args.addAll(listOf("--mac-package-identifier", appId))
@@ -184,8 +220,8 @@ val jpackageImageCryptad by
           args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
         }
         "win" -> {
-          // No code signing; add menu + shortcut
-          args.addAll(listOf("--win-menu", "--win-shortcut"))
+          // For app-image, do NOT pass --win-menu/--win-shortcut (only valid for installer types)
+          // We intentionally keep Windows app-image generic here.
         }
       }
 
@@ -279,6 +315,31 @@ val jpackageInstallerCryptad by
           else -> outDir.resolve(appName).absolutePath
         }
 
+      // On Windows, verify WiX presence only when building MSI; EXE does not require WiX
+      if (os == "win" && installerType == "msi") {
+        // Try to locate WiX tools required by jpackage (candle/light)
+        fun hasTool(tool: String): Boolean =
+          try {
+            val pb = ProcessBuilder("where", tool)
+            pb.redirectErrorStream(true)
+            val p = pb.start()
+            p.waitFor(3, TimeUnit.SECONDS)
+            p.exitValue() == 0
+          } catch (_: Exception) {
+            false
+          }
+        val wixBin = wixBinFromEnv()
+        val wixPresent =
+          (hasTool("light.exe") && hasTool("candle.exe")) ||
+            (wixBin?.let { File(it, "light.exe").isFile && File(it, "candle.exe").isFile } ?: false)
+        if (!wixPresent) {
+          println(
+            "WiX Toolset not found (light.exe/candle.exe). Skipping MSI creation. Install WiX 3.x and ensure it is on PATH or set WIX to the install root to enable MSI builds."
+          )
+          return@doLast
+        }
+      }
+
       val args =
         mutableListOf(
           jpackage.absolutePath,
@@ -299,8 +360,31 @@ val jpackageInstallerCryptad by
         )
       // Ensure a stable bundle identifier on macOS
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
+      // Windows installer UX: per-user by default, allow directory selection, and prompt for
+      // desktop shortcut
+      if (os == "win")
+        args.addAll(
+          listOf(
+            "--win-per-user-install",
+            "--win-menu",
+            "--win-dir-chooser",
+            "--win-shortcut-prompt",
+          )
+        )
       println("Executing jpackage installer:\n" + args.joinToString(" "))
-      project.serviceOf<ExecOperations>().exec { commandLine(args) }
+      project.serviceOf<ExecOperations>().exec {
+        // If WiX is specified via env, prepend its bin directory to PATH so jpackage can find
+        // tools.
+        if (os == "win") {
+          wixBinFromEnv()?.let { bin ->
+            val current = System.getenv("PATH") ?: ""
+            val sep = ";"
+            environment("PATH", bin.absolutePath + sep + current)
+            println("Using WiX from WIX env: ${bin.absolutePath}")
+          }
+        }
+        commandLine(args)
+      }
 
       // Rename the produced installer to include the user-facing version label (v<ver>+<git>)
       val produced = File(outDir, "${appName}-${numericAppVersion()}.${installerType}")
