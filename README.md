@@ -246,6 +246,56 @@ Notes
 - This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
 - `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
 
+### Installers (jpackage)
+
+Build a desktop app image and a native installer with `jpackage`. The image embeds a minimal runtime and bundles the
+portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
+
+Commands
+
+```bash
+# Build the app image only
+./gradlew jpackageImageCryptad
+
+# Build the app image and the OS installer (macOS: DMG; Windows: MSI if WiX is present; Linux: DEB)
+./gradlew jpackageAll
+```
+
+Outputs (macOS example)
+
+- App image: `build/jpackage/Crypta.app`
+- Installer: `build/jpackage/Crypta-<numeric>.dmg` and a labeled copy `Crypta-v<project.version>+<gitShort>.dmg`
+
+Details
+
+- App metadata: Name `Crypta`, Vendor `crypta.network`, App ID `network.crypta.cryptad`.
+- Main entry: `network.crypta.launcher.LauncherKt`.
+- Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
+- Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
+- App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
+- Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). The installer filename also includes the friendly label `v<project.version>+<gitShort>`.
+
+Troubleshooting (macOS)
+
+- Unsigned app first‑run: right‑click → Open, or clear quarantine:
+
+```bash
+xattr -dr com.apple.quarantine "build/jpackage/Crypta.app"
+```
+
+- See launcher logs by running the Mach‑O launcher in Terminal:
+
+```bash
+build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
+```
+
+- Run the embedded JRE directly to isolate classpath issues:
+
+```bash
+cd build/jpackage/Crypta.app/Contents
+./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
+```
+
 ## Development Guidelines
 
 - Primary languages: Kotlin/Java

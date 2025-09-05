@@ -639,6 +639,16 @@ val dist by
 // Ensure standard build also produces the distribution archives
 tasks.named("build") { dependsOn(dist) }
 
+// Make sure jpackage resources exist even if only installer/image is requested later
+gradle.taskGraph.whenReady {
+  // When someone runs jpackage tasks from the jpackage plugin, ensure the dist is present
+  if (allTasks.any { it.name.contains("jpackage", ignoreCase = true) }) {
+    tasks.findByName("assembleCryptadDist")?.let { t ->
+      tasks.findByName("prepareWrapperLibs")?.mustRunAfter(t)
+    }
+  }
+}
+
 // Diagnostic: print resolved directories
 tasks.register<JavaExec>("printDirs") {
   group = "help"
