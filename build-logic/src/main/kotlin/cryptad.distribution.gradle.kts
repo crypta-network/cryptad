@@ -14,23 +14,6 @@ val wrapperWorkDir = layout.buildDirectory.dir("wrapper")
 val wrapperExtractDir = layout.buildDirectory.dir("wrapper/extracted")
 val wrapperDistDir = layout.buildDirectory.dir("cryptad-dist")
 
-// Common: recursively list files under the distribution directory
-fun printCryptadDistContents(distRoot: File, label: String) {
-  if (!distRoot.exists()) {
-    println("[dist] $label: WARNING: distribution directory not found: ${distRoot.absolutePath}")
-    return
-  }
-  val files =
-    distRoot
-      .walkTopDown()
-      .filter { it.isFile }
-      .map { it.relativeTo(distRoot).invariantSeparatorsPath }
-      .toList()
-      .sorted()
-  println("[dist] $label: cryptad-dist contents (" + files.size + " files):")
-  files.forEach { rel -> println("  $rel") }
-}
-
 // Windows wrapper binaries are not present in the delta pack. We fetch them from the latest
 // release of crypta-network/wrapper-windows-build.
 val wrapperWindowsRepo = "crypta-network/wrapper-windows-build"
@@ -151,7 +134,6 @@ val copyWrapperBinaries by
       // Drop 32-bit binaries
       exclude("*-x86-32*", "*-universal-32*", "*-armel-32*", "*-armhf-32*")
     }
-    doLast { printCryptadDistContents(wrapperDistDir.get().asFile, "after copyWrapperBinaries") }
   }
 
 // --- Windows wrapper: locate asset URLs (newest GitHub release) and download ---
@@ -444,9 +426,6 @@ val copyWindowsWrapperBinaries by
         println("[dist] arm64: copied exe -> ${exeOut.absolutePath}")
         println("[dist] arm64: copied dll -> ${dllOut.absolutePath}")
       }
-      // After copying both amd64 and arm64 binaries, print a recursive listing
-      printCryptadDistContents(wrapperDistDir.get().asFile, "after copyWindowsWrapperBinaries")
-
       println("[dist] copyWindowsWrapperBinaries: done")
     }
   }
@@ -485,7 +464,6 @@ val prepareWrapperLibs by
       include("wrapper*.jar")
       rename { "wrapper.jar" }
     }
-    doLast { printCryptadDistContents(wrapperDistDir.get().asFile, "after prepareWrapperLibs") }
   }
 
 // Generate conf/wrapper.conf from template
@@ -505,7 +483,6 @@ val generateWrapperConf by
       val confFile = confDirFile.resolve("wrapper.conf")
       confFile.writeText(template)
       println("Generated " + confFile.absolutePath)
-      printCryptadDistContents(wrapperDistDir.get().asFile, "after generateWrapperConf")
     }
   }
 
@@ -570,7 +547,6 @@ val generateWrapperLaunchers by
           println("WARNING: -PuseDummyCryptad was set but tools/cryptad-dummy.sh not found")
         }
       }
-      printCryptadDistContents(wrapperDistDir.get().asFile, "after generateWrapperLaunchers")
     }
   }
 
@@ -588,7 +564,6 @@ val assembleCryptadDist by
     )
     doLast {
       println("Cryptad distribution assembled at: ${wrapperDistDir.get().asFile.absolutePath}")
-      printCryptadDistContents(wrapperDistDir.get().asFile, "after assembleCryptadDist")
     }
   }
 
