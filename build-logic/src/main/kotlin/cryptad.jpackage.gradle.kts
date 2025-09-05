@@ -72,12 +72,18 @@ fun currentOs(): String {
 
 fun hasExe(name: String): Boolean =
   try {
-    val pb = ProcessBuilder(if (org.gradle.internal.os.OperatingSystem.current().isWindows) listOf("where", name) else listOf("which", name))
+    val pb =
+      ProcessBuilder(
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) listOf("where", name)
+        else listOf("which", name)
+      )
     pb.redirectErrorStream(true)
     val p = pb.start()
-    p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+    p.waitFor(3, TimeUnit.SECONDS)
     p.exitValue() == 0
-  } catch (_: Exception) { false }
+  } catch (_: Exception) {
+    false
+  }
 
 fun resolveInstallerType(os: String): String =
   when (os) {
