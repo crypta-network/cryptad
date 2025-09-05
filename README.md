@@ -254,10 +254,10 @@ portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrappe
 Commands
 
 ```bash
-# Build the app image only
-./gradlew jpackageImageCryptad
+# Build produces the jpackage app image and the OS installer (best effort per-OS tools)
+./gradlew build
 
-# Build the app image and the OS installer (macOS: DMG; Windows: MSI if WiX is present; Linux: DEB)
+# Build the app image and the OS installer only
 ./gradlew jpackageAll
 ```
 

@@ -70,6 +70,22 @@ fun currentOs(): String {
   }
 }
 
+fun hasExe(name: String): Boolean =
+  try {
+    val pb = ProcessBuilder(if (org.gradle.internal.os.OperatingSystem.current().isWindows) listOf("where", name) else listOf("which", name))
+    pb.redirectErrorStream(true)
+    val p = pb.start()
+    p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+    p.exitValue() == 0
+  } catch (_: Exception) { false }
+
+fun resolveInstallerType(os: String): String =
+  when (os) {
+    "mac" -> "dmg"
+    "win" -> if (hasExe("candle.exe") && hasExe("light.exe")) "msi" else "exe"
+    else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
+  }
+
 fun iconPathForOs(): String =
   when (currentOs()) {
     "mac" -> project.file("src/jpackage/macos/cryptad.icns").absolutePath
@@ -228,6 +244,12 @@ val jpackageInstallerCryptad by
     group = "jpackage"
     description = "Creates a native installer for the current OS"
     dependsOn(enrichAppImageWithDist)
+    onlyIf {
+      when (currentOs()) {
+        "linux" -> hasExe("dpkg-deb") || hasExe("rpmbuild")
+        else -> true
+      }
+    }
     doLast {
       val toolchains = project.serviceOf<JavaToolchainService>()
       val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
@@ -243,12 +265,7 @@ val jpackageInstallerCryptad by
       outDir.mkdirs()
 
       val os = currentOs()
-      val installerType =
-        when (os) {
-          "mac" -> "dmg"
-          "win" -> "msi" // requires WiX; change to "exe" if WiX is unavailable
-          else -> "deb" // requires dpkg tools
-        }
+      val installerType = resolveInstallerType(os)
 
       val imagePath =
         when (os) {
@@ -280,12 +297,7 @@ val jpackageInstallerCryptad by
       project.serviceOf<ExecOperations>().exec { commandLine(args) }
 
       // Rename the produced installer to include the user-facing version label (v<ver>+<git>)
-      val produced =
-        when (os) {
-          "mac" -> File(outDir, "${appName}-${numericAppVersion()}.dmg")
-          "win" -> File(outDir, "${appName}-${numericAppVersion()}.msi")
-          else -> File(outDir, "${appName}-${numericAppVersion()}.deb")
-        }
+      val produced = File(outDir, "${appName}-${numericAppVersion()}.${installerType}")
       if (produced.isFile) {
         val labeled = File(outDir, "${appName}-${appVersionLabel.get()}.${produced.extension}")
         produced.copyTo(labeled, overwrite = true)
@@ -302,5 +314,11 @@ val jpackageInstallerCryptad by
 tasks.register("jpackageAll") {
   group = "jpackage"
   description = "Builds app image and OS installer"
+  dependsOn(jpackageInstallerCryptad)
+}
+
+// Ensure standard build also creates the jpackage app image and installer (best effort on Linux).
+tasks.named("build") {
+  dependsOn(jpackageImageCryptad)
   dependsOn(jpackageInstallerCryptad)
 }
