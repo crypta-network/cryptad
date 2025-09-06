@@ -128,6 +128,49 @@ val prepareJpackageResources by
           }
         }
 
+        // 1b) WixUIBannerBmp: place at windows/images/WixStdBanner.bmp so WiX uses it
+        run {
+          val src =
+            project.layout.projectDirectory
+              .file("src/jpackage/windows/CryptaInstall_Banner.bmp")
+              .asFile
+          if (src.isFile) {
+            val dst = File(winDir, "images/WixStdBanner.bmp")
+            dst.parentFile.mkdirs()
+            try {
+              val img = ImageIO.read(src)
+              if (img != null) {
+                val targetW = 493
+                val targetH = 58
+                val scaled = BufferedImage(targetW, targetH, BufferedImage.TYPE_3BYTE_BGR)
+                val g = scaled.createGraphics()
+                try {
+                  g.drawImage(
+                    img.getScaledInstance(targetW, targetH, Image.SCALE_SMOOTH),
+                    0,
+                    0,
+                    null,
+                  )
+                } finally {
+                  g.dispose()
+                }
+                ImageIO.write(scaled, "bmp", dst)
+              } else {
+                src.copyTo(dst, overwrite = true)
+              }
+            } catch (_: Exception) {
+              src.copyTo(dst, overwrite = true)
+            }
+
+            // Also place a copy at root images/
+            val dstRoot = File(resDir, "images/WixStdBanner.bmp")
+            dstRoot.parentFile.mkdirs()
+            try {
+              dst.copyTo(dstRoot, overwrite = true)
+            } catch (_: Exception) {}
+          }
+        }
+
         // 2) ARPPRODUCTICON (Apps & Features icon): define JpIcon in overrides.wxi
         //    Point it to the absolute path of CryptaInstaller_Uninstall.ico in the resource dir
         run {
@@ -146,7 +189,10 @@ val prepareJpackageResources by
 
             val overrides = File(winDir, "overrides.wxi")
             val bmpInRes = File(winDir, "images/WixStdDialog.bmp")
+            val bannerInRes = File(winDir, "images/WixStdBanner.bmp")
             val bmpPath = if (bmpInRes.isFile) bmpInRes.absolutePath.replace("\\", "/") else null
+            val bannerPath =
+              if (bannerInRes.isFile) bannerInRes.absolutePath.replace("\\", "/") else null
             // Keep the file minimal and additive; users can still override as needed later.
             overrides.writeText(
               buildString {
@@ -158,6 +204,9 @@ val prepareJpackageResources by
                 if (bmpPath != null) {
                   appendLine("<?define WixUIDialogBmp=\"${bmpPath}\"?>")
                 }
+                if (bannerPath != null) {
+                  appendLine("<?define WixUIBannerBmp=\"${bannerPath}\"?>")
+                }
                 appendLine("<Include/>")
               }
             )
@@ -167,6 +216,29 @@ val prepareJpackageResources by
               overrides.copyTo(File(resDir, "overrides.wxi"), overwrite = true)
             } catch (_: Exception) {}
           }
+        }
+
+        // 3) Post-MSI script for EXE builds to wrap the custom MSI (copies custom MSI over
+        // JpMsiFile)
+        run {
+          val script = File(resDir, "${appName}-post-msi.wsf")
+          val customMsi =
+            File(jpackageOutDir.get().asFile, "${appName}-${numericAppVersion()}-custom.msi")
+          val wsf = buildString {
+            appendLine("<?xml version=\"1.0\"?>")
+            appendLine("<job id=\"post-msi\">")
+            appendLine("  <script language=\"JScript\">")
+            appendLine("    var sh = WScript.CreateObject(\"WScript.Shell\");")
+            appendLine("    var fso = WScript.CreateObject(\"Scripting.FileSystemObject\");")
+            appendLine("    var msi = sh.Environment(\"PROCESS\")(\"JpMsiFile\");")
+            appendLine("    var src = \"${customMsi.absolutePath.replace("\\", "/")}\";")
+            appendLine(
+              "    if (msi && fso.FileExists(src)) { try { fso.CopyFile(src, msi, true); } catch (e) {} }"
+            )
+            appendLine("  </script>")
+            appendLine("</job>")
+          }
+          script.writeText(wsf)
         }
       }
     }
@@ -563,7 +635,7 @@ tasks.register("relinkWixUiBitmaps") {
         }
         ?: throw GradleException("WiX Toolset not found to relink MSI")
 
-    val outMsi = File(jpackageOutDir.get().asFile, "${appName}-1.0-custom.msi")
+    val outMsi = File(jpackageOutDir.get().asFile, "${appName}-${numericAppVersion()}-custom.msi")
     val cmd =
       mutableListOf(
         File(wixBin, "light.exe").absolutePath,
@@ -595,6 +667,13 @@ tasks.register("relinkWixUiBitmaps") {
         File(wixobj, "ShortcutPromptDlg.wixobj").absolutePath,
         File(wixobj, "InstallDirNotEmptyDlg.wixobj").absolutePath,
       )
+    // Conditionally inject banner BMP, if available
+    run {
+      val bannerBmp = File(jpackageResourcesDir.get().asFile, "windows/images/WixStdBanner.bmp")
+      if (bannerBmp.isFile) {
+        cmd.add("-dWixUIBannerBmp=${bannerBmp.absolutePath}")
+      }
+    }
     println("Relinking MSI with WiX:\n" + cmd.joinToString(" "))
     project.serviceOf<ExecOperations>().exec { commandLine(cmd) }
     println("Relinked MSI -> ${outMsi.absolutePath}")
