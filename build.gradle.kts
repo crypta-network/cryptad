@@ -6,6 +6,8 @@ plugins {
   id("cryptad.buildjar")
   id("cryptad.distribution")
   id("cryptad.runtime")
+  id("cryptad.jpackage")
+  application
 }
 
 // Update version manually before a new release development starts
@@ -44,3 +46,7 @@ tasks.register("printVersion") {
   description = "Prints the project version"
   doLast { println(project.version.toString()) }
 }
+
+// Application entrypoint (used by jpackage). This does not change how we build the wrapper
+// distribution; it's only to inform launchers that invoke the Kotlin main directly.
+application { mainClass.set("network.crypta.launcher.MainKt") }

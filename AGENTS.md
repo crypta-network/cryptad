@@ -215,6 +215,35 @@ Tip: If GitHub API rate limits are hit during builds, set `GITHUB_TOKEN` in the 
   - `distJlinkCryptad` → `build/distributions/cryptad-jlink-v<version>.(zip|tar.gz)`.
   - Both include the Windows launchers and binaries above.
 
+### Installers (jpackage)
+
+We ship Gradle tasks that build a desktop app image and (on macOS/Linux) native installers via `jpackage`. The app
+image bundles a minimal runtime (from our jlink flow) and the portable `cryptad-dist` tree so the GUI launcher can
+start/stop the wrapper reliably.
+
+- Tasks:
+  - `./gradlew build` → builds the jpackage app image and enriches it with `cryptad-dist` (does not build installers).
+  - `./gradlew jpackageImageCryptad` → builds only the app image under `build/jpackage/`.
+  - `./gradlew jpackageInstallerCryptad` → builds a native installer for the current OS (macOS: `.dmg`; Linux: `.deb` or `.rpm` when `dpkg-deb`/`rpmbuild` is available). Not available on Windows.
+- Metadata:
+  - Name: `Crypta`, Vendor: `crypta.network`, App ID: `network.crypta.cryptad`.
+  - Main entry: `network.crypta.launcher.LauncherKt`.
+- Versioning:
+  - jpackage requires a numeric `--app-version`; we use the project version (e.g., `1`).
+  - Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`); we do not produce an extra labeled copy.
+- Icons and resources:
+  - macOS: `src/jpackage/macos/cryptad.icns`.
+  - Windows: `src/jpackage/windows/cryptad.ico`.
+  - Linux: `src/jpackage/linux/cryptad.png`.
+  - Root `LICENSE` is included as `LICENSE.txt` and `EULA.txt`; `README.md` as `README.txt`.
+- Image layout:
+  - App root: `Contents/app/` (macOS) contains `Crypta.cfg`, a tiny `bootstrap.jar`, and `cryptad-dist/`.
+  - Classpath is rewritten to `app/cryptad-dist/lib/*.jar`; jars are not duplicated under `app/`.
+- Troubleshooting (macOS):
+  - If double‑click does nothing, run `Contents/MacOS/Crypta` in Terminal to see logs.
+  - Clear quarantine on unsigned builds: `xattr -dr com.apple.quarantine build/jpackage/Crypta.app`.
+  - Verify security status: `spctl --assess -vv build/jpackage/Crypta.app`.
+
 ## Testing Strategy
 
 - Unit tests for core utilities and logic

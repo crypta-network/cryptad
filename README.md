@@ -246,6 +246,60 @@ Notes
 - This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
 - `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
 
+### Installers (jpackage)
+
+Build a desktop app image and (on macOS/Linux) native installers with `jpackage`. The image embeds a minimal runtime and
+bundles the portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
+
+Commands
+
+```bash
+# Build includes the jpackage app image (no installer by default)
+./gradlew build
+
+# App image only
+./gradlew jpackageImageCryptad
+
+# Native installer (macOS: .dmg; Linux: .deb or .rpm when dpkg-deb/rpmbuild is present)
+./gradlew jpackageInstallerCryptad
+```
+
+Outputs (macOS example)
+
+- App image: `build/jpackage/Crypta.app`
+- Installer: `build/jpackage/Crypta-<numeric>.dmg`
+
+Details
+
+- App metadata: Name `Crypta`, Vendor `crypta.network`, App ID `network.crypta.cryptad`.
+- Main entry: `network.crypta.launcher.LauncherKt`.
+- Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
+- Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
+- App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
+- Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`).
+Note: Windows installers are not built; Windows builds produce only the app image.
+
+Troubleshooting (macOS)
+
+- Unsigned app first‑run: right‑click → Open, or clear quarantine:
+
+```bash
+xattr -dr com.apple.quarantine "build/jpackage/Crypta.app"
+```
+
+- See launcher logs by running the Mach‑O launcher in Terminal:
+
+```bash
+build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
+```
+
+- Run the embedded JRE directly to isolate classpath issues:
+
+```bash
+cd build/jpackage/Crypta.app/Contents
+./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
+```
+
 ## Development Guidelines
 
 - Primary languages: Kotlin/Java
