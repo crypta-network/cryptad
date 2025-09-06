@@ -328,7 +328,8 @@ val jpackageInstallerCryptad by
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
-      if (os == "linux") args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
+      if (os == "linux")
+        args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
 
       logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
       execAndLog(args)
