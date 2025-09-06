@@ -281,18 +281,40 @@ fun findOnPath(cmd: String): String? {
 }
 
 /**
- * Load the application icon image. Preferred source is a classpath resource at
- * `network/crypta/launcher/crypta-launcher-icon.png`. Falls back to `docs/images/crypta_logo.png`
- * when running from source.
+ * Load the application icon image.
+ *
+ * OS-specific classpath resources are preferred:
+ * - macOS: `network/crypta/launcher/crypta-launcher-icon-macos.png`
+ * - Windows: `network/crypta/launcher/crypta-launcher-icon-windows.png`
+ * - Other OSes: fall back to macOS icon if present.
+ *
+ * When running from source without resources, falls back to `docs/images/crypta_logo.png`.
  */
 fun loadAppIconImage(): Image? {
   val cl = Thread.currentThread().contextClassLoader
-  val res = cl.getResource("network/crypta/launcher/crypta-launcher-icon.png")
-  if (res != null) {
-    try {
-      return ImageIO.read(res)
-    } catch (_: Exception) {}
+  val os = System.getProperty("os.name").lowercase()
+
+  val candidates = buildList {
+    when {
+      os.contains("mac") -> add("network/crypta/launcher/crypta-launcher-icon-macos.png")
+      os.contains("win") -> add("network/crypta/launcher/crypta-launcher-icon-windows.png")
+      else -> {
+        // Prefer macOS artwork as a generic fallback for Linux/others if present
+        add("network/crypta/launcher/crypta-launcher-icon-macos.png")
+        add("network/crypta/launcher/crypta-launcher-icon-windows.png")
+      }
+    }
   }
+
+  for (path in candidates) {
+    val res = cl.getResource(path)
+    if (res != null) {
+      try {
+        return ImageIO.read(res)
+      } catch (_: Exception) {}
+    }
+  }
+
   // Fallback for dev runs: use the README logo if present
   try {
     val fallback = Paths.get("docs/images/crypta_logo.png")
