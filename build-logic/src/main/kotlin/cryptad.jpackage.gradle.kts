@@ -1,9 +1,5 @@
-import java.io.File
-import java.util.concurrent.TimeUnit
-import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
-import org.gradle.kotlin.dsl.support.serviceOf
-import org.gradle.process.ExecOperations
+import java.util.jar.JarOutputStream as JJarOutputStream
+import java.util.jar.Manifest as JManifest
 
 plugins { java }
 
@@ -14,6 +10,10 @@ plugins { java }
  * - Optionally builds native installers via `jpackage --type <os-default>`
  * - Copies the portable node layout (build/cryptad-dist) into the app image under app/cryptad-dist
  * - Prepares standard resources (LICENSE.txt, EULA.txt, README.txt) from project root
+ *
+ * This file intentionally avoids duplicating jars under the jpackage image; instead a tiny
+ * bootstrap jar is created so we can later rewrite `Crypta.cfg` to reference the jars under
+ * `app/cryptad-dist/lib/` + `*.jar` as the runtime classpath.
  */
 val jreDir = layout.buildDirectory.dir("jre")
 val cryptadDistDir = layout.buildDirectory.dir("cryptad-dist")
@@ -31,19 +31,19 @@ fun gitRevShort(): String =
     p.waitFor(5, TimeUnit.SECONDS)
     val s = p.inputStream.bufferedReader().use { it.readText() }.trim()
     if (p.exitValue() == 0 && s.isNotBlank()) s else "unknown"
-  } catch (e: Exception) {
+  } catch (_: Exception) {
     "unknown"
   }
 
 val appName = "Crypta"
 val vendor = "crypta.network"
 val appId = "network.crypta.cryptad"
-val appVersionLabel = providers.provider { "v${project.version}+${gitRevShort()}" }
 
 // Windows installer support removed; no UpgradeCode needed.
 
 // jpackage --app-version is strict (e.g., macOS CFBundleVersion must be 1..3 integers separated by
 // dots).
+/** Returns a numeric app version accepted by jpackage (platform compliant). */
 fun numericAppVersion(): String {
   val raw = project.version.toString()
   val m = Regex("\\d+(?:\\.\\d+){0,3}").find(raw)
@@ -73,13 +73,17 @@ val prepareJpackageResources by
     from(layout.projectDirectory.file("README.md")) { rename { "README.txt" } }
     into(jpackageResourcesDir)
 
-    // Windows installer resources removed
+    // Fail early if icon for current OS is missing (helps local dev)
     doLast {
-      // no-op
+      val icon = File(iconPathForOs())
+      if (!icon.isFile) {
+        throw GradleException("Required jpackage icon not found: ${icon.absolutePath}")
+      }
     }
   }
 
 // Helper resolving OS and icon path
+/** Detects the current OS as a stable token: mac|win|linux. */
 fun currentOs(): String {
   val os = org.gradle.internal.os.OperatingSystem.current()
   return when {
@@ -89,6 +93,7 @@ fun currentOs(): String {
   }
 }
 
+/** Checks if an executable exists on PATH using platform-appropriate command. */
 fun hasExe(name: String): Boolean =
   try {
     val pb =
@@ -104,18 +109,66 @@ fun hasExe(name: String): Boolean =
     false
   }
 
+/** Picks installer type for the current OS; Windows intentionally unsupported. */
 fun resolveInstallerType(os: String): String =
   when (os) {
     "mac" -> "dmg"
     else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
   }
 
+/** Returns absolute icon path for jpackage matching the current OS. */
 fun iconPathForOs(): String =
   when (currentOs()) {
     "mac" -> project.file("src/jpackage/macos/cryptad.icns").absolutePath
     "win" -> project.file("src/jpackage/windows/cryptad.ico").absolutePath
     else -> project.file("src/jpackage/linux/cryptad.png").absolutePath
   }
+
+/** Resolves the `jpackage` executable from the Java 21 toolchain. */
+fun resolveJpackageExecutable(): File {
+  val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
+  val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+  val javaHome = launcher.get().metadata.installationPath.asFile
+  val exe =
+    javaHome.resolve(
+      "bin/jpackage" +
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+    )
+  if (!exe.isFile) throw GradleException("jpackage not found in toolchain: $exe")
+  return exe
+}
+
+/** Deletes any pre-existing output image folder for a clean jpackage run. */
+fun cleanExistingImage(outDir: File, os: String) {
+  val existing =
+    when (os) {
+      "mac" -> outDir.resolve("$appName.app")
+      else -> outDir.resolve(appName)
+    }
+  if (existing.exists()) existing.deleteRecursively()
+}
+
+/** Creates a minimal bootstrap jar under the provided input dir and returns its file. */
+fun createBootstrapJar(inputDir: File): File {
+  if (inputDir.exists()) inputDir.deleteRecursively()
+  inputDir.mkdirs()
+  val stagedMain = File(inputDir, "bootstrap.jar")
+  val mf = JManifest()
+  mf.mainAttributes.putValue("Manifest-Version", "1.0")
+  JJarOutputStream(stagedMain.outputStream(), mf).use { /* empty */ }
+  return stagedMain
+}
+
+/** Executes a command and streams output; throws on non-zero exit. */
+fun execAndLog(args: List<String>) {
+  val pb = ProcessBuilder(args)
+  pb.redirectErrorStream(true)
+  val p = pb.start()
+  val output = p.inputStream.bufferedReader().use { it.readText() }
+  val code = p.waitFor()
+  logger.lifecycle(output.trim())
+  if (code != 0) throw GradleException("Command failed ($code): ${args.joinToString(" ")}")
+}
 
 // WiX helper removed with Windows installers.
 
@@ -129,21 +182,9 @@ val jpackageImageCryptad by
     dependsOn(prepareJpackageResources)
 
     doLast {
-      val toolchains = project.serviceOf<JavaToolchainService>()
-      val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
-      val javaHome = launcher.get().metadata.installationPath.asFile
-      val jpackage =
-        javaHome.resolve(
-          "bin/jpackage" +
-            if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
-        )
-      if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
-
-      val outDir = jpackageOutDir.get().asFile
-      outDir.mkdirs()
-
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
       val os = currentOs()
-      val iconArg = listOf("--icon", iconPathForOs())
       val imageName = appName
       val mainClass = "network.crypta.launcher.LauncherKt"
 
@@ -152,24 +193,11 @@ val jpackageImageCryptad by
       val mainJar = libDir.resolve("cryptad.jar")
       if (!mainJar.isFile) throw GradleException("Missing main JAR at ${mainJar.absolutePath}")
 
-      // Create a tiny bootstrap JAR so jpackage has a --main-jar without copying cryptad.jar
       val inputDir = jpackageInputDir.get().asFile
-      if (inputDir.exists()) inputDir.deleteRecursively()
-      inputDir.mkdirs()
-      val stagedMain = File(inputDir, "bootstrap.jar")
-      val mf = Manifest()
-      mf.mainAttributes.putValue("Manifest-Version", "1.0")
-      JarOutputStream(stagedMain.outputStream(), mf).use { /* empty */ }
+      val stagedMain = createBootstrapJar(inputDir)
 
       // Ensure we start from a clean target (jpackage fails if image exists)
-      run {
-        val existing =
-          when (os) {
-            "mac" -> outDir.resolve("$appName.app")
-            else -> outDir.resolve(appName)
-          }
-        if (existing.exists()) existing.deleteRecursively()
-      }
+      cleanExistingImage(outDir, os)
 
       val args =
         mutableListOf(
@@ -192,25 +220,21 @@ val jpackageImageCryptad by
           jreDir.get().asFile.absolutePath,
           "--resource-dir",
           jpackageResourcesDir.get().asFile.absolutePath,
+          "--icon",
+          iconPathForOs(),
         )
-      args.addAll(iconArg)
 
       // OS-specific tweaks (only flags valid for app-image)
       when (os) {
-        "mac" -> {
-          args.addAll(listOf("--mac-package-identifier", appId))
-        }
-        "linux" -> {
-          args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
-        }
+        "mac" -> args.addAll(listOf("--mac-package-identifier", appId))
+        "linux" -> args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
         "win" -> {
-          // For app-image, do NOT pass --win-menu/--win-shortcut (only valid for installer types)
-          // We intentionally keep Windows app-image generic here.
+          /* keep Windows app-image generic */
         }
       }
 
-      println("Executing jpackage app-image:\n" + args.joinToString(" "))
-      project.serviceOf<ExecOperations>().exec { commandLine(args) }
+      logger.lifecycle("Executing jpackage app-image:\n{}", args.joinToString(" "))
+      execAndLog(args)
     }
   }
 
@@ -235,7 +259,7 @@ val enrichAppImageWithDist by
         from(cryptadDistDir)
         into(target)
       }
-      println("Copied cryptad-dist -> ${target.absolutePath}")
+      logger.lifecycle("Copied cryptad-dist -> {}", target.absolutePath)
 
       // Patch the jpackage launcher config to point classpath to cryptad-dist/lib and correct main
       // class.
@@ -257,9 +281,9 @@ val enrichAppImageWithDist by
         out += "[JavaOptions]"
         out += "java-options=-Djpackage.app-version=${numericAppVersion()}"
         cfg.writeText(out.joinToString(System.lineSeparator()))
-        println("Patched launcher cfg -> ${cfg.absolutePath}")
+        logger.lifecycle("Patched launcher cfg -> {}", cfg.absolutePath)
       } else {
-        println("WARNING: launcher cfg not found at ${cfg.absolutePath}")
+        logger.warn("Launcher cfg not found at {}", cfg.absolutePath)
       }
     }
   }
@@ -278,29 +302,16 @@ val jpackageInstallerCryptad by
       }
     }
     doLast {
-      val toolchains = project.serviceOf<JavaToolchainService>()
-      val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
-      val javaHome = launcher.get().metadata.installationPath.asFile
-      val jpackage =
-        javaHome.resolve(
-          "bin/jpackage" +
-            if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
-        )
-      if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
-
-      val outDir = jpackageOutDir.get().asFile
-      outDir.mkdirs()
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
 
       val os = currentOs()
       val installerType = resolveInstallerType(os)
-
       val imagePath =
         when (os) {
           "mac" -> outDir.resolve("$appName.app").absolutePath
           else -> outDir.resolve(appName).absolutePath
         }
-
-      // Windows installers removed; no Windows-specific handling
 
       val args =
         mutableListOf(
@@ -320,15 +331,11 @@ val jpackageInstallerCryptad by
           "--vendor",
           vendor,
         )
-      // Debug mode: keep jpackage verbose logs if requested
-      if (providers.gradleProperty("jpackageDebug").orNull == "true") {
-        args.addAll(listOf("--verbose"))
-      }
-      // Ensure a stable bundle identifier on macOS
+      if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
-      // Windows installer options removed
-      println("Executing jpackage installer:\n" + args.joinToString(" "))
-      project.serviceOf<ExecOperations>().exec { commandLine(args) }
+
+      logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
+      execAndLog(args)
 
       // Keep jpackage default filenames (e.g., Crypta-<version>.<ext>)
     }

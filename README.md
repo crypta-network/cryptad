@@ -248,20 +248,26 @@ Notes
 
 ### Installers (jpackage)
 
-Build a desktop app image and native installers (non-Windows) with `jpackage`. The image embeds a minimal runtime and
+Build a desktop app image and (on macOS/Linux) native installers with `jpackage`. The image embeds a minimal runtime and
 bundles the portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
 
 Commands
 
 ```bash
-# Build produces the jpackage app image. On macOS/Linux it also builds the native installer (best effort).
+# Build includes the jpackage app image (no installer by default)
 ./gradlew build
+
+# App image only
+./gradlew jpackageImageCryptad
+
+# Native installer (macOS: .dmg; Linux: .deb or .rpm when dpkg-deb/rpmbuild is present)
+./gradlew jpackageInstallerCryptad
 ```
 
 Outputs (macOS example)
 
 - App image: `build/jpackage/Crypta.app`
-- Installer: `build/jpackage/Crypta-<numeric>.dmg` and a labeled copy `Crypta-v<project.version>+<gitShort>.dmg`
+- Installer: `build/jpackage/Crypta-<numeric>.dmg`
 
 Details
 
@@ -270,7 +276,7 @@ Details
 - Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
 - Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
-- Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). The installer filename also includes the friendly label `v<project.version>+<gitShort>`.
+- Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`).
 Note: Windows installers are not built; Windows builds produce only the app image.
 
 Troubleshooting (macOS)
