@@ -272,19 +272,8 @@ fun hasExe(name: String): Boolean =
 fun resolveInstallerType(os: String): String =
   when (os) {
     "mac" -> "dmg"
-    "win" -> {
-      // Allow override via -PwinInstallerType=msi|exe
-      val override = providers.gradleProperty("winInstallerType").orNull?.trim()?.lowercase()
-      if (override == "msi" || override == "exe") override
-      else {
-        // Prefer MSI when WiX is available, either on PATH or via WIX/WIX_HOME/WIX_PATH
-        val wixBin = wixBinFromEnv()
-        val hasOnPath = hasExe("candle.exe") && hasExe("light.exe")
-        val hasViaEnv =
-          wixBin?.let { File(it, "candle.exe").isFile && File(it, "light.exe").isFile } ?: false
-        if (hasOnPath || hasViaEnv) "msi" else "exe"
-      }
-    }
+    // Always produce Windows EXE wrapper when using the generic installer task.
+    "win" -> "exe"
     else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
   }
 
@@ -758,8 +747,8 @@ tasks.register("relinkWixUiBitmaps") {
   }
 }
 
-// Ensure standard build also creates the jpackage app image and installer (best effort on Linux).
+// Ensure standard build also creates custom MSI + final EXE wrapper on Windows.
 tasks.named("build") {
   dependsOn(jpackageImageCryptad)
-  dependsOn(jpackageInstallerCryptad)
+  dependsOn(jpackageAll)
 }
