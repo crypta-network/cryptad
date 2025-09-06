@@ -224,14 +224,9 @@ val jpackageImageCryptad by
           iconPathForOs(),
         )
 
-      // OS-specific tweaks (only flags valid for app-image)
-      when (os) {
-        "mac" -> args.addAll(listOf("--mac-package-identifier", appId))
-        "linux" -> args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
-        "win" -> {
-          /* keep Windows app-image generic */
-        }
-      }
+      // App-image stage must avoid installer-only flags. Do not pass platform-specific
+      // packaging options here (e.g., --linux-shortcut, --mac-package-identifier) because
+      // jpackage rejects them with --type app-image. Such options are added in the installer task.
 
       logger.lifecycle("Executing jpackage app-image:\n{}", args.joinToString(" "))
       execAndLog(args)
@@ -333,6 +328,7 @@ val jpackageInstallerCryptad by
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
+      if (os == "linux") args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
 
       logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
       execAndLog(args)
