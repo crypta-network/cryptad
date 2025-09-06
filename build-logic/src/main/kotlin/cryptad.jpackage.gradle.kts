@@ -227,7 +227,7 @@ val prepareJpackageResources by
           val wsf = buildString {
             appendLine("<?xml version=\"1.0\"?>")
             appendLine("<job id=\"post-msi\">")
-            appendLine("  <script language=\"JScript\">")
+            appendLine("  <script language=\"JScript\"><![CDATA[")
             appendLine("    var sh = WScript.CreateObject(\"WScript.Shell\");")
             appendLine("    var fso = WScript.CreateObject(\"Scripting.FileSystemObject\");")
             appendLine("    var msi = sh.Environment(\"PROCESS\")(\"JpMsiFile\");")
@@ -235,7 +235,7 @@ val prepareJpackageResources by
             appendLine(
               "    if (msi && fso.FileExists(src)) { try { fso.CopyFile(src, msi, true); } catch (e) {} }"
             )
-            appendLine("  </script>")
+            appendLine("]]>  </script>")
             appendLine("</job>")
           }
           script.writeText(wsf)
@@ -585,25 +585,103 @@ val jpackageInstallerCryptad by
         commandLine(args)
       }
 
-      // Rename the produced installer to include the user-facing version label (v<ver>+<git>)
-      val produced = File(outDir, "${appName}-${numericAppVersion()}.${installerType}")
-      if (produced.isFile) {
-        val labeled = File(outDir, "${appName}-${appVersionLabel.get()}.${produced.extension}")
-        produced.copyTo(labeled, overwrite = true)
-        println("Renamed installer -> ${labeled.name}")
-      } else {
-        println(
-          "Note: could not find produced installer ${produced.name} to relabel; leaving default name."
-        )
-      }
+      // Keep jpackage default filenames (e.g., Crypta-<version>.<ext>)
     }
   }
 
 // Convenience lifecycle tasks
+tasks.register("jpackageInstallerMsiCryptad") {
+  group = "jpackage"
+  description = "Creates a Windows MSI installer"
+  dependsOn(enrichAppImageWithDist)
+  onlyIf { currentOs() == "win" }
+  doLast {
+    val toolchains = project.serviceOf<JavaToolchainService>()
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val javaHome = launcher.get().metadata.installationPath.asFile
+    val jpackage = javaHome.resolve("bin/jpackage" + if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
+
+    val outDir = jpackageOutDir.get().asFile
+    outDir.mkdirs()
+    val imagePath = jpackageOutDir.get().asFile.resolve(appName).absolutePath
+    val args = mutableListOf(
+      jpackage.absolutePath,
+      "--type","msi",
+      "--name", appName,
+      "--app-version", numericAppVersion(),
+      "--dest", outDir.absolutePath,
+      "--resource-dir", jpackageResourcesDir.get().asFile.absolutePath,
+      "--app-image", imagePath,
+      "--vendor", vendor,
+      "--temp", outDir.resolve("tmp-installer").absolutePath,
+      "--win-per-user-install","--win-menu","--win-dir-chooser","--win-shortcut-prompt",
+    )
+    println("Executing jpackage MSI:\n" + args.joinToString(" "))
+    project.serviceOf<ExecOperations>().exec { commandLine(args) }
+  }
+}
+
+tasks.register("jpackageInstallerExeCryptad") {
+  group = "jpackage"
+  description = "Creates a Windows EXE installer (wraps MSI)"
+  dependsOn(enrichAppImageWithDist)
+  onlyIf { currentOs() == "win" }
+  doLast {
+    val toolchains = project.serviceOf<JavaToolchainService>()
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val javaHome = launcher.get().metadata.installationPath.asFile
+    val jpackage = javaHome.resolve("bin/jpackage" + if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
+
+    val outDir = jpackageOutDir.get().asFile
+    outDir.mkdirs()
+    val imagePath = jpackageOutDir.get().asFile.resolve(appName).absolutePath
+    // Ensure temp dir is empty
+    outDir.resolve("tmp-installer").let { if (it.exists()) it.deleteRecursively() }
+
+    val args = mutableListOf(
+      jpackage.absolutePath,
+      "--type","exe",
+      "--name", appName,
+      "--app-version", numericAppVersion(),
+      "--dest", outDir.absolutePath,
+      "--resource-dir", jpackageResourcesDir.get().asFile.absolutePath,
+      "--app-image", imagePath,
+      "--vendor", vendor,
+      "--temp", outDir.resolve("tmp-installer").absolutePath,
+      "--win-per-user-install","--win-menu","--win-dir-chooser","--win-shortcut-prompt",
+    )
+    val installerIco = project.file("src/jpackage/windows/CryptaInstaller.ico")
+    if (installerIco.isFile) args.addAll(listOf("--icon", installerIco.absolutePath))
+    println("Executing jpackage EXE:\n" + args.joinToString(" "))
+    // Prepend WiX bin to PATH if present
+    wixBinFromEnv()?.let { bin ->
+      project.serviceOf<ExecOperations>().exec {
+        val current = System.getenv("PATH") ?: ""
+        environment("PATH", bin.absolutePath + ";" + current)
+        commandLine(args)
+      }
+    } ?: run {
+      project.serviceOf<ExecOperations>().exec { commandLine(args) }
+    }
+
+    // Copy final EXE to CryptaInstaller.exe
+    val produced = File(outDir, "${appName}-${numericAppVersion()}.exe")
+    val finalExe = File(outDir, "CryptaInstaller.exe")
+    if (produced.isFile) {
+      produced.copyTo(finalExe, overwrite = true)
+      println("Final installer -> ${finalExe.name}")
+    } else println("WARNING: Could not locate produced EXE at ${produced.name}")
+  }
+}
+
 tasks.register("jpackageAll") {
   group = "jpackage"
-  description = "Builds app image and OS installer"
-  dependsOn(jpackageInstallerCryptad)
+  description = "Builds custom MSI and final EXE (CryptaInstaller.exe)"
+  dependsOn(jpackageInstallerMsiCryptad)
+  dependsOn(relinkWixUiBitmaps)
+  dependsOn(jpackageInstallerExeCryptad)
 }
 
 // Windows-only: Relink MSI with custom WiX UI bitmaps (dialog/banner) via light.exe
