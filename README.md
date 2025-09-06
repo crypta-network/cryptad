@@ -248,17 +248,14 @@ Notes
 
 ### Installers (jpackage)
 
-Build a desktop app image and a native installer with `jpackage`. The image embeds a minimal runtime and bundles the
-portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
+Build a desktop app image and native installers (non-Windows) with `jpackage`. The image embeds a minimal runtime and
+bundles the portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
 
 Commands
 
 ```bash
-# Build produces the jpackage app image and the OS installer (best effort per-OS tools)
+# Build produces the jpackage app image. On macOS/Linux it also builds the native installer (best effort).
 ./gradlew build
-
-# Build the app image and the OS installer only
-./gradlew jpackageAll
 ```
 
 Outputs (macOS example)
@@ -274,8 +271,7 @@ Details
 - Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
 - Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). The installer filename also includes the friendly label `v<project.version>+<gitShort>`.
-- Windows WiX: MSI builds require WiX 3.x. WiX tools are discovered on `PATH` or via the `WIX` (also `WIX_HOME`/`WIX_PATH`) environment variable pointing to the WiX installation root (its `bin/` is used).
- - Windows UX: Installer allows choosing the install directory and prompts to create a desktop shortcut.
+Note: Windows installers are not built; Windows builds produce only the app image.
 
 Troubleshooting (macOS)
 

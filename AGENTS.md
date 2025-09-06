@@ -222,10 +222,9 @@ runtime (via our custom jlink flow) and the portable `cryptad-dist` tree, so the
 wrapper reliably.
 
 - Tasks:
-  - `./gradlew build` → builds the jpackage app image and installer (best effort: Linux requires `dpkg-deb` or `rpmbuild`; Windows MSI requires WiX, otherwise EXE is used).
+  - `./gradlew build` → builds the jpackage app image. On macOS/Linux it also builds the native installer (best effort; Linux requires `dpkg-deb` or `rpmbuild`). Windows installers are not built.
   - `./gradlew jpackageImageCryptad` → builds only the app image under `build/jpackage/`.
-  - `./gradlew jpackageInstallerCryptad` → builds the installer for the current OS (macOS: `.dmg`; Windows: `.msi` when WiX is available, else `.exe`; Linux: `.deb` or `.rpm`).
-  - `./gradlew jpackageAll` → image + installer.
+  - `./gradlew jpackageInstallerCryptad` → builds the installer for the current OS (macOS: `.dmg`; Linux: `.deb` or `.rpm`). Not available on Windows.
 - Metadata:
   - Name: `Crypta`, Vendor: `crypta.network`, App ID: `network.crypta.cryptad`.
   - Main entry: `network.crypta.launcher.LauncherKt`.
