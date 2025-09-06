@@ -375,6 +375,11 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       ThemeSwitcher.shutdown()
     } catch (_: Throwable) {}
   }
+
+  /** Public entry to initiate the normal quit flow from OS events (Windows hooks, etc.). */
+  fun requestQuitFromOs() {
+    SwingUtilities.invokeLater { quitApp() }
+  }
 }
 
 /**
@@ -417,6 +422,13 @@ fun main() {
     f.size = size
     f.setLocation((screen.width - size.width) / 2, (screen.height - size.height) / 2)
     f.isVisible = true
+
+    // Install Windows-specific message hooks (WM_QUERYENDSESSION/WM_ENDSESSION/WM_CLOSE)
+    try {
+      if (System.getProperty("os.name").lowercase().contains("win")) {
+        WindowsMessageHooks.install(f) { f.requestQuitFromOs() }
+      }
+    } catch (_: Throwable) {}
   }
 
   // Ensure graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script)
