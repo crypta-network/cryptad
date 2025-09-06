@@ -219,11 +219,11 @@ val prepareJpackageResources by
         }
 
         // 3) Post-MSI script for EXE builds to wrap the custom MSI (copies custom MSI over
-        // JpMsiFile)
+        // JpMsiFile). We target the final MSI name CryptaInstaller.msi so the EXE embeds the
+        // relinked MSI.
         run {
           val script = File(resDir, "${appName}-post-msi.wsf")
-          val customMsi =
-            File(jpackageOutDir.get().asFile, "${appName}-${numericAppVersion()}-custom.msi")
+          val customMsi = File(jpackageOutDir.get().asFile, "${appName}Installer.msi")
           val wsf = buildString {
             appendLine("<?xml version=\"1.0\"?>")
             appendLine("<job id=\"post-msi\">")
@@ -588,26 +588,77 @@ tasks.register("jpackageInstallerMsiCryptad") {
     val toolchains = project.serviceOf<JavaToolchainService>()
     val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
     val javaHome = launcher.get().metadata.installationPath.asFile
-    val jpackage = javaHome.resolve("bin/jpackage" + if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    val jpackage =
+      javaHome.resolve(
+        "bin/jpackage" +
+          if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+      )
     if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
 
     val outDir = jpackageOutDir.get().asFile
     outDir.mkdirs()
     val imagePath = jpackageOutDir.get().asFile.resolve(appName).absolutePath
-    val args = mutableListOf(
-      jpackage.absolutePath,
-      "--type","msi",
-      "--name", appName,
-      "--app-version", numericAppVersion(),
-      "--dest", outDir.absolutePath,
-      "--resource-dir", jpackageResourcesDir.get().asFile.absolutePath,
-      "--app-image", imagePath,
-      "--vendor", vendor,
-      "--temp", outDir.resolve("tmp-installer").absolutePath,
-      "--win-per-user-install","--win-menu","--win-dir-chooser","--win-shortcut-prompt",
-    )
+
+    // Ensure temp dir is empty for jpackage (it fails if non-empty)
+    outDir.resolve("tmp-installer").let { if (it.exists()) it.deleteRecursively() }
+
+    // Verify WiX presence (candle/light) or skip with a clear message
+    run {
+      fun hasTool(tool: String): Boolean =
+        try {
+          val pb = ProcessBuilder("where", tool)
+          pb.redirectErrorStream(true)
+          val p = pb.start()
+          p.waitFor(3, TimeUnit.SECONDS)
+          p.exitValue() == 0
+        } catch (_: Exception) {
+          false
+        }
+      val wixBin = wixBinFromEnv()
+      val wixPresent =
+        (hasTool("light.exe") && hasTool("candle.exe")) ||
+          (wixBin?.let { File(it, "light.exe").isFile && File(it, "candle.exe").isFile } ?: false)
+      if (!wixPresent) {
+        println(
+          "WiX Toolset not found (light.exe/candle.exe). Skipping MSI creation. Install WiX 3.x and ensure it is on PATH or set WIX to the install root to enable MSI builds."
+        )
+        return@doLast
+      }
+    }
+    val args =
+      mutableListOf(
+        jpackage.absolutePath,
+        "--type",
+        "msi",
+        "--name",
+        appName,
+        "--app-version",
+        numericAppVersion(),
+        "--dest",
+        outDir.absolutePath,
+        "--resource-dir",
+        jpackageResourcesDir.get().asFile.absolutePath,
+        "--app-image",
+        imagePath,
+        "--vendor",
+        vendor,
+        "--temp",
+        outDir.resolve("tmp-installer").absolutePath,
+        "--win-per-user-install",
+        "--win-menu",
+        "--win-dir-chooser",
+        "--win-shortcut-prompt",
+      )
     println("Executing jpackage MSI:\n" + args.joinToString(" "))
-    project.serviceOf<ExecOperations>().exec { commandLine(args) }
+    project.serviceOf<ExecOperations>().exec {
+      // If WiX is specified via env, prepend its bin directory to PATH so jpackage can find tools.
+      wixBinFromEnv()?.let { bin ->
+        val current = System.getenv("PATH") ?: ""
+        environment("PATH", bin.absolutePath + ";" + current)
+        println("Using WiX from WIX env: ${bin.absolutePath}")
+      }
+      commandLine(args)
+    }
   }
 }
 
@@ -615,12 +666,18 @@ tasks.register("jpackageInstallerExeCryptad") {
   group = "jpackage"
   description = "Creates a Windows EXE installer (wraps MSI)"
   dependsOn(enrichAppImageWithDist)
+  // Ensure the custom MSI exists before we build the EXE wrapper
+  dependsOn("relinkWixUiBitmaps")
   onlyIf { currentOs() == "win" }
   doLast {
     val toolchains = project.serviceOf<JavaToolchainService>()
     val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
     val javaHome = launcher.get().metadata.installationPath.asFile
-    val jpackage = javaHome.resolve("bin/jpackage" + if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    val jpackage =
+      javaHome.resolve(
+        "bin/jpackage" +
+          if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+      )
     if (!jpackage.isFile) throw GradleException("jpackage not found in toolchain: ${jpackage}")
 
     val outDir = jpackageOutDir.get().asFile
@@ -629,18 +686,30 @@ tasks.register("jpackageInstallerExeCryptad") {
     // Ensure temp dir is empty
     outDir.resolve("tmp-installer").let { if (it.exists()) it.deleteRecursively() }
 
-    val args = mutableListOf(
-      jpackage.absolutePath,
-      "--type","exe",
-      "--name", appName,
-      "--app-version", numericAppVersion(),
-      "--dest", outDir.absolutePath,
-      "--resource-dir", jpackageResourcesDir.get().asFile.absolutePath,
-      "--app-image", imagePath,
-      "--vendor", vendor,
-      "--temp", outDir.resolve("tmp-installer").absolutePath,
-      "--win-per-user-install","--win-menu","--win-dir-chooser","--win-shortcut-prompt",
-    )
+    val args =
+      mutableListOf(
+        jpackage.absolutePath,
+        "--type",
+        "exe",
+        "--name",
+        appName,
+        "--app-version",
+        numericAppVersion(),
+        "--dest",
+        outDir.absolutePath,
+        "--resource-dir",
+        jpackageResourcesDir.get().asFile.absolutePath,
+        "--app-image",
+        imagePath,
+        "--vendor",
+        vendor,
+        "--temp",
+        outDir.resolve("tmp-installer").absolutePath,
+        "--win-per-user-install",
+        "--win-menu",
+        "--win-dir-chooser",
+        "--win-shortcut-prompt",
+      )
     val installerIco = project.file("src/jpackage/windows/CryptaInstaller.ico")
     if (installerIco.isFile) args.addAll(listOf("--icon", installerIco.absolutePath))
     println("Executing jpackage EXE:\n" + args.joinToString(" "))
@@ -651,13 +720,11 @@ tasks.register("jpackageInstallerExeCryptad") {
         environment("PATH", bin.absolutePath + ";" + current)
         commandLine(args)
       }
-    } ?: run {
-      project.serviceOf<ExecOperations>().exec { commandLine(args) }
-    }
+    } ?: run { project.serviceOf<ExecOperations>().exec { commandLine(args) } }
 
     // Copy final EXE to CryptaInstaller.exe
     val produced = File(outDir, "${appName}-${numericAppVersion()}.exe")
-    val finalExe = File(outDir, "CryptaInstaller.exe")
+    val finalExe = File(outDir, "${appName}Installer.exe")
     if (produced.isFile) {
       produced.copyTo(finalExe, overwrite = true)
       println("Final installer -> ${finalExe.name}")
@@ -668,9 +735,10 @@ tasks.register("jpackageInstallerExeCryptad") {
 tasks.register("jpackageAll") {
   group = "jpackage"
   description = "Builds custom MSI and final EXE (CryptaInstaller.exe)"
-  dependsOn(jpackageInstallerMsiCryptad)
-  dependsOn(relinkWixUiBitmaps)
-  dependsOn(jpackageInstallerExeCryptad)
+  // Use task names to avoid unresolved references in precompiled script
+  dependsOn("jpackageInstallerMsiCryptad")
+  dependsOn("relinkWixUiBitmaps")
+  dependsOn("jpackageInstallerExeCryptad")
 }
 
 // Windows-only: Relink MSI with custom WiX UI bitmaps (dialog/banner) via light.exe
@@ -678,7 +746,8 @@ tasks.register("jpackageAll") {
 tasks.register("relinkWixUiBitmaps") {
   group = "jpackage"
   description = "Relinks the MSI using WiX to inject custom dialog/banner bitmaps"
-  dependsOn(jpackageInstallerCryptad)
+  // Ensure we have a fresh MSI build and WiX objects from the MSI task
+  dependsOn("jpackageInstallerMsiCryptad")
   onlyIf { currentOs() == "win" }
   doLast {
     val tmp = jpackageOutDir.get().dir("tmp-installer").asFile
@@ -702,7 +771,8 @@ tasks.register("relinkWixUiBitmaps") {
         }
         ?: throw GradleException("WiX Toolset not found to relink MSI")
 
-    val outMsi = File(jpackageOutDir.get().asFile, "${appName}-${numericAppVersion()}-custom.msi")
+    // Produce the final-named MSI so downstream steps (and users) can rely on it
+    val outMsi = File(jpackageOutDir.get().asFile, "${appName}Installer.msi")
     val cmd =
       mutableListOf(
         File(wixBin, "light.exe").absolutePath,
@@ -750,5 +820,6 @@ tasks.register("relinkWixUiBitmaps") {
 // Ensure standard build also creates custom MSI + final EXE wrapper on Windows.
 tasks.named("build") {
   dependsOn(jpackageImageCryptad)
-  dependsOn(jpackageAll)
+  // Reference by name; task is registered above
+  dependsOn("jpackageAll")
 }
