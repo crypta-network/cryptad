@@ -1,16 +1,14 @@
 package network.crypta.launcher
 
-import com.sun.jna.Native
 import com.sun.jna.CallbackReference
+import com.sun.jna.Native
 import com.sun.jna.Pointer
-import com.sun.jna.platform.WindowUtils
-import com.sun.jna.platform.win32.User32
-import com.sun.jna.platform.win32.W32APIOptions
 import com.sun.jna.platform.win32.WinDef.HWND
-import com.sun.jna.platform.win32.WinDef.LRESULT
 import com.sun.jna.platform.win32.WinDef.LPARAM
+import com.sun.jna.platform.win32.WinDef.LRESULT
 import com.sun.jna.platform.win32.WinDef.WPARAM
 import com.sun.jna.platform.win32.WinUser
+import com.sun.jna.win32.W32APIOptions
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
 
@@ -27,6 +25,12 @@ import javax.swing.SwingUtilities
  * If anything fails (non-Windows, missing handle, API change), this is a no‑op.
  */
 object WindowsMessageHooks {
+  /**
+   * Windows message constants not exposed by jna-platform 5.17. Values match WinUser.h:
+   * WM_QUERYENDSESSION (0x0011), WM_ENDSESSION (0x0016).
+   */
+  private const val WM_QUERYENDSESSION = 0x0011
+  private const val WM_ENDSESSION = 0x0016
   private const val CLIENT_PROP_KEY = "crypta.win.wndprocHook"
 
   fun install(frame: JFrame, onQuit: () -> Unit) {
@@ -50,34 +54,35 @@ object WindowsMessageHooks {
 
   private fun getHwnd(frame: JFrame): HWND? =
     try {
-      // WindowUtils is provided by jna-platform; returns an HWND for the Java Window
-      WindowUtils.getWindowHandle(frame)
+      // JNA 5.17 no longer exposes WindowUtils.getWindowHandle(Window).
+      // Use Native.getWindowPointer(Window) and wrap it as HWND.
+      val p: Pointer = Native.getWindowPointer(frame)
+      if (p == Pointer.NULL) null else HWND(p)
     } catch (_: Throwable) {
       null
     }
 
   /** Window procedure hook forwarding unhandled messages to the original WNDPROC. */
-  private class WndProcHook(
-    private val hWnd: HWND,
-    private val onQuit: () -> Unit,
-  ) : WinUser.WindowProc {
+  private class WndProcHook(private val hWnd: HWND, private val onQuit: () -> Unit) :
+    WinUser.WindowProc {
     private val prevWndProc: Pointer
     @Volatile private var invoked = false
 
     init {
       // Subclass the window procedure, remembering the previous one for forwarding
       val fnPtr: Pointer = CallbackReference.getFunctionPointer(this)
-      prevWndProc = U32EX.SetWindowLongPtr(hWnd, WinUser.GWLP_WNDPROC, fnPtr)
+      // JNA does not expose GWLP_WNDPROC, but GWL_WNDPROC works for SetWindowLongPtr index
+      prevWndProc = U32EX.SetWindowLongPtr(hWnd, WinUser.GWL_WNDPROC, fnPtr)
     }
 
     override fun callback(h: HWND?, uMsg: Int, wParam: WPARAM?, lParam: LPARAM?): LRESULT {
       when (uMsg) {
-        WinUser.WM_QUERYENDSESSION -> {
+        WM_QUERYENDSESSION -> {
           // Begin graceful quit but allow shutdown to continue
           triggerQuitOnce()
           return LRESULT(1) // TRUE
         }
-        WinUser.WM_ENDSESSION -> {
+        WM_ENDSESSION -> {
           if ((wParam?.toInt() ?: 0) != 0) triggerQuitOnce()
         }
         WinUser.WM_CLOSE -> {
@@ -101,6 +106,7 @@ object WindowsMessageHooks {
 // Local narrow interface to avoid signature differences across JNA versions.
 private interface User32Ex : com.sun.jna.win32.StdCallLibrary {
   fun SetWindowLongPtr(hWnd: HWND, nIndex: Int, dwNewLong: Pointer): Pointer
+
   fun CallWindowProc(
     lpPrevWndFunc: Pointer,
     hWnd: HWND?,
