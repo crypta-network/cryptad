@@ -115,7 +115,6 @@ else
     if command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload || true
       systemctl enable cryptad.service || true
-      systemctl start cryptad.service || true
     fi
   fi
 fi
