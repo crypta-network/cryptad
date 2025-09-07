@@ -79,7 +79,10 @@ sed -i -e 's/.*/%dir "&"/' %{package_filelist}
 package_type=rpm
 
 # Detect desktop vs server; aligns with DEB scripts
-is_desktop() {
+APP_DIR="/opt/cryptad/crypta"
+COMMON="$APP_DIR/lib/crypta-common.sh"
+[ -f "$COMMON" ] && . "$COMMON"
+command -v is_desktop >/dev/null 2>&1 || is_desktop() {
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
       if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
@@ -92,7 +95,6 @@ is_desktop() {
   return 1
 }
 
-APP_DIR="/opt/cryptad/crypta"
 SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 
@@ -101,22 +103,21 @@ if is_desktop; then
 else
   if [ -f "$SERVICE_SRC" ]; then
     # Ensure service user/group exist before enabling the unit
-    if ! getent group cryptad >/dev/null 2>&1; then
-      if command -v groupadd >/dev/null 2>&1; then
-        groupadd --system cryptad || true
+    command -v ensure_user >/dev/null 2>&1 || ensure_user() {
+      if ! getent group cryptad >/dev/null 2>&1; then
+        if command -v groupadd >/dev/null 2>&1; then
+          groupadd --system cryptad || true
+        fi
       fi
-    fi
-    if ! id -u cryptad >/dev/null 2>&1; then
-      if command -v useradd >/dev/null 2>&1; then
-        useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
-          --gid cryptad --comment "Cryptad service user" cryptad || true
+      if ! id -u cryptad >/dev/null 2>&1; then
+        if command -v useradd >/dev/null 2>&1; then
+          useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
+            --gid cryptad --comment "Cryptad service user" cryptad || true
+        fi
       fi
-    else
-      if command -v usermod >/dev/null 2>&1; then
-        usermod -g cryptad cryptad >/dev/null 2>&1 || true
-      fi
-    fi
-    install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
+      install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
+    }
+    ensure_user
     install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
     if command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload || true
@@ -139,7 +140,10 @@ fi
 %preun
 package_type=rpm
 
-is_desktop() {
+APP_DIR="/opt/cryptad/crypta"
+COMMON="$APP_DIR/lib/crypta-common.sh"
+[ -f "$COMMON" ] && . "$COMMON"
+command -v is_desktop >/dev/null 2>&1 || is_desktop() {
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
       if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then

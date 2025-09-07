@@ -6,6 +6,10 @@ set -e
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
 
+# Attempt to source common helpers if still present (may be absent after removal)
+COMMON="/opt/cryptad/crypta/lib/crypta-common.sh"
+[ -f "$COMMON" ] && . "$COMMON"
+
 cleanup_desktop() {
   rm -f "$DESKTOP_DST" || true
   if command -v update-desktop-database >/dev/null 2>&1; then
@@ -19,11 +23,14 @@ cleanup_desktop() {
 
 cleanup_service() {
   if command -v systemctl >/dev/null 2>&1; then
-    # Prefer state probes over listing files to avoid TOCTOU between check and action.
-    # If the unit is enabled OR currently active, try disabling+stopping quietly; ignore errors.
-    if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
-       || systemctl is-active cryptad.service >/dev/null 2>&1; then
-      systemctl disable --now cryptad.service >/dev/null 2>&1 || true
+    # Prefer state probes; use helper when available
+    if command -v service_disable_quiet >/dev/null 2>&1; then
+      service_disable_quiet cryptad.service
+    else
+      if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
+         || systemctl is-active cryptad.service >/dev/null 2>&1; then
+        systemctl disable --now cryptad.service >/dev/null 2>&1 || true
+      fi
     fi
     rm -f "$SERVICE_DST" || true
     systemctl daemon-reload || true

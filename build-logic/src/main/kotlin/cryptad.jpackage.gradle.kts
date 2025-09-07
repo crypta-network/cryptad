@@ -73,6 +73,11 @@ val prepareJpackageResources by
       include("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall")
       into("")
     }
+    // Shared helper library for maintainer scripts
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("crypta-common.sh")
+      into("lib")
+    }
     // For RPM: jpackage supports overriding its spec via a file named
     // "<package-name>.spec" in the resource dir (package-name defaults to the application
     // name lowercased; here it is "crypta"). Include our customized spec. We also copy
@@ -103,7 +108,7 @@ val prepareJpackageResources by
       // Ensure Linux maintainer scripts are executable when present
       if (currentOs() == "linux") {
         val res = jpackageResourcesDir.get().asFile
-        listOf("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall")
+        listOf("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall", "lib/crypta-common.sh")
           .map { File(res, it) }
           .filter { it.isFile }
           .forEach { it.setExecutable(true, true) }

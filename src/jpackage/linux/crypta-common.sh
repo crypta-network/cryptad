@@ -1,21 +1,9 @@
 #!/bin/sh
-set -e
+# Common helpers for Crypta Linux installers (DEB/RPM)
+# Safe to source from maintainer scripts and RPM spec scriptlets.
 
-# jpackage DEB post-install script
-# Installs either a systemd service (server/no-desktop) or a desktop entry (desktop environments).
-
-APP_DIR="/opt/cryptad/crypta"
-SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
-SERVICE_DST="/etc/systemd/system/cryptad.service"
-DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
-DESKTOP_DST="/usr/share/applications/crypta.desktop"
-
-# Try to source common helpers from installed image
-COMMON="$APP_DIR/lib/crypta-common.sh"
-[ -f "$COMMON" ] && . "$COMMON"
-
-# Fallbacks if helpers are not available
-command -v is_desktop >/dev/null 2>&1 || is_desktop() {
+is_desktop() {
+  # Treat as desktop only when a display manager exists and is enabled/active.
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
       if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
@@ -23,12 +11,14 @@ command -v is_desktop >/dev/null 2>&1 || is_desktop() {
       fi
     fi
   fi
+  # Fallback: presence of session files
   ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
   ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
   return 1
 }
 
-command -v ensure_user >/dev/null 2>&1 || ensure_user() {
+ensure_user() {
+  # Ensure system group explicitly to match Group= in the service unit
   if ! getent group cryptad >/dev/null 2>&1; then
     if command -v groupadd >/dev/null 2>&1; then
       groupadd --system cryptad || true
@@ -36,49 +26,36 @@ command -v ensure_user >/dev/null 2>&1 || ensure_user() {
       addgroup --system cryptad || true
     fi
   fi
+  # Ensure system user with primary group cryptad
   if ! id -u cryptad >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then
       useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
         --gid cryptad --comment "Cryptad service user" cryptad || true
     fi
+  else
+    if command -v usermod >/dev/null 2>&1; then
+      usermod -g cryptad cryptad >/dev/null 2>&1 || true
+    fi
   fi
   install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
 }
 
-install_service() {
-  ensure_user
-  if [ -f "$SERVICE_SRC" ]; then
-    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
-    if command -v systemctl >/dev/null 2>&1; then
-      systemctl daemon-reload || true
-      systemctl enable cryptad.service || true
-      # Start service on install
-      systemctl start cryptad.service || true
+service_disable_quiet() {
+  unit="${1:-cryptad.service}"
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-enabled "$unit" >/dev/null 2>&1 || systemctl is-active "$unit" >/dev/null 2>&1; then
+      systemctl disable --now "$unit" >/dev/null 2>&1 || true
     fi
   fi
 }
 
-install_desktop() {
-  if [ -f "$DESKTOP_SRC" ]; then
-    install -D -m 0644 "$DESKTOP_SRC" "$DESKTOP_DST"
-  fi
-  # Refresh desktop databases (both system and local share paths)
+refresh_desktop_caches() {
   if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database -q /usr/share/applications || true
     update-desktop-database -q /usr/local/share/applications || true
   fi
-  # Refresh icon cache for hicolor theme
   if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
   fi
 }
 
-# Deb maintainer scripts can pass an argument (e.g., configure). We ignore it safely.
-
-if is_desktop; then
-  install_desktop
-else
-  install_service
-fi
-
-exit 0
