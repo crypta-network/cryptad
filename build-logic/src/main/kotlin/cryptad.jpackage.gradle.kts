@@ -70,7 +70,7 @@ val prepareJpackageResources by
     from(layout.projectDirectory.dir("src/jpackage"))
     // Linux maintainer scripts for DEB detection are placed at resource root
     from(layout.projectDirectory.dir("src/jpackage/linux")) {
-      include("postinst", "postrm", "postinstall", "postuninstall")
+      include("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall")
       into("")
     }
     // For RPM: jpackage supports overriding its spec via a file named
@@ -103,7 +103,7 @@ val prepareJpackageResources by
       // Ensure Linux maintainer scripts are executable when present
       if (currentOs() == "linux") {
         val res = jpackageResourcesDir.get().asFile
-        listOf("postinst", "postrm", "postinstall", "postuninstall")
+        listOf("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall")
           .map { File(res, it) }
           .filter { it.isFile }
           .forEach { it.setExecutable(true, true) }
