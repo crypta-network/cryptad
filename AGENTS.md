@@ -235,7 +235,7 @@ start/stop the wrapper reliably.
 - Icons and resources:
   - macOS: `src/jpackage/macos/cryptad.icns`.
   - Windows: `src/jpackage/windows/cryptad.ico`.
-  - Linux: `src/jpackage/linux/cryptad.png` (passed to `jpackage --icon` and copied verbatim into the image; a `.desktop` entry is pre-written to use this icon).
+  - Linux: `src/jpackage/linux/cryptad.png` (passed to `jpackage --icon`; copied verbatim into the image; a `.desktop` entry is pre-written to use this icon).
   - Root `LICENSE` is included as `LICENSE.txt` and `EULA.txt`; `README.md` as `README.txt`.
 - Image layout:
   - App root: `Contents/app/` (macOS) contains `Crypta.cfg`, a tiny `bootstrap.jar`, and `cryptad-dist/`.
@@ -252,14 +252,21 @@ start/stop the wrapper reliably.
   - Treated as “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active; otherwise falls back to detecting session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`).
   - This avoids misclassifying some servers that report a graphical default target.
 - Conditional install actions:
-  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, `daemon-reload`, `enable`, and `start` the service.
+  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, `daemon-reload`, and `enable` the service. Do not auto-start; require explicit admin `systemctl start`.
   - Desktop: install a `.desktop` entry (`/usr/share/applications/crypta.desktop`), refresh menus (`update-desktop-database`) and icon cache (`gtk-update-icon-cache`) when available.
 - System user: creates a `cryptad` system account for the service (`/var/lib/cryptad`, shell `nologin`) when missing.
+- System group: creates an explicit `cryptad` system group and sets it as the primary group for the `cryptad` user.
 - Maintainer scripts and spec:
   - DEB: `src/jpackage/linux/preinst`, `prerm`, `postinst`, `postrm` are flattened into the jpackage resource dir and marked executable. `prerm` tolerates missing `xdg-desktop-menu` on servers to avoid uninstall failures; `postinst/postrm` refresh desktop DB and icon cache when present.
   - RPM: a custom `src/jpackage/linux/crypta.spec` handles conditional service/desktop logic and also creates the `cryptad` user. The systemd unit is staged under the image at `lib/systemd/system/cryptad.service` and installed to `/etc/systemd/system/` by the spec.
 - Icon and desktop entry:
   - A full‑size Linux icon is embedded; a `.desktop` file is prewritten into the image to ensure GNOME and other DEs display the correct icon.
+- Script library: common installer logic lives in `src/jpackage/linux/crypta-common.sh` (installed under `lib/` in the app image). Maintainer scripts and spec sections source it when present and include safe fallbacks to keep uninstall idempotent after files are removed. Do not duplicate `is_desktop`, `ensure_user`, or service control snippets elsewhere.
+
+Uninstall semantics
+- Service cleanup: during removal, scripts use `systemctl is-enabled/is-active` before `disable --now` to avoid races; they remove `/etc/systemd/system/cryptad.service` and `daemon-reload`.
+- Desktop cleanup: remove `crypta.desktop` and refresh caches when tools exist.
+- Data/account retention: the `cryptad` user/group and `/var/lib/cryptad` remain to avoid data loss. Removing them is a manual admin action and must not be automated by default.
 - Windows installers are not produced; only app images are built on Windows.
 
 ## Testing Strategy

@@ -300,19 +300,41 @@ Linux behavior and service
   - Considered a “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active.
   - As a fallback, presence of session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`) also counts as desktop.
   - This avoids mislabeling headless servers that happen to default to `graphical.target`.
-- Conditional actions on install:
-  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, then `systemctl daemon-reload`, `enable`, and `start` it.
+- Install‑time actions:
+  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, then `systemctl daemon-reload` and `enable` it. The service is NOT auto‑started; start it manually when ready.
   - Desktop: install a `.desktop` entry at `/usr/share/applications/crypta.desktop` and refresh caches when tools are present (`update-desktop-database`, `gtk-update-icon-cache`).
-- A `cryptad` system user is created if missing (home `/var/lib/cryptad`, shell `nologin`).
-- Uninstall is tolerant on servers without desktop tooling: DEB `prerm` ignores missing `xdg-desktop-menu` and `postrm` cleans up both the desktop entry and service when present.
+- Accounts and data:
+  - Creates an explicit system group `cryptad`, then a system user `cryptad` with primary group `cryptad` (home `/var/lib/cryptad`, shell `nologin`).
+  - Ensures `/var/lib/cryptad` exists and is owned by `cryptad:cryptad` (0750). Application state/log/cache directories defined in the systemd unit (e.g., `StateDirectory=cryptad`) are managed by systemd on first start.
+- Removal and cleanup:
+  - DEB `postrm`/RPM `%preun` disable and stop the unit only when it is enabled or active (race‑free check), remove the unit file, and run `daemon-reload`.
+  - Desktop caches are refreshed; `.desktop` is removed when present. Scripts tolerate missing desktop tooling.
+  - The `cryptad` user/group and data directory are preserved to avoid data loss. Remove them manually if desired.
+
+Manual service control (Linux)
 
 Service management (Linux)
 
 ```bash
 sudo systemctl status cryptad
+sudo systemctl start cryptad   # start explicitly after installation
 sudo systemctl stop cryptad
-sudo systemctl start cryptad
-sudo systemctl disable --now cryptad   # if you prefer launching manually
+sudo systemctl disable --now cryptad
+
+Package removal behavior (Linux)
+
+- DEB removal: disables/stops the service if enabled/active, removes `/etc/systemd/system/cryptad.service`, reloads systemd, and removes the desktop entry if present. The `cryptad` user/group and `/var/lib/cryptad` remain.
+- RPM removal: `%preun` performs the same service cleanup; the user/group and data remain.
+
+To remove the account and data explicitly (optional):
+
+```bash
+sudo systemctl disable --now cryptad || true
+sudo rm -f /etc/systemd/system/cryptad.service && sudo systemctl daemon-reload
+sudo rm -rf /var/lib/cryptad
+sudo userdel cryptad 2>/dev/null || true
+sudo groupdel cryptad 2>/dev/null || true
+```
 ```
 
 Troubleshooting (macOS)
