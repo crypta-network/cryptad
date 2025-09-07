@@ -291,8 +291,27 @@ val enrichAppImageWithDist by
             dstIcon.absolutePath,
             dstIcon.length(),
           )
+
+          // Also place a stable copy and our own .desktop file referencing it, so the desktop
+          // entry uses the exact provided icon even if jpackage generates a 32x32 fallback.
+          val stableIcon = imageRoot.resolve("lib/cryptad.png")
+          srcIcon.copyTo(stableIcon, overwrite = true)
+          val desktop = imageRoot.resolve("lib/crypta-$appName.desktop")
+          val desktopContent = buildString {
+            appendLine("[Desktop Entry]")
+            appendLine("Name=$appName")
+            appendLine("Comment=$appName")
+            appendLine("Exec=/opt/crypta/bin/$appName")
+            appendLine("Icon=/opt/crypta/lib/cryptad.png")
+            appendLine("Terminal=false")
+            appendLine("Type=Application")
+            appendLine("Categories=Network;Utility;")
+            appendLine("MimeType=")
+          }
+          desktop.writeText(desktopContent)
+          logger.lifecycle("Wrote Linux desktop entry -> {}", desktop.absolutePath)
         } catch (e: Exception) {
-          logger.warn("Failed to replace Linux icon at {}: {}", dstIcon.absolutePath, e.message)
+          logger.warn("Failed to finalize Linux icon/desktop: {}", e.message)
         }
       }
 
@@ -386,6 +405,8 @@ val jpackageInstallerCryptad by
             "Network;Utility;",
           )
         )
+      // Also pass icon for installer builds so the packaged icon matches our provided file.
+      args.addAll(listOf("--icon", iconPathForOs()))
 
       logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
       execAndLog(args)
@@ -428,6 +449,7 @@ val jpackageInstallerRpm by
           "--linux-app-category",
           "Network;Utility;",
         )
+      args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       logger.lifecycle("Executing jpackage RPM installer:\n{}", args.joinToString(" "))
       execAndLog(args)
@@ -467,6 +489,7 @@ val jpackageInstallerDeb by
           "--linux-app-category",
           "Network;Utility;",
         )
+      args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       logger.lifecycle("Executing jpackage DEB installer:\n{}", args.joinToString(" "))
       execAndLog(args)
