@@ -109,11 +109,31 @@ fun hasExe(name: String): Boolean =
     false
   }
 
-/** Picks installer type for the current OS; Windows intentionally unsupported. */
+/**
+ * Picks installer type for the current OS; Windows intentionally unsupported. On Linux, supports
+ * override via `-PlinuxInstaller=<deb|rpm>` or env `CRYPTA_LINUX_INSTALLER`. Defaults to preferring
+ * rpm when both tools are present.
+ */
 fun resolveInstallerType(os: String): String =
   when (os) {
     "mac" -> "dmg"
-    else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
+    else -> {
+      val override =
+        (providers.gradleProperty("linuxInstaller").orNull
+            ?: System.getenv("CRYPTA_LINUX_INSTALLER"))
+          ?.trim()
+          ?.lowercase()
+      when (override) {
+        "deb" -> "deb"
+        "rpm" -> "rpm"
+        else ->
+          when {
+            hasExe("rpmbuild") -> "rpm"
+            hasExe("dpkg-deb") -> "deb"
+            else -> "deb"
+          }
+      }
+    }
   }
 
 /** Returns absolute icon path for jpackage matching the current OS. */
@@ -237,7 +257,7 @@ val jpackageImageCryptad by
 val enrichAppImageWithDist by
   tasks.registering {
     group = "jpackage"
-    description = "Copies build/cryptad-dist into the jpackage app image under app/cryptad-dist"
+    description = "Copies cryptad-dist into the jpackage image (mac: Contents/app; linux: lib/app)"
     dependsOn(jpackageImageCryptad)
     doLast {
       val os = currentOs()
@@ -248,7 +268,11 @@ val enrichAppImageWithDist by
           else -> root.resolve(appName)
         }
       val appDir = imageRoot.resolve("app")
-      val target = appDir.resolve("cryptad-dist")
+      val target =
+        when (os) {
+          "mac" -> appDir.resolve("cryptad-dist")
+          else -> imageRoot.resolve("lib/app/cryptad-dist")
+        }
       target.parentFile.mkdirs()
       copy {
         from(cryptadDistDir)
@@ -258,7 +282,13 @@ val enrichAppImageWithDist by
 
       // Patch the jpackage launcher config to point classpath to cryptad-dist/lib and correct main
       // class.
-      val cfg = appDir.resolve("$appName.cfg")
+      val cfg =
+        when (os) {
+          // macOS: cfg lives under Contents/app
+          "mac" -> appDir.resolve("$appName.cfg")
+          // Linux: cfg lives under lib/app
+          else -> imageRoot.resolve("lib/app/$appName.cfg")
+        }
       if (cfg.isFile) {
         // Compose a fresh config that keeps only the sections we need.
         val out = mutableListOf<String>()
@@ -268,10 +298,12 @@ val enrichAppImageWithDist by
         val jarDir = target.resolve("lib")
         val jars =
           jarDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sortedBy { it.name }
-        out += "app.classpath=\$APPDIR/cryptad-dist/lib/cryptad.jar"
+        val cpPrefix =
+          if (os == "linux") "\$APPDIR/cryptad-dist/lib/" else "\$APPDIR/cryptad-dist/lib/"
+        out += "app.classpath=${cpPrefix}cryptad.jar"
         jars
           ?.filter { it.name != "cryptad.jar" }
-          ?.forEach { f -> out += "app.classpath=\$APPDIR/cryptad-dist/lib/${f.name}" }
+          ?.forEach { f -> out += "app.classpath=${cpPrefix}${f.name}" }
         out += ""
         out += "[JavaOptions]"
         out += "java-options=-Djpackage.app-version=${numericAppVersion()}"
@@ -336,6 +368,91 @@ val jpackageInstallerCryptad by
 
       // Keep jpackage default filenames (e.g., Crypta-<version>.<ext>)
     }
+  }
+
+// Explicit Linux installer tasks to force a specific package type
+val jpackageInstallerRpm by
+  tasks.registering {
+    group = "jpackage"
+    description = "Creates an RPM installer for Linux"
+    dependsOn(enrichAppImageWithDist)
+    onlyIf { currentOs() == "linux" && hasExe("rpmbuild") }
+    doLast {
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
+      val imagePath = outDir.resolve(appName).absolutePath
+      val args =
+        mutableListOf(
+          jpackage.absolutePath,
+          "--type",
+          "rpm",
+          "--name",
+          appName,
+          "--app-version",
+          numericAppVersion(),
+          "--dest",
+          outDir.absolutePath,
+          "--resource-dir",
+          jpackageResourcesDir.get().asFile.absolutePath,
+          "--app-image",
+          imagePath,
+          "--vendor",
+          vendor,
+          "--linux-shortcut",
+          "--linux-menu-group",
+          "Network;Utility;",
+        )
+      if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
+      logger.lifecycle("Executing jpackage RPM installer:\n{}", args.joinToString(" "))
+      execAndLog(args)
+    }
+  }
+
+val jpackageInstallerDeb by
+  tasks.registering {
+    group = "jpackage"
+    description = "Creates a DEB installer for Linux"
+    dependsOn(enrichAppImageWithDist)
+    onlyIf { currentOs() == "linux" && hasExe("dpkg-deb") }
+    doLast {
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
+      val imagePath = outDir.resolve(appName).absolutePath
+      val args =
+        mutableListOf(
+          jpackage.absolutePath,
+          "--type",
+          "deb",
+          "--name",
+          appName,
+          "--app-version",
+          numericAppVersion(),
+          "--dest",
+          outDir.absolutePath,
+          "--resource-dir",
+          jpackageResourcesDir.get().asFile.absolutePath,
+          "--app-image",
+          imagePath,
+          "--vendor",
+          vendor,
+          "--linux-shortcut",
+          "--linux-menu-group",
+          "Network;Utility;",
+        )
+      if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
+      logger.lifecycle("Executing jpackage DEB installer:\n{}", args.joinToString(" "))
+      execAndLog(args)
+    }
+  }
+
+// Convenience task to build all Linux installers available on the host
+val jpackageInstallerLinuxAll by
+  tasks.registering {
+    group = "jpackage"
+    description = "Builds all supported Linux installers (deb/rpm)"
+    dependsOn(jpackageInstallerDeb)
+    dependsOn(jpackageInstallerRpm)
+    onlyIf { currentOs() == "linux" && (hasExe("dpkg-deb") || hasExe("rpmbuild")) }
   }
 
 // Windows MSI installer task removed

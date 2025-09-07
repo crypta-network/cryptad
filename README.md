@@ -260,8 +260,16 @@ Commands
 # App image only
 ./gradlew jpackageImageCryptad
 
-# Native installer (macOS: .dmg; Linux: .deb or .rpm when dpkg-deb/rpmbuild is present)
+# Native installer (macOS: .dmg; Linux: .deb or .rpm)
+# - Auto-picks type on Linux (prefers rpm when available)
 ./gradlew jpackageInstallerCryptad
+
+# Force a specific Linux package type
+./gradlew jpackageInstallerRpm     # requires rpmbuild
+./gradlew jpackageInstallerDeb     # requires dpkg-deb
+
+# Or override the auto-detected Linux type
+./gradlew -PlinuxInstaller=rpm jpackageInstallerCryptad
 ```
 
 Outputs (macOS example)
@@ -278,6 +286,12 @@ Details
 - App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
 - Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`).
 Note: Windows installers are not built; Windows builds produce only the app image.
+
+Linux notes
+
+- RPM builds require `rpmbuild` to be installed and on PATH.
+- When both `dpkg-deb` and `rpmbuild` are installed, the default task prefers RPM. You can force DEB/RPM using the
+  tasks above or `-PlinuxInstaller=<deb|rpm>`.
 
 Troubleshooting (macOS)
 
