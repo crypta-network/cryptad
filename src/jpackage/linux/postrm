@@ -19,9 +19,10 @@ cleanup_desktop() {
 
 cleanup_service() {
   if command -v systemctl >/dev/null 2>&1; then
-    # Only attempt to disable/stop when the unit actually exists to avoid
-    # noisy "Unit cryptad.service does not exist" messages during uninstall.
-    if systemctl list-unit-files cryptad.service --no-legend --no-pager 2>/dev/null | awk '{print $1}' | grep -qx 'cryptad.service'; then
+    # Prefer state probes over listing files to avoid TOCTOU between check and action.
+    # If the unit is enabled OR currently active, try disabling+stopping quietly; ignore errors.
+    if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
+       || systemctl is-active cryptad.service >/dev/null 2>&1; then
       systemctl disable --now cryptad.service >/dev/null 2>&1 || true
     fi
     rm -f "$SERVICE_DST" || true

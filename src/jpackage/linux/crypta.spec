@@ -135,7 +135,9 @@ if is_desktop; then
   DESKTOP_COMMANDS_UNINSTALL
 else
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files cryptad.service --no-legend --no-pager 2>/dev/null | awk '{print $1}' | grep -qx 'cryptad.service'; then
+    # Avoid TOCTOU between unit existence check and disable/stop by probing state.
+    if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
+       || systemctl is-active cryptad.service >/dev/null 2>&1; then
       systemctl disable --now cryptad.service >/dev/null 2>&1 || true
     fi
     rm -f /etc/systemd/system/cryptad.service || true
