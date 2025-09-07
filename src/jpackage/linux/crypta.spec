@@ -70,12 +70,25 @@ sed -i -e 's/.*/%dir "&"/' %{package_filelist}
 package_type=rpm
 
 ensure_user() {
+  # Create system group explicitly to match Group= in service unit
+  if ! getent group cryptad >/dev/null 2>&1; then
+    if command -v groupadd >/dev/null 2>&1; then
+      groupadd --system cryptad || true
+    fi
+  fi
+  # Create system user with primary group cryptad
   if ! id -u cryptad >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then
       useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
-        --comment "Cryptad service user" cryptad || true
+        --gid cryptad --comment "Cryptad service user" cryptad || true
+    fi
+  else
+    if command -v usermod >/dev/null 2>&1; then
+      usermod -g cryptad cryptad >/dev/null 2>&1 || true
     fi
   fi
+  # Ensure data dir exists with correct ownership
+  install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
 }
 
 is_desktop() {

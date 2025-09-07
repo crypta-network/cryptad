@@ -28,12 +28,28 @@ is_desktop() {
 }
 
 ensure_user() {
+  # Ensure system group explicitly to match Group= in the service unit
+  if ! getent group cryptad >/dev/null 2>&1; then
+    if command -v addgroup >/dev/null 2>&1; then
+      addgroup --system cryptad || true
+    elif command -v groupadd >/dev/null 2>&1; then
+      groupadd --system cryptad || true
+    fi
+  fi
+  # Ensure system user with primary group cryptad
   if ! id -u cryptad >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then
       useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
-        --comment "Cryptad service user" cryptad || true
+        --gid cryptad --comment "Cryptad service user" cryptad || true
+    fi
+  else
+    # If user exists, align primary group without failing the install
+    if command -v usermod >/dev/null 2>&1; then
+      usermod -g cryptad cryptad >/dev/null 2>&1 || true
     fi
   fi
+  # Ensure data directory exists and is owned by cryptad
+  install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
 }
 
 install_service() {

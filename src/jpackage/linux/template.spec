@@ -100,6 +100,23 @@ if is_desktop; then
   DESKTOP_COMMANDS_INSTALL
 else
   if [ -f "$SERVICE_SRC" ]; then
+    # Ensure service user/group exist before enabling the unit
+    if ! getent group cryptad >/dev/null 2>&1; then
+      if command -v groupadd >/dev/null 2>&1; then
+        groupadd --system cryptad || true
+      fi
+    fi
+    if ! id -u cryptad >/dev/null 2>&1; then
+      if command -v useradd >/dev/null 2>&1; then
+        useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
+          --gid cryptad --comment "Cryptad service user" cryptad || true
+      fi
+    else
+      if command -v usermod >/dev/null 2>&1; then
+        usermod -g cryptad cryptad >/dev/null 2>&1 || true
+      fi
+    fi
+    install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
     install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
     if command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload || true
