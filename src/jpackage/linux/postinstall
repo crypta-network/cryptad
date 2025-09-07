@@ -3,8 +3,8 @@ set -e
 
 # jpackage RPM post-install script (same behavior as DEB postinst)
 
-APP_DIR="/opt/cryptad"
-SERVICE_SRC="$APP_DIR/cryptad.service"
+APP_DIR="/opt/cryptad/crypta"
+SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
@@ -66,4 +66,3 @@ else
 fi
 
 exit 0
-

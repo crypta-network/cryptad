@@ -4,8 +4,8 @@ set -e
 # jpackage DEB post-install script
 # Installs either a systemd service (server/no-desktop) or a desktop entry (desktop environments).
 
-APP_DIR="/opt/cryptad"
-SERVICE_SRC="$APP_DIR/cryptad.service"
+APP_DIR="/opt/cryptad/crypta"
+SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"

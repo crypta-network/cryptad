@@ -68,15 +68,24 @@ val prepareJpackageResources by
     description = "Collects jpackage resources (icons + legal docs) into build/jpackage/resources"
     // Copy all standard resources (icons, platform assets, docs)
     from(layout.projectDirectory.dir("src/jpackage"))
-    // Flatten Linux maintainer scripts from src/jpackage/linux into the resource root (DEB)
+    // Linux maintainer scripts for DEB detection are placed at resource root
     from(layout.projectDirectory.dir("src/jpackage/linux")) {
       include("postinst", "postrm", "postinstall", "postuninstall")
       into("")
     }
-    // Flatten systemd unit into resource root so scripts can pick it up at install time
+    // For RPM: jpackage supports overriding its spec via a file named
+    // "<package-name>.spec" in the resource dir (package-name defaults to the application
+    // name lowercased; here it is "crypta"). Include our customized spec. We also copy
+    // template.spec for completeness, but the concrete package spec takes precedence.
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("crypta.spec", "template.spec")
+      into("")
+    }
+    // RPM payload: place the systemd unit under lib/systemd/system within the resource dir so
+    // the spec template copies it into /lib/systemd/system during %install.
     from(layout.projectDirectory.dir("src/jpackage/linux")) {
       include("cryptad.service")
-      into("")
+      into("lib/systemd/system")
     }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
@@ -321,8 +330,8 @@ val enrichAppImageWithDist by
             appendLine("[Desktop Entry]")
             appendLine("Name=$appName")
             appendLine("Comment=$appName")
-            appendLine("Exec=/opt/cryptad/bin/$appName")
-            appendLine("Icon=/opt/cryptad/lib/cryptad.png")
+            appendLine("Exec=/opt/cryptad/crypta/bin/$appName")
+            appendLine("Icon=/opt/cryptad/crypta/lib/cryptad.png")
             appendLine("Terminal=false")
             appendLine("Type=Application")
             appendLine("Categories=Network;Utility;")
@@ -332,6 +341,23 @@ val enrichAppImageWithDist by
           logger.lifecycle("Wrote Linux desktop entry -> {}", desktop.absolutePath)
         } catch (e: Exception) {
           logger.warn("Failed to finalize Linux icon/desktop: {}", e.message)
+        }
+
+        // Also stage the systemd unit under lib/systemd/system so the RPM template.spec can
+        // copy it into /lib/systemd/system at install time (and DEB postinst can find it
+        // under the installed app directory as well).
+        try {
+          val serviceSrc = project.file("src/jpackage/linux/cryptad.service")
+          if (serviceSrc.isFile) {
+            val serviceDst = imageRoot.resolve("lib/systemd/system/cryptad.service")
+            serviceDst.parentFile.mkdirs()
+            serviceSrc.copyTo(serviceDst, overwrite = true)
+            logger.lifecycle("Staged systemd unit -> {}", serviceDst.absolutePath)
+          } else {
+            logger.warn("Missing systemd unit at {}", serviceSrc.absolutePath)
+          }
+        } catch (e: Exception) {
+          logger.warn("Failed to copy systemd unit: {}", e.message)
         }
       }
 
@@ -460,6 +486,8 @@ val jpackageInstallerRpm by
           "--install-dir",
           "/opt/cryptad",
         )
+      // jpackage (JDK 21) does not accept linux post-install flags here; use template.spec
+      // override.
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       logger.lifecycle("Executing jpackage RPM installer:\n{}", args.joinToString(" "))
@@ -497,6 +525,7 @@ val jpackageInstallerDeb by
           "--install-dir",
           "/opt/cryptad",
         )
+      // Scripts handled via resource-dir (postinst/postrm) for DEB.
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       logger.lifecycle("Executing jpackage DEB installer:\n{}", args.joinToString(" "))

@@ -1,5 +1,4 @@
-[
-Unit]
+[Unit]
 Description=Cryptad daemon (Java Service Wrapper)
 After=network-online.target
 Wants=network-online.target
@@ -14,11 +13,10 @@ CacheDirectory=cryptad
 LogsDirectory=cryptad
 RuntimeDirectory=cryptad
 ConfigurationDirectory=cryptad
-ExecStart=/opt/cryptad/lib/app/cryptad-dist/bin/cryptad
+ExecStart=/opt/cryptad/crypta/lib/app/cryptad-dist/bin/cryptad
 Restart=on-failure
 RestartSec=5s
-WorkingDirectory=/opt/cryptad
+WorkingDirectory=/opt/cryptad/crypta
 
 [Install]
 WantedBy=multi-user.target
-
