@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+# jpackage DEB pre-removal script (overrides default)
+# Be tolerant on server systems without a desktop menu; ignore failures.
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        if command -v xdg-desktop-menu >/dev/null 2>&1; then
+          [ -f /opt/cryptad/crypta/lib/crypta-Crypta.desktop ] && \
+            xdg-desktop-menu uninstall /opt/cryptad/crypta/lib/crypta-Crypta.desktop >/dev/null 2>&1 || true
+          [ -f /usr/share/applications/crypta.desktop ] && \
+            xdg-desktop-menu uninstall /usr/share/applications/crypta.desktop >/dev/null 2>&1 || true
+        fi
+    ;;
+    *)
+        :
+    ;;
+esac
+
+exit 0

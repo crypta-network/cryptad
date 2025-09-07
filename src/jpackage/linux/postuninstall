@@ -1,0 +1,45 @@
+#!/bin/sh
+set -e
+
+# jpackage RPM post-uninstall (same behavior as DEB postrm)
+
+# Attempt to source common helpers if still present (may be absent after removal)
+COMMON="/opt/cryptad/crypta/lib/crypta-common.sh"
+[ -f "$COMMON" ] && . "$COMMON"
+
+SERVICE_DST="/etc/systemd/system/cryptad.service"
+DESKTOP_DST="/usr/share/applications/crypta.desktop"
+
+cleanup_desktop() {
+  rm -f "$DESKTOP_DST" || true
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
+    update-desktop-database -q /usr/local/share/applications || true
+  fi
+  if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+  fi
+}
+
+cleanup_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    if command -v service_disable_quiet >/dev/null 2>&1; then
+      service_disable_quiet cryptad.service
+    else
+      # Probe state directly to avoid race on unit file removal.
+      if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
+         || systemctl is-active cryptad.service >/dev/null 2>&1; then
+        systemctl disable --now cryptad.service >/dev/null 2>&1 || true
+      fi
+    fi
+    rm -f "$SERVICE_DST" || true
+    systemctl daemon-reload || true
+  else
+    rm -f "$SERVICE_DST" || true
+  fi
+}
+
+cleanup_desktop
+cleanup_service
+
+exit 0

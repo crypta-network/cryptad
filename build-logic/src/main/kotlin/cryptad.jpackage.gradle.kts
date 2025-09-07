@@ -66,7 +66,32 @@ val prepareJpackageResources by
   tasks.registering(Sync::class) {
     group = "jpackage"
     description = "Collects jpackage resources (icons + legal docs) into build/jpackage/resources"
+    // Copy all standard resources (icons, platform assets, docs)
     from(layout.projectDirectory.dir("src/jpackage"))
+    // Linux maintainer scripts for DEB detection are placed at resource root
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall")
+      into("")
+    }
+    // Shared helper library for maintainer scripts
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("crypta-common.sh")
+      into("lib")
+    }
+    // For RPM: jpackage supports overriding its spec via a file named
+    // "<package-name>.spec" in the resource dir (package-name defaults to the application
+    // name lowercased; here it is "crypta"). Include our customized spec. We also copy
+    // template.spec for completeness, but the concrete package spec takes precedence.
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("crypta.spec", "template.spec")
+      into("")
+    }
+    // RPM payload: place the systemd unit under lib/systemd/system within the resource dir so
+    // the spec template copies it into /lib/systemd/system during %install.
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("cryptad.service")
+      into("lib/systemd/system")
+    }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
     from(layout.projectDirectory.file("LICENSE")) { rename { "EULA.txt" } }
@@ -78,6 +103,15 @@ val prepareJpackageResources by
       val icon = File(iconPathForOs())
       if (!icon.isFile) {
         throw GradleException("Required jpackage icon not found: ${icon.absolutePath}")
+      }
+
+      // Ensure Linux maintainer scripts are executable when present
+      if (currentOs() == "linux") {
+        val res = jpackageResourcesDir.get().asFile
+        listOf("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall", "lib/crypta-common.sh")
+          .map { File(res, it) }
+          .filter { it.isFile }
+          .forEach { it.setExecutable(true, true) }
       }
     }
   }
@@ -109,11 +143,31 @@ fun hasExe(name: String): Boolean =
     false
   }
 
-/** Picks installer type for the current OS; Windows intentionally unsupported. */
+/**
+ * Picks installer type for the current OS; Windows intentionally unsupported. On Linux, supports
+ * override via `-PlinuxInstaller=<deb|rpm>` or env `CRYPTA_LINUX_INSTALLER`. Defaults to preferring
+ * rpm when both tools are present.
+ */
 fun resolveInstallerType(os: String): String =
   when (os) {
     "mac" -> "dmg"
-    else -> if (hasExe("dpkg-deb")) "deb" else if (hasExe("rpmbuild")) "rpm" else "deb"
+    else -> {
+      val override =
+        (providers.gradleProperty("linuxInstaller").orNull
+            ?: System.getenv("CRYPTA_LINUX_INSTALLER"))
+          ?.trim()
+          ?.lowercase()
+      when (override) {
+        "deb" -> "deb"
+        "rpm" -> "rpm"
+        else ->
+          when {
+            hasExe("rpmbuild") -> "rpm"
+            hasExe("dpkg-deb") -> "deb"
+            else -> "deb"
+          }
+      }
+    }
   }
 
 /** Returns absolute icon path for jpackage matching the current OS. */
@@ -237,7 +291,7 @@ val jpackageImageCryptad by
 val enrichAppImageWithDist by
   tasks.registering {
     group = "jpackage"
-    description = "Copies build/cryptad-dist into the jpackage app image under app/cryptad-dist"
+    description = "Copies cryptad-dist into the jpackage image (mac: Contents/app; linux: lib/app)"
     dependsOn(jpackageImageCryptad)
     doLast {
       val os = currentOs()
@@ -248,7 +302,11 @@ val enrichAppImageWithDist by
           else -> root.resolve(appName)
         }
       val appDir = imageRoot.resolve("app")
-      val target = appDir.resolve("cryptad-dist")
+      val target =
+        when (os) {
+          "mac" -> appDir.resolve("cryptad-dist")
+          else -> imageRoot.resolve("lib/app/cryptad-dist")
+        }
       target.parentFile.mkdirs()
       copy {
         from(cryptadDistDir)
@@ -256,9 +314,67 @@ val enrichAppImageWithDist by
       }
       logger.lifecycle("Copied cryptad-dist -> {}", target.absolutePath)
 
+      // Ensure Linux uses our provided PNG icon verbatim rather than a downsized copy.
+      if (os == "linux") {
+        val srcIcon = File(iconPathForOs())
+        val dstIcon = imageRoot.resolve("lib/$appName.png")
+        try {
+          srcIcon.copyTo(dstIcon, overwrite = true)
+          logger.lifecycle(
+            "Replaced Linux icon -> {} ({} bytes)",
+            dstIcon.absolutePath,
+            dstIcon.length(),
+          )
+
+          // Also place a stable copy and our own .desktop file referencing it, so the desktop
+          // entry uses the exact provided icon even if jpackage generates a 32x32 fallback.
+          val stableIcon = imageRoot.resolve("lib/cryptad.png")
+          srcIcon.copyTo(stableIcon, overwrite = true)
+          val desktop = imageRoot.resolve("lib/crypta-$appName.desktop")
+          val desktopContent = buildString {
+            appendLine("[Desktop Entry]")
+            appendLine("Name=$appName")
+            appendLine("Comment=$appName")
+            appendLine("Exec=/opt/cryptad/crypta/bin/$appName")
+            appendLine("Icon=/opt/cryptad/crypta/lib/cryptad.png")
+            appendLine("Terminal=false")
+            appendLine("Type=Application")
+            appendLine("Categories=Network;Utility;")
+            appendLine("MimeType=")
+          }
+          desktop.writeText(desktopContent)
+          logger.lifecycle("Wrote Linux desktop entry -> {}", desktop.absolutePath)
+        } catch (e: Exception) {
+          logger.warn("Failed to finalize Linux icon/desktop: {}", e.message)
+        }
+
+        // Also stage the systemd unit under lib/systemd/system so the RPM template.spec can
+        // copy it into /lib/systemd/system at install time (and DEB postinst can find it
+        // under the installed app directory as well).
+        try {
+          val serviceSrc = project.file("src/jpackage/linux/cryptad.service")
+          if (serviceSrc.isFile) {
+            val serviceDst = imageRoot.resolve("lib/systemd/system/cryptad.service")
+            serviceDst.parentFile.mkdirs()
+            serviceSrc.copyTo(serviceDst, overwrite = true)
+            logger.lifecycle("Staged systemd unit -> {}", serviceDst.absolutePath)
+          } else {
+            logger.warn("Missing systemd unit at {}", serviceSrc.absolutePath)
+          }
+        } catch (e: Exception) {
+          logger.warn("Failed to copy systemd unit: {}", e.message)
+        }
+      }
+
       // Patch the jpackage launcher config to point classpath to cryptad-dist/lib and correct main
       // class.
-      val cfg = appDir.resolve("$appName.cfg")
+      val cfg =
+        when (os) {
+          // macOS: cfg lives under Contents/app
+          "mac" -> appDir.resolve("$appName.cfg")
+          // Linux: cfg lives under lib/app
+          else -> imageRoot.resolve("lib/app/$appName.cfg")
+        }
       if (cfg.isFile) {
         // Compose a fresh config that keeps only the sections we need.
         val out = mutableListOf<String>()
@@ -268,10 +384,12 @@ val enrichAppImageWithDist by
         val jarDir = target.resolve("lib")
         val jars =
           jarDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sortedBy { it.name }
-        out += "app.classpath=\$APPDIR/cryptad-dist/lib/cryptad.jar"
+        val cpPrefix =
+          if (os == "linux") "\$APPDIR/cryptad-dist/lib/" else "\$APPDIR/cryptad-dist/lib/"
+        out += "app.classpath=${cpPrefix}cryptad.jar"
         jars
           ?.filter { it.name != "cryptad.jar" }
-          ?.forEach { f -> out += "app.classpath=\$APPDIR/cryptad-dist/lib/${f.name}" }
+          ?.forEach { f -> out += "app.classpath=${cpPrefix}${f.name}" }
         out += ""
         out += "[JavaOptions]"
         out += "java-options=-Djpackage.app-version=${numericAppVersion()}"
@@ -328,14 +446,106 @@ val jpackageInstallerCryptad by
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
-      if (os == "linux")
-        args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
+      if (os == "linux") {
+        // Install under a stable path used by our service/scripts and tests
+        args.addAll(listOf("--install-dir", "/opt/cryptad"))
+      }
+      // Also pass icon for installer builds so the packaged icon matches our provided file.
+      args.addAll(listOf("--icon", iconPathForOs()))
 
       logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
       execAndLog(args)
 
       // Keep jpackage default filenames (e.g., Crypta-<version>.<ext>)
     }
+  }
+
+// Explicit Linux installer tasks to force a specific package type
+val jpackageInstallerRpm by
+  tasks.registering {
+    group = "jpackage"
+    description = "Creates an RPM installer for Linux"
+    dependsOn(enrichAppImageWithDist)
+    onlyIf { currentOs() == "linux" && hasExe("rpmbuild") }
+    doLast {
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
+      val imagePath = outDir.resolve(appName).absolutePath
+      val args =
+        mutableListOf(
+          jpackage.absolutePath,
+          "--type",
+          "rpm",
+          "--name",
+          appName,
+          "--app-version",
+          numericAppVersion(),
+          "--dest",
+          outDir.absolutePath,
+          "--resource-dir",
+          jpackageResourcesDir.get().asFile.absolutePath,
+          "--app-image",
+          imagePath,
+          "--vendor",
+          vendor,
+          "--install-dir",
+          "/opt/cryptad",
+        )
+      // jpackage (JDK 21) does not accept linux post-install flags here; use template.spec
+      // override.
+      args.addAll(listOf("--icon", iconPathForOs()))
+      if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
+      logger.lifecycle("Executing jpackage RPM installer:\n{}", args.joinToString(" "))
+      execAndLog(args)
+    }
+  }
+
+val jpackageInstallerDeb by
+  tasks.registering {
+    group = "jpackage"
+    description = "Creates a DEB installer for Linux"
+    dependsOn(enrichAppImageWithDist)
+    onlyIf { currentOs() == "linux" && hasExe("dpkg-deb") }
+    doLast {
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
+      val imagePath = outDir.resolve(appName).absolutePath
+      val args =
+        mutableListOf(
+          jpackage.absolutePath,
+          "--type",
+          "deb",
+          "--name",
+          appName,
+          "--app-version",
+          numericAppVersion(),
+          "--dest",
+          outDir.absolutePath,
+          "--resource-dir",
+          jpackageResourcesDir.get().asFile.absolutePath,
+          "--app-image",
+          imagePath,
+          "--vendor",
+          vendor,
+          "--install-dir",
+          "/opt/cryptad",
+        )
+      // Scripts handled via resource-dir (postinst/postrm) for DEB.
+      args.addAll(listOf("--icon", iconPathForOs()))
+      if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
+      logger.lifecycle("Executing jpackage DEB installer:\n{}", args.joinToString(" "))
+      execAndLog(args)
+    }
+  }
+
+// Convenience task to build all Linux installers available on the host
+val jpackageInstallerLinuxAll by
+  tasks.registering {
+    group = "jpackage"
+    description = "Builds all supported Linux installers (deb/rpm)"
+    dependsOn(jpackageInstallerDeb)
+    dependsOn(jpackageInstallerRpm)
+    onlyIf { currentOs() == "linux" && (hasExe("dpkg-deb") || hasExe("rpmbuild")) }
   }
 
 // Windows MSI installer task removed

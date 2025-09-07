@@ -49,4 +49,5 @@ tasks.register("printVersion") {
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the Kotlin main directly.
-application { mainClass.set("network.crypta.launcher.MainKt") }
+// Align with actual top-level entry in Launcher.kt
+application { mainClass.set("network.crypta.launcher.LauncherKt") }

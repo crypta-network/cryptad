@@ -49,3 +49,4 @@ build-logic/build/
 tmp*
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
+/.vscode
