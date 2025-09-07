@@ -67,6 +67,12 @@ val prepareJpackageResources by
     group = "jpackage"
     description = "Collects jpackage resources (icons + legal docs) into build/jpackage/resources"
     from(layout.projectDirectory.dir("src/jpackage"))
+    // Include optional Linux packaging scripts placed under src/package/linux.
+    // These are primarily used by DEB, ignored by RPM unless spec is overridden.
+    from(layout.projectDirectory.dir("src/package/linux")) {
+      include("postinst", "postrm", "postinstall", "postuninstall")
+      into("") // flatten into resource root as jpackage expects
+    }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
     from(layout.projectDirectory.file("LICENSE")) { rename { "EULA.txt" } }
@@ -78,6 +84,15 @@ val prepareJpackageResources by
       val icon = File(iconPathForOs())
       if (!icon.isFile) {
         throw GradleException("Required jpackage icon not found: ${icon.absolutePath}")
+      }
+
+      // Ensure Linux maintainer scripts are executable when present
+      if (currentOs() == "linux") {
+        val res = jpackageResourcesDir.get().asFile
+        listOf("postinst", "postrm", "postinstall", "postuninstall")
+          .map { File(res, it) }
+          .filter { it.isFile }
+          .forEach { it.setExecutable(true, true) }
       }
     }
   }
