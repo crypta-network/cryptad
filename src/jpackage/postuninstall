@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+DESKTOP_DIR="/usr/share/applications"
+DESKTOP_FILE="$DESKTOP_DIR/crypta.desktop"
+
+rm -f "$DESKTOP_FILE" || true
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q "$DESKTOP_DIR" || true
+fi
+
+exit 0
+

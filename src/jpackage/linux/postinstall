@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+# Install .desktop into system applications directory so GNOME picks it up
+DESKTOP_DIR="/usr/share/applications"
+DESKTOP_FILE="$DESKTOP_DIR/crypta.desktop"
+
+APP_BIN="/opt/crypta/bin/Crypta"
+APP_ICON="/opt/crypta/lib/Crypta.png"
+
+install -d -m 0755 "$DESKTOP_DIR"
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Name=Crypta
+Comment=Crypta peer-to-peer node
+Exec=$APP_BIN
+Icon=$APP_ICON
+Terminal=false
+Type=Application
+Categories=Network;Utility;
+EOF
+chmod 0644 "$DESKTOP_FILE"
+
+# Refresh desktop databases if available
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q "$DESKTOP_DIR" || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+fi
+
+exit 0
+

@@ -403,6 +403,9 @@ val jpackageInstallerCryptad by
             "Network;Utility;",
             "--linux-app-category",
             "Network;Utility;",
+            "--linux-package-deps",
+            // Ensure desktop integration tools are present so .desktop is installed system-wide
+            "xdg-utils,desktop-file-utils",
           )
         )
       // Also pass icon for installer builds so the packaged icon matches our provided file.
@@ -448,6 +451,8 @@ val jpackageInstallerRpm by
           "Network;Utility;",
           "--linux-app-category",
           "Network;Utility;",
+          "--linux-package-deps",
+          "xdg-utils,desktop-file-utils",
         )
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
@@ -488,6 +493,8 @@ val jpackageInstallerDeb by
           "Network;Utility;",
           "--linux-app-category",
           "Network;Utility;",
+          "--linux-package-deps",
+          "xdg-utils,desktop-file-utils",
         )
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
