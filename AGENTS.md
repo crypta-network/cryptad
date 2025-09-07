@@ -232,6 +232,7 @@ start/stop the wrapper reliably.
 - Versioning:
   - jpackage requires a numeric `--app-version`; we use the project version (e.g., `1`).
   - Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`); we do not produce an extra labeled copy.
+  - Windows installers are not produced; only app images are built on Windows.
 - Icons and resources:
   - macOS: `src/jpackage/macos/cryptad.icns`.
   - Windows: `src/jpackage/windows/cryptad.ico`.
@@ -267,7 +268,24 @@ Uninstall semantics
 - Service cleanup: during removal, scripts use `systemctl is-enabled/is-active` before `disable --now` to avoid races; they remove `/etc/systemd/system/cryptad.service` and `daemon-reload`.
 - Desktop cleanup: remove `crypta.desktop` and refresh caches when tools exist.
 - Data/account retention: the `cryptad` user/group and `/var/lib/cryptad` remain to avoid data loss. Removing them is a manual admin action and must not be automated by default.
-- Windows installers are not produced; only app images are built on Windows.
+
+**Git Identity Policy**
+
+- Do not set or override git identity when committing.
+  - Never pass `--author`/`--reset-author` to `git commit`.
+  - Never set `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, or `GIT_COMMITTER_EMAIL` in commit commands.
+  - Do not run `git config user.name`/`git config user.email` in this repository during commit flows.
+- Use the existing project/default identity configured for the environment.
+- Only rewrite authorship/committer history when explicitly requested by a maintainer; use interactive rebase and push with `--force-with-lease`, and document rewritten SHAs in the PR.
+
+- Pre‑commit identity check (required):
+  - Before any `git commit` or history rewrite, verify identity is configured:
+    - `git config --get user.name` and `git config --get user.email` must both be non‑empty.
+  - If either is missing/empty:
+    - STOP and do not proceed with the commit.
+    - Warn the user and ask them to set their identity (agents must not set it themselves). Example:
+      - "Git identity is not configured. Please run: git config --global user.name "<Your Name>" && git config --global user.email "<you@example.com>""
+    - After the user confirms identity is set, resume the commit.
 
 ## Testing Strategy
 
