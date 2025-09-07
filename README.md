@@ -293,6 +293,28 @@ Linux notes
 - When both `dpkg-deb` and `rpmbuild` are installed, the default task prefers RPM. You can force DEB/RPM using the
   tasks above or `-PlinuxInstaller=<deb|rpm>`.
 
+Linux behavior and service
+
+- Install location: the app image installs under `/opt/cryptad/Crypta` and the launcher/scripts expect `/opt/cryptad`.
+- Server vs desktop detection:
+  - Considered a “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active.
+  - As a fallback, presence of session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`) also counts as desktop.
+  - This avoids mislabeling headless servers that happen to default to `graphical.target`.
+- Conditional actions on install:
+  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, then `systemctl daemon-reload`, `enable`, and `start` it.
+  - Desktop: install a `.desktop` entry at `/usr/share/applications/crypta.desktop` and refresh caches when tools are present (`update-desktop-database`, `gtk-update-icon-cache`).
+- A `cryptad` system user is created if missing (home `/var/lib/cryptad`, shell `nologin`).
+- Uninstall is tolerant on servers without desktop tooling: DEB `prerm` ignores missing `xdg-desktop-menu` and `postrm` cleans up both the desktop entry and service when present.
+
+Service management (Linux)
+
+```bash
+sudo systemctl status cryptad
+sudo systemctl stop cryptad
+sudo systemctl start cryptad
+sudo systemctl disable --now cryptad   # if you prefer launching manually
+```
+
 Troubleshooting (macOS)
 
 - Unsigned app first‑run: right‑click → Open, or clear quarantine:

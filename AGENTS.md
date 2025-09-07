@@ -225,6 +225,7 @@ start/stop the wrapper reliably.
   - `./gradlew build` → builds the jpackage app image and enriches it with `cryptad-dist` (does not build installers).
   - `./gradlew jpackageImageCryptad` → builds only the app image under `build/jpackage/`.
   - `./gradlew jpackageInstallerCryptad` → builds a native installer for the current OS (macOS: `.dmg`; Linux: `.deb` or `.rpm` when `dpkg-deb`/`rpmbuild` is available). Not available on Windows.
+  - Linux type override: pass `-PlinuxInstaller=<deb|rpm>` (or set env `CRYPTA_LINUX_INSTALLER`) to force installer type. When both are available, RPM is preferred by default.
 - Metadata:
   - Name: `Crypta`, Vendor: `crypta.network`, App ID: `network.crypta.cryptad`.
   - Main entry: `network.crypta.launcher.LauncherKt`.
@@ -234,7 +235,7 @@ start/stop the wrapper reliably.
 - Icons and resources:
   - macOS: `src/jpackage/macos/cryptad.icns`.
   - Windows: `src/jpackage/windows/cryptad.ico`.
-  - Linux: `src/jpackage/linux/cryptad.png`.
+  - Linux: `src/jpackage/linux/cryptad.png` (passed to `jpackage --icon` and copied verbatim into the image; a `.desktop` entry is pre-written to use this icon).
   - Root `LICENSE` is included as `LICENSE.txt` and `EULA.txt`; `README.md` as `README.txt`.
 - Image layout:
   - App root: `Contents/app/` (macOS) contains `Crypta.cfg`, a tiny `bootstrap.jar`, and `cryptad-dist/`.
@@ -243,6 +244,23 @@ start/stop the wrapper reliably.
   - If double‑click does nothing, run `Contents/MacOS/Crypta` in Terminal to see logs.
   - Clear quarantine on unsigned builds: `xattr -dr com.apple.quarantine build/jpackage/Crypta.app`.
   - Verify security status: `spctl --assess -vv build/jpackage/Crypta.app`.
+
+#### Linux installer behavior (DEB/RPM)
+
+- Install location: the app image is installed under `/opt/cryptad/Crypta` (launcher path and scripts expect `/opt/cryptad`).
+- Server vs desktop detection:
+  - Treated as “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active; otherwise falls back to detecting session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`).
+  - This avoids misclassifying some servers that report a graphical default target.
+- Conditional install actions:
+  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, `daemon-reload`, `enable`, and `start` the service.
+  - Desktop: install a `.desktop` entry (`/usr/share/applications/crypta.desktop`), refresh menus (`update-desktop-database`) and icon cache (`gtk-update-icon-cache`) when available.
+- System user: creates a `cryptad` system account for the service (`/var/lib/cryptad`, shell `nologin`) when missing.
+- Maintainer scripts and spec:
+  - DEB: `src/jpackage/linux/preinst`, `prerm`, `postinst`, `postrm` are flattened into the jpackage resource dir and marked executable. `prerm` tolerates missing `xdg-desktop-menu` on servers to avoid uninstall failures; `postinst/postrm` refresh desktop DB and icon cache when present.
+  - RPM: a custom `src/jpackage/linux/crypta.spec` handles conditional service/desktop logic and also creates the `cryptad` user. The systemd unit is staged under the image at `lib/systemd/system/cryptad.service` and installed to `/etc/systemd/system/` by the spec.
+- Icon and desktop entry:
+  - A full‑size Linux icon is embedded; a `.desktop` file is prewritten into the image to ensure GNOME and other DEs display the correct icon.
+- Windows installers are not produced; only app images are built on Windows.
 
 ## Testing Strategy
 
