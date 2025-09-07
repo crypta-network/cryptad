@@ -86,8 +86,6 @@ is_desktop() {
         return 0
       fi
     fi
-    def=$(systemctl get-default 2>/dev/null || true)
-    [ "${def}" = "graphical.target" ] && return 0
   fi
   ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
   ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
@@ -131,8 +129,6 @@ is_desktop() {
         return 0
       fi
     fi
-    def=$(systemctl get-default 2>/dev/null || true)
-    [ "${def}" = "graphical.target" ] && return 0
   fi
   ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
   ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
