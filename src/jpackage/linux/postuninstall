@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# jpackage DEB post-remove script
+# jpackage RPM post-uninstall (same behavior as DEB postrm)
 
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
@@ -27,8 +27,8 @@ cleanup_service() {
   fi
 }
 
-# We clean up both; presence checks ensure idempotency.
 cleanup_desktop
 cleanup_service
 
 exit 0
+

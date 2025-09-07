@@ -73,6 +73,11 @@ val prepareJpackageResources by
       include("postinst", "postrm", "postinstall", "postuninstall")
       into("")
     }
+    // Flatten systemd unit into resource root so scripts can pick it up at install time
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("cryptad.service")
+      into("")
+    }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
     from(layout.projectDirectory.file("LICENSE")) { rename { "EULA.txt" } }
@@ -316,8 +321,8 @@ val enrichAppImageWithDist by
             appendLine("[Desktop Entry]")
             appendLine("Name=$appName")
             appendLine("Comment=$appName")
-            appendLine("Exec=/opt/crypta/bin/$appName")
-            appendLine("Icon=/opt/crypta/lib/cryptad.png")
+            appendLine("Exec=/opt/cryptad/bin/$appName")
+            appendLine("Icon=/opt/cryptad/lib/cryptad.png")
             appendLine("Terminal=false")
             appendLine("Type=Application")
             appendLine("Categories=Network;Utility;")
@@ -410,19 +415,10 @@ val jpackageInstallerCryptad by
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
-      if (os == "linux")
-        args.addAll(
-          listOf(
-            "--linux-shortcut",
-            "--linux-menu-group",
-            "Network;Utility;",
-            "--linux-app-category",
-            "Network;Utility;",
-            "--linux-package-deps",
-            // Ensure desktop integration tools are present so .desktop is installed system-wide
-            "xdg-utils,desktop-file-utils",
-          )
-        )
+      if (os == "linux") {
+        // Install under a stable path used by our service/scripts and tests
+        args.addAll(listOf("--install-dir", "/opt/cryptad"))
+      }
       // Also pass icon for installer builds so the packaged icon matches our provided file.
       args.addAll(listOf("--icon", iconPathForOs()))
 
@@ -461,13 +457,8 @@ val jpackageInstallerRpm by
           imagePath,
           "--vendor",
           vendor,
-          "--linux-shortcut",
-          "--linux-menu-group",
-          "Network;Utility;",
-          "--linux-app-category",
-          "Network;Utility;",
-          "--linux-package-deps",
-          "xdg-utils,desktop-file-utils",
+          "--install-dir",
+          "/opt/cryptad",
         )
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
@@ -503,13 +494,8 @@ val jpackageInstallerDeb by
           imagePath,
           "--vendor",
           vendor,
-          "--linux-shortcut",
-          "--linux-menu-group",
-          "Network;Utility;",
-          "--linux-app-category",
-          "Network;Utility;",
-          "--linux-package-deps",
-          "xdg-utils,desktop-file-utils",
+          "--install-dir",
+          "/opt/cryptad",
         )
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
