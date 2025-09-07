@@ -11,19 +11,17 @@ DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
 
 is_desktop() {
-  # Prefer systemd heuristics first
+  # Prefer a strict check: only treat as desktop when a display manager is present
+  # and enabled/active. Some server installs may report graphical.target as default;
+  # do NOT rely on that.
   if command -v systemctl >/dev/null 2>&1; then
-    # display-manager present and enabled/active
     if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
       if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
         return 0
       fi
     fi
-    # default target is graphical
-    def=$(systemctl get-default 2>/dev/null || true)
-    [ "${def}" = "graphical.target" ] && return 0
   fi
-  # Fallback: desktop session definitions installed
+  # Fallback: presence of desktop session definitions (useful in containers/minimal desktops)
   ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
   ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
   return 1
