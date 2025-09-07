@@ -361,7 +361,15 @@ val jpackageInstallerCryptad by
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
       if (os == "linux")
-        args.addAll(listOf("--linux-shortcut", "--linux-menu-group", "Network;Utility;"))
+        args.addAll(
+          listOf(
+            "--linux-shortcut",
+            "--linux-menu-group",
+            "Network;Utility;",
+            "--linux-app-category",
+            "Network;Utility;",
+          )
+        )
 
       logger.lifecycle("Executing jpackage installer:\n{}", args.joinToString(" "))
       execAndLog(args)
@@ -401,6 +409,8 @@ val jpackageInstallerRpm by
           "--linux-shortcut",
           "--linux-menu-group",
           "Network;Utility;",
+          "--linux-app-category",
+          "Network;Utility;",
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
       logger.lifecycle("Executing jpackage RPM installer:\n{}", args.joinToString(" "))
@@ -437,6 +447,8 @@ val jpackageInstallerDeb by
           vendor,
           "--linux-shortcut",
           "--linux-menu-group",
+          "Network;Utility;",
+          "--linux-app-category",
           "Network;Utility;",
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
