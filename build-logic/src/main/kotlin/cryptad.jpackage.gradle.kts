@@ -66,12 +66,12 @@ val prepareJpackageResources by
   tasks.registering(Sync::class) {
     group = "jpackage"
     description = "Collects jpackage resources (icons + legal docs) into build/jpackage/resources"
+    // Copy all standard resources (icons, platform assets, docs)
     from(layout.projectDirectory.dir("src/jpackage"))
-    // Include optional Linux packaging scripts placed under src/package/linux.
-    // These are primarily used by DEB, ignored by RPM unless spec is overridden.
-    from(layout.projectDirectory.dir("src/package/linux")) {
+    // Flatten Linux maintainer scripts from src/jpackage/linux into the resource root (DEB)
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
       include("postinst", "postrm", "postinstall", "postuninstall")
-      into("") // flatten into resource root as jpackage expects
+      into("")
     }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
