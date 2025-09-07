@@ -280,6 +280,22 @@ val enrichAppImageWithDist by
       }
       logger.lifecycle("Copied cryptad-dist -> {}", target.absolutePath)
 
+      // Ensure Linux uses our provided PNG icon verbatim rather than a downsized copy.
+      if (os == "linux") {
+        val srcIcon = File(iconPathForOs())
+        val dstIcon = imageRoot.resolve("lib/$appName.png")
+        try {
+          srcIcon.copyTo(dstIcon, overwrite = true)
+          logger.lifecycle(
+            "Replaced Linux icon -> {} ({} bytes)",
+            dstIcon.absolutePath,
+            dstIcon.length(),
+          )
+        } catch (e: Exception) {
+          logger.warn("Failed to replace Linux icon at {}: {}", dstIcon.absolutePath, e.message)
+        }
+      }
+
       // Patch the jpackage launcher config to point classpath to cryptad-dist/lib and correct main
       // class.
       val cfg =
