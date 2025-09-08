@@ -60,6 +60,7 @@ architecture review).
 - Merge strategy: GitFlow
 - Commit format: Conventional commits
 - PR requirements: Tests pass, approved review
+- PR creation: Always ask before creating a GitHub pull request. Do not open PRs without explicit approval from a maintainer/requester.
 
 ## Environment Setup
 
@@ -222,7 +223,7 @@ image bundles a minimal runtime (from our jlink flow) and the portable `cryptad-
 start/stop the wrapper reliably.
 
 - Tasks:
-  - `./gradlew build` → builds the jpackage app image and enriches it with `cryptad-dist`. On Linux, it also builds native installers (DEB/RPM) when `dpkg-deb`/`rpmbuild` are available; missing tools cause those installer tasks to be skipped, not failed.
+  - `./gradlew build` → builds the jpackage app image and enriches it with `cryptad-dist`. On Linux and macOS, it also builds native installers (`.deb`/`.rpm` on Linux when `dpkg-deb`/`rpmbuild` are available; `.dmg` on macOS). Missing tools cause those installer tasks to be skipped, not failed. Windows builds do not produce installers by default.
   - `./gradlew jpackageImageCryptad` → builds only the app image under `build/jpackage/`.
   - `./gradlew jpackageInstallerCryptad` → builds a native installer for the current OS (macOS: `.dmg`; Linux: `.deb` or `.rpm` when `dpkg-deb`/`rpmbuild` is available). Not available on Windows.
   - Linux type override: pass `-PlinuxInstaller=<deb|rpm>` (or set env `CRYPTA_LINUX_INSTALLER`) to force installer type. When both are available, RPM is preferred by default.
