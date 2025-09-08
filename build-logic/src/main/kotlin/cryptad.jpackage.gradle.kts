@@ -108,7 +108,15 @@ val prepareJpackageResources by
       // Ensure Linux maintainer scripts are executable when present
       if (currentOs() == "linux") {
         val res = jpackageResourcesDir.get().asFile
-        listOf("preinst", "prerm", "postinst", "postrm", "postinstall", "postuninstall", "lib/crypta-common.sh")
+        listOf(
+            "preinst",
+            "prerm",
+            "postinst",
+            "postrm",
+            "postinstall",
+            "postuninstall",
+            "lib/crypta-common.sh",
+          )
           .map { File(res, it) }
           .filter { it.isFile }
           .forEach { it.setExecutable(true, true) }
@@ -558,4 +566,10 @@ val jpackageInstallerLinuxAll by
 
 // Ensure the built app image is fully usable by default builds
 // (copies cryptad-dist into the image and patches launcher cfg).
-tasks.named("build") { dependsOn(enrichAppImageWithDist) }
+tasks.named("build") {
+  dependsOn(enrichAppImageWithDist)
+  // On Linux, also build native installers (DEB/RPM) when the host has the tools.
+  if (currentOs() == "linux") {
+    dependsOn(jpackageInstallerLinuxAll)
+  }
+}

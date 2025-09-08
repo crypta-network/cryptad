@@ -254,7 +254,9 @@ bundles the portable distribution under `app/cryptad-dist/` so the GUI can invok
 Commands
 
 ```bash
-# Build includes the jpackage app image (no installer by default)
+# Build includes the jpackage app image.
+# On Linux, it also builds native installers (DEB/RPM) when tooling is present
+# (`dpkg-deb` and/or `rpmbuild`). On macOS, installers are not built by `build`.
 ./gradlew build
 
 # App image only
@@ -292,6 +294,8 @@ Linux notes
 - RPM builds require `rpmbuild` to be installed and on PATH.
 - When both `dpkg-deb` and `rpmbuild` are installed, the default task prefers RPM. You can force DEB/RPM using the
   tasks above or `-PlinuxInstaller=<deb|rpm>`.
+- The `build` task on Linux now depends on building all available Linux installers (DEB/RPM) and will skip any
+  installer type whose tool is missing.
 
 Linux behavior and service
 
