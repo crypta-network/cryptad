@@ -255,8 +255,9 @@ Commands
 
 ```bash
 # Build includes the jpackage app image.
-# On Linux, it also builds native installers (DEB/RPM) when tooling is present
-# (`dpkg-deb` and/or `rpmbuild`). On macOS, installers are not built by `build`.
+# On Linux and macOS, it also builds native installers when tooling is present
+# (Linux: DEB/RPM via `dpkg-deb`/`rpmbuild`; macOS: DMG). On Windows, installers
+# are not built by `build`.
 ./gradlew build
 
 # App image only
@@ -296,6 +297,12 @@ Linux notes
   tasks above or `-PlinuxInstaller=<deb|rpm>`.
 - The `build` task on Linux now depends on building all available Linux installers (DEB/RPM) and will skip any
   installer type whose tool is missing.
+
+macOS notes
+
+- The `build` task on macOS now also builds a `.dmg` via `jpackage`.
+- Unsigned DMGs are fine for local testing; macOS may require right‑click → Open
+  or removing quarantine to run the app the first time.
 
 Linux behavior and service
 

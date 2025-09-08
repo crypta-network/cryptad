@@ -572,4 +572,8 @@ tasks.named("build") {
   if (currentOs() == "linux") {
     dependsOn(jpackageInstallerLinuxAll)
   }
+  // On macOS, also build a DMG installer.
+  if (currentOs() == "mac") {
+    dependsOn(jpackageInstallerCryptad)
+  }
 }
