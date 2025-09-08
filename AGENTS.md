@@ -60,6 +60,7 @@ architecture review).
 - Merge strategy: GitFlow
 - Commit format: Conventional commits
 - PR requirements: Tests pass, approved review
+- PR creation: Always ask before creating a GitHub pull request. Do not open PRs without explicit approval from a maintainer/requester.
 
 ## Environment Setup
 
