@@ -29,6 +29,9 @@ dependencies {
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
   implementation(libs.jsystemThemeDetector)
+  // Flatpak/Portal detection via D-Bus
+  implementation(libs.dbusCore)
+  runtimeOnly(libs.dbusTransportNativeUnix)
   // CLI parsing and UX
   implementation(libs.picocli)
 

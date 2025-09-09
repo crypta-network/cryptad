@@ -26,7 +26,7 @@ object ThemeSwitcher {
       System.setProperty("apple.awt.application.appearance", "system")
     } catch (_: Exception) {}
 
-    val det = OsThemeDetector.getDetector()
+    val det = FlatpakAwareOsThemeDetector.getDetector()
     detector = det
 
     // Apply current theme synchronously (must happen before any Swing components are created)
