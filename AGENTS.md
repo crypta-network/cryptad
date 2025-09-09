@@ -237,7 +237,9 @@ start/stop the wrapper reliably.
 - Icons and resources:
   - macOS: `src/jpackage/macos/cryptad.icns`.
   - Windows: `src/jpackage/windows/cryptad.ico`.
-  - Linux: `src/jpackage/linux/cryptad.png` (passed to `jpackage --icon`; copied verbatim into the image; a `.desktop` entry is pre-written to use this icon).
+  - Linux: `src/jpackage/linux/cryptad.png` (passed to `jpackage --icon`; copied verbatim into the image). The image also carries a `.desktop` entry that includes the GNOME mapping keys:
+    - `StartupWMClass=network-crypta-launcher-LauncherKt`
+    - `X-GNOME-WMClass=network-crypta-launcher-LauncherKt`
   - Root `LICENSE` is included as `LICENSE.txt` and `EULA.txt`; `README.md` as `README.txt`.
 - Image layout:
   - App root: `Contents/app/` (macOS) contains `Crypta.cfg`, a tiny `bootstrap.jar`, and `cryptad-dist/`.
@@ -249,21 +251,27 @@ start/stop the wrapper reliably.
 
 #### Linux installer behavior (DEB/RPM)
 
-- Install location: the app image is installed under `/opt/cryptad/Crypta` (launcher path and scripts expect `/opt/cryptad`).
+- Install location: the app image is installed under `/opt/cryptad/Crypta`. Some hosts may lowercase the directory to `/opt/cryptad/crypta`; our scripts auto‑detect the actual `APP_DIR` and normalize paths accordingly.
 - Server vs desktop detection:
   - Treated as “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active; otherwise falls back to detecting session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`).
   - This avoids misclassifying some servers that report a graphical default target.
 - Conditional install actions:
   - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, `daemon-reload`, and `enable` the service. Do not auto-start; require explicit admin `systemctl start`.
-  - Desktop: install a `.desktop` entry (`/usr/share/applications/crypta.desktop`), refresh menus (`update-desktop-database`) and icon cache (`gtk-update-icon-cache`) when available.
+  - Desktop: install a `.desktop` entry (`/usr/share/applications/crypta.desktop`), refresh menus (`update-desktop-database`) and icon cache (`gtk-update-icon-cache`) when available. The installer rewrites the desktop entry `Exec`/`Icon` to the detected `APP_DIR` and ensures the GNOME mapping keys are present: `StartupWMClass=network-crypta-launcher-LauncherKt` and `X-GNOME-WMClass=network-crypta-launcher-LauncherKt`.
 - System user: creates a `cryptad` system account for the service (`/var/lib/cryptad`, shell `nologin`) when missing.
 - System group: creates an explicit `cryptad` system group and sets it as the primary group for the `cryptad` user.
 - Maintainer scripts and spec:
   - DEB: `src/jpackage/linux/preinst`, `prerm`, `postinst`, `postrm` are flattened into the jpackage resource dir and marked executable. `prerm` tolerates missing `xdg-desktop-menu` on servers to avoid uninstall failures; `postinst/postrm` refresh desktop DB and icon cache when present.
-  - RPM: a custom `src/jpackage/linux/crypta.spec` handles conditional service/desktop logic and also creates the `cryptad` user. The systemd unit is staged under the image at `lib/systemd/system/cryptad.service` and installed to `/etc/systemd/system/` by the spec.
+  - RPM: `src/jpackage/linux/crypta.spec` handles conditional service/desktop logic and also creates the `cryptad` user. The systemd unit is staged under the image at `lib/systemd/system/cryptad.service` and installed to `/etc/systemd/system/` by the spec. Desktop entry removal happens in `%postun` only on final erase (`$1=0`) so upgrades do not delete `/usr/share/applications/crypta.desktop`.
 - Icon and desktop entry:
-  - A full‑size Linux icon is embedded; a `.desktop` file is prewritten into the image to ensure GNOME and other DEs display the correct icon.
+  - A full‑size Linux icon is embedded; a `.desktop` file is prewritten into the image and patched on install so GNOME and other DEs display the correct icon. WM_CLASS is set to match the Swing window class.
 - Script library: common installer logic lives in `src/jpackage/linux/crypta-common.sh` (installed under `lib/` in the app image). Maintainer scripts and spec sections source it when present and include safe fallbacks to keep uninstall idempotent after files are removed. Do not duplicate `is_desktop`, `ensure_user`, or service control snippets elsewhere.
+
+Debugging installers (Linux)
+- Set `CRYPTA_DEBUG=1` in the environment to enable verbose logging from maintainer scripts. Logs append to `/var/log/crypta-installer.log`.
+- If the dock icon is generic, verify the GNOME association:
+  - `xprop WM_CLASS` and click the window → should include `network-crypta-launcher-LauncherKt`.
+  - Confirm `/usr/share/applications/crypta.desktop` exists and has `StartupWMClass`/`X-GNOME-WMClass` matching the above.
 
 Uninstall semantics
 - Service cleanup: during removal, scripts use `systemctl is-enabled/is-active` before `disable --now` to avoid races; they remove `/etc/systemd/system/cryptad.service` and `daemon-reload`.
@@ -287,6 +295,39 @@ Uninstall semantics
     - Warn the user and ask them to set their identity (agents must not set it themselves). Example:
       - "Git identity is not configured. Please run: git config --global user.name "<Your Name>" && git config --global user.email "<you@example.com>""
     - After the user confirms identity is set, resume the commit.
+
+## Desktop & Theme Handling
+
+- Swing Look & Feel uses FlatLaf across platforms; macOS uses FlatMac* variants. We choose dark/light based on the OS theme before any Swing components are created (EDT).
+- Flatpak: OS theme detection reads the XDG Desktop Portal setting `org.freedesktop.appearance/color-scheme` via dbus-java.
+  - Portal detector: `src/main/kotlin/com/jthemedetecor/PortalThemeDetector.kt`.
+  - Factory: `src/main/kotlin/network/crypta/launcher/FlatpakAwareOsThemeDetector.kt` prefers the portal and falls back to the upstream detector when unavailable.
+- We removed temporary debug prints and the late “ensureApplied()” safeguard. LAF is applied once early; fallback to the system LAF only occurs if FlatLaf isn’t already active.
+- On Linux/Flatpak we use FlatLaf client-side window decorations for consistent title bars.
+
+## Flatpak Build (local dev)
+
+Requirements: `flatpak`, `org.freedesktop.Platform//24.08`, `org.freedesktop.Sdk//24.08`.
+
+Commands
+
+```bash
+./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle buildJar
+./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle distJlinkCryptad
+cp -f build/distributions/cryptad-jlink-v1.tar.gz tools/flatpak/local/
+rm -rf builddir repo .flatpak-builder
+flatpak run org.flatpak.Builder --force-clean --user --arch=$(flatpak --default-arch) \
+  --install-deps-from=flathub builddir tools/flatpak/cryptad.yaml
+flatpak build-export --arch=$(flatpak --default-arch) repo builddir v1
+flatpak build-bundle repo cryptad-v1-$( [ $(flatpak --default-arch) = aarch64 ] && echo arm64 || echo amd64 ).flatpak \
+  network.crypta.cryptad v1 --arch=$(flatpak --default-arch)
+flatpak --user install -y ./cryptad-v1-*.flatpak
+flatpak run network.crypta.cryptad//v1
+```
+
+Notes
+- Flatpak packaging files live under `tools/flatpak/` (manifest, desktop file, icon, metainfo).
+- Spotless is scoped to `src/**`; `.spotlessignore` at the repo root prevents scanning Flatpak scratch dirs.
 
 ## Testing Strategy
 

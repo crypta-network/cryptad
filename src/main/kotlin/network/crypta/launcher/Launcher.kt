@@ -1,6 +1,8 @@
 package network.crypta.launcher
 
 import java.awt.*
+import java.awt.desktop.AppForegroundEvent
+import java.awt.desktop.AppReopenedListener
 import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
@@ -9,13 +11,16 @@ import javax.swing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 
+/** Application display name used across the launcher UI and system integration. */
+internal const val APP_NAME: String = "Crypta Launcher"
+
 /**
  * Crypta Swing Launcher (View).
  *
  * MVC-style view that binds to [LauncherController.state] and [LauncherController.logs]. Keeps
  * keyboard shortcuts and UI behavior identical to the original implementation.
  */
-class CryptaLauncher : JFrame("Crypta Launcher") {
+class CryptaLauncher : JFrame(APP_NAME) {
   companion object {
     @Volatile var instance: CryptaLauncher? = null
   }
@@ -113,6 +118,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     add(scrollPane, BorderLayout.CENTER)
     add(statusLabel, BorderLayout.SOUTH)
 
+    // (no post-construct debug checks)
+
     // Wire actions
     startStopBtn.addActionListener {
       val st = controller.state.value
@@ -156,36 +163,44 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
         // Custom About dialog (macOS system menu About handler)
         try {
           d.setAboutHandler { SwingUtilities.invokeLater { showAboutDialog() } }
-        } catch (_: Throwable) {}
+        } catch (t: Throwable) {
+          logDebug("Desktop About handler not available", t)
+        }
 
         // Ensure clicking the Dock icon on macOS re-shows the window if hidden.
         try {
           d.addAppEventListener(
-            object : java.awt.desktop.AppReopenedListener {
-              override fun appReopened(e: java.awt.desktop.AppReopenedEvent?) {
-                SwingUtilities.invokeLater {
-                  if (!isVisible) isVisible = true
-                  toFront()
-                  requestFocus()
-                }
+            AppReopenedListener {
+              SwingUtilities.invokeLater {
+                if (!isVisible) isVisible = true
+                toFront()
+                requestFocus()
               }
             }
           )
           d.addAppEventListener(
             object : java.awt.desktop.AppForegroundListener {
-              override fun appRaisedToForeground(e: java.awt.desktop.AppForegroundEvent?) {
+              override fun appRaisedToForeground(e: AppForegroundEvent?) {
                 SwingUtilities.invokeLater {
                   if (!isVisible) isVisible = true
                   toFront()
                 }
               }
 
-              override fun appMovedToBackground(e: java.awt.desktop.AppForegroundEvent?) {}
+              override fun appMovedToBackground(e: AppForegroundEvent?) {
+                // Intentionally no-op: do not auto-hide or dispose when moved to background.
+                // Keeping the current window state avoids flicker and preserves any in-flight
+                // start/stop interactions initiated by the user.
+              }
             }
           )
-        } catch (_: Throwable) {}
+        } catch (t: Throwable) {
+          logDebug("Desktop event listeners not available", t)
+        }
       }
-    } catch (_: Throwable) {}
+    } catch (t: Throwable) {
+      logDebug("Desktop integration initialization failed", t)
+    }
 
     // Track manual scroll: disable auto-scroll when the user scrolls away from bottom
     val vbar: JScrollBar = scrollPane.verticalScrollBar
@@ -262,18 +277,22 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
       try {
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
           .removeKeyEventDispatcher(globalDispatcher)
-      } catch (_: Throwable) {}
+      } catch (t: Throwable) {
+        logDebug("Failed to remove global key dispatcher", t)
+      }
       dispose()
       uiScope.cancel()
       try {
         ThemeSwitcher.shutdown()
-      } catch (_: Throwable) {}
+      } catch (t: Throwable) {
+        logDebug("ThemeSwitcher.shutdown() failed", t)
+      }
       kotlin.system.exitProcess(0)
     }
   }
 
   private fun showAboutDialog() {
-    val dialog = JDialog(this, "About Crypta Launcher", true)
+    val dialog = JDialog(this, "About $APP_NAME", true)
     dialog.layout = BorderLayout(12, 12)
     val content = JPanel(BorderLayout(12, 12))
     content.border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
@@ -300,7 +319,7 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
         insets = Insets(0, 0, 6, 0)
       }
 
-    val title = JLabel("Crypta Launcher").apply { font = font.deriveFont(Font.BOLD, 20f) }
+    val title = JLabel(APP_NAME).apply { font = font.deriveFont(Font.BOLD, 20f) }
     right.add(title, gbc)
 
     val javaVer = System.getProperty("java.runtime.version") ?: System.getProperty("java.version")
@@ -370,10 +389,14 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
   fun shutdownFromSignal() {
     try {
       runBlocking { controller.shutdownAndWait() }
-    } catch (_: Throwable) {}
+    } catch (t: Throwable) {
+      logDebug("shutdownFromSignal(): controller shutdown failed", t)
+    }
     try {
       ThemeSwitcher.shutdown()
-    } catch (_: Throwable) {}
+    } catch (t: Throwable) {
+      logDebug("shutdownFromSignal(): ThemeSwitcher.shutdown() failed", t)
+    }
   }
 
   /** Public entry to initiate the normal quit flow from OS events (Windows hooks, etc.). */
@@ -389,59 +412,99 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
  * before creating any Swing components.
  */
 fun main() {
-  // Set macOS application menu name before any AWT/Swing initialization
-  try {
-    System.setProperty("apple.awt.application.name", "Crypta Launcher")
-    System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Crypta Launcher")
-  } catch (_: Exception) {}
+  applyMacAppMenuName()
+  installLookAndFeelWithFallback()
+  SwingUtilities.invokeLater { createAndShowLauncherUi() }
+  registerJvmShutdownHook()
+  // Rely on the JVM shutdown hook; external TERM will trigger it.
+}
 
-  // Install FlatLaf with OS theme detection + live switching
+/** Set macOS application menu name early, before any AWT/Swing initialization. */
+private fun applyMacAppMenuName() {
+  try {
+    System.setProperty("apple.awt.application.name", APP_NAME)
+    System.setProperty("com.apple.mrj.application.apple.menu.about.name", APP_NAME)
+  } catch (e: Exception) {
+    logDebug("Failed to set macOS app menu name", e)
+  }
+}
+
+/**
+ * Install FlatLaf using ThemeSwitcher. If installation fails, fall back to the system look & feel
+ * only when FlatLaf is not already active.
+ */
+private fun installLookAndFeelWithFallback() {
   try {
     ThemeSwitcher.install()
-  } catch (_: Exception) {
+  } catch (e: Exception) {
+    logWarn("FlatLaf installation failed; falling back to system LAF", e)
     try {
-      UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
-    } catch (_: Exception) {}
+      val cur = UIManager.getLookAndFeel()
+      val alreadyFlat = cur != null && cur.javaClass.name.startsWith("com.formdev.flatlaf")
+      if (!alreadyFlat) UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+    } catch (t: Exception) {
+      logDebug("Failed to set system Look&Feel after FlatLaf failure", t)
+    }
   }
+}
 
-  SwingUtilities.invokeLater {
-    val f = CryptaLauncher()
-    // Set icon for window and Dock (where supported)
-    try {
-      val img = loadAppIconImage()
-      if (img != null) {
-        f.iconImage = img
-        try {
-          val tb = Taskbar.getTaskbar()
-          if (tb.isSupported(Taskbar.Feature.ICON_IMAGE)) tb.iconImage = img
-        } catch (_: Throwable) {}
-      }
-    } catch (_: Throwable) {}
-    val screen = Toolkit.getDefaultToolkit().screenSize
-    val size = Dimension(900, 600)
-    f.size = size
-    f.setLocation((screen.width - size.width) / 2, (screen.height - size.height) / 2)
-    f.isVisible = true
+/** Create, size, iconize, show the launcher frame and install platform-specific hooks. */
+private fun createAndShowLauncherUi() {
+  val f = CryptaLauncher()
+  setWindowAndDockIcons(f)
+  centerAndShow(f, Dimension(900, 600))
+  installWindowsHooksIfNeeded(f)
+}
 
-    // Install Windows-specific message hooks (WM_QUERYENDSESSION/WM_ENDSESSION/WM_CLOSE)
-    try {
-      if (System.getProperty("os.name").lowercase().contains("win")) {
-        WindowsMessageHooks.install(f) { f.requestQuitFromOs() }
+private fun setWindowAndDockIcons(f: JFrame) {
+  try {
+    val img = loadAppIconImage()
+    if (img != null) {
+      f.iconImage = img
+      try {
+        val tb = Taskbar.getTaskbar()
+        if (tb.isSupported(Taskbar.Feature.ICON_IMAGE)) tb.iconImage = img
+      } catch (t: Throwable) {
+        logDebug("Failed to set Taskbar icon image", t)
       }
-    } catch (_: Throwable) {}
+    }
+  } catch (t: Throwable) {
+    logDebug("Failed to load or set window icon", t)
   }
+}
 
-  // Ensure graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script)
+private fun centerAndShow(f: JFrame, size: Dimension) {
+  val screen = Toolkit.getDefaultToolkit().screenSize
+  f.size = size
+  f.setLocation((screen.width - size.width) / 2, (screen.height - size.height) / 2)
+  f.isVisible = true
+}
+
+/** Install Windows-specific message hooks (WM_QUERYENDSESSION/WM_ENDSESSION/WM_CLOSE). */
+private fun installWindowsHooksIfNeeded(f: CryptaLauncher) {
+  try {
+    if (System.getProperty("os.name").lowercase().contains("win")) {
+      WindowsMessageHooks.install(f) { f.requestQuitFromOs() }
+    }
+  } catch (t: Throwable) {
+    logDebug("Windows message hook installation failed", t)
+  }
+}
+
+/** Ensure graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script). */
+private fun registerJvmShutdownHook() {
   try {
     Runtime.getRuntime()
       .addShutdownHook(
         Thread {
           try {
             CryptaLauncher.instance?.shutdownFromSignal()
-          } catch (_: Throwable) {}
+          } catch (t: Throwable) {
+            logDebug("Shutdown hook failed during shutdownFromSignal()", t)
+          }
         }
       )
-  } catch (_: Throwable) {}
-
-  // Rely on the JVM shutdown hook (above). External TERM will trigger it.
+  } catch (t: Throwable) {
+    logDebug("Failed to register JVM shutdown hook", t)
+  }
 }

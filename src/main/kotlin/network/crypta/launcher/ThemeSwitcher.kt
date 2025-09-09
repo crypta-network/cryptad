@@ -24,13 +24,24 @@ object ThemeSwitcher {
     // macOS: ensure the system appearance is reported to Java/Swing
     try {
       System.setProperty("apple.awt.application.appearance", "system")
-    } catch (_: Exception) {}
-
-    val det = OsThemeDetector.getDetector()
+    } catch (e: Exception) {
+      logDebug("Failed to set macOS appearance system property", e)
+    }
+    try {
+      val linux = System.getProperty("os.name").lowercase().contains("linux")
+      if (linux) {
+        javax.swing.JFrame.setDefaultLookAndFeelDecorated(true)
+        javax.swing.JDialog.setDefaultLookAndFeelDecorated(true)
+      }
+    } catch (t: Throwable) {
+      logDebug("Failed to enable client decorations on Linux/Flatpak", t)
+    }
+    val det = FlatpakAwareOsThemeDetector.getDetector()
     detector = det
 
     // Apply current theme synchronously (must happen before any Swing components are created)
-    applyFor(det.isDark, synchronous = true)
+    val initialDark = det.isDark
+    applyFor(initialDark, synchronous = true)
 
     // Listen for changes and switch LAF live
     val consumer = Consumer<Boolean> { isDark -> applyFor(isDark) }
@@ -62,20 +73,51 @@ object ThemeSwitcher {
           // Work around JDK-8355079: set a sane default logical font on macOS
           UIManager.put("defaultFont", FontUIResource("SansSerif", java.awt.Font.PLAIN, 13))
         }
+        // Use FlatLaf client decorations on Linux/Flatpak to avoid light server-side title bars
+        val inFlatpak = System.getenv("FLATPAK_ID")?.isNotEmpty() == true
+        val useNativeDeco = isMac().not() && !inFlatpak
+        FlatLaf.setUseNativeWindowDecorations(useNativeDeco)
+        // Apply LAF explicitly via UIManager to catch errors, then let FlatLaf do extra setup
+        try {
+          UIManager.setLookAndFeel(laf)
+        } catch (t: Throwable) {
+          logDebug("UIManager.setLookAndFeel() failed", t)
+        }
+        // Also set swing.defaultlaf so the EDT initialization cannot override us to GTK
+        try {
+          System.setProperty("swing.defaultlaf", laf.javaClass.name)
+        } catch (t: Throwable) {
+          logDebug("Failed to set swing.defaultlaf system property", t)
+        }
         FlatLaf.setup(laf)
-        if (!mac) FlatLaf.setUseNativeWindowDecorations(true)
         // For live switches after startup, refresh UI
         if (!synchronous) FlatLaf.updateUI()
-      } catch (_: Exception) {}
+      } catch (e: Exception) {
+        logWarn("Failed to apply FlatLaf theme", e)
+      }
     }
 
-    if (synchronous) apply() else SwingUtilities.invokeLater(apply)
+    if (synchronous) {
+      if (SwingUtilities.isEventDispatchThread()) {
+        apply()
+      } else {
+        try {
+          SwingUtilities.invokeAndWait(apply)
+        } catch (e: Exception) {
+          logDebug("invokeAndWait failed; applying LAF synchronously on caller thread", e)
+          apply()
+        }
+      }
+    } else {
+      SwingUtilities.invokeLater(apply)
+    }
   }
 
   private fun isMac(): Boolean =
     try {
       System.getProperty("os.name").lowercase().contains("mac")
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+      logDebug("Failed to read os.name property for isMac()", e)
       false
     }
 }

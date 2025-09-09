@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>network.crypta.cryptad</id>
+  <name>Crypta</name>
+  <summary>Privacy-first P2P encrypted datastore and app platform</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0</project_license>
+  <launchable type="desktop-id">network.crypta.cryptad.desktop</launchable>
+  <description>
+    <p>
+      Crypta Daemon (cryptad) is the Kotlin/Java reference node for the Crypta
+      network, a modern Hyphanet/Freenet fork providing a privacy-first,
+      censorship-resistant distributed datastore and application platform.
+    </p>
+  </description>
+  <provides>
+    <binary>cryptad</binary>
+    <binary>cryptad-launcher</binary>
+  </provides>
+  <categories>
+    <category>Network</category>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>crypta</keyword>
+    <keyword>cryptad</keyword>
+    <keyword>p2p</keyword>
+    <keyword>daemon</keyword>
+    <keyword>launcher</keyword>
+  </keywords>
+  <releases>
+    <release version="v1"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
+

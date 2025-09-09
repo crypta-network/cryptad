@@ -15,6 +15,7 @@ picocli = "4.7.7"
 spotless = "7.2.1"
 flatlaf = "3.6.1"
 jsystemTheme = "ea2f8582ea"
+dbusJava = "5.1.0"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -33,6 +34,8 @@ picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
 kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
 jsystemThemeDetector = { group = "com.github.Dansoftowner", name = "jSystemThemeDetector", version.ref = "jsystemTheme" }
+dbusCore = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbusJava" }
+dbusTransportNativeUnix = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

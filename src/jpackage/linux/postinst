@@ -5,6 +5,7 @@ set -e
 # Installs either a systemd service (server/no-desktop) or a desktop entry (desktop environments).
 
 APP_DIR="/opt/cryptad/crypta"
+[ -d "/opt/cryptad/Crypta" ] && APP_DIR="/opt/cryptad/Crypta"
 SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
@@ -60,6 +61,13 @@ install_service() {
 install_desktop() {
   if [ -f "$DESKTOP_SRC" ]; then
     install -D -m 0644 "$DESKTOP_SRC" "$DESKTOP_DST"
+    # Normalize Exec/Icon to the actual app dir; ensure WM_CLASS keys exist on both copies.
+    for f in "$DESKTOP_DST" "$DESKTOP_SRC"; do
+      sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$f" || true
+      sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$f" || true
+      grep -q '^StartupWMClass=' "$f" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$f"
+      grep -q '^X-GNOME-WMClass=' "$f" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$f"
+    done
   fi
   # Refresh desktop databases (both system and local share paths)
   if command -v update-desktop-database >/dev/null 2>&1; then

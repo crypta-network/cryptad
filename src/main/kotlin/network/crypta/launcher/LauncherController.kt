@@ -384,7 +384,10 @@ class LauncherController(
     pids.forEach { pid ->
       try {
         runCmd("sh", "-lc", "kill -$signal $pid")
-      } catch (_: Throwable) {}
+      } catch (t: Throwable) {
+        // Best-effort signal delivery; log at debug level only to avoid noise when pids exit early
+        logDebug("Failed to send SIG$signal to PID $pid", t)
+      }
     }
   }
 
@@ -392,7 +395,8 @@ class LauncherController(
     try {
       val pr = ProcessBuilder(*args).start()
       pr.waitFor() == 0
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+      logDebug("Command failed: ${args.joinToString(" ")}", t)
       false
     }
 

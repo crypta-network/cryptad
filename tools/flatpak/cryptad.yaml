@@ -1,0 +1,64 @@
+id: network.crypta.cryptad
+branch: v1
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: cryptad-launcher
+finish-args:
+  - --share=network
+  - --socket=wayland
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --env=CRYPTAD_ALLOW_ROOT=1
+modules:
+  - name: cryptad
+    buildsystem: simple
+    build-commands:
+      - echo "[debug] CWD:" && pwd && ls -la
+      - echo "[debug] Tarball header (first 120 entries):" && tar -tzf cryptad-jlink-v1.tar.gz | sed -n '1,120p'
+      - install -d /app
+      - tar -xzf cryptad-jlink-v1.tar.gz -C /app
+      - |
+        echo "[debug] /app tree (top 2 levels):";
+        find /app -maxdepth 2 -print | sed 's/^/[app] /';
+        if [ -f /app/bin/cryptad ]; then
+          echo "[debug] FOUND /app/bin/cryptad";
+        else
+          echo "[debug] MISSING /app/bin/cryptad; searching...";
+          find /app -name cryptad -type f -print | sed 's/^/[search] /' || true;
+        fi
+        if [ -f /app/bin/cryptad-launcher ]; then
+          echo "[debug] FOUND /app/bin/cryptad-launcher";
+        else
+          echo "[debug] MISSING /app/bin/cryptad-launcher; searching...";
+          find /app -name cryptad-launcher -type f -print | sed 's/^/[search] /' || true;
+        fi
+        ls -la /app/bin | sed 's/^/[app-bin] /' || true
+      - install -Dm644 cryptad.desktop /app/share/applications/network.crypta.cryptad.desktop
+      - install -Dm644 cryptad-512.png /app/share/icons/hicolor/512x512/apps/network.crypta.cryptad.png
+      - install -Dm644 network.crypta.cryptad.metainfo.xml /app/share/metainfo/network.crypta.cryptad.metainfo.xml
+      - |
+        if [ -d /app/bin ]; then
+          find /app/bin -maxdepth 1 -type f \( -name cryptad -o -name cryptad-launcher -o -name 'wrapper*' \) -exec chmod 0755 {} + || true
+        fi
+      - find /app -type f -path '*/bin/java' -exec chmod 0755 {} + || true
+      - find /app -type f -path '*/lib/jspawnhelper' -exec chmod 0755 {} + || true
+      - rm -f /app/bin/wrapper-macosx-* || true
+      - rm -f /app/lib/libwrapper-macosx-* || true
+      - |
+        if [ "${FLATPAK_ARCH}" = "x86_64" ]; then
+          rm -f /app/bin/wrapper-linux-arm-64 /app/lib/libwrapper-linux-arm-64.so || true;
+        elif [ "${FLATPAK_ARCH}" = "aarch64" ]; then
+          rm -f /app/bin/wrapper-linux-x86-64 /app/lib/libwrapper-linux-x86-64.so || true;
+        fi
+    sources:
+      - type: file
+        path: local/cryptad-jlink-v1.tar.gz
+      - type: file
+        path: cryptad.desktop
+      - type: file
+        path: cryptad-512.png
+      - type: file
+        path: network.crypta.cryptad.metainfo.xml

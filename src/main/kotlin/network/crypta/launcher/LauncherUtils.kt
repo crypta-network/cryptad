@@ -116,7 +116,8 @@ fun guessWrapperConfPathForCryptadScript(cryptadPath: Path): Path? {
   if (!Files.isRegularFile(cryptadPath)) return defaultConf
   return try {
     scanWrapperConfPath(Files.readAllLines(cryptadPath, StandardCharsets.UTF_8)) ?: defaultConf
-  } catch (_: Exception) {
+  } catch (e: Exception) {
+    logDebug("Failed reading cryptad script to locate wrapper.conf; using default", e)
     defaultConf
   }
 }
@@ -217,7 +218,9 @@ internal fun findCurrentCryptadJarPath(): Path? {
         // Typically .../lib/cryptad.jar in the assembled distribution
         if (decoded.fileName.toString().startsWith("cryptad")) return decoded.normalize()
       }
-    } catch (_: Exception) {}
+    } catch (e: Exception) {
+      logDebug("Failed to decode current jar path from protection domain", e)
+    }
   }
 
   // b) As a fallback (tests/dev), scan the java.class.path for a cryptad*.jar entry
@@ -239,7 +242,9 @@ internal fun findCryptadJarInClassPath(classPath: String): Path? {
         val name = p.fileName.toString()
         if (re.matches(name)) return p.normalize()
       }
-    } catch (_: Exception) {}
+    } catch (e: Exception) {
+      logDebug("Error scanning classpath entry for cryptad jar: '$raw'", e)
+    }
   }
   return null
 }
@@ -275,7 +280,9 @@ fun findOnPath(cmd: String): String? {
     try {
       val f = Paths.get(dir).resolve(cmd)
       if (Files.isRegularFile(f) && Files.isExecutable(f)) return f.toString()
-    } catch (_: Exception) {}
+    } catch (e: Exception) {
+      logDebug("Error checking PATH entry '$dir' for '$cmd'", e)
+    }
   }
   return null
 }
@@ -311,7 +318,9 @@ fun loadAppIconImage(): Image? {
     if (res != null) {
       try {
         return ImageIO.read(res)
-      } catch (_: Exception) {}
+      } catch (e: Exception) {
+        logDebug("Failed to read icon resource '$path'", e)
+      }
     }
   }
 
@@ -321,6 +330,8 @@ fun loadAppIconImage(): Image? {
     if (Files.isRegularFile(fallback)) {
       return ImageIO.read(fallback.toFile())
     }
-  } catch (_: Exception) {}
+  } catch (e: Exception) {
+    logDebug("Failed reading fallback icon from docs/images/crypta_logo.png", e)
+  }
   return null
 }
