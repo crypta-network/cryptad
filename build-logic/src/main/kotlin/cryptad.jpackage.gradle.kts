@@ -349,6 +349,9 @@ val enrichAppImageWithDist by
             appendLine("Type=Application")
             appendLine("Categories=Network;Utility;")
             appendLine("MimeType=")
+            // Ensure GNOME docks associate the window with this entry.
+            appendLine("StartupWMClass=network-crypta-launcher-LauncherKt")
+            appendLine("X-GNOME-WMClass=network-crypta-launcher-LauncherKt")
           }
           desktop.writeText(desktopContent)
           logger.lifecycle("Wrote Linux desktop entry -> {}", desktop.absolutePath)

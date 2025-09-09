@@ -71,22 +71,37 @@ package_type=rpm
 
 # Source common helpers from installed image when available
 APP_DIR="/opt/cryptad/crypta"
+[ -d "/opt/cryptad/Crypta" ] && APP_DIR="/opt/cryptad/Crypta"
 COMMON="$APP_DIR/lib/crypta-common.sh"
 [ -f "$COMMON" ] && . "$COMMON"
+command -v log_line >/dev/null 2>&1 || log_line() { echo "$*"; }
+log_line "post: APP_DIR='$APP_DIR'"
 
 # Fallbacks if helpers are not available
 command -v is_desktop >/dev/null 2>&1 || is_desktop() {
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
-      if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
+    # Consider enabled/active display-manager or common DM units (gdm, sddm, lightdm, ly, xdm)
+    if systemctl is-enabled display-manager >/dev/null 2>&1 || \
+       systemctl is-active display-manager >/dev/null 2>&1; then
+      return 0
+    fi
+    for dm in gdm sddm lightdm ly xdm; do
+      if systemctl is-enabled "$dm" >/dev/null 2>&1 || \
+         systemctl is-active "$dm" >/dev/null 2>&1; then
         return 0
       fi
-    fi
+    done
   fi
   ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
   ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
   return 1
 }
+
+if is_desktop; then
+  log_line "post: detected desktop environment"
+else
+  log_line "post: server environment (no desktop)"
+fi
 
 command -v ensure_user >/dev/null 2>&1 || ensure_user() {
   if ! getent group cryptad >/dev/null 2>&1; then
@@ -107,7 +122,36 @@ SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
 
 if is_desktop; then
-  DESKTOP_COMMANDS_INSTALL
+  # Install desktop entry into system-wide applications dir and refresh caches
+  DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
+  DESKTOP_DST="/usr/share/applications/crypta.desktop"
+  log_line "post: DESKTOP_SRC='$DESKTOP_SRC' exists=$([ -f "$DESKTOP_SRC" ] && echo yes || echo no)"
+  if [ -f "$DESKTOP_SRC" ]; then
+    install -D -m 0644 "$DESKTOP_SRC" "$DESKTOP_DST"
+    log_line "post: installed desktop -> $DESKTOP_DST"
+    # Normalize Exec/Icon to the actual app dir; ensure WM_CLASS keys exist.
+    sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$DESKTOP_DST" || true
+    sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$DESKTOP_DST" || true
+    grep -q '^StartupWMClass=' "$DESKTOP_DST" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_DST"
+    grep -q '^X-GNOME-WMClass=' "$DESKTOP_DST" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_DST"
+    log_line "post: patched $DESKTOP_DST (Exec/Icon/WM_CLASS)"
+    # Also patch the image copy for consistency so future packaging picks up the same values.
+    sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$DESKTOP_SRC" || true
+    sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$DESKTOP_SRC" || true
+    grep -q '^StartupWMClass=' "$DESKTOP_SRC" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_SRC"
+    grep -q '^X-GNOME-WMClass=' "$DESKTOP_SRC" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$DESKTOP_SRC"
+    log_line "post: patched image copy $DESKTOP_SRC"
+  else
+    log_line "post: WARNING: missing $DESKTOP_SRC; cannot install desktop entry"
+  fi
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
+    log_line "post: updated desktop database"
+  fi
+  if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+    log_line "post: refreshed icon cache"
+  fi
 else
   if [ -f "$SERVICE_SRC" ]; then
     ensure_user
@@ -116,6 +160,7 @@ else
       systemctl daemon-reload || true
       systemctl enable cryptad.service || true
     fi
+    log_line "post: installed/enabled systemd service"
   fi
 fi
 
@@ -125,38 +170,58 @@ if [ "$1" = 2 ]; then
   true;
 fi
 
-%preun
+%postun
 package_type=rpm
 
 APP_DIR="/opt/cryptad/crypta"
+[ -d "/opt/cryptad/Crypta" ] && APP_DIR="/opt/cryptad/Crypta"
 COMMON="$APP_DIR/lib/crypta-common.sh"
 [ -f "$COMMON" ] && . "$COMMON"
+command -v log_line >/dev/null 2>&1 || log_line() { echo "$*"; }
+log_line "postun: APP_DIR='$APP_DIR' arg1='$1'"
 
-command -v is_desktop >/dev/null 2>&1 || is_desktop() {
-  if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
-      if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
+# Only on final erase ($1=0) remove desktop/service. On upgrade ($1=1) skip removal.
+if [ "$1" = 0 ]; then
+  command -v is_desktop >/dev/null 2>&1 || is_desktop() {
+    if command -v systemctl >/dev/null 2>&1; then
+      if systemctl is-enabled display-manager >/dev/null 2>&1 || \
+         systemctl is-active display-manager >/dev/null 2>&1; then
         return 0
       fi
+      for dm in gdm sddm lightdm ly xdm; do
+        if systemctl is-enabled "$dm" >/dev/null 2>&1 || \
+           systemctl is-active "$dm" >/dev/null 2>&1; then
+          return 0
+        fi
+      done
     fi
-  fi
-  ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
-  ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
-  return 1
-}
+    ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
+    ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
+    return 1
+  }
 
-if is_desktop; then
-  DESKTOP_COMMANDS_UNINSTALL
-else
-  if command -v systemctl >/dev/null 2>&1; then
-    # Avoid TOCTOU between unit existence check and disable/stop by probing state.
-    if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
-       || systemctl is-active cryptad.service >/dev/null 2>&1; then
-      systemctl disable --now cryptad.service >/dev/null 2>&1 || true
+  if is_desktop; then
+    rm -f /usr/share/applications/crypta.desktop || true
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database -q /usr/share/applications || true
     fi
-    rm -f /etc/systemd/system/cryptad.service || true
-    systemctl daemon-reload || true
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+    fi
+    log_line "postun: removed desktop entry"
+  else
+    if command -v systemctl >/dev/null 2>&1; then
+      if systemctl is-enabled cryptad.service >/dev/null 2>&1 \
+         || systemctl is-active cryptad.service >/dev/null 2>&1; then
+        systemctl disable --now cryptad.service >/dev/null 2>&1 || true
+      fi
+      rm -f /etc/systemd/system/cryptad.service || true
+      systemctl daemon-reload || true
+    fi
+    log_line "postun: disabled/removed systemd service"
   fi
+else
+  log_line "postun: upgrade detected; skipping removal"
 fi
 
 %clean
