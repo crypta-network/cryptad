@@ -24,14 +24,18 @@ object ThemeSwitcher {
     // macOS: ensure the system appearance is reported to Java/Swing
     try {
       System.setProperty("apple.awt.application.appearance", "system")
-    } catch (_: Exception) {}
+    } catch (e: Exception) {
+      logDebug("Failed to set macOS appearance system property", e)
+    }
     try {
       val linux = System.getProperty("os.name").lowercase().contains("linux")
       if (linux) {
         javax.swing.JFrame.setDefaultLookAndFeelDecorated(true)
         javax.swing.JDialog.setDefaultLookAndFeelDecorated(true)
       }
-    } catch (_: Throwable) {}
+    } catch (t: Throwable) {
+      logDebug("Failed to enable client decorations on Linux/Flatpak", t)
+    }
     val det = FlatpakAwareOsThemeDetector.getDetector()
     detector = det
 
@@ -74,20 +78,35 @@ object ThemeSwitcher {
         val useNativeDeco = isMac().not() && !inFlatpak
         FlatLaf.setUseNativeWindowDecorations(useNativeDeco)
         // Apply LAF explicitly via UIManager to catch errors, then let FlatLaf do extra setup
-        try { UIManager.setLookAndFeel(laf) } catch (_: Throwable) {}
+        try {
+          UIManager.setLookAndFeel(laf)
+        } catch (t: Throwable) {
+          logDebug("UIManager.setLookAndFeel() failed", t)
+        }
         // Also set swing.defaultlaf so the EDT initialization cannot override us to GTK
-        try { System.setProperty("swing.defaultlaf", laf.javaClass.name) } catch (_: Throwable) {}
+        try {
+          System.setProperty("swing.defaultlaf", laf.javaClass.name)
+        } catch (t: Throwable) {
+          logDebug("Failed to set swing.defaultlaf system property", t)
+        }
         FlatLaf.setup(laf)
         // For live switches after startup, refresh UI
         if (!synchronous) FlatLaf.updateUI()
-      } catch (_: Exception) {}
+      } catch (e: Exception) {
+        logWarn("Failed to apply FlatLaf theme", e)
+      }
     }
 
     if (synchronous) {
       if (SwingUtilities.isEventDispatchThread()) {
         apply()
       } else {
-        try { SwingUtilities.invokeAndWait(apply) } catch (_: Exception) { apply() }
+        try {
+          SwingUtilities.invokeAndWait(apply)
+        } catch (e: Exception) {
+          logDebug("invokeAndWait failed; applying LAF synchronously on caller thread", e)
+          apply()
+        }
       }
     } else {
       SwingUtilities.invokeLater(apply)
@@ -97,7 +116,8 @@ object ThemeSwitcher {
   private fun isMac(): Boolean =
     try {
       System.getProperty("os.name").lowercase().contains("mac")
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+      logDebug("Failed to read os.name property for isMac()", e)
       false
     }
 }

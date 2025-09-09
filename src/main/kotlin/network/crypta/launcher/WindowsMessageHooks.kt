@@ -47,7 +47,9 @@ object WindowsMessageHooks {
         val hwnd = getHwnd(frame) ?: return@Runnable
         val hook = WndProcHook(hwnd, onQuit)
         frame.rootPane.putClientProperty(CLIENT_PROP_KEY, hook)
-      } catch (_: Throwable) {}
+      } catch (t: Throwable) {
+        logDebug("Failed to install Windows message hook", t)
+      }
     }
     if (SwingUtilities.isEventDispatchThread()) task.run() else SwingUtilities.invokeLater(task)
   }
@@ -58,7 +60,8 @@ object WindowsMessageHooks {
       // Use Native.getWindowPointer(Window) and wrap it as HWND.
       val p: Pointer = Native.getWindowPointer(frame)
       if (p == Pointer.NULL) null else HWND(p)
-    } catch (_: Throwable) {
+    } catch (t: Throwable) {
+      logDebug("Failed to resolve HWND from frame", t)
       null
     }
 
@@ -98,7 +101,9 @@ object WindowsMessageHooks {
       invoked = true
       try {
         SwingUtilities.invokeLater { onQuit.invoke() }
-      } catch (_: Throwable) {}
+      } catch (t: Throwable) {
+        logDebug("Failed to post quit request from Windows hook", t)
+      }
     }
   }
 }

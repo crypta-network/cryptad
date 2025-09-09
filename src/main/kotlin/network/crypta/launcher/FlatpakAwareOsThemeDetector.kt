@@ -20,13 +20,19 @@ object FlatpakAwareOsThemeDetector {
 
   private fun tryCreatePortalDetector(): OsThemeDetector? {
     if (!isLinux()) return null
-    return try { com.jthemedetecor.PortalThemeDetector() } catch (_: Throwable) { null }
+    return try {
+      com.jthemedetecor.PortalThemeDetector()
+    } catch (t: Throwable) {
+      logDebug("XDG portal theme detector unavailable; falling back to upstream detector", t)
+      null
+    }
   }
 
   private fun isLinux(): Boolean =
     try {
       System.getProperty("os.name").lowercase().contains("linux")
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+      logDebug("Failed to read os.name property for isLinux()", e)
       false
     }
 }
