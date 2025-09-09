@@ -113,6 +113,8 @@ class CryptaLauncher : JFrame("Crypta Launcher") {
     add(scrollPane, BorderLayout.CENTER)
     add(statusLabel, BorderLayout.SOUTH)
 
+    // (no post-construct debug checks)
+
     // Wire actions
     startStopBtn.addActionListener {
       val st = controller.state.value
@@ -398,9 +400,15 @@ fun main() {
   // Install FlatLaf with OS theme detection + live switching
   try {
     ThemeSwitcher.install()
-  } catch (_: Exception) {
+  } catch (e: Exception) {
+    // Silent failure; UI will fall back to system LAF if FlatLaf not active
+    // Only fall back to system LAF if FlatLaf is not already active
     try {
-      UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+      val cur = UIManager.getLookAndFeel()
+      val alreadyFlat = cur != null && cur.javaClass.name.startsWith("com.formdev.flatlaf")
+      if (!alreadyFlat) {
+        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+      }
     } catch (_: Exception) {}
   }
 

@@ -288,6 +288,39 @@ Uninstall semantics
       - "Git identity is not configured. Please run: git config --global user.name "<Your Name>" && git config --global user.email "<you@example.com>""
     - After the user confirms identity is set, resume the commit.
 
+## Desktop & Theme Handling
+
+- Swing Look & Feel uses FlatLaf across platforms; macOS uses FlatMac* variants. We choose dark/light based on the OS theme before any Swing components are created (EDT).
+- Flatpak: OS theme detection reads the XDG Desktop Portal setting `org.freedesktop.appearance/color-scheme` via dbus-java.
+  - Portal detector: `src/main/kotlin/com/jthemedetecor/PortalThemeDetector.kt`.
+  - Factory: `src/main/kotlin/network/crypta/launcher/FlatpakAwareOsThemeDetector.kt` prefers the portal and falls back to the upstream detector when unavailable.
+- We removed temporary debug prints and the late “ensureApplied()” safeguard. LAF is applied once early; fallback to the system LAF only occurs if FlatLaf isn’t already active.
+- On Linux/Flatpak we use FlatLaf client-side window decorations for consistent title bars.
+
+## Flatpak Build (local dev)
+
+Requirements: `flatpak`, `org.freedesktop.Platform//24.08`, `org.freedesktop.Sdk//24.08`.
+
+Commands
+
+```bash
+./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle buildJar
+./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle distJlinkCryptad
+cp -f build/distributions/cryptad-jlink-v1.tar.gz flatpak/local/
+rm -rf builddir repo .flatpak-builder
+flatpak run org.flatpak.Builder --force-clean --user --arch=$(flatpak --default-arch) \
+  --install-deps-from=flathub builddir flatpak/cryptad.yaml
+flatpak build-export --arch=$(flatpak --default-arch) repo builddir v1
+flatpak build-bundle repo cryptad-v1-$( [ $(flatpak --default-arch) = aarch64 ] && echo arm64 || echo amd64 ).flatpak \
+  network.crypta.cryptad v1 --arch=$(flatpak --default-arch)
+flatpak --user install -y ./cryptad-v1-*.flatpak
+flatpak run network.crypta.cryptad//v1
+```
+
+Notes
+- Flatpak packaging files live under `flatpak/` (manifest, desktop file, icon, metainfo).
+- Spotless is scoped to `src/**`; `.spotlessignore` at the repo root prevents scanning Flatpak scratch dirs.
+
 ## Testing Strategy
 
 - Unit tests for core utilities and logic

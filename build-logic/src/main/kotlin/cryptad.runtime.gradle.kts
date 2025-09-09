@@ -142,6 +142,8 @@ val computeJlinkModules by
     baselineModules.set(
       listOf(
         "jdk.crypto.ec",
+        // Needed by dbus-java to access com.sun.security.auth.module.UnixSystem
+        "jdk.security.auth",
         "jdk.charsets",
         "jdk.localedata",
         "jdk.unsupported",

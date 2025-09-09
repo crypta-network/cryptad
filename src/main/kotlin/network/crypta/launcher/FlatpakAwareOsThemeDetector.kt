@@ -1,7 +1,6 @@
 package network.crypta.launcher
 
 import com.jthemedetecor.OsThemeDetector
-import org.slf4j.LoggerFactory
 
 /**
  * Flatpak/portal-aware OS theme detector.
@@ -11,23 +10,17 @@ import org.slf4j.LoggerFactory
  * reachable, it falls back to the upstream jSystemThemeDetector implementation.
  */
 object FlatpakAwareOsThemeDetector {
-  private val log = LoggerFactory.getLogger("FlatpakAwareOsThemeDetector")
 
   /** Factory that returns a portal-backed detector when possible, else upstream detector. */
   fun getDetector(): OsThemeDetector {
     val portal = tryCreatePortalDetector()
-    return portal ?: OsThemeDetector.getDetector()
+    if (portal != null) return portal
+    return OsThemeDetector.getDetector()
   }
 
   private fun tryCreatePortalDetector(): OsThemeDetector? {
     if (!isLinux()) return null
-    return try {
-      com.jthemedetecor.PortalThemeDetector().also { /* ok */ }
-    } catch (t: Throwable) {
-      // Any failure (no bus, portal absent, missing transport) → fall back
-      log.debug("Portal detector not available: ${t.javaClass.simpleName}: ${t.message}")
-      null
-    }
+    return try { com.jthemedetecor.PortalThemeDetector() } catch (_: Throwable) { null }
   }
 
   private fun isLinux(): Boolean =
