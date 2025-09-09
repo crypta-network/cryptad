@@ -306,10 +306,10 @@ Commands
 ```bash
 ./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle buildJar
 ./gradlew -x spotlessKotlin -x spotlessApply -x spotlessJava -x spotlessKotlinGradle distJlinkCryptad
-cp -f build/distributions/cryptad-jlink-v1.tar.gz flatpak/local/
+cp -f build/distributions/cryptad-jlink-v1.tar.gz tools/flatpak/local/
 rm -rf builddir repo .flatpak-builder
 flatpak run org.flatpak.Builder --force-clean --user --arch=$(flatpak --default-arch) \
-  --install-deps-from=flathub builddir flatpak/cryptad.yaml
+  --install-deps-from=flathub builddir tools/flatpak/cryptad.yaml
 flatpak build-export --arch=$(flatpak --default-arch) repo builddir v1
 flatpak build-bundle repo cryptad-v1-$( [ $(flatpak --default-arch) = aarch64 ] && echo arm64 || echo amd64 ).flatpak \
   network.crypta.cryptad v1 --arch=$(flatpak --default-arch)
@@ -318,7 +318,7 @@ flatpak run network.crypta.cryptad//v1
 ```
 
 Notes
-- Flatpak packaging files live under `flatpak/` (manifest, desktop file, icon, metainfo).
+- Flatpak packaging files live under `tools/flatpak/` (manifest, desktop file, icon, metainfo).
 - Spotless is scoped to `src/**`; `.spotlessignore` at the repo root prevents scanning Flatpak scratch dirs.
 
 ## Testing Strategy

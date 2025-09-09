@@ -1,6 +1,6 @@
 .flatpak-builder/
 builddir/
 repo/
-flatpak/work/
-flatpak/local/
+tools/flatpak/work/
+tools/flatpak/local/
 build/
