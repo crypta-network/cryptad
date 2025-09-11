@@ -120,9 +120,9 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     private String haveMonthlyLimit = "";
 
-    private String downloadLimit = "1024";
+    private String downloadLimit = "10240";
 
-    private String uploadLimit = "160";
+    private String uploadLimit = "1024";
 
     private String bandwidthMonthlyLimit = "500";
 
