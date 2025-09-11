@@ -249,6 +249,18 @@ start/stop the wrapper reliably.
   - Clear quarantine on unsigned builds: `xattr -dr com.apple.quarantine build/jpackage/Crypta.app`.
   - Verify security status: `spctl --assess -vv build/jpackage/Crypta.app`.
 
+
+- Troubleshooting (Windows)
+  - Launch from a console to view errors: `build\\jpackage\\Crypta\\Crypta.exe`.
+  - Image layout: `app/` contains `Crypta.cfg`, `bootstrap.jar`, and `cryptad-dist/`.
+  - Verify paths exist:
+    - `build\\jpackage\\Crypta\\app\\cryptad-dist\\lib\\cryptad.jar`
+    - `build\\jpackage\\Crypta\\app\\Crypta.cfg`
+  - Verify `app\\Crypta.cfg` contains:
+    - `app.mainclass=network.crypta.launcher.LauncherKt`
+    - One or more `app.classpath=$APPDIR/cryptad-dist/lib/*.jar` lines (including `cryptad.jar`).
+  - If you find `cryptad-dist` or `Crypta.cfg` under `lib\\app\\` instead of `app\\`, rebuild; on Windows the app image uses `app/` (Linux uses `lib/app/`).
+
 #### Linux installer behavior (DEB/RPM)
 
 - Install location: the app image is installed under `/opt/cryptad/Crypta`. Some hosts may lowercase the directory to `/opt/cryptad/crypta`; our scripts auto‑detect the actual `APP_DIR` and normalize paths accordingly.

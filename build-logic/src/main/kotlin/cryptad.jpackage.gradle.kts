@@ -310,9 +310,15 @@ val enrichAppImageWithDist by
           else -> root.resolve(appName)
         }
       val appDir = imageRoot.resolve("app")
+      // Where to place the portable distribution inside the app image.
+      // jpackage layout differs by OS:
+      // - macOS:    Contents/app/
+      // - Windows:  app/
+      // - Linux:    lib/app/
       val target =
         when (os) {
           "mac" -> appDir.resolve("cryptad-dist")
+          "win" -> appDir.resolve("cryptad-dist")
           else -> imageRoot.resolve("lib/app/cryptad-dist")
         }
       target.parentFile.mkdirs()
@@ -383,6 +389,8 @@ val enrichAppImageWithDist by
         when (os) {
           // macOS: cfg lives under Contents/app
           "mac" -> appDir.resolve("$appName.cfg")
+          // Windows: cfg lives under app/
+          "win" -> appDir.resolve("$appName.cfg")
           // Linux: cfg lives under lib/app
           else -> imageRoot.resolve("lib/app/$appName.cfg")
         }
