@@ -54,6 +54,26 @@ architecture review).
 3. Replace the existing node JAR with `build/libs/cryptad.jar`
 4. Restart the node
 
+## Recent Changes & Tips (Sep 2025)
+
+- Remote debugging (Wrapper/JDWP)
+  - Set `CRYPTAD_REMOTE_DEBUG=1` to enable JDWP for the wrapped JVM at runtime (no `wrapper.conf` edits).
+  - Tunables via env: `CRYPTAD_DEBUG_PORT` (default 5005), `CRYPTAD_DEBUG_HOST` (default 127.0.0.1), `CRYPTAD_DEBUG_SUSPEND` (`y|n`, default `n`), `CRYPTAD_DEBUG_TIMEOUT` (ms, optional).
+  - The launcher appends Wrapper command-line properties: `wrapper.ignore_sequence_gaps=TRUE`, `wrapper.java.additional.250=<JDWP>`, `wrapper.java.additional.251=-Xdebug` so Tanuki’s `wrapper.java.detect_debug_jvm` can detect a debug JVM. The script logs `REMOTE_DEBUG=enabled (...)` when active.
+
+- Datastore sizing heuristic
+  - If free space > 50 GiB: suggest 20% of free space (min 10 GiB), bounded by Bloom cap (256 GiB). Disk I/O cap is aligned to the same 256 GiB cap.
+  - If free space > 5 GiB: suggest 20% of free space (min 2 GiB). See `DatastoreUtil.java` for exact limits.
+
+- First-Time Wizard bandwidth defaults
+  - Defaults increased to `download=10240` KiB/s and `upload=1024` KiB/s.
+  - “Detected” bandwidth row is currently disabled in the template pending a working detector; do not re‑enable without fixing detection.
+
+- Theme switcher initialization
+  - The browser theme change listener (`matchMedia('(prefers-color-scheme: dark)')`) is registered before creating the UI controls. Keep this ordering, as the wizard page may not render a navbar.
+
+- Launcher code style guardrails
+  - Use the `APP_NAME` constant for window titles; prefer logging via `LauncherLog` over silent catches; keep Desktop integration hooks inside `try/catch` with debug logs.
 ## Repository Etiquette
 
 - Branch naming: main, develop, feature/*, bugfix/*, hotfix/*, release/*

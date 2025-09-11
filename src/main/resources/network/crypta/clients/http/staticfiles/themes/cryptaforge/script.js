@@ -917,6 +917,17 @@ const ThemeSwitcherModule = (() => {
       navbarElement = document.getElementById('navbar');
       const navlistElement = document.getElementById('navlist');
 
+      // Listen for browser theme changes
+      if (window.matchMedia) {
+        mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mediaQueryList.addEventListener) {
+          mediaQueryList.addEventListener('change', handleBrowserThemeChange);
+        } else if (mediaQueryList.addListener) {
+          // Fallback for older browsers
+          mediaQueryList.addListener(handleBrowserThemeChange);
+        }
+      }
+
       if (!navbarElement || !navlistElement) {
         console.warn('Theme switcher: Required navigation elements not found');
         return;
@@ -935,17 +946,6 @@ const ThemeSwitcherModule = (() => {
       // Update button state
       const theme = getCurrentTheme();
       updateButtonState(theme);
-
-      // Listen for browser theme changes
-      if (window.matchMedia) {
-        mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
-        if (mediaQueryList.addEventListener) {
-          mediaQueryList.addEventListener('change', handleBrowserThemeChange);
-        } else if (mediaQueryList.addListener) {
-          // Fallback for older browsers
-          mediaQueryList.addListener(handleBrowserThemeChange);
-        }
-      }
 
       console.debug('Theme switcher initialized successfully');
     } catch (error) {

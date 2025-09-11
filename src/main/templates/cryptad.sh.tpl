@@ -116,6 +116,32 @@ case "$DIST_OS" in
     ;;
 esac
 
+# Optional: enable Java remote debugging when requested via environment.
+# When CRYPTAD_REMOTE_DEBUG is set (to any value), we append a JDWP agent option
+# using Wrapper command-line properties so it applies only for this run.
+# Tuning via env (all optional):
+#   CRYPTAD_DEBUG_PORT     default: 5005
+#   CRYPTAD_DEBUG_HOST     default: 127.0.0.1  (use '*' to listen on all interfaces)
+#   CRYPTAD_DEBUG_SUSPEND  default: n         (use 'y' to wait for debugger)
+#   CRYPTAD_DEBUG_TIMEOUT  default: unset     (milliseconds; optional)
+EXTRA_PROPS=()
+DEBUG_DESC="off"
+if [ -n "${CRYPTAD_REMOTE_DEBUG:-}" ]; then
+  DEBUG_HOST="${CRYPTAD_DEBUG_HOST:-127.0.0.1}"
+  DEBUG_PORT="${CRYPTAD_DEBUG_PORT:-5005}"
+  DEBUG_SUSPEND="${CRYPTAD_DEBUG_SUSPEND:-n}"
+  DEBUG_TIMEOUT_OPT=""
+  if [ -n "${CRYPTAD_DEBUG_TIMEOUT:-}" ]; then
+    DEBUG_TIMEOUT_OPT=",timeout=${CRYPTAD_DEBUG_TIMEOUT}"
+  fi
+  JDWP_OPT="-agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND},address=${DEBUG_HOST}:${DEBUG_PORT}${DEBUG_TIMEOUT_OPT} "
+  # Allow non-contiguous numbering and use a high index to avoid collisions with wrapper.conf
+  EXTRA_PROPS+=("wrapper.ignore_sequence_gaps=TRUE")
+  EXTRA_PROPS+=("wrapper.java.additional.250=${JDWP_OPT}")
+  EXTRA_PROPS+=("wrapper.java.additional.251=-Xdebug")
+  DEBUG_DESC="enabled (${DEBUG_HOST}:${DEBUG_PORT} suspend=${DEBUG_SUSPEND})"
+fi
+
 # Try generic wrapper first
 if [ ! -x "$WRAPPER" ]; then
   CANDIDATES=(
@@ -142,9 +168,10 @@ echo "  WRAPPER=$WRAPPER"
 echo "  DETECTED_OS=$DIST_OS (raw=$OS_RAW)"
 echo "  DETECTED_ARCH=$DIST_ARCH (bits=$DIST_BIT source=$ARCH_SRC input=$ARCH_INPUT raw=$ARCH_RAW)"
 echo "  WRAP_TARGET=$WRAP_OS-$WRAP_ARCH-$WRAP_BIT"
+echo "  REMOTE_DEBUG=$DEBUG_DESC"
 
 if [ -x "$WRAPPER" ]; then
-  exec "$WRAPPER" -c "$CONF" "$@"
+  exec "$WRAPPER" -c "$CONF" "${EXTRA_PROPS[@]}" "$@"
 fi
 
 echo "No native wrapper found or not executable: $WRAPPER" >&2

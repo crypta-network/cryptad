@@ -80,17 +80,15 @@ public class DatastoreUtil {
       long shortSize;
       // Maximum for Freenet: 256GB. That's a 128MiB bloom filter.
       long bloomFilter128MiBMax = 256 * oneGiB;
-      // Maximum to suggest to keep Disk I/O managable. This
-      // value might need revisiting when hardware or
-      // filesystems change.
-      long diskIoMax = 100 * oneGiB;
+      // SSD era: treat disk I/O cap same as bloom-filter cap so it is not more restrictive.
+      long diskIoMax = bloomFilter128MiBMax;
 
       // Choose a suggested store size based on available free space.
       if (freeSpace > 50 * oneGiB) {
-        // > 50 GiB: Use 10% free space; minimum 10 GiB. Limited by bloom filters and disk I/O.
+        // > 50 GiB: Use 20% free space; minimum 10 GiB. Limited by bloom filters.
         shortSize =
             Math.max(
-                10 * oneGiB, Math.min(freeSpace / 10, Math.min(diskIoMax, bloomFilter128MiBMax)));
+                10 * oneGiB, Math.min(freeSpace / 5, Math.min(diskIoMax, bloomFilter128MiBMax)));
       } else if (freeSpace > 5 * oneGiB) {
         // > 5 GiB: Use 20% free space, minimum 2 GiB.
         shortSize = Math.max(freeSpace / 5, 2 * oneGiB);
