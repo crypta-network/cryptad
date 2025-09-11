@@ -134,10 +134,11 @@ if [ -n "${CRYPTAD_REMOTE_DEBUG:-}" ]; then
   if [ -n "${CRYPTAD_DEBUG_TIMEOUT:-}" ]; then
     DEBUG_TIMEOUT_OPT=",timeout=${CRYPTAD_DEBUG_TIMEOUT}"
   fi
-  JDWP_OPT="-agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND},address=${DEBUG_HOST}:${DEBUG_PORT}${DEBUG_TIMEOUT_OPT}"
+  JDWP_OPT="-agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND},address=${DEBUG_HOST}:${DEBUG_PORT}${DEBUG_TIMEOUT_OPT} "
   # Allow non-contiguous numbering and use a high index to avoid collisions with wrapper.conf
   EXTRA_PROPS+=("wrapper.ignore_sequence_gaps=TRUE")
   EXTRA_PROPS+=("wrapper.java.additional.250=${JDWP_OPT}")
+  EXTRA_PROPS+=("wrapper.java.additional.251=-Xdebug")
   DEBUG_DESC="enabled (${DEBUG_HOST}:${DEBUG_PORT} suspend=${DEBUG_SUSPEND})"
 fi
 
