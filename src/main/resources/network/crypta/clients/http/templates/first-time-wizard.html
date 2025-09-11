@@ -59,15 +59,16 @@
             <th>{{ l10n("bandwidthCommonInternetConnectionSpeedsDownloadLimit") }}</th>
             <th>{{ l10n("bandwidthCommonInternetConnectionSpeedsUploadLimit") }}</th>
           </tr>
-          <tr>
-            <td>{{ l10n("bandwidthCommonInternetConnectionSpeedsDetected") }}</td>
-            <td>{{ downloadLimitDetected }} {{ l10n("bandwidthCommonInternetConnectionSpeedsKibps")
-              }}
-            </td>
-            <td>{{ uploadLimitDetected }} {{ l10n("bandwidthCommonInternetConnectionSpeedsKibps")
-              }}
-            </td>
-          </tr>
+<!--          Bandwidth detection doesn't work. Disable for now.-->
+<!--          <tr>-->
+<!--            <td>{{ l10n("bandwidthCommonInternetConnectionSpeedsDetected") }}</td>-->
+<!--            <td>{{ downloadLimitDetected }} {{ l10n("bandwidthCommonInternetConnectionSpeedsKibps")-->
+<!--              }}-->
+<!--            </td>-->
+<!--            <td>{{ uploadLimitDetected }} {{ l10n("bandwidthCommonInternetConnectionSpeedsKibps")-->
+<!--              }}-->
+<!--            </td>-->
+<!--          </tr>-->
           <!-- TODO: This will be a template loop over a container of common speeds provided by the node. .type, .down, .up per row. -->
           <tr>
             <td>ADSL</td>
