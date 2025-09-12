@@ -12,6 +12,17 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
 
+/**
+ * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
+ *
+ * Path: `/core-update/`
+ * - GET: 302 redirect to the Alerts page.
+ * - POST: handles `action=download|install` (requires a valid form password in the request).
+ *
+ * Security:
+ * - `install` action validates that the file path is under the node dir `updates/core/` subtree
+ *   (canonical‑path check) to mitigate traversal/symlink games.
+ */
 class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) : Toadlet(client) {
 
   override fun path(): String = "/core-update/"
@@ -22,6 +33,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     ctx.sendReplyHeaders(302, "Found", headers, null, 0)
   }
 
+  /** Handle download/install actions submitted from the Alerts UI. */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     val action = request.getPartAsStringFailsafe("action", 32)
     val updater = node.getNodeUpdater().getCoreUpdater()
@@ -48,6 +60,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
   }
 
+  /**
+   * Ensure the provided file path resolves inside `nodeDir/updates/core`. Returns the canonical
+   * `File` or null when invalid/untrusted.
+   */
   private fun validatePath(path: String): File? {
     if (path.isEmpty()) return null
     val f = File(path)
@@ -61,6 +77,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     return if (canon.path.startsWith(base.path)) canon else null
   }
 
+  /**
+   * Best‑effort attempt to launch the OS installer for the given file. Returns `(success, message)`
+   * where message is suitable for user display.
+   */
   private fun tryInstall(file: File): Pair<Boolean, String> {
     val os = System.getProperty("os.name").lowercase()
     return try {
@@ -80,6 +100,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
   }
 
+  /** Choose a Linux command line for common package types, or null when unsupported. */
   private fun linuxInstaller(file: File): java.lang.ProcessBuilder? {
     val name = file.name
     return when {
@@ -95,17 +116,20 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
   }
 
+  /** Simple PATH check for an executable name. */
   private fun onPath(cmd: String): Boolean {
     val sep = File.pathSeparatorChar
     val path = System.getenv("PATH") ?: return false
     return path.split(sep).any { File(it, cmd).canExecute() }
   }
 
+  /** 302 back to Alerts to keep navigation consistent. */
   private fun redirect(ctx: ToadletContext) {
     val headers = MultiValueTable.from("Location", "/alerts/")
     ctx.sendReplyHeaders(302, "Found", headers, null, 0)
   }
 
+  /** Render a small, self‑contained result page with success/failure styling. */
   private fun writeMessage(ctx: ToadletContext, success: Boolean, msg: String) {
     val pm = ctx.pageMaker
     val page =

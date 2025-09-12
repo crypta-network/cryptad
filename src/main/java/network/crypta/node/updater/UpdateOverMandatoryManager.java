@@ -75,9 +75,14 @@ import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
 
 /**
- * Co-ordinates update over mandatory. Update over mandatory = updating from your peers, even though
- * they may be so much newer than you that you can't route requests through them. NodeDispatcher
- * feeds UOMAnnouncement's received from peers to this class, and it decides what to do about them.
+ * Co‑ordinates Update‑Over‑Mandatory (UoM).
+ *
+ * <p>UoM allows nodes to exchange update payloads even when they are too far apart in versions to
+ * route requests normally. The {@link network.crypta.node.NodeDispatcher} forwards UOM
+ * announcements and requests here, and this class decides how to react.
+ *
+ * <p>Note: In package‑based updater mode ({@link NodeUpdateManager#supportsJarUOM()} returns {@code
+ * false}) main‑jar UoM is disabled. UoM is still used for revocation handling.
  *
  * @author toad
  */
@@ -2792,6 +2797,12 @@ public class UpdateOverMandatoryManager implements RequestClient {
     }
   }
 
+  /**
+   * Validate a fetched dependency against expected size and SHA‑256.
+   *
+   * <p>When {@code executable} is true and the content matches, this method also marks the file
+   * executable if necessary.
+   */
   private boolean validDependencyFile(
       File filename, byte[] expectedHash, long size, boolean executable) {
     if (filename == null || !filename.exists()) return false;

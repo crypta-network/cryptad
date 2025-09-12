@@ -52,8 +52,12 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.IOUtils;
 
 /**
- * Supervises NodeUpdater's. Enables us to easily update multiple files, change the URI's on the
- * fly, eliminates some messy code in the callbacks etc.
+ * Supervises auto‑update components: core application updates and plugin updates.
+ *
+ * <p>Historically this class owned a main‑jar self‑updater and coordinated Update‑Over‑Mandatory
+ * (UoM) fallback. The core update flow is now package‑based via {@code CoreUpdater} (deb/rpm/dmg/
+ * exe/flatpak/snap), and UoM for the main JAR is disabled in that mode (revocation handling stays).
+ * Plugin updates continue to use the existing JAR flow.
  *
  * <p>Procedure for updating the update key: Create a new key. Create a new build X, the "transition
  * version". This must be UOM-compatible with the previous transition version. UOM-compatible means
@@ -737,7 +741,10 @@ public class NodeUpdateManager {
     return updateURI;
   }
 
-  /** Returns the update base with docname switched to "info" (core package info editions). */
+  /**
+   * Update base with docname switched to {@code "info"} (core package info editions). Used by
+   * {@link network.crypta.node.updater.CoreUpdater}.
+   */
   public synchronized FreenetURI getCoreInfoURI() {
     return updateURI.setDocName("info");
   }
@@ -754,7 +761,8 @@ public class NodeUpdateManager {
   }
 
   /**
-   * Add links to the changelog for the given version to the given node.
+   * Add links to the changelog for the given version to the given node. Also includes CHK links
+   * provided by {@link CoreUpdater} when available.
    *
    * @param version USK edition to point to
    * @param node to add links to
@@ -1098,8 +1106,12 @@ public class NodeUpdateManager {
     }
   }
 
+  /**
+   * Mark the update system as “armed”. In package‑based mode this only influences legacy UI text;
+   * {@link CoreUpdater} drives actual downloads when auto‑update is allowed or when the user clicks
+   * Download.
+   */
   public void arm() {
-    // Mark as armed; CoreUpdater handles downloads via UI or autoupdate.
     armed = true;
   }
 
@@ -1385,6 +1397,10 @@ public class NodeUpdateManager {
   // onDependenciesReady removed
 
   /** Show the progress of individual dependencies if possible */
+  /**
+   * Render core update status/controls into the global Alerts panel. Delegates to {@link
+   * CoreUpdater#renderProperties(HTMLNode)}.
+   */
   public void renderProgress(HTMLNode alertNode) {
     network.crypta.node.updater.CoreUpdater cu;
     synchronized (this) {
@@ -1427,6 +1443,7 @@ public class NodeUpdateManager {
 
   // --- Core updater wiring ---
 
+  /** Create and wire the package‑based {@link CoreUpdater} if not already present. */
   public synchronized void startCoreUpdater() {
     if (coreUpdater != null) return;
     coreUpdater =
@@ -1439,14 +1456,16 @@ public class NodeUpdateManager {
             "core-info-");
   }
 
+  /** Current {@link CoreUpdater} instance or null when the core updater is not enabled. */
   public synchronized network.crypta.node.updater.CoreUpdater getCoreUpdater() {
     return coreUpdater;
   }
 
   /**
-   * Whether legacy main-jar UoM flows should be handled. We gate these to true only when a
-   * MainJarUpdater exists (legacy mode). In package-based updater mode, we return false to avoid
-   * attempting jar fetch/send.
+   * Whether legacy main‑jar UoM flows should be handled.
+   *
+   * <p>In package‑based updater mode this returns {@code false} to avoid serving/fetching the main
+   * JAR via UoM. Revocation UoM remains enabled.
    */
   public synchronized boolean supportsJarUOM() {
     return false;

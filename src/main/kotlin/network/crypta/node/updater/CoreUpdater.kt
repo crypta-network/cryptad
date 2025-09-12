@@ -21,8 +21,18 @@ import network.crypta.support.Logger
 import network.crypta.support.io.FileBucket
 
 /**
- * Package-based updater that subscribes to USK@.../info/<N> editions and exposes a UI to download
- * and install OS packages (deb, rpm, dmg, exe, flatpak, snap).
+ * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
+ * self‑updating the running JAR.
+ *
+ * Responsibilities
+ * - Fetch the latest “core info” descriptor (JSON) and parse it.
+ * - Detect the current OS/arch and available package managers.
+ * - Choose a suitable artifact (e.g., amd64.deb → Flatpak/Snap preferred when present).
+ * - On request (or when auto‑update is allowed), fetch the artifact’s CHK to the updates directory.
+ * - Render small UI controls on the Alerts page: Download/Install/Open in Store.
+ *
+ * Thread‑safety: public getters and UI state rely on `@Volatile` fields; long‑running work runs
+ * through the client fetcher and event callbacks.
  */
 class CoreUpdater(
   manager: NodeUpdateManager,
@@ -63,8 +73,16 @@ class CoreUpdater(
     // Nothing to persist from info JSON beyond in-memory state.
   }
 
+  /**
+   * CHK for a short changelog, if provided by the descriptor. Suitable for user‑facing “What’s
+   * new?” links.
+   */
   fun getShortChangelogCHK(): String? = latestInfo?.changelogChk
 
+  /**
+   * CHK for a detailed changelog, if provided by the descriptor. Suitable for developer‑oriented
+   * change logs.
+   */
   fun getFullChangelogCHK(): String? = latestInfo?.fullChangelogChk
 
   private fun parseInfo(result: FetchResult): CoreInfo {
@@ -189,13 +207,26 @@ class CoreUpdater(
     f.start()
   }
 
+  /**
+   * Start downloading the currently selected package if not already in progress. Triggered from the
+   * Alerts page POST handler.
+   */
   fun startDownloadFromUI() {
     if (fetcher != null) return
     tryStartDownload()
   }
 
+  /** Absolute path to the downloaded file once complete, or null if not ready. */
   fun getDownloadedFile(): File? = fetcher?.completedFileOrNull()
 
+  /**
+   * Render a compact status and controls block inside the global Alerts panel.
+   *
+   * The content includes:
+   * - Detected OS/arch and the selected artifact key.
+   * - Optional “Release Notes” and “Open in Store” links.
+   * - Either a Download button, or a progress line and Install button when ready.
+   */
   fun renderProperties(alertNode: HTMLNode) {
     val info = latestInfo ?: return
     val envNow = env ?: detectEnvironment().also { env = it }
@@ -278,7 +309,7 @@ class CoreUpdater(
     }
   }
 
-  /** Lightweight fetcher for a single CHK to a File. */
+  /** Lightweight fetcher for a single CHK saved directly to a File. */
   inner class PackageFetcher(private val outFile: File, private val chk: FreenetURI) :
     ClientGetCallback, RequestClient, ClientEventListener {
     @Volatile private var getter: ClientGetter? = null
@@ -309,10 +340,13 @@ class CoreUpdater(
       }
     }
 
+    /** Whether the CHK transfer has finished (success or failure). */
     fun isComplete(): Boolean = complete
 
+    /** The downloaded file on success; null if the transfer failed or is running. */
     fun completedFileOrNull(): File? = successFile
 
+    /** Integer 0–100 when known, or -1 if progress cannot be computed. */
     fun progressPercent(): Int = lastPct
 
     override fun onSuccess(result: FetchResult, state: ClientGetter) {
@@ -342,7 +376,7 @@ class CoreUpdater(
   }
 }
 
-/** Minimal JSON parser for the specific CoreInfo schema. */
+/** Minimal JSON parser for the CoreInfo schema used by CoreUpdater. */
 internal object CoreJson {
   fun parse(json: String): CoreInfo {
     // Very small, permissive parser: only handles strings, numbers, booleans, null, and nested
@@ -369,7 +403,7 @@ internal object CoreJson {
   }
 }
 
-/** Extremely small JSON reader sufficient for CoreInfo. */
+/** Extremely small JSON reader sufficient for CoreInfo. Not a general-purpose JSON parser. */
 internal object JsonMini {
   private class P(val s: String) {
     var i = 0
