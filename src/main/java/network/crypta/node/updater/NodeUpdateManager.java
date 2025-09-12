@@ -31,7 +31,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
 import network.crypta.node.NodeInitException;
-import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerNode;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestClient;
@@ -97,7 +96,7 @@ public class NodeUpdateManager {
   private FreenetURI updateURI;
   private FreenetURI revocationURI;
 
-  private MainJarUpdater mainUpdater;
+  // Legacy MainJarUpdater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
   private network.crypta.node.updater.CoreUpdater coreUpdater;
 
@@ -623,7 +622,6 @@ public class NodeUpdateManager {
     // "Don't try to start the updater as we are not running under the wrapper.");
     // return;
     // }
-    NodeUpdater main = null;
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
     // We need to run the revocation checker even if auto-update is
     // disabled.
@@ -640,12 +638,7 @@ public class NodeUpdateManager {
       if (!enable) {
         // Kill it
         if (coreUpdater != null) coreUpdater.preKill();
-        if (mainUpdater != null) {
-          mainUpdater.preKill();
-          main = mainUpdater;
-        }
         coreUpdater = null;
-        mainUpdater = null;
         oldPluginUpdaters = pluginUpdaters;
         pluginUpdaters = null;
         disabledNotBlown = false;
@@ -665,9 +658,6 @@ public class NodeUpdateManager {
       }
     }
     if (!enable) {
-      if (main != null) {
-        main.kill();
-      }
       stopPluginUpdaters(oldPluginUpdaters);
     } else {
       if (coreUpdater != null) coreUpdater.start();
@@ -922,15 +912,8 @@ public class NodeUpdateManager {
         return;
       }
       isAutoUpdateAllowed = val;
-      if (val) {
-        if (!isReadyToDeployUpdate(false)) {
-          return;
-        }
-      } else {
-        return;
-      }
     }
-    deployOffThread(0, false);
+    // CoreUpdater handles auto-download when enabled; nothing further needed here.
   }
 
   private static final long WAIT_FOR_SECOND_FETCH_TO_COMPLETE = MINUTES.toMillis(4);
@@ -952,191 +935,12 @@ public class NodeUpdateManager {
    *     deployOffThread().
    */
   private boolean isReadyToDeployUpdate(boolean ignoreRevocation) {
-    long now = System.currentTimeMillis();
-    int waitForNextJar = -1;
-    synchronized (this) {
-      if (mainUpdater == null) {
-        return false;
-      }
-      if (!(hasNewMainJar)) {
-        return false; // no jar
-      }
-      if (hasBeenBlown) {
-        return false; // Duh
-      }
-      if (peersSayBlown) {
-        if (logMINOR) {
-          Logger.minor(this, "Not deploying, peers say blown");
-        }
-        return false;
-      }
-      // Don't immediately deploy if still fetching
-      if (startedFetchingNextMainJar > 0) {
-        waitForNextJar =
-            (int) (startedFetchingNextMainJar + WAIT_FOR_SECOND_FETCH_TO_COMPLETE - now);
-        if (waitForNextJar > 0) {
-          if (logMINOR) {
-            Logger.minor(this, "Not ready: Still fetching");
-          }
-          // Wait for running fetch to complete
-        }
-      }
-
-      // Check dependencies.
-      if (this.latestMainJarDependencies == null) {
-        if (logMINOR) {
-          Logger.minor(this, "Dependencies not available");
-        }
-        return false;
-      }
-      if (this.fetchedMainJarVersion != this.dependenciesValidForBuild) {
-        if (logMINOR) {
-          Logger.minor(
-              this,
-              "Not deploying because dependencies are older version "
-                  + dependenciesValidForBuild
-                  + " - new version "
-                  + fetchedMainJarVersion
-                  + " may not start");
-        }
-        return false;
-      }
-
-      // Check revocation.
-      if (waitForNextJar <= 0) {
-        if (!ignoreRevocation) {
-          if (now - revocationChecker.lastSucceeded() < RECENT_REVOCATION_INTERVAL) {
-            if (logMINOR) {
-              Logger.minor(this, "Ready to deploy (revocation checker succeeded recently)");
-            }
-            return true;
-          }
-          if (gotJarTime > 0 && now - gotJarTime >= REVOCATION_FETCH_TIMEOUT) {
-            if (logMINOR) {
-              Logger.minor(this, "Ready to deploy (got jar before timeout)");
-            }
-            return true;
-          }
-        }
-      }
-    }
-    if (logMINOR) {
-      Logger.minor(this, "Still here in isReadyToDeployUpdate");
-    }
-    // Apparently everything is ready except the revocation fetch. So start
-    // it.
-    revocationChecker.start(true);
-    if (ignoreRevocation) {
-      if (logMINOR) {
-        Logger.minor(this, "Returning true because of ignoreRevocation");
-      }
-      return true;
-    }
-    long waitTime = Math.max(REVOCATION_FETCH_TIMEOUT, waitForNextJar);
-    if (logMINOR) {
-      Logger.minor(this, "Will deploy in " + waitTime + "ms");
-    }
-    deployOffThread(waitTime, false);
     return false;
   }
 
   /** Check whether there is an update to deploy. If there is, do it. */
   private void deployUpdate() {
-    boolean started = false;
-    boolean success = false;
-    try {
-      MainJarDependencies deps;
-      synchronized (this) {
-        if (disabledThisSession) {
-          String msg =
-              "Not deploying update because disabled for this session (bad java version??)";
-          Logger.error(this, msg);
-          System.err.println(msg);
-          return;
-        }
-        if (hasBeenBlown) {
-          String msg =
-              "Trying to update but key has been blown! Not updating, message was "
-                  + revocationMessage;
-          Logger.error(this, msg);
-          System.err.println(msg);
-          return;
-        }
-        if (peersSayBlown) {
-          String msg =
-              "Trying to update but at least one peer says the key has been blown! Not updating.";
-          Logger.error(this, msg);
-          System.err.println(msg);
-          return;
-        }
-        if (!isEnabled()) {
-          if (logMINOR) {
-            Logger.minor(this, "Not enabled");
-          }
-          return;
-        }
-        if (!(isAutoUpdateAllowed || armed)) {
-          if (logMINOR) {
-            Logger.minor(this, "Not armed");
-          }
-          return;
-        }
-        if (!isReadyToDeployUpdate(false)) {
-          if (logMINOR) {
-            Logger.minor(this, "Not ready to deploy update");
-          }
-          return;
-        }
-        if (isDeployingUpdate) {
-          if (logMINOR) {
-            Logger.minor(this, "Already deploying update");
-          }
-          return;
-        }
-        started = true;
-        isDeployingUpdate = true;
-        deps = latestMainJarDependencies;
-      }
-
-      synchronized (deployLock()) {
-        success = innerDeployUpdate(deps);
-        if (success) {
-          waitForever();
-        }
-      }
-      // isDeployingUpdate remains true as we are about to restart.
-    } catch (Throwable t) {
-      Logger.error(this, "DEPLOYING UPDATE FAILED: " + t, t);
-      System.err.println("UPDATE FAILED: CAUGHT " + t);
-      System.err.println(
-          "YOUR NODE DID NOT UPDATE. THIS IS PROBABLY A BUG OR SERIOUS PROBLEM SUCH AS OUT OF"
-              + " MEMORY.");
-      System.err.println("Cause of the problem: " + t);
-      t.printStackTrace();
-      failUpdate(t.getMessage());
-      String error = l10n("updateFailedInternalError", "reason", t.getMessage());
-      node.getClientCore()
-          .getAlerts()
-          .register(new SimpleUserAlert(false, error, error, error, UserAlert.CRITICAL_ERROR));
-    } finally {
-      if (started && !success) {
-        Bucket toFree = null;
-        synchronized (this) {
-          isDeployingUpdate = false;
-          if (maybeNextMainJarVersion > fetchedMainJarVersion) {
-            // A newer version has been fetched in the meantime.
-            toFree = fetchedMainJarData;
-            fetchedMainJarVersion = maybeNextMainJarVersion;
-            fetchedMainJarData = maybeNextMainJarData;
-            maybeNextMainJarVersion = -1;
-            maybeNextMainJarData = null;
-          }
-        }
-        if (toFree != null) {
-          toFree.free();
-        }
-      }
-    }
+    /* no-op in package-based updater */
   }
 
   /**
@@ -1211,19 +1015,7 @@ public class NodeUpdateManager {
 
     boolean tryEasyWay = File.pathSeparatorChar == ':' && (!deps.mustRewriteWrapperConf);
 
-    if (hasNewMainJar) {
-      File mainJar = ctx.getMainJar();
-      File newMainJar = ctx.getNewMainJar();
-      File backupJar = ctx.getBackupJar();
-      try {
-        if (writeJar(mainJar, newMainJar, backupJar, mainUpdater, "main", tryEasyWay)) {
-          writtenNewJar = true;
-        }
-      } catch (UpdateFailedException e) {
-        failUpdate(e.getMessage());
-        return false;
-      }
-    }
+    // Main JAR updates are disabled.
 
     // Dependencies have been written for us already.
     // But we may need to modify wrapper.conf.
@@ -1495,7 +1287,6 @@ public class NodeUpdateManager {
    *     certificate.
    */
   public void blow(String msg, boolean disabledNotBlown) {
-    NodeUpdater main;
     synchronized (this) {
       if (hasBeenBlown) {
         if (this.disabledNotBlown && !disabledNotBlown) {
@@ -1533,14 +1324,8 @@ public class NodeUpdateManager {
           }
         }
       }
-      main = mainUpdater;
-      if (main != null) {
-        main.preKill();
-      }
-      mainUpdater = null;
-    }
-    if (main != null) {
-      main.kill();
+      if (coreUpdater != null) coreUpdater.preKill();
+      coreUpdater = null;
     }
     if (revocationAlert == null) {
       revocationAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
@@ -1589,41 +1374,12 @@ public class NodeUpdateManager {
   }
 
   public void arm() {
+    // Mark as armed; CoreUpdater handles downloads via UI or autoupdate.
     armed = true;
-    OpennetManager om = node.getOpennet();
-    if (om != null) {
-      if (om.waitingForUpdater()) {
-        synchronized (this) {
-          // Reannounce and count it from now.
-          if (gotJarTime > 0) {
-            gotJarTime = System.currentTimeMillis();
-          }
-        }
-        om.reannounce();
-      }
-    }
-    deployOffThread(0, false);
   }
 
   void deployOffThread(long delay, final boolean announce) {
-    node.getTicker()
-        .queueTimedJob(
-            new Runnable() {
-              @Override
-              public void run() {
-                if (announce) {
-                  maybeBroadcastUOMAnnounces();
-                }
-                if (logMINOR) {
-                  Logger.minor(this, "Running deployOffThread");
-                }
-                deployUpdate();
-                if (logMINOR) {
-                  Logger.minor(this, "Run deployOffThread");
-                }
-              }
-            },
-            delay);
+    if (announce) maybeBroadcastUOMAnnounces();
   }
 
   protected void maybeBroadcastUOMAnnounces() {
@@ -1677,7 +1433,7 @@ public class NodeUpdateManager {
   }
 
   public boolean inFinalCheck() {
-    return isReadyToDeployUpdate(true) && !isReadyToDeployUpdate(false);
+    return false;
   }
 
   public int getRevocationDNFCounter() {
@@ -1806,14 +1562,7 @@ public class NodeUpdateManager {
   /** Called inside locks, so don't lock anything */
   public void notPeerClaimsKeyBlown() {
     peersSayBlown = false;
-    node.getExecutor()
-        .execute(
-            () -> {
-              if (isReadyToDeployUpdate(false)) {
-                deployUpdate();
-              }
-            },
-            "Check for updates");
+    node.getExecutor().execute(() -> {}, "Check for updates");
     node.getTicker().queueTimedJob(() -> maybeBroadcastUOMAnnounces(), REVOCATION_FETCH_TIMEOUT);
   }
 
@@ -1822,17 +1571,7 @@ public class NodeUpdateManager {
   }
 
   public File getMainBlob(int version) {
-    NodeUpdater updater;
-    synchronized (this) {
-      if (hasBeenBlown) {
-        return null;
-      }
-      updater = mainUpdater;
-      if (updater == null) {
-        return null;
-      }
-    }
-    return updater.getBlobFile(version);
+    return null;
   }
 
   public synchronized long timeRemainingOnCheck() {
@@ -1953,14 +1692,7 @@ public class NodeUpdateManager {
   }
 
   public void onStartFetchingUOM() {
-    MainJarUpdater m;
-    synchronized (this) {
-      m = mainUpdater;
-      if (m == null) {
-        return;
-      }
-    }
-    m.onStartFetchingUOM();
+    /* no-op */
   }
 
   public synchronized File getCurrentVersionBlobFile() {
@@ -1968,9 +1700,7 @@ public class NodeUpdateManager {
     return null;
   }
 
-  MainJarUpdater getMainUpdater() {
-    return mainUpdater;
-  }
+  // getMainUpdater() removed; jar updates are disabled.
 
   public Node getNode() {
     return node;
@@ -2012,6 +1742,6 @@ public class NodeUpdateManager {
    * attempting jar fetch/send.
    */
   public synchronized boolean supportsJarUOM() {
-    return mainUpdater != null;
+    return false;
   }
 }

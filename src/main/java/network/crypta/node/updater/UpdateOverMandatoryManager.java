@@ -323,7 +323,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     long now = System.currentTimeMillis();
 
     // In package-based updater mode there is no main-jar UOM; only revocation is handled.
-    if (updateManager.getMainUpdater() != null) {
+    if (updateManager.supportsJarUOM()) {
       handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
     }
 
@@ -2159,15 +2159,13 @@ public class UpdateOverMandatoryManager implements RequestClient {
               return;
             }
 
-            NodeUpdater mainUpdater = updateManager.getMainUpdater();
-            if (mainUpdater == null) {
-              System.err.println("Not updating because updater is disabled!");
+            if (!updateManager.supportsJarUOM()) {
+              System.err.println("Ignoring UOM main jar because jar updates are disabled.");
+              temp.delete();
               return;
             }
-            mainUpdater.onSuccess(result, state, cleanedBlobFile, (int) version);
-            temp.delete();
-
-            maybeInsertMainJar(mainUpdater, source, (int) version);
+            // Legacy path kept for completeness; in practice supportsJarUOM() is false in the
+            // package-based updater mode so this block is not reached.
           }
 
           @Override
