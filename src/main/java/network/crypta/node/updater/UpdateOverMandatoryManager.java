@@ -11,8 +11,11 @@ import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,6 +40,7 @@ import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.SimpleBlockSet;
+import network.crypta.crypt.SHA256;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -2638,8 +2642,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                     }
                     if (!failed) {
                       // Check the hash.
-                      if (MainJarDependenciesChecker.validFile(
-                          tmp, expectedHash, size, executable)) {
+                      if (validDependencyFile(tmp, expectedHash, size, executable)) {
                         if (FileUtil.moveTo(tmp, saveTo)) {
                           synchronized (UOMDependencyFetcher.this) {
                             if (completed) return;
@@ -2786,6 +2789,24 @@ public class UpdateOverMandatoryManager implements RequestClient {
       synchronized (UpdateOverMandatoryManager.this) {
         dependencyFetchers.remove(expectedHashBuffer);
       }
+    }
+  }
+
+  private boolean validDependencyFile(
+      File filename, byte[] expectedHash, long size, boolean executable) {
+    if (filename == null || !filename.exists()) return false;
+    if (filename.length() != size) return false;
+    try (InputStream fis = new FileInputStream(filename)) {
+      MessageDigest md = SHA256.getMessageDigest();
+      SHA256.hash(fis, md);
+      byte[] hash = md.digest();
+      if (Arrays.equals(hash, expectedHash)) {
+        if (executable && !filename.canExecute()) filename.setExecutable(true);
+        return true;
+      }
+      return false;
+    } catch (IOException e) {
+      return false;
     }
   }
 }

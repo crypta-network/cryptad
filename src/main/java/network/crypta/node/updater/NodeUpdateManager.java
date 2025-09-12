@@ -30,14 +30,12 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
-import network.crypta.node.NodeInitException;
 import network.crypta.node.PeerNode;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
-import network.crypta.node.updater.MainJarDependenciesChecker.MainJarDependencies;
-import network.crypta.node.updater.UpdateDeployContext.UpdateCatastropheException;
+// Legacy main-jar update classes removed.
 import network.crypta.node.useralerts.RevocationKeyFoundUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert;
@@ -165,23 +163,7 @@ public class NodeUpdateManager {
   private static volatile boolean logMINOR;
   private boolean disabledThisSession;
 
-  private MainJarDependencies latestMainJarDependencies;
-  private int dependenciesValidForBuild;
-
-  /** The version we have fetched and will deploy. */
-  private int fetchedMainJarVersion;
-
-  /** The jar of the version we have fetched and will deploy. */
-  private Bucket fetchedMainJarData;
-
-  /** The blob file for the current version, for UOM */
-  private File currentVersionBlobFile;
-
-  /** The version we have fetched and aren't using because we are already deploying. */
-  private int maybeNextMainJarVersion;
-
-  /** The version we have fetched and aren't using because we are already deploying. */
-  private Bucket maybeNextMainJarData;
+  // Removed fields related to legacy main-jar flow
 
   private static final Object deployLock = new Object();
 
@@ -529,34 +511,7 @@ public class NodeUpdateManager {
 
   /** Return the length of the data fetched for the current version, or -1. */
   private long canAnnounceUOMNew() {
-    Bucket data;
-    synchronized (this) {
-      if (hasNewMainJar && armed) {
-        if (logMINOR) {
-          Logger.minor(this, "Will update soon, not offering UOM.");
-        }
-        return -1;
-      }
-      if (fetchedMainJarVersion <= 0) {
-        if (logMINOR) {
-          Logger.minor(this, "Not fetched yet");
-        }
-        return -1;
-      } else if (fetchedMainJarVersion != Version.currentBuildNumber()) {
-        // Don't announce UOM unless we've successfully started the jar.
-        if (logMINOR) {
-          Logger.minor(
-              this,
-              "Downloaded a different version than the one we are running, not offering UOM.");
-        }
-        return -1;
-      }
-      data = fetchedMainJarData;
-    }
-    if (logMINOR) {
-      Logger.minor(this, "Got data for UOM: " + data + " size " + data.size());
-    }
-    return data.size();
+    return -1;
   }
 
   private Message getNewUOMAnnouncement(long blobSize) {
@@ -970,91 +925,9 @@ public class NodeUpdateManager {
   }
 
   /** Deploy the update. Inner method. Doesn't check anything, just does it. */
-  private boolean innerDeployUpdate(MainJarDependencies deps) {
-    System.err.println(
-        "Deploying update "
-            + deps.build
-            + " with "
-            + deps.dependencies.size()
-            + " dependencies...");
-    // Write the jars, config etc.
-    // Then restart
+  // Legacy deploy methods removed.
 
-    UpdateDeployContext ctx;
-    try {
-      ctx = new UpdateDeployContext(deps);
-    } catch (UpdaterParserException e) {
-      failUpdate("Could not determine which jars are in use: " + e.getMessage());
-      return false;
-    }
-
-    if (writeJars(ctx, deps)) {
-      restart(ctx);
-      return true;
-    } else {
-      if (logMINOR) {
-        Logger.minor(this, "Did not write jars");
-      }
-      return false;
-    }
-  }
-
-  /**
-   * Write the updated jars, if necessary rewrite the wrapper.conf.
-   *
-   * @return True if this part of the update succeeded.
-   */
-  private boolean writeJars(UpdateDeployContext ctx, MainJarDependencies deps) {
-    /**
-     * What do we want to do here? 1. If we have a new main jar: - If on Windows, write it to a new
-     * jar file, update the wrapper.conf to point to it. - Otherwise, write to a new jar file, then
-     * move the new jar file over the old jar file. 2. If the dependencies have changed, we need to
-     * update wrapper.conf.
-     */
-    boolean writtenNewJar = false;
-
-    boolean tryEasyWay = File.pathSeparatorChar == ':' && (!deps.mustRewriteWrapperConf);
-
-    // Main JAR updates are disabled.
-
-    // Dependencies have been written for us already.
-    // But we may need to modify wrapper.conf.
-
-    if (!(writtenNewJar || deps.mustRewriteWrapperConf)) {
-      return true;
-    }
-    try {
-      ctx.rewriteWrapperConf(writtenNewJar);
-    } catch (IOException e) {
-      failUpdate("Cannot rewrite wrapper.conf: " + e);
-      return false;
-    } catch (UpdateCatastropheException e) {
-      failUpdate(e.getMessage());
-      node.getClientCore()
-          .getAlerts()
-          .register(
-              new SimpleUserAlert(
-                  false,
-                  l10n("updateCatastropheTitle"),
-                  e.getMessage(),
-                  l10n("updateCatastropheTitle"),
-                  UserAlert.CRITICAL_ERROR));
-      return false;
-    } catch (UpdaterParserException e) {
-      node.getClientCore()
-          .getAlerts()
-          .register(
-              new SimpleUserAlert(
-                  false,
-                  l10n("updateFailedTitle"),
-                  e.getMessage(),
-                  l10n("updateFailedShort", "reason", e.getMessage()),
-                  UserAlert.CRITICAL_ERROR));
-      return false;
-    }
-
-    return true;
-  }
+  // writeJars removed
 
   /**
    * Write a jar. Returns true if the caller needs to rewrite the config, false if he doesn't, or
@@ -1074,109 +947,9 @@ public class NodeUpdateManager {
    *     worked).
    * @throws UpdateFailedException If something breaks.
    */
-  private boolean writeJar(
-      File mainJar,
-      File newMainJar,
-      File backupMainJar,
-      NodeUpdater mainUpdater,
-      String name,
-      boolean tryEasyWay)
-      throws UpdateFailedException {
-    boolean writtenToTempFile = false;
-    try {
-      if (newMainJar.exists()) {
-        if (!newMainJar.delete()) {
-          if (newMainJar.exists()) {
-            System.err.println("Cannot write to preferred new jar location " + newMainJar);
-            if (tryEasyWay) {
-              try {
-                newMainJar = File.createTempFile("freenet", ".jar", mainJar.getParentFile());
-              } catch (IOException e) {
-                throw new UpdateFailedException(
-                    "Cannot write to any other location either - disk full? " + e);
-              }
-              // Try writing to it
-              try {
-                writeJarTo(newMainJar);
-                writtenToTempFile = true;
-              } catch (IOException e) {
-                newMainJar.delete();
-                throw new UpdateFailedException("Cannot write new jar - disk full? " + e);
-              }
-            } else {
-              // Try writing it to the new one even though we
-              // can't delete it.
-              writeJarTo(newMainJar);
-            }
-          } else {
-            writeJarTo(newMainJar);
-          }
-        } else {
-          if (logMINOR) {
-            Logger.minor(NodeUpdateManager.class, "Deleted old jar " + newMainJar);
-          }
-          writeJarTo(newMainJar);
-        }
-      } else {
-        writeJarTo(newMainJar);
-      }
-      System.out.println("Written new main jar to " + newMainJar);
-    } catch (IOException e) {
-      throw new UpdateFailedException(
-          "Cannot update: Cannot write to "
-              + (tryEasyWay ? " temp file " : "new jar ")
-              + newMainJar);
-    }
+  // writeJar removed
 
-    if (tryEasyWay) {
-      // Do it the easy way. Just rewrite the main jar.
-      backupMainJar.delete();
-      if (FileUtil.copyFile(mainJar, backupMainJar)) {
-        System.err.println(
-            "Written backup of current main jar to "
-                + backupMainJar
-                + " (if freenet fails to start up try renaming "
-                + backupMainJar
-                + " over "
-                + mainJar);
-      }
-      if (!newMainJar.renameTo(mainJar)) {
-        Logger.error(
-            NodeUpdateManager.class,
-            "Cannot rename temp file " + newMainJar + " over original jar " + mainJar);
-        if (writtenToTempFile) {
-          // Fail the update - otherwise we will leak disk space
-          newMainJar.delete();
-          throw new UpdateFailedException(
-              "Cannot write to preferred new jar location and cannot rename temp file over old jar,"
-                  + " update failed");
-        }
-        // Try the hard way
-      } else {
-        System.err.println("Completed writing new Crypta jar to " + mainJar + ".");
-        return false;
-      }
-    }
-    System.err.println(
-        "Rewriting wrapper.conf to point to "
-            + newMainJar
-            + " rather than "
-            + mainJar
-            + " (if Crypta fails to start after the update you could try changing wrapper.conf to"
-            + " use the old jar)");
-    return true;
-  }
-
-  public void writeJarTo(File fNew) throws IOException {
-    if (!fNew.delete() && fNew.exists()) {
-      System.err.println("Can't delete " + fNew + "!");
-    }
-
-    try (FileOutputStream fos = new FileOutputStream(fNew)) {
-      BucketTools.copyTo(this.fetchedMainJarData, fos, -1);
-      fos.flush();
-    }
-  }
+  // writeJarTo removed
 
   @SuppressWarnings("serial")
   private static class UpdateFailedException extends Exception {
@@ -1186,20 +959,7 @@ public class NodeUpdateManager {
     }
   }
 
-  /** Restart the node. Does not return. */
-  private void restart(UpdateDeployContext ctx) {
-    if (logMINOR) {
-      Logger.minor(this, "Restarting...");
-    }
-    node.getNodeStarter().restart();
-    try {
-      Thread.sleep(MINUTES.toMillis(5));
-    } catch (InterruptedException e) {
-      // Break
-    } // in case it's still restarting
-    System.err.println("Failed to restart. Exiting, please restart the node.");
-    System.exit(NodeInitException.EXIT_RESTART_FAILED);
-  }
+  // restart removed
 
   private void failUpdate(String reason) {
     Logger.error(this, "Update failed: " + reason);
@@ -1232,42 +992,7 @@ public class NodeUpdateManager {
    * @param result The actual data.
    */
   void onDownloadedNewJar(Bucket result, int fetched, File savedBlob) {
-    Bucket delete1 = null;
-    Bucket delete2 = null;
-    synchronized (this) {
-      if (fetched > Version.currentBuildNumber()) {
-        hasNewMainJar = true;
-        startedFetchingNextMainJar = -1;
-        gotJarTime = System.currentTimeMillis();
-        if (logMINOR) {
-          Logger.minor(this, "Got main jar: " + fetched);
-        }
-      }
-      if (!isDeployingUpdate) {
-        delete1 = fetchedMainJarData;
-        fetchedMainJarVersion = fetched;
-        fetchedMainJarData = result;
-        if (fetched == Version.currentBuildNumber()) {
-          if (savedBlob != null) {
-            currentVersionBlobFile = savedBlob;
-          } else {
-            Logger.error(this, "No blob file for latest version?!", new Exception("error"));
-          }
-        }
-      } else {
-        delete2 = maybeNextMainJarData;
-        maybeNextMainJarVersion = fetched;
-        maybeNextMainJarData = result;
-        System.out.println("Already deploying update, not using new main jar #" + fetched);
-      }
-    }
-    if (delete1 != null) {
-      delete1.free();
-    }
-    if (delete2 != null) {
-      delete2.free();
-    }
-    // We cannot deploy yet, we must wait for the dependencies check.
+    /* no-op */
   }
 
   /** Called when the NodeUpdater starts to fetch a new version of the jar. */
@@ -1657,25 +1382,7 @@ public class NodeUpdateManager {
     return uom.isFetchingMain();
   }
 
-  /**
-   * Called when the dependencies have been verified and/or downloaded, and we can upgrade to the
-   * new build without dependency issues.
-   *
-   * @param deps The dependencies object. Used to rewrite wrapper.conf if necessary. Also contains
-   *     the build number.
-   * @param binaryBlob The binary blob for this build, including the dependencies.
-   */
-  public void onDependenciesReady(MainJarDependencies deps) {
-    synchronized (this) {
-      this.latestMainJarDependencies = deps;
-      this.dependenciesValidForBuild = deps.build;
-    }
-    revocationChecker.start(true);
-    // Deploy immediately if the revocation checker has already reported in but we were waiting for
-    // deps.
-    // Otherwise wait for the revocation checker.
-    deployOffThread(0, true);
-  }
+  // onDependenciesReady removed
 
   /** Show the progress of individual dependencies if possible */
   public void renderProgress(HTMLNode alertNode) {
