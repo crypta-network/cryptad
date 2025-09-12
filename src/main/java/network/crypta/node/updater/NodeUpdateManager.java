@@ -98,6 +98,8 @@ public class NodeUpdateManager {
   private FreenetURI revocationURI;
 
   private MainJarUpdater mainUpdater;
+  // Package-based core updater (Kotlin)
+  private network.crypta.node.updater.CoreUpdater coreUpdater;
 
   private Map<String, PluginJarUpdater> pluginUpdaters;
 
@@ -605,7 +607,7 @@ public class NodeUpdateManager {
 
   /** Is auto-update enabled? */
   public synchronized boolean isEnabled() {
-    return (mainUpdater != null);
+    return (coreUpdater != null);
   }
 
   /**
@@ -631,14 +633,18 @@ public class NodeUpdateManager {
     // 2. When the key is blown, we turn off auto-update!!!!
     revocationChecker.start(false);
     synchronized (this) {
-      boolean enabled = (mainUpdater != null);
+      boolean enabled = (coreUpdater != null);
       if (enabled == enable) {
         return;
       }
       if (!enable) {
         // Kill it
-        mainUpdater.preKill();
-        main = mainUpdater;
+        if (coreUpdater != null) coreUpdater.preKill();
+        if (mainUpdater != null) {
+          mainUpdater.preKill();
+          main = mainUpdater;
+        }
+        coreUpdater = null;
         mainUpdater = null;
         oldPluginUpdaters = pluginUpdaters;
         pluginUpdaters = null;
@@ -651,11 +657,11 @@ public class NodeUpdateManager {
         // throw new
         // InvalidConfigValueException(l10n("noUpdateWithoutWrapper"));
         // }
-        // Start it
-        mainUpdater =
-            new MainJarUpdater(
-                this, updateURI, Version.currentBuildNumber(), -1, Integer.MAX_VALUE, "main-jar-");
+        // Start CoreUpdater and plugin updaters
+        startCoreUpdater();
         pluginUpdaters = new HashMap<>();
+        // Suppress obsolete Update-ASAP form in alert; CoreUpdater renders its own buttons
+        armed = true;
       }
     }
     if (!enable) {
@@ -664,17 +670,7 @@ public class NodeUpdateManager {
       }
       stopPluginUpdaters(oldPluginUpdaters);
     } else {
-      // FIXME copy it, dodgy locking.
-      try {
-        // Must be run before starting everything else as it cleans up tempfiles too.
-        mainUpdater.cleanupDependencies();
-      } catch (Throwable t) {
-        // Don't let it block startup, but be very loud!
-        Logger.error(this, "Caught " + t + " setting up Update Over Mandatory", t);
-        System.err.println("Updater error: " + t);
-        t.printStackTrace();
-      }
-      mainUpdater.start();
+      if (coreUpdater != null) coreUpdater.start();
       startPluginUpdaters();
     }
   }
@@ -796,6 +792,11 @@ public class NodeUpdateManager {
     return updateURI;
   }
 
+  /** Returns the update base with docname switched to "info" (core package info editions). */
+  public synchronized FreenetURI getCoreInfoURI() {
+    return updateURI.setDocName("info");
+  }
+
   /**
    * @return URI for the user-facing changelog.
    */
@@ -829,6 +830,28 @@ public class NodeUpdateManager {
         "href",
         '/' + developerDetailsUri + "?type=text/plain",
         NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
+    // Additional changelog links from core info JSON (if available)
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    if (cu != null) {
+      String s = cu.getShortChangelogCHK();
+      if (s != null && !s.isEmpty()) {
+        node.addChild("br");
+        node.addChild(
+            "a",
+            "href",
+            '/' + s + "?type=text/plain",
+            NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
+      }
+      String f = cu.getFullChangelogCHK();
+      if (f != null && !f.isEmpty()) {
+        node.addChild("br");
+        node.addChild(
+            "a",
+            "href",
+            '/' + f + "?type=text/plain",
+            NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
+      }
+    }
   }
 
   /**
@@ -846,7 +869,7 @@ public class NodeUpdateManager {
       }
       updateURI = uri;
       updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
-      updater = mainUpdater;
+      updater = coreUpdater;
       oldPluginUpdaters = pluginUpdaters;
       pluginUpdaters = new HashMap<>();
       if (updater == null) {
@@ -1628,7 +1651,8 @@ public class NodeUpdateManager {
   }
 
   public boolean hasNewMainJar() {
-    return hasNewMainJar;
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    return cu != null && cu.canUpdateNow();
   }
 
   /**
@@ -1638,21 +1662,18 @@ public class NodeUpdateManager {
    * mainUpdater.
    */
   public int newMainJarVersion() {
-    if (mainUpdater == null) {
-      return -1;
-    }
-    return mainUpdater.getFetchedVersion();
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    return (cu != null) ? cu.getFetchedVersion() : -1;
   }
 
   public boolean fetchingNewMainJar() {
-    return (mainUpdater != null && mainUpdater.isFetching());
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    return (cu != null && cu.isFetching());
   }
 
   public int fetchingNewMainJarVersion() {
-    if (mainUpdater == null) {
-      return -1;
-    }
-    return mainUpdater.fetchingVersion();
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    return (cu != null) ? cu.fetchingVersion() : -1;
   }
 
   public boolean inFinalCheck() {
@@ -1674,7 +1695,8 @@ public class NodeUpdateManager {
 
   /** Is the node able to update as soon as the revocation fetch has been completed? */
   public boolean canUpdateNow() {
-    return isReadyToDeployUpdate(true);
+    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    return cu != null && cu.canUpdateNow();
   }
 
   /**
@@ -1682,7 +1704,7 @@ public class NodeUpdateManager {
    * also a revocation fetch has completed recently enough not to need another one)
    */
   public boolean canUpdateImmediately() {
-    return isReadyToDeployUpdate(false);
+    return canUpdateNow();
   }
 
   // Config callbacks
@@ -1918,28 +1940,16 @@ public class NodeUpdateManager {
 
   /** Show the progress of individual dependencies if possible */
   public void renderProgress(HTMLNode alertNode) {
-    MainJarUpdater m;
+    network.crypta.node.updater.CoreUpdater cu;
     synchronized (this) {
-      if (this.fetchedMainJarData == null) {
-        return;
-      }
-      m = mainUpdater;
-      if (m == null) {
-        return;
-      }
+      cu = coreUpdater;
     }
-    m.renderProperties(alertNode);
+    if (cu != null) cu.renderProperties(alertNode);
   }
 
   public boolean brokenDependencies() {
-    MainJarUpdater m;
-    synchronized (this) {
-      m = mainUpdater;
-      if (m == null) {
-        return false;
-      }
-    }
-    return m.brokenDependencies();
+    // No dependency checking in package-based updater
+    return false;
   }
 
   public void onStartFetchingUOM() {
@@ -1954,16 +1964,8 @@ public class NodeUpdateManager {
   }
 
   public synchronized File getCurrentVersionBlobFile() {
-    if (hasNewMainJar) {
-      return null;
-    }
-    if (isDeployingUpdate) {
-      return null;
-    }
-    if (fetchedMainJarVersion != Version.currentBuildNumber()) {
-      return null;
-    }
-    return currentVersionBlobFile;
+    // Serving main.jar over UOM is disabled in package-based updater.
+    return null;
   }
 
   MainJarUpdater getMainUpdater() {
@@ -1984,5 +1986,32 @@ public class NodeUpdateManager {
 
   public ByteCounter getByteCounter() {
     return ctr;
+  }
+
+  // --- Core updater wiring ---
+
+  public synchronized void startCoreUpdater() {
+    if (coreUpdater != null) return;
+    coreUpdater =
+        new network.crypta.node.updater.CoreUpdater(
+            this,
+            getCoreInfoURI(),
+            Version.currentBuildNumber(),
+            -1,
+            Integer.MAX_VALUE,
+            "core-info-");
+  }
+
+  public synchronized network.crypta.node.updater.CoreUpdater getCoreUpdater() {
+    return coreUpdater;
+  }
+
+  /**
+   * Whether legacy main-jar UoM flows should be handled. We gate these to true only when a
+   * MainJarUpdater exists (legacy mode). In package-based updater mode, we return false to avoid
+   * attempting jar fetch/send.
+   */
+  public synchronized boolean supportsJarUOM() {
+    return mainUpdater != null;
   }
 }

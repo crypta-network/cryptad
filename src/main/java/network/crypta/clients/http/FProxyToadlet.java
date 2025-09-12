@@ -1722,6 +1722,11 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client, node);
     server.register(externalLinkToadlet, null, ExternalLinkToadlet.PATH, true, false);
 
+    // Core updater action endpoint (download/install)
+    network.crypta.node.updater.CoreActionToadlet coreActionToadlet =
+        new network.crypta.node.updater.CoreActionToadlet(client, node);
+    server.register(coreActionToadlet, null, "/core-update/", true, false);
+
     DarknetConnectionsToadlet friendsToadlet = new DarknetConnectionsToadlet(node, core, client);
     server.register(
         friendsToadlet,

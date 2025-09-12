@@ -322,7 +322,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
     long now = System.currentTimeMillis();
 
-    handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
+    // In package-based updater mode there is no main-jar UOM; only revocation is handled.
+    if (updateManager.getMainUpdater() != null) {
+      handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
+    }
 
     return true;
   }
