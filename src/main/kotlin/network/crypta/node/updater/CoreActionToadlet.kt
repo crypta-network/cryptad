@@ -1,17 +1,17 @@
 package network.crypta.node.updater
 
+import java.io.File
+import java.io.IOException
+import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
 import network.crypta.clients.http.ToadletContext
 import network.crypta.node.Node
 import network.crypta.support.HTMLNode
+import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
-import network.crypta.support.Logger
-import java.io.File
-import java.io.IOException
-import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -58,10 +58,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
           return
         }
         val (success, msg) = tryInstall(okPath)
-        Logger.minor(
-          this,
-          "[CoreActionToadlet] install result: success=$success, message=\"$msg\"",
-        )
+        Logger.minor(this, "[CoreActionToadlet] install result: success=$success, message=\"$msg\"")
         writeMessage(ctx, success, msg)
       }
       else -> redirect(ctx)
@@ -95,8 +92,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       val pb =
         when {
           os.contains("win") -> ProcessBuilder("cmd", "/c", file.absolutePath)
-          os.contains("mac") || os.contains("darwin") ->
-            ProcessBuilder("open", file.absolutePath)
+          os.contains("mac") || os.contains("darwin") -> ProcessBuilder("open", file.absolutePath)
           os.contains("linux") || os.contains("nux") -> linuxInstaller(file)
           else -> null
         }
@@ -118,8 +114,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       name.endsWith(".deb", ignoreCase = true) ->
         if (onPath("apt")) ProcessBuilder("apt", "install", file.absolutePath)
         else ProcessBuilder("dpkg", "-i", file.absolutePath)
-      name.endsWith(".rpm", ignoreCase = true) ->
-        ProcessBuilder("rpm", "-Uvh", file.absolutePath)
+      name.endsWith(".rpm", ignoreCase = true) -> ProcessBuilder("rpm", "-Uvh", file.absolutePath)
       else -> null
     }
   }
