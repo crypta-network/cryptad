@@ -489,7 +489,11 @@ class CoreUpdater(
       println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
     }
 
-    override fun onResume(context: ClientContext) {}
+    override fun onResume(context: ClientContext) {
+      // Intentionally no-op: the fetcher relies on ClientGetter's own state and
+      // our registered event listener to continue progress reporting after resumes.
+      // No additional work is required here.
+    }
 
     override fun realTimeFlag(): Boolean = false
 
