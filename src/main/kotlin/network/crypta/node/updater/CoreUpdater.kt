@@ -170,49 +170,53 @@ class CoreUpdater(
   private fun selectArtifact(info: CoreInfo, env: EnvDetection) {
     val pkgs = info.packages
     val arch = env.arch
-    fun key(ext: String) = "$arch.$ext"
+    val order = preferredExtensions(env)
 
-    val order: List<String> =
-      when (env.os) {
-        OsKind.WINDOWS -> listOf("exe")
-        OsKind.MAC -> listOf("dmg")
-        OsKind.LINUX ->
-          buildList {
-            if (env.availableManagers.contains("flatpak")) add("flatpak")
-            if (env.availableManagers.contains("snap")) add("snap")
-            if (env.availableManagers.contains("dpkg")) add("deb")
-            if (env.availableManagers.contains("rpm")) add("rpm")
-            // Always keep a direct package fallback order
-            if (!contains("deb")) add("deb")
-            if (!contains("rpm")) add("rpm")
-          }
-        else -> emptyList()
-      }
+    val firstMatch: Pair<String, PackageSpec>? =
+      pkgs.firstAvailableFor(arch, order)
+        ?: pkgs.firstAvailableForArch(arch) // fallback by any available ext
 
-    var chosenKey: String? = null
-    var chosen: PackageSpec? = null
-    for (ext in order) {
-      val k = key(ext)
-      val spec = pkgs[k]
-      if (spec?.chk != null) {
-        chosenKey = k
-        chosen = spec
-        break
-      }
-    }
-    // Fallback: try any package for this arch
-    if (chosen == null) {
-      for ((k, v) in pkgs) {
-        if (k.startsWith("${env.arch}.") && v.chk != null) {
-          chosenKey = k
-          chosen = v
-          break
-        }
-      }
-    }
-    selectedKey = chosenKey
-    selectedSpec = chosen
+    selectedKey = firstMatch?.first
+    selectedSpec = firstMatch?.second
   }
+
+  /** Build a preferred extension order from the detected environment. */
+  private fun preferredExtensions(env: EnvDetection): List<String> =
+    when (env.os) {
+      OsKind.WINDOWS -> listOf("exe")
+      OsKind.MAC -> listOf("dmg")
+      OsKind.LINUX -> linuxPreferredExtensions(env.availableManagers)
+      else -> emptyList()
+    }
+
+  /** Order for Linux: available managers first, then direct packages as safe fallbacks. */
+  private fun linuxPreferredExtensions(managers: List<String>): List<String> {
+    val preferred = buildList {
+      if ("flatpak" in managers) add("flatpak")
+      if ("snap" in managers) add("snap")
+      if ("dpkg" in managers) add("deb")
+      if ("rpm" in managers) add("rpm")
+    }
+    // Ensure we always consider direct packages next, without duplicates.
+    return (preferred + listOf("deb", "rpm")).distinct()
+  }
+
+  /** Find the first package for `arch` matching one of the given extensions and having a CHK. */
+  private fun Map<String, PackageSpec>.firstAvailableFor(
+    arch: String,
+    exts: List<String>,
+  ): Pair<String, PackageSpec>? =
+    exts.asSequence()
+      .map { "$arch.$it" }
+      .mapNotNull { k -> this[k]?.takeIf { it.chk != null }?.let { k to it } }
+      .firstOrNull()
+
+  /** Fallback: first available package for `arch` with a CHK, regardless of extension. */
+  private fun Map<String, PackageSpec>.firstAvailableForArch(arch: String): Pair<String, PackageSpec>? =
+    asSequence()
+      .filter { (k, v) -> k.startsWith("$arch.") && v.chk != null }
+      .map { it.key to it.value }
+      .firstOrNull()
 
   private fun updatesDir(): File =
     File(manager.getNode().nodeDir().dir(), "updates/core/${latestInfo?.version ?: "unknown"}")
