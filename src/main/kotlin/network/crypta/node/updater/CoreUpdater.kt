@@ -422,10 +422,15 @@ class CoreUpdater(
         )
       } catch (e: FetchException) {
         Logger.error(this, "Failed to start package download: $e", e)
-        println("[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.toString()))
+        println(
+          "[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.javaClass.simpleName)
+        )
       } catch (e: Exception) {
         Logger.error(this, "Error starting package download: $e", e)
-        println("[CoreUpdater] ERROR: exception starting download: " + (e.message ?: e.toString()))
+        println(
+          "[CoreUpdater] ERROR: exception starting download: " +
+            (e.message ?: e.javaClass.simpleName)
+        )
       }
     }
 
@@ -478,7 +483,7 @@ class CoreUpdater(
         } catch (_: Throwable) {
           false
         }
-      errorMsg = e.message ?: e.toString()
+      errorMsg = e.message ?: e.javaClass.simpleName
       if (e.mode == FetchExceptionMode.CANCELLED) return
       Logger.error(this, "Package download failed: $e", e)
       println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
