@@ -163,6 +163,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       )
     box.addChild("p").addChild("#", msg)
     Toadlet.addHomepageLink(content)
-    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), true)
+    // Allow JS on result page; CSP was previously too strict here.
+    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
   }
 }
