@@ -641,7 +641,7 @@ internal object JsonMini {
 
   private fun parseNumber(p: P): Number {
     val start = p.i
-    var ch = peek(p)
+    val ch = peek(p)
     if (ch == '-') p.i++
     while (peek(p).isDigit()) p.i++
     if (peek(p) == '.') {
