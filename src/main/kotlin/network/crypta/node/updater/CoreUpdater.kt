@@ -1,9 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
 import network.crypta.client.FetchException
 import network.crypta.client.FetchException.FetchExceptionMode
 import network.crypta.client.FetchResult
@@ -19,6 +15,10 @@ import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.io.FileBucket
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
 
 /**
  * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
@@ -479,7 +479,7 @@ class CoreUpdater(
       failed = true
       fatal =
         try {
-          e.isFatal()
+          e.isFatal
         } catch (_: Throwable) {
           false
         }
@@ -656,8 +656,7 @@ internal object JsonMini {
     expect(p, '"')
     val sb = StringBuilder()
     while (true) {
-      val ch = next(p)
-      when (ch) {
+      when (val ch = next(p)) {
         '"' -> return sb.toString()
         '\\' -> {
           val e = next(p)
