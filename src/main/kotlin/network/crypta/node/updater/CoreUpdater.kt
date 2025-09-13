@@ -221,7 +221,6 @@ class CoreUpdater(
     val key = selectedKey ?: return null
     val outDir = updatesDir()
     if (!outDir.exists()) outDir.mkdirs()
-    val name = key.substringAfter('.') // ext
     return File(outDir, key)
   }
 
@@ -232,16 +231,14 @@ class CoreUpdater(
     val uri = FreenetURI(chk)
     val f = PackageFetcher(target, uri)
     fetcher = f
-    try {
-      println(
-        "[CoreUpdater] starting download: key=" +
-          (selectedKey ?: "?") +
-          ", target=" +
-          target.absolutePath +
-          ", chk=" +
-          chk
-      )
-    } catch (_: Throwable) {}
+    println(
+      "[CoreUpdater] starting download: key=" +
+        (selectedKey ?: "?") +
+        ", target=" +
+        target.absolutePath +
+        ", chk=" +
+        chk
+    )
     f.start()
   }
 
@@ -422,23 +419,15 @@ class CoreUpdater(
       ctx.eventProducer.addEventListener(this)
       try {
         manager.getNode().getClientCore().getClientContext().start(getter)
-        try {
-          println(
-            "[CoreUpdater] download started (listener attached): target=" + outFile.absolutePath
-          )
-        } catch (_: Throwable) {}
+        println(
+          "[CoreUpdater] download started (listener attached): target=" + outFile.absolutePath
+        )
       } catch (e: FetchException) {
         Logger.error(this, "Failed to start package download: $e", e)
-        try {
-          println("[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.toString()))
-        } catch (_: Throwable) {}
+        println("[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.toString()))
       } catch (e: Exception) {
         Logger.error(this, "Error starting package download: $e", e)
-        try {
-          println(
-            "[CoreUpdater] ERROR: exception starting download: " + (e.message ?: e.toString())
-          )
-        } catch (_: Throwable) {}
+        println("[CoreUpdater] ERROR: exception starting download: " + (e.message ?: e.toString()))
       }
     }
 
@@ -472,15 +461,13 @@ class CoreUpdater(
       successFile = outFile
       failed = false
       errorMsg = null
-      try {
-        println(
-          "[CoreUpdater] download complete: " +
-            outFile.absolutePath +
-            " (size=" +
-            (outFile.length()) +
-            ")"
-        )
-      } catch (_: Throwable) {}
+      println(
+        "[CoreUpdater] download complete: " +
+          outFile.absolutePath +
+          " (size=" +
+          (outFile.length()) +
+          ")"
+      )
     }
 
     override fun onFailure(e: FetchException, state: ClientGetter) {
@@ -496,9 +483,7 @@ class CoreUpdater(
       errorMsg = e.message ?: e.toString()
       if (e.mode == FetchExceptionMode.CANCELLED) return
       Logger.error(this, "Package download failed: $e", e)
-      try {
-        println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
-      } catch (_: Throwable) {}
+      println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
     }
 
     override fun onResume(context: ClientContext) {}
@@ -521,19 +506,17 @@ class CoreUpdater(
             lastPct = pctNow
             lastDone = done
             lastNeed = need
-            try {
-              println(
-                "[CoreUpdater] progress: " +
-                  pctNow +
-                  "% (" +
-                  done +
-                  "/" +
-                  need +
-                  ", total=" +
-                  ce.totalBlocks +
-                  ")"
-              )
-            } catch (_: Throwable) {}
+            println(
+              "[CoreUpdater] progress: " +
+                pctNow +
+                "% (" +
+                done +
+                "/" +
+                need +
+                ", total=" +
+                ce.totalBlocks +
+                ")"
+            )
           }
         }
       } catch (_: Throwable) {
