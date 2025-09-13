@@ -349,18 +349,22 @@ class CoreUpdater(
         return
       }
 
-      // Progress + Install button
+      // Status text: show completed message when done, otherwise progress
       val prog = HTMLNode("p")
-      val pct = f.progressPercent()
-      val blocks = f.blockProgressOrNull()
-      val text =
-        if (pct >= 0) {
-          if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
-          else "Downloading: ${pct}%"
-        } else {
-          "Downloading…"
-        }
-      prog.addChild("#", text)
+      if (f.isSuccess()) {
+        prog.addChild("#", "Download Completed")
+      } else {
+        val pct = f.progressPercent()
+        val blocks = f.blockProgressOrNull()
+        val text =
+          if (pct >= 0) {
+            if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
+            else "Downloading: ${pct}%"
+          } else {
+            "Downloading…"
+          }
+        prog.addChild("#", text)
+      }
       alertNode.addChild(prog)
 
       val ready = f.isSuccess()
