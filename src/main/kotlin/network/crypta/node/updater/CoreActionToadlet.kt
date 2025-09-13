@@ -8,6 +8,7 @@ import network.crypta.node.Node
 import network.crypta.support.HTMLNode
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import network.crypta.support.Logger
 import java.io.File
 import java.io.IOException
 import java.net.URI
@@ -43,31 +44,24 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
     when (action) {
       "download" -> {
-        try {
-          println("[CoreActionToadlet] POST /core-update action=download")
-        } catch (_: Throwable) {}
+        Logger.minor(this, "[CoreActionToadlet] POST /core-update action=download")
         updater.startDownloadFromUI()
         redirect(ctx)
       }
       "install" -> {
         val path = request.getPartAsStringFailsafe("path", 4096)
-        try {
-          println("[CoreActionToadlet] POST /core-update action=install path=$path")
-        } catch (_: Throwable) {}
+        Logger.minor(this, "[CoreActionToadlet] POST /core-update action=install path=$path")
         val okPath = validatePath(path)
         if (okPath == null) {
-          try {
-            println("[CoreActionToadlet] install rejected: invalid path")
-          } catch (_: Throwable) {}
+          Logger.minor(this, "[CoreActionToadlet] install rejected: invalid path")
           writeMessage(ctx, false, "Invalid file path.")
           return
         }
         val (success, msg) = tryInstall(okPath)
-        try {
-          println(
-            "[CoreActionToadlet] install result: success=$success, message=\"$msg\""
-          )
-        } catch (_: Throwable) {}
+        Logger.minor(
+          this,
+          "[CoreActionToadlet] install result: success=$success, message=\"$msg\"",
+        )
         writeMessage(ctx, success, msg)
       }
       else -> redirect(ctx)
