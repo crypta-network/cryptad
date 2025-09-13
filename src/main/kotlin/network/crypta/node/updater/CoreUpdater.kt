@@ -1,5 +1,9 @@
 package network.crypta.node.updater
 
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
 import network.crypta.client.FetchException
 import network.crypta.client.FetchException.FetchExceptionMode
 import network.crypta.client.FetchResult
@@ -15,10 +19,6 @@ import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.io.FileBucket
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
 
 /**
  * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
@@ -306,10 +306,7 @@ class CoreUpdater(
     alertNode.addChild(status)
 
     val det = HTMLNode("p")
-    det.addChild(
-      "#",
-      "Detected: ${env.os} / ${env.arch}  •  Selected package: ${chosen ?: "n/a"}",
-    )
+    det.addChild("#", "Detected: ${env.os} / ${env.arch}  •  Selected package: ${chosen ?: "n/a"}")
     alertNode.addChild(det)
   }
 
@@ -351,37 +348,36 @@ class CoreUpdater(
       addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
     }
 
-  private fun buildProgressNode(f: PackageFetcher): HTMLNode = HTMLNode("p").apply {
-    if (f.isSuccess()) {
-      addChild("#", "Download Completed")
-      return@apply
-    }
-    val pct = f.progressPercent()
-    val blocks = f.blockProgressOrNull()
-    val text =
-      if (pct >= 0) {
-        if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})" else "Downloading: ${pct}%"
-      } else {
-        "Downloading…"
+  private fun buildProgressNode(f: PackageFetcher): HTMLNode =
+    HTMLNode("p").apply {
+      if (f.isSuccess()) {
+        addChild("#", "Download Completed")
+        return@apply
       }
-    addChild("#", text)
-  }
+      val pct = f.progressPercent()
+      val blocks = f.blockProgressOrNull()
+      val text =
+        if (pct >= 0) {
+          if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
+          else "Downloading: ${pct}%"
+        } else {
+          "Downloading…"
+        }
+      addChild("#", text)
+    }
 
   private fun buildInstallForm(ready: Boolean, path: String?): HTMLNode =
     HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
       addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "install"))
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "path", path ?: ""),
-      )
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "path", path ?: ""))
       addChild(
         "input",
         arrayOf("type", "name", "value"),
         arrayOf("hidden", "formPassword", formPassword()),
       )
       val attrs = if (ready) arrayOf("type", "value") else arrayOf("type", "value", "disabled")
-      val vals = if (ready) arrayOf("submit", "Install") else arrayOf("submit", "Install", "disabled")
+      val vals =
+        if (ready) arrayOf("submit", "Install") else arrayOf("submit", "Install", "disabled")
       addChild("input", attrs, vals)
     }
 
@@ -547,7 +543,6 @@ internal object CoreJson {
         PackageSpec(
           chk = o["chk"] as? String,
           size = (o["size"] as? Number)?.toLong(),
-          sha256 = o["sha256"] as? String,
           storeUrl = o["store_url"] as? String,
         )
     }

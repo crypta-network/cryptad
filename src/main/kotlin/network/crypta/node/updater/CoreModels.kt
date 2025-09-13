@@ -24,17 +24,10 @@ data class CoreInfo(
  * Package metadata for a single distributable artifact.
  *
  * @property chk Optional CHK of the file to download into the node’s updates directory.
- * @property size Optional size hint in bytes, used for UI and validation.
- * @property sha256 Optional lowercase hex SHA‑256; not required because CHK already provides
- *   content integrity, but used when available for UI consistency and belt‑and‑suspenders checks.
+ * @property size Optional size hint in bytes, used for UI only.
  * @property storeUrl Optional OS “store” URL (e.g., Flatpak/Snap) to open instead of a direct file.
  */
-data class PackageSpec(
-  val chk: String?,
-  val size: Long?,
-  val sha256: String?,
-  val storeUrl: String?,
-)
+data class PackageSpec(val chk: String?, val size: Long?, val storeUrl: String?)
 
 /** Minimal OS family used for selecting package preference/order. */
 enum class OsKind {
