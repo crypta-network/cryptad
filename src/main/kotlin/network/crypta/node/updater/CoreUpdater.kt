@@ -1,9 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
 import network.crypta.client.FetchException
 import network.crypta.client.FetchException.FetchExceptionMode
 import network.crypta.client.FetchResult
@@ -19,6 +15,10 @@ import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.io.FileBucket
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
 
 /**
  * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
@@ -557,7 +557,7 @@ internal object CoreJson {
   }
 }
 
-/** Extremely small JSON reader sufficient for CoreInfo. Not a general-purpose JSON parser. */
+/** Minimal JSON reader sufficient for CoreInfo. Not a general-purpose JSON parser. */
 internal object JsonMini {
   private class P(val s: String) {
     var i = 0
