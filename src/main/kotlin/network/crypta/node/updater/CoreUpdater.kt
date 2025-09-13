@@ -248,11 +248,9 @@ class CoreUpdater(
    */
   fun startDownloadFromUI() {
     val f = fetcher
-    if (f != null) {
-      // If a download is in progress or already succeeded, do nothing.
-      if (!f.isComplete() || f.isSuccess()) return
-      // Allow retry when the previous attempt failed or completed unsuccessfully.
-    }
+    // If a download is in progress or already succeeded, do nothing.
+    if (f != null && (!f.isComplete() || f.isSuccess())) return
+    // Allow retry when the previous attempt failed or completed unsuccessfully.
     tryStartDownload()
   }
 
