@@ -25,7 +25,7 @@ import network.crypta.support.api.HTTPRequest
  */
 class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) : Toadlet(client) {
 
-  override fun path(): String = "/core-update/"
+  override fun path(): String = CORE_UPDATE_PATH
 
   override fun handleMethodGET(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     // Redirect to alerts page by default

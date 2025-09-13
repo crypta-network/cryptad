@@ -297,7 +297,7 @@ class CoreUpdater(
     val f = fetcher
     if (f == null) {
       // Download button
-      val form = HTMLNode("form", arrayOf("action", "method"), arrayOf("/core-update/", "post"))
+      val form = HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
       form.addChild(
         "input",
         arrayOf("type", "name", "value"),
@@ -323,7 +323,7 @@ class CoreUpdater(
         alertNode.addChild(p)
 
         // Retry/Download button depending on fatality
-        val form = HTMLNode("form", arrayOf("action", "method"), arrayOf("/core-update/", "post"))
+        val form = HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
         form.addChild(
           "input",
           arrayOf("type", "name", "value"),
@@ -364,7 +364,7 @@ class CoreUpdater(
 
       val ready = f.isSuccess()
       val installForm =
-        HTMLNode("form", arrayOf("action", "method"), arrayOf("/core-update/", "post"))
+        HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
       installForm.addChild(
         "input",
         arrayOf("type", "name", "value"),
