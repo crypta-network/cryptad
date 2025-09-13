@@ -43,17 +43,31 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
     when (action) {
       "download" -> {
+        try {
+          println("[CoreActionToadlet] POST /core-update action=download")
+        } catch (_: Throwable) {}
         updater.startDownloadFromUI()
         redirect(ctx)
       }
       "install" -> {
         val path = request.getPartAsStringFailsafe("path", 4096)
+        try {
+          println("[CoreActionToadlet] POST /core-update action=install path=" + path)
+        } catch (_: Throwable) {}
         val okPath = validatePath(path)
         if (okPath == null) {
+          try {
+            println("[CoreActionToadlet] install rejected: invalid path")
+          } catch (_: Throwable) {}
           writeMessage(ctx, false, "Invalid file path.")
           return
         }
         val (success, msg) = tryInstall(okPath)
+        try {
+          println(
+            "[CoreActionToadlet] install result: success=" + success + ", message=\"" + msg + "\""
+          )
+        } catch (_: Throwable) {}
         writeMessage(ctx, success, msg)
       }
       else -> redirect(ctx)

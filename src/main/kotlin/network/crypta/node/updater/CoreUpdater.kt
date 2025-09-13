@@ -63,6 +63,34 @@ class CoreUpdater(
     val e = detectEnvironment()
     env = e
     selectArtifact(info, e)
+    // Debug to stdout: parsed core info + selection
+    try {
+      println(
+        "[CoreUpdater] info.json parsed: version=" +
+          (info.version ?: "?") +
+          ", env=" +
+          e.os +
+          "/" +
+          e.arch +
+          " managers=" +
+          e.availableManagers.joinToString(",") +
+          ", selectedKey=" +
+          (selectedKey ?: "none")
+      )
+      if (!info.releasePageUrl.isNullOrEmpty()) {
+        println("[CoreUpdater] release_page_url=" + info.releasePageUrl)
+      }
+      if (!info.changelogChk.isNullOrEmpty() || !info.fullChangelogChk.isNullOrEmpty()) {
+        println(
+          "[CoreUpdater] changelogs: short=" +
+            (info.changelogChk ?: "-") +
+            ", full=" +
+            (info.fullChangelogChk ?: "-")
+        )
+      }
+    } catch (_: Throwable) {
+      // ignore printing failures
+    }
     // Optionally auto-download when autoupdate=true
     if (manager.isAutoUpdateAllowed && selectedSpec?.chk != null && fetcher == null) {
       tryStartDownload()
@@ -204,6 +232,16 @@ class CoreUpdater(
     val uri = FreenetURI(chk)
     val f = PackageFetcher(target, uri)
     fetcher = f
+    try {
+      println(
+        "[CoreUpdater] starting download: key=" +
+          (selectedKey ?: "?") +
+          ", target=" +
+          target.absolutePath +
+          ", chk=" +
+          chk
+      )
+    } catch (_: Throwable) {}
     f.start()
   }
 
@@ -212,7 +250,12 @@ class CoreUpdater(
    * Alerts page POST handler.
    */
   fun startDownloadFromUI() {
-    if (fetcher != null) return
+    val f = fetcher
+    if (f != null) {
+      // If a download is in progress or already succeeded, do nothing.
+      if (!f.isComplete() || f.isSuccess()) return
+      // Allow retry when the previous attempt failed or completed unsuccessfully.
+    }
     tryStartDownload()
   }
 
@@ -277,13 +320,50 @@ class CoreUpdater(
       )
       alertNode.addChild(form)
     } else {
+      // Error state with retry
+      if (f.hasFailed()) {
+        val err = f.errorMessage() ?: "Download failed."
+        val p = HTMLNode("p")
+        p.addChild("#", "Download failed: $err")
+        alertNode.addChild(p)
+
+        // Retry/Download button depending on fatality
+        val form = HTMLNode("form", arrayOf("action", "method"), arrayOf("/core-update/", "post"))
+        form.addChild(
+          "input",
+          arrayOf("type", "name", "value"),
+          arrayOf("hidden", "action", "download"),
+        )
+        form.addChild(
+          "input",
+          arrayOf("type", "name", "value"),
+          arrayOf("hidden", "formPassword", manager.getNode().getClientCore().formPassword),
+        )
+        val btnLabel = if (!f.isFatalFailure()) "Retry" else "Download"
+        form.addChild(
+          "input",
+          arrayOf("type", "name", "value"),
+          arrayOf("submit", "start", btnLabel),
+        )
+        alertNode.addChild(form)
+        return
+      }
+
       // Progress + Install button
       val prog = HTMLNode("p")
       val pct = f.progressPercent()
-      prog.addChild("#", if (pct >= 0) "Downloading: $pct%" else "Downloading…")
+      val blocks = f.blockProgressOrNull()
+      val text =
+        if (pct >= 0) {
+          if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
+          else "Downloading: ${pct}%"
+        } else {
+          "Downloading…"
+        }
+      prog.addChild("#", text)
       alertNode.addChild(prog)
 
-      val ready = f.isComplete()
+      val ready = f.isSuccess()
       val installForm =
         HTMLNode("form", arrayOf("action", "method"), arrayOf("/core-update/", "post"))
       installForm.addChild(
@@ -294,7 +374,7 @@ class CoreUpdater(
       installForm.addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "path", (f.completedFileOrNull() ?: downloadTarget())?.absolutePath ?: ""),
+        arrayOf("hidden", "path", (f.completedFileOrNull())?.absolutePath ?: ""),
       )
       installForm.addChild(
         "input",
@@ -314,8 +394,13 @@ class CoreUpdater(
     ClientGetCallback, RequestClient, ClientEventListener {
     @Volatile private var getter: ClientGetter? = null
     @Volatile private var lastPct: Int = -1
+    @Volatile private var lastDone: Int = -1
+    @Volatile private var lastNeed: Int = -1
     @Volatile private var complete: Boolean = false
     @Volatile private var successFile: File? = null
+    @Volatile private var failed: Boolean = false
+    @Volatile private var errorMsg: String? = null
+    @Volatile private var fatal: Boolean = false
 
     fun start() {
       val ctx = manager.node.clientCore.makeClient(0.toShort(), true, false).fetchContext
@@ -333,10 +418,23 @@ class CoreUpdater(
       ctx.eventProducer.addEventListener(this)
       try {
         manager.node.clientCore.clientContext.start(getter)
+        try {
+          println(
+            "[CoreUpdater] download started (listener attached): target=" + outFile.absolutePath
+          )
+        } catch (_: Throwable) {}
       } catch (e: FetchException) {
         Logger.error(this, "Failed to start package download: $e", e)
+        try {
+          println("[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.toString()))
+        } catch (_: Throwable) {}
       } catch (e: Exception) {
         Logger.error(this, "Error starting package download: $e", e)
+        try {
+          println(
+            "[CoreUpdater] ERROR: exception starting download: " + (e.message ?: e.toString())
+          )
+        } catch (_: Throwable) {}
       }
     }
 
@@ -349,16 +447,54 @@ class CoreUpdater(
     /** Integer 0–100 when known, or -1 if progress cannot be computed. */
     fun progressPercent(): Int = lastPct
 
+    /** Returns (done, needed) blocks when known, otherwise null. */
+    fun blockProgressOrNull(): Pair<Int, Int>? =
+      if (lastNeed > 0 && lastDone >= 0) Pair(lastDone, lastNeed) else null
+
+    /** True only when the transfer completed successfully. */
+    fun isSuccess(): Boolean = complete && !failed && successFile != null
+
+    /** True when the transfer finished with an error. */
+    fun hasFailed(): Boolean = complete && failed
+
+    /** Short error message when failed, if any. */
+    fun errorMessage(): String? = errorMsg
+
+    /** True if the last failure was fatal according to FetchException.isFatal(). */
+    fun isFatalFailure(): Boolean = failed && fatal
+
     override fun onSuccess(result: FetchResult, state: ClientGetter) {
       complete = true
       successFile = outFile
+      failed = false
+      errorMsg = null
+      try {
+        println(
+          "[CoreUpdater] download complete: " +
+            outFile.absolutePath +
+            " (size=" +
+            (outFile.length()) +
+            ")"
+        )
+      } catch (_: Throwable) {}
     }
 
     override fun onFailure(e: FetchException, state: ClientGetter) {
       complete = true
       successFile = null
+      failed = true
+      fatal =
+        try {
+          e.isFatal()
+        } catch (_: Throwable) {
+          false
+        }
+      errorMsg = e.message ?: e.toString()
       if (e.mode == FetchExceptionMode.CANCELLED) return
       Logger.error(this, "Package download failed: $e", e)
+      try {
+        println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
+      } catch (_: Throwable) {}
     }
 
     override fun onResume(context: ClientContext) {}
@@ -370,8 +506,35 @@ class CoreUpdater(
     override fun getRequestClient(): RequestClient = this
 
     override fun receive(ce: ClientEvent, context: ClientContext) {
-      // We don’t have splitfile events here (no type), keep placeholder.
-      // Future: hook SplitfileProgressEvent to compute percent.
+      // Hook SplitfileProgressEvent to compute percent and block counts.
+      try {
+        if (ce is network.crypta.client.events.SplitfileProgressEvent) {
+          val done = ce.succeedBlocks
+          var need = ce.minSuccessfulBlocks
+          if (need <= 0) need = if (ce.totalBlocks > 0) ce.totalBlocks else 1
+          val pctNow = (100 * done) / need
+          if (pctNow != lastPct || done != lastDone || need != lastNeed) {
+            lastPct = pctNow
+            lastDone = done
+            lastNeed = need
+            try {
+              println(
+                "[CoreUpdater] progress: " +
+                  pctNow +
+                  "% (" +
+                  done +
+                  "/" +
+                  need +
+                  ", total=" +
+                  ce.totalBlocks +
+                  ")"
+              )
+            } catch (_: Throwable) {}
+          }
+        }
+      } catch (_: Throwable) {
+        // ignore
+      }
     }
   }
 }

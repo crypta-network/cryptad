@@ -761,49 +761,58 @@ public class NodeUpdateManager {
   }
 
   /**
-   * Add links to the changelog for the given version to the given node. Also includes CHK links
-   * provided by {@link CoreUpdater} when available.
+   * Add links to the changelog for the given version to the given node.
+   *
+   * <p>Preference order: - Use CHK links provided by {@link CoreUpdater} when available (short +
+   * full changelog). - Otherwise, fall back to the legacy SSK links derived from the update USK.
+   *
+   * <p>This avoids showing duplicate links (old SSK + new CHK) at the same time.
    *
    * @param version USK edition to point to
    * @param node to add links to
    */
   public synchronized void addChangelogLinks(long version, HTMLNode node) {
-    String changelogUri =
-        getChangelogURI().setSuggestedEdition(version).sskForUSK().toASCIIString();
-    String developerDetailsUri =
-        getDeveloperChangelogURI().setSuggestedEdition(version).sskForUSK().toASCIIString();
-    node.addChild(
-        "a",
-        "href",
-        '/' + changelogUri + "?type=text/plain",
-        NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
-    node.addChild("br");
-    node.addChild(
-        "a",
-        "href",
-        '/' + developerDetailsUri + "?type=text/plain",
-        NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
-    // Additional changelog links from core info JSON (if available)
+    boolean addedFromCore = false;
     network.crypta.node.updater.CoreUpdater cu = coreUpdater;
     if (cu != null) {
       String s = cu.getShortChangelogCHK();
       if (s != null && !s.isEmpty()) {
-        node.addChild("br");
         node.addChild(
             "a",
             "href",
             '/' + s + "?type=text/plain",
             NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
+        addedFromCore = true;
       }
       String f = cu.getFullChangelogCHK();
       if (f != null && !f.isEmpty()) {
-        node.addChild("br");
+        if (addedFromCore) node.addChild("br");
         node.addChild(
             "a",
             "href",
             '/' + f + "?type=text/plain",
             NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
+        addedFromCore = true;
       }
+    }
+
+    if (!addedFromCore) {
+      // Fallback to legacy SSK links only when CHKs are not present.
+      String changelogUri =
+          getChangelogURI().setSuggestedEdition(version).sskForUSK().toASCIIString();
+      String developerDetailsUri =
+          getDeveloperChangelogURI().setSuggestedEdition(version).sskForUSK().toASCIIString();
+      node.addChild(
+          "a",
+          "href",
+          '/' + changelogUri + "?type=text/plain",
+          NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
+      node.addChild("br");
+      node.addChild(
+          "a",
+          "href",
+          '/' + developerDetailsUri + "?type=text/plain",
+          NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
     }
   }
 
