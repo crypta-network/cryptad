@@ -18,6 +18,7 @@ import network.crypta.node.RequestClient
 import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
+import network.crypta.support.SizeUtil
 import network.crypta.support.io.FileBucket
 
 /**
@@ -277,7 +278,7 @@ class CoreUpdater(
     val envNow = env ?: detectEnvironment().also { env = it }
     val chosen = selectedKey
 
-    addHeader(alertNode, info, envNow, chosen)
+    addHeader(alertNode, info, envNow, chosen, selectedSpec)
     alertNode.addChild(buildLinksNode(info, selectedSpec))
 
     val f = fetcher
@@ -300,7 +301,13 @@ class CoreUpdater(
     alertNode.addChild(buildInstallForm(ready, path))
   }
 
-  private fun addHeader(alertNode: HTMLNode, info: CoreInfo, env: EnvDetection, chosen: String?) {
+  private fun addHeader(
+    alertNode: HTMLNode,
+    info: CoreInfo,
+    env: EnvDetection,
+    chosen: String?,
+    spec: PackageSpec?,
+  ) {
     val status = HTMLNode("p")
     status.addChild("#", "Core update available: version ${info.version ?: "?"}")
     alertNode.addChild(status)
@@ -308,6 +315,13 @@ class CoreUpdater(
     val det = HTMLNode("p")
     det.addChild("#", "Detected: ${env.os} / ${env.arch}  •  Selected package: ${chosen ?: "n/a"}")
     alertNode.addChild(det)
+
+    val sz = spec?.size
+    if (sz != null && sz > 0) {
+      val sizeLine = HTMLNode("p")
+      sizeLine.addChild("#", "Package size: ${SizeUtil.formatSize(sz, true)}")
+      alertNode.addChild(sizeLine)
+    }
   }
 
   private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?): HTMLNode {
@@ -333,7 +347,8 @@ class CoreUpdater(
         arrayOf("type", "name", "value"),
         arrayOf("hidden", "formPassword", formPassword()),
       )
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", "Download"))
+      val label = defaultDownloadLabel()
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
     }
 
   private fun buildRetryForm(isRetry: Boolean): HTMLNode =
@@ -344,9 +359,15 @@ class CoreUpdater(
         arrayOf("type", "name", "value"),
         arrayOf("hidden", "formPassword", formPassword()),
       )
-      val label = if (isRetry) "Retry" else "Download"
+      val label = if (isRetry) "Retry" else defaultDownloadLabel()
       addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
     }
+
+  private fun defaultDownloadLabel(): String {
+    val bytes = selectedSpec?.size
+    return if (bytes != null && bytes > 0) "Download (" + SizeUtil.formatSize(bytes, true) + ")"
+    else "Download"
+  }
 
   private fun buildProgressNode(f: PackageFetcher): HTMLNode =
     HTMLNode("p").apply {
