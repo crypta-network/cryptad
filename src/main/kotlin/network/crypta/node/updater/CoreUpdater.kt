@@ -373,7 +373,7 @@ class CoreUpdater(
       installForm.addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "path", (f.completedFileOrNull())?.absolutePath ?: ""),
+        arrayOf("hidden", "path", (getDownloadedFile())?.absolutePath ?: ""),
       )
       installForm.addChild(
         "input",
