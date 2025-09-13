@@ -35,7 +35,6 @@ import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
-// Legacy main-jar update classes removed.
 import network.crypta.node.useralerts.RevocationKeyFoundUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert;
@@ -100,7 +99,7 @@ public class NodeUpdateManager {
 
   // Legacy MainJarUpdater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
-  private network.crypta.node.updater.CoreUpdater coreUpdater;
+  private CoreUpdater coreUpdater;
 
   private Map<String, PluginJarUpdater> pluginUpdaters;
 
@@ -743,7 +742,7 @@ public class NodeUpdateManager {
 
   /**
    * Update base with docname switched to {@code "info"} (core package info editions). Used by
-   * {@link network.crypta.node.updater.CoreUpdater}.
+   * {@link CoreUpdater}.
    */
   public synchronized FreenetURI getCoreInfoURI() {
     return updateURI.setDocName("info");
@@ -773,7 +772,7 @@ public class NodeUpdateManager {
    */
   public synchronized void addChangelogLinks(long version, HTMLNode node) {
     boolean addedFromCore = false;
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     if (cu != null) {
       String s = cu.getShortChangelogCHK();
       if (s != null && !s.isEmpty()) {
@@ -1153,7 +1152,7 @@ public class NodeUpdateManager {
   }
 
   public boolean hasNewMainJar() {
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     return cu != null && cu.canUpdateNow();
   }
 
@@ -1164,17 +1163,17 @@ public class NodeUpdateManager {
    * mainUpdater.
    */
   public int newMainJarVersion() {
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.getFetchedVersion() : -1;
   }
 
   public boolean fetchingNewMainJar() {
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     return (cu != null && cu.isFetching());
   }
 
   public int fetchingNewMainJarVersion() {
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.fetchingVersion() : -1;
   }
 
@@ -1197,7 +1196,7 @@ public class NodeUpdateManager {
 
   /** Is the node able to update as soon as the revocation fetch has been completed? */
   public boolean canUpdateNow() {
-    network.crypta.node.updater.CoreUpdater cu = coreUpdater;
+    CoreUpdater cu = coreUpdater;
     return cu != null && cu.canUpdateNow();
   }
 
@@ -1411,7 +1410,7 @@ public class NodeUpdateManager {
    * CoreUpdater#renderProperties(HTMLNode)}.
    */
   public void renderProgress(HTMLNode alertNode) {
-    network.crypta.node.updater.CoreUpdater cu;
+    CoreUpdater cu;
     synchronized (this) {
       cu = coreUpdater;
     }
@@ -1456,7 +1455,7 @@ public class NodeUpdateManager {
   public synchronized void startCoreUpdater() {
     if (coreUpdater != null) return;
     coreUpdater =
-        new network.crypta.node.updater.CoreUpdater(
+        new CoreUpdater(
             this,
             getCoreInfoURI(),
             Version.currentBuildNumber(),
@@ -1466,7 +1465,7 @@ public class NodeUpdateManager {
   }
 
   /** Current {@link CoreUpdater} instance or null when the core updater is not enabled. */
-  public synchronized network.crypta.node.updater.CoreUpdater getCoreUpdater() {
+  public synchronized CoreUpdater getCoreUpdater() {
     return coreUpdater;
   }
 
