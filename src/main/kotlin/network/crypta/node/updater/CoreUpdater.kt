@@ -1,5 +1,9 @@
 package network.crypta.node.updater
 
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
+import java.nio.charset.StandardCharsets
 import network.crypta.client.FetchException
 import network.crypta.client.FetchException.FetchExceptionMode
 import network.crypta.client.FetchResult
@@ -15,10 +19,6 @@ import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.io.FileBucket
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.InputStream
-import java.nio.charset.StandardCharsets
 
 /**
  * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
@@ -206,13 +206,16 @@ class CoreUpdater(
     arch: String,
     exts: List<String>,
   ): Pair<String, PackageSpec>? =
-    exts.asSequence()
+    exts
+      .asSequence()
       .map { "$arch.$it" }
       .mapNotNull { k -> this[k]?.takeIf { it.chk != null }?.let { k to it } }
       .firstOrNull()
 
   /** Fallback: first available package for `arch` with a CHK, regardless of extension. */
-  private fun Map<String, PackageSpec>.firstAvailableForArch(arch: String): Pair<String, PackageSpec>? =
+  private fun Map<String, PackageSpec>.firstAvailableForArch(
+    arch: String
+  ): Pair<String, PackageSpec>? =
     asSequence()
       .filter { (k, v) -> k.startsWith("$arch.") && v.chk != null }
       .map { it.key to it.value }
@@ -274,6 +277,30 @@ class CoreUpdater(
     val envNow = env ?: detectEnvironment().also { env = it }
     val chosen = selectedKey
 
+    addHeader(alertNode, info, envNow, chosen)
+    alertNode.addChild(buildLinksNode(info, selectedSpec))
+
+    val f = fetcher
+    if (f == null) {
+      alertNode.addChild(buildDownloadForm())
+      return
+    }
+
+    if (f.hasFailed()) {
+      val msg = f.errorMessage() ?: "Download failed."
+      val p = HTMLNode("p").also { it.addChild("#", "Download failed: $msg") }
+      alertNode.addChild(p)
+      alertNode.addChild(buildRetryForm(isRetry = !f.isFatalFailure()))
+      return
+    }
+
+    alertNode.addChild(buildProgressNode(f))
+    val ready = f.isSuccess()
+    val path = getDownloadedFile()?.absolutePath
+    alertNode.addChild(buildInstallForm(ready, path))
+  }
+
+  private fun addHeader(alertNode: HTMLNode, info: CoreInfo, env: EnvDetection, chosen: String?) {
     val status = HTMLNode("p")
     status.addChild("#", "Core update available: version ${info.version ?: "?"}")
     alertNode.addChild(status)
@@ -281,116 +308,82 @@ class CoreUpdater(
     val det = HTMLNode("p")
     det.addChild(
       "#",
-      "Detected: ${envNow.os} / ${envNow.arch}  •  Selected package: ${chosen ?: "n/a"}",
+      "Detected: ${env.os} / ${env.arch}  •  Selected package: ${chosen ?: "n/a"}",
     )
     alertNode.addChild(det)
+  }
 
+  private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?): HTMLNode {
     val links = HTMLNode("p")
     if (!info.releasePageUrl.isNullOrEmpty()) {
       links.addChild("a", "href", ExternalLinkToadlet.escape(info.releasePageUrl), "Release Notes")
       links.addChild("#", "  ")
     }
-    // Store links if present on chosen artifact
-    val spec = selectedSpec
     if (spec?.storeUrl != null) {
       links.addChild("a", "href", ExternalLinkToadlet.escape(spec.storeUrl), "Open in Store")
       links.addChild("#", "  ")
     }
-    alertNode.addChild(links)
+    return links
+  }
 
-    val f = fetcher
-    if (f == null) {
-      // Download button
-      val form = HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
-      form.addChild(
+  private fun formPassword(): String = manager.getNode().getClientCore().getFormPassword()
+
+  private fun buildDownloadForm(): HTMLNode =
+    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "download"))
+      addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "action", "download"),
+        arrayOf("hidden", "formPassword", formPassword()),
       )
-      form.addChild(
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", "Download"))
+    }
+
+  private fun buildRetryForm(isRetry: Boolean): HTMLNode =
+    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "download"))
+      addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
+        arrayOf("hidden", "formPassword", formPassword()),
       )
-      form.addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("submit", "start", "Download"),
-      )
-      alertNode.addChild(form)
-    } else {
-      // Error state with retry
-      if (f.hasFailed()) {
-        val err = f.errorMessage() ?: "Download failed."
-        val p = HTMLNode("p")
-        p.addChild("#", "Download failed: $err")
-        alertNode.addChild(p)
+      val label = if (isRetry) "Retry" else "Download"
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
+    }
 
-        // Retry/Download button depending on fatality
-        val form = HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
-        form.addChild(
-          "input",
-          arrayOf("type", "name", "value"),
-          arrayOf("hidden", "action", "download"),
-        )
-        form.addChild(
-          "input",
-          arrayOf("type", "name", "value"),
-          arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
-        )
-        val btnLabel = if (!f.isFatalFailure()) "Retry" else "Download"
-        form.addChild(
-          "input",
-          arrayOf("type", "name", "value"),
-          arrayOf("submit", "start", btnLabel),
-        )
-        alertNode.addChild(form)
-        return
-      }
-
-      // Status text: show completed message when done, otherwise progress
-      val prog = HTMLNode("p")
-      if (f.isSuccess()) {
-        prog.addChild("#", "Download Completed")
+  private fun buildProgressNode(f: PackageFetcher): HTMLNode = HTMLNode("p").apply {
+    if (f.isSuccess()) {
+      addChild("#", "Download Completed")
+      return@apply
+    }
+    val pct = f.progressPercent()
+    val blocks = f.blockProgressOrNull()
+    val text =
+      if (pct >= 0) {
+        if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})" else "Downloading: ${pct}%"
       } else {
-        val pct = f.progressPercent()
-        val blocks = f.blockProgressOrNull()
-        val text =
-          if (pct >= 0) {
-            if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
-            else "Downloading: ${pct}%"
-          } else {
-            "Downloading…"
-          }
-        prog.addChild("#", text)
+        "Downloading…"
       }
-      alertNode.addChild(prog)
+    addChild("#", text)
+  }
 
-      val ready = f.isSuccess()
-      val installForm =
-        HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
-      installForm.addChild(
+  private fun buildInstallForm(ready: Boolean, path: String?): HTMLNode =
+    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "install"))
+      addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "action", "install"),
+        arrayOf("hidden", "path", path ?: ""),
       )
-      installForm.addChild(
+      addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "path", (getDownloadedFile())?.absolutePath ?: ""),
-      )
-      installForm.addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
+        arrayOf("hidden", "formPassword", formPassword()),
       )
       val attrs = if (ready) arrayOf("type", "value") else arrayOf("type", "value", "disabled")
-      val vals =
-        if (ready) arrayOf("submit", "Install") else arrayOf("submit", "Install", "disabled")
-      installForm.addChild("input", attrs, vals)
-      alertNode.addChild(installForm)
+      val vals = if (ready) arrayOf("submit", "Install") else arrayOf("submit", "Install", "disabled")
+      addChild("input", attrs, vals)
     }
-  }
 
   /** Lightweight fetcher for a single CHK saved directly to a File. */
   inner class PackageFetcher(private val outFile: File, private val chk: FreenetURI) :
