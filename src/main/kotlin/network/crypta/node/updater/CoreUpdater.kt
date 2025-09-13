@@ -311,7 +311,7 @@ class CoreUpdater(
       form.addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().formPassword),
+        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
       )
       form.addChild(
         "input",
@@ -337,7 +337,7 @@ class CoreUpdater(
         form.addChild(
           "input",
           arrayOf("type", "name", "value"),
-          arrayOf("hidden", "formPassword", manager.getNode().getClientCore().formPassword),
+          arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
         )
         val btnLabel = if (!f.isFatalFailure()) "Retry" else "Download"
         form.addChild(
@@ -383,7 +383,7 @@ class CoreUpdater(
       installForm.addChild(
         "input",
         arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().formPassword),
+        arrayOf("hidden", "formPassword", manager.getNode().getClientCore().getFormPassword()),
       )
       val attrs = if (ready) arrayOf("type", "value") else arrayOf("type", "value", "disabled")
       val vals =
@@ -407,7 +407,7 @@ class CoreUpdater(
     @Volatile private var fatal: Boolean = false
 
     fun start() {
-      val ctx = manager.node.clientCore.makeClient(0.toShort(), true, false).fetchContext
+      val ctx = manager.getNode().getClientCore().makeClient(0.toShort(), true, false).fetchContext
       val fb = FileBucket(outFile, false, false, false, false)
       getter =
         ClientGetter(
@@ -421,7 +421,7 @@ class CoreUpdater(
         )
       ctx.eventProducer.addEventListener(this)
       try {
-        manager.node.clientCore.clientContext.start(getter)
+        manager.getNode().getClientCore().getClientContext().start(getter)
         try {
           println(
             "[CoreUpdater] download started (listener attached): target=" + outFile.absolutePath
