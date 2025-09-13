@@ -1,8 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.File
-import java.io.IOException
-import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -11,6 +8,9 @@ import network.crypta.node.Node
 import network.crypta.support.HTMLNode
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import java.io.File
+import java.io.IOException
+import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -100,9 +100,9 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     return try {
       val pb =
         when {
-          os.contains("win") -> java.lang.ProcessBuilder("cmd", "/c", file.absolutePath)
+          os.contains("win") -> ProcessBuilder("cmd", "/c", file.absolutePath)
           os.contains("mac") || os.contains("darwin") ->
-            java.lang.ProcessBuilder("open", file.absolutePath)
+            ProcessBuilder("open", file.absolutePath)
           os.contains("linux") || os.contains("nux") -> linuxInstaller(file)
           else -> null
         }
@@ -115,17 +115,17 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   }
 
   /** Choose a Linux command line for common package types, or null when unsupported. */
-  private fun linuxInstaller(file: File): java.lang.ProcessBuilder? {
+  private fun linuxInstaller(file: File): ProcessBuilder? {
     val name = file.name
     return when {
       name.endsWith(".flatpak", ignoreCase = true) ->
-        java.lang.ProcessBuilder("flatpak", "install", "--assumeyes", file.absolutePath)
+        ProcessBuilder("flatpak", "install", "--assumeyes", file.absolutePath)
       name.endsWith(".snap", ignoreCase = true) -> null // prefer store flow
       name.endsWith(".deb", ignoreCase = true) ->
-        if (onPath("apt")) java.lang.ProcessBuilder("apt", "install", file.absolutePath)
-        else java.lang.ProcessBuilder("dpkg", "-i", file.absolutePath)
+        if (onPath("apt")) ProcessBuilder("apt", "install", file.absolutePath)
+        else ProcessBuilder("dpkg", "-i", file.absolutePath)
       name.endsWith(".rpm", ignoreCase = true) ->
-        java.lang.ProcessBuilder("rpm", "-Uvh", file.absolutePath)
+        ProcessBuilder("rpm", "-Uvh", file.absolutePath)
       else -> null
     }
   }
@@ -162,7 +162,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         true,
       )
     box.addChild("p").addChild("#", msg)
-    Toadlet.addHomepageLink(content)
+    addHomepageLink(content)
     // Allow JS on result page; CSP was previously too strict here.
     this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
   }
