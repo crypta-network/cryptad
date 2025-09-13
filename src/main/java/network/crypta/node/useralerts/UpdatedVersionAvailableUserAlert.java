@@ -111,6 +111,9 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
           });
     }
 
+    // Ensure a visual separation between the armed/form message and the changelog links.
+    alertNode.addChild("br");
+
     int version;
     if (updater.hasNewMainJar()) {
       version = updater.newMainJarVersion();
