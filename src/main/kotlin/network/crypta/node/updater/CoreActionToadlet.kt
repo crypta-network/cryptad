@@ -36,7 +36,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Handle download/install actions submitted from the Alerts UI. */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     val action = request.getPartAsStringFailsafe("action", 32)
-    val updater = node.getNodeUpdater().getCoreUpdater()
+    val updater = node.getNodeUpdater().coreUpdater
     if (updater == null) {
       redirect(ctx)
       return
@@ -52,7 +52,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       "install" -> {
         val path = request.getPartAsStringFailsafe("path", 4096)
         try {
-          println("[CoreActionToadlet] POST /core-update action=install path=" + path)
+          println("[CoreActionToadlet] POST /core-update action=install path=$path")
         } catch (_: Throwable) {}
         val okPath = validatePath(path)
         if (okPath == null) {
@@ -65,7 +65,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         val (success, msg) = tryInstall(okPath)
         try {
           println(
-            "[CoreActionToadlet] install result: success=" + success + ", message=\"" + msg + "\""
+            "[CoreActionToadlet] install result: success=$success, message=\"$msg\""
           )
         } catch (_: Throwable) {}
         writeMessage(ctx, success, msg)
