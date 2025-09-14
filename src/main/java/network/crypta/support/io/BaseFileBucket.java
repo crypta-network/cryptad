@@ -367,25 +367,19 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     // make some semi-educated guesses based on OS.
 
     if (tempDir == null) {
-      String os = System.getProperty("os.name");
-      if (os != null) {
-
-        String[] candidates = null;
-
-        // XXX: Add more possible OSes here.
-        if (os.equalsIgnoreCase("Linux") || os.equalsIgnoreCase("FreeBSD")) {
-          candidates = new String[] {"/tmp", "/var/tmp"};
-        } else if (os.equalsIgnoreCase("Windows")) {
-          candidates = new String[] {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
-        }
-
-        if (candidates != null) {
-          for (String candidate : candidates) {
-            File path = new File(candidate);
-            if (path.exists() && path.isDirectory() && path.canWrite()) {
-              tempDir = candidate;
-              break;
-            }
+      network.crypta.fs.AppEnv _env = new network.crypta.fs.AppEnv();
+      String[] candidates = null;
+      if (_env.isLinux()) {
+        candidates = new String[] {"/tmp", "/var/tmp"};
+      } else if (_env.isWindows()) {
+        candidates = new String[] {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
+      }
+      if (candidates != null) {
+        for (String candidate : candidates) {
+          File path = new File(candidate);
+          if (path.exists() && path.isDirectory() && path.canWrite()) {
+            tempDir = candidate;
+            break;
           }
         }
       }

@@ -131,7 +131,9 @@ public class DiagnosticToadlet extends Toadlet {
       textBuilder
           .append(l10n("jvmVersion", "version", System.getProperty("java.vm.version")))
           .append("\n");
-      textBuilder.append(l10n("osName", "name", System.getProperty("os.name"))).append("\n");
+      textBuilder
+          .append(l10n("osName", "name", new network.crypta.fs.AppEnv().osNameRaw()))
+          .append("\n");
       textBuilder
           .append(l10n("osVersion", "version", System.getProperty("os.version")))
           .append("\n");

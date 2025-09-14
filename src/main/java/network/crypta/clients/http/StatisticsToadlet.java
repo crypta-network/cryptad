@@ -720,7 +720,7 @@ public class StatisticsToadlet extends Toadlet {
     jvmStatsList.addChild("li", l10n("jvmName", "name", System.getProperty("java.vm.name")));
     jvmStatsList.addChild(
         "li", l10n("jvmVersion", "version", System.getProperty("java.vm.version")));
-    jvmStatsList.addChild("li", l10n("osName", "name", System.getProperty("os.name")));
+    jvmStatsList.addChild("li", l10n("osName", "name", new network.crypta.fs.AppEnv().osNameRaw()));
     jvmStatsList.addChild("li", l10n("osVersion", "version", System.getProperty("os.version")));
     jvmStatsList.addChild("li", l10n("osArch", "arch", System.getProperty("os.arch")));
     if (advancedModeEnabled) {
