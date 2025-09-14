@@ -29,6 +29,16 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   private val appEnv = AppEnv()
 
+  private companion object {
+    private const val EXT_FLATPAK = ".flatpak"
+    private const val EXT_FLATPAKREF = ".flatpakref"
+    private const val CMD_FLATPAK_SPAWN = "flatpak-spawn"
+    private const val CMD_XDG_OPEN = "xdg-open"
+    private const val ARG_ASSUME_YES = "--assumeyes"
+    private const val ARG_USER = "--user"
+    private const val TAG_RPM_OSTREE = "RPM-OSTREE"
+  }
+
   override fun path(): String = CORE_UPDATE_PATH
 
   override fun handleMethodGET(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
@@ -186,7 +196,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       when {
         name.endsWith(".deb") -> debFallback(file)
         name.endsWith(".rpm") -> rpmFallback(file, ostree)
-        name.endsWith(".flatpakref") || name.endsWith(".flatpak") -> flatpakFallback(file)
+        name.endsWith(EXT_FLATPAKREF) || name.endsWith(EXT_FLATPAK) -> flatpakFallback(file)
         name.endsWith(".snap") -> snapFallback(file)
         else -> InstallerDelegate.Manual("Unsupported package type: ${file.name}")
       }
@@ -221,8 +231,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val path = file.absolutePath
     val opener = pickGuiOpener() ?: return null
     // Try host‑side open from Flatpak sandbox first when available
-    if (preferHost && appEnv.onPath("flatpak-spawn")) {
-      return ProcessBuilder(mutableListOf("flatpak-spawn", "--host") + opener + path)
+    if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
+      return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + path)
     }
     // Fallback to in‑sandbox open via portal or direct host execution on non‑sandboxed desktops
     return ProcessBuilder(opener + path)
@@ -232,7 +242,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun pickGuiOpener(): List<String>? {
     return when {
       appEnv.onPath("gio") -> listOf("gio", "open")
-      appEnv.onPath("xdg-open") -> listOf("xdg-open")
+      appEnv.onPath(CMD_XDG_OPEN) -> listOf(CMD_XDG_OPEN)
       else -> null
     }
   }
@@ -240,8 +250,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Build a GUI opener for a URL (not a local file). */
   private fun guiOpenUrlCommand(url: String, preferHost: Boolean): ProcessBuilder? {
     val opener = pickGuiOpener() ?: return null
-    if (preferHost && appEnv.onPath("flatpak-spawn")) {
-      return ProcessBuilder(mutableListOf("flatpak-spawn", "--host") + opener + url)
+    if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
+      return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + url)
     }
     return ProcessBuilder(opener + url)
   }
@@ -308,9 +318,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun flatpakFallback(file: File): InstallerDelegate {
     val path = file.absolutePath
     if (!appEnv.onPath("flatpak")) return InstallerDelegate.Manual(manualMsg("Flatpak", path))
-    val sub =
-      if (file.name.endsWith(".flatpak")) listOf("install", "--assumeyes", "--user", path)
-      else listOf("install", "--assumeyes", "--user", path)
+    val sub = listOf("install", ARG_ASSUME_YES, ARG_USER, path)
     return InstallerDelegate.Spawn(
       ProcessBuilder(mutableListOf("flatpak") + sub),
       "Installing with Flatpak (user scope).",
@@ -337,21 +345,21 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val tag =
       when {
         nameLower.endsWith(".deb") -> "DEB"
-        nameLower.endsWith(".rpm") -> if (ostree) "RPM-OSTREE" else "RPM"
-        nameLower.endsWith(".flatpak") || nameLower.endsWith(".flatpakref") -> "Flatpak"
+        nameLower.endsWith(".rpm") -> if (ostree) TAG_RPM_OSTREE else "RPM"
+        nameLower.endsWith(EXT_FLATPAK) || nameLower.endsWith(EXT_FLATPAKREF) -> "Flatpak"
         nameLower.endsWith(".snap") -> "Snap"
         else -> "Package"
       }
     val suggestion =
       when (tag) {
         "DEB" -> "pkcon install-local -y '${path}'"
-        "RPM-OSTREE" -> "rpm-ostree install '${path}'"
+        TAG_RPM_OSTREE -> "rpm-ostree install '${path}'"
         "RPM" -> "pkcon install-local -y '${path}'"
-        "Flatpak" -> "flatpak install --assumeyes --system '${path}'"
+        "Flatpak" -> "flatpak install ${ARG_ASSUME_YES} --system '${path}'"
         "Snap" -> "snap install --dangerous '${path}'"
         else -> "<install-command> '${path}'"
       }
-    val extra = if (tag == "RPM-OSTREE") " A reboot may be required." else ""
+    val extra = if (tag == TAG_RPM_OSTREE) " A reboot may be required." else ""
     return "Headless/service environment detected. Not launching an interactive installer. " +
       "Please run as root on the host: ${suggestion}.${extra}"
   }
@@ -394,7 +402,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         kind.equals("snap", ignoreCase = true) && !id.isNullOrBlank() -> "snap://${id}"
         kind.equals("flatpak", ignoreCase = true) && !id.isNullOrBlank() ->
           // appstream is widely handled by GNOME/KDE software centers; fallback to flathub page
-          if (appEnv.onPath("gio") || appEnv.onPath("xdg-open")) "appstream://${id}"
+          if (appEnv.onPath("gio") || appEnv.onPath(CMD_XDG_OPEN)) "appstream://${id}"
           else "https://flathub.org/apps/${id}"
         else -> null
       }
@@ -406,7 +414,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     return when {
       kind.equals("flatpak", true) && !id.isNullOrBlank() && appEnv.onPath("flatpak") ->
         InstallerDelegate.Spawn(
-          ProcessBuilder("flatpak", "install", "--assumeyes", "--user", "flathub", id),
+          ProcessBuilder("flatpak", "install", ARG_ASSUME_YES, ARG_USER, "flathub", id),
           "Installing '${id}' from Flathub (user scope)",
         )
       kind.equals("snap", true) &&
