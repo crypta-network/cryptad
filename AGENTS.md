@@ -74,6 +74,35 @@ architecture review).
 
 - Launcher code style guardrails
   - Use the `APP_NAME` constant for window titles; prefer logging via `LauncherLog` over silent catches; keep Desktop integration hooks inside `try/catch` with debug logs.
+
+### Environment detection (AppEnv)
+
+AppEnv is the SINGLE source of truth for runtime environment detection across the codebase. Do not read `System.getProperty("os.name")`, `os.arch`, or parse PATH directly in new code; use `AppEnv` instead.
+
+- Location: `network.crypta.fs.AppEnv`
+- Provides:
+  - `isWindows()`, `isMac()`, `isLinux()`
+  - `isFlatpak()`, `isSnap()`, `isDocker()`
+  - `isServiceMode()` and service heuristics per-OS
+  - `osKind(): OsKind` and `arch(): String` (returns `"amd64"` or `"arm64"`)
+  - `onPath(cmd: String): Boolean`, `availableManagers(): List<String>` (Linux PATH probing)
+  - `detectEnvironment(): EnvDetection` with `os/arch/availableManagers`
+  - `osNameRaw()`, `osVersionRaw()` for display-only strings
+
+Usage examples
+
+- Kotlin
+  - `val env = AppEnv(); if (env.isWindows()) { ... }`
+  - `val det = AppEnv().detectEnvironment(); when (det.os) { AppEnv.OsKind.LINUX -> ... }`
+
+- Java
+  - `AppEnv env = new AppEnv(); if (env.isServiceMode()) { ... }`
+  - `switch (env.osKind()) { case WINDOWS: ... }`
+
+Refactoring guidance
+
+- Prefer replacing raw `os.name`/`os.arch` checks and PATH scans with the corresponding `AppEnv` APIs.
+- For legacy utilities that expose more granular enums (e.g., `FileUtil.OperatingSystem` with `FreeBSD`), map from `AppEnv.osKind()` and fall back only where necessary to preserve behavior.
 ## Repository Etiquette
 
 - Branch naming: main, develop, feature/*, bugfix/*, hotfix/*, release/*

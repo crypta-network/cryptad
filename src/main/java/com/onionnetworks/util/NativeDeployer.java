@@ -44,14 +44,19 @@ public class NativeDeployer {
   public static final String OS_ARCH;
 
   static {
-    final String OS =
-        System.getProperty("os.name").startsWith("Windows ")
+    network.crypta.fs.AppEnv _env = new network.crypta.fs.AppEnv();
+    final String baseOS =
+        _env.isWindows()
             ? "win32"
-            : System.getProperty("os.name").toLowerCase();
-    if (System.getProperty("os.arch").toLowerCase().matches("(i?[x0-9]86_64|amd64)"))
-      OS_ARCH = OS + "-x86_64";
-    else if (System.getProperty("os.arch").toLowerCase().indexOf("86") != -1) OS_ARCH = OS + "-x86";
-    else OS_ARCH = OS + "-" + System.getProperty("os.arch").toLowerCase();
+            : (_env.isMac()
+                ? "mac os x"
+                : (_env.isLinux() ? "linux" : _env.osNameRaw().toLowerCase()));
+    final String sysArch = System.getProperty("os.arch").toLowerCase();
+    final String a = _env.arch(); // "amd64" or "arm64"
+    if ("amd64".equals(a) || sysArch.matches("(i?[x0-9]86_64|amd64)")) OS_ARCH = baseOS + "-x86_64";
+    else if ("arm64".equals(a)) OS_ARCH = baseOS + "-arm64";
+    else if (sysArch.contains("86")) OS_ARCH = baseOS + "-x86";
+    else OS_ARCH = baseOS + "-" + sysArch;
     System.out.println("Attempting to deploy Native FEC for " + OS_ARCH);
   }
 

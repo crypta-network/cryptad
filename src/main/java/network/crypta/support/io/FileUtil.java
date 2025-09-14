@@ -150,36 +150,41 @@ public final class FileUtil {
    * Detects the operating system in which the JVM is running. Returns OperatingSystem.Unknown if
    * the OS is unknown or an error occured. Therefore this function should never throw.
    */
-  private static OperatingSystem detectOperatingSystem() { // TODO: Move to the proper class
+  private static OperatingSystem detectOperatingSystem() { // Now delegates to AppEnv first
     try {
+      network.crypta.fs.AppEnv env = new network.crypta.fs.AppEnv();
+      switch (env.osKind()) {
+        case WINDOWS:
+          return OperatingSystem.Windows;
+        case MAC:
+          return OperatingSystem.MacOS;
+        case LINUX:
+          return OperatingSystem.Linux;
+        default:
+          break; // fall through to legacy heuristics for other Unix variants
+      }
+      // Legacy fallback to preserve FreeBSD/GenericUnix behavior when not covered by AppEnv
       final String name = System.getProperty("os.name").toLowerCase();
-
-      // Order the if() by probability instead alphabetically to decrease the false-positive rate in
-      // case they decide to call it "Windows Mac" or whatever
-
-      // Please adapt sanitizeFileName when adding new OS.
-
-      if (name.contains("win")) return OperatingSystem.Windows;
-
-      if (name.contains("mac")) return OperatingSystem.MacOS;
-
-      if (name.contains("linux")) return OperatingSystem.Linux;
-
       if (name.contains("freebsd")) return OperatingSystem.FreeBSD;
-
       if (name.contains("unix")) return OperatingSystem.GenericUnix;
       else if (File.separatorChar == '/') return OperatingSystem.GenericUnix;
       else if (File.separatorChar == '\\') return OperatingSystem.Windows;
-
       Logger.error(FileUtil.class, "Unknown operating system:" + name);
     } catch (Throwable t) {
       Logger.error(FileUtil.class, "Operating system detection failed", t);
     }
-
     return OperatingSystem.Unknown;
   }
 
-  private static CPUArchitecture detectCPUArchitecture() { // TODO Move to the proper class
+  private static CPUArchitecture detectCPUArchitecture() { // Prefer AppEnv, fall back for legacy
+    try {
+      network.crypta.fs.AppEnv env = new network.crypta.fs.AppEnv();
+      String a = env.arch(); // "amd64" or "arm64"
+      if ("amd64".equals(a)) return CPUArchitecture.X86_64;
+      if ("arm64".equals(a)) return CPUArchitecture.ARM; // legacy enum has no ARM64
+    } catch (Throwable t) {
+      Logger.error(FileUtil.class, "CPU architecture detection via AppEnv failed", t);
+    }
     try {
       final String name = System.getProperty("os.arch").toLowerCase();
       if (name.equals("x86") || name.equals("i386") || name.matches("i[3-9]86"))
@@ -190,7 +195,7 @@ public final class FileUtil {
           || name.equals("em64t")
           || name.equals("x8664")
           || name.equals("8664")) return CPUArchitecture.X86_64;
-      if (name.startsWith("arm")) return CPUArchitecture.ARM; // FIXME arm64 support?
+      if (name.startsWith("arm")) return CPUArchitecture.ARM; // legacy mapping
       if (name.equals("ppc") || name.equals("powerpc")) return CPUArchitecture.PPC_32;
       if (name.equals("ppc64")) return CPUArchitecture.PPC_64;
       if (name.startsWith("ia64")) return CPUArchitecture.IA64;
