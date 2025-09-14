@@ -13,6 +13,7 @@ import network.crypta.client.async.ClientGetter
 import network.crypta.client.events.ClientEvent
 import network.crypta.client.events.ClientEventListener
 import network.crypta.clients.http.ExternalLinkToadlet
+import network.crypta.fs.AppEnv
 import network.crypta.keys.FreenetURI
 import network.crypta.node.RequestClient
 import network.crypta.node.RequestStarter
@@ -44,11 +45,12 @@ class CoreUpdater(
   blobFilenamePrefix: String,
 ) : NodeUpdater(manager, uri, current, min, max, blobFilenamePrefix) {
 
+  private val appEnv = AppEnv()
   @Volatile private var latestInfo: CoreInfo? = null
   @Volatile private var selectedKey: String? = null // "<arch>.<ext>"
   @Volatile private var selectedSpec: PackageSpec? = null
   @Volatile private var fetcher: PackageFetcher? = null
-  @Volatile private var env: EnvDetection? = null
+  @Volatile private var env: AppEnv.EnvDetection? = null
 
   override fun artifactName(): String = "core-info.json"
 
@@ -61,7 +63,7 @@ class CoreUpdater(
     val info = parseInfo(result)
     latestInfo = info
     // Detect environment and select an artifact to propose
-    val e = detectEnvironment()
+    val e = appEnv.detectEnvironment()
     env = e
     selectArtifact(info, e)
     // Debug to stdout: parsed core info + selection
@@ -131,44 +133,9 @@ class CoreUpdater(
       out.toString(StandardCharsets.UTF_8)
     }
 
-  private fun detectEnvironment(): EnvDetection {
-    val osName = System.getProperty("os.name")?.lowercase() ?: ""
-    val os =
-      when {
-        osName.contains("win") -> OsKind.WINDOWS
-        osName.contains("mac") || osName.contains("darwin") -> OsKind.MAC
-        osName.contains("nux") || osName.contains("linux") -> OsKind.LINUX
-        else -> OsKind.OTHER
-      }
-    val archProp = System.getProperty("os.arch")?.lowercase() ?: "amd64"
-    val arch =
-      when {
-        archProp.contains("aarch64") || archProp.contains("arm64") -> "arm64"
-        else -> "amd64"
-      }
-    val managers = mutableListOf<String>()
-    if (os == OsKind.LINUX) {
-      if (onPath("flatpak")) managers += "flatpak"
-      if (onPath("snap")) managers += "snap"
-      if (onPath("dpkg")) managers += "dpkg"
-      if (onPath("rpm")) managers += "rpm"
-    }
-    return EnvDetection(os, arch, managers)
-  }
+  // Environment detection logic has been centralized in AppEnv.
 
-  private fun onPath(cmd: String): Boolean {
-    val path = System.getenv("PATH") ?: return false
-    val sep = File.pathSeparatorChar
-    return path.split(sep).any { dir ->
-      val f = File(dir, cmd)
-      val fExe =
-        if (System.getProperty("os.name").lowercase().contains("win")) File(dir, "$cmd.exe")
-        else null
-      (f.exists() && f.canExecute()) || (fExe?.exists() == true && fExe.canExecute())
-    }
-  }
-
-  private fun selectArtifact(info: CoreInfo, env: EnvDetection) {
+  private fun selectArtifact(info: CoreInfo, env: AppEnv.EnvDetection) {
     val pkgs = info.packages
     val arch = env.arch
     val order = preferredExtensions(env)
@@ -182,11 +149,11 @@ class CoreUpdater(
   }
 
   /** Build a preferred extension order from the detected environment. */
-  private fun preferredExtensions(env: EnvDetection): List<String> =
+  private fun preferredExtensions(env: AppEnv.EnvDetection): List<String> =
     when (env.os) {
-      OsKind.WINDOWS -> listOf("exe")
-      OsKind.MAC -> listOf("dmg")
-      OsKind.LINUX -> linuxPreferredExtensions(env.availableManagers)
+      AppEnv.OsKind.WINDOWS -> listOf("exe")
+      AppEnv.OsKind.MAC -> listOf("dmg")
+      AppEnv.OsKind.LINUX -> linuxPreferredExtensions(env.availableManagers)
       else -> emptyList()
     }
 
@@ -275,7 +242,7 @@ class CoreUpdater(
    */
   fun renderProperties(alertNode: HTMLNode) {
     val info = latestInfo ?: return
-    val envNow = env ?: detectEnvironment().also { env = it }
+    val envNow = env ?: appEnv.detectEnvironment().also { env = it }
     val chosen = selectedKey
 
     addHeader(alertNode, info, envNow, chosen, selectedSpec)
@@ -304,7 +271,7 @@ class CoreUpdater(
   private fun addHeader(
     alertNode: HTMLNode,
     info: CoreInfo,
-    env: EnvDetection,
+    env: AppEnv.EnvDetection,
     chosen: String?,
     spec: PackageSpec?,
   ) {

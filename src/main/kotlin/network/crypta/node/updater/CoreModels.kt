@@ -28,25 +28,3 @@ data class CoreInfo(
  * @property storeUrl Optional OS “store” URL (e.g., Flatpak/Snap) to open instead of a direct file.
  */
 data class PackageSpec(val chk: String?, val size: Long?, val storeUrl: String?)
-
-/** Minimal OS family used for selecting package preference/order. */
-enum class OsKind {
-  WINDOWS,
-  MAC,
-  LINUX,
-  OTHER,
-}
-
-/**
- * Result of cheap, best‑effort environment detection.
- *
- * @property os Broad OS family.
- * @property arch CPU arch normalized to "amd64" or "arm64"; others fall back to "amd64".
- * @property availableManagers Present package managers on PATH (Linux only): e.g.
- *   ["flatpak", "rpm"].
- */
-data class EnvDetection(
-  val os: OsKind,
-  val arch: String, // "amd64" or "arm64" (others map to amd64 fallback)
-  val availableManagers: List<String>, // e.g., ["flatpak", "snap", "dpkg", "rpm"]
-)

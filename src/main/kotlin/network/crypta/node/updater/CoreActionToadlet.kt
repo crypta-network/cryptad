@@ -7,6 +7,7 @@ import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
 import network.crypta.clients.http.ToadletContext
+import network.crypta.fs.AppEnv
 import network.crypta.node.Node
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
@@ -25,6 +26,8 @@ import network.crypta.support.api.HTTPRequest
  *   (canonical‑path check) to mitigate traversal/symlink games.
  */
 class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) : Toadlet(client) {
+
+  private val appEnv = AppEnv()
 
   override fun path(): String = CORE_UPDATE_PATH
 
@@ -87,13 +90,12 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    * where message is suitable for user display.
    */
   private fun tryInstall(file: File): Pair<Boolean, String> {
-    val os = System.getProperty("os.name").lowercase()
     return try {
       val pb =
-        when {
-          os.contains("win") -> ProcessBuilder("cmd", "/c", file.absolutePath)
-          os.contains("mac") || os.contains("darwin") -> ProcessBuilder("open", file.absolutePath)
-          os.contains("linux") || os.contains("nux") -> linuxInstaller(file)
+        when (appEnv.osKind()) {
+          AppEnv.OsKind.WINDOWS -> ProcessBuilder("cmd", "/c", file.absolutePath)
+          AppEnv.OsKind.MAC -> ProcessBuilder("open", file.absolutePath)
+          AppEnv.OsKind.LINUX -> linuxInstaller(file)
           else -> null
         }
       if (pb == null) return false to "Unsupported OS or package type."
@@ -112,18 +114,11 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         ProcessBuilder("flatpak", "install", "--assumeyes", file.absolutePath)
       name.endsWith(".snap", ignoreCase = true) -> null // prefer store flow
       name.endsWith(".deb", ignoreCase = true) ->
-        if (onPath("apt")) ProcessBuilder("apt", "install", file.absolutePath)
+        if (appEnv.onPath("apt")) ProcessBuilder("apt", "install", file.absolutePath)
         else ProcessBuilder("dpkg", "-i", file.absolutePath)
       name.endsWith(".rpm", ignoreCase = true) -> ProcessBuilder("rpm", "-Uvh", file.absolutePath)
       else -> null
     }
-  }
-
-  /** Simple PATH check for an executable name. */
-  private fun onPath(cmd: String): Boolean {
-    val sep = File.pathSeparatorChar
-    val path = System.getenv("PATH") ?: return false
-    return path.split(sep).any { File(it, cmd).canExecute() }
   }
 
   /** 302 back to Alerts to keep navigation consistent. */
