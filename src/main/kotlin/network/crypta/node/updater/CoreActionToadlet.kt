@@ -521,7 +521,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm) else {}
       AppEnv.OsKind.LINUX ->
         if (file.name.lowercase().endsWith(EXT_SNAP))
-          linuxSnapGuidance(content, pm, appEnv.onPath("pkexec"), appEnv.onPath("snap"))
+          linuxSnapGuidance(content, pm, file, appEnv.onPath("snap"))
         else {}
       AppEnv.OsKind.WINDOWS ->
         if (file.name.lowercase().endsWith(".exe")) windowsExeGuidance(content, pm) else {}
@@ -614,12 +614,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   }
 
   /** Small info box for Snap installs: nudges to install snapd or enable a polkit agent. */
-  private fun linuxSnapGuidance(
-    content: HTMLNode,
-    pm: PageMaker,
-    hasPkexec: Boolean,
-    hasSnap: Boolean,
-  ) {
+  private fun linuxSnapGuidance(content: HTMLNode, pm: PageMaker, file: File, hasSnap: Boolean) {
     val box =
       pm.getInfobox(
         "infobox-information",
@@ -642,17 +637,14 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       val pre2 = box.addChild("pre")
       pre2.addChild("#", "sudo systemctl enable --now snapd.socket snapd.service")
     }
-    if (!hasPkexec) {
-      ul
-        .addChild("li")
-        .addChild(
-          "#",
-          "No graphical polkit agent detected (pkexec). Install/enable a polkit agent on desktop (e.g., polkit-gnome, polkit-kde-agent-1) or use the CLI below.",
-        )
-    }
-    val li = ul.addChild("li")
-    li.addChild("#", "Command-line alternative:")
-    val pre3 = box.addChild("pre")
-    pre3.addChild("#", "sudo snap install --dangerous \"/path/to/your/file.snap\"")
+    // Separate copy-friendly row with the exact command for this file
+    val cmdRow = box.addChild("div", "class", "copy-row")
+    cmdRow.addChild("span", "class", "label", "Run this command as root:")
+    val command = "sudo snap install --dangerous '" + file.absolutePath + "'"
+    cmdRow.addChild(
+      "input",
+      arrayOf("type", "readonly", "value", "class"),
+      arrayOf("text", "readonly", command, "copy-input"),
+    )
   }
 }
