@@ -143,14 +143,17 @@ public class AppEnvTest {
       try {
         Files.deleteIfExists(tmp.resolve("rpm"));
       } catch (Exception ignored) {
+        /* best-effort cleanup; ignore */
       }
       try {
         Files.deleteIfExists(tmp.resolve("flatpak"));
       } catch (Exception ignored) {
+        /* best-effort cleanup; ignore */
       }
       try {
         Files.deleteIfExists(tmp);
       } catch (Exception ignored) {
+        /* best-effort cleanup; ignore */
       }
     }
   }
@@ -181,10 +184,12 @@ public class AppEnvTest {
         try {
           Files.deleteIfExists(tmp.resolve("flatpak"));
         } catch (Exception ignored) {
+          /* best-effort cleanup; ignore */
         }
         try {
           Files.deleteIfExists(tmp);
         } catch (Exception ignored) {
+          /* best-effort cleanup; ignore */
         }
       }
     } finally {
