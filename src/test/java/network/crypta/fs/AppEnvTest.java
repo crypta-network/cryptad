@@ -129,8 +129,11 @@ public class AppEnvTest {
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
       // Make them executable on *nix
-      rpm.setExecutable(true);
-      flatpak.setExecutable(true);
+      boolean rpmExec = rpm.setExecutable(true);
+      boolean flatpakExec = flatpak.setExecutable(true);
+      assertTrue("Failed to mark rpm test binary executable", rpmExec || rpm.canExecute());
+      assertTrue(
+          "Failed to mark flatpak test binary executable", flatpakExec || flatpak.canExecute());
 
       Map<String, String> env = new HashMap<>();
       env.put("PATH", tmp.toString());
@@ -172,7 +175,8 @@ public class AppEnvTest {
             StandardOpenOption.CREATE,
             StandardOpenOption.TRUNCATE_EXISTING);
         // Mark executable after creating the file
-        flatpak.setExecutable(true);
+        boolean ok = flatpak.setExecutable(true);
+        assertTrue("Failed to mark flatpak test binary executable", ok || flatpak.canExecute());
         Map<String, String> env = new HashMap<>();
         env.put("PATH", tmp.toString());
         AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
