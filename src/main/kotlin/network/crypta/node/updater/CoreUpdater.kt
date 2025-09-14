@@ -140,12 +140,31 @@ class CoreUpdater(
     val arch = env.arch
     val order = preferredExtensions(env)
 
-    val firstMatch: Pair<String, PackageSpec>? =
-      pkgs.firstAvailableFor(arch, order)
-        ?: pkgs.firstAvailableForArch(arch) // fallback by any available ext
+    var chosen: Pair<String, PackageSpec>? = null
+    // Prefer extensions in our order. For flatpak/snap, allow selection when only store_url exists
+    // (no CHK), so that we can surface an Open in Store action instead of falling back to deb/rpm.
+    loop@ for (ext in order) {
+      val key = "$arch.$ext"
+      val spec = pkgs[key] ?: continue
+      if (spec.chk != null) {
+        chosen = key to spec
+        break@loop
+      }
+      if (
+        env.os == AppEnv.OsKind.LINUX &&
+          (ext == "flatpak" || ext == "snap") &&
+          !spec.storeUrl.isNullOrEmpty()
+      ) {
+        chosen = key to spec
+        break@loop
+      }
+    }
+    if (chosen == null) {
+      chosen = pkgs.firstAvailableForArch(arch)
+    }
 
-    selectedKey = firstMatch?.first
-    selectedSpec = firstMatch?.second
+    selectedKey = chosen?.first
+    selectedSpec = chosen?.second
   }
 
   /** Build a preferred extension order from the detected environment. */
@@ -250,7 +269,7 @@ class CoreUpdater(
 
     val f = fetcher
     if (f == null) {
-      alertNode.addChild(buildDownloadForm())
+      if (selectedSpec?.chk != null) alertNode.addChild(buildDownloadForm())
       return
     }
 

@@ -1,5 +1,8 @@
 package network.crypta.node.updater
 
+import java.io.File
+import java.io.IOException
+import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -10,9 +13,6 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
-import java.io.File
-import java.io.IOException
-import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
