@@ -49,65 +49,66 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Handle download/install actions submitted from the Alerts UI. */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
-    val action = request.getPartAsStringFailsafe("action", 32)
-    val updater = node.getNodeUpdater().coreUpdater
-    if (updater == null) {
-      redirect(ctx)
+    val updater = node.getNodeUpdater().coreUpdater ?: return redirect(ctx)
+    when (request.getPartAsStringFailsafe("action", 32)) {
+      "download" -> handleDownload(updater, ctx)
+      "install" -> handleInstall(request, ctx)
+      "openStore" -> handleOpenStore(request, ctx)
+      else -> redirect(ctx)
+    }
+  }
+
+  private fun handleDownload(updater: CoreUpdater, ctx: ToadletContext) {
+    Logger.minor(this, "[CoreActionToadlet] POST /core-update action=download")
+    updater.startDownloadFromUI()
+    redirect(ctx)
+  }
+
+  private fun handleInstall(request: HTTPRequest, ctx: ToadletContext) {
+    val path = request.getPartAsStringFailsafe("path", 4096)
+    Logger.minor(this, "[CoreActionToadlet] POST /core-update action=install path=$path")
+    val okPath = validatePath(path)
+    if (okPath == null) {
+      Logger.minor(this, "[CoreActionToadlet] install rejected: invalid path")
+      writeMessage(ctx, false, "Invalid file path.")
       return
     }
-    when (action) {
-      "download" -> {
-        Logger.minor(this, "[CoreActionToadlet] POST /core-update action=download")
-        updater.startDownloadFromUI()
-        redirect(ctx)
+    val (success, msg) = tryInstall(okPath)
+    Logger.minor(this, "[CoreActionToadlet] install result: success=$success, message=\"$msg\"")
+    writeMessage(ctx, success, msg)
+  }
+
+  private fun handleOpenStore(request: HTTPRequest, ctx: ToadletContext) {
+    val kind = request.getPartAsStringFailsafe("kind", 32)
+    val id = request.getPartAsStringFailsafe("id", 256)
+    val url = request.getPartAsStringFailsafe("url", 2048)
+    Logger.minor(
+      this,
+      "[CoreActionToadlet] POST /core-update action=openStore kind=$kind id=$id url=$url",
+    )
+    val delegate =
+      when (appEnv.osKind()) {
+        AppEnv.OsKind.LINUX -> linuxOpenStore(kind, id.ifBlank { null }, url.ifBlank { null })
+        AppEnv.OsKind.MAC ->
+          if (url.isNotBlank())
+            InstallerDelegate.Spawn(ProcessBuilder("open", url), "Opening store page")
+          else InstallerDelegate.Manual("Provide a valid store URL for macOS.")
+        AppEnv.OsKind.WINDOWS ->
+          if (url.isNotBlank())
+            InstallerDelegate.Spawn(ProcessBuilder("cmd", "/c", url), "Opening store page")
+          else InstallerDelegate.Manual("Provide a valid store URL for Windows.")
+        else -> InstallerDelegate.Manual("Unsupported platform for store handler.")
       }
-      "install" -> {
-        val path = request.getPartAsStringFailsafe("path", 4096)
-        Logger.minor(this, "[CoreActionToadlet] POST /core-update action=install path=$path")
-        val okPath = validatePath(path)
-        if (okPath == null) {
-          Logger.minor(this, "[CoreActionToadlet] install rejected: invalid path")
-          writeMessage(ctx, false, "Invalid file path.")
-          return
-        }
-        val (success, msg) = tryInstall(okPath)
-        Logger.minor(this, "[CoreActionToadlet] install result: success=$success, message=\"$msg\"")
-        writeMessage(ctx, success, msg)
-      }
-      "openStore" -> {
-        val kind = request.getPartAsStringFailsafe("kind", 32)
-        val id = request.getPartAsStringFailsafe("id", 256)
-        val url = request.getPartAsStringFailsafe("url", 2048)
-        Logger.minor(
-          this,
-          "[CoreActionToadlet] POST /core-update action=openStore kind=$kind id=$id url=$url",
-        )
-        val delegate =
-          when (appEnv.osKind()) {
-            AppEnv.OsKind.LINUX -> linuxOpenStore(kind, id.ifBlank { null }, url.ifBlank { null })
-            AppEnv.OsKind.MAC ->
-              if (url.isNotBlank())
-                InstallerDelegate.Spawn(ProcessBuilder("open", url), "Opening store page")
-              else InstallerDelegate.Manual("Provide a valid store URL for macOS.")
-            AppEnv.OsKind.WINDOWS ->
-              if (url.isNotBlank())
-                InstallerDelegate.Spawn(ProcessBuilder("cmd", "/c", url), "Opening store page")
-              else InstallerDelegate.Manual("Provide a valid store URL for Windows.")
-            else -> InstallerDelegate.Manual("Unsupported platform for store handler.")
-          }
-        when (delegate) {
-          is InstallerDelegate.Spawn -> {
-            try {
-              delegate.pb.start()
-              writeMessage(ctx, true, delegate.successMessage)
-            } catch (t: Throwable) {
-              writeMessage(ctx, false, "Failed to open: ${t.message ?: t.javaClass.simpleName}")
-            }
-          }
-          is InstallerDelegate.Manual -> writeMessage(ctx, false, delegate.message)
+    when (delegate) {
+      is InstallerDelegate.Spawn -> {
+        try {
+          delegate.pb.start()
+          writeMessage(ctx, true, delegate.successMessage)
+        } catch (t: Throwable) {
+          writeMessage(ctx, false, "Failed to open: ${t.message ?: t.javaClass.simpleName}")
         }
       }
-      else -> redirect(ctx)
+      is InstallerDelegate.Manual -> writeMessage(ctx, false, delegate.message)
     }
   }
 
