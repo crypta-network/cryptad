@@ -1,9 +1,13 @@
 package network.crypta.fs;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -23,5 +27,194 @@ public class AppEnvTest {
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Mac OS X", "tester", Path::toString);
     assertFalse(ae.isDocker());
+  }
+
+  @Test
+  public void osKind_basicFamilies() {
+    AppEnv win = new AppEnv(new HashMap<>(), "Windows 11", "u", p -> null);
+    AppEnv mac = new AppEnv(new HashMap<>(), "Mac OS X", "u", p -> null);
+    AppEnv lin = new AppEnv(new HashMap<>(), "Linux", "u", p -> null);
+    assertTrue(win.isWindows());
+    assertTrue(mac.isMac());
+    assertTrue(lin.isLinux());
+    assertEquals(AppEnv.OsKind.WINDOWS, win.osKind());
+    assertEquals(AppEnv.OsKind.MAC, mac.osKind());
+    assertEquals(AppEnv.OsKind.LINUX, lin.osKind());
+  }
+
+  @Test
+  public void flatpak_snap_detection() {
+    Map<String, String> env = new HashMap<>();
+    env.put("FLATPAK_ID", "network.crypta.Cryptad");
+    assertTrue(new AppEnv(env, "Linux", "u", p -> null).isFlatpak());
+    env.clear();
+    env.put("SNAP", "1");
+    assertTrue(new AppEnv(env, "Linux", "u", p -> null).isSnap());
+  }
+
+  @Test
+  public void systemd_service_detection_via_exported_dirs() {
+    Map<String, String> env = new HashMap<>();
+    env.put("LOGS_DIRECTORY", "/var/log/cryptad");
+    AppEnv ae = new AppEnv(env, "Linux", "cryptad", p -> null);
+    assertTrue(ae.isSystemdService());
+    assertTrue(ae.isServiceMode());
+  }
+
+  @Test
+  public void windows_service_detection_via_username_system() {
+    Map<String, String> env = new HashMap<>();
+    env.put("USERNAME", "SYSTEM");
+    AppEnv ae = new AppEnv(env, "Windows 10", "SYSTEM", p -> null);
+    assertTrue(ae.isWindowsService());
+    assertTrue(ae.isServiceMode());
+  }
+
+  @Test
+  public void mac_service_detection_via_root_or_launchd() {
+    Map<String, String> env = new HashMap<>();
+    AppEnv rootMac = new AppEnv(env, "Mac OS X", "root", p -> null);
+    assertTrue(rootMac.isMacService());
+    env.put("LAUNCHD_JOB", "network.crypta.cryptad");
+    AppEnv launchdMac = new AppEnv(env, "Mac OS X", "user", p -> null);
+    assertTrue(launchdMac.isMacService());
+  }
+
+  @Test
+  public void serviceMode_property_override() {
+    String old = System.getProperty("cryptad.service.mode");
+    try {
+      Map<String, String> env = new HashMap<>();
+      env.put("CRYPTAD_SERVICE", "1");
+      AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
+      System.setProperty("cryptad.service.mode", "user");
+      assertFalse("system property should force user mode", ae.isServiceMode());
+      System.setProperty("cryptad.service.mode", "service");
+      assertTrue("system property should force service mode", ae.isServiceMode());
+    } finally {
+      if (old != null) System.setProperty("cryptad.service.mode", old);
+      else System.clearProperty("cryptad.service.mode");
+    }
+  }
+
+  @Test
+  public void arch_mapping_from_osArch_property() throws Exception {
+    String old = System.getProperty("os.arch");
+    try {
+      System.setProperty("os.arch", "aarch64");
+      assertEquals("arm64", new AppEnv(new HashMap<>(), "Linux", "u", p -> null).arch());
+      System.setProperty("os.arch", "x86_64");
+      assertEquals("amd64", new AppEnv(new HashMap<>(), "Linux", "u", p -> null).arch());
+    } finally {
+      if (old != null) System.setProperty("os.arch", old);
+      else System.clearProperty("os.arch");
+    }
+  }
+
+  @Test
+  public void availableManagers_and_onPath_linux() throws Exception {
+    Path tmp = Files.createTempDirectory("aptenv");
+    try {
+      // Create mock executables
+      File rpm = tmp.resolve("rpm").toFile();
+      File flatpak = tmp.resolve("flatpak").toFile();
+      Files.write(
+          rpm.toPath(),
+          new byte[] {0},
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+      Files.write(
+          flatpak.toPath(),
+          new byte[] {0},
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING);
+      // Make them executable on *nix
+      rpm.setExecutable(true);
+      flatpak.setExecutable(true);
+
+      Map<String, String> env = new HashMap<>();
+      env.put("PATH", tmp.toString());
+      AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
+      assertTrue(ae.onPath("rpm"));
+      assertTrue(ae.onPath("flatpak"));
+      assertTrue(ae.availableManagers().contains("rpm"));
+      assertTrue(ae.availableManagers().contains("flatpak"));
+    } finally {
+      try {
+        Files.deleteIfExists(tmp.resolve("rpm"));
+      } catch (Exception ignored) {
+      }
+      try {
+        Files.deleteIfExists(tmp.resolve("flatpak"));
+      } catch (Exception ignored) {
+      }
+      try {
+        Files.deleteIfExists(tmp);
+      } catch (Exception ignored) {
+      }
+    }
+  }
+
+  @Test
+  public void detectEnvironment_integrates_all() throws Exception {
+    String oldArch = System.getProperty("os.arch");
+    try {
+      System.setProperty("os.arch", "aarch64");
+      Path tmp = Files.createTempDirectory("aptenv2");
+      try {
+        File flatpak = tmp.resolve("flatpak").toFile();
+        Files.write(
+            flatpak.toPath(),
+            new byte[] {0},
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING);
+        // Mark executable after creating the file
+        flatpak.setExecutable(true);
+        Map<String, String> env = new HashMap<>();
+        env.put("PATH", tmp.toString());
+        AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
+        AppEnv.EnvDetection det = ae.detectEnvironment();
+        assertEquals(AppEnv.OsKind.LINUX, det.getOs());
+        assertEquals("arm64", det.getArch());
+        assertTrue(det.getAvailableManagers().contains("flatpak"));
+      } finally {
+        try {
+          Files.deleteIfExists(tmp.resolve("flatpak"));
+        } catch (Exception ignored) {
+        }
+        try {
+          Files.deleteIfExists(tmp);
+        } catch (Exception ignored) {
+        }
+      }
+    } finally {
+      if (oldArch != null) System.setProperty("os.arch", oldArch);
+      else System.clearProperty("os.arch");
+    }
+  }
+
+  @Test
+  public void docker_detection_via_cgroup_reader() {
+    if (!java.nio.file.Files.exists(java.nio.file.Path.of("/proc/1/cgroup"))) {
+      org.junit.Assume.assumeTrue("Skipping cgroup-based docker test on non-Linux host", false);
+      return;
+    }
+    Map<String, String> env = new HashMap<>();
+    AppEnv ae = new AppEnv(env, "Linux", "tester", p -> "12:devices:/docker/abcdef\n");
+    assertTrue(ae.isDocker());
+  }
+
+  @Test
+  public void osNameRaw_and_osVersionRaw_provide_values() {
+    String old = System.getProperty("os.version");
+    try {
+      System.setProperty("os.version", "13.3.1");
+      AppEnv ae = new AppEnv(new HashMap<>(), "Mac OS X", "u", p -> null);
+      assertEquals("Mac OS X", ae.osNameRaw());
+      assertEquals("13.3.1", ae.osVersionRaw());
+    } finally {
+      if (old != null) System.setProperty("os.version", old);
+      else System.clearProperty("os.version");
+    }
   }
 }
