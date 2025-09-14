@@ -1,8 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.File
-import java.io.IOException
-import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -13,6 +10,9 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import java.io.File
+import java.io.IOException
+import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -339,7 +339,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     if (appEnv.isSnap()) {
       return InstallerDelegate.Manual(
         "This app is running inside a Snap sandbox and cannot elevate privileges. " +
-          "Please install manually on the host: sudo snap install --dangerous '${path}'."
+          "Please install manually on the host."
       )
     }
     // Desktop host (non-snap): require polkit via pkexec. If pkexec/snap are unavailable, do not
@@ -627,7 +627,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       .addChild("p")
       .addChild(
         "#",
-        "Local .snap files require administrative privileges (snap install --dangerous).",
+        "Local .snap files require administrative privileges. Please close Crypta Launcher first.",
       )
     val ul = box.addChild("ul")
     if (!hasSnap) {
@@ -639,7 +639,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
     // Separate copy-friendly row with the exact command for this file
     val cmdRow = box.addChild("div", "class", "copy-row")
-    cmdRow.addChild("span", "class", "label", "Run this command as root:")
+    cmdRow.addChild("span", "class", "label", "Run this command in terminal:")
     val command = "sudo snap install --dangerous '" + file.absolutePath + "'"
     cmdRow.addChild(
       "input",
