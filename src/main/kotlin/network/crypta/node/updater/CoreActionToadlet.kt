@@ -179,7 +179,6 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val name = file.name.lowercase()
     val isService = appEnv.isServiceMode()
     val inFlatpak = appEnv.isFlatpak()
-    val inSnap = appEnv.isSnap()
     val ostree = isOstree()
 
     // Headless/systemd service: prefer oneshot helper unit; if unavailable, return guidance.
