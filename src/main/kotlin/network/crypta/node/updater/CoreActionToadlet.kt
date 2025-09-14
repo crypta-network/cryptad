@@ -1,5 +1,8 @@
 package network.crypta.node.updater
 
+import java.io.File
+import java.io.IOException
+import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -10,9 +13,6 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
-import java.io.File
-import java.io.IOException
-import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -75,7 +75,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
     val (success, msg) = tryInstall(okPath)
     Logger.minor(this, "[CoreActionToadlet] install result: success=$success, message=\"$msg\"")
-    writeMessage(ctx, success, msg)
+    writeInstallResult(ctx, success, msg, okPath)
   }
 
   private fun handleOpenStore(request: HTTPRequest, ctx: ToadletContext) {
@@ -172,8 +172,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    *   CLI (pkcon install-local) which triggers a polkit prompt.
    * - Desktop sandboxed (Flatpak/Snap): prefer host hand‑off via `flatpak-spawn --host` where
    *   available, else rely on xdg-desktop-portal (xdg-open) to open the host Software Center.
-   * - Headless/service: do not attempt an interactive installation. Return guidance for the admin with a
-   *   concrete command to run as root.
+   * - Headless/service: do not attempt an interactive installation. Return guidance for the admin
+   *   with a concrete command to run as root.
    * - Immutable rpm-ostree: suggest `rpm-ostree install` flow and note reboot.
    */
   private fun linuxInstaller(file: File): InstallerDelegate {
@@ -460,5 +460,86 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     addHomepageLink(content)
     // Allow JS on result page; CSP was previously too strict here.
     this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
+  }
+
+  /** Render install result with context-aware guidance (flexible per OS/package type). */
+  private fun writeInstallResult(ctx: ToadletContext, success: Boolean, msg: String, file: File) {
+    val pm = ctx.pageMaker
+    val page =
+      pm.getPageNode(
+        if (success) "Installation" else "Installation failed",
+        ctx,
+        PageMaker.RenderParameters().renderNavigationLinks(true).renderStatus(true),
+      )
+    val content: HTMLNode = page.contentNode
+    val box =
+      pm.getInfobox(
+        if (success) "infobox-success" else "infobox-warning",
+        if (success) "Installation" else "Installation failed",
+        content,
+        "core-installer-result",
+        true,
+      )
+    box.addChild("p").addChild("#", msg)
+
+    // Add OS/package-specific guidance below the result for a better UX.
+    addInstallGuidance(content, pm, file)
+
+    addHomepageLink(content)
+    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
+  }
+
+  /** Append guidance boxes for common edge cases (e.g., macOS Gatekeeper on unsigned DMGs). */
+  private fun addInstallGuidance(content: HTMLNode, pm: PageMaker, file: File) {
+    when (appEnv.osKind()) {
+      AppEnv.OsKind.MAC ->
+        if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm) else {}
+      else -> {}
+    }
+  }
+
+  /** Detailed steps for macOS Gatekeeper when using an unsigned DMG/app. */
+  private fun macDmgGuidance(content: HTMLNode, pm: PageMaker) {
+    val box =
+      pm.getInfobox(
+        "infobox-information",
+        "macOS: If Crypta is blocked by Gatekeeper",
+        content,
+        "core-install-guidance-macos",
+        true,
+      )
+    box
+      .addChild("p")
+      .addChild(
+        "#",
+        "Because this build is unsigned, macOS may block Crypta on first launch with a warning about an unidentified developer.",
+      )
+    val steps = box.addChild("ul")
+    steps
+      .addChild("li")
+      .addChild("#", "Open the downloaded DMG and drag Crypta.app to Applications.")
+    steps
+      .addChild("li")
+      .addChild(
+        "#",
+        "Right-click Crypta.app in Applications and choose Open, then confirm. This permanently whitelists the app.",
+      )
+    steps
+      .addChild("li")
+      .addChild(
+        "#",
+        "Alternatively: System Settings → Privacy & Security → look for 'Crypta.app was blocked' and click Open Anyway → Open.",
+      )
+    val alt = box.addChild("li")
+    alt.addChild(
+      "#",
+      "Advanced: clear quarantine attributes in Terminal (replace the path if needed):",
+    )
+    val pre = box.addChild("pre")
+    pre.addChild("#", "xattr -dr com.apple.quarantine /Applications/Crypta.app")
+    val verify = box.addChild("p")
+    verify.addChild("#", "To verify status: ")
+    val pre2 = box.addChild("pre")
+    pre2.addChild("#", "spctl --assess -vv /Applications/Crypta.app")
   }
 }
