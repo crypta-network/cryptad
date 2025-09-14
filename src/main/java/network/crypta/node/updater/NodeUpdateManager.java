@@ -20,7 +20,6 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -252,71 +251,13 @@ public class NodeUpdateManager {
           l10n("invalidRevocationURI", "error", e.getLocalizedMessage()));
     }
 
-    updaterConfig.register(
-        "updateSeednodes",
-        wasEnabledOnStartup,
-        6,
-        true,
-        true,
-        "NodeUpdateManager.updateSeednodes",
-        "NodeUpdateManager.updateSeednodesLong",
-        new BooleanCallback() {
+    // Deprecated UI option: updateSeednodes (no longer shown on the Auto-update page).
+    // Keep internal default as false; accept but ignore legacy config values.
+    updaterConfig.registerIgnoredOption("updateSeednodes");
 
-          @Override
-          public Boolean get() {
-            return updateSeednodes;
-          }
-
-          @Override
-          public void set(Boolean val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
-            if (updateSeednodes == val) {
-              return;
-            }
-            updateSeednodes = val;
-            if (val) {
-              throw new NodeNeedRestartException("Must restart to fetch the seednodes");
-            } else {
-              throw new NodeNeedRestartException(
-                  "Must restart to stop the seednodes fetch if it is still running");
-            }
-          }
-        });
-
-    updateSeednodes = updaterConfig.getBoolean("updateSeednodes");
-
-    updaterConfig.register(
-        "updateInstallers",
-        wasEnabledOnStartup,
-        6,
-        true,
-        true,
-        "NodeUpdateManager.updateInstallers",
-        "NodeUpdateManager.updateInstallersLong",
-        new BooleanCallback() {
-
-          @Override
-          public Boolean get() {
-            return updateInstallers;
-          }
-
-          @Override
-          public void set(Boolean val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
-            if (updateInstallers == val) {
-              return;
-            }
-            updateInstallers = val;
-            if (val) {
-              throw new NodeNeedRestartException("Must restart to fetch the installers");
-            } else {
-              throw new NodeNeedRestartException(
-                  "Must restart to stop the installers fetches if they are still running");
-            }
-          }
-        });
-
-    updateInstallers = updaterConfig.getBoolean("updateInstallers");
+    // Deprecated UI option: updateInstallers (no longer shown on the Auto-update page).
+    // Keep internal default as false; accept but ignore legacy config values.
+    updaterConfig.registerIgnoredOption("updateInstallers");
 
     updaterConfig.finishedInitialization();
 
