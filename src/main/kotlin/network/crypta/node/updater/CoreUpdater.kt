@@ -50,7 +50,7 @@ class CoreUpdater(
   @Volatile private var fetcher: PackageFetcher? = null
   @Volatile private var env: EnvDetection? = null
 
-  override fun jarName(): String = "core-info.json"
+  override fun artifactName(): String = "core-info.json"
 
   override fun onStartFetching() {
     // No-op for UI; we render state via renderProperties.

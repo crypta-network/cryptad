@@ -90,7 +90,7 @@ public class PluginJarUpdater extends NodeUpdater {
   }
 
   @Override
-  public String jarName() {
+  public String artifactName() {
     return pluginName;
   }
 
@@ -258,7 +258,7 @@ public class PluginJarUpdater extends NodeUpdater {
       fos.flush();
       fos.close();
     }
-    System.err.println("Written " + jarName() + " to " + fNew);
+    System.err.println("Written " + artifactName() + " to " + fNew);
   }
 
   void writeJar() throws IOException {
