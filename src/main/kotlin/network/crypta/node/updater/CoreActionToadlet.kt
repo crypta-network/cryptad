@@ -32,6 +32,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private companion object {
     private const val EXT_FLATPAK = ".flatpak"
     private const val EXT_FLATPAKREF = ".flatpakref"
+    private const val EXT_SNAP = ".snap"
     private const val CMD_FLATPAK_SPAWN = "flatpak-spawn"
     private const val CMD_XDG_OPEN = "xdg-open"
     private const val ARG_ASSUME_YES = "--assumeyes"
@@ -188,8 +189,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       return unitDelegate ?: InstallerDelegate.Manual(headlessGuidance(name, file, ostree))
     }
 
-    // Desktop: prefer native GUI hand-off. If we are running inside Flatpak, try host bridge.
-    val guiOpenCmd = guiOpenCommand(file, preferHost = inFlatpak)
+    // Desktop: prefer native GUI hand-off for most types, but NEVER for .snap (Ubuntu will mount
+    // snaps as disk images). For snaps we always use `snap install --dangerous`.
+    val isSnapPkg = name.endsWith(EXT_SNAP)
+    val guiOpenCmd = if (isSnapPkg) null else guiOpenCommand(file, preferHost = inFlatpak)
 
     // Per‑format fallbacks when GUI hand‑off is unavailable.
     val fallback: InstallerDelegate =
@@ -197,7 +200,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         name.endsWith(".deb") -> debFallback(file)
         name.endsWith(".rpm") -> rpmFallback(file, ostree)
         name.endsWith(EXT_FLATPAKREF) || name.endsWith(EXT_FLATPAK) -> flatpakFallback(file)
-        name.endsWith(".snap") -> snapFallback(file)
+        name.endsWith(EXT_SNAP) -> snapFallback(file)
         else -> InstallerDelegate.Manual("Unsupported package type: ${file.name}")
       }
 
@@ -330,13 +333,20 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    */
   private fun snapFallback(file: File): InstallerDelegate {
     val path = file.absolutePath
-    return when {
-      appEnv.onPath("pkexec") && appEnv.onPath("snap") ->
-        InstallerDelegate.Spawn(
-          ProcessBuilder("pkexec", "snap", "install", "--dangerous", path),
-          "Installing with Snap (administrator approval required).",
-        )
-      else -> InstallerDelegate.Manual(manualMsg("Snap", path))
+    // Always use 'snap install --dangerous' for local snap files.
+    // Desktop: require polkit via pkexec. If pkexec/snap are unavailable, do not run unprivileged
+    // snap installs; instruct the user to run the command as root.
+    return if (appEnv.onPath("pkexec") && appEnv.onPath("snap")) {
+      InstallerDelegate.Spawn(
+        ProcessBuilder("pkexec", "snap", "install", "--dangerous", path),
+        "Installing with Snap (administrator approval required).",
+      )
+    } else {
+      InstallerDelegate.Manual(
+        "$path requires administrative privileges to install as a Snap. " +
+          "On this system, pkexec/snap may be unavailable. Please install snapd and then run: " +
+          "sudo snap install --dangerous '${path}'."
+      )
     }
   }
 
