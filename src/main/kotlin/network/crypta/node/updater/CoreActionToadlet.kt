@@ -504,6 +504,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     when (appEnv.osKind()) {
       AppEnv.OsKind.MAC ->
         if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm) else {}
+      AppEnv.OsKind.LINUX ->
+        if (file.name.lowercase().endsWith(EXT_SNAP))
+          linuxSnapGuidance(content, pm, appEnv.onPath("pkexec"), appEnv.onPath("snap"))
+        else {}
       else -> {}
     }
   }
@@ -551,5 +555,48 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     verify.addChild("#", "To verify status: ")
     val pre2 = box.addChild("pre")
     pre2.addChild("#", "spctl --assess -vv /Applications/Crypta.app")
+  }
+
+  /** Small info box for Snap installs: nudges to install snapd or enable a polkit agent. */
+  private fun linuxSnapGuidance(
+    content: HTMLNode,
+    pm: PageMaker,
+    hasPkexec: Boolean,
+    hasSnap: Boolean,
+  ) {
+    val box =
+      pm.getInfobox(
+        "infobox-information",
+        "Linux: Snap install notes",
+        content,
+        "core-install-guidance-snap",
+        true,
+      )
+    box
+      .addChild("p")
+      .addChild(
+        "#",
+        "Local .snap files require administrative privileges (snap install --dangerous).",
+      )
+    val ul = box.addChild("ul")
+    if (!hasSnap) {
+      ul.addChild("li").addChild("#", "Install snapd and ensure the snapd service is running.")
+      val pre = box.addChild("pre")
+      pre.addChild("#", "sudo apt install snapd    # or: sudo dnf install snapd")
+      val pre2 = box.addChild("pre")
+      pre2.addChild("#", "sudo systemctl enable --now snapd.socket snapd.service")
+    }
+    if (!hasPkexec) {
+      ul
+        .addChild("li")
+        .addChild(
+          "#",
+          "No graphical polkit agent detected (pkexec). Install/enable a polkit agent on desktop (e.g., polkit-gnome, polkit-kde-agent-1) or use the CLI below.",
+        )
+    }
+    val li = ul.addChild("li")
+    li.addChild("#", "Command-line alternative:")
+    val pre3 = box.addChild("pre")
+    pre3.addChild("#", "sudo snap install --dangerous \"/path/to/your/file.snap\"")
   }
 }
