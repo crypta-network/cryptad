@@ -334,8 +334,16 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun snapFallback(file: File): InstallerDelegate {
     val path = file.absolutePath
     // Always use 'snap install --dangerous' for local snap files.
-    // Desktop: require polkit via pkexec. If pkexec/snap are unavailable, do not run unprivileged
-    // snap installs; instruct the user to run the command as root.
+    // IMPORTANT: When running inside a Snap sandbox, we cannot call pkexec or elevate privileges
+    // on the host. In that case we only provide manual guidance to run the command on the host.
+    if (appEnv.isSnap()) {
+      return InstallerDelegate.Manual(
+        "This app is running inside a Snap sandbox and cannot elevate privileges. " +
+          "Please install manually on the host: sudo snap install --dangerous '${path}'."
+      )
+    }
+    // Desktop host (non-snap): require polkit via pkexec. If pkexec/snap are unavailable, do not
+    // attempt unprivileged installs; provide manual guidance instead.
     return if (appEnv.onPath("pkexec") && appEnv.onPath("snap")) {
       InstallerDelegate.Spawn(
         ProcessBuilder("pkexec", "snap", "install", "--dangerous", path),
@@ -344,8 +352,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     } else {
       InstallerDelegate.Manual(
         "$path requires administrative privileges to install as a Snap. " +
-          "On this system, pkexec/snap may be unavailable. Please install snapd and then run: " +
-          "sudo snap install --dangerous '${path}'."
+          "Please install snapd and then run: sudo snap install --dangerous '${path}'."
       )
     }
   }
@@ -406,6 +413,14 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun linuxOpenStore(kind: String, id: String?, url: String?): InstallerDelegate {
     // Prefer explicit URL when provided.
     val preferHost = appEnv.isFlatpak()
+    // Snap sandbox: do not attempt automatic install or store hand-off for Snap from within Snap.
+    if (kind.equals("snap", ignoreCase = true) && appEnv.isSnap()) {
+      val name = id ?: "<package>"
+      return InstallerDelegate.Manual(
+        "This app is running inside a Snap sandbox and cannot perform snap installs. " +
+          "Please run on the host: sudo snap install ${name}"
+      )
+    }
     val targetUrl =
       when {
         !url.isNullOrBlank() -> url
