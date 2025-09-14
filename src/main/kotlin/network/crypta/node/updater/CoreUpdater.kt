@@ -172,19 +172,29 @@ class CoreUpdater(
     when (env.os) {
       AppEnv.OsKind.WINDOWS -> listOf("exe")
       AppEnv.OsKind.MAC -> listOf("dmg")
-      AppEnv.OsKind.LINUX -> linuxPreferredExtensions(env.availableManagers)
+      AppEnv.OsKind.LINUX -> linuxPreferredExtensions(env)
       else -> emptyList()
     }
 
-  /** Order for Linux: available managers first, then direct packages as safe fallbacks. */
-  private fun linuxPreferredExtensions(managers: List<String>): List<String> {
-    val preferred = buildList {
-      if ("flatpak" in managers) add("flatpak")
-      if ("snap" in managers) add("snap")
-      if ("dpkg" in managers) add("deb")
-      if ("rpm" in managers) add("rpm")
-    }
-    // Ensure we always consider direct packages next, without duplicates.
+  /**
+   * Order for Linux: prefer container/sandbox-native formats when applicable, then available
+   * managers, then direct packages as safe fallbacks.
+   */
+  private fun linuxPreferredExtensions(env: AppEnv.EnvDetection): List<String> {
+    val managers = env.availableManagers
+    val preferred = mutableListOf<String>()
+    // If running inside a Flatpak sandbox, prefer Flatpak even if `flatpak` is not on PATH.
+    try {
+      val runtime = AppEnv()
+      if (runtime.isFlatpak()) preferred += "flatpak"
+      // We intentionally do NOT prefer Snap when inside Snap, because strict snaps cannot elevate
+      // or call pkexec on the host. Flatpak is still preferred since we can delegate via portal
+      // and host bridging.
+    } catch (_: Throwable) {}
+    if ("flatpak" in managers) preferred += "flatpak"
+    if ("snap" in managers) preferred += "snap"
+    if ("dpkg" in managers) preferred += "deb"
+    if ("rpm" in managers) preferred += "rpm"
     return (preferred + listOf("deb", "rpm")).distinct()
   }
 
