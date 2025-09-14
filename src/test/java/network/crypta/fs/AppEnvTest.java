@@ -1,11 +1,15 @@
 package network.crypta.fs;
 
+import static java.nio.file.Files.createTempDirectory;
+import static java.nio.file.Files.deleteIfExists;
+import static java.nio.file.Files.exists;
+import static java.nio.file.Files.write;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
 
 import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
@@ -98,7 +102,7 @@ public class AppEnvTest {
   }
 
   @Test
-  public void arch_mapping_from_osArch_property() throws Exception {
+  public void arch_mapping_from_osArch_property() {
     String old = System.getProperty("os.arch");
     try {
       System.setProperty("os.arch", "aarch64");
@@ -113,17 +117,17 @@ public class AppEnvTest {
 
   @Test
   public void availableManagers_and_onPath_linux() throws Exception {
-    Path tmp = Files.createTempDirectory("aptenv");
+    Path tmp = createTempDirectory("aptenv");
     try {
       // Create mock executables
       File rpm = tmp.resolve("rpm").toFile();
       File flatpak = tmp.resolve("flatpak").toFile();
-      Files.write(
+      write(
           rpm.toPath(),
           new byte[] {0},
           StandardOpenOption.CREATE,
           StandardOpenOption.TRUNCATE_EXISTING);
-      Files.write(
+      write(
           flatpak.toPath(),
           new byte[] {0},
           StandardOpenOption.CREATE,
@@ -144,17 +148,17 @@ public class AppEnvTest {
       assertTrue(ae.availableManagers().contains("flatpak"));
     } finally {
       try {
-        Files.deleteIfExists(tmp.resolve("rpm"));
+        deleteIfExists(tmp.resolve("rpm"));
       } catch (Exception ignored) {
         /* best-effort cleanup; ignore */
       }
       try {
-        Files.deleteIfExists(tmp.resolve("flatpak"));
+        deleteIfExists(tmp.resolve("flatpak"));
       } catch (Exception ignored) {
         /* best-effort cleanup; ignore */
       }
       try {
-        Files.deleteIfExists(tmp);
+        deleteIfExists(tmp);
       } catch (Exception ignored) {
         /* best-effort cleanup; ignore */
       }
@@ -166,10 +170,10 @@ public class AppEnvTest {
     String oldArch = System.getProperty("os.arch");
     try {
       System.setProperty("os.arch", "aarch64");
-      Path tmp = Files.createTempDirectory("aptenv2");
+      Path tmp = createTempDirectory("aptenv2");
       try {
         File flatpak = tmp.resolve("flatpak").toFile();
-        Files.write(
+        write(
             flatpak.toPath(),
             new byte[] {0},
             StandardOpenOption.CREATE,
@@ -186,12 +190,12 @@ public class AppEnvTest {
         assertTrue(det.getAvailableManagers().contains("flatpak"));
       } finally {
         try {
-          Files.deleteIfExists(tmp.resolve("flatpak"));
+          deleteIfExists(tmp.resolve("flatpak"));
         } catch (Exception ignored) {
           /* best-effort cleanup; ignore */
         }
         try {
-          Files.deleteIfExists(tmp);
+          deleteIfExists(tmp);
         } catch (Exception ignored) {
           /* best-effort cleanup; ignore */
         }
@@ -205,9 +209,9 @@ public class AppEnvTest {
   @Test
   public void docker_detection_via_cgroup_reader() {
     // Skip on hosts where cgroup file does not exist (non-Linux or unusual setups)
-    org.junit.Assume.assumeTrue(
+    assumeTrue(
         "Skipping cgroup-based docker test on non-Linux host",
-        java.nio.file.Files.exists(java.nio.file.Path.of("/proc/1/cgroup")));
+        exists(java.nio.file.Path.of("/proc/1/cgroup")));
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Linux", "tester", p -> "12:devices:/docker/abcdef\n");
     assertTrue(ae.isDocker());
