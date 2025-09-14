@@ -9,6 +9,13 @@ SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
 
+HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
+HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
+HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
+HELPER_SCRIPT_DST="$APP_DIR/lib/cryptad-core-install.sh"
+POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
+POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
+
 # Try to source common helpers from installed image
 COMMON="$APP_DIR/lib/crypta-common.sh"
 [ -f "$COMMON" ] && . "$COMMON"
@@ -52,6 +59,19 @@ install_service() {
       systemctl daemon-reload || true
       systemctl enable cryptad.service || true
     fi
+  fi
+  if [ -f "$HELPER_UNIT_SRC" ]; then
+    install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
+    sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
+  fi
+  if [ -f "$HELPER_SCRIPT_SRC" ]; then
+    install -D -m 0755 "$HELPER_SCRIPT_SRC" "$HELPER_SCRIPT_DST"
+  fi
+  if [ -f "$POLKIT_SRC" ]; then
+    install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
   fi
 }
 
