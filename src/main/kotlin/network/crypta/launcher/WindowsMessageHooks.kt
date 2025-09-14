@@ -11,6 +11,7 @@ import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.win32.W32APIOptions
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
+import network.crypta.fs.AppEnv
 
 /**
  * Installs lightweight Windows message hooks on a JFrame to capture system shutdown events and
@@ -35,8 +36,7 @@ object WindowsMessageHooks {
 
   fun install(frame: JFrame, onQuit: () -> Unit) {
     // Only applicable to Windows
-    val os = System.getProperty("os.name").lowercase()
-    if (!os.contains("win")) return
+    if (!AppEnv().isWindows()) return
 
     // Ensure we run on the UI thread after the native peer is created
     val task = Runnable {

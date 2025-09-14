@@ -10,6 +10,7 @@ import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.FontUIResource
+import network.crypta.fs.AppEnv
 
 /**
  * Installs FlatLaf matching the current OS theme and switches live on changes. Uses
@@ -28,8 +29,7 @@ object ThemeSwitcher {
       logDebug("Failed to set macOS appearance system property", e)
     }
     try {
-      val linux = System.getProperty("os.name").lowercase().contains("linux")
-      if (linux) {
+      if (AppEnv().isLinux()) {
         javax.swing.JFrame.setDefaultLookAndFeelDecorated(true)
         javax.swing.JDialog.setDefaultLookAndFeelDecorated(true)
       }
@@ -59,7 +59,7 @@ object ThemeSwitcher {
   }
 
   private fun applyFor(useDark: Boolean, synchronous: Boolean = false) {
-    val mac = isMac()
+    val mac = AppEnv().isMac()
     val laf =
       if (mac) {
         if (useDark) FlatMacDarkLaf() else FlatMacLightLaf()
@@ -75,7 +75,7 @@ object ThemeSwitcher {
         }
         // Use FlatLaf client decorations on Linux/Flatpak to avoid light server-side title bars
         val inFlatpak = System.getenv("FLATPAK_ID")?.isNotEmpty() == true
-        val useNativeDeco = isMac().not() && !inFlatpak
+        val useNativeDeco = AppEnv().isMac().not() && !inFlatpak
         FlatLaf.setUseNativeWindowDecorations(useNativeDeco)
         // Apply LAF explicitly via UIManager to catch errors, then let FlatLaf do extra setup
         try {
@@ -112,12 +112,4 @@ object ThemeSwitcher {
       SwingUtilities.invokeLater(apply)
     }
   }
-
-  private fun isMac(): Boolean =
-    try {
-      System.getProperty("os.name").lowercase().contains("mac")
-    } catch (e: Exception) {
-      logDebug("Failed to read os.name property for isMac()", e)
-      false
-    }
 }

@@ -10,6 +10,7 @@ import java.awt.event.WindowEvent
 import javax.swing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
+import network.crypta.fs.AppEnv
 
 /** Application display name used across the launcher UI and system integration. */
 internal const val APP_NAME: String = "Crypta Launcher"
@@ -137,8 +138,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
     addWindowListener(
       object : WindowAdapter() {
         override fun windowClosing(e: WindowEvent?) {
-          val os = System.getProperty("os.name").lowercase()
-          if (os.contains("mac")) {
+          if (network.crypta.fs.AppEnv().isMac()) {
             // On macOS, close should only hide the window, not quit the app.
             isVisible = false
           } else {
@@ -323,7 +323,8 @@ class CryptaLauncher : JFrame(APP_NAME) {
     right.add(title, gbc)
 
     val javaVer = System.getProperty("java.runtime.version") ?: System.getProperty("java.version")
-    val os = System.getProperty("os.name") + " " + (System.getProperty("os.version") ?: "")
+    val env = network.crypta.fs.AppEnv()
+    val os = env.osNameRaw() + " " + env.osVersionRaw()
     val build = runCatching { network.crypta.node.currentBuildNumber() }.getOrDefault(0)
     val git =
       runCatching {
@@ -483,7 +484,7 @@ private fun centerAndShow(f: JFrame, size: Dimension) {
 /** Install Windows-specific message hooks (WM_QUERYENDSESSION/WM_ENDSESSION/WM_CLOSE). */
 private fun installWindowsHooksIfNeeded(f: CryptaLauncher) {
   try {
-    if (System.getProperty("os.name").lowercase().contains("win")) {
+    if (AppEnv().isWindows()) {
       WindowsMessageHooks.install(f) { f.requestQuitFromOs() }
     }
   } catch (t: Throwable) {

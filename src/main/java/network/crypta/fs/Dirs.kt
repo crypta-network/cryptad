@@ -416,12 +416,9 @@ class ServiceDirs(
     // Only ensure directories when the target platform matches the host OS. This avoids attempts
     // to create system-level paths like "/Library/..." on Linux or \\ProgramData on Unix during
     // cross-platform execution where we simulate another OS via AppEnv.
-    val hostOs = (systemProperties["os.name"] ?: System.getProperty("os.name") ?: "").lowercase()
-    val hostIsWindows = hostOs.contains("win")
-    val hostIsMac = hostOs.contains("mac") || hostOs.contains("darwin")
-    val hostIsLinux = !hostIsWindows && !hostIsMac
-    return (appEnv.isWindows() && hostIsWindows) ||
-      (appEnv.isMac() && hostIsMac) ||
-      (appEnv.isLinux() && hostIsLinux)
+    val hostKind = AppEnv().osKind()
+    return (appEnv.isWindows() && hostKind == AppEnv.OsKind.WINDOWS) ||
+      (appEnv.isMac() && hostKind == AppEnv.OsKind.MAC) ||
+      (appEnv.isLinux() && hostKind == AppEnv.OsKind.LINUX)
   }
 }

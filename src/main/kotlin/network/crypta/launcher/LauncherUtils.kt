@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import javax.imageio.ImageIO
+import network.crypta.fs.AppEnv
 
 /** Small pure helpers used by the launcher controller and tests. */
 
@@ -175,7 +176,7 @@ internal fun resolveCryptadPathWithEnv(
   findCurrentCryptadJarPath()?.let { jar ->
     val jarDir = jar.parent
     if (jarDir != null) {
-      val isWindows = System.getProperty("os.name").lowercase().contains("win")
+      val isWindows = network.crypta.fs.AppEnv().isWindows()
       val candidates = buildList {
         if (isWindows) {
           add(jarDir.resolve("cryptad.bat").normalize())
@@ -192,7 +193,7 @@ internal fun resolveCryptadPathWithEnv(
 
   // 2) Fallback to resolving from the working directory (legacy behavior)
   run {
-    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val isWindows = network.crypta.fs.AppEnv().isWindows()
     val candidates = buildList {
       if (isWindows) add(cwd.resolve("bin/cryptad.bat"))
       add(cwd.resolve("bin/cryptad"))
@@ -251,11 +252,11 @@ internal fun findCryptadJarInClassPath(classPath: String): Path? {
 
 /** Build the command line for starting the daemon, keeping the PTY optimization for Unix. */
 fun buildCryptadCommand(cryptadPath: Path): List<String> {
-  val os = System.getProperty("os.name").lowercase()
-  if (!os.contains("win")) {
+  val env = AppEnv()
+  if (!env.isWindows()) {
     val script = findOnPath("script")
     if (script != null) {
-      val isLinux = os.contains("linux")
+      val isLinux = env.isLinux()
       return if (isLinux) {
         // util-linux script(1): use -c "cmd" FILE
         val cmd = "exec ${shellQuote(cryptadPath.toString())}"
@@ -299,12 +300,12 @@ fun findOnPath(cmd: String): String? {
  */
 fun loadAppIconImage(): Image? {
   val cl = Thread.currentThread().contextClassLoader
-  val os = System.getProperty("os.name").lowercase()
+  val env = AppEnv()
 
   val candidates = buildList {
     when {
-      os.contains("mac") -> add("network/crypta/launcher/crypta-launcher-icon-macos.png")
-      os.contains("win") -> add("network/crypta/launcher/crypta-launcher-icon-windows.png")
+      env.isMac() -> add("network/crypta/launcher/crypta-launcher-icon-macos.png")
+      env.isWindows() -> add("network/crypta/launcher/crypta-launcher-icon-windows.png")
       else -> {
         // Prefer macOS artwork as a generic fallback for Linux/others if present
         add("network/crypta/launcher/crypta-launcher-icon-macos.png")

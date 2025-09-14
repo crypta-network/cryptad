@@ -139,6 +139,12 @@ constructor(
     }
   }
 
+  /** Raw OS name string from the JVM (e.g., "Windows 11", "Mac OS X", "Linux"). */
+  fun osNameRaw(): String = osName
+
+  /** Raw OS version string from the JVM or empty when unavailable. */
+  fun osVersionRaw(): String = System.getProperty("os.version") ?: ""
+
   /**
    * Linux‑only: detect available package managers by looking for their executables on PATH. Returns
    * an empty list on non‑Linux platforms.

@@ -9,6 +9,7 @@ import java.nio.file.Paths
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import network.crypta.fs.AppEnv
 
 // Log buffering strategy
 // - Keep a small replay window so late subscribers get recent lines
@@ -126,10 +127,10 @@ class LauncherController(
             return@launch
           }
         }
-        val os = System.getProperty("os.name").lowercase()
-        if (os.contains("mac")) {
+        val env = AppEnv()
+        if (env.isMac()) {
           ProcessBuilder("open", uri.toString()).start()
-        } else if (os.contains("win")) {
+        } else if (env.isWindows()) {
           ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", uri.toString()).start()
         } else {
           ProcessBuilder("xdg-open", uri.toString()).start()
@@ -309,7 +310,7 @@ class LauncherController(
   private suspend fun stopProcessGracefully(p: Process) {
     try {
       val pid = p.pid()
-      val isWindows = System.getProperty("os.name").lowercase().contains("win")
+      val isWindows = AppEnv().isWindows()
       // Snapshot descendants before we start signaling to avoid losing them if the root dies early
       val snapshot = getDescendantTreePids(pid)
       val allPids = listOf(pid) + snapshot
@@ -497,7 +498,7 @@ class LauncherController(
   }
 
   private fun formatCommandForLog(cmd: List<String>): String {
-    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val isWindows = AppEnv().isWindows()
     return cmd.joinToString(" ") { arg ->
       if (isWindows) {
         if (arg.any { it.isWhitespace() || it == '"' }) "\"" + arg.replace("\"", "\\\"") + "\""
