@@ -1,8 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.File
-import java.io.IOException
-import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -13,6 +10,9 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import java.io.File
+import java.io.IOException
+import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -172,7 +172,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    *   CLI (pkcon install-local) which triggers a polkit prompt.
    * - Desktop sandboxed (Flatpak/Snap): prefer host hand‑off via `flatpak-spawn --host` where
    *   available, else rely on xdg-desktop-portal (xdg-open) to open the host Software Center.
-   * - Headless/service: do not attempt an interactive install. Return guidance for the admin with a
+   * - Headless/service: do not attempt an interactive installation. Return guidance for the admin with a
    *   concrete command to run as root.
    * - Immutable rpm-ostree: suggest `rpm-ostree install` flow and note reboot.
    */
@@ -201,7 +201,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         else -> InstallerDelegate.Manual("Unsupported package type: ${file.name}")
       }
 
-    // Prefer GUI if we have a way to open it. Otherwise return fallback command.
+    // Prefer GUI if we have a way to open it. Otherwise, return fallback command.
     return if (guiOpenCmd != null) {
       InstallerDelegate.Spawn(
         guiOpenCmd,
@@ -210,7 +210,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     } else fallback
   }
 
-  /** Represents how to carry out an install action on Linux. */
+  /** Represents how to carry out an installation action on Linux. */
   private sealed class InstallerDelegate {
     class Spawn(val pb: ProcessBuilder, val successMessage: String) : InstallerDelegate()
 
@@ -220,7 +220,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Detect rpm-ostree based systems (immutable). */
   private fun isOstree(): Boolean {
     // Prefer runtime marker file; fall back to presence of rpm-ostree tool
-    return java.io.File("/run/ostree-booted").exists() || appEnv.onPath("rpm-ostree")
+    return File("/run/ostree-booted").exists() || appEnv.onPath("rpm-ostree")
   }
 
   /**
@@ -355,7 +355,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         "DEB" -> "pkcon install-local -y '${path}'"
         TAG_RPM_OSTREE -> "rpm-ostree install '${path}'"
         "RPM" -> "pkcon install-local -y '${path}'"
-        "Flatpak" -> "flatpak install ${ARG_ASSUME_YES} --system '${path}'"
+        "Flatpak" -> "flatpak install $ARG_ASSUME_YES --system '${path}'"
         "Snap" -> "snap install --dangerous '${path}'"
         else -> "<install-command> '${path}'"
       }
@@ -368,7 +368,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     "$kind installation requires admin rights or a GUI handler. " +
       "Run on the host: see docs or try installing '${path}' with your package manager."
 
-  /** Try to start the root-owned oneshot install unit for headless installs. */
+  /** Try to start the root-owned oneshot install unit for headless installations. */
   private fun headlessUnitDelegate(file: File): InstallerDelegate? {
     if (!appEnv.onPath("systemctl") || !appEnv.onPath("systemd-escape")) return null
     return try {
@@ -392,7 +392,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
   }
 
-  // Store installs by name / store URIs
+  // Store installations by name / store URIs
   private fun linuxOpenStore(kind: String, id: String?, url: String?): InstallerDelegate {
     // Prefer explicit URL when provided.
     val preferHost = appEnv.isFlatpak()
@@ -408,7 +408,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       }
     if (targetUrl != null) {
       val opener = guiOpenUrlCommand(targetUrl, preferHost)
-      if (opener != null) return InstallerDelegate.Spawn(opener, "Opening store page: ${targetUrl}")
+      if (opener != null) return InstallerDelegate.Spawn(opener, "Opening store page: $targetUrl")
     }
     // Fallback to CLI store install when GUI handoff isn't available
     return when {
