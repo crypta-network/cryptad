@@ -246,7 +246,7 @@ class CoreUpdater(
     val chosen = selectedKey
 
     addHeader(alertNode, info, envNow, chosen, selectedSpec)
-    alertNode.addChild(buildLinksNode(info, selectedSpec))
+    alertNode.addChild(buildLinksNode(info, selectedSpec, chosen))
 
     val f = fetcher
     if (f == null) {
@@ -291,18 +291,67 @@ class CoreUpdater(
     }
   }
 
-  private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?): HTMLNode {
+  private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?, chosenKey: String?): HTMLNode {
     val links = HTMLNode("p")
     if (!info.releasePageUrl.isNullOrEmpty()) {
       links.addChild("a", "href", ExternalLinkToadlet.escape(info.releasePageUrl), "Release Notes")
       links.addChild("#", "  ")
     }
-    if (spec?.storeUrl != null) {
-      links.addChild("a", "href", ExternalLinkToadlet.escape(spec.storeUrl), "Open in Store")
+    // Wire "Open in Store" as a POST form for Linux Flatpak/Snap; otherwise keep external link
+    val storeUrl = spec?.storeUrl
+    val ext = chosenKey?.substringAfterLast('.')?.lowercase()
+    val isLinux = env?.os == AppEnv.OsKind.LINUX || AppEnv().isLinux()
+    val kind =
+      when (ext) {
+        "flatpak" -> "flatpak"
+        "snap" -> "snap"
+        else -> null
+      }
+    if (!storeUrl.isNullOrEmpty() && kind != null && isLinux) {
+      val id = deriveStoreId(kind, storeUrl)
+      links.addChild(buildOpenStoreForm(kind, id, storeUrl))
+      links.addChild("#", "  ")
+    } else if (!storeUrl.isNullOrEmpty()) {
+      links.addChild("a", "href", ExternalLinkToadlet.escape(storeUrl), "Open in Store")
       links.addChild("#", "  ")
     }
     return links
   }
+
+  private fun buildOpenStoreForm(kind: String, id: String?, url: String?): HTMLNode =
+    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "openStore"))
+      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "kind", kind))
+      if (!id.isNullOrEmpty())
+        addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "id", id))
+      if (!url.isNullOrEmpty())
+        addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "url", url))
+      addChild(
+        "input",
+        arrayOf("type", "name", "value"),
+        arrayOf("hidden", "formPassword", formPassword()),
+      )
+      addChild(
+        "input",
+        arrayOf("type", "name", "value"),
+        arrayOf("submit", "openStore", "Open in Store"),
+      )
+    }
+
+  private fun deriveStoreId(kind: String, url: String): String? =
+    try {
+      val u = java.net.URI(url)
+      val path = u.path ?: return null
+      val segs = path.split('/')
+      val last = segs.lastOrNull { it.isNotEmpty() } ?: return null
+      when (kind.lowercase()) {
+        "snap" -> last // snapcraft.io/<name>
+        "flatpak" -> last // flathub.org/apps/<appId> (we also handle /apps/details/<appId>)
+        else -> null
+      }
+    } catch (_: Throwable) {
+      null
+    }
 
   private fun formPassword(): String = manager.getNode().getClientCore().getFormPassword()
 
