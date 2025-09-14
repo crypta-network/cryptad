@@ -508,6 +508,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         if (file.name.lowercase().endsWith(EXT_SNAP))
           linuxSnapGuidance(content, pm, appEnv.onPath("pkexec"), appEnv.onPath("snap"))
         else {}
+      AppEnv.OsKind.WINDOWS ->
+        if (file.name.lowercase().endsWith(".exe")) windowsExeGuidance(content, pm) else {}
       else -> {}
     }
   }
@@ -555,6 +557,45 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     verify.addChild("#", "To verify status: ")
     val pre2 = box.addChild("pre")
     pre2.addChild("#", "spctl --assess -vv /Applications/Crypta.app")
+  }
+
+  /** Tips for unsigned Windows installers (SmartScreen/unknown publisher). */
+  private fun windowsExeGuidance(content: HTMLNode, pm: PageMaker) {
+    val box =
+      pm.getInfobox(
+        "infobox-information",
+        "Windows: If the installer is blocked (SmartScreen)",
+        content,
+        "core-install-guidance-windows",
+        true,
+      )
+    box
+      .addChild("p")
+      .addChild(
+        "#",
+        "This build may be unsigned. Windows Defender SmartScreen can warn about apps from an unknown publisher.",
+      )
+    val ul = box.addChild("ul")
+    ul
+      .addChild("li")
+      .addChild(
+        "#",
+        "Double‑click the installer. On the \"Windows protected your PC\" dialog, click More info → Run anyway.",
+      )
+    ul
+      .addChild("li")
+      .addChild(
+        "#",
+        "Or: right‑click the .exe → Properties → General → check \"Unblock\" → Apply → OK; then run it again.",
+      )
+    val li3 = ul.addChild("li")
+    li3.addChild("#", "PowerShell option (unblock the file):")
+    val pre = box.addChild("pre")
+    pre.addChild("#", """Unblock-File -Path "C:\\Path\\to\\Crypta-Installer.exe"""")
+    val li4 = ul.addChild("li")
+    li4.addChild("#", "Verify SHA‑256 if provided:")
+    val pre2 = box.addChild("pre")
+    pre2.addChild("#", """Get-FileHash -Algorithm SHA256 "C:\\Path\\to\\Crypta-Installer.exe"""")
   }
 
   /** Small info box for Snap installs: nudges to install snapd or enable a polkit agent. */
