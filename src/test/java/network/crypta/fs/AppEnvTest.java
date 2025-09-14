@@ -204,10 +204,10 @@ public class AppEnvTest {
 
   @Test
   public void docker_detection_via_cgroup_reader() {
-    if (!java.nio.file.Files.exists(java.nio.file.Path.of("/proc/1/cgroup"))) {
-      org.junit.Assume.assumeTrue("Skipping cgroup-based docker test on non-Linux host", false);
-      return;
-    }
+    // Skip on hosts where cgroup file does not exist (non-Linux or unusual setups)
+    org.junit.Assume.assumeTrue(
+        "Skipping cgroup-based docker test on non-Linux host",
+        java.nio.file.Files.exists(java.nio.file.Path.of("/proc/1/cgroup")));
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Linux", "tester", p -> "12:devices:/docker/abcdef\n");
     assertTrue(ae.isDocker());
