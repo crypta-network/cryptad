@@ -51,15 +51,7 @@ command -v ensure_user >/dev/null 2>&1 || ensure_user() {
   install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
 }
 
-install_service() {
-  ensure_user
-  if [ -f "$SERVICE_SRC" ]; then
-    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
-    if command -v systemctl >/dev/null 2>&1; then
-      systemctl daemon-reload || true
-      systemctl enable cryptad.service || true
-    fi
-  fi
+install_helper() {
   if [ -f "$HELPER_UNIT_SRC" ]; then
     install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
     sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
@@ -73,6 +65,17 @@ install_service() {
   fi
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
+  fi
+}
+
+install_service() {
+  ensure_user
+  if [ -f "$SERVICE_SRC" ]; then
+    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload || true
+      systemctl enable cryptad.service || true
+    fi
   fi
 }
 
@@ -90,6 +93,7 @@ install_desktop() {
 }
 
 # RPM scripts get $1 = 1 (upgrade) or 0 (install). Treat both identically here.
+install_helper # Always present the helper on both desktop and server
 if is_desktop; then
   install_desktop
 else

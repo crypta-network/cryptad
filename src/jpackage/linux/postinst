@@ -54,17 +54,7 @@ command -v ensure_user >/dev/null 2>&1 || ensure_user() {
   install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
 }
 
-install_service() {
-  ensure_user
-  if [ -f "$SERVICE_SRC" ]; then
-    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
-    if command -v systemctl >/dev/null 2>&1; then
-      systemctl daemon-reload || true
-      systemctl enable cryptad.service || true
-      # Do not auto-start; leave enabled for manual start
-    fi
-  fi
-
+install_helper() {
   # Install headless helper unit and script for controlled, polkit-backed installs
   if [ -f "$HELPER_UNIT_SRC" ]; then
     install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
@@ -80,6 +70,18 @@ install_service() {
   fi
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
+  fi
+}
+
+install_service() {
+  ensure_user
+  if [ -f "$SERVICE_SRC" ]; then
+    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload || true
+      systemctl enable cryptad.service || true
+      # Do not auto-start; leave enabled for manual start
+    fi
   fi
 }
 
@@ -107,6 +109,7 @@ install_desktop() {
 
 # Deb maintainer scripts can pass an argument (e.g., configure). We ignore it safely.
 
+install_helper # Always present the helper on both desktop and server
 if is_desktop; then
   install_desktop
 else
