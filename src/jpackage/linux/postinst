@@ -15,7 +15,7 @@ DESKTOP_DST="/usr/share/applications/crypta.desktop"
 HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
 HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
 HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
-HELPER_SCRIPT_DST="$APP_DIR/lib/cryptad-core-install.sh"
+HELPER_SCRIPT_DST="$APP_DIR/lib/cryptad-core-install.sh" # lives inside the app image
 POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
 POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
 
@@ -71,8 +71,9 @@ install_service() {
     # Rewrite APP_DIR path in ExecStart to the detected APP_DIR
     sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
   fi
+  # The helper script is shipped inside the app image under lib/; ensure it is executable.
   if [ -f "$HELPER_SCRIPT_SRC" ]; then
-    install -D -m 0755 "$HELPER_SCRIPT_SRC" "$HELPER_SCRIPT_DST"
+    chmod 0755 "$HELPER_SCRIPT_SRC" || true
   fi
   if [ -f "$POLKIT_SRC" ]; then
     install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
