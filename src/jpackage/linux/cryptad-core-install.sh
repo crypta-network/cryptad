@@ -79,17 +79,23 @@ post_install_start_service() {
     return 0
   fi
   systemctl daemon-reload || true
-  if systemctl is-active --quiet cryptad.service; then
-    log "cryptad.service already active; leaving it running"
-    return 0
-  fi
   # Ensure enabled to survive reboots; ignore failures if policy disallows
   systemctl enable cryptad.service >/dev/null 2>&1 || true
-  log "Starting cryptad.service"
-  if systemctl start cryptad.service; then
-    log "Started cryptad.service"
+  # Always restart after install; this also starts the service if it is inactive.
+  if systemctl is-active --quiet cryptad.service; then
+    log "Restarting cryptad.service (was active)"
   else
-    log "Failed to start cryptad.service; check: journalctl -u cryptad.service"
+    log "Starting cryptad.service (was inactive)"
+  fi
+  if systemctl restart cryptad.service; then
+    log "cryptad.service is now running"
+  else
+    # Fallback: try a plain start and report status
+    if systemctl start cryptad.service; then
+      log "Started cryptad.service (restart fallback)"
+    else
+      log "Failed to (re)start cryptad.service; check: journalctl -u cryptad.service"
+    fi
   fi
 }
 
