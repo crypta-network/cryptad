@@ -576,6 +576,15 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     }
     kill(); // unsubscribes from the old uri
     this.URI = uri;
+    // Reset tracker so editions from the new key are considered fresh.
+    synchronized (this) {
+      this.realAvailableVersion = -1;
+      this.availableVersion = -1;
+      this.fetchingVersion = -1;
+      // Treat current build as already fetched to avoid fetching older editions on the new key.
+      this.fetchedVersion = currentVersion;
+      this.isFetching = false;
+    }
     subscribe(() -> {});
     maybeUpdate();
   }
