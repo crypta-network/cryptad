@@ -778,7 +778,9 @@ public class NodeUpdateManager {
         return;
       }
     }
-    updater.onChangeURI(uri);
+    // CoreUpdater subscribes to the "info" docname rather than the legacy "jar" path.
+    // Preserve the base key the user entered but switch the docname for the core updater.
+    updater.onChangeURI(uri.setDocName("info"));
     stopPluginUpdaters(oldPluginUpdaters);
     startPluginUpdaters();
   }
