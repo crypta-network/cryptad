@@ -73,51 +73,80 @@ run_with_retry() {
 
 umask 022
 
-if command -v pkcon >/dev/null 2>&1; then
-  log "Using PackageKit to install $PKG"
-  run_with_retry pkcon install-local -y "$PKG"
-  exit $?
-fi
-
-if [ "$EXT" = "deb" ]; then
-  export DEBIAN_FRONTEND=noninteractive
-  if command -v apt-get >/dev/null 2>&1; then
-    dir="$(dirname "$PKG")"; base="./$(basename "$PKG")"
-    log "Installing DEB via apt-get: $PKG"
-    ( cd "$dir" && run_with_retry apt-get -o Dpkg::Options::=--force-confold -y install "$base" )
-    exit $?
+post_install_start_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    log "systemctl not found; skipping service start"
+    return 0
   fi
-  if command -v dpkg >/dev/null 2>&1; then
-    log "Installing DEB via dpkg: $PKG (then fixing deps)"
-    dpkg -i "$PKG" || true
+  systemctl daemon-reload || true
+  if systemctl is-active --quiet cryptad.service; then
+    log "cryptad.service already active; leaving it running"
+    return 0
+  fi
+  # Ensure enabled to survive reboots; ignore failures if policy disallows
+  systemctl enable cryptad.service >/dev/null 2>&1 || true
+  log "Starting cryptad.service"
+  if systemctl start cryptad.service; then
+    log "Started cryptad.service"
+  else
+    log "Failed to start cryptad.service; check: journalctl -u cryptad.service"
+  fi
+}
+
+do_install() {
+  if command -v pkcon >/dev/null 2>&1; then
+    log "Using PackageKit to install $PKG"
+    run_with_retry pkcon install-local -y "$PKG"
+    return $?
+  fi
+
+  if [ "$EXT" = "deb" ]; then
+    export DEBIAN_FRONTEND=noninteractive
     if command -v apt-get >/dev/null 2>&1; then
-      run_with_retry apt-get -f -y install
-      exit $?
+      dir="$(dirname "$PKG")"; base="./$(basename "$PKG")"
+      log "Installing DEB via apt-get: $PKG"
+      ( cd "$dir" && run_with_retry apt-get -o Dpkg::Options::=--force-confold -y install "$base" )
+      return $?
     fi
-    exit 0
+    if command -v dpkg >/dev/null 2>&1; then
+      log "Installing DEB via dpkg: $PKG (then fixing deps)"
+      dpkg -i "$PKG" || true
+      if command -v apt-get >/dev/null 2>&1; then
+        run_with_retry apt-get -f -y install
+        return $?
+      fi
+      return 0
+    fi
+    echo "No suitable installer found for DEB (missing pkcon/apt-get/dpkg)" >&2
+    return 6
   fi
-  echo "No suitable installer found for DEB (missing pkcon/apt-get/dpkg)" >&2
-  exit 6
-fi
 
-if [ "$EXT" = "rpm" ]; then
-  if command -v dnf >/dev/null 2>&1; then
-    log "Installing RPM via dnf: $PKG"
-    run_with_retry dnf -y install "$PKG"
-    exit $?
+  if [ "$EXT" = "rpm" ]; then
+    if command -v dnf >/dev/null 2>&1; then
+      log "Installing RPM via dnf: $PKG"
+      run_with_retry dnf -y install "$PKG"
+      return $?
+    fi
+    if command -v zypper >/dev/null 2>&1; then
+      log "Installing RPM via zypper: $PKG"
+      run_with_retry zypper --non-interactive install "$PKG"
+      return $?
+    fi
+    if command -v rpm >/dev/null 2>&1; then
+      log "Installing RPM via rpm -Uvh: $PKG"
+      run_with_retry rpm -Uvh "$PKG"
+      return $?
+    fi
+    echo "No suitable installer found for RPM (missing pkcon/dnf/zypper/rpm)" >&2
+    return 6
   fi
-  if command -v zypper >/dev/null 2>&1; then
-    log "Installing RPM via zypper: $PKG"
-    run_with_retry zypper --non-interactive install "$PKG"
-    exit $?
-  fi
-  if command -v rpm >/dev/null 2>&1; then
-    log "Installing RPM via rpm -Uvh: $PKG"
-    run_with_retry rpm -Uvh "$PKG"
-    exit $?
-  fi
-  echo "No suitable installer found for RPM (missing pkcon/dnf/zypper/rpm)" >&2
-  exit 6
-fi
 
-exit 0
+  return 0
+}
+
+rc=0
+do_install || rc=$?
+if [ $rc -eq 0 ]; then
+  post_install_start_service || true
+fi
+exit $rc
