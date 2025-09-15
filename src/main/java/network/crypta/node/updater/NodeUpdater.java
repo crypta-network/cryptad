@@ -102,11 +102,6 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     try {
       // because of UoM, this version is actually worth having as well
       USK myUsk = USK.create(URI.setSuggestedEdition(currentVersion));
-      if (Logger.shouldLog(LogLevel.MINOR, this)) {
-        Logger.minor(
-            this,
-            "[NodeUpdater] Subscribing to USK: " + myUsk.getURI().toString(false, false));
-      }
       core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
     } catch (MalformedURLException e) {
       Logger.error(this, "The auto-update URI isn't valid and can't be used");
@@ -537,11 +532,6 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       synchronized (this) {
         isRunning = false;
         USK myUsk = USK.create(URI.setSuggestedEdition(currentVersion));
-        if (Logger.shouldLog(LogLevel.MINOR, this)) {
-          Logger.minor(
-              this,
-              "[NodeUpdater] Unsubscribing from USK: " + myUsk.getURI().toString(false, false));
-        }
         core.getUskManager().unsubscribe(myUsk, this);
         c = cg;
         cg = null;
@@ -566,25 +556,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param uri The new URI.
    */
   public void onChangeURI(FreenetURI uri) {
-    if (Logger.shouldLog(LogLevel.MINOR, this)) {
-      Logger.minor(
-          this,
-          "[NodeUpdater] onChangeURI: old="
-              + this.URI.toString(false, false)
-              + " -> new="
-              + uri.toString(false, false));
-    }
     kill(); // unsubscribes from the old uri
     this.URI = uri;
-    // Reset tracker so editions from the new key are considered fresh.
-    synchronized (this) {
-      this.realAvailableVersion = -1;
-      this.availableVersion = -1;
-      this.fetchingVersion = -1;
-      // Treat current build as already fetched to avoid fetching older editions on the new key.
-      this.fetchedVersion = currentVersion;
-      this.isFetching = false;
-    }
     subscribe(() -> {});
     maybeUpdate();
   }
