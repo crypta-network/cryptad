@@ -97,6 +97,11 @@ command -v is_desktop >/dev/null 2>&1 || is_desktop() {
 
 SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
+HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
+HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
+HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
+POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
+POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
 
 if is_desktop; then
   DESKTOP_COMMANDS_INSTALL
@@ -124,6 +129,21 @@ else
       systemctl enable cryptad.service || true
     fi
   fi
+fi
+
+// Always install headless helper unit + polkit rule and ensure script is executable
+if [ -f "$HELPER_UNIT_SRC" ]; then
+  install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
+  sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
+fi
+if [ -f "$HELPER_SCRIPT_SRC" ]; then
+  chmod 0755 "$HELPER_SCRIPT_SRC" || true
+fi
+if [ -f "$POLKIT_SRC" ]; then
+  install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
 fi
 
 LAUNCHER_AS_SERVICE_SCRIPTS
