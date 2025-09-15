@@ -90,7 +90,18 @@ val prepareJpackageResources by
     // the spec template copies it into /lib/systemd/system during %install.
     from(layout.projectDirectory.dir("src/jpackage/linux")) {
       include("cryptad.service")
+      // Also stage the headless core installer template unit alongside the main service
+      include("cryptad-core-install@.service")
       into("lib/systemd/system")
+    }
+    // Headless core installer script and polkit rule used by post-install scripts (DEB/RPM)
+    from(layout.projectDirectory.dir("src/jpackage/linux")) {
+      include("cryptad-core-install.sh")
+      into("lib")
+    }
+    from(layout.projectDirectory.dir("src/jpackage/linux/polkit-1")) {
+      include("60-cryptad-core-install.rules")
+      into("lib/polkit-1")
     }
     // LICENSE -> LICENSE.txt and EULA.txt; README.md -> README.txt
     from(layout.projectDirectory.file("LICENSE")) { rename { "LICENSE.txt" } }
@@ -116,6 +127,7 @@ val prepareJpackageResources by
             "postinstall",
             "postuninstall",
             "lib/crypta-common.sh",
+            "lib/cryptad-core-install.sh",
           )
           .map { File(res, it) }
           .filter { it.isFile }
@@ -365,9 +377,8 @@ val enrichAppImageWithDist by
           logger.warn("Failed to finalize Linux icon/desktop: {}", e.message)
         }
 
-        // Also stage the systemd unit under lib/systemd/system so the RPM template.spec can
-        // copy it into /lib/systemd/system at install time (and DEB postinst can find it
-        // under the installed app directory as well).
+        // Also stage systemd units and helper artifacts under lib/ so installers and
+        // post-install scripts can find them inside the app image.
         try {
           val serviceSrc = project.file("src/jpackage/linux/cryptad.service")
           if (serviceSrc.isFile) {
@@ -380,6 +391,52 @@ val enrichAppImageWithDist by
           }
         } catch (e: Exception) {
           logger.warn("Failed to copy systemd unit: {}", e.message)
+        }
+
+        // Stage headless core installer template unit
+        try {
+          val helperUnitSrc = project.file("src/jpackage/linux/cryptad-core-install@.service")
+          if (helperUnitSrc.isFile) {
+            val helperUnitDst = imageRoot.resolve("lib/systemd/system/cryptad-core-install@.service")
+            helperUnitDst.parentFile.mkdirs()
+            helperUnitSrc.copyTo(helperUnitDst, overwrite = true)
+            logger.lifecycle("Staged core-install unit -> {}", helperUnitDst.absolutePath)
+          } else {
+            logger.warn("Missing core-install unit at {}", helperUnitSrc.absolutePath)
+          }
+        } catch (e: Exception) {
+          logger.warn("Failed to copy core-install unit: {}", e.message)
+        }
+
+        // Stage headless core installer script
+        try {
+          val helperScriptSrc = project.file("src/jpackage/linux/cryptad-core-install.sh")
+          if (helperScriptSrc.isFile) {
+            val helperScriptDst = imageRoot.resolve("lib/cryptad-core-install.sh")
+            helperScriptDst.parentFile.mkdirs()
+            helperScriptSrc.copyTo(helperScriptDst, overwrite = true)
+            helperScriptDst.setExecutable(true, true)
+            logger.lifecycle("Staged core-install script -> {}", helperScriptDst.absolutePath)
+          } else {
+            logger.warn("Missing core-install script at {}", helperScriptSrc.absolutePath)
+          }
+        } catch (e: Exception) {
+          logger.warn("Failed to copy core-install script: {}", e.message)
+        }
+
+        // Stage polkit rule to allow controlled start of the oneshot helper
+        try {
+          val polkitSrc = project.file("src/jpackage/linux/polkit-1/60-cryptad-core-install.rules")
+          if (polkitSrc.isFile) {
+            val polkitDst = imageRoot.resolve("lib/polkit-1/60-cryptad-core-install.rules")
+            polkitDst.parentFile.mkdirs()
+            polkitSrc.copyTo(polkitDst, overwrite = true)
+            logger.lifecycle("Staged polkit rule -> {}", polkitDst.absolutePath)
+          } else {
+            logger.warn("Missing polkit rule at {}", polkitSrc.absolutePath)
+          }
+        } catch (e: Exception) {
+          logger.warn("Failed to copy polkit rule: {}", e.message)
         }
       }
 
