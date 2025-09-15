@@ -16,13 +16,21 @@ fi
 # Canonicalize and validate path under our updates tree
 can() { readlink -f -- "$1" 2>/dev/null || realpath -- "$1" 2>/dev/null || echo "$1"; }
 PKG="$(can "$PKG_INPUT")"
-BASE="/var/lib/cryptad/updates/core"
-CASEFOLDED_BASE="$(echo "$BASE" | tr 'A-Z' 'a-z')"
+# Accept both legacy and service-mode layouts
+BASES="/var/lib/cryptad/updates/core /var/lib/cryptad/node/updates/core"
 CASEFOLDED_PKG_DIR="$(dirname "$PKG" | tr 'A-Z' 'a-z')"
-case "$CASEFOLDED_PKG_DIR" in
-  ${CASEFOLDED_BASE}*) :;;
-  *) echo "[cryptad-core-install] Refusing path outside $BASE: $PKG" >&2; exit 3;;
-esac
+ok=0
+for B in $BASES; do
+  CF_B="$(echo "$B" | tr 'A-Z' 'a-z')"
+  case "$CASEFOLDED_PKG_DIR" in
+    ${CF_B}*) ok=1; break;;
+  esac
+done
+if [ $ok -ne 1 ]; then
+  echo "[cryptad-core-install] Refusing path outside allowed bases: $PKG" >&2
+  echo "[cryptad-core-install] Allowed: $BASES" >&2
+  exit 3
+fi
 
 if [ ! -f "$PKG" ]; then
   echo "[cryptad-core-install] File not found: $PKG" >&2
