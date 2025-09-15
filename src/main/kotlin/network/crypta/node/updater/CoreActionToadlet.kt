@@ -192,7 +192,18 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     // Desktop: prefer native GUI hand-off for most types, but NEVER for .snap (Ubuntu will mount
     // snaps as disk images). For snaps we always use `snap install --dangerous`.
     val isSnapPkg = name.endsWith(EXT_SNAP)
-    val guiOpenCmd = if (isSnapPkg) null else guiOpenCommand(file, preferHost = inFlatpak)
+    var guiOpenCmd: ProcessBuilder? =
+      if (isSnapPkg) null else guiOpenCommand(file, preferHost = inFlatpak)
+    // If running in Flatpak and opener not available, try host Software Center with
+    // --local-filename
+    if (
+      guiOpenCmd == null &&
+        inFlatpak &&
+        (name.endsWith(EXT_FLATPAK) || name.endsWith(EXT_FLATPAKREF)) &&
+        appEnv.onPath(CMD_FLATPAK_SPAWN)
+    ) {
+      guiOpenCmd = hostSoftwareCenterOpen(file)
+    }
 
     // Per‑format fallbacks when GUI hand‑off is unavailable.
     val fallback: InstallerDelegate =
@@ -211,6 +222,23 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         "Opening with the system’s Software Center. Complete installation in the GUI.",
       )
     } else fallback
+  }
+
+  /** Try opening a local Flatpak bundle/ref via the host's app center. */
+  private fun hostSoftwareCenterOpen(file: File): ProcessBuilder {
+    val path = file.absolutePath
+    // Prefer GNOME Software, then Plasma Discover; fall back to xdg-open.
+    val cmd =
+      "command -v gnome-software >/dev/null 2>&1 && exec gnome-software --local-filename '" +
+        path +
+        "' || " +
+        "command -v plasma-discover >/dev/null 2>&1 && exec plasma-discover --local-filename '" +
+        path +
+        "' || " +
+        "exec xdg-open '" +
+        path +
+        "'"
+    return ProcessBuilder("flatpak-spawn", "--host", "sh", "-lc", cmd)
   }
 
   /** Represents how to carry out an installation action on Linux. */
@@ -232,12 +260,15 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    */
   private fun guiOpenCommand(file: File, preferHost: Boolean): ProcessBuilder? {
     val path = file.absolutePath
+    // In Flatpak, prefer opening via the portal from inside the sandbox (xdg-open), which will
+    // hand off to the host GUI safely. Fall back to host bridging only when needed.
+    if (preferHost && appEnv.onPath(CMD_XDG_OPEN)) {
+      return ProcessBuilder(CMD_XDG_OPEN, path)
+    }
     val opener = pickGuiOpener() ?: return null
-    // Try host‑side open from Flatpak sandbox first when available
     if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
       return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + path)
     }
-    // Fallback to in‑sandbox open via portal or direct host execution on non‑sandboxed desktops
     return ProcessBuilder(opener + path)
   }
 
@@ -252,6 +283,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Build a GUI opener for a URL (not a local file). */
   private fun guiOpenUrlCommand(url: String, preferHost: Boolean): ProcessBuilder? {
+    // Prefer portal from inside sandbox first
+    if (preferHost && appEnv.onPath(CMD_XDG_OPEN)) {
+      return ProcessBuilder(CMD_XDG_OPEN, url)
+    }
     val opener = pickGuiOpener() ?: return null
     if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
       return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + url)
