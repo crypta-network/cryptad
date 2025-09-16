@@ -397,7 +397,8 @@ val enrichAppImageWithDist by
         try {
           val helperUnitSrc = project.file("src/jpackage/linux/cryptad-core-install@.service")
           if (helperUnitSrc.isFile) {
-            val helperUnitDst = imageRoot.resolve("lib/systemd/system/cryptad-core-install@.service")
+            val helperUnitDst =
+              imageRoot.resolve("lib/systemd/system/cryptad-core-install@.service")
             helperUnitDst.parentFile.mkdirs()
             helperUnitSrc.copyTo(helperUnitDst, overwrite = true)
             logger.lifecycle("Staged core-install unit -> {}", helperUnitDst.absolutePath)
