@@ -1,8 +1,6 @@
 package network.crypta.node.updater
 
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import network.crypta.client.FetchException
 import network.crypta.client.FetchException.FetchExceptionMode
@@ -12,6 +10,7 @@ import network.crypta.client.async.ClientGetCallback
 import network.crypta.client.async.ClientGetter
 import network.crypta.client.events.ClientEvent
 import network.crypta.client.events.ClientEventListener
+import network.crypta.client.events.SplitfileProgressEvent
 import network.crypta.clients.http.ExternalLinkToadlet
 import network.crypta.fs.AppEnv
 import network.crypta.keys.FreenetURI
@@ -35,6 +34,13 @@ import network.crypta.support.io.FileBucket
  *
  * Thread‑safety: public getters and UI state rely on `@Volatile` fields; long‑running work runs
  * through the client fetcher and event callbacks.
+ *
+ * @param manager owning [NodeUpdateManager] orchestrating update lifecycles.
+ * @param uri USK used to fetch manifest editions.
+ * @param current current edition at construction time.
+ * @param min minimum edition bound for subscriptions.
+ * @param max maximum edition bound for subscriptions.
+ * @param blobFilenamePrefix prefix applied to manifest blobs written by the base class.
  */
 class CoreUpdater(
   manager: NodeUpdateManager,
@@ -45,19 +51,66 @@ class CoreUpdater(
   blobFilenamePrefix: String,
 ) : NodeUpdater(manager, uri, current, min, max, blobFilenamePrefix) {
 
+  /** Internal constants used for logging and filesystem defaults. */
+  private companion object {
+    /** Prefix included in log statements emitted by this updater. */
+    private const val LOG_TAG = "[CoreUpdater]"
+
+    /** Fallback folder name when the descriptor omits a version string. */
+    private const val UNKNOWN_VERSION = "unknown"
+  }
+
+  /** Shared environment detector reused across lifecycle callbacks. */
   private val appEnv = AppEnv()
+
+  /** Latest descriptor fetched from the update USK, if available. */
   @Volatile private var latestInfo: CoreInfo? = null
+
+  /** Currently selected package key in the form `<arch>.<ext>` or null when undecided. */
   @Volatile private var selectedKey: String? = null // "<arch>.<ext>"
+
+  /** Metadata for the selected package, mirroring [selectedKey]. */
   @Volatile private var selectedSpec: PackageSpec? = null
+
+  /** Active package fetcher responsible for downloading the chosen artifact. */
   @Volatile private var fetcher: PackageFetcher? = null
+
+  /** Cached environment detection derived from [AppEnv.detectEnvironment]. */
   @Volatile private var env: AppEnv.EnvDetection? = null
 
+  /** Root directory used for storing downloaded core packages. */
+  private val updatesRoot: File
+    get() = File(manager.getNode().nodeDir().dir(), "updates/core")
+
+  /** Emit a minor-level log message scoped to this updater. */
+  private fun logInfo(message: String) {
+    Logger.minor(this, "$LOG_TAG $message")
+  }
+
+  /** Emit an error-level log message, optionally including a throwable. */
+  private fun logError(message: String, throwable: Throwable? = null) {
+    if (throwable != null) Logger.error(this, "$LOG_TAG $message", throwable)
+    else Logger.error(this, "$LOG_TAG $message")
+  }
+
+  /**
+   * Identifier passed to the base [NodeUpdater] to describe the manifest being fetched.
+   *
+   * @return constant file name used when logging manifest operations.
+   */
   override fun artifactName(): String = "core-info.json"
 
+  /** No-op hook because manifest fetching state is communicated through [renderProperties]. */
   override fun onStartFetching() {
     // No-op for UI; we render state via renderProperties.
   }
 
+  /**
+   * Updates internal selection state when the manifest download completes.
+   *
+   * @param result fetch result containing the manifest payload.
+   * @param build last known build number from the subscription (unused).
+   */
   override fun maybeParseManifest(result: FetchResult, build: Int) {
     // Parse JSON (treat fetched blob as UTF-8 text)
     val info = parseInfo(result)
@@ -66,75 +119,65 @@ class CoreUpdater(
     val e = appEnv.detectEnvironment()
     env = e
     selectArtifact(info, e)
-    // Debug to stdout: parsed core info + selection
-    try {
-      println(
-        "[CoreUpdater] info.json parsed: version=" +
-          (info.version ?: "?") +
-          ", env=" +
-          e.os +
-          "/" +
-          e.arch +
-          " managers=" +
-          e.availableManagers.joinToString(",") +
-          ", selectedKey=" +
-          (selectedKey ?: "none")
-      )
-      if (!info.releasePageUrl.isNullOrEmpty()) {
-        println("[CoreUpdater] release_page_url=" + info.releasePageUrl)
-      }
-      if (!info.changelogChk.isNullOrEmpty() || !info.fullChangelogChk.isNullOrEmpty()) {
-        println(
-          "[CoreUpdater] changelogs: short=" +
-            (info.changelogChk ?: "-") +
-            ", full=" +
-            (info.fullChangelogChk ?: "-")
+    runCatching {
+        val versionLabel = info.version ?: "?"
+        val managers = e.availableManagers.joinToString(",")
+        logInfo(
+          "info.json parsed: version=$versionLabel, env=${e.os}/${e.arch} managers=$managers " +
+            "selectedKey=${selectedKey ?: "none"}"
         )
+        info.releasePageUrl?.takeIf { it.isNotBlank() }?.let { logInfo("release_page_url=$it") }
+        if (!info.changelogChk.isNullOrEmpty() || !info.fullChangelogChk.isNullOrEmpty()) {
+          logInfo(
+            "changelogs: short=${info.changelogChk ?: "-"}, full=${info.fullChangelogChk ?: "-"}"
+          )
+        }
       }
-    } catch (_: Throwable) {
-      // ignore printing failures
-    }
+      .onFailure {}
     // Optionally auto-download when autoupdate=true
     if (manager.isAutoUpdateAllowed && selectedSpec?.chk != null && fetcher == null) {
       tryStartDownload()
     }
   }
 
+  /**
+   * No-op because all manifest information is retained in-memory.
+   */
   override fun processSuccess(fetched: Int, result: FetchResult, blobFile: File?) {
     // Nothing to persist from info JSON beyond in-memory state.
   }
 
   /**
-   * CHK for a short changelog, if provided by the descriptor. Suitable for user‑facing “What’s
-   * new?” links.
+   * Short changelog CHK referenced by the descriptor, if available.
    */
   fun getShortChangelogCHK(): String? = latestInfo?.changelogChk
 
   /**
-   * CHK for a detailed changelog, if provided by the descriptor. Suitable for developer‑oriented
-   * change logs.
+   * Full changelog CHK referenced by the descriptor, if available.
    */
   fun getFullChangelogCHK(): String? = latestInfo?.fullChangelogChk
 
-  private fun parseInfo(result: FetchResult): CoreInfo {
-    val text = readAll(result.asBucket().inputStream)
-    return CoreJson.parse(text)
-  }
-
-  private fun readAll(ins: InputStream): String =
-    ins.use { input ->
-      val out = ByteArrayOutputStream()
-      val buf = ByteArray(8192)
-      while (true) {
-        val r = input.read(buf)
-        if (r <= 0) break
-        out.write(buf, 0, r)
-      }
-      out.toString(StandardCharsets.UTF_8)
-    }
+  /**
+   * Converts the retrieved manifest payload into a strongly typed [CoreInfo].
+   *
+   * @param result manifest fetch payload.
+   * @return parsed descriptor describing available packages.
+   */
+  private fun parseInfo(result: FetchResult): CoreInfo =
+    result
+      .asBucket()
+      .inputStream
+      .use { input -> input.reader(StandardCharsets.UTF_8).readText() }
+      .let(CoreJson::parse)
 
   // Environment detection logic has been centralized in AppEnv.
 
+  /**
+   * Chooses the preferred package for the detected environment and updates internal state.
+   *
+   * @param info descriptor that lists platform-specific packages.
+   * @param env detected runtime environment.
+   */
   private fun selectArtifact(info: CoreInfo, env: AppEnv.EnvDetection) {
     val pkgs = info.packages
     val arch = env.arch
@@ -167,7 +210,9 @@ class CoreUpdater(
     selectedSpec = chosen?.second
   }
 
-  /** Build a preferred extension order from the detected environment. */
+  /**
+   * Builds a priority-ordered list of preferred package extensions for the detected OS.
+   */
   private fun preferredExtensions(env: AppEnv.EnvDetection): List<String> =
     when (env.os) {
       AppEnv.OsKind.WINDOWS -> listOf("exe")
@@ -177,65 +222,58 @@ class CoreUpdater(
     }
 
   /**
-   * Order for Linux: prefer container/sandbox-native formats when applicable, then available
-   * managers, then direct packages as safe fallbacks.
+   * Determines the Linux-specific extension ordering, accounting for sandboxed environments.
    */
   private fun linuxPreferredExtensions(env: AppEnv.EnvDetection): List<String> {
     val managers = env.availableManagers
     val preferred = mutableListOf<String>()
-    // If running inside a Flatpak sandbox, prefer Flatpak first (portal integrates well).
-    try {
-      val runtime = AppEnv()
-      if (runtime.isFlatpak()) {
-        preferred += "flatpak"
-      } else {
-        // Host runtime: prefer native system packages first, then Flatpak/Snap
+    val fallback = listOf("rpm", "deb", "flatpak", "snap")
+    when (runCatching { appEnv.isFlatpak() }.getOrNull()) {
+      true -> preferred += "flatpak"
+      else -> {
         if ("rpm" in managers) preferred += "rpm"
         if ("dpkg" in managers) preferred += "deb"
         if ("flatpak" in managers) preferred += "flatpak"
         if ("snap" in managers) preferred += "snap"
       }
-    } catch (_: Throwable) {
-      // Fallback to managers order
-      if ("rpm" in managers) preferred += "rpm"
-      if ("dpkg" in managers) preferred += "deb"
-      if ("flatpak" in managers) preferred += "flatpak"
-      if ("snap" in managers) preferred += "snap"
     }
-    // Ensure we always consider direct packages and then app/container formats as fallbacks.
-    return (preferred + listOf("rpm", "deb", "flatpak", "snap")).distinct()
+    // Always fall back to a stable order regardless of detection quirks.
+    return (preferred + fallback).distinct()
   }
 
-  /** Find the first package for `arch` matching one of the given extensions and having a CHK. */
-  private fun Map<String, PackageSpec>.firstAvailableFor(
-    arch: String,
-    exts: List<String>,
-  ): Pair<String, PackageSpec>? =
-    exts
-      .asSequence()
-      .map { "$arch.$it" }
-      .mapNotNull { k -> this[k]?.takeIf { it.chk != null }?.let { k to it } }
-      .firstOrNull()
-
-  /** Fallback: first available package for `arch` with a CHK, regardless of extension. */
+  /**
+   * Resolves the first registered package containing a CHK for the supplied architecture.
+   */
   private fun Map<String, PackageSpec>.firstAvailableForArch(
     arch: String
   ): Pair<String, PackageSpec>? =
-    asSequence()
-      .filter { (k, v) -> k.startsWith("$arch.") && v.chk != null }
-      .map { it.key to it.value }
-      .firstOrNull()
+    entries
+      .firstOrNull { (key, value) -> key.startsWith("$arch.") && value.chk != null }
+      ?.let { it.key to it.value }
 
-  private fun updatesDir(): File =
-    File(manager.getNode().nodeDir().dir(), "updates/core/${latestInfo?.version ?: "unknown"}")
+  /**
+   * Computes the version-specific folder underneath [updatesRoot].
+   */
+  private fun updatesDir(): File = File(updatesRoot, latestInfo?.version ?: UNKNOWN_VERSION)
 
+  /**
+   * Derives the filesystem target for the currently selected package download.
+   *
+   * @return output file or null when the selection is incomplete or setup fails.
+   */
   private fun downloadTarget(): File? {
     val key = selectedKey ?: return null
     val outDir = updatesDir()
-    if (!outDir.exists()) outDir.mkdirs()
+    if (!outDir.exists() && !outDir.mkdirs()) {
+      logError("Failed to create updates directory at ${outDir.absolutePath}")
+      return null
+    }
     return File(outDir, key)
   }
 
+  /**
+   * Starts a background fetch using the currently selected package metadata.
+   */
   private fun tryStartDownload() {
     val spec = selectedSpec ?: return
     val target = downloadTarget() ?: return
@@ -243,14 +281,7 @@ class CoreUpdater(
     val uri = FreenetURI(chk)
     val f = PackageFetcher(target, uri)
     fetcher = f
-    println(
-      "[CoreUpdater] starting download: key=" +
-        (selectedKey ?: "?") +
-        ", target=" +
-        target.absolutePath +
-        ", chk=" +
-        chk
-    )
+    logInfo("starting download: key=${selectedKey ?: "?"}, target=${target.absolutePath}, chk=$chk")
     f.start()
   }
 
@@ -259,23 +290,22 @@ class CoreUpdater(
    * Alerts page POST handler.
    */
   fun startDownloadFromUI() {
-    val f = fetcher
-    // If a download is in progress or already succeeded, do nothing.
-    if (f != null && (!f.isComplete() || f.isSuccess())) return
+    val currentFetcher = fetcher
+    // If a download is in progress or already completed successfully, no action is needed.
+    if (currentFetcher?.let { !it.isComplete() || it.isSuccess() } == true) return
     // Allow retry when the previous attempt failed or completed unsuccessfully.
     tryStartDownload()
   }
 
-  /** Absolute path to the downloaded file once complete, or null if not ready. */
-  fun getDownloadedFile(): File? = fetcher?.completedFileOrNull()
+  /**
+   * Returns the completed download file on success or null when unavailable.
+   */
+  fun getDownloadedFile(): File? = fetcher?.takeIf { it.isSuccess() }?.completedFileOrNull()
 
   /**
-   * Render a compact status and controls block inside the global Alerts panel.
+   * Renders the updater status section into the supplied Alerts HTML node.
    *
-   * The content includes:
-   * - Detected OS/arch and the selected artifact key.
-   * - Optional “Release Notes” and “Open in Store” links.
-   * - Either a Download button, or a progress line and Install button when ready.
+   * @param alertNode parent node that receives generated markup.
    */
   fun renderProperties(alertNode: HTMLNode) {
     val info = latestInfo ?: return
@@ -305,6 +335,9 @@ class CoreUpdater(
     alertNode.addChild(buildInstallForm(ready, path))
   }
 
+  /**
+   * Adds summary paragraphs describing the selected package and environment.
+   */
   private fun addHeader(
     alertNode: HTMLNode,
     info: CoreInfo,
@@ -328,6 +361,9 @@ class CoreUpdater(
     }
   }
 
+  /**
+   * Creates the paragraph containing release notes and optional store actions.
+   */
   private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?, chosenKey: String?): HTMLNode {
     val links = HTMLNode("p")
     if (!info.releasePageUrl.isNullOrEmpty()) {
@@ -337,7 +373,8 @@ class CoreUpdater(
     // Wire "Open in Store" as a POST form for Linux Flatpak/Snap; otherwise keep external link
     val storeUrl = spec?.storeUrl
     val ext = chosenKey?.substringAfterLast('.')?.lowercase()
-    val isLinux = env?.os == AppEnv.OsKind.LINUX || AppEnv().isLinux()
+    val isLinux =
+      env?.os == AppEnv.OsKind.LINUX || runCatching { appEnv.isLinux() }.getOrDefault(false)
     val kind =
       when (ext) {
         "flatpak" -> "flatpak"
@@ -355,26 +392,22 @@ class CoreUpdater(
     return links
   }
 
+  /**
+   * Builds a POST form that dispatches a store-opening request for the supplied content.
+   */
   private fun buildOpenStoreForm(kind: String, id: String?, url: String?): HTMLNode =
-    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "openStore"))
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "kind", kind))
-      if (!id.isNullOrEmpty())
-        addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "id", id))
-      if (!url.isNullOrEmpty())
-        addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "url", url))
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", formPassword()),
-      )
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("submit", "openStore", "Open in Store"),
-      )
+    newPostForm().apply {
+      hiddenInput("action", "openStore")
+      hiddenInput("kind", kind)
+      id?.takeIf { it.isNotEmpty() }?.let { hiddenInput("id", it) }
+      url?.takeIf { it.isNotEmpty() }?.let { hiddenInput("url", it) }
+      hiddenInput("formPassword", formPassword())
+      submitButton("Open in Store", name = "openStore")
     }
 
+  /**
+   * Extracts an identifier from a vendor-specific store URL when catalogued.
+   */
   private fun deriveStoreId(kind: String, url: String): String? =
     try {
       val u = java.net.URI(url)
@@ -390,84 +423,118 @@ class CoreUpdater(
       null
     }
 
+  /** Provides the node form password required by POST submissions. */
   private fun formPassword(): String = manager.getNode().getClientCore().getFormPassword()
 
+  /** Creates a basic POST form addressed to [CORE_UPDATE_PATH]. */
+  private fun newPostForm(): HTMLNode =
+    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post"))
+
+  /** Adds a hidden input field to the receiver HTML node. */
+  private fun HTMLNode.hiddenInput(name: String, value: String) {
+    addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", name, value))
+  }
+
+  /** Adds a submit button input to the receiver with optional metadata. */
+  private fun HTMLNode.submitButton(
+    value: String,
+    name: String? = null,
+    disabled: Boolean = false,
+  ) {
+    val attrs = mutableListOf("type", "value")
+    val vals = mutableListOf("submit", value)
+    name?.let {
+      attrs += "name"
+      vals += it
+    }
+    if (disabled) {
+      attrs += "disabled"
+      vals += "disabled"
+    }
+    addChild("input", attrs.toTypedArray(), vals.toTypedArray())
+  }
+
+  /** Creates the initial download button form for the Alerts panel. */
   private fun buildDownloadForm(): HTMLNode =
-    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "download"))
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", formPassword()),
-      )
-      val label = defaultDownloadLabel()
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
+    newPostForm().apply {
+      hiddenInput("action", "download")
+      hiddenInput("formPassword", formPassword())
+      submitButton(defaultDownloadLabel(), name = "start")
     }
 
+  /** Creates the retry/download form displayed after a failure. */
   private fun buildRetryForm(isRetry: Boolean): HTMLNode =
-    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "download"))
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", formPassword()),
-      )
+    newPostForm().apply {
+      hiddenInput("action", "download")
+      hiddenInput("formPassword", formPassword())
       val label = if (isRetry) "Retry" else defaultDownloadLabel()
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("submit", "start", label))
+      submitButton(label, name = "start")
     }
 
+  /** Calculates the label for download buttons, including optional size hints. */
   private fun defaultDownloadLabel(): String {
     val bytes = selectedSpec?.size
-    return if (bytes != null && bytes > 0) "Download (" + SizeUtil.formatSize(bytes, true) + ")"
+    return if (bytes != null && bytes > 0) "Download (${SizeUtil.formatSize(bytes, true)})"
     else "Download"
   }
 
+  /** Generates a progress paragraph summarizing current download status. */
   private fun buildProgressNode(f: PackageFetcher): HTMLNode =
     HTMLNode("p").apply {
-      if (f.isSuccess()) {
-        addChild("#", "Download Completed")
-        return@apply
-      }
       val pct = f.progressPercent()
       val blocks = f.blockProgressOrNull()
       val text =
-        if (pct >= 0) {
-          if (blocks != null) "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
-          else "Downloading: ${pct}%"
-        } else {
-          "Downloading…"
+        when {
+          f.isSuccess() -> "Download Completed"
+          pct >= 0 && blocks != null -> "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
+          pct >= 0 -> "Downloading: ${pct}%"
+          else -> "Downloading…"
         }
       addChild("#", text)
     }
 
+  /** Creates the Install button form, disabling it until the payload is available. */
   private fun buildInstallForm(ready: Boolean, path: String?): HTMLNode =
-    HTMLNode("form", arrayOf("action", "method"), arrayOf(CORE_UPDATE_PATH, "post")).apply {
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "action", "install"))
-      addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", "path", path ?: ""))
-      addChild(
-        "input",
-        arrayOf("type", "name", "value"),
-        arrayOf("hidden", "formPassword", formPassword()),
-      )
-      val attrs = if (ready) arrayOf("type", "value") else arrayOf("type", "value", "disabled")
-      val vals =
-        if (ready) arrayOf("submit", "Install") else arrayOf("submit", "Install", "disabled")
-      addChild("input", attrs, vals)
+    newPostForm().apply {
+      hiddenInput("action", "install")
+      hiddenInput("path", path ?: "")
+      hiddenInput("formPassword", formPassword())
+      submitButton("Install", disabled = !ready)
     }
 
   /** Lightweight fetcher for a single CHK saved directly to a File. */
   inner class PackageFetcher(private val outFile: File, private val chk: FreenetURI) :
     ClientGetCallback, RequestClient, ClientEventListener {
+    /** Active client getter driving the download, if started. */
     @Volatile private var getter: ClientGetter? = null
+
+    /** Last reported percentage (0–100) or -1 when unknown. */
     @Volatile private var lastPct: Int = -1
+
+    /** Last reported number of successfully retrieved blocks. */
     @Volatile private var lastDone: Int = -1
+
+    /** Last reported number of required blocks to complete the transfer. */
     @Volatile private var lastNeed: Int = -1
+
+    /** Flag indicating whether the transfer has finished (success or failure). */
     @Volatile private var complete: Boolean = false
+
+    /** File produced on successful completion, null otherwise. */
     @Volatile private var successFile: File? = null
+
+    /** Indicates that the fetch ended in failure. */
     @Volatile private var failed: Boolean = false
+
+    /** Latest human-readable error message, if any. */
     @Volatile private var errorMsg: String? = null
+
+    /** Tracks whether the last failure was fatal according to the client API. */
     @Volatile private var fatal: Boolean = false
 
+    /**
+     * Begins the asynchronous fetch and registers this fetcher as an event listener.
+     */
     fun start() {
       val ctx = manager.getNode().getClientCore().makeClient(0.toShort(), true, false).fetchContext
       val fb = FileBucket(outFile, false, false, false, false)
@@ -484,19 +551,18 @@ class CoreUpdater(
       ctx.eventProducer.addEventListener(this)
       try {
         manager.getNode().getClientCore().getClientContext().start(getter)
-        println(
-          "[CoreUpdater] download started (listener attached): target=" + outFile.absolutePath
+        this@CoreUpdater.logInfo(
+          "download started (listener attached): target=${outFile.absolutePath}"
         )
       } catch (e: FetchException) {
-        Logger.error(this, "Failed to start package download: $e", e)
-        println(
-          "[CoreUpdater] ERROR: failed to start download: " + (e.message ?: e.javaClass.simpleName)
+        this@CoreUpdater.logError(
+          "Failed to start package download: ${e.message ?: e.javaClass.simpleName}",
+          e,
         )
       } catch (e: Exception) {
-        Logger.error(this, "Error starting package download: $e", e)
-        println(
-          "[CoreUpdater] ERROR: exception starting download: " +
-            (e.message ?: e.javaClass.simpleName)
+        this@CoreUpdater.logError(
+          "Error starting package download: ${e.message ?: e.javaClass.simpleName}",
+          e,
         )
       }
     }
@@ -526,20 +592,18 @@ class CoreUpdater(
     /** True if the last failure was fatal according to FetchException.isFatal(). */
     fun isFatalFailure(): Boolean = failed && fatal
 
+    /** Records successful completion and logs the saved file. */
     override fun onSuccess(result: FetchResult, state: ClientGetter) {
       complete = true
       successFile = outFile
       failed = false
       errorMsg = null
-      println(
-        "[CoreUpdater] download complete: " +
-          outFile.absolutePath +
-          " (size=" +
-          (outFile.length()) +
-          ")"
+      this@CoreUpdater.logInfo(
+        "download complete: ${outFile.absolutePath} (size=${outFile.length()})"
       )
     }
 
+    /** Records failure information and forwards the exception to the logger. */
     override fun onFailure(e: FetchException, state: ClientGetter) {
       complete = true
       successFile = null
@@ -552,26 +616,32 @@ class CoreUpdater(
         }
       errorMsg = e.message ?: e.javaClass.simpleName
       if (e.mode == FetchExceptionMode.CANCELLED) return
-      Logger.error(this, "Package download failed: $e", e)
-      println("[CoreUpdater] download FAILED: " + (errorMsg ?: "unknown error"))
+      this@CoreUpdater.logError("Package download failed: ${errorMsg ?: "unknown error"}", e)
     }
 
+    /** Nothing to do when the request resumes; state is driven by client callbacks. */
     override fun onResume(context: ClientContext) {
       // Intentionally no-op: the fetcher relies on ClientGetter's own state and
       // our registered event listener to continue progress reporting after resumes.
       // No additional work is required here.
     }
 
+    /** This request does not require realtime handling. */
     override fun realTimeFlag(): Boolean = false
 
+    /** The request is not persistent beyond its initial scheduling. */
     override fun persistent(): Boolean = false
 
+    /** Provides the [RequestClient] identity required by the async API. */
     override fun getRequestClient(): RequestClient = this
 
+    /**
+     * Handles transfer progress events and stores percentage/block metadata for UI updates.
+     */
     override fun receive(ce: ClientEvent, context: ClientContext) {
       // Hook SplitfileProgressEvent to compute percent and block counts.
       try {
-        if (ce is network.crypta.client.events.SplitfileProgressEvent) {
+        if (ce is SplitfileProgressEvent) {
           val done = ce.succeedBlocks
           var need = ce.minSuccessfulBlocks
           if (need <= 0) need = if (ce.totalBlocks > 0) ce.totalBlocks else 1
@@ -580,17 +650,7 @@ class CoreUpdater(
             lastPct = pctNow
             lastDone = done
             lastNeed = need
-            println(
-              "[CoreUpdater] progress: " +
-                pctNow +
-                "% (" +
-                done +
-                "/" +
-                need +
-                ", total=" +
-                ce.totalBlocks +
-                ")"
-            )
+            this@CoreUpdater.logInfo("progress: ${pctNow}% ($done/$need, total=${ce.totalBlocks})")
           }
         }
       } catch (_: Throwable) {
@@ -602,6 +662,7 @@ class CoreUpdater(
 
 /** Minimal JSON parser for the CoreInfo schema used by CoreUpdater. */
 internal object CoreJson {
+  /** Parses raw JSON text into a [CoreInfo] structure. */
   fun parse(json: String): CoreInfo {
     // Very small, permissive parser: only handles strings, numbers, booleans, null, and nested
     // objects with string keys. Arrays are not used by the schema.
@@ -632,11 +693,13 @@ internal object JsonMini {
     var i = 0
   }
 
+  /** Parses a JSON object into a map using a new parser state. */
   fun parseObject(s: String): Map<String, Any?> {
     val p = P(s)
     return parseObjectInPlace(p)
   }
 
+  /** Parses a JSON object from the current state, mutating the parser index. */
   private fun parseObjectInPlace(p: P): Map<String, Any?> {
     skipWs(p)
     expect(p, '{')
@@ -662,6 +725,7 @@ internal object JsonMini {
     return m
   }
 
+  /** Parses a JSON array from the current parser state. */
   private fun parseArrayInPlace(p: P): List<Any?> {
     expect(p, '[')
     val out = mutableListOf<Any?>()
@@ -681,6 +745,7 @@ internal object JsonMini {
     return out
   }
 
+  /** Parses the next JSON value, dispatching to specialized helpers. */
   private fun parseValue(p: P): Any? {
     skipWs(p)
     return when (val ch = peek(p)) {
@@ -705,6 +770,7 @@ internal object JsonMini {
     }
   }
 
+  /** Parses a numeric literal into either [Long] or [Double]. */
   private fun parseNumber(p: P): Number {
     val start = p.i
     val ch = peek(p)
@@ -718,6 +784,7 @@ internal object JsonMini {
     return sub.toDouble().let { d -> if (d % 1.0 == 0.0) d.toLong() else d }
   }
 
+  /** Parses a JSON string literal, handling escape sequences. */
   private fun parseString(p: P): String {
     expect(p, '"')
     val sb = StringBuilder()
@@ -750,19 +817,24 @@ internal object JsonMini {
     }
   }
 
+  /** Advances the parser past any whitespace characters. */
   private fun skipWs(p: P) {
     while (p.i < p.s.length && p.s[p.i].isWhitespace()) p.i++
   }
 
+  /** Returns the next character from the input, advancing the index. */
   private fun next(p: P): Char = p.s[p.i++]
 
+  /** Peeks at the next character or returns NUL when beyond the end. */
   private fun peek(p: P): Char = if (p.i < p.s.length) p.s[p.i] else '\u0000'
 
+  /** Ensures that the next character matches [ch], throwing otherwise. */
   private fun expect(p: P, ch: Char) {
     val c = next(p)
     if (c != ch) error("Expected '$ch' got '$c' at ${p.i}")
   }
 
+  /** Consumes the exact characters from [w], throwing on mismatch. */
   private fun expectWord(p: P, w: String) {
     for (c in w) expect(p, c)
   }

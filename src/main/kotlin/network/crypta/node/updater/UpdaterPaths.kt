@@ -6,4 +6,4 @@ package network.crypta.node.updater
  * Exposed as top‑level Kotlin constants so both Kotlin and Java code can import them. From Java,
  * use `UpdaterPathsKt.CORE_UPDATE_PATH` (optionally via a static import).
  */
-public const val CORE_UPDATE_PATH: String = "/core-update/"
+const val CORE_UPDATE_PATH = "/core-update/"
