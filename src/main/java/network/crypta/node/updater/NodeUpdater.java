@@ -556,8 +556,24 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param uri The new URI.
    */
   public void onChangeURI(FreenetURI uri) {
+    String previousDocName;
+    synchronized (this) {
+      previousDocName = (URI != null) ? URI.getDocName() : null;
+    }
     kill(); // unsubscribes from the old uri
-    this.URI = uri;
+    FreenetURI nextUri =
+        (previousDocName != null && (uri.getDocName() == null || uri.getDocName().isEmpty()))
+            ? uri.setDocName(previousDocName)
+            : uri;
+    synchronized (this) {
+      this.URI = nextUri.setSuggestedEdition(Version.currentBuildNumber() + 1);
+      availableVersion = -1;
+      realAvailableVersion = -1;
+      fetchingVersion = -1;
+      fetchedVersion = currentVersion;
+      isFetching = false;
+      isRunning = true;
+    }
     subscribe(() -> {});
     maybeUpdate();
   }
