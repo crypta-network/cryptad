@@ -165,7 +165,6 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val script =
       listOf(
         "tell application \"Finder\" to open POSIX file \"$escapedPath\"",
-        "tell application \"Finder\" to set frontmost of process \"Installer\" to true",
         "tell application \"Finder\" to activate",
       )
     val args = mutableListOf("osascript")
