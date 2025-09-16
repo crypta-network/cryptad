@@ -143,11 +143,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
               ProcessBuilder("cmd", "/c", file.absolutePath),
               "Installer launched. Follow Windows prompts.",
             )
-          AppEnv.OsKind.MAC ->
-            InstallerDelegate.Spawn(
-              ProcessBuilder("open", file.absolutePath),
-              "Installer launched. Follow macOS prompts.",
-            )
+          AppEnv.OsKind.MAC -> macInstaller(file)
           AppEnv.OsKind.LINUX -> linuxInstaller(file)
           else -> InstallerDelegate.Manual("Unsupported OS or package type.")
         }
@@ -162,6 +158,19 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     } catch (e: Throwable) {
       false to ("Failed to start installer: " + (e.message ?: e.javaClass.simpleName))
     }
+  }
+
+  private fun macInstaller(file: File): InstallerDelegate {
+    val escapedPath = file.absolutePath.replace("\\", "\\\\").replace("\"", "\\\"")
+    val script =
+      listOf(
+        "tell application \"Finder\" to open POSIX file \"$escapedPath\"",
+        "tell application \"Finder\" to activate",
+      )
+    val args = mutableListOf("osascript")
+    script.forEach { args += listOf("-e", it) }
+    val pb = ProcessBuilder(args)
+    return InstallerDelegate.Spawn(pb, "Installer launched. Follow macOS prompts.")
   }
 
   /**
