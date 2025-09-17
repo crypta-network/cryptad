@@ -1,7 +1,5 @@
 package network.crypta.node.updater
 
-import java.io.File
-import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
@@ -13,6 +11,8 @@ import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import java.io.File
+import java.net.URI
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -38,7 +38,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun t(key: String, replacements: Map<String, String> = emptyMap()): String {
     if (replacements.isEmpty()) return l10n.getString("CoreActionToadlet.$key")
     val entries = replacements.entries.toList()
-    val patterns = entries.map { "\$" + "{${it.key}}" }.toTypedArray()
+    val patterns = entries.map { "$" + "{${it.key}}" }.toTypedArray()
     val values = entries.map { it.value }.toTypedArray()
     return l10n.getString("CoreActionToadlet.$key", patterns, values)
   }
@@ -264,7 +264,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     }
 
     // Desktop: prefer native GUI hand-off for most types, but NEVER for .snap (Ubuntu will mount
-    // snaps as disk images). For snaps we always use `snap install --dangerous`.
+    // snaps as disk images). For snaps, we always use `snap install --dangerous`.
     val isSnapPkg = lowerName.endsWith(EXT_SNAP)
     var guiOpenCmd: ProcessBuilder? =
       if (isSnapPkg) null else guiOpenCommand(file, preferHost = inFlatpak)
@@ -585,7 +585,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
   }
 
-  /** Renders the install result page, appending platform-specific guidance. */
+  /** Renders the installation result page, appending platform-specific guidance. */
   private fun writeInstallResult(ctx: ToadletContext, success: Boolean, msg: String, file: File) {
     val pm = ctx.pageMaker
     val title = if (success) t("install.titleSuccess") else t("install.titleFailure")
