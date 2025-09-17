@@ -7,6 +7,7 @@ import network.crypta.clients.http.PageMaker
 import network.crypta.clients.http.Toadlet
 import network.crypta.clients.http.ToadletContext
 import network.crypta.fs.AppEnv
+import network.crypta.l10n.NodeL10n
 import network.crypta.node.Node
 import network.crypta.support.HTMLNode
 import network.crypta.support.Logger
@@ -31,6 +32,26 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Shared environment detector used for installer heuristics. */
   private val appEnv = AppEnv()
+  private val l10n = NodeL10n.getBase()
+
+  /** Resolves CoreActionToadlet strings from the localization bundle. */
+  private fun t(key: String, replacements: Map<String, String> = emptyMap()): String {
+    if (replacements.isEmpty()) return l10n.getString("CoreActionToadlet.$key")
+    val entries = replacements.entries.toList()
+    val patterns = entries.map { "\$" + "{${it.key}}" }.toTypedArray()
+    val values = entries.map { it.value }.toTypedArray()
+    return l10n.getString("CoreActionToadlet.$key", patterns, values)
+  }
+
+  private data class LocalMessage(
+    val key: String,
+    val replacements: Map<String, String> = emptyMap(),
+  )
+
+  private fun msg(key: String, replacements: Map<String, String> = emptyMap()): LocalMessage =
+    LocalMessage(key, replacements.toMap())
+
+  private fun LocalMessage.render(): String = t(this.key, this.replacements)
 
   /** Internal constants that coordinate logging and format-specific handling. */
   private companion object {
@@ -70,18 +91,14 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Exposes the HTTP mount point served by this toadlet. */
   override fun path(): String = CORE_UPDATE_PATH
 
-  /**
-   * Handles GET requests by redirecting users back to the Alerts page.
-   */
+  /** Handles GET requests by redirecting users back to the Alerts page. */
   override fun handleMethodGET(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     // Redirect to alerts page by default
     val headers = MultiValueTable.from("Location", "/alerts/")
     ctx.sendReplyHeaders(302, "Found", headers, null, 0)
   }
 
-  /**
-   * Handles download, install, and store-opening POST actions from the Alerts UI.
-   */
+  /** Handles download, install, and store-opening POST actions from the Alerts UI. */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     val updater = node.getNodeUpdater().coreUpdater ?: return redirect(ctx)
     when (request.getPartAsStringFailsafe("action", 32)) {
@@ -106,12 +123,15 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val okPath = validatePath(path)
     if (okPath == null) {
       logInfo("install rejected: invalid path")
-      writeMessage(ctx, false, "Invalid file path.")
+      writeMessage(ctx, false, t("invalidPath"))
       return
     }
-    val (success, msg) = tryInstall(okPath)
-    logInfo("install result: success=$success, message=\"$msg\"")
-    writeInstallResult(ctx, success, msg, okPath)
+    val outcome = tryInstall(okPath)
+    val logReplacements = outcome.message.replacements.filterKeys { it != "extra" }
+    logInfo(
+      "install result: success=${outcome.success}, messageKey=${outcome.message.key}, replacements=${logReplacements}"
+    )
+    writeInstallResult(ctx, outcome.success, outcome.message.render(), okPath)
   }
 
   /** Processes store-opening requests, launching either GUI or CLI helpers. */
@@ -125,24 +145,25 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         AppEnv.OsKind.LINUX -> linuxOpenStore(kind, id.ifBlank { null }, url.ifBlank { null })
         AppEnv.OsKind.MAC ->
           if (url.isNotBlank())
-            InstallerDelegate.Spawn(ProcessBuilder("open", url), "Opening store page")
-          else InstallerDelegate.Manual("Provide a valid store URL for macOS.")
+            InstallerDelegate.Spawn(ProcessBuilder("open", url), msg("store.openingPage"))
+          else InstallerDelegate.Manual(msg("store.invalidUrl.mac"))
         AppEnv.OsKind.WINDOWS ->
           if (url.isNotBlank())
-            InstallerDelegate.Spawn(ProcessBuilder("cmd", "/c", url), "Opening store page")
-          else InstallerDelegate.Manual("Provide a valid store URL for Windows.")
-        else -> InstallerDelegate.Manual("Unsupported platform for store handler.")
+            InstallerDelegate.Spawn(ProcessBuilder("cmd", "/c", url), msg("store.openingPage"))
+          else InstallerDelegate.Manual(msg("store.invalidUrl.windows"))
+        else -> InstallerDelegate.Manual(msg("store.unsupportedPlatform"))
       }
     when (delegate) {
       is InstallerDelegate.Spawn -> {
         try {
           delegate.pb.start()
-          writeMessage(ctx, true, delegate.successMessage)
-        } catch (t: Throwable) {
-          writeMessage(ctx, false, "Failed to open: ${t.message ?: t.javaClass.simpleName}")
+          writeMessage(ctx, true, delegate.message.render())
+        } catch (throwable: Throwable) {
+          val reason = throwable.message ?: throwable.javaClass.simpleName
+          writeMessage(ctx, false, msg("store.openFailed", mapOf("reason" to reason)).render())
         }
       }
-      is InstallerDelegate.Manual -> writeMessage(ctx, false, delegate.message)
+      is InstallerDelegate.Manual -> writeMessage(ctx, false, delegate.message.render())
     }
   }
 
@@ -150,9 +171,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    * Ensure the provided file path resolves inside `nodeDir/updates/core`. Returns the canonical
    * `File` or null when invalid/untrusted.
    */
-  /**
-   * Performs canonical path validation to ensure downloads reside under the node updates tree.
-   */
+  /** Performs canonical path validation to ensure downloads reside under the node updates tree. */
   private fun validatePath(path: String): File? {
     if (path.isBlank()) return null
     val base = File(node.getNodeDir(), "updates/core").canonicalFile
@@ -165,29 +184,32 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    * where message is suitable for user display.
    */
   /** Attempts to launch an OS-appropriate installer for the provided file. */
-  private fun tryInstall(file: File): Pair<Boolean, String> {
+  private data class InstallOutcome(val success: Boolean, val message: LocalMessage)
+
+  private fun tryInstall(file: File): InstallOutcome {
     val delegate =
       when (appEnv.osKind()) {
         AppEnv.OsKind.WINDOWS ->
           InstallerDelegate.Spawn(
             ProcessBuilder("cmd", "/c", file.absolutePath),
-            "Installer launched. Follow Windows prompts.",
+            msg("installer.launched.windows"),
           )
         AppEnv.OsKind.MAC -> macInstaller(file)
         AppEnv.OsKind.LINUX -> linuxInstaller(file)
-        else -> InstallerDelegate.Manual("Unsupported OS or package type.")
+        else -> InstallerDelegate.Manual(msg("installer.unsupportedOs"))
       }
     return runCatching {
         when (delegate) {
           is InstallerDelegate.Spawn -> {
             delegate.pb.start()
-            true to delegate.successMessage
+            InstallOutcome(true, delegate.message)
           }
-          is InstallerDelegate.Manual -> false to delegate.message
+          is InstallerDelegate.Manual -> InstallOutcome(false, delegate.message)
         }
       }
       .getOrElse { throwable ->
-        false to "Failed to start installer: ${throwable.message ?: throwable.javaClass.simpleName}"
+        val reason = throwable.message ?: throwable.javaClass.simpleName
+        InstallOutcome(false, msg("installer.launchFailed", mapOf("reason" to reason)))
       }
   }
 
@@ -206,10 +228,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         add(it)
       }
     }
-    return InstallerDelegate.Spawn(
-      ProcessBuilder(command),
-      "Installer launched. Follow macOS prompts.",
-    )
+    return InstallerDelegate.Spawn(ProcessBuilder(command), msg("installer.launched.mac"))
   }
 
   /**
@@ -262,15 +281,13 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         lowerName.endsWith(EXT_FLATPAKREF) || lowerName.endsWith(EXT_FLATPAK) ->
           flatpakFallback(file)
         lowerName.endsWith(EXT_SNAP) -> snapFallback(file)
-        else -> InstallerDelegate.Manual("Unsupported package type: ${file.name}")
+        else ->
+          InstallerDelegate.Manual(msg("installer.unsupportedPackage", mapOf("name" to file.name)))
       }
 
     // Prefer GUI if we have a way to open it. Otherwise, return fallback command.
     return if (guiOpenCmd != null) {
-      InstallerDelegate.Spawn(
-        guiOpenCmd,
-        "Opening with the system’s Software Center. Complete installation in the GUI.",
-      )
+      InstallerDelegate.Spawn(guiOpenCmd, msg("installer.guiHandOff"))
     } else fallback
   }
 
@@ -292,10 +309,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Represents how to carry out an installation action on Linux. */
   private sealed interface InstallerDelegate {
     /** Executes an external process and reports success when it launches. */
-    data class Spawn(val pb: ProcessBuilder, val successMessage: String) : InstallerDelegate
+    data class Spawn(val pb: ProcessBuilder, val message: LocalMessage) : InstallerDelegate
 
     /** Communicates manual instructions when automation is not possible. */
-    data class Manual(val message: String) : InstallerDelegate
+    data class Manual(val message: LocalMessage) : InstallerDelegate
   }
 
   /** Detects rpm-ostree based systems (immutable operating environments). */
@@ -354,19 +371,19 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       appEnv.onPath("pkcon") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkcon", "install-local", "-y", path),
-          "Installing via PackageKit (polkit will prompt if required).",
+          msg("linux.packagekitInstall"),
         )
       // As a last resort: apt-get with pkexec, resolving deps via ./file.deb syntax
       appEnv.onPath("pkexec") && appEnv.onPath("apt-get") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "apt-get", "install", "-y", "./${file.name}")
             .directory(file.parentFile),
-          "Installing with apt (administrator approval required).",
+          msg("linux.aptInstall"),
         )
       appEnv.onPath("dpkg") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "dpkg", "-i", path),
-          "Installing with dpkg (administrator approval required).",
+          msg("linux.dpkgInstall"),
         )
       else -> InstallerDelegate.Manual(manualMsg("DEB", path))
     }
@@ -376,30 +393,28 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun rpmFallback(file: File, ostree: Boolean): InstallerDelegate {
     val path = file.absolutePath
     if (ostree) {
-      return InstallerDelegate.Manual(
-        "Detected rpm-ostree system. Use `rpm-ostree install ${path}` then reboot to apply."
-      )
+      return InstallerDelegate.Manual(msg("linux.rpmOstreeManual", mapOf("path" to path)))
     }
     return when {
       appEnv.onPath("pkcon") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkcon", "install-local", "-y", path),
-          "Installing via PackageKit (polkit will prompt if required).",
+          msg("linux.packagekitInstall"),
         )
       appEnv.onPath("pkexec") && appEnv.onPath("dnf") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "dnf", "install", "-y", path),
-          "Installing with dnf (administrator approval required).",
+          msg("linux.dnfInstall"),
         )
       appEnv.onPath("pkexec") && appEnv.onPath("zypper") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "zypper", "--non-interactive", "install", path),
-          "Installing with zypper (administrator approval required).",
+          msg("linux.zypperInstall"),
         )
       appEnv.onPath("rpm") && appEnv.onPath("pkexec") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "rpm", "-Uvh", path),
-          "Installing with rpm (administrator approval required).",
+          msg("linux.rpmInstall"),
         )
       else -> InstallerDelegate.Manual(manualMsg("RPM", path))
     }
@@ -412,7 +427,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val sub = listOf("install", ARG_ASSUME_YES, ARG_USER, path)
     return InstallerDelegate.Spawn(
       ProcessBuilder(listOf("flatpak") + sub),
-      "Installing with Flatpak (user scope).",
+      msg("linux.flatpakInstall"),
     )
   }
 
@@ -423,26 +438,22 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     // IMPORTANT: When running inside a Snap sandbox, we cannot call pkexec or elevate privileges
     // on the host. In that case we only provide manual guidance to run the command on the host.
     if (appEnv.isSnap()) {
-      return InstallerDelegate.Manual(
-        "This app is running inside a Snap sandbox and cannot elevate privileges. Please install manually on the host."
-      )
+      return InstallerDelegate.Manual(msg("linux.snapSandboxManualHost"))
     }
     // Desktop host (non-snap): require polkit via pkexec. If pkexec/snap are unavailable, do not
     // attempt unprivileged installs; provide manual guidance instead.
     return if (appEnv.onPath("pkexec") && appEnv.onPath("snap")) {
       InstallerDelegate.Spawn(
         ProcessBuilder("pkexec", "snap", "install", "--dangerous", path),
-        "Installing with Snap (administrator approval required).",
+        msg("linux.snapInstall"),
       )
     } else {
-      InstallerDelegate.Manual(
-        "$path requires administrative privileges to install as a Snap. Please install snapd and then run: sudo snap install --dangerous '$path'."
-      )
+      InstallerDelegate.Manual(msg("linux.snapManualHost", mapOf("path" to path)))
     }
   }
 
   /** Builds guidance text for headless or service-mode installations. */
-  private fun headlessGuidance(nameLower: String, file: File, ostree: Boolean): String {
+  private fun headlessGuidance(nameLower: String, file: File, ostree: Boolean): LocalMessage {
     val path = file.absolutePath
     val tag =
       when {
@@ -461,13 +472,13 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         "Snap" -> "snap install --dangerous '${path}'"
         else -> "<install-command> '${path}'"
       }
-    val extra = if (tag == TAG_RPM_OSTREE) " A reboot may be required." else ""
-    return "Headless/service environment detected. Not launching an interactive installer. Please run as root on the host: $suggestion.$extra"
+    val extra = if (tag == TAG_RPM_OSTREE) " " + t("linux.headlessGuidanceExtra") else ""
+    return msg("linux.headlessGuidance", mapOf("command" to suggestion, "extra" to extra))
   }
 
   /** Creates a generic manual-installation message for unsupported automation. */
-  private fun manualMsg(kind: String, path: String): String =
-    "$kind installation requires admin rights or a GUI handler. Run on the host: see docs or try installing '$path' with your package manager."
+  private fun manualMsg(kind: String, path: String): LocalMessage =
+    msg("linux.manualGuidance", mapOf("kind" to kind, "path" to path))
 
   /** Attempts to start the systemd helper unit that performs headless installations. */
   private fun headlessUnitDelegate(file: File): InstallerDelegate? {
@@ -484,10 +495,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
           } ?: return null
       val unit = "cryptad-core-install@${escaped}.service"
       val pb = ProcessBuilder("systemctl", "start", unit)
-      InstallerDelegate.Spawn(
-        pb,
-        "Requested headless install via systemd helper. Check 'journalctl -u ${unit}' for progress.",
-      )
+      InstallerDelegate.Spawn(pb, msg("linux.headlessUnit", mapOf("unit" to unit)))
     } catch (_: Throwable) {
       null
     }
@@ -500,9 +508,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     // Snap sandbox: do not attempt automatic install or store hand-off for Snap from within Snap.
     if (kind.equals("snap", ignoreCase = true) && appEnv.isSnap()) {
       val name = id ?: "<package>"
-      return InstallerDelegate.Manual(
-        "This app is running inside a Snap sandbox and cannot perform snap installs. Please run on the host: sudo snap install $name"
-      )
+      return InstallerDelegate.Manual(msg("store.snapSandboxManual", mapOf("package" to name)))
     }
     val targetUrl =
       when {
@@ -516,14 +522,18 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       }
     if (targetUrl != null) {
       val opener = guiOpenUrlCommand(targetUrl, preferHost)
-      if (opener != null) return InstallerDelegate.Spawn(opener, "Opening store page: $targetUrl")
+      if (opener != null)
+        return InstallerDelegate.Spawn(
+          opener,
+          msg("store.openingSpecificPage", mapOf("url" to targetUrl)),
+        )
     }
     // Fallback to CLI store install when GUI handoff isn't available
     return when {
       kind.equals("flatpak", true) && !id.isNullOrBlank() && appEnv.onPath("flatpak") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("flatpak", "install", ARG_ASSUME_YES, ARG_USER, "flathub", id),
-          "Installing '${id}' from Flathub (user scope)",
+          msg("store.installFlathub", mapOf("id" to id)),
         )
       kind.equals("snap", true) &&
         !id.isNullOrBlank() &&
@@ -531,12 +541,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         appEnv.onPath("snap") ->
         InstallerDelegate.Spawn(
           ProcessBuilder("pkexec", "snap", "install", id),
-          "Installing '${id}' from Snap Store (administrator approval required)",
+          msg("store.installSnap", mapOf("id" to id)),
         )
       else ->
-        InstallerDelegate.Manual(
-          "Unable to open store or perform CLI install for '${id ?: url ?: "?"}'."
-        )
+        InstallerDelegate.Manual(msg("store.unableToOpen", mapOf("idOrUrl" to (id ?: url ?: "?"))))
     }
   }
 
@@ -549,9 +557,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Renders a compact result page conveying success or failure for store actions. */
   private fun writeMessage(ctx: ToadletContext, success: Boolean, msg: String) {
     val pm = ctx.pageMaker
+    val title = if (success) t("install.titleSuccess") else t("install.titleFailure")
     val page =
       pm.getPageNode(
-        if (success) "Installation" else "Installation failed",
+        title,
         ctx,
         PageMaker.RenderParameters().renderNavigationLinks(true).renderStatus(true),
       )
@@ -559,7 +568,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val box =
       pm.getInfobox(
         if (success) "infobox-success" else "infobox-warning",
-        if (success) "Installation" else "Installation failed",
+        title,
         content,
         "core-installer-result",
         true,
@@ -573,9 +582,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Renders the install result page, appending platform-specific guidance. */
   private fun writeInstallResult(ctx: ToadletContext, success: Boolean, msg: String, file: File) {
     val pm = ctx.pageMaker
+    val title = if (success) t("install.titleSuccess") else t("install.titleFailure")
     val page =
       pm.getPageNode(
-        if (success) "Installation" else "Installation failed",
+        title,
         ctx,
         PageMaker.RenderParameters().renderNavigationLinks(true).renderStatus(true),
       )
@@ -583,7 +593,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val box =
       pm.getInfobox(
         if (success) "infobox-success" else "infobox-warning",
-        if (success) "Installation" else "Installation failed",
+        title,
         content,
         "core-installer-result",
         true,
@@ -600,8 +610,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Appends guidance boxes for common edge cases (e.g., macOS Gatekeeper). */
   private fun addInstallGuidance(content: HTMLNode, pm: PageMaker, file: File) {
     when (appEnv.osKind()) {
-      AppEnv.OsKind.MAC ->
-        if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm)
+      AppEnv.OsKind.MAC -> if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm)
       AppEnv.OsKind.LINUX ->
         if (file.name.lowercase().endsWith(EXT_SNAP))
           linuxSnapGuidance(content, pm, file, appEnv.onPath("snap"))
@@ -616,44 +625,24 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val box =
       pm.getInfobox(
         "infobox-information",
-        "macOS: If Crypta is blocked by Gatekeeper",
+        t("macGuidance.title"),
         content,
         "core-install-guidance-macos",
         true,
       )
-    box
-      .addChild("p")
-      .addChild(
-        "#",
-        "Because this build is unsigned, macOS may block Crypta on first launch with a warning about an unidentified developer.",
-      )
+    box.addChild("p").addChild("#", t("macGuidance.intro"))
     val steps = box.addChild("ul")
-    steps
-      .addChild("li")
-      .addChild("#", "Open the downloaded DMG and drag Crypta.app to Applications.")
-    steps
-      .addChild("li")
-      .addChild(
-        "#",
-        "Right-click Crypta.app in Applications and choose Open, then confirm. This permanently whitelists the app.",
-      )
-    steps
-      .addChild("li")
-      .addChild(
-        "#",
-        "Alternatively: System Settings → Privacy & Security → look for 'Crypta.app was blocked' and click Open Anyway → Open.",
-      )
+    steps.addChild("li").addChild("#", t("macGuidance.stepDrag"))
+    steps.addChild("li").addChild("#", t("macGuidance.stepOpenConfirm"))
+    steps.addChild("li").addChild("#", t("macGuidance.stepSettings"))
     val alt = box.addChild("li")
-    alt.addChild(
-      "#",
-      "Advanced: clear quarantine attributes in Terminal (replace the path if needed):",
-    )
+    alt.addChild("#", t("macGuidance.advancedIntro"))
     val pre = box.addChild("pre")
-    pre.addChild("#", "xattr -dr com.apple.quarantine /Applications/Crypta.app")
+    pre.addChild("#", t("macGuidance.commandXattr"))
     val verify = box.addChild("p")
-    verify.addChild("#", "To verify status: ")
+    verify.addChild("#", t("macGuidance.verifyLabel"))
     val pre2 = box.addChild("pre")
-    pre2.addChild("#", "spctl --assess -vv /Applications/Crypta.app")
+    pre2.addChild("#", t("macGuidance.commandSpctl"))
   }
 
   /** Supplies tips for Windows SmartScreen when launching unsigned installers. */
@@ -661,38 +650,23 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val box =
       pm.getInfobox(
         "infobox-information",
-        "Windows: If the installer is blocked (SmartScreen)",
+        t("windowsGuidance.title"),
         content,
         "core-install-guidance-windows",
         true,
       )
-    box
-      .addChild("p")
-      .addChild(
-        "#",
-        "This build may be unsigned. Windows Defender SmartScreen can warn about apps from an unknown publisher.",
-      )
+    box.addChild("p").addChild("#", t("windowsGuidance.intro"))
     val ul = box.addChild("ul")
-    ul
-      .addChild("li")
-      .addChild(
-        "#",
-        "Double‑click the installer. On the \"Windows protected your PC\" dialog, click More info → Run anyway.",
-      )
-    ul
-      .addChild("li")
-      .addChild(
-        "#",
-        "Or: right‑click the .exe → Properties → General → check \"Unblock\" → Apply → OK; then run it again.",
-      )
+    ul.addChild("li").addChild("#", t("windowsGuidance.stepRunAnyway"))
+    ul.addChild("li").addChild("#", t("windowsGuidance.stepUnblock"))
     val li3 = ul.addChild("li")
-    li3.addChild("#", "PowerShell option (unblock the file):")
+    li3.addChild("#", t("windowsGuidance.powershellLabel"))
     val pre = box.addChild("pre")
-    pre.addChild("#", """Unblock-File -Path "C:\\Path\\to\\Crypta-Installer.exe"""")
+    pre.addChild("#", t("windowsGuidance.commandUnblock"))
     val li4 = ul.addChild("li")
-    li4.addChild("#", "Verify SHA‑256 if provided:")
+    li4.addChild("#", t("windowsGuidance.hashLabel"))
     val pre2 = box.addChild("pre")
-    pre2.addChild("#", """Get-FileHash -Algorithm SHA256 "C:\\Path\\to\\Crypta-Installer.exe"""")
+    pre2.addChild("#", t("windowsGuidance.commandHash"))
   }
 
   /** Presents extra information for Snap installs, including snapd setup commands. */
@@ -700,29 +674,24 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val box =
       pm.getInfobox(
         "infobox-information",
-        "Linux: Snap install notes",
+        t("linuxSnapGuidance.title"),
         content,
         "core-install-guidance-snap",
         true,
       )
-    box
-      .addChild("p")
-      .addChild(
-        "#",
-        "Local .snap files require administrative privileges. Please close Crypta Launcher first.",
-      )
+    box.addChild("p").addChild("#", t("linuxSnapGuidance.intro"))
     val ul = box.addChild("ul")
     if (!hasSnap) {
-      ul.addChild("li").addChild("#", "Install snapd and ensure the snapd service is running.")
+      ul.addChild("li").addChild("#", t("linuxSnapGuidance.installSnapd"))
       val pre = box.addChild("pre")
-      pre.addChild("#", "sudo apt install snapd    # or: sudo dnf install snapd")
+      pre.addChild("#", t("linuxSnapGuidance.commandInstallSnapd"))
       val pre2 = box.addChild("pre")
-      pre2.addChild("#", "sudo systemctl enable --now snapd.socket snapd.service")
+      pre2.addChild("#", t("linuxSnapGuidance.commandEnableSnapd"))
     }
     // Separate copy-friendly row with the exact command for this file
     val cmdRow = box.addChild("div", "class", "copy-row")
-    cmdRow.addChild("span", "class", "label", "Run this command in terminal:")
-    val command = "sudo snap install --dangerous '${file.absolutePath}'"
+    cmdRow.addChild("span", "class", "label", t("linuxSnapGuidance.runCommandLabel"))
+    val command = t("linuxSnapGuidance.commandRun", mapOf("path" to file.absolutePath))
     cmdRow.addChild(
       "input",
       arrayOf("type", "readonly", "value", "class"),
