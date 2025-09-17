@@ -1,6 +1,7 @@
 package network.crypta.launcher
 
 import com.jthemedetecor.OsThemeDetector
+import network.crypta.fs.AppEnv
 
 /**
  * Flatpak/portal-aware OS theme detector.
@@ -19,7 +20,7 @@ object FlatpakAwareOsThemeDetector {
   }
 
   private fun tryCreatePortalDetector(): OsThemeDetector? {
-    if (!isLinux()) return null
+    if (!AppEnv().isLinux()) return null
     return try {
       com.jthemedetecor.PortalThemeDetector()
     } catch (t: Throwable) {
@@ -27,12 +28,4 @@ object FlatpakAwareOsThemeDetector {
       null
     }
   }
-
-  private fun isLinux(): Boolean =
-    try {
-      System.getProperty("os.name").lowercase().contains("linux")
-    } catch (e: Exception) {
-      logDebug("Failed to read os.name property for isLinux()", e)
-      false
-    }
 }

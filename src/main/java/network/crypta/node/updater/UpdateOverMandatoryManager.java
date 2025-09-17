@@ -11,8 +11,11 @@ import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -37,6 +40,7 @@ import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.SimpleBlockSet;
+import network.crypta.crypt.SHA256;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -71,9 +75,14 @@ import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
 
 /**
- * Co-ordinates update over mandatory. Update over mandatory = updating from your peers, even though
- * they may be so much newer than you that you can't route requests through them. NodeDispatcher
- * feeds UOMAnnouncement's received from peers to this class, and it decides what to do about them.
+ * Co‑ordinates Update‑Over‑Mandatory (UoM).
+ *
+ * <p>UoM allows nodes to exchange update payloads even when they are too far apart in versions to
+ * route requests normally. The {@link network.crypta.node.NodeDispatcher} forwards UOM
+ * announcements and requests here, and this class decides how to react.
+ *
+ * <p>Note: In package‑based updater mode ({@link NodeUpdateManager#supportsJarUOM()} returns {@code
+ * false}) main‑jar UoM is disabled. UoM is still used for revocation handling.
  *
  * @author toad
  */
@@ -322,7 +331,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
     long now = System.currentTimeMillis();
 
-    handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
+    // In package-based updater mode there is no main-jar UOM; only revocation is handled.
+    if (updateManager.supportsJarUOM()) {
+      handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
+    }
 
     return true;
   }
@@ -2156,15 +2168,13 @@ public class UpdateOverMandatoryManager implements RequestClient {
               return;
             }
 
-            NodeUpdater mainUpdater = updateManager.getMainUpdater();
-            if (mainUpdater == null) {
-              System.err.println("Not updating because updater is disabled!");
+            if (!updateManager.supportsJarUOM()) {
+              System.err.println("Ignoring UOM main jar because jar updates are disabled.");
+              temp.delete();
               return;
             }
-            mainUpdater.onSuccess(result, state, cleanedBlobFile, (int) version);
-            temp.delete();
-
-            maybeInsertMainJar(mainUpdater, source, (int) version);
+            // Legacy path kept for completeness; in practice supportsJarUOM() is false in the
+            // package-based updater mode so this block is not reached.
           }
 
           @Override
@@ -2637,8 +2647,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                     }
                     if (!failed) {
                       // Check the hash.
-                      if (MainJarDependenciesChecker.validFile(
-                          tmp, expectedHash, size, executable)) {
+                      if (validDependencyFile(tmp, expectedHash, size, executable)) {
                         if (FileUtil.moveTo(tmp, saveTo)) {
                           synchronized (UOMDependencyFetcher.this) {
                             if (completed) return;
@@ -2785,6 +2794,30 @@ public class UpdateOverMandatoryManager implements RequestClient {
       synchronized (UpdateOverMandatoryManager.this) {
         dependencyFetchers.remove(expectedHashBuffer);
       }
+    }
+  }
+
+  /**
+   * Validate a fetched dependency against expected size and SHA‑256.
+   *
+   * <p>When {@code executable} is true and the content matches, this method also marks the file
+   * executable if necessary.
+   */
+  private boolean validDependencyFile(
+      File filename, byte[] expectedHash, long size, boolean executable) {
+    if (filename == null || !filename.exists()) return false;
+    if (filename.length() != size) return false;
+    try (InputStream fis = new FileInputStream(filename)) {
+      MessageDigest md = SHA256.getMessageDigest();
+      SHA256.hash(fis, md);
+      byte[] hash = md.digest();
+      if (Arrays.equals(hash, expectedHash)) {
+        if (executable && !filename.canExecute()) filename.setExecutable(true);
+        return true;
+      }
+      return false;
+    } catch (IOException e) {
+      return false;
     }
   }
 }

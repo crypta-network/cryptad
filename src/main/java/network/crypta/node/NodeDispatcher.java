@@ -197,16 +197,16 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     } else if (spec == DMT.CryptadUOMSendingRevocation && source.isRealConnection()) {
       return node.getNodeUpdater().getUpdateOverMandatory().handleSendingRevocation(m, source);
     } else if (spec == DMT.CryptadUOMRequestMainJar
-        && node.getNodeUpdater().isEnabled()
+        && node.getNodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       node.getNodeUpdater().getUpdateOverMandatory().handleRequestJar(m, source);
       return true;
     } else if (spec == DMT.CryptadUOMSendingMainJar
-        && node.getNodeUpdater().isEnabled()
+        && node.getNodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       return node.getNodeUpdater().getUpdateOverMandatory().handleSendingMain(m, source);
     } else if (spec == DMT.CryptadUOMFetchDependency
-        && node.getNodeUpdater().isEnabled()
+        && node.getNodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       node.getNodeUpdater().getUpdateOverMandatory().handleFetchDependency(m, source);
       return true;

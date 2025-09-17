@@ -63,7 +63,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   private final String blobFilenamePrefix;
   protected File tempBlobFile;
 
-  public abstract String jarName();
+  /** Human-readable name of the update artifact (for logs/UI). */
+  public abstract String artifactName();
 
   NodeUpdater(
       NodeUpdateManager manager,
@@ -166,7 +167,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       if (found > maxDeployVersion) {
         System.err.println(
             "Ignoring "
-                + jarName()
+                + artifactName()
                 + " update edition "
                 + l
                 + ": version too new (min "
@@ -178,7 +179,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       }
 
       if (found <= availableVersion) return;
-      System.err.println("Found " + jarName() + " update edition " + found);
+      System.err.println("Found " + artifactName() + " update edition " + found);
       Logger.minor(
           this,
           "Updating availableVersion from "
@@ -201,7 +202,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       return;
     }
     onStartFetching();
-    Logger.minor(this, "Fetching " + jarName() + " update edition " + found);
+    Logger.minor(this, "Fetching " + artifactName() + " update edition " + found);
   }
 
   protected abstract void onStartFetching();
@@ -246,7 +247,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
             Logger.minor(
                 this, "Scheduling request for " + URI.setSuggestedEdition(availableVersion));
           if (availableVersion > currentVersion)
-            System.err.println("Starting " + jarName() + " fetch for " + availableVersion);
+            System.err.println("Starting " + artifactName() + " fetch for " + availableVersion);
           tempBlobFile =
               File.createTempFile(
                   blobFilenamePrefix + availableVersion + "-",
@@ -267,7 +268,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         } else {
           System.err.println(
               "Already fetching "
-                  + jarName()
+                  + artifactName()
                   + " fetch for "
                   + fetchingVersion
                   + " want "
@@ -359,7 +360,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           }
       }
       this.fetchedVersion = fetchedVersion;
-      System.out.println("Found " + jarName() + " version " + fetchedVersion);
+      System.out.println("Found " + artifactName() + " version " + fetchedVersion);
       if (fetchedVersion > currentVersion)
         Logger.normal(
             this,
@@ -555,8 +556,24 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param uri The new URI.
    */
   public void onChangeURI(FreenetURI uri) {
+    String previousDocName;
+    synchronized (this) {
+      previousDocName = (URI != null) ? URI.getDocName() : null;
+    }
     kill(); // unsubscribes from the old uri
-    this.URI = uri;
+    FreenetURI nextUri =
+        (previousDocName != null && (uri.getDocName() == null || uri.getDocName().isEmpty()))
+            ? uri.setDocName(previousDocName)
+            : uri;
+    synchronized (this) {
+      this.URI = nextUri.setSuggestedEdition(Version.currentBuildNumber() + 1);
+      availableVersion = -1;
+      realAvailableVersion = -1;
+      fetchingVersion = -1;
+      fetchedVersion = currentVersion;
+      isFetching = false;
+      isRunning = true;
+    }
     subscribe(() -> {});
     maybeUpdate();
   }

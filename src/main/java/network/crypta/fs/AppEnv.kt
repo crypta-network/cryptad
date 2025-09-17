@@ -26,6 +26,22 @@ constructor(
   },
 ) {
 
+  /** Broad OS family for the current runtime. */
+  enum class OsKind {
+    WINDOWS,
+    MAC,
+    LINUX,
+    OTHER,
+  }
+
+  /**
+   * Summary of the current runtime environment.
+   * - `os`: broad OS family
+   * - `arch`: normalized CPU arch ("amd64" or "arm64"; others map to "amd64")
+   * - `availableManagers`: Linux‑only package tools present on PATH (e.g., ["flatpak", "rpm"]).
+   */
+  data class EnvDetection(val os: OsKind, val arch: String, val availableManagers: List<String>)
+
   fun isWindows(): Boolean = osName.lowercase().contains("win")
 
   fun isMac(): Boolean = osName.lowercase().contains("mac") || osName.lowercase().contains("darwin")
@@ -95,4 +111,54 @@ constructor(
       isWindowsService() ||
       isMacService()
   }
+
+  /** Return the current OS family. */
+  fun osKind(): OsKind =
+    when {
+      isWindows() -> OsKind.WINDOWS
+      isMac() -> OsKind.MAC
+      isLinux() -> OsKind.LINUX
+      else -> OsKind.OTHER
+    }
+
+  /** Return the normalized CPU architecture ("amd64" or "arm64"). */
+  fun arch(): String {
+    val prop = (System.getProperty("os.arch") ?: "amd64").lowercase()
+    return if (prop.contains("aarch64") || prop.contains("arm64")) "arm64" else "amd64"
+  }
+
+  /** True when an executable is present on the current PATH. */
+  fun onPath(cmd: String): Boolean {
+    val path = env["PATH"] ?: return false
+    val sep = java.io.File.pathSeparatorChar
+    val isWin = isWindows()
+    return path.split(sep).any { dir ->
+      val base = java.io.File(dir, cmd)
+      val withExe = if (isWin) java.io.File(dir, "$cmd.exe") else null
+      (base.exists() && base.canExecute()) || (withExe?.exists() == true && withExe.canExecute())
+    }
+  }
+
+  /** Raw OS name string from the JVM (e.g., "Windows 11", "Mac OS X", "Linux"). */
+  fun osNameRaw(): String = osName
+
+  /** Raw OS version string from the JVM or empty when unavailable. */
+  fun osVersionRaw(): String = System.getProperty("os.version") ?: ""
+
+  /**
+   * Linux‑only: detect available package managers by looking for their executables on PATH. Returns
+   * an empty list on non‑Linux platforms.
+   */
+  fun availableManagers(): List<String> {
+    if (!isLinux()) return emptyList()
+    val managers = mutableListOf<String>()
+    if (onPath("flatpak")) managers += "flatpak"
+    if (onPath("snap")) managers += "snap"
+    if (onPath("dpkg")) managers += "dpkg"
+    if (onPath("rpm")) managers += "rpm"
+    return managers
+  }
+
+  /** Compute a summary of the current runtime environment. */
+  fun detectEnvironment(): EnvDetection = EnvDetection(osKind(), arch(), availableManagers())
 }

@@ -81,9 +81,8 @@ public class RealCompressor {
   private static int getMaxRunningCompressionThreads() {
     int maxRunningThreads = 1;
 
-    String osName = System.getProperty("os.name");
-    if (!osName.contains("Windows") && (osName.toLowerCase().indexOf("mac os x") > 0)
-        || (!NativeThread.usingNativeCode()))
+    network.crypta.fs.AppEnv _env = new network.crypta.fs.AppEnv();
+    if (_env.isMac() || (!NativeThread.usingNativeCode()))
       // OS/X niceness is really weak, so we don't want any more background CPU load than necessary
       // Also, on non-Windows, we need the native threads library to be working.
       maxRunningThreads = 1;

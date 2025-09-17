@@ -2,6 +2,7 @@ package network.crypta.clients.http;
 
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static network.crypta.node.updater.UpdaterPathsKt.CORE_UPDATE_PATH;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -1721,6 +1722,11 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client, node);
     server.register(externalLinkToadlet, null, ExternalLinkToadlet.PATH, true, false);
+
+    // Core updater action endpoint (download/install)
+    network.crypta.node.updater.CoreActionToadlet coreActionToadlet =
+        new network.crypta.node.updater.CoreActionToadlet(client, node);
+    server.register(coreActionToadlet, null, CORE_UPDATE_PATH, true, false);
 
     DarknetConnectionsToadlet friendsToadlet = new DarknetConnectionsToadlet(node, core, client);
     server.register(

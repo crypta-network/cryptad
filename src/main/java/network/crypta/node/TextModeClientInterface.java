@@ -584,7 +584,7 @@ public class TextModeClientInterface implements Runnable {
               + System.getProperty("java.version")
               + "\r\n"
               + "OS Name:\u00a0"
-              + System.getProperty("os.name")
+              + new network.crypta.fs.AppEnv().osNameRaw()
               + "\r\n"
               + "OS Version:\u00a0"
               + System.getProperty("os.version")

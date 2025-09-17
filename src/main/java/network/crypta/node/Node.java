@@ -1329,9 +1329,9 @@ public class Node implements TimeSkewDetectorCallback {
             + " running on "
             + System.getProperty("os.arch")
             + ' '
-            + System.getProperty("os.name")
+            + new network.crypta.fs.AppEnv().osNameRaw()
             + ' '
-            + System.getProperty("os.version");
+            + new network.crypta.fs.AppEnv().osVersionRaw();
     Logger.normal(this, tmp);
     System.out.println(tmp);
     collector = new IOStatisticCollector();
@@ -2868,8 +2868,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         });
     storePreallocate = nodeConfig.getBoolean("storePreallocate");
 
-    if (File.separatorChar == '/'
-        && !System.getProperty("os.name").toLowerCase().contains("mac os")) {
+    if (File.separatorChar == '/' && !(new network.crypta.fs.AppEnv().isMac())) {
       securityLevels.addPhysicalThreatLevelListener(
           (oldLevel, newLevel) -> {
             try {

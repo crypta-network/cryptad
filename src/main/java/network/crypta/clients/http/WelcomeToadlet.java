@@ -17,6 +17,7 @@ import network.crypta.clients.http.bookmark.BookmarkItem;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.BandwidthManager;
@@ -799,6 +800,23 @@ public class WelcomeToadlet extends Toadlet {
                   Integer.toString(Version.currentBuildNumber()),
                   Version.gitRevision()
                 }));
+    // Append runtime environment summary (AppEnv is the single source of truth)
+    try {
+      AppEnv env = new AppEnv();
+      AppEnv.EnvDetection det = env.detectEnvironment();
+      String os = det.getOs().toString();
+      String arch = det.getArch();
+      java.util.ArrayList<String> tags = new java.util.ArrayList<>();
+      if (env.isFlatpak()) tags.add("flatpak");
+      if (env.isSnap()) tags.add("snap");
+      if (env.isDocker()) tags.add("docker");
+      if (env.isServiceMode()) tags.add("service");
+      String tagStr = tags.isEmpty() ? "" : " [" + String.join(",", tags) + "]";
+      String envText = " \u2022 Env: " + os + "/" + arch + tagStr;
+      versionContent.addChild("span", "class", "freenet-env", envText);
+    } catch (Throwable t) {
+      // avoid breaking the page if environment detection fails
+    }
     versionContent.addChild("br");
     if (ctx.isAllowedFullAccess()) {
       HTMLNode shutdownForm = ctx.addFormChild(versionContent, ".", "shutdownForm");
@@ -815,11 +833,7 @@ public class WelcomeToadlet extends Toadlet {
             "input",
             new String[] {"type", "name", "value"},
             new String[] {"submit", "restart2", l10n("restartNode")});
-        // add autostart info for Linux (where there’s no tray *and* there is a defined way for
-        // autostart).
-        if (FileUtil.detectedOS == FileUtil.OperatingSystem.Linux) {
-          restartForm.addChild("p", l10n("disableAutostartLinuxInfo"));
-        }
+        // Remove outdated cron-based autostart note on Linux (we do not use cronjob anymore).
       }
     }
 

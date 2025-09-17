@@ -120,6 +120,11 @@ command -v ensure_user >/dev/null 2>&1 || ensure_user() {
 
 SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
 SERVICE_DST="/etc/systemd/system/cryptad.service"
+HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
+HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
+HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
+POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
+POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
 
 if is_desktop; then
   # Install desktop entry into system-wide applications dir and refresh caches
@@ -162,6 +167,23 @@ else
     fi
     log_line "post: installed/enabled systemd service"
   fi
+fi
+
+# Always install headless helper unit + polkit rule and ensure script is executable
+if [ -f "$HELPER_UNIT_SRC" ]; then
+  install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
+  sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
+  log_line "post: installed helper unit -> $HELPER_UNIT_DST"
+fi
+if [ -f "$HELPER_SCRIPT_SRC" ]; then
+  chmod 0755 "$HELPER_SCRIPT_SRC" || true
+fi
+if [ -f "$POLKIT_SRC" ]; then
+  install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
+  log_line "post: installed polkit rule -> $POLKIT_DST"
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
 fi
 
 %pre

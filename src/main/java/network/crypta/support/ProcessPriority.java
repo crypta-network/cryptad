@@ -5,6 +5,7 @@ import com.sun.jna.Platform;
 import com.sun.jna.platform.win32.WinDef.DWORD;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.win32.*;
+import network.crypta.fs.AppEnv;
 
 /**
  * A class to control the global priority of the current process. Microsoft suggests flagging
@@ -56,8 +57,25 @@ public class ProcessPriority {
     static final int PRIO_DARWIN_BG = 0x1000;
   }
 
+  /**
+   * Attempt to lower the process' scheduling priority (background mode). In sandboxed Linux
+   * environments like Snap/Flatpak/Docker, decreasing nice is blocked without special privileges,
+   * so we skip the native call and rely on JVM defaults while logging a brief note.
+   */
   public static boolean enterBackgroundMode() {
     if (!background) {
+      // Suppress native renicing in sandboxed Linux environments where lowering nice is blocked
+      AppEnv env = new AppEnv();
+      if (env.isLinux() && (env.isSnap() || env.isFlatpak() || env.isDocker())) {
+        Logger.normal(
+            ProcessPriority.class,
+            "Skipping process setpriority due to sandbox constraints (Snap/Flatpak/Docker). Using"
+                + " JVM default priority.");
+        System.out.println(
+            "Skipping process setpriority due to sandbox constraints (Snap/Flatpak/Docker). Using"
+                + " JVM default priority.");
+        return background = true; // treat as engaged to avoid further attempts/noise
+      }
       if (Platform.isWindows()) {
         WindowsHolder lib = WindowsHolder.INSTANCE;
 

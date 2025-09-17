@@ -1,0 +1,14 @@
+// Polkit rule to allow the 'cryptad' service user to start only the
+// cryptad-core-install@.service oneshot unit via systemd (DBus).
+// This enables headless installs without interactive authentication.
+
+polkit.addRule(function(action, subject) {
+  if (action.id === "org.freedesktop.systemd1.manage-units" && subject.user === "cryptad") {
+    var verb = action.lookup("verb");
+    var unit = action.lookup("unit");
+    if (verb === "start" && unit && unit.match(/^cryptad-core-install@.*\.service$/)) {
+      return polkit.Result.YES;
+    }
+  }
+});
+

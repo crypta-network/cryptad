@@ -583,19 +583,15 @@ public class ToadletContextImpl implements ToadletContext {
 
   private static String generateCSP(boolean allowScripts, boolean allowFrames) {
     // allow access to blobs, because these are purely local
+    // Use modern CSP tokens; remove deprecated "options inline-script".
     return "default-src 'self' blob:; script-src "
-        +
-        // "options inline-script" is old syntax needed for older Firefox's.
-        (allowScripts
-            ? "'self' 'unsafe-inline'; options inline-script"
-            : generateRestrictedScriptSrc())
+        + (allowScripts ? "'self' 'unsafe-inline' 'unsafe-eval'" : generateRestrictedScriptSrc())
         + "; frame-src "
         + (allowFrames ? "'self'" : "'none'")
         + "; object-src 'none'"
         +
         // Always send unsafe-inline for CSS. This is safe given it can't use external stuff
-        // anyway.
-        // It's only strictly needed for fproxy.
+        // anyway, and we only use it for our own UI.
         "; style-src 'self' 'unsafe-inline'";
   }
 

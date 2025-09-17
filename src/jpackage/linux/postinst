@@ -11,6 +11,14 @@ SERVICE_DST="/etc/systemd/system/cryptad.service"
 DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
 DESKTOP_DST="/usr/share/applications/crypta.desktop"
 
+# Headless install helper (oneshot) + polkit rule
+HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
+HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
+HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
+HELPER_SCRIPT_DST="$APP_DIR/lib/cryptad-core-install.sh" # lives inside the app image
+POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
+POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
+
 # Try to source common helpers from installed image
 COMMON="$APP_DIR/lib/crypta-common.sh"
 [ -f "$COMMON" ] && . "$COMMON"
@@ -44,6 +52,25 @@ command -v ensure_user >/dev/null 2>&1 || ensure_user() {
     fi
   fi
   install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
+}
+
+install_helper() {
+  # Install headless helper unit and script for controlled, polkit-backed installs
+  if [ -f "$HELPER_UNIT_SRC" ]; then
+    install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
+    # Rewrite APP_DIR path in ExecStart to the detected APP_DIR
+    sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
+  fi
+  # The helper script is shipped inside the app image under lib/; ensure it is executable.
+  if [ -f "$HELPER_SCRIPT_SRC" ]; then
+    chmod 0755 "$HELPER_SCRIPT_SRC" || true
+  fi
+  if [ -f "$POLKIT_SRC" ]; then
+    install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+  fi
 }
 
 install_service() {
@@ -82,6 +109,7 @@ install_desktop() {
 
 # Deb maintainer scripts can pass an argument (e.g., configure). We ignore it safely.
 
+install_helper # Always present the helper on both desktop and server
 if is_desktop; then
   install_desktop
 else

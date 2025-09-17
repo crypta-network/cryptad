@@ -2,6 +2,7 @@ package network.crypta.support.io;
 
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
+import network.crypta.fs.AppEnv;
 import network.crypta.support.Logger;
 
 /**
@@ -19,6 +20,15 @@ public class NativeThread extends Thread {
   public static final int NATIVE_PRIORITY_RANGE;
   private int currentPriority = Thread.MAX_PRIORITY;
   private boolean dontCheckRenice = false;
+
+  /**
+   * True when running in a Linux sandbox (Snap/Flatpak/Docker) where decreasing nice is blocked
+   * without elevated capabilities. In this case we skip native setpriority calls and rely on JVM
+   * priorities only to avoid noisy failures.
+   */
+  private static final boolean SANDBOX_DISABLE_RENICE;
+
+  private static volatile boolean sandboxLogOnce = false;
 
   public static final boolean HAS_THREE_NICE_LEVELS;
   public static final boolean HAS_ENOUGH_NICE_LEVELS;
@@ -56,9 +66,15 @@ public class NativeThread extends Thread {
 
   static {
     Logger.minor(NativeThread.class, "Running init()");
-    // Loading the NativeThread library isn't useful on macos
+    // Loading the NativeThread library isn't useful on macOS
     boolean maybeLoadNative = Platform.isLinux();
     Logger.debug(NativeThread.class, "Run init(): should loadNative=" + maybeLoadNative);
+    // Detect sandboxed/containerized environments where decreasing nice is blocked.
+    AppEnv envDet = new AppEnv();
+    boolean inSnap = envDet.isSnap();
+    boolean inFlatpak = envDet.isFlatpak();
+    boolean inDocker = envDet.isDocker();
+    SANDBOX_DISABLE_RENICE = maybeLoadNative && (inSnap || inFlatpak || inDocker);
     if (maybeLoadNative) {
       NATIVE_PRIORITY_BASE = LinuxNativeThread.getpriority(0, 0);
       NATIVE_PRIORITY_RANGE = 20 - NATIVE_PRIORITY_BASE;
@@ -85,6 +101,26 @@ public class NativeThread extends Thread {
       _loadNative = false;
     }
     Logger.minor(NativeThread.class, "Run init(): _loadNative = " + _loadNative);
+    if (SANDBOX_DISABLE_RENICE) {
+      StringBuilder sb = new StringBuilder("Sandbox detected: disabling native thread renice (");
+      boolean first = true;
+      if (inSnap) {
+        sb.append("Snap");
+        first = false;
+      }
+      if (inFlatpak) {
+        if (!first) sb.append('/');
+        sb.append("Flatpak");
+        first = false;
+      }
+      if (inDocker) {
+        if (!first) sb.append('/');
+        sb.append("Docker");
+      }
+      sb.append(") due to sandbox constraints.");
+      Logger.normal(NativeThread.class, sb.toString());
+      System.out.println(sb.toString());
+    }
   }
 
   private static class LinuxNativeThread {
@@ -156,6 +192,16 @@ public class NativeThread extends Thread {
   private boolean setNativePriority(int prio) {
     Logger.minor(this, "setNativePriority(" + prio + ")");
     setPriority(prio);
+    if (SANDBOX_DISABLE_RENICE) {
+      if (!sandboxLogOnce) {
+        sandboxLogOnce = true;
+        Logger.normal(
+            this,
+            "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); using JVM priority"
+                + " only.");
+      }
+      return true; // treat as success to avoid noisy warnings
+    }
     if (!_loadNative) {
       Logger.minor(this, "_loadNative is false");
       return true;
