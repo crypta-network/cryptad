@@ -100,6 +100,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Handles download, install, and store-opening POST actions from the Alerts UI. */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
+    if (!ctx.checkFormPassword(request)) {
+      logInfo("POST /core-update rejected: invalid form password")
+      return
+    }
     val updater = node.getNodeUpdater().coreUpdater ?: return redirect(ctx)
     when (request.getPartAsStringFailsafe("action", 32)) {
       "download" -> handleDownload(updater, ctx)
