@@ -140,21 +140,15 @@ class CoreUpdater(
     }
   }
 
-  /**
-   * No-op because all manifest information is retained in-memory.
-   */
+  /** No-op because all manifest information is retained in-memory. */
   override fun processSuccess(fetched: Int, result: FetchResult, blobFile: File?) {
     // Nothing to persist from info JSON beyond in-memory state.
   }
 
-  /**
-   * Short changelog CHK referenced by the descriptor, if available.
-   */
+  /** Short changelog CHK referenced by the descriptor, if available. */
   fun getShortChangelogCHK(): String? = latestInfo?.changelogChk
 
-  /**
-   * Full changelog CHK referenced by the descriptor, if available.
-   */
+  /** Full changelog CHK referenced by the descriptor, if available. */
   fun getFullChangelogCHK(): String? = latestInfo?.fullChangelogChk
 
   /**
@@ -210,9 +204,7 @@ class CoreUpdater(
     selectedSpec = chosen?.second
   }
 
-  /**
-   * Builds a priority-ordered list of preferred package extensions for the detected OS.
-   */
+  /** Builds a priority-ordered list of preferred package extensions for the detected OS. */
   private fun preferredExtensions(env: AppEnv.EnvDetection): List<String> =
     when (env.os) {
       AppEnv.OsKind.WINDOWS -> listOf("exe")
@@ -221,9 +213,7 @@ class CoreUpdater(
       else -> emptyList()
     }
 
-  /**
-   * Determines the Linux-specific extension ordering, accounting for sandboxed environments.
-   */
+  /** Determines the Linux-specific extension ordering, accounting for sandboxed environments. */
   private fun linuxPreferredExtensions(env: AppEnv.EnvDetection): List<String> {
     val managers = env.availableManagers
     val preferred = mutableListOf<String>()
@@ -241,9 +231,7 @@ class CoreUpdater(
     return (preferred + fallback).distinct()
   }
 
-  /**
-   * Resolves the first registered package containing a CHK for the supplied architecture.
-   */
+  /** Resolves the first registered package containing a CHK for the supplied architecture. */
   private fun Map<String, PackageSpec>.firstAvailableForArch(
     arch: String
   ): Pair<String, PackageSpec>? =
@@ -251,9 +239,7 @@ class CoreUpdater(
       .firstOrNull { (key, value) -> key.startsWith("$arch.") && value.chk != null }
       ?.let { it.key to it.value }
 
-  /**
-   * Computes the version-specific folder underneath [updatesRoot].
-   */
+  /** Computes the version-specific folder underneath [updatesRoot]. */
   private fun updatesDir(): File = File(updatesRoot, latestInfo?.version ?: UNKNOWN_VERSION)
 
   /**
@@ -271,9 +257,7 @@ class CoreUpdater(
     return File(outDir, key)
   }
 
-  /**
-   * Starts a background fetch using the currently selected package metadata.
-   */
+  /** Starts a background fetch using the currently selected package metadata. */
   private fun tryStartDownload() {
     val spec = selectedSpec ?: return
     val target = downloadTarget() ?: return
@@ -297,9 +281,7 @@ class CoreUpdater(
     tryStartDownload()
   }
 
-  /**
-   * Returns the completed download file on success or null when unavailable.
-   */
+  /** Returns the completed download file on success or null when unavailable. */
   fun getDownloadedFile(): File? = fetcher?.takeIf { it.isSuccess() }?.completedFileOrNull()
 
   /**
@@ -335,9 +317,7 @@ class CoreUpdater(
     alertNode.addChild(buildInstallForm(ready, path))
   }
 
-  /**
-   * Adds summary paragraphs describing the selected package and environment.
-   */
+  /** Adds summary paragraphs describing the selected package and environment. */
   private fun addHeader(
     alertNode: HTMLNode,
     info: CoreInfo,
@@ -361,9 +341,7 @@ class CoreUpdater(
     }
   }
 
-  /**
-   * Creates the paragraph containing release notes and optional store actions.
-   */
+  /** Creates the paragraph containing release notes and optional store actions. */
   private fun buildLinksNode(info: CoreInfo, spec: PackageSpec?, chosenKey: String?): HTMLNode {
     val links = HTMLNode("p")
     if (!info.releasePageUrl.isNullOrEmpty()) {
@@ -392,9 +370,7 @@ class CoreUpdater(
     return links
   }
 
-  /**
-   * Builds a POST form that dispatches a store-opening request for the supplied content.
-   */
+  /** Builds a POST form that dispatches a store-opening request for the supplied content. */
   private fun buildOpenStoreForm(kind: String, id: String?, url: String?): HTMLNode =
     newPostForm().apply {
       hiddenInput("action", "openStore")
@@ -405,9 +381,7 @@ class CoreUpdater(
       submitButton("Open in Store", name = "openStore")
     }
 
-  /**
-   * Extracts an identifier from a vendor-specific store URL when catalogued.
-   */
+  /** Extracts an identifier from a vendor-specific store URL when catalogued. */
   private fun deriveStoreId(kind: String, url: String): String? =
     try {
       val u = java.net.URI(url)
@@ -532,9 +506,7 @@ class CoreUpdater(
     /** Tracks whether the last failure was fatal according to the client API. */
     @Volatile private var fatal: Boolean = false
 
-    /**
-     * Begins the asynchronous fetch and registers this fetcher as an event listener.
-     */
+    /** Begins the asynchronous fetch and registers this fetcher as an event listener. */
     fun start() {
       val ctx = manager.getNode().getClientCore().makeClient(0.toShort(), true, false).fetchContext
       val fb = FileBucket(outFile, false, false, false, false)
@@ -635,9 +607,7 @@ class CoreUpdater(
     /** Provides the [RequestClient] identity required by the async API. */
     override fun getRequestClient(): RequestClient = this
 
-    /**
-     * Handles transfer progress events and stores percentage/block metadata for UI updates.
-     */
+    /** Handles transfer progress events and stores percentage/block metadata for UI updates. */
     override fun receive(ce: ClientEvent, context: ClientContext) {
       // Hook SplitfileProgressEvent to compute percent and block counts.
       try {
