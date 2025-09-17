@@ -135,7 +135,7 @@ class CoreUpdater(
       }
       .onFailure {}
     // Optionally auto-download when autoupdate=true
-    if (manager.isAutoUpdateAllowed && selectedSpec?.chk != null && fetcher == null) {
+    if (manager.isAutoUpdateAllowed && selectedSpec?.chk != null && !hasUsableFetcher()) {
       tryStartDownload()
     }
   }
@@ -257,13 +257,26 @@ class CoreUpdater(
     return File(outDir, key)
   }
 
+  /** Returns the active fetcher when it targets the currently selected package. */
+  private fun fetcherMatchesSelection(): PackageFetcher? {
+    val spec = selectedSpec ?: return null
+    val chk = spec.chk ?: return null
+    return fetcher?.takeIf { it.matchesChk(chk) }
+  }
+
+  /** Whether a usable fetcher (in-progress or successful) exists for the current selection. */
+  private fun hasUsableFetcher(): Boolean {
+    val f = fetcherMatchesSelection() ?: return false
+    return !f.hasFailed()
+  }
+
   /** Starts a background fetch using the currently selected package metadata. */
   private fun tryStartDownload() {
     val spec = selectedSpec ?: return
     val target = downloadTarget() ?: return
     val chk = spec.chk ?: return
     val uri = FreenetURI(chk)
-    val f = PackageFetcher(target, uri)
+    val f = PackageFetcher(target, uri, chk)
     fetcher = f
     logInfo("starting download: key=${selectedKey ?: "?"}, target=${target.absolutePath}, chk=$chk")
     f.start()
@@ -274,15 +287,26 @@ class CoreUpdater(
    * Alerts page POST handler.
    */
   fun startDownloadFromUI() {
-    val currentFetcher = fetcher
-    // If a download is in progress or already completed successfully, no action is needed.
-    if (currentFetcher?.let { !it.isComplete() || it.isSuccess() } == true) return
+    if (selectedSpec == null) return
+    val matchingFetcher = fetcherMatchesSelection()
+    if (matchingFetcher != null) {
+      // If a download for the current selection is in progress or already finished, skip.
+      if (!matchingFetcher.isComplete() || matchingFetcher.isSuccess()) return
+    } else {
+      // Prevent overlapping downloads when a different package is still being fetched.
+      val inFlight = fetcher?.takeIf { !it.isComplete() }
+      if (inFlight != null) {
+        logInfo("Skipping download start: another package download is still running")
+        return
+      }
+    }
     // Allow retry when the previous attempt failed or completed unsuccessfully.
     tryStartDownload()
   }
 
   /** Returns the completed download file on success or null when unavailable. */
-  fun getDownloadedFile(): File? = fetcher?.takeIf { it.isSuccess() }?.completedFileOrNull()
+  fun getDownloadedFile(): File? =
+    fetcherMatchesSelection()?.takeIf { it.isSuccess() }?.completedFileOrNull()
 
   /**
    * Renders the updater status section into the supplied Alerts HTML node.
@@ -293,13 +317,14 @@ class CoreUpdater(
     val info = latestInfo ?: return
     val envNow = env ?: appEnv.detectEnvironment().also { env = it }
     val chosen = selectedKey
+    val spec = selectedSpec
 
-    addHeader(alertNode, info, envNow, chosen, selectedSpec)
-    alertNode.addChild(buildLinksNode(info, selectedSpec, chosen))
+    addHeader(alertNode, info, envNow, chosen, spec)
+    alertNode.addChild(buildLinksNode(info, spec, chosen))
 
-    val f = fetcher
+    val f = fetcherMatchesSelection()
     if (f == null) {
-      if (selectedSpec?.chk != null) alertNode.addChild(buildDownloadForm())
+      if (spec?.chk != null) alertNode.addChild(buildDownloadForm())
       return
     }
 
@@ -477,8 +502,11 @@ class CoreUpdater(
     }
 
   /** Lightweight fetcher for a single CHK saved directly to a File. */
-  inner class PackageFetcher(private val outFile: File, private val chk: FreenetURI) :
-    ClientGetCallback, RequestClient, ClientEventListener {
+  inner class PackageFetcher(
+    private val outFile: File,
+    private val chk: FreenetURI,
+    private val chkString: String,
+  ) : ClientGetCallback, RequestClient, ClientEventListener {
     /** Active client getter driving the download, if started. */
     @Volatile private var getter: ClientGetter? = null
 
@@ -563,6 +591,9 @@ class CoreUpdater(
 
     /** True if the last failure was fatal according to FetchException.isFatal(). */
     fun isFatalFailure(): Boolean = failed && fatal
+
+    /** Whether this fetcher corresponds to the supplied CHK string. */
+    fun matchesChk(candidate: String?): Boolean = candidate != null && candidate == chkString
 
     /** Records successful completion and logs the saved file. */
     override fun onSuccess(result: FetchResult, state: ClientGetter) {
