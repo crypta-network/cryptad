@@ -601,14 +601,13 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun addInstallGuidance(content: HTMLNode, pm: PageMaker, file: File) {
     when (appEnv.osKind()) {
       AppEnv.OsKind.MAC ->
-        if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm) else {}
+        if (file.name.lowercase().endsWith(".dmg")) macDmgGuidance(content, pm)
       AppEnv.OsKind.LINUX ->
         if (file.name.lowercase().endsWith(EXT_SNAP))
           linuxSnapGuidance(content, pm, file, appEnv.onPath("snap"))
-        else {}
       AppEnv.OsKind.WINDOWS ->
-        if (file.name.lowercase().endsWith(".exe")) windowsExeGuidance(content, pm) else {}
-      else -> {}
+        if (file.name.lowercase().endsWith(".exe")) windowsExeGuidance(content, pm)
+      else -> Unit
     }
   }
 
