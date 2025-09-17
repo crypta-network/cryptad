@@ -522,6 +522,7 @@ public class NodeUpdateManager {
     // return;
     // }
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
+    CoreUpdater stoppedCoreUpdater = null;
     // We need to run the revocation checker even if auto-update is
     // disabled.
     // Two reasons:
@@ -537,6 +538,7 @@ public class NodeUpdateManager {
       if (!enable) {
         // Kill it
         if (coreUpdater != null) coreUpdater.preKill();
+        stoppedCoreUpdater = coreUpdater;
         coreUpdater = null;
         oldPluginUpdaters = pluginUpdaters;
         pluginUpdaters = null;
@@ -557,6 +559,9 @@ public class NodeUpdateManager {
       }
     }
     if (!enable) {
+      if (stoppedCoreUpdater != null) {
+        stoppedCoreUpdater.kill();
+      }
       stopPluginUpdaters(oldPluginUpdaters);
     } else {
       if (coreUpdater != null) coreUpdater.start();
@@ -969,6 +974,7 @@ public class NodeUpdateManager {
    *     certificate.
    */
   public void blow(String msg, boolean disabledNotBlown) {
+    CoreUpdater blownCoreUpdater = null;
     synchronized (this) {
       if (hasBeenBlown) {
         if (this.disabledNotBlown && !disabledNotBlown) {
@@ -1007,7 +1013,11 @@ public class NodeUpdateManager {
         }
       }
       if (coreUpdater != null) coreUpdater.preKill();
+      blownCoreUpdater = coreUpdater;
       coreUpdater = null;
+    }
+    if (blownCoreUpdater != null) {
+      blownCoreUpdater.kill();
     }
     if (revocationAlert == null) {
       revocationAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
