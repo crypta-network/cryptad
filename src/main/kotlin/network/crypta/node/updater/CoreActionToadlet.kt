@@ -197,7 +197,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       when (appEnv.osKind()) {
         AppEnv.OsKind.WINDOWS ->
           InstallerDelegate.Spawn(
-            ProcessBuilder("cmd", "/c", file.absolutePath),
+            ProcessBuilder("cmd", "/c", "\"${file.absolutePath}\""),
             msg("installer.launched.windows"),
           )
         AppEnv.OsKind.MAC -> macInstaller(file)
