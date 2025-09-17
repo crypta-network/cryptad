@@ -180,7 +180,9 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     if (path.isBlank()) return null
     val base = File(node.getNodeDir(), "updates/core").canonicalFile
     val canonical = runCatching { File(path).canonicalFile }.getOrNull() ?: return null
-    return canonical.takeIf { it.path.startsWith(base.path) }
+    val basePath = base.toPath()
+    val candidatePath = canonical.toPath()
+    return canonical.takeIf { candidatePath.startsWith(basePath) }
   }
 
   /**
