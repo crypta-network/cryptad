@@ -1,0 +1,116 @@
+# Standard Git Branching and Release Workflow for Cryptad
+
+Last validated: 2025-09-18
+
+This document captures the Cryptad team’s standard Git branching and release workflow, validated against the project wiki and aligned with repository policies found in `AGENTS.md`.
+
+## Goals
+
+- Keep `main` always releasable and matching the latest production build.
+- Use a simple, predictable versioning model driven by a single integer build number.
+- Allow parallel feature development while keeping release and hotfix flows safe and auditable.
+
+## Versioning System
+
+- Single integer build number set in `build.gradle.kts` (e.g., `version = 2`).
+- Tags use `v<build-number>` (e.g., `v2`).
+- Generated artifacts and installers use this integer where a numeric version is required (e.g., jpackage `--app-version`).
+- Compatibility: The build number is used in Cryptad/Fred version strings and for update compatibility checks.
+
+Rationale: Using a single, monotonically increasing integer keeps updater compatibility straightforward (USK subscriptions, minimum build checks) and avoids semantic-version drift.
+
+## Branching Model (GitFlow‑inspired)
+
+- Primary branches
+  - `main`: latest production-ready code; every commit on `main` must be release-quality.
+  - `develop`: integration branch for upcoming work that will land in the next release.
+
+- Supporting branches
+  - `feature/<name>`: new features or refactors targeting the next release.
+  - `bugfix/<name>`: fixes for work on `develop` before a release branch is cut.
+  - `release/<build-number>`: release stabilization for the numbered build; only critical changes.
+  - `hotfix/<build-number>`: emergency fix for production; based on `main`.
+
+Notes
+- Use Conventional Commits in messages (e.g., `feat:`, `fix:`, `docs:`). Squash & merge for feature/bugfix PRs is encouraged. Do not squash `release/*` or `hotfix/*` merges.
+- PR creation policy: open PRs only with maintainer/requester approval; all PRs require at least one approval and green CI.
+
+## Common Workflows
+
+### 1) Feature Development
+
+1. Branch from `develop`:
+   - `git checkout develop && git pull`
+   - `git checkout -b feature/<name>`
+2. Commit with Conventional Commit messages.
+3. Open PR to `develop`. Enable “squash and merge”.
+4. After merge, delete the feature branch.
+
+### 2) Bugfix on Develop (pre‑release)
+
+1. Branch from `develop`:
+   - `git checkout -b bugfix/<name>`
+2. Open PR to `develop` (squash & merge).
+
+### 3) Release Workflow (stabilization)
+
+1. Prepare the build number in `build.gradle.kts` (e.g., bump to `version = 2`).
+2. Create release branch:
+   - `git checkout develop && git pull`
+   - `git checkout -b release/2`
+3. Stabilize: only fixes, docs, and release tasks. Avoid large refactors.
+4. Tag the release on `release/2`:
+   - `git tag v2`
+5. Merge forward to `main` (no squash), then back‑merge to `develop`:
+   - `git checkout main && git merge --no-ff release/2`
+   - `git checkout develop && git merge --no-ff release/2`
+6. Push branches and tags:
+   - `git push origin main develop release/2`
+   - `git push origin v2`
+
+Outcome: `main` now reflects release `v2`. `develop` includes the same changes so future work starts from the released state.
+
+### 4) Hotfix Workflow (production)
+
+1. Branch from `main`:
+   - `git checkout main && git pull`
+   - `git checkout -b hotfix/3`
+2. Fix the issue. Update the build number to the next integer if the hotfix changes the shipped build (e.g., `version = 3`).
+3. Tag the hotfix on `hotfix/3`:
+   - `git tag v3`
+4. Merge to `main` and back‑merge to `develop` (no squash):
+   - `git checkout main && git merge --no-ff hotfix/3`
+   - `git checkout develop && git merge --no-ff hotfix/3`
+5. Push branches and tags:
+   - `git push origin main develop hotfix/3`
+   - `git push origin v3`
+
+Outcome: Production receives `v3`; `develop` is updated to include the hotfix.
+
+## Do/Don’t
+
+- Do
+  - Keep `main` releasable; use `develop` for integration.
+  - Use squash merges for `feature/*` and `bugfix/*` to keep history clean.
+  - Use `--no-ff` merges for `release/*` and `hotfix/*` to preserve branch context.
+  - Tag every release/hotfix with `v<build-number>`.
+  - After releasing or hotfixing, always back‑merge to `develop`.
+
+- Don’t
+  - Don’t rebase or squash `release/*` and `hotfix/*` branches when merging into `main`/`develop`.
+  - Don’t skip bumping the build number when a release/hotfix changes the shipped build.
+  - Don’t open PRs without maintainer/requester approval.
+
+## Release/Hotfix Checklist
+
+- [ ] `build.gradle.kts` has the intended numeric `version` (build number).
+- [ ] CI is green on the release/hotfix branch.
+- [ ] Tag created: `v<build-number>`.
+- [ ] Merged to `main` (no squash), then back‑merged to `develop`.
+- [ ] Pushed tags and branches.
+- [ ] Release notes updated (if applicable).
+
+## Notes on Updater Compatibility
+
+- The integer build number participates in network compatibility checks and update gating.
+- Update-over-Mandatory (UOM) for the core JAR is disabled in favor of the package‑based CoreUpdater. Tags and build numbers still identify releases for packaging and distribution.

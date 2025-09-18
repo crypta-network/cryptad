@@ -555,13 +555,19 @@ class CoreUpdater(
           "download started (listener attached): target=${outFile.absolutePath}"
         )
       } catch (e: FetchException) {
+        markStartFailure(e.message ?: e.javaClass.simpleName, fatalFlag = safeIsFatal(e))
+        ctx.eventProducer.removeEventListener(this)
+        getter = null
         this@CoreUpdater.logError(
-          "Failed to start package download: ${e.message ?: e.javaClass.simpleName}",
+          "Failed to start package download: ${errorMsg ?: e.javaClass.simpleName}",
           e,
         )
       } catch (e: Exception) {
+        markStartFailure(e.message ?: e.javaClass.simpleName, fatalFlag = false)
+        ctx.eventProducer.removeEventListener(this)
+        getter = null
         this@CoreUpdater.logError(
-          "Error starting package download: ${e.message ?: e.javaClass.simpleName}",
+          "Error starting package download: ${errorMsg ?: e.javaClass.simpleName}",
           e,
         )
       }
@@ -657,6 +663,23 @@ class CoreUpdater(
       } catch (_: Throwable) {
         // ignore
       }
+    }
+
+    /** Guarded read of fatal status for FetchException instances. */
+    private fun safeIsFatal(e: FetchException): Boolean =
+      try {
+        e.isFatal
+      } catch (_: Throwable) {
+        false
+      }
+
+    /** Marks the fetcher as failed during startup, exposing the error to the UI. */
+    private fun markStartFailure(message: String?, fatalFlag: Boolean) {
+      complete = true
+      successFile = null
+      failed = true
+      fatal = fatalFlag
+      errorMsg = message ?: "Failed to start download"
     }
   }
 }
