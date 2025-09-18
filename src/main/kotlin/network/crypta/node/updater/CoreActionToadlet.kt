@@ -153,7 +153,10 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
           else InstallerDelegate.Manual(msg("store.invalidUrl.mac"))
         AppEnv.OsKind.WINDOWS ->
           if (url.isNotBlank())
-            InstallerDelegate.Spawn(ProcessBuilder("cmd", "/c", url), msg("store.openingPage"))
+            InstallerDelegate.Spawn(
+              ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url),
+              msg("store.openingPage")
+            )
           else InstallerDelegate.Manual(msg("store.invalidUrl.windows"))
         else -> InstallerDelegate.Manual(msg("store.unsupportedPlatform"))
       }
