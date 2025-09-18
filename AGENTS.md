@@ -75,6 +75,28 @@ architecture review).
 - Launcher code style guardrails
   - Use the `APP_NAME` constant for window titles; prefer logging via `LauncherLog` over silent catches; keep Desktop integration hooks inside `try/catch` with debug logs.
 
+### CoreUpdater Migration (Sep 2025)
+
+- Core package-based updates
+  - Replaces self-updating of `cryptad.jar` with a package-based updater (“CoreUpdater”).
+  - Fetches `info/<N>` JSON from the existing update USK, selects an OS/arch-specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
+  - Plugin updates are unchanged.
+- Update system changes
+  - `MainJarUpdater` removed; `NodeUpdateManager` now wires and coordinates `CoreUpdater` for core and `PluginJarUpdater` for plugins.
+  - JAR Update-over-Mandatory (UOM) is disabled; `supportsJarUOM()` returns false and legacy jar UOM paths are gated or no-ops.
+- New endpoint and UI
+  - HTTP endpoint: `/core-update/` with actions `download`, `install`, and `openStore`.
+  - Alerts panel shows progress percent when available; failures surface clear retry guidance (non‑fatal errors relabel to “Retry”).
+- Platform specifics
+  - Linux: prefers GUI handoff (gio/xdg-open) or PackageKit; in Flatpak uses the portal/`flatpak-spawn` to bridge to host tools. `.snap` files are never GUI-opened; installs use `snap install --dangerous`.
+  - macOS: adds Gatekeeper guidance for unsigned builds.
+  - Windows: adds SmartScreen guidance and SHA‑256 verification tips.
+- Environment detection
+  - `AppEnv` is the single source of truth for OS/arch/sandbox/service detection; launcher and updater code paths were refactored to use it.
+- Descriptor format & integrity
+  - JSON includes `version`, `packages` keyed by `<arch>.<ext>`, and optional `changelog_chk`/`fullchangelog_chk`.
+  - CHK integrity covers content; any historical `sha256` fields in descriptors are ignored.
+
 ### Environment detection (AppEnv)
 
 AppEnv is the SINGLE source of truth for runtime environment detection across the codebase. Do not read `System.getProperty("os.name")`, `os.arch`, or parse PATH directly in new code; use `AppEnv` instead.
@@ -220,10 +242,11 @@ Tip: If GitHub API rate limits are hit during builds, set `GITHUB_TOKEN` in the 
 
 ### Update System
 
-- `NodeUpdateManager` coordinates updates
-- `MainJarUpdater` updates the main application
-- `PluginJarUpdater` manages plugin updates
-- Update-over-Mandatory (UOM) for network-wide updates
+- `NodeUpdateManager` coordinates updates.
+- Core updates: `CoreUpdater` fetches `info/<N>` JSON from the update USK, selects an OS/arch package, downloads under `nodeDir/updates/core/<version>/`, and exposes actions via `/core-update/`.
+- Plugin updates: `PluginJarUpdater` continues to manage plugin downloads and deploys.
+- JAR UOM: disabled for the core; jar UOM handlers are gated (`supportsJarUOM() == false`).
+- Config keys: `node.updater.enabled`, `node.updater.autoupdate` remain (autoupdate downloads packages; OS installation is manual or guided).
 
 ### Security Model
 
@@ -326,7 +349,10 @@ start/stop the wrapper reliably.
   - RPM: `src/jpackage/linux/crypta.spec` handles conditional service/desktop logic and also creates the `cryptad` user. The systemd unit is staged under the image at `lib/systemd/system/cryptad.service` and installed to `/etc/systemd/system/` by the spec. Desktop entry removal happens in `%postun` only on final erase (`$1=0`) so upgrades do not delete `/usr/share/applications/crypta.desktop`.
 - Icon and desktop entry:
   - A full‑size Linux icon is embedded; a `.desktop` file is prewritten into the image and patched on install so GNOME and other DEs display the correct icon. WM_CLASS is set to match the Swing window class.
-- Script library: common installer logic lives in `src/jpackage/linux/crypta-common.sh` (installed under `lib/` in the app image). Maintainer scripts and spec sections source it when present and include safe fallbacks to keep uninstall idempotent after files are removed. Do not duplicate `is_desktop`, `ensure_user`, or service control snippets elsewhere.
+ - Script library: common installer logic lives in `src/jpackage/linux/crypta-common.sh` (installed under `lib/` in the app image). Maintainer scripts and spec sections source it when present and include safe fallbacks to keep uninstall idempotent after files are removed. Do not duplicate `is_desktop`, `ensure_user`, or service control snippets elsewhere.
+- Headless helper: DEB/RPM install a privileged, least‑privilege helper for non‑interactive core package installs:
+  - Systemd oneshot unit `cryptad-core-install@.service` and script `cryptad-core-install.sh` (installed under the app image) validate paths under `/var/lib/cryptad/updates/core` and perform the install via PackageKit/native tools.
+  - A polkit rule restricts starting only this unit and only to the `cryptad` user. When unavailable, the UI shows manual admin commands instead.
 
 Debugging installers (Linux)
 - Set `CRYPTA_DEBUG=1` in the environment to enable verbose logging from maintainer scripts. Logs append to `/var/log/crypta-installer.log`.
@@ -356,6 +382,12 @@ Uninstall semantics
     - Warn the user and ask them to set their identity (agents must not set it themselves). Example:
       - "Git identity is not configured. Please run: git config --global user.name "<Your Name>" && git config --global user.email "<you@example.com>""
     - After the user confirms identity is set, resume the commit.
+
+### Temporary Working Notes
+
+- `tmp_changes.md` is for local, short‑lived notes and is ignored by Git. Do not commit it or include it in PRs.
+- If accidentally staged: `git restore --staged tmp_changes.md` (and optionally `git checkout -- tmp_changes.md`).
+- Copy any relevant, permanent information into this `AGENTS.md`, PR descriptions, or proper docs under `docs/`.
 
 ## Desktop & Theme Handling
 
