@@ -155,7 +155,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
           if (url.isNotBlank())
             InstallerDelegate.Spawn(
               ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url),
-              msg("store.openingPage")
+              msg("store.openingPage"),
             )
           else InstallerDelegate.Manual(msg("store.invalidUrl.windows"))
         else -> InstallerDelegate.Manual(msg("store.unsupportedPlatform"))
