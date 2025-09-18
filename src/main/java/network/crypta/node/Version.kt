@@ -71,11 +71,10 @@ const val MIN_ACCEPTABLE_FRED_BUILD_NUMBER: Int = 1475
 private const val BUILD_NUMBER_STRING: String = "@build_number@"
 
 /**
- * Historical wire identifier used in version strings for compatibility
- * with upstream Freenet nodes. Many peers and tools expect the first
- * component of the comma-separated Version field to be exactly "Fred". We
- * therefore keep using this value on the wire while retaining [NODE_NAME]
- * for human-readable contexts (logs, UI, etc.).
+ * Historical identifier used by legacy Freenet tooling. Modern Cryptad peers
+ * advertise [NODE_NAME] as the first component of their primary version array,
+ * but we still expose this value for compatibility surfaces (for example,
+ * minimum-acceptable strings and older helpers that key off "Fred").
  */
 private const val WIRE_NAME: String = "Fred"
 
