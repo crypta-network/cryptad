@@ -66,27 +66,64 @@ data, and serves applications.
 - [Spotless + Dependency Verification](#spotless--dependency-verification)
 - [Versioning](#versioning)
 - [Branching & Releases](#branching--releases)
+- [Update System](#update-system)
 - [Architecture Overview](#architecture-overview)
 - [License](#license)
 
 ## Quick Start
 
-Build the portable distribution and run the Swing launcher:
+Choose one of the following options.
+
+### A) Install via Packages (recommended)
+
+- Windows (.exe)
+  - Download the Crypta installer from the Releases page.
+  - Double‑click to install. If Windows SmartScreen blocks it, click “More info” → “Run anyway”.
+  - Launch “Crypta” from the Start Menu.
+
+- macOS (.dmg)
+  - Download the DMG from the Releases page and open it.
+  - Drag “Crypta.app” to Applications. If Gatekeeper blocks it, right‑click → Open (or allow in Settings → Privacy & Security).
+  - Launch “Crypta” from Applications/Launchpad.
+
+- Debian/Ubuntu (.deb)
+  - Install from a local .deb:
+    ```bash
+    sudo apt install ./Crypta-<version>_amd64.deb   # adjust arch/version
+    ```
+
+- Fedora/RHEL/openSUSE (.rpm)
+  - Install from a local .rpm:
+    ```bash
+    sudo dnf install ./Crypta-<version>.x86_64.rpm  # or: sudo zypper install ./...
+    ```
+
+- Snap (.snap)
+  - Local snap install (not from store):
+    ```bash
+    sudo snap install --dangerous ./crypta-<version>.snap
+    ```
+
+- Flatpak (.flatpak or .flatpakref)
+  - Local Flatpak bundle:
+    ```bash
+    flatpak install --user ./crypta-<version>-amd64.flatpak
+    flatpak run network.crypta.cryptad//v1
+    ```
+
+After installation, start Crypta from your OS application launcher. The app starts the daemon, opens the UI in your browser on the first successful start, and manages start/stop for you.
+
+### B) Portable Distribution (for developers)
+
+Build the portable distribution and run the Swing launcher without installing system packages:
 
 ```bash
 ./gradlew assembleCryptadDist
 build/cryptad-dist/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
 ```
 
-The launcher automatically starts the daemon, streams live logs, detects the FProxy port from lines like
+The launcher starts the daemon, streams live logs, detects the FProxy port from lines like
 `Starting FProxy on ...:<port>`, and opens `http://localhost:<port>/` on the first successful start.
-
-Top‑row buttons and shortcuts:
-- Start/Stop: toggles the daemon.
-  - Unix/macOS: sends SIGINT to the wrapper/JVM; waits up to ~20s before escalating (TERM→KILL).
-  - Windows: requests a graceful stop by deleting an anchor file and waits up to ~25s; only then falls back to `taskkill`.
-- Launch in Browser: enabled after the port is known (parsed from logs).
-- Quit: exits the launcher immediately (shutdown continues in background).
 
 Shortcuts (global):
 - ↑/↓ one row; PgUp/PgDn one page.
@@ -94,24 +131,8 @@ Shortcuts (global):
 - Enter/Space click focused button; s start/stop; q quit.
 
 Notes
-- Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear
-  while the wrapper is running.
+- Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear while the wrapper is running.
 - On Unix/macOS the launcher uses a pseudo‑tty (via `script`) when available to reduce buffering.
-
-### Windows shutdown behavior
-
-- The Windows batch launcher (`bin/cryptad.bat`) passes a per‑user anchor location to the wrapper: `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"`.
-- The Swing launcher requests a graceful stop by deleting that file; the Java Service Wrapper notices and shuts down the JVM cleanly (running shutdown hooks, flushing logs, etc.).
-- If the process tree is still alive after ~25 seconds, the launcher escalates to `taskkill` (first without `/F`, then with `/F`).
-- Advanced: If you need to change the anchor path, you can customize the batch file or pass a different property on the command line; a value in `wrapper.conf` (if present) is overridden by the batch property.
-
-### Launcher script resolution
-
-- Env override: set `CRYPTAD_PATH` to an absolute path or a path relative to your current working directory to force a specific wrapper script, e.g. `export CRYPTAD_PATH=bin/cryptad`.
-- Default resolution order (first match wins):
-  - From the running `cryptad.jar` directory: `<jarDir>/cryptad`.
-  - From the assembled distribution layout: `<jarDir>/../bin/cryptad`.
-  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
 
 ## Building
 
@@ -324,13 +345,14 @@ Linux behavior and service
 
 Manual service control (Linux)
 
-Service management (Linux)
+Service management (Linux):
 
 ```bash
 sudo systemctl status cryptad
 sudo systemctl start cryptad   # start explicitly after installation
 sudo systemctl stop cryptad
 sudo systemctl disable --now cryptad
+```
 
 Package removal behavior (Linux)
 
@@ -345,7 +367,6 @@ sudo rm -f /etc/systemd/system/cryptad.service && sudo systemctl daemon-reload
 sudo rm -rf /var/lib/cryptad
 sudo userdel cryptad 2>/dev/null || true
 sudo groupdel cryptad 2>/dev/null || true
-```
 ```
 
 Troubleshooting (macOS)
@@ -368,6 +389,23 @@ build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
 cd build/jpackage/Crypta.app/Contents
 ./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
 ```
+
+## Launcher Details
+
+### Windows shutdown behavior
+
+- The Windows batch launcher (`bin/cryptad.bat`) passes a per‑user anchor location to the wrapper: `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"`.
+- The Swing launcher requests a graceful stop by deleting that file; the Java Service Wrapper notices and shuts down the JVM cleanly (running shutdown hooks, flushing logs, etc.).
+- If the process tree is still alive after ~25 seconds, the launcher escalates to `taskkill` (first without `/F`, then with `/F`).
+- Advanced: To change the anchor path, customize the batch file or pass a different property on the command line; a value in `wrapper.conf` is overridden by the batch property.
+
+### Launcher script resolution
+
+- Env override: set `CRYPTAD_PATH` to an absolute path or a path relative to your current working directory to force a specific wrapper script, e.g. `export CRYPTAD_PATH=bin/cryptad`.
+- Default resolution order (first match wins):
+  - From the running `cryptad.jar` directory: `<jarDir>/cryptad`.
+  - From the assembled distribution layout: `<jarDir>/../bin/cryptad`.
+  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
 
 ## Development Guidelines
 
@@ -420,8 +458,16 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 
 ## Branching & Releases
 
-- [Standard branching and release workflow](https://github.com/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad)
+- Standard branching and release workflow: see `docs/standard-git-branching-and-release-workflow.md` (validated copy). The original wiki page is also available: https://github.com/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad
 - [Release workflow and operations runbook](https://github.com/crypta-network/cryptad/wiki/Cryptad-Release-Workflow-and-Runbook)
+
+## Update System
+
+- Core updates use a package‑based updater (“CoreUpdater”). It subscribes to an `info/<N>` JSON descriptor via the existing update USK, selects an OS/arch‑specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
+- Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
+- Plugin updates continue to be downloaded and deployed in‑app.
+- JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
+- For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
 
 ## Architecture Overview
 
