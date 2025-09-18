@@ -4,3 +4,4 @@ repo/
 tools/flatpak/work/
 tools/flatpak/local/
 build/
+build-logic/build/
