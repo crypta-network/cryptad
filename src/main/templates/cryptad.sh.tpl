@@ -171,7 +171,11 @@ echo "  WRAP_TARGET=$WRAP_OS-$WRAP_ARCH-$WRAP_BIT"
 echo "  REMOTE_DEBUG=$DEBUG_DESC"
 
 if [ -x "$WRAPPER" ]; then
-  exec "$WRAPPER" -c "$CONF" "${EXTRA_PROPS[@]}" "$@"
+  if (( ${#EXTRA_PROPS[@]} > 0 )); then
+    exec "$WRAPPER" -c "$CONF" "${EXTRA_PROPS[@]}" "$@"
+  else
+    exec "$WRAPPER" -c "$CONF" "$@"
+  fi
 fi
 
 echo "No native wrapper found or not executable: $WRAPPER" >&2
