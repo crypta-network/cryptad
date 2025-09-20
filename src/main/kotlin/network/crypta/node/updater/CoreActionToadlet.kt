@@ -38,7 +38,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun t(key: String, replacements: Map<String, String> = emptyMap()): String {
     if (replacements.isEmpty()) return l10n.getString("CoreActionToadlet.$key")
     val entries = replacements.entries.toList()
-    val patterns = entries.map { "$" + "{${it.key}}" }.toTypedArray()
+    val patterns = entries.map { it.key }.toTypedArray()
     val values = entries.map { it.value }.toTypedArray()
     return l10n.getString("CoreActionToadlet.$key", patterns, values)
   }
