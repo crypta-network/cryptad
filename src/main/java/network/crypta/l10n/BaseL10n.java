@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.NoSuchElementException;
+import java.util.regex.Pattern;
 import network.crypta.clients.http.TranslationToadlet;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
@@ -686,7 +687,12 @@ public class BaseL10n {
     String result = getDefaultString(key);
 
     for (int i = 0; i < patterns.length; i++) {
-      result = result.replaceAll("\\$\\{" + patterns[i] + "\\}", quoteReplacement(values[i]));
+      String pattern = patterns[i];
+      if (pattern == null) {
+        continue;
+      }
+      result =
+          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
     }
 
     return result;
@@ -705,7 +711,12 @@ public class BaseL10n {
     String result = getString(key);
 
     for (int i = 0; i < patterns.length; i++) {
-      result = result.replaceAll("\\$\\{" + patterns[i] + "\\}", quoteReplacement(values[i]));
+      String pattern = patterns[i];
+      if (pattern == null) {
+        continue;
+      }
+      result =
+          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
     }
 
     return result;
@@ -766,7 +777,12 @@ public class BaseL10n {
     String result = HTMLEncoder.encode(getString(key));
     assert (patterns.length == values.length);
     for (int i = 0; i < patterns.length; i++) {
-      result = result.replaceAll("\\$\\{" + patterns[i] + "\\}", quoteReplacement(values[i]));
+      String pattern = patterns[i];
+      if (pattern == null) {
+        continue;
+      }
+      result =
+          result.replaceAll("\\$\\{" + Pattern.quote(pattern) + "\\}", quoteReplacement(values[i]));
     }
     node.addChild("%", result);
   }

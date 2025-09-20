@@ -2,8 +2,6 @@
 
 package network.crypta.config
 
-import network.crypta.fs.Resolved
-import network.crypta.support.SimpleFieldSet
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -12,6 +10,8 @@ import java.nio.file.StandardCopyOption
 import java.util.*
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import network.crypta.fs.Resolved
+import network.crypta.support.SimpleFieldSet
 
 @Throws(IOException::class)
 fun loadExpandingPlaceholders(
