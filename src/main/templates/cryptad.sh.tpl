@@ -14,6 +14,36 @@ if [ -n "${SNAP_USER_COMMON:-}" ]; then
   cd "$SNAP_USER_COMMON"
 fi
 
+# Prefer the jpackage-bundled runtime, when present, so the
+# Java Service Wrapper can reliably find a compatible `java`.
+# We discover common jpackage layouts and prepend their `bin`
+# directory to PATH. This does not override explicit JAVA_HOME
+# within the Wrapper; it only influences PATH-based discovery.
+add_path_prefix() {
+  case ":$PATH:" in
+    *":$1:"*) return 0 ;;  # already present
+    *) PATH="$1:$PATH" ; export PATH ;;
+  esac
+}
+
+# Candidates relative to the distribution root inside a jpackage image.
+# Layouts:
+#  - Linux:   <image>/lib/runtime/bin/java
+#  - macOS:   <app>.app/Contents/runtime/Contents/Home/bin/java
+#  - Windows: <image>/app/runtime/bin/java.exe (handled by .bat script)
+# From ROOT_DIR (= .../cryptad-dist), reach the image root parents and test.
+JPKG_CANDIDATES=(
+  "$ROOT_DIR/../../runtime/bin"                  # Linux
+  "$ROOT_DIR/../../runtime/Contents/Home/bin"   # macOS
+)
+for jb in "${JPKG_CANDIDATES[@]}"; do
+  if [ -x "$jb/java" ]; then
+    add_path_prefix "$jb"
+    JPKG_JAVA_BIN="$jb/java"
+    break
+  fi
+done
+
 CONF="$CONF_DIR/wrapper.conf"
 if [ ! -f "$CONF" ]; then
   echo "Missing configuration at $CONF" >&2
@@ -169,6 +199,9 @@ echo "  DETECTED_OS=$DIST_OS (raw=$OS_RAW)"
 echo "  DETECTED_ARCH=$DIST_ARCH (bits=$DIST_BIT source=$ARCH_SRC input=$ARCH_INPUT raw=$ARCH_RAW)"
 echo "  WRAP_TARGET=$WRAP_OS-$WRAP_ARCH-$WRAP_BIT"
 echo "  REMOTE_DEBUG=$DEBUG_DESC"
+if [ -n "${JPKG_JAVA_BIN:-}" ]; then
+  echo "  JPACKAGE_JAVA=$JPKG_JAVA_BIN (prepended to PATH)"
+fi
 
 if [ -x "$WRAPPER" ]; then
   if (( ${#EXTRA_PROPS[@]} > 0 )); then
