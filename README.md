@@ -111,7 +111,13 @@ Choose one of the following options.
     flatpak run network.crypta.cryptad//v1
     ```
 
-After installation, start Crypta from your OS application launcher. The app starts the daemon, opens the UI in your browser on the first successful start, and manages start/stop for you.
+Linux servers (no desktop environment)
+- On systems without a desktop environment, the installer (deb/rpm) creates a systemd unit `cryptad.service` and enables it, but does not start it automatically. You must start it manually after install:
+  ```bash
+  sudo systemctl start cryptad
+  ```
+
+After installation, start Crypta from your OS application launcher (on desktops). The app starts the daemon, opens the UI in your browser on the first successful start, and manages start/stop for you.
 
 ### B) Portable Distribution (for developers)
 

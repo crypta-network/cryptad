@@ -219,9 +219,8 @@ fun defaultTemplate(): String =
   """
       # Cryptad config (auto-generated)
       logger.priority=NORMAL
-      node.updater.enabled=false
+      node.updater.enabled=true
       node.updater.autoupdate=false
-      node.updater.updateInstallers=false
       End
   """
     .trimIndent() + "\n"

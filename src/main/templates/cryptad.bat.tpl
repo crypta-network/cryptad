@@ -13,6 +13,24 @@ if not exist "%CONF%" (
   exit /b 1
 )
 
+REM Use bundled runtime when running from a jpackage app image
+set "JPACKAGE_RUNTIME=%ROOT_DIR%\..\..\runtime"
+if exist "%JPACKAGE_RUNTIME%\bin\java.exe" (
+  if not defined JAVA_HOME (
+    for %%I in ("%JPACKAGE_RUNTIME%") do set "JAVA_HOME=%%~fI"
+  ) else (
+    if not exist "%JAVA_HOME%\bin\java.exe" (
+      for %%I in ("%JPACKAGE_RUNTIME%") do set "JAVA_HOME=%%~fI"
+    )
+  )
+)
+
+if defined JAVA_HOME (
+  if exist "%JAVA_HOME%\bin\java.exe" (
+    set "PATH=%JAVA_HOME%\bin;%PATH%"
+  )
+)
+
 REM Detect architecture (normalize to amd64/arm64)
 set "ARCH=%PROCESSOR_ARCHITECTURE%"
 if /I "%ARCH%"=="AMD64" set "ARCH=amd64"
