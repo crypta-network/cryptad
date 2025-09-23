@@ -1,0 +1,106 @@
+package network.crypta.support.io;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import network.crypta.config.Config;
+import network.crypta.fs.AppDirs;
+import network.crypta.fs.AppEnv;
+import network.crypta.fs.Resolved;
+import network.crypta.fs.ServiceDirs;
+import network.crypta.node.Node;
+import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeStarter;
+import network.crypta.support.Logger;
+
+public class DatastoreUtil {
+
+  public static final long oneMiB = 1024 * 1024;
+  public static final long oneGiB = 1024 * 1024 * 1024;
+
+  /**
+   * Compute the maximum datastore size based on two constraints: - Memory: limit slot filter memory
+   * usage derived from the JVM max memory. - Disk: cap by available space on the Cryptad data
+   * directory (not the CWD).
+   *
+   * <p>The disk check resolves the data directory using the same service/user mode logic as
+   * NodeStarter and then queries its underlying FileStore for free space.
+   *
+   * @return Maximum datastore size in bytes.
+   */
+  public static long maxDatastoreSize() {
+    long maxDatastoreSize;
+
+    // check ram limitations
+    long maxMemory = NodeStarter.getMemoryLimitBytes();
+    if (maxMemory == Long.MAX_VALUE || maxMemory < 128 * oneMiB) {
+      maxDatastoreSize = oneGiB; // 1GB default if don't know or very small memory.
+    } else {
+      // Don't use the first 100MB for slot filters.
+      long available = maxMemory - 100 * oneMiB;
+      // Don't use more than 50% of available memory for slot filters.
+      available = available / 2;
+      // Slot filters are 4 bytes per slot.
+      long slots = available / 4;
+      // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e. the number of
+      // slots in each store.
+      slots /= 3;
+      // We return the total size, so we don't need to worry about cache vs store or even client
+      // cache.
+      // One key of all 3 types combined uses Node.sizePerKey bytes on disk. So we get a size.
+      maxDatastoreSize = slots * Node.sizePerKey; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
+    }
+
+    // check free disk space of the Cryptad data directory, not the current working directory
+    try {
+      AppEnv env = new AppEnv();
+      Resolved dirs = env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
+      Path dataDirPath = dirs.getDataDir();
+      long unallocatedSpace = Files.getFileStore(dataDirPath).getUnallocatedSpace();
+      // TODO: leave some free space
+      // probably limit 256GB see comments of the autodetectDatastoreSize method
+      return Math.min(unallocatedSpace, maxDatastoreSize);
+    } catch (IOException e) {
+      Logger.error(DatastoreUtil.class, "Error querying space", e);
+    }
+
+    return maxDatastoreSize;
+  }
+
+  public static long autodetectDatastoreSize(NodeClientCore core, Config config) {
+    if (!config.get("node").getOption("storeSize").isDefault()) {
+      return -1;
+    }
+
+    long freeSpace = core.getNode().getStoreDir().getUsableSpace();
+
+    if (freeSpace <= 0) {
+      return -1;
+    } else {
+      long shortSize;
+      // Maximum for Freenet: 256GB. That's a 128MiB bloom filter.
+      long bloomFilter128MiBMax = 256 * oneGiB;
+      // SSD era: treat disk I/O cap same as bloom-filter cap so it is not more restrictive.
+      long diskIoMax = bloomFilter128MiBMax;
+
+      // Choose a suggested store size based on available free space.
+      if (freeSpace > 50 * oneGiB) {
+        // > 50 GiB: Use 20% free space; minimum 10 GiB. Limited by bloom filters.
+        shortSize =
+            Math.max(
+                10 * oneGiB, Math.min(freeSpace / 5, Math.min(diskIoMax, bloomFilter128MiBMax)));
+      } else if (freeSpace > 5 * oneGiB) {
+        // > 5 GiB: Use 20% free space, minimum 2 GiB.
+        shortSize = Math.max(freeSpace / 5, 2 * oneGiB);
+      } else if (freeSpace > 2 * oneGiB) {
+        // > 2 GiB: 512 MiB.
+        shortSize = 512 * oneMiB;
+      } else {
+        // <= 2 GiB: 256 MiB.
+        shortSize = 256 * oneMiB;
+      }
+
+      return shortSize;
+    }
+  }
+}

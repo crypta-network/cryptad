@@ -1,0 +1,52 @@
+package network.crypta.clients.fcp;
+
+import network.crypta.l10n.NodeL10n;
+import network.crypta.node.Node;
+import network.crypta.node.Version;
+import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.compress.Compressor;
+
+/**
+ * NodeHello
+ *
+ * <p>NodeHello FCPVersion=<protocol version> Node=Fred Version=0.7.0,401 EndMessage
+ */
+public class NodeHelloMessage extends FCPMessage {
+  public static final String NAME = "NodeHello";
+
+  private final String id;
+
+  public NodeHelloMessage(String id) {
+    this.id = id;
+  }
+
+  @Override
+  public SimpleFieldSet getFieldSet() {
+    SimpleFieldSet sfs = new SimpleFieldSet(true);
+    // FIXME
+    sfs.putSingle("FCPVersion", "2.0");
+    sfs.putSingle("Node", "Cryptad");
+    sfs.putSingle("Version", Version.getVersionString());
+    sfs.put("Build", Version.currentBuildNumber());
+    sfs.putSingle("Revision", Version.gitRevision());
+    sfs.put("Testnet", Node.isTestnetEnabled());
+    sfs.putSingle("CompressionCodecs", Compressor.COMPRESSOR_TYPE.getHelloCompressorDescriptor());
+    sfs.putSingle("ConnectionIdentifier", id);
+    sfs.putSingle("NodeLanguage", NodeL10n.getBase().getSelectedLanguage().toString());
+    return sfs;
+  }
+
+  @Override
+  public String getName() {
+    return NodeHelloMessage.NAME;
+  }
+
+  @Override
+  public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
+    throw new MessageInvalidException(
+        ProtocolErrorMessage.INVALID_MESSAGE,
+        "NodeHello goes from server to client not the other way around",
+        null,
+        false);
+  }
+}

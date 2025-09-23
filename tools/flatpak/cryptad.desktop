@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Crypta
+GenericName=Crypta
+Comment=Launch the Crypta GUI (cryptad-launcher)
+Exec=cryptad-launcher
+Terminal=false
+StartupNotify=false
+Icon=network.crypta.cryptad
+Categories=Network;Utility;
+Keywords=crypta;cryptad;p2p;daemon;launcher;

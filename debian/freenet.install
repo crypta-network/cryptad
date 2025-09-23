@@ -1,3 +1,0 @@
-debian/seednodes.fref usr/share/freenet
-debian/freenet.ini usr/share/freenet
-debian/wrapper.conf usr/share/freenet

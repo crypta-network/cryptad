@@ -1,0 +1,119 @@
+#!/bin/sh
+set -e
+
+# jpackage DEB post-install script
+# Installs either a systemd service (server/no-desktop) or a desktop entry (desktop environments).
+
+APP_DIR="/opt/cryptad/crypta"
+[ -d "/opt/cryptad/Crypta" ] && APP_DIR="/opt/cryptad/Crypta"
+SERVICE_SRC="$APP_DIR/lib/systemd/system/cryptad.service"
+SERVICE_DST="/etc/systemd/system/cryptad.service"
+DESKTOP_SRC="$APP_DIR/lib/crypta-Crypta.desktop"
+DESKTOP_DST="/usr/share/applications/crypta.desktop"
+
+# Headless install helper (oneshot) + polkit rule
+HELPER_UNIT_SRC="$APP_DIR/lib/systemd/system/cryptad-core-install@.service"
+HELPER_UNIT_DST="/etc/systemd/system/cryptad-core-install@.service"
+HELPER_SCRIPT_SRC="$APP_DIR/lib/cryptad-core-install.sh"
+HELPER_SCRIPT_DST="$APP_DIR/lib/cryptad-core-install.sh" # lives inside the app image
+POLKIT_SRC="$APP_DIR/lib/polkit-1/60-cryptad-core-install.rules"
+POLKIT_DST="/usr/share/polkit-1/rules.d/60-cryptad-core-install.rules"
+
+# Try to source common helpers from installed image
+COMMON="$APP_DIR/lib/crypta-common.sh"
+[ -f "$COMMON" ] && . "$COMMON"
+
+# Fallbacks if helpers are not available
+command -v is_desktop >/dev/null 2>&1 || is_desktop() {
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl list-unit-files 2>/dev/null | awk '{print $1}' | grep -q '^display-manager\.service$'; then
+      if systemctl is-enabled display-manager >/dev/null 2>&1 || systemctl is-active display-manager >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+  fi
+  ls /usr/share/xsessions/*.desktop >/dev/null 2>&1 && return 0
+  ls /usr/share/wayland-sessions/*.desktop >/dev/null 2>&1 && return 0
+  return 1
+}
+
+command -v ensure_user >/dev/null 2>&1 || ensure_user() {
+  if ! getent group cryptad >/dev/null 2>&1; then
+    if command -v groupadd >/dev/null 2>&1; then
+      groupadd --system cryptad || true
+    elif command -v addgroup >/dev/null 2>&1; then
+      addgroup --system cryptad || true
+    fi
+  fi
+  if ! id -u cryptad >/dev/null 2>&1; then
+    if command -v useradd >/dev/null 2>&1; then
+      useradd --system --home-dir /var/lib/cryptad --shell /usr/sbin/nologin \
+        --gid cryptad --comment "Cryptad service user" cryptad || true
+    fi
+  fi
+  install -d -m 0750 -o cryptad -g cryptad /var/lib/cryptad || true
+}
+
+install_helper() {
+  # Install headless helper unit and script for controlled, polkit-backed installs
+  if [ -f "$HELPER_UNIT_SRC" ]; then
+    install -D -m 0644 "$HELPER_UNIT_SRC" "$HELPER_UNIT_DST"
+    # Rewrite APP_DIR path in ExecStart to the detected APP_DIR
+    sed -i "s|/opt/cryptad/crypta|$APP_DIR|g" "$HELPER_UNIT_DST" || true
+  fi
+  # The helper script is shipped inside the app image under lib/; ensure it is executable.
+  if [ -f "$HELPER_SCRIPT_SRC" ]; then
+    chmod 0755 "$HELPER_SCRIPT_SRC" || true
+  fi
+  if [ -f "$POLKIT_SRC" ]; then
+    install -D -m 0644 "$POLKIT_SRC" "$POLKIT_DST"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+  fi
+}
+
+install_service() {
+  ensure_user
+  if [ -f "$SERVICE_SRC" ]; then
+    install -D -m 0644 "$SERVICE_SRC" "$SERVICE_DST"
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload || true
+      systemctl enable cryptad.service || true
+      # Do not auto-start; leave enabled for manual start
+    fi
+  fi
+}
+
+install_desktop() {
+  if [ -f "$DESKTOP_SRC" ]; then
+    install -D -m 0644 "$DESKTOP_SRC" "$DESKTOP_DST"
+    # Normalize Exec/Icon to the actual app dir; ensure WM_CLASS keys exist on both copies.
+    for f in "$DESKTOP_DST" "$DESKTOP_SRC"; do
+      sed -i "s|^Exec=.*|Exec=$APP_DIR/bin/Crypta|" "$f" || true
+      sed -i "s|^Icon=.*|Icon=$APP_DIR/lib/cryptad.png|" "$f" || true
+      grep -q '^StartupWMClass=' "$f" || echo 'StartupWMClass=network-crypta-launcher-LauncherKt' >> "$f"
+      grep -q '^X-GNOME-WMClass=' "$f" || echo 'X-GNOME-WMClass=network-crypta-launcher-LauncherKt' >> "$f"
+    done
+  fi
+  # Refresh desktop databases (both system and local share paths)
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
+    update-desktop-database -q /usr/local/share/applications || true
+  fi
+  # Refresh icon cache for hicolor theme
+  if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
+  fi
+}
+
+# Deb maintainer scripts can pass an argument (e.g., configure). We ignore it safely.
+
+install_helper # Always present the helper on both desktop and server
+if is_desktop; then
+  install_desktop
+else
+  install_service
+fi
+
+exit 0

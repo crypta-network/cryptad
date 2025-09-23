@@ -1,0 +1,42 @@
+[versions]
+kotlin = "2.2.10"
+coroutines = "1.10.2"
+bcprov = "2.73.7"
+jna = "5.17.0"
+commonsCompress = "1.28.0"
+pebble = "3.2.4"
+unbescape = "1.1.6.RELEASE"
+slf4j = "2.0.17"
+junit4 = "4.13.2"
+mockito = "5.18.0"
+hamcrest = "3.0"
+objenesis = "3.4"
+picocli = "4.7.7"
+spotless = "7.2.1"
+flatlaf = "3.6.1"
+jsystemTheme = "ea2f8582ea"
+dbusJava = "5.1.0"
+
+[libraries]
+bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
+bcpkix = { group = "org.bouncycastle", name = "bcpkix-lts8on", version.ref = "bcprov" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+jnaPlatform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
+commonsCompress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
+unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
+slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
+objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
+picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
+kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
+flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
+jsystemThemeDetector = { group = "com.github.Dansoftowner", name = "jSystemThemeDetector", version.ref = "jsystemTheme" }
+dbusCore = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbusJava" }
+dbusTransportNativeUnix = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
+
+[plugins]
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

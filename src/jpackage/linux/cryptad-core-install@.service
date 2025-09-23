@@ -1,0 +1,17 @@
+[Unit]
+Description=Crypta Core package installer (oneshot)
+Documentation=https://crypta.network/
+# When invoked with an escaped path instance, %f expands to the unescaped absolute path
+ConditionPathExists=%f
+
+[Service]
+Type=oneshot
+# Post-install script will rewrite /opt/cryptad/crypta to the actual APP_DIR if needed
+ExecStart=/opt/cryptad/crypta/lib/cryptad-core-install.sh %f
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+# Not enabled by default; started on-demand as a template unit

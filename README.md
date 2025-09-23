@@ -1,117 +1,498 @@
-[![Build status](https://img.shields.io/github/check-runs/hyphanet/fred/next?label=build)](https://github.com/hyphanet/fred/actions)
-[![Coverity status](https://scan.coverity.com/projects/2316/badge.svg?flat=1)](https://scan.coverity.com/projects/freenet-fred)
+<p align="center"><img src="docs/images/crypta_logo.png" alt="Crypta Logo" width="160"></p>
+<h1 align="center" style="padding-top: 0; margin-top: 0;"><strong>Crypta</strong></h1>
+<p align="center"><em><strong>Crypta</strong> is a privacy‑first, decentralized datastore and app platform — a modern fork of Hyphanet/Freenet.</em></p>
 
-# Freenet
+<p align="center">
+  <a href="https://github.com/crypta-network/cryptad/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/crypta-network/cryptad/actions/workflows/ci.yml/badge.svg?branch=main" />
+  </a>
+  <a href="https://www.gnu.org/licenses/gpl-3.0">
+    <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
+  </a>
+  <img alt="Java 21+" src="https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk" />
+  <img alt="Kotlin 2.2+" src="https://img.shields.io/badge/Kotlin-2.2%2B-7F52FF?logo=kotlin" />
+  <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
+</p>
 
-Freenet is a platform for censorship-resistant communication and publishing. It is peer-to-peer
-software which provides a distributed, encrypted, decentralized datastore. Websites and applications
-providing things like forums and chat are built on top of it.
+## Overview
 
-Fred stands for Freenet REference Daemon.
+**Crypta** is a platform for censorship‑resistant communication and publishing. It is a fork of Hyphanet (formerly Freenet)
+that builds on its core ideas while modernizing usability, performance, and developer experience. **Crypta** provides a
+peer‑to‑peer, distributed, encrypted, and decentralized datastore on top of which applications such as forums, chat,
+micro‑blogs, and websites can run without central servers.
+
+Why fork? Hyphanet/Freenet pioneered privacy‑preserving routing and content‑addressed storage, but several long‑standing
+frictions hold it back:
+
+- Usability and onboarding: confusing opennet/darknet concepts, painful first‑run setup, and limited, dated UIs make it
+  hard for new users to join and stay.
+- Performance for cold content: the anonymity model and multi‑hop routing can lead to slower retrievals, especially for
+  infrequently accessed data; bootstrap and NAT traversal further compound early‑session latency.
+- Observability without compromising privacy: network‑wide performance and health are hard to measure, making tuning and
+  evolution slow and error‑prone.
+
+**Crypta**’s vision is to keep the privacy and resilience, while making it pleasant, fast, and sustainable to use and build
+on:
+
+- User experience first: a modern web UI, sensible defaults, and a one‑click guided onboarding that hides complexity
+  (smart opennet bootstrap, optional darknet linking later).
+- Faster routing and retrieval: adaptive, locality‑aware routing; popularity‑sensitive caching; opportunistic prefetch;
+  and transport updates (e.g., QUIC/HTTP‑3, improved congestion control, and better NAT traversal) for lower tail
+  latency.
+- Safe observability: privacy‑preserving telemetry and reproducible benchmarking harnesses to inform tuning without
+  leaking user data.
+- A better platform: Kotlin‑first codebase, a stable plugin SDK, typed configuration, and testable interfaces to make
+  extending the network straightforward.
+
+This repository contains the reference node (the “**Crypta** reference daemon”) that participates in the network, stores
+data, and serves applications.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/screenshot_light.png">
+  <img alt="Fallback image description" src="docs/images/screenshot_dark.png">
+</picture>
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Building](#building)
+- [Testing](#testing)
+- [Code Quality](#code-quality)
+- [Running Your Build](#running-your-build)
+- [Development Guidelines](#development-guidelines)
+- [Dependencies](#dependencies)
+- [Spotless + Dependency Verification](#spotless--dependency-verification)
+- [Versioning](#versioning)
+- [Branching & Releases](#branching--releases)
+- [Update System](#update-system)
+- [Architecture Overview](#architecture-overview)
+- [License](#license)
+
+## Quick Start
+
+Choose one of the following options.
+
+### A) Install via Packages (recommended)
+
+- Windows (.exe)
+  - Download the Crypta installer from the Releases page.
+  - Double‑click to install. If Windows SmartScreen blocks it, click “More info” → “Run anyway”.
+  - Launch “Crypta” from the Start Menu.
+
+- macOS (.dmg)
+  - Download the DMG from the Releases page and open it.
+  - Drag “Crypta.app” to Applications. If Gatekeeper blocks it, right‑click → Open (or allow in Settings → Privacy & Security).
+  - Launch “Crypta” from Applications/Launchpad.
+
+- Debian/Ubuntu (.deb)
+  - Install from a local .deb:
+    ```bash
+    sudo apt install ./Crypta-<version>_amd64.deb   # adjust arch/version
+    ```
+
+- Fedora/RHEL/openSUSE (.rpm)
+  - Install from a local .rpm:
+    ```bash
+    sudo dnf install ./Crypta-<version>.x86_64.rpm  # or: sudo zypper install ./...
+    ```
+
+- Snap (.snap)
+  - Local snap install (not from store):
+    ```bash
+    sudo snap install --dangerous ./crypta-<version>.snap
+    ```
+
+- Flatpak (.flatpak or .flatpakref)
+  - Local Flatpak bundle:
+    ```bash
+    flatpak install --user ./crypta-<version>-amd64.flatpak
+    flatpak run network.crypta.cryptad//v1
+    ```
+
+Linux servers (no desktop environment)
+- On systems without a desktop environment, the installer (deb/rpm) creates a systemd unit `cryptad.service` and enables it, but does not start it automatically. You must start it manually after install:
+  ```bash
+  sudo systemctl start cryptad
+  ```
+
+After installation, start Crypta from your OS application launcher (on desktops). The app starts the daemon, opens the UI in your browser on the first successful start, and manages start/stop for you.
+
+### B) Portable Distribution (for developers)
+
+Build the portable distribution and run the Swing launcher without installing system packages:
+
+```bash
+./gradlew assembleCryptadDist
+build/cryptad-dist/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
+```
+
+The launcher starts the daemon, streams live logs, detects the FProxy port from lines like
+`Starting FProxy on ...:<port>`, and opens `http://localhost:<port>/` on the first successful start.
+
+Shortcuts (global):
+- ↑/↓ one row; PgUp/PgDn one page.
+- ←/→ move focus among the three buttons (wrap‑around).
+- Enter/Space click focused button; s start/stop; q quit.
+
+Notes
+- Live output combines the wrapper’s console with tailing of the wrapper log file when configured, so JVM logs appear while the wrapper is running.
+- On Unix/macOS the launcher uses a pseudo‑tty (via `script`) when available to reduce buffering.
 
 ## Building
 
-We've included the [Gradle Wrapper](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html) as
-recommended by the Gradle project. If you trust the version we've committed you can build
-immediately:
+We use the [Gradle Wrapper](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html). If you trust the committed
+wrapper, you can build immediately.
 
-#### POSIX / Windows PowerShell:
+Prerequisites:
 
-    $ ./gradlew jar
+- Java 21 or newer
+- Kotlin 2.2+ (tooling; the project includes Kotlin Gradle plugins)
+- A POSIX shell or Windows terminal
 
-#### Windows cmd:
+Build the node JAR (prints SHA‑256 of the output):
 
-    > gradlew jar
+```bash
+./gradlew buildJar
+```
 
-We've [configured it](gradle/wrapper/gradle-wrapper.properties) to [verify the checksum](https://docs.gradle.org/8.11/userguide/gradle_wrapper.html#wrapper_checksum_verification)
-of the archive it downloads from `https://services.gradle.org`.
+Clean build:
 
-### Build with ant
+```bash
+./gradlew clean buildJar
+```
 
-    $ mkdir -p lib; cd lib && grep -o CHK.* ../dependencies.properties  | xargs -P16 -I {} bash -c 'fcpget -v {} "$(echo {} | sed s,^.*/,,)"'
-    $ ant -propertyfile build.properties -f build-clean.xml -Dtest.skip=true -Dfindbugs.skip=true
-
-## Building the installers
-
-The installers are built from specialized repositories:
-
-- The GNU/Linux, macOS and *nix installer is built from [hyphanet/java_installer](https://github.com/hyphanet/java_installer).
-- The Windows installer is built from [hyphanet/wininstaller-innosetup](https://github.com/hyphanet/wininstaller-innosetup) and signed with [hyphanet/sign-windows-installer](https://github.com/hyphanet/sign-windows-installer).
-
-Free code signing for the Windows installer is provided by [SignPath.io](https://about.signpath.io/), the certificate by the [SignPath Foundation](https://signpath.org/).
-
+The wrapper is configured to [verify the distribution checksum](gradle/wrapper/gradle-wrapper.properties) from
+`https://services.gradle.org`.
 
 ## Testing
 
-### Run Tests
+- Run all tests in parallel:
 
-To run all unit tests, use
-
-    ./gradlew --parallel test
-
-You can run specifics tests with a test filter similar to the following:
-
-    ./gradlew --parallel test --tests *M3UFilterTest
-
-TODO: how to run integration tests.
-
-### Run your changes as node
-
-To test your version of Freenet, build it with ,./gradlew jar`,
-stop your node, replace `freenet.jar` in your
-Freenet directory with `build/libs/freenet.jar`, and start your node again.
-
-To override values set in `build.gradle.kts` put them into [the file](https://docs.gradle.org/8.11/userguide/build_environment.html)
-`gradle.properties` in the format `variable = value`. For instance:
-
-    org.gradle.parallel = true
-    org.gradle.daemon = true
-    org.gradle.jvmargs=-Xms256m -Xmx1024m
-    org.gradle.configureondemand=true
-
-    tasks.withType(Test)  {
-      maxParallelForks = Runtime.runtime.availableProcessors()
-    }
-
-## Contributing
-
-See our [contributor guidelines](CONTRIBUTING.md).
-
-### Get in contact
-
-* Ask the [development mailing list](https://www.hyphanet.org/pages/help.html#mailing-lists)
-  or join us in [IRC](https://web.libera.chat/?nick=Rabbit|?#freenet) - `#freenet` on
-  `irc.libera.chat`.
-* You can file problems in the [bug tracker](https://freenet.mantishub.io/my_view_page.php).
-
-## Add a new dependency
-
-All dependencies must be available via Freenet, so it must be added to
-dependencies.properties.
-
-- Add it to build.gradle.kts dependencies *and* dependencyVerification.
-  Run `./gradlew jar --debug` to find files that fail the
-  verification.
-- fcpupload {dependencyfile.jar}
-- add it to all installers: wininstaller-innosetup, java_installer, mactray. Search for `jna-platform` to find out where to put and register the dependency.
-- add dependency and the CHK to `dependencies.properties`.
-- update `scripts/update.sh` and `res/wrapper.conf` and `res/unix/run.sh` in java_installer to include the dependency.
-
-With the example of pebble: The filename is just the jarfile. The key is what fcpupload returns. Size is `wc -c filename.jar`, sha256 is `sha256sum filename.jar`, order is where it should be put in `wrapper.conf` in wrapper.java.classpath.
-
-```
-pebble.version=3.1.5
-pebble.filename=pebble-3.1.5.jar
-pebble.filename-regex=pebble-*.jar
-pebble.key=CHK@y~p8HMUVXmVgfSnrmUyu2UNXMO9uMDHS5nwo2YuOKvw,yzwLFP0GXa8RjwRpicQCPFKNggDXLkTQKH8nISe0qUY,AAMC--8/pebble-3.1.5.jar
-pebble.size=318169
-pebble.sha256=85e77f9fd64c0a1f85569db8f95c1fb8e6ef8b296f4d6206440dc6306140c1a1
-pebble.type=CLASSPATH
-pebble.order=4
+```bash
+./gradlew --parallel test
 ```
 
-## Licensing
-Freenet is under the GPL, version 2 or later - see LICENSE.Freenet. We use some
-code under the Apache license version 2 (mostly apache commons stuff), and some
-modified BSD code (Mantissa). All of which is compatible with the GPL, although
-arguably ASL2 is only compatible with GPL3. Some plugins are GPL3.
+- Run a specific test class:
+
+```bash
+./gradlew --parallel test --tests *TestClassName
+```
+
+- Run a specific test method:
+
+```bash
+./gradlew --parallel test --tests *TestClassName.methodName
+```
+
+## Code Quality
+
+- Compile only:
+
+```bash
+./gradlew compileJava
+```
+
+- Formatting via Spotless is configured; see the Spotless + Dependency Verification section if verification blocks resolution.
+- Gradle daemon is enabled by default; avoid passing `--no-daemon`.
+
+## Running Your Build
+
+To try your local build of **Crypta**:
+
+1. Build it with `./gradlew buildJar`.
+2. Stop your running node.
+3. Replace the existing node JAR with `build/libs/cryptad.jar` produced by the build.
+4. Start your node again.
+
+If you want to test the launcher without the real daemon, build with a dummy script that simulates
+output (including the FProxy line):
+
+```
+./gradlew -PuseDummyCryptad=true assembleCryptadDist
+build/cryptad-dist/bin/cryptad-launcher
+```
+
+Distribution (Java Service Wrapper):
+
+- Build a portable distribution (downloads the Tanuki wrapper and assembles bin/conf/lib):
+
+```
+./gradlew assembleCryptadDist
+```
+
+- Package it as a tar.gz:
+
+```
+./gradlew distTarCryptad
+```
+
+The resulting tree at `build/cryptad-dist` contains:
+- `bin/cryptad` and wrapper binaries
+- `bin/cryptad-launcher` (and `cryptad-launcher.bat` on Windows)
+- `conf/wrapper.conf` configured to use `lib/*.jar`
+- `lib/cryptad.jar`, runtime dependencies, and `lib/wrapper.jar`
+
+The launcher defers config path resolution to the runtime via `AppEnv` (no hard‑coded
+`cryptad.ini`), adapting to system services or per‑user environments.
+
+To override Gradle settings, create `gradle.properties` (see the
+[Gradle docs](https://docs.gradle.org/8.11/userguide/build_environment.html)) and add entries like:
+
+```properties
+org.gradle.parallel=true
+org.gradle.daemon=true
+org.gradle.jvmargs=-Xms256m -Xmx1024m
+org.gradle.configureondemand=true
+```
+
+### JLink Runtime Distribution
+
+Build a minimal JRE image that embeds the Cryptad distribution using direct jlink/jdeps tasks (no external runtime plugin):
+
+```bash
+# 1) Build the wrapper-based dist the jlink step consumes
+./gradlew assembleCryptadDist
+
+# 2) Create the jlink image and zip/tar.gz archives
+./gradlew distJlinkCryptad
+
+# Result:
+#  - build/cryptad-jlink-image/           (runnable image)
+#  - build/distributions/cryptad-jlink-v<version>.zip
+#  - build/distributions/cryptad-jlink-v<version>.tar.gz
+
+# Launch using the embedded runtime (no system JRE required):
+build/cryptad-jlink-image/bin/cryptad-launcher    # Windows: cryptad-launcher.bat
+```
+
+Notes
+- The jlink image includes `bin/cryptad-launcher` which prefers the embedded `bin/java` and uses `lib/*` for classpath.
+- We explicitly include key modules (e.g., `jdk.crypto.ec`, `java.net.http`, `jdk.unsupported`, `java.desktop`) and call `jlink` directly.
+- This does not alter the existing wrapper-based distribution; it is an additional, self-contained runtime option.
+- `bin/cryptad-launcher` and `cryptad-launcher.bat` now auto-detect the embedded runtime: when run from the jlink image they prefer `image/bin/java`; outside the image they fall back to `$JAVA_HOME/bin/java` or `java` on `PATH`.
+
+### Installers (jpackage)
+
+Build a desktop app image and (on macOS/Linux) native installers with `jpackage`. The image embeds a minimal runtime and
+bundles the portable distribution under `app/cryptad-dist/` so the GUI can invoke the wrapper reliably.
+
+Commands
+
+```bash
+# Build includes the jpackage app image.
+# On Linux and macOS, it also builds native installers when tooling is present
+# (Linux: DEB/RPM via `dpkg-deb`/`rpmbuild`; macOS: DMG). On Windows, installers
+# are not built by `build`.
+./gradlew build
+
+# App image only
+./gradlew jpackageImageCryptad
+
+# Native installer (macOS: .dmg; Linux: .deb or .rpm)
+# - Auto-picks type on Linux (prefers rpm when available)
+./gradlew jpackageInstallerCryptad
+
+# Force a specific Linux package type
+./gradlew jpackageInstallerRpm     # requires rpmbuild
+./gradlew jpackageInstallerDeb     # requires dpkg-deb
+
+# Or override the auto-detected Linux type
+./gradlew -PlinuxInstaller=rpm jpackageInstallerCryptad
+```
+
+Outputs (macOS example)
+
+- App image: `build/jpackage/Crypta.app`
+- Installer: `build/jpackage/Crypta-<numeric>.dmg`
+
+Details
+
+- App metadata: Name `Crypta`, Vendor `crypta.network`, App ID `network.crypta.cryptad`.
+- Main entry: `network.crypta.launcher.LauncherKt`.
+- Icons: `src/jpackage/macos/cryptad.icns`, `src/jpackage/windows/cryptad.ico`, `src/jpackage/linux/cryptad.png`.
+- Included docs: `LICENSE.txt`, `EULA.txt` (from `LICENSE`), `README.txt` (from `README.md`).
+- App layout: the launcher config (`Crypta.cfg`) sets classpath to `app/cryptad-dist/lib/*.jar`; jars are not duplicated in `app/`.
+- Versioning note: jpackage enforces numeric `--app-version` (e.g., `1`). Installer filenames follow jpackage defaults (e.g., `Crypta-<version>.<ext>`).
+Note: Windows installers are not built; Windows builds produce only the app image.
+
+Linux notes
+
+- RPM builds require `rpmbuild` to be installed and on PATH.
+- When both `dpkg-deb` and `rpmbuild` are installed, the default task prefers RPM. You can force DEB/RPM using the
+  tasks above or `-PlinuxInstaller=<deb|rpm>`.
+- The `build` task on Linux now depends on building all available Linux installers (DEB/RPM) and will skip any
+  installer type whose tool is missing.
+
+macOS notes
+
+- The `build` task on macOS now also builds a `.dmg` via `jpackage`.
+- Unsigned DMGs are fine for local testing; macOS may require right‑click → Open
+  or removing quarantine to run the app the first time.
+
+Linux behavior and service
+
+- Install location: the app image installs under `/opt/cryptad/Crypta` and the launcher/scripts expect `/opt/cryptad`.
+- Server vs desktop detection:
+  - Considered a “desktop” only when a display manager (`display-manager.service`) exists and is enabled or active.
+  - As a fallback, presence of session files (`/usr/share/xsessions/*.desktop` or `/usr/share/wayland-sessions/*.desktop`) also counts as desktop.
+  - This avoids mislabeling headless servers that happen to default to `graphical.target`.
+- Install‑time actions:
+  - Server (no desktop): install a systemd unit at `/etc/systemd/system/cryptad.service`, then `systemctl daemon-reload` and `enable` it. The service is NOT auto‑started; start it manually when ready.
+  - Desktop: install a `.desktop` entry at `/usr/share/applications/crypta.desktop` and refresh caches when tools are present (`update-desktop-database`, `gtk-update-icon-cache`).
+- Accounts and data:
+  - Creates an explicit system group `cryptad`, then a system user `cryptad` with primary group `cryptad` (home `/var/lib/cryptad`, shell `nologin`).
+  - Ensures `/var/lib/cryptad` exists and is owned by `cryptad:cryptad` (0750). Application state/log/cache directories defined in the systemd unit (e.g., `StateDirectory=cryptad`) are managed by systemd on first start.
+- Removal and cleanup:
+  - DEB `postrm`/RPM `%preun` disable and stop the unit only when it is enabled or active (race‑free check), remove the unit file, and run `daemon-reload`.
+  - Desktop caches are refreshed; `.desktop` is removed when present. Scripts tolerate missing desktop tooling.
+  - The `cryptad` user/group and data directory are preserved to avoid data loss. Remove them manually if desired.
+
+Manual service control (Linux)
+
+Service management (Linux):
+
+```bash
+sudo systemctl status cryptad
+sudo systemctl start cryptad   # start explicitly after installation
+sudo systemctl stop cryptad
+sudo systemctl disable --now cryptad
+```
+
+Package removal behavior (Linux)
+
+- DEB removal: disables/stops the service if enabled/active, removes `/etc/systemd/system/cryptad.service`, reloads systemd, and removes the desktop entry if present. The `cryptad` user/group and `/var/lib/cryptad` remain.
+- RPM removal: `%preun` performs the same service cleanup; the user/group and data remain.
+
+To remove the account and data explicitly (optional):
+
+```bash
+sudo systemctl disable --now cryptad || true
+sudo rm -f /etc/systemd/system/cryptad.service && sudo systemctl daemon-reload
+sudo rm -rf /var/lib/cryptad
+sudo userdel cryptad 2>/dev/null || true
+sudo groupdel cryptad 2>/dev/null || true
+```
+
+Troubleshooting (macOS)
+
+- Unsigned app first‑run: right‑click → Open, or clear quarantine:
+
+```bash
+xattr -dr com.apple.quarantine "build/jpackage/Crypta.app"
+```
+
+- See launcher logs by running the Mach‑O launcher in Terminal:
+
+```bash
+build/jpackage/Crypta.app/Contents/MacOS/Crypta 2>&1 | tee /tmp/crypta-run.log
+```
+
+- Run the embedded JRE directly to isolate classpath issues:
+
+```bash
+cd build/jpackage/Crypta.app/Contents
+./runtime/bin/java -cp "app/cryptad-dist/lib/*" network.crypta.launcher.LauncherKt
+```
+
+## Launcher Details
+
+### Windows shutdown behavior
+
+- The Windows batch launcher (`bin/cryptad.bat`) passes a per‑user anchor location to the wrapper: `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"`.
+- The Swing launcher requests a graceful stop by deleting that file; the Java Service Wrapper notices and shuts down the JVM cleanly (running shutdown hooks, flushing logs, etc.).
+- If the process tree is still alive after ~25 seconds, the launcher escalates to `taskkill` (first without `/F`, then with `/F`).
+- Advanced: To change the anchor path, customize the batch file or pass a different property on the command line; a value in `wrapper.conf` is overridden by the batch property.
+
+### Launcher script resolution
+
+- Env override: set `CRYPTAD_PATH` to an absolute path or a path relative to your current working directory to force a specific wrapper script, e.g. `export CRYPTAD_PATH=bin/cryptad`.
+- Default resolution order (first match wins):
+  - From the running `cryptad.jar` directory: `<jarDir>/cryptad`.
+  - From the assembled distribution layout: `<jarDir>/../bin/cryptad`.
+  - Fallbacks from `user.dir`: `./bin/cryptad`, then `./cryptad`.
+
+## Development Guidelines
+
+- Primary languages: Kotlin/Java
+  - New files should be written in Kotlin
+  - Prefer top‑level functions where idiomatic in Kotlin
+- Code style:
+  - Kotlin: https://kotlinlang.org/docs/coding-conventions.html
+  - Java: https://google.github.io/styleguide/javaguide.html
+- Tests: JUnit and kotlin‑test; target 80%+ coverage
+- Documentation: Add/update JavaDoc/KDoc when editing Java/Kotlin files
+
+## Dependencies
+
+- Runtime: Java 21+
+- Language/Tooling: Kotlin 2.2+, Gradle Wrapper (provided in this repo)
+- External libraries: managed via Gradle; for offline distribution and installer integration, see
+  `dependencies.properties`.
+- Dependency verification is enabled; update both the `dependencies` and `dependencyVerification` blocks in
+  `build.gradle.kts` when adding libraries.
+
+Launcher adds:
+- `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` for Swing + coroutine integration.
+
+### Spotless + Dependency Verification
+
+When Gradle dependency verification is strict, Spotless may fail to resolve formatter artifacts (e.g., `google-java-format`). If that happens:
+
+1. Temporarily set verification to lenient in `gradle.properties`:
+   - `org.gradle.dependency.verification=lenient`
+2. Write verification metadata (SHA256 + PGP):
+   - `./gradlew --write-verification-metadata sha256,pgp spotlessApply`
+   - Optional exact version refresh:
+     - `./gradlew --refresh-dependencies --write-verification-metadata sha256,pgp spotlessApply`
+   - Faster alternative (no formatting run):
+     - `./gradlew --write-verification-metadata sha256,pgp spotlessInternalRegisterDependencies`
+3. Confirm entries in `gradle/verification-metadata.xml` for `com.google.googlejavaformat` and trusted keys.
+4. Restore strict mode:
+   - `org.gradle.dependency.verification=strict`
+5. Validate:
+   - `./gradlew spotlessApply`
+
+Tip: Keep the Spotless formatter at the intended version (currently `googleJavaFormat("1.28.0")`). If verification still blocks, re‑write metadata including `pgp` and ensure a group‑level trusted key entry. Commit updated verification keyring files as appropriate.
+
+## Versioning
+
+- The build number is a single integer in `build.gradle.kts` (e.g., `version = "<int>"`).
+- During build, tokens are replaced into `network/crypta/node/Version.kt` (e.g., `@build_number@`, `@git_rev@`).
+- Version strings support both Cryptad and Fred formats for wire compatibility; protocol compatibility enforces minimum builds.
+
+## Branching & Releases
+
+- Standard branching and release workflow: see `docs/standard-git-branching-and-release-workflow.md` (validated copy). The original wiki page is also available: https://github.com/crypta-network/cryptad/wiki/Standard-Git-Branching-and-Release-Workflow-for-Cryptad
+- [Release workflow and operations runbook](https://github.com/crypta-network/cryptad/wiki/Cryptad-Release-Workflow-and-Runbook)
+
+## Update System
+
+- Core updates use a package‑based updater (“CoreUpdater”). It subscribes to an `info/<N>` JSON descriptor via the existing update USK, selects an OS/arch‑specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
+- Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
+- Plugin updates continue to be downloaded and deployed in‑app.
+- JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
+- For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.
+
+## Architecture Overview
+
+- Core network (`network.crypta.node`): `Node`, `PeerNode`, `PeerManager`, `PacketSender`, `RequestStarter`, `RequestScheduler`, `NodeUpdateManager`.
+- Storage (`network.crypta.store`): `FreenetStore`, `CHKStore`, `SSKStore`, `SlashdotStore`.
+- Crypto (`network.crypta.crypt`): AES, DSA/ECDSA, SHA‑256, `RandomSource`/Yarrow.
+- Keys (`network.crypta.keys`): `ClientCHK`, `ClientSSK`, `FreenetURI`, USK.
+- Clients: `network.crypta.client`, FCP (`network.crypta.clients.fcp`), HTTP (`network.crypta.clients.http`).
+- Plugins (`network.crypta.pluginmanager`): `PluginManager`, `FredPlugin*`, `OfficialPlugins`.
+- Config (`network.crypta.config`): type‑safe persisted configuration.
+- Support (`network.crypta.support`): logging, data structures, threading, helpers.
+
+You generally do not need to install libraries manually; Gradle resolves them. When preparing installer assets or
+offline bundles, ensure artifacts are listed in `dependencies.properties` and available through the project’s
+distribution process.
+
+## License
+
+**Crypta** is free software licensed under the GNU General Public License, version 3 only. See `LICENSE` for the full text.
+
+Some bundled components may be under permissive licenses (e.g., Apache‑2.0, BSD‑3‑Clause). These are compatible with
+GPLv3 and included under their respective terms.

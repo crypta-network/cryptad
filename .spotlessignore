@@ -1,0 +1,7 @@
+.flatpak-builder/
+builddir/
+repo/
+tools/flatpak/work/
+tools/flatpak/local/
+build/
+build-logic/build/

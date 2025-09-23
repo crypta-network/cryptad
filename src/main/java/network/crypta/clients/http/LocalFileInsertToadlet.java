@@ -1,0 +1,70 @@
+package network.crypta.clients.http;
+
+import java.io.File;
+import java.net.MalformedURLException;
+import java.util.Hashtable;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.keys.FreenetURI;
+import network.crypta.node.NodeClientCore;
+
+public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
+
+  public static final String PATH = "/insert-browse/";
+  public static final String POST_TO = "/uploads/";
+
+  public LocalFileInsertToadlet(NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
+    super(core, highLevelSimpleClient);
+  }
+
+  @Override
+  public String path() {
+    return PATH;
+  }
+
+  @Override
+  protected String postTo() {
+    return POST_TO;
+  }
+
+  @Override
+  protected boolean allowedDir(File path) {
+    return core.allowUploadFrom(path);
+  }
+
+  @Override
+  protected String startingDir() {
+    return defaultUploadDir();
+  }
+
+  @Override
+  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
+    Hashtable<String, String> fieldPairs = new Hashtable<>();
+    FreenetURI furi = null;
+    String key = set.get("key");
+    if (key != null) {
+      try {
+        furi = new FreenetURI(key);
+      } catch (MalformedURLException e) {
+        furi = null;
+      }
+    }
+
+    String element = set.get("compress");
+    if (Boolean.parseBoolean(element)) {
+      fieldPairs.put("compress", element);
+    }
+
+    element = set.get("compatibilityMode");
+    if (element != null) {
+      fieldPairs.put("compatibilityMode", element);
+    }
+
+    if (furi != null) {
+      fieldPairs.put("key", furi.toASCIIString());
+    }
+
+    element = set.get("overrideSplitfileKey");
+    if (element != null) fieldPairs.put("overrideSplitfileKey", element);
+    return fieldPairs;
+  }
+}
