@@ -11,7 +11,7 @@ plugins {
 }
 
 // Update version manually before a new release development starts
-version = "1"
+version = "2"
 
 dependencies {
   implementation(libs.bcprov)
