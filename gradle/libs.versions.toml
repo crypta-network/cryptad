@@ -1,21 +1,21 @@
 [versions]
 kotlin = "2.2.20"
 coroutines = "1.10.2"
-bcprov = "2.73.7"
+bcprov = "2.73.9"
 jna = "5.17.0"
 commonsCompress = "1.28.0"
 pebble = "3.2.4"
 unbescape = "1.1.6.RELEASE"
 slf4j = "2.0.17"
 junit4 = "4.13.2"
-mockito = "5.18.0"
+mockito = "5.19.0"
 hamcrest = "3.0"
 objenesis = "3.4"
 picocli = "4.7.7"
-spotless = "7.2.1"
+spotless = "8.0.0"
 flatlaf = "3.6.1"
 jsystemTheme = "ea2f8582ea"
-dbusJava = "5.1.0"
+dbusJava = "5.1.1"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
