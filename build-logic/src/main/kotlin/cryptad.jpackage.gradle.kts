@@ -273,6 +273,18 @@ val jpackageImageCryptad by
       // Ensure we start from a clean target (jpackage fails if image exists)
       cleanExistingImage(outDir, os)
 
+      // On macOS, stage the app image under the system temp directory to avoid iCloud/
+      // FileProvider extended attributes (FinderInfo) being attached during creation, which
+      // makes codesign fail. We then move the completed image back to build/jpackage.
+      val destDir =
+        if (os == "mac") {
+          File(
+            System.getProperty("java.io.tmpdir"),
+            "crypta-jpackage-${System.currentTimeMillis()}",
+          )
+        } else outDir
+      destDir.mkdirs()
+
       val args =
         mutableListOf(
           jpackage.absolutePath,
@@ -283,7 +295,7 @@ val jpackageImageCryptad by
           "--app-version",
           numericAppVersion(),
           "--dest",
-          outDir.absolutePath,
+          destDir.absolutePath,
           "--input",
           inputDir.absolutePath,
           "--main-jar",
@@ -303,7 +315,79 @@ val jpackageImageCryptad by
       // jpackage rejects them with --type app-image. Such options are added in the installer task.
 
       logger.lifecycle("Executing jpackage app-image:\n{}", args.joinToString(" "))
-      execAndLog(args)
+      try {
+        execAndLog(args)
+        // If we staged to a temp directory, move the result into the build output dir.
+        if (destDir != outDir) {
+          val staged = destDir.resolve("$appName.app")
+          if (staged.isDirectory) {
+            val target = outDir.resolve("$appName.app")
+            if (target.exists()) target.deleteRecursively()
+            logger.lifecycle("Relocating app image from staging -> {}", target.absolutePath)
+            staged.copyRecursively(target, overwrite = true)
+            // Best-effort: remove any staging attributes after copy
+            try {
+              val xattr = File("/usr/bin/xattr")
+              if (xattr.canExecute()) {
+                ProcessBuilder(xattr.absolutePath, "-cr", target.absolutePath)
+                  .redirectErrorStream(true)
+                  .start()
+                  .waitFor(5, TimeUnit.SECONDS)
+              }
+            } catch (_: Exception) {}
+            destDir.deleteRecursively()
+          }
+        }
+      } catch (e: Exception) {
+        // Workaround for macOS codesign failing with FinderInfo xattr on the app bundle root.
+        // On some macOS versions, jpackage ad-hoc signs the bundle and codesign rejects
+        // com.apple.FinderInfo on the freshly created <App>.app, yielding:
+        //   resource fork, Finder information, or similar detritus not allowed
+        // If we see a failure and the output image exists, clear xattrs and re-sign in place
+        // via jpackage "--type app-image --app-image <path> --mac-sign" (ad-hoc identity).
+        if (os == "mac") {
+          val appDir = outDir.resolve("$appName.app")
+          if (appDir.isDirectory) {
+            try {
+              // Best-effort: remove extended attributes recursively.
+              val xattr = File("/usr/bin/xattr")
+              if (xattr.canExecute()) {
+                val pb = ProcessBuilder(xattr.absolutePath, "-cr", appDir.absolutePath)
+                pb.redirectErrorStream(true)
+                val p = pb.start()
+                val out = p.inputStream.bufferedReader().use { it.readText() }
+                p.waitFor(10, TimeUnit.SECONDS)
+                logger.lifecycle(
+                  "Cleared xattrs on app image (exit ${p.exitValue()}): {}",
+                  out.trim(),
+                )
+              } else {
+                logger.warn("xattr tool not available; skipping attribute cleanup")
+              }
+
+              // Direct ad-hoc sign the bundle root. jpackage already signed Contents/runtime
+              // before failing, so this completes the bundle signature.
+              val codesign = File("/usr/bin/codesign")
+              if (!codesign.canExecute()) throw GradleException("codesign tool not available")
+              val csArgs =
+                listOf(codesign.absolutePath, "-s", "-", "-vvvv", "--force", appDir.absolutePath)
+              logger.lifecycle(
+                "Ad-hoc signing app bundle after xattr cleanup:\n{}",
+                csArgs.joinToString(" "),
+              )
+              execAndLog(csArgs)
+              logger.lifecycle("codesign completed; continuing")
+            } catch (fixErr: Exception) {
+              logger.warn("macOS fallback sign failed: {}", fixErr.message)
+              throw e
+            }
+          } else {
+            throw e
+          }
+        } else {
+          throw e
+        }
+      }
     }
   }
 
