@@ -1,12 +1,12 @@
 package network.crypta.support.api;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BooleanCallbackTest {
 

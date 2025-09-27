@@ -1,13 +1,13 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link ByteArrayWrapper} class.
@@ -34,7 +34,7 @@ public class ByteArrayWrapperTest {
     assertEquals(wrapper1, wrapper2);
     assertEquals(wrapper1, wrapper2);
     assertNotEquals(wrapper2, wrapper3);
-    assertNotEquals("", wrapper1);
+    assertNotEquals(wrapper1, "");
 
     Map<ByteArrayWrapper, ByteArrayWrapper> map = new HashMap<>();
 

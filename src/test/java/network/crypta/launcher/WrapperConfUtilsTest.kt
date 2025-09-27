@@ -1,8 +1,8 @@
 package network.crypta.launcher
 
 import java.nio.file.Paths
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 class WrapperConfUtilsTest {
   @Test
@@ -27,13 +27,13 @@ class WrapperConfUtilsTest {
   fun computesLogPathRelative() {
     val conf = Paths.get("/opt/crypta/conf/wrapper.conf")
     val log = computeWrapperLogPath(conf, "../logs/wrapper.log").normalize()
-    assertEquals(Paths.get("/opt/crypta/logs/wrapper.log").normalize(), log)
+    assertEquals(log, Paths.get("/opt/crypta/logs/wrapper.log").normalize())
   }
 
   @Test
   fun computesLogPathAbsolute() {
     val conf = Paths.get("/opt/crypta/conf/wrapper.conf")
     val log = computeWrapperLogPath(conf, "/var/log/crypta/wrapper.log")
-    assertEquals(Paths.get("/var/log/crypta/wrapper.log"), log)
+    assertEquals(log, Paths.get("/var/log/crypta/wrapper.log"))
   }
 }

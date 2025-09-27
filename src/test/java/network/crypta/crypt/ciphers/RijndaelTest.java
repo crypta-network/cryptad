@@ -1,6 +1,6 @@
 package network.crypta.crypt.ciphers;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,7 +19,7 @@ import javax.crypto.spec.SecretKeySpec;
 import network.crypta.crypt.CTRBlockCipherTest;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.support.HexUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * @author sdiz
@@ -31,10 +31,10 @@ public class RijndaelTest {
     byte[] res128 = new byte[128 / 8];
     aes128.initialize(KEY128_1);
     aes128.encipher(PLAINTXT128_1, res128);
-    assertArrayEquals("(128,128) ENCIPHER", res128, CIPHER128_1);
+    assertArrayEquals(res128, CIPHER128_1, "(128,128) ENCIPHER");
     byte[] des128 = new byte[128 / 8];
     aes128.decipher(res128, des128);
-    assertArrayEquals("(128,128) DECIPHER", des128, PLAINTXT128_1);
+    assertArrayEquals(des128, PLAINTXT128_1, "(128,128) DECIPHER");
 
     if (false) {
       /* 192 block size support is dropped for now */
@@ -42,20 +42,20 @@ public class RijndaelTest {
       byte[] res192 = new byte[192 / 8];
       aes192.initialize(KEY192_1);
       aes192.encipher(PLAINTXT192_1, res192);
-      assertArrayEquals("(192,192) ENCIPHER", res192, CIPHER192_1);
+      assertArrayEquals(res192, CIPHER192_1, "(192,192) ENCIPHER");
       byte[] des192 = new byte[192 / 8];
       aes192.decipher(res192, des192);
-      assertArrayEquals("(192,192) DECIPHER", des192, PLAINTXT192_1);
+      assertArrayEquals(des192, PLAINTXT192_1, "(192,192) DECIPHER");
     }
 
     Rijndael aes256 = new Rijndael(256, 256);
     byte[] res256 = new byte[256 / 8];
     aes256.initialize(KEY256_1);
     aes256.encipher(PLAINTXT256_1, res256);
-    assertArrayEquals("(256,256) ENCIPHER", res256, CIPHER256_1);
+    assertArrayEquals(res256, CIPHER256_1, "(256,256) ENCIPHER");
     byte[] des256 = new byte[256 / 8];
     aes256.decipher(res256, des256);
-    assertArrayEquals("(256,256) DECIPHER", des256, PLAINTXT256_1);
+    assertArrayEquals(des256, PLAINTXT256_1, "(256,256) DECIPHER");
   }
 
   @Test
@@ -67,7 +67,7 @@ public class RijndaelTest {
 
       byte[] cipher = new byte[128 / 8];
       aes128.encipher(TEST_VK_PT, cipher);
-      assertArrayEquals("ECB_VK KEYSIZE=128 I=" + (i + 1), cipher, TEST_VK128[i][1]);
+      assertArrayEquals(cipher, TEST_VK128[i][1], "ECB_VK KEYSIZE=128 I=" + (i + 1));
     }
 
     Rijndael aes192 = new Rijndael(192, 128);
@@ -76,7 +76,7 @@ public class RijndaelTest {
 
       byte[] cipher = new byte[128 / 8];
       aes192.encipher(TEST_VK_PT, cipher);
-      assertArrayEquals("ECB_VK KEYSIZE=192 I=" + (i + 1), cipher, TEST_VK192[i][1]);
+      assertArrayEquals(cipher, TEST_VK192[i][1], "ECB_VK KEYSIZE=192 I=" + (i + 1));
     }
   }
 
@@ -108,7 +108,7 @@ public class RijndaelTest {
       c.init(Cipher.ENCRYPT_MODE, k);
 
       byte[] output = c.doFinal(TEST_VK_PT);
-      assertArrayEquals("ECB_VK KEYSIZE=192 I=" + (i + 1), output, TEST_VK192[i][1]);
+      assertArrayEquals(output, TEST_VK192[i][1], "ECB_VK KEYSIZE=192 I=" + (i + 1));
     }
   }
 
@@ -135,24 +135,20 @@ public class RijndaelTest {
         aes.decipher(cipher, plain2);
 
         assertArrayEquals(
+            plain,
+            plain2,
             "("
                 + size
                 + ","
                 + size
-                + //
-                ") KEY="
+                + ") KEY="
                 + HexUtil.bytesToHex(key)
-                + //
-                ", PLAIN="
+                + ", PLAIN="
                 + HexUtil.bytesToHex(plain)
-                + //
-                ", CIPHER="
+                + ", CIPHER="
                 + HexUtil.bytesToHex(cipher)
-                + //
-                ", PLAIN2="
-                + HexUtil.bytesToHex(plain2),
-            plain,
-            plain2);
+                + ", PLAIN2="
+                + HexUtil.bytesToHex(plain2));
       }
     }
   }
@@ -170,7 +166,7 @@ public class RijndaelTest {
       //			(TEST_VK256x256[i][0])+"\"),");
       //			System.out.println("\t\t\t\t\tHexUtil.hexToBytes(\""+HexUtil.bytesToHex(cipher)
       //			+"\") }, //");
-      assertArrayEquals("ECB_VK KEYSIZE=256 I=" + (i + 1), cipher, TEST_VK256x256[i][1]);
+      assertArrayEquals(cipher, TEST_VK256x256[i][1], "ECB_VK KEYSIZE=256 I=" + (i + 1));
     }
   }
 

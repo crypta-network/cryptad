@@ -1,10 +1,10 @@
 package network.crypta.store.caching;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,10 +59,10 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * CachingFreenetStoreTest Test for CachingFreenetStore
@@ -72,7 +72,7 @@ import org.junit.Test;
  */
 public class CachingFreenetStoreTest {
 
-  @BeforeClass
+  @BeforeAll
   public static void setupClass() {
     FileUtil.removeAll(TEMP_DIR);
 
@@ -81,12 +81,12 @@ public class CachingFreenetStoreTest {
     }
   }
 
-  @AfterClass
+  @AfterAll
   public static void cleanup() {
     FileUtil.removeAll(TEMP_DIR);
   }
 
-  @Before
+  @BeforeEach
   public void setUpTest() {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     exec.start();
@@ -284,7 +284,7 @@ public class CachingFreenetStoreTest {
           atLeastOneKey = true;
         }
 
-        assertTrue("At least one key should have matched", atLeastOneKey);
+        assertTrue(atLeastOneKey, "At least one key should have matched");
       }
     }
   }
@@ -826,7 +826,7 @@ public class CachingFreenetStoreTest {
 
           atLeastOneKey = true;
         }
-        assertTrue("Atl least one Key should have been present in the store", atLeastOneKey);
+        assertTrue(atLeastOneKey, "Atl least one Key should have been present in the store");
       }
     }
   }
@@ -913,7 +913,7 @@ public class CachingFreenetStoreTest {
 
           atLeastOneKey = true;
         }
-        assertTrue("Atl least one Key should have been present in the store", atLeastOneKey);
+        assertTrue(atLeastOneKey, "Atl least one Key should have been present in the store");
       }
     }
   }
@@ -1022,7 +1022,7 @@ public class CachingFreenetStoreTest {
 
           atLeastOneKey = true;
         }
-        assertTrue("At least on key should have been present", atLeastOneKey);
+        assertTrue(atLeastOneKey, "At least on key should have been present");
       }
     }
   }
@@ -1116,7 +1116,7 @@ public class CachingFreenetStoreTest {
 
           atLeastOneKey = true;
         }
-        assertTrue("At least one key should have been present", atLeastOneKey);
+        assertTrue(atLeastOneKey, "At least one key should have been present");
       }
     }
   }

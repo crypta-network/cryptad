@@ -1,7 +1,7 @@
 package network.crypta.store.saltedhash;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -25,15 +25,15 @@ import network.crypta.support.compress.Compressor;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /** Test the slot filter mechanism */
 public class SaltedHashSlotFilterTest {
 
-  @BeforeClass
+  @BeforeAll
   public static void setupClass() {
     FileUtil.removeAll(TEMP_DIR);
 
@@ -42,12 +42,12 @@ public class SaltedHashSlotFilterTest {
     }
   }
 
-  @AfterClass
+  @AfterAll
   public static void cleanup() {
     FileUtil.removeAll(TEMP_DIR);
   }
 
-  @Before
+  @BeforeEach
   public void setUpTest() {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     exec.start();
@@ -354,7 +354,7 @@ public class SaltedHashSlotFilterTest {
 
       atLeastOneKey = true;
     }
-    assertTrue("At least one key should have been present", atLeastOneKey);
+    assertTrue(atLeastOneKey, "At least one key should have been present");
   }
 
   private void checkCHKPresent(

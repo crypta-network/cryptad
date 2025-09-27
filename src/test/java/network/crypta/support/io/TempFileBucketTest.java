@@ -1,6 +1,6 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,7 +14,7 @@ public class TempFileBucketTest extends BucketTestBase {
     BaseFileBucket bfb =
         new TempFileBucket(filenameGenerator.makeRandomFilename(), filenameGenerator);
 
-    assertTrue("deleteOnFree", bfb.deleteOnFree());
+    assertTrue(bfb.deleteOnFree(), "deleteOnFree");
 
     return bfb;
   }
@@ -23,10 +23,10 @@ public class TempFileBucketTest extends BucketTestBase {
   protected void freeBucket(Bucket bucket) throws IOException {
     File file = ((BaseFileBucket) bucket).getFile();
     if (bucket.size() != 0) {
-      assertTrue("TempFile not exist", file.exists());
+      assertTrue(file.exists(), "TempFile not exist");
     }
     bucket.free();
-    assertFalse("TempFile not deleted", file.exists());
+    assertFalse(file.exists(), "TempFile not deleted");
   }
 
   private final Random weakPRNG = new Random(12345);

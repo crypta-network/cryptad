@@ -1,9 +1,9 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import network.crypta.test.UTFUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link URIPreEncoder} class

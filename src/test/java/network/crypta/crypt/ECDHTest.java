@@ -1,9 +1,9 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -12,8 +12,8 @@ import java.security.PublicKey;
 import java.security.Security;
 import network.crypta.crypt.ECDH.Curves;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ECDHTest {
 
@@ -21,7 +21,7 @@ public class ECDHTest {
   ECDH alice;
   ECDH bob;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     Security.addProvider(new BouncyCastleProvider());
     curveToTest = Curves.P256;

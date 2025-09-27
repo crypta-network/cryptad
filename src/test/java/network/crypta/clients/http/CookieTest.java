@@ -1,12 +1,12 @@
 package network.crypta.clients.http;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Date;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CookieTest {
 
@@ -19,7 +19,7 @@ public class CookieTest {
 
   Cookie cookie;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     validPath = new URI(VALID_PATH);
     validExpiresDate = new Date(System.currentTimeMillis() + 60 * 60 * 1000);

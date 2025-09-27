@@ -1,8 +1,8 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -18,12 +18,12 @@ import network.crypta.support.SerialExecutor;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.TempBucketFactory.TempBucket;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Suite;
+import org.junit.jupiter.api.Test;
+import org.junit.platform.suite.api.SelectClasses;
+import org.junit.platform.suite.api.Suite;
 
-@RunWith(Suite.class)
-@Suite.SuiteClasses({
+@Suite
+@SelectClasses({
   TempBucketTest.RealTempBucketTest_8_16_F.class,
   TempBucketTest.RealTempBucketTest_64_128_F.class,
   TempBucketTest.RealTempBucketTest_64k_128k_F.class,

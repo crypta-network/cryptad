@@ -1,7 +1,7 @@
 package network.crypta.fs;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,13 +11,12 @@ import java.util.Map;
 import network.crypta.config.CryptadConfig;
 import network.crypta.support.SimpleFieldSet;
 import org.jetbrains.annotations.NotNull;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class AppDirsTest {
 
-  @Rule public TemporaryFolder tmp = new TemporaryFolder();
+  @TempDir Path tmp;
 
   private static String norm(String s) {
     return s.replace('\\', '/');
@@ -33,8 +32,8 @@ public class AppDirsTest {
 
   @Test
   public void linuxXdgUnset_defaultsUnderHome() {
-    Path home = tmp.getRoot().toPath().resolve("home");
-    Path t = tmp.getRoot().toPath().resolve("t");
+    Path home = tmp.resolve("home");
+    Path t = tmp.resolve("t");
     home.toFile().mkdirs();
     t.toFile().mkdirs();
     Map<String, String> env = new HashMap<>();
@@ -48,7 +47,7 @@ public class AppDirsTest {
 
   @Test
   public void linuxXdgSet_respectsEnv() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path t = root.resolve("t");
     Path xdgConfig = root.resolve("xdg-config");
@@ -73,11 +72,11 @@ public class AppDirsTest {
 
   @Test
   public void macNative_defaultsToLibrary() {
-    Path home = tmp.getRoot().toPath().resolve("home");
+    Path home = tmp.resolve("home");
     home.toFile().mkdirs();
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Mac OS X", "user");
-    Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
+    Map<String, String> sp = sysProps(home, tmp);
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
@@ -88,14 +87,14 @@ public class AppDirsTest {
 
   @Test
   public void macRespectsXdgWhenSet() {
-    Path home = tmp.getRoot().toPath().resolve("home");
-    Path xdgConfig = tmp.getRoot().toPath().resolve("xdg");
+    Path home = tmp.resolve("home");
+    Path xdgConfig = tmp.resolve("xdg");
     home.toFile().mkdirs();
     xdgConfig.toFile().mkdirs();
     Map<String, String> env = new HashMap<>();
     env.put("XDG_CONFIG_HOME", xdgConfig.toString());
     AppEnv ae = new AppEnv(env, "Mac OS X", "user");
-    Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
+    Map<String, String> sp = sysProps(home, tmp);
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
@@ -104,7 +103,7 @@ public class AppDirsTest {
 
   @Test
   public void snapStrict_usesCommonForData() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path common = root.resolve("snap-common");
     home.toFile().mkdirs();
@@ -124,7 +123,7 @@ public class AppDirsTest {
 
   @Test
   public void snapWithoutCommon_usesXdgAndRuntimeUnderXdgRt() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path xdgConfig = root.resolve("xdg-config");
     Path xdgData = root.resolve("xdg-data");
@@ -153,7 +152,7 @@ public class AppDirsTest {
 
   @Test
   public void snapWithCommon_runtimeFallsBackToCacheWhenUnwritable() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path common = root.resolve("snap-common");
     Path xdgCache = common.resolve(".cache");
@@ -179,14 +178,14 @@ public class AppDirsTest {
 
   @Test
   public void macXdgCasing_isLowercaseCryptad() {
-    Path home = tmp.getRoot().toPath().resolve("home");
-    Path xdgConfig = tmp.getRoot().toPath().resolve("xdg");
+    Path home = tmp.resolve("home");
+    Path xdgConfig = tmp.resolve("xdg");
     home.toFile().mkdirs();
     xdgConfig.toFile().mkdirs();
     Map<String, String> env = new HashMap<>();
     env.put("XDG_CONFIG_HOME", xdgConfig.toString());
     AppEnv ae = new AppEnv(env, "Mac OS X", "user");
-    Map<String, String> sp = sysProps(home, tmp.getRoot().toPath());
+    Map<String, String> sp = sysProps(home, tmp);
     sp.put("os.name", "Mac OS X");
     AppDirs dirs = new AppDirs(env, sp, new HashMap<>(), ae);
     Resolved r = dirs.resolve();
@@ -195,7 +194,7 @@ public class AppDirsTest {
 
   @Test
   public void windowsAppDirs_casingIsCryptad() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path roaming = home.resolve("AppData/Roaming");
     Path local = home.resolve("AppData/Local");
@@ -215,7 +214,7 @@ public class AppDirsTest {
 
   @Test
   public void xdgRuntimeMissing_fallsBackToCacheRt() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path xdgCache = root.resolve("xdg-cache");
     Path xdgConfig = root.resolve("xdg-config");
@@ -237,7 +236,7 @@ public class AppDirsTest {
 
   @Test
   public void flatpakHonorsXdg() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     Path xdgConfig = root.resolve("xdg-config");
     Map<String, String> env = getStringStringMap(root, home, xdgConfig);
@@ -269,7 +268,7 @@ public class AppDirsTest {
 
   @Test
   public void systemdService_usesExportedDirs() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Map<String, String> env = new HashMap<>();
     env.put("CONFIGURATION_DIRECTORY", root.resolve("etc").toString());
     env.put("STATE_DIRECTORY", root.resolve("lib").toString());
@@ -285,7 +284,7 @@ public class AppDirsTest {
 
   @Test
   public void windowsService_rootsUnderProgramData() {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Map<String, String> env = new HashMap<>();
     env.put("PROGRAMDATA", root.resolve("ProgramData").toString());
     ServiceDirs svc = new ServiceDirs(env, new AppEnv(env, "Windows 10", "SYSTEM"));
@@ -307,7 +306,7 @@ public class AppDirsTest {
 
   @Test
   public void placeholderExpansion_works() throws IOException {
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     Path home = root.resolve("home");
     home.toFile().mkdirs();
     Map<String, String> env = new HashMap<>();

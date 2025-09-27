@@ -1,22 +1,22 @@
 package network.crypta.config;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class CryptadConfigExpandEdgeCasesTest {
 
-  @Rule public TemporaryFolder tmp = new TemporaryFolder();
+  @TempDir Path tmp;
 
   private Map<String, String> base() {
     Map<String, String> b = new HashMap<>();
-    Path root = tmp.getRoot().toPath();
+    Path root = tmp;
     b.put("configDir", root.resolve("cfg").toString());
     b.put("dataDir", root.resolve("data").toString());
     b.put("stateDir", root.resolve("data").toString());
@@ -32,14 +32,14 @@ public class CryptadConfigExpandEdgeCasesTest {
   public void leadingToken_backslashes_normalizesWithinBase() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("dataDir\\foo\\..\\bar", b);
-    assertEquals(Path.of(b.get("dataDir"), "bar").toString(), out);
+    assertEquals(out, Path.of(b.get("dataDir"), "bar").toString());
   }
 
   @Test
   public void leadingToken_posixSegments_normalizesWithinBase() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("cacheDir/./tmp/../persist", b);
-    assertEquals(Path.of(b.get("cacheDir"), "persist").toString(), out);
+    assertEquals(out, Path.of(b.get("cacheDir"), "persist").toString());
   }
 
   // Mixed separators after a leading token should be handled uniformly.
@@ -48,40 +48,43 @@ public class CryptadConfigExpandEdgeCasesTest {
   public void leadingToken_mixedSeparators_normalizesWithinBase() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("dataDir/foo\\bar/baz", b);
-    assertEquals(Path.of(b.get("dataDir"), "foo", "bar", "baz").toString(), out);
+    assertEquals(out, Path.of(b.get("dataDir"), "foo", "bar", "baz").toString());
   }
 
   @Test
   public void placeholder_equality_resolvesToBase() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("${logsDir}", b);
-    assertEquals(Path.of(b.get("logsDir")).normalize().toString(), out);
+    assertEquals(out, Path.of(b.get("logsDir")).normalize().toString());
   }
 
-  @Test(expected = IOException.class)
+  @Test
   public void placeholder_windowsTraversal_rejectedWhenAnchored() {
     Map<String, String> b = base();
-    CryptadConfig.expandValue("${dataDir}\\..\\..\\etc\\passwd", b);
+    assertThrows(
+        IOException.class, () -> CryptadConfig.expandValue("${dataDir}\\..\\..\\etc\\passwd", b));
   }
 
   @Test
   public void placeholder_inMiddle_isReplaced() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("prefix-${cacheDir}-suffix", b);
-    assertEquals("prefix-" + b.get("cacheDir") + "-suffix", out);
+    assertEquals(out, "prefix-" + b.get("cacheDir") + "-suffix");
   }
 
-  @Test(expected = IOException.class)
+  @Test
   public void placeholder_inMiddle_withTraversal_rejected() {
     Map<String, String> b = base();
-    CryptadConfig.expandValue("prefix-${dataDir}/../../etc/passwd", b);
+    assertThrows(
+        IOException.class,
+        () -> CryptadConfig.expandValue("prefix-${dataDir}/../../etc/passwd", b));
   }
 
   @Test
   public void leadingToken_backslashDot_normalizes() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("runDir\\.", b);
-    assertEquals(Path.of(b.get("runDir")).normalize().toString(), out);
+    assertEquals(out, Path.of(b.get("runDir")).normalize().toString());
   }
 
   // When the configured base looks like a Windows path, inputs that mix
@@ -93,7 +96,7 @@ public class CryptadConfigExpandEdgeCasesTest {
     b.put("dataDir", "C:\\base\\dir");
     String out = CryptadConfig.expandValue("C:/base/dir\\x/y\\z", b);
     // Expect it to anchor to the provided base and resolve the mixed remainder
-    assertEquals(Path.of(b.get("dataDir"), "x", "y", "z").toString(), out);
+    assertEquals(out, Path.of(b.get("dataDir"), "x", "y", "z").toString());
   }
 
   // Even with a POSIX-looking base, incoming backslashes are normalized in
@@ -102,14 +105,14 @@ public class CryptadConfigExpandEdgeCasesTest {
   public void anchored_mixedSeparators_withPosixBase_normalizes() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue(b.get("dataDir") + "\\x\\y", b);
-    assertEquals(Path.of(b.get("dataDir"), "x", "y").toString(), out);
+    assertEquals(out, Path.of(b.get("dataDir"), "x", "y").toString());
   }
 
   // Mixed traversal using interleaved separators must be rejected when it would
   // escape the base directory after normalization.
-  @Test(expected = IOException.class)
+  @Test
   public void leadingToken_mixedTraversal_rejected() {
     Map<String, String> b = base();
-    CryptadConfig.expandValue("dataDir/..\\..\\evil", b);
+    assertThrows(IOException.class, () -> CryptadConfig.expandValue("dataDir/..\\..\\evil", b));
   }
 }

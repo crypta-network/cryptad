@@ -1,9 +1,9 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Iterator;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SparseBitmapTest {
   @Test
@@ -11,8 +11,8 @@ public class SparseBitmapTest {
     SparseBitmap s = new SparseBitmap();
 
     s.add(0, 1);
-    assertTrue("Didn't contain 0->1 after adding range 0->1", s.contains(0, 1));
-    assertFalse("Contained 2 after adding range 0->1", s.contains(2, 2));
+    assertTrue(s.contains(0, 1), "Didn't contain 0->1 after adding range 0->1");
+    assertFalse(s.contains(2, 2), "Contained 2 after adding range 0->1");
 
     s.add(3, 3);
     assertFalse(s.contains(2, 2));

@@ -6,7 +6,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasEntry;
 
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BootstrappingDecayingRunningAverageTest {
   @Test

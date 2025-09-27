@@ -1,19 +1,19 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
 import network.crypta.support.io.PooledFileRandomAccessBuffer.FDTracker;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class PooledFileRandomAccessBufferTest extends RandomAccessBufferTestBase {
 
@@ -21,12 +21,12 @@ public class PooledFileRandomAccessBufferTest extends RandomAccessBufferTestBase
     super(TEST_LIST);
   }
 
-  @Before
+  @BeforeEach
   public void setUp() {
     base.mkdir();
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(base);
   }

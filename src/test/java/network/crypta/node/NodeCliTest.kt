@@ -1,7 +1,8 @@
 package network.crypta.node
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import picocli.CommandLine
 
 class NodeCliTest {
@@ -10,64 +11,68 @@ class NodeCliTest {
   fun serviceMode_valid_service() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--service-mode", "service")
-    assertEquals("service", cli.serviceModeOverride())
+    assertEquals(cli.serviceModeOverride(), "service")
   }
 
   @Test
   fun serviceMode_valid_user() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--service-mode", "user")
-    assertEquals("user", cli.serviceModeOverride())
+    assertEquals(cli.serviceModeOverride(), "user")
   }
 
-  @Test(expected = CommandLine.ParameterException::class)
+  @Test
   fun serviceMode_invalid_value_throws() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--service-mode", "foo")
-    // Validation happens when computing the override
-    cli.serviceModeOverride()
+    assertThrows<CommandLine.ParameterException> {
+      // Validation happens when computing the override
+      cli.serviceModeOverride()
+    }
   }
 
   @Test
   fun serviceMode_case_insensitive() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--service-mode", "SeRvIcE")
-    assertEquals("service", cli.serviceModeOverride())
+    assertEquals(cli.serviceModeOverride(), "service")
   }
 
   @Test
   fun shortcuts_service_sets_mode() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--service")
-    assertEquals("service", cli.serviceModeOverride())
+    assertEquals(cli.serviceModeOverride(), "service")
   }
 
   @Test
   fun shortcuts_user_sets_mode() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("--user")
-    assertEquals("user", cli.serviceModeOverride())
+    assertEquals(cli.serviceModeOverride(), "user")
   }
 
-  @Test(expected = CommandLine.MutuallyExclusiveArgsException::class)
+  @Test
   fun shortcuts_mutually_exclusive() {
     val cli = NodeCli()
     // Parsing should fail because the ArgGroup is exclusive
-    CommandLine(cli).parseArgs("--service", "--user")
+    assertThrows<CommandLine.MutuallyExclusiveArgsException> {
+      CommandLine(cli).parseArgs("--service", "--user")
+    }
   }
 
   @Test
   fun config_file_positional_only() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("/etc/cryptad/cryptad.ini")
-    assertEquals(java.io.File("/etc/cryptad/cryptad.ini"), cli.explicitConfigFile())
+    assertEquals(cli.explicitConfigFile(), java.io.File("/etc/cryptad/cryptad.ini"))
   }
 
   @Test
   fun config_file_flag_overrides_positional() {
     val cli = NodeCli()
     CommandLine(cli).parseArgs("-c", "/opt/cryptad/cryptad.ini", "/etc/cryptad/cryptad.ini")
-    assertEquals(java.io.File("/opt/cryptad/cryptad.ini"), cli.explicitConfigFile())
+    assertEquals(cli.explicitConfigFile(), java.io.File("/opt/cryptad/cryptad.ini"))
   }
 
   @Test
@@ -105,6 +110,6 @@ class NodeCliTest {
     CommandLine(cli).parseArgs()
     val m = cli.directoryOverrides()
     // Should not contain logsDir when not provided
-    assertEquals(null, m["logsDir"])
+    assertEquals(null, m["logsDir"], "service")
   }
 }

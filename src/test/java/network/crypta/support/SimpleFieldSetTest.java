@@ -2,7 +2,7 @@ package network.crypta.support;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.anEmptyMap;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,7 +13,7 @@ import java.util.NoSuchElementException;
 import network.crypta.node.FSParseException;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link SimpleFieldSet} class.
@@ -32,7 +32,7 @@ public class SimpleFieldSetTest {
     String methodKey = "foo..bar.";
     String methodValue = "foobar";
     methodSFS.putSingle(methodKey, methodValue);
-    assertEquals(methodSFS.subset("foo").subset("").subset("bar").get(""), methodValue);
+    assertEquals(methodValue, methodSFS.subset("foo").subset("").subset("bar").get(""));
     assertEquals(methodSFS.get(methodKey), methodValue);
   }
 
@@ -272,7 +272,7 @@ public class SimpleFieldSetTest {
         assertEquals(
             methodSFS.getChar(String.valueOf(methodPairsArray[i][0])), methodPairsArray[i][1]);
         assertEquals(
-            methodSFS.getChar(String.valueOf(methodPairsArray[i][0]), '5'), methodPairsArray[i][1]);
+            methodPairsArray[i][1], methodSFS.getChar(String.valueOf(methodPairsArray[i][0]), '5'));
       } catch (FSParseException aException) {
         fail("Not expected exception thrown : " + aException.getMessage());
       }
@@ -590,7 +590,7 @@ public class SimpleFieldSetTest {
     sfs.putOverwrite("test", "test");
 
     Iterator<String> keyIterator = sfs.keyIterator();
-    assertEquals("test", keyIterator.next());
+    assertEquals(keyIterator.next(), "test");
 
     try {
       String s = keyIterator.next();
@@ -623,16 +623,16 @@ public class SimpleFieldSetTest {
 
   @Test
   public void testSplit() {
-    assertArrayEquals(SimpleFieldSet.split("blah"), new String[] {"blah"});
-    assertArrayEquals(SimpleFieldSet.split("blah; blah"), new String[] {"blah", " blah"});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2"), new String[] {"blah", "1", "2"});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2;"), new String[] {"blah", "1", "2", ""});
-    assertArrayEquals(SimpleFieldSet.split("blah;1;2;;"), new String[] {"blah", "1", "2", "", ""});
+    assertArrayEquals(new String[] {"blah"}, SimpleFieldSet.split("blah"));
+    assertArrayEquals(new String[] {"blah", " blah"}, SimpleFieldSet.split("blah; blah"));
+    assertArrayEquals(new String[] {"blah", "1", "2"}, SimpleFieldSet.split("blah;1;2"));
+    assertArrayEquals(new String[] {"blah", "1", "2", ""}, SimpleFieldSet.split("blah;1;2;"));
+    assertArrayEquals(new String[] {"blah", "1", "2", "", ""}, SimpleFieldSet.split("blah;1;2;;"));
     assertArrayEquals(
-        SimpleFieldSet.split(";blah;1;2;;"), new String[] {"", "blah", "1", "2", "", ""});
+        new String[] {"", "blah", "1", "2", "", ""}, SimpleFieldSet.split(";blah;1;2;;"));
     assertArrayEquals(
-        SimpleFieldSet.split(";;blah;1;2;;"), new String[] {"", "", "blah", "1", "2", "", ""});
-    assertArrayEquals(SimpleFieldSet.split(";;;"), new String[] {"", "", ""});
+        new String[] {"", "", "blah", "1", "2", "", ""}, SimpleFieldSet.split(";;blah;1;2;;"));
+    assertArrayEquals(new String[] {"", "", ""}, SimpleFieldSet.split(";;;"));
   }
 
   // This fixes https://freenet.mantishub.io/view.php?id=7197.

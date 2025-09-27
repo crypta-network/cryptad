@@ -1,6 +1,6 @@
 package network.crypta.client.async;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataOutputStream;
 import java.io.File;
@@ -52,8 +52,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.*;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SplitFileInserterStorageTest {
 
@@ -1179,8 +1178,8 @@ public class SplitFileInserterStorageTest {
 
     // Cross-check doesn't necessarily complete in exactly the number of required blocks.
     assertTrue(i >= dataBlocks);
-    assertTrue("Downloaded more blocks than data+cross check", i < expectedBlocks);
-    assertTrue("No cross-segment blocks decoded", i < expectedBlocks - 1);
+    assertTrue(i < expectedBlocks, "Downloaded more blocks than data+cross check");
+    assertTrue(i < expectedBlocks - 1, "No cross-segment blocks decoded");
     executor.waitForIdle(); // Wait for no encodes/decodes running.
     fcb.waitForFinished();
     verifyOutput(fetcherStorage, dataBucket);
@@ -1724,7 +1723,7 @@ public class SplitFileInserterStorageTest {
       if (failedException != null) {
         throw failedException;
       }
-      Assert.fail();
+      org.junit.jupiter.api.Assertions.fail();
     }
 
     @Override

@@ -1,6 +1,6 @@
 package network.crypta.store;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,10 +29,10 @@ import network.crypta.support.compress.Compressor;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /** Test migration from a RAMFreenetStore to a SaltedHashFreenetStore */
 public class RAMSaltMigrationTest {
@@ -44,7 +44,7 @@ public class RAMSaltMigrationTest {
   private final PooledExecutor exec = new PooledExecutor();
   private final Ticker ticker = new TrivialTicker(exec);
 
-  @BeforeClass
+  @BeforeAll
   public static void setupClass() {
     FileUtil.removeAll(TEMP_DIR);
 
@@ -53,13 +53,13 @@ public class RAMSaltMigrationTest {
     }
   }
 
-  @Before
+  @BeforeEach
   public void setUpTest() {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     exec.start();
   }
 
-  @AfterClass
+  @AfterAll
   public static void cleanup() {
     FileUtil.removeAll(TEMP_DIR);
   }
@@ -135,7 +135,7 @@ public class RAMSaltMigrationTest {
         blockActuallyStoredList.add(blockInsertedList.get(i));
       }
     }
-    assertFalse("Inserts failed, not a single key stored", dummyValueActuallyStoredList.isEmpty());
+    assertFalse(dummyValueActuallyStoredList.isEmpty(), "Inserts failed, not a single key stored");
   }
 
   /**
@@ -165,7 +165,7 @@ public class RAMSaltMigrationTest {
       CHKBlock verify = store.fetch(key.getNodeCHK(), false, false, null);
 
       if (expectAll) {
-        assertNotNull("Expect all keys to be in store. Not found: " + value, verify);
+        assertNotNull(verify, "Expect all keys to be in store. Not found: " + value);
       } else if (verify == null) {
         continue;
       }
@@ -175,7 +175,7 @@ public class RAMSaltMigrationTest {
       numberOfHits++;
     }
 
-    assertTrue("Not all keys in store were a hit", numberOfHits > 0);
+    assertTrue(numberOfHits > 0, "Not all keys in store were a hit");
   }
 
   @Test
@@ -323,11 +323,11 @@ public class RAMSaltMigrationTest {
           dummyValueActuallyStoredList,
           blockActuallyStoredList);
       assertEquals(
+          dummyValueInsertedList.size() - collisions,
+          blockActuallyStoredList.size(),
           "The number of inserts minus the number of collissions should be the same as the number"
               + " of keys in the store. Collisions "
-              + collisions,
-          dummyValueInsertedList.size() - collisions,
-          blockActuallyStoredList.size());
+              + collisions);
     }
 
     store = new CHKStore();
@@ -584,11 +584,11 @@ public class RAMSaltMigrationTest {
           dummyValueActuallyStoredList,
           blockActuallyStoredList);
       assertEquals(
+          dummyValueInsertedList.size() - collisions,
+          blockActuallyStoredList.size(),
           "The number of inserts minus the number of collissions should be the same as the number"
               + " of keys in the store. Collisions "
-              + collisions,
-          dummyValueInsertedList.size() - collisions,
-          blockActuallyStoredList.size());
+              + collisions);
 
       for (int i = 0; i < dummyValueActuallyStoredList.size(); i++) {
 
@@ -751,11 +751,11 @@ public class RAMSaltMigrationTest {
           dummyValueActuallyStoredList,
           blockActuallyStoredList);
       assertEquals(
+          dummyValueInsertedList.size() - collisions,
+          blockActuallyStoredList.size(),
           "The number of inserts minus the number of collissions should be the same as the number"
               + " of keys in the store. Collisions "
-              + collisions,
-          dummyValueInsertedList.size() - collisions,
-          blockActuallyStoredList.size());
+              + collisions);
 
       saltStore.close(abort);
     }

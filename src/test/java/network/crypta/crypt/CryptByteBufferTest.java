@@ -3,11 +3,12 @@ package network.crypta.crypt;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
@@ -19,7 +20,7 @@ import java.util.Random;
 import javax.crypto.spec.IvParameterSpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class CryptByteBufferTest {
   private static final CryptByteBufferType[] cipherTypes = CryptByteBufferType.values();
@@ -72,7 +73,7 @@ public class CryptByteBufferTest {
       }
       byte[] decipheredtext = crypt.decryptCopy(crypt.encryptCopy(Hex.decode(plainText[i])));
       assertArrayEquals(
-          "CryptByteBufferType: " + type.name(), Hex.decode(plainText[i]), decipheredtext);
+          Hex.decode(plainText[i]), decipheredtext, "CryptByteBufferType: " + type.name());
     }
   }
 
@@ -100,12 +101,12 @@ public class CryptByteBufferTest {
       for (int j = 0; j < buf.length; j++) {
         crypt2.encrypt(buf, j, 1);
         String message = "Encrypted bytes in position " + j + " do not match.";
-        assertEquals(message, buf[j], origCiphertext[j]);
+        assertEquals(buf[j], origCiphertext[j], message);
       }
       for (int j = 0; j < buf.length; j++) {
         crypt2.decrypt(buf, j, 1);
         String message = "Decrypted bytes in position " + j + " do not match.";
-        assertEquals(message, buf[j], origPlaintext[j]);
+        assertEquals(buf[j], origPlaintext[j], message);
       }
     }
   }
@@ -193,9 +194,9 @@ public class CryptByteBufferTest {
       assertThat(buffer, not(equalTo(copyBuffer)));
       crypt.decrypt(buffer, footer, originalPlaintext.length);
       assertArrayEquals(
-          "CryptByteBufferType: " + type.name(),
           originalPlaintext,
-          Arrays.copyOfRange(buffer, footer, footer + originalPlaintext.length));
+          Arrays.copyOfRange(buffer, footer, footer + originalPlaintext.length),
+          "CryptByteBufferType: " + type.name());
     }
   }
 
@@ -227,9 +228,9 @@ public class CryptByteBufferTest {
       assertThat(copyBuffer, equalTo(outBuffer));
 
       assertArrayEquals(
-          "CryptByteBufferType: " + type.name(),
           originalPlaintext,
-          Arrays.copyOfRange(buffer, inFooter, inFooter + originalPlaintext.length));
+          Arrays.copyOfRange(buffer, inFooter, inFooter + originalPlaintext.length),
+          "CryptByteBufferType: " + type.name());
     }
   }
 
@@ -466,11 +467,11 @@ public class CryptByteBufferTest {
         crypt = new CryptByteBuffer(type, keys[i], ivs[i]);
       }
       byte[] decipheredtext = crypt.decryptCopy(ciphertext);
-      assertArrayEquals("CryptByteBufferType: " + type.name(), plain, decipheredtext);
+      assertArrayEquals(plain, decipheredtext, "CryptByteBufferType: " + type.name());
       decipheredtext = crypt.decryptCopy(ciphertext2);
-      assertArrayEquals("CryptByteBufferType2: " + type.name(), plain, decipheredtext);
+      assertArrayEquals(plain, decipheredtext, "CryptByteBufferType2: " + type.name());
       decipheredtext = crypt.decryptCopy(ciphertext3);
-      assertArrayEquals("CryptByteBufferType3: " + type.name(), plain, decipheredtext);
+      assertArrayEquals(plain, decipheredtext, "CryptByteBufferType3: " + type.name());
     }
   }
 
@@ -488,7 +489,7 @@ public class CryptByteBufferTest {
   //            BitSet plaintext = BitSet.valueOf(plain);
   //            BitSet ciphertext = crypt.encrypt(plaintext);
   //            BitSet decipheredtext = crypt.decrypt(ciphertext);
-  //            assertTrue("CryptByteBufferType: "+type.name(), plaintext.equals(decipheredtext));
+  //            assertTrue(plaintext.equals(decipheredtext), "CryptByteBufferType: "+type.name());
   //        }
   //    }
 
@@ -741,19 +742,14 @@ public class CryptByteBufferTest {
     IvParameterSpec nullInput = null;
     int i = 4;
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
-    try {
-      crypt.setIV(nullInput);
-      fail("Expected InvalidAlgorithmParameterException");
-    } catch (InvalidAlgorithmParameterException e) {
-    }
+    assertThrows(InvalidAlgorithmParameterException.class, () -> crypt.setIV(nullInput));
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testSetIVIvParameterSpecUnsupportedTypeException() throws GeneralSecurityException {
     int i = 0;
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i]);
-    crypt.setIV(new IvParameterSpec(ivs[4]));
-    fail("Expected UnsupportedTypeException");
+    assertThrows(UnsupportedTypeException.class, () -> crypt.setIV(new IvParameterSpec(ivs[4])));
   }
 
   @Test
@@ -770,12 +766,11 @@ public class CryptByteBufferTest {
     assertEquals(crypt.genIV().getIV().length, cipherTypes[i].ivSize.intValue());
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGenIVUnsupportedTypeException() throws GeneralSecurityException {
     int i = 1;
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i]);
-    crypt.genIV();
-    fail("Expected UnsupportedTypeException");
+    assertThrows(UnsupportedTypeException.class, crypt::genIV);
   }
 
   @Test

@@ -1,12 +1,12 @@
 package network.crypta.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Tests Message abilities. */
 public class MessageTest {

@@ -1,12 +1,12 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import network.crypta.node.FSParseException;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests encoding and decoding of {@link FCPPluginMessage}s into the on-network format: - Encodes

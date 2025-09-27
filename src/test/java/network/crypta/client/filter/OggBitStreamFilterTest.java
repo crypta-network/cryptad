@@ -2,11 +2,11 @@ package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToDataInputStream;
 import static network.crypta.client.filter.ResourceFileUtil.resourceToOggPage;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class OggBitStreamFilterTest {
   @Test

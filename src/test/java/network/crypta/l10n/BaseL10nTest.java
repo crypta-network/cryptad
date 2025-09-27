@@ -1,7 +1,7 @@
 package network.crypta.l10n;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.util.Iterator;
@@ -9,7 +9,7 @@ import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TestProperty;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BaseL10nTest {
 
@@ -45,7 +45,7 @@ public class BaseL10nTest {
     HTMLNode boldNode = new HTMLNode("b");
     l10n.addL10nSubstitution(
         node, "test.substitution", new String[] {"bold"}, new HTMLNode[] {boldNode});
-    assertEquals("Text with <b>loud</b> string", node.generateChildren());
+    assertEquals(node.generateChildren(), "Text with <b>loud</b> string");
   }
 
   @Test
@@ -59,7 +59,7 @@ public class BaseL10nTest {
         "test.substitution",
         new String[] {"bold", "extra"},
         new HTMLNode[] {boldNode, extraNode});
-    assertEquals("Text with <b>loud</b> string", node.generateChildren());
+    assertEquals(node.generateChildren(), "Text with <b>loud</b> string");
   }
 
   @Test
@@ -69,7 +69,7 @@ public class BaseL10nTest {
     HTMLNode imgNode = new HTMLNode("img");
     l10n.addL10nSubstitution(
         node, "test.unclosedSubstitution", new String[] {"image"}, new HTMLNode[] {imgNode});
-    assertEquals("Text with <img /> unclosed substitution", node.generateChildren());
+    assertEquals(node.generateChildren(), "Text with <img /> unclosed substitution");
   }
 
   @Test
@@ -77,7 +77,7 @@ public class BaseL10nTest {
     BaseL10n l10n = createTestL10n(LANGUAGE.ENGLISH);
     HTMLNode node = new HTMLNode("div");
     l10n.addL10nSubstitution(node, "test.unclosedSubstitution", new String[] {}, new HTMLNode[] {});
-    assertEquals("Text with  unclosed substitution", node.generateChildren());
+    assertEquals(node.generateChildren(), "Text with  unclosed substitution");
   }
 
   @Test
@@ -92,7 +92,7 @@ public class BaseL10nTest {
         "test.multipleSubstitution",
         new String[] {"rep2", "rep1", "rep3"},
         new HTMLNode[] {rep2Node, rep1Node, rep3Node});
-    assertEquals("<r1>Rep 1</r1><r2>Rep 2</r2> and <r3>Rep 3</r3>", node.generateChildren());
+    assertEquals(node.generateChildren(), "<r1>Rep 1</r1><r2>Rep 2</r2> and <r3>Rep 3</r3>");
   }
 
   @Test
@@ -106,7 +106,7 @@ public class BaseL10nTest {
         "test.multipleSubstitution",
         new String[] {"rep2", "rep3"},
         new HTMLNode[] {rep2Node, rep3Node});
-    assertEquals("Rep 1<r2>Rep 2</r2> and <r3>Rep 3</r3>", node.generateChildren());
+    assertEquals(node.generateChildren(), "Rep 1<r2>Rep 2</r2> and <r3>Rep 3</r3>");
   }
 
   @Test
@@ -120,7 +120,7 @@ public class BaseL10nTest {
         "test.nestedSubstitution",
         new String[] {"inner", "outer"},
         new HTMLNode[] {innerNode, outerNode});
-    assertEquals("<out>Text and <in>replacement</in></out>", node.generateChildren());
+    assertEquals(node.generateChildren(), "<out>Text and <in>replacement</in></out>");
   }
 
   @Test
@@ -130,7 +130,7 @@ public class BaseL10nTest {
     HTMLNode tagNode = new HTMLNode("tag");
     l10n.addL10nSubstitution(
         node, "test.doubleSubstitution", new String[] {"tag"}, new HTMLNode[] {tagNode});
-    assertEquals("<tag></tag>content<tag></tag>", node.generateChildren());
+    assertEquals(node.generateChildren(), "<tag></tag>content<tag></tag>");
   }
 
   @Test
@@ -141,8 +141,8 @@ public class BaseL10nTest {
     l10n.addL10nSubstitution(
         node, "test.selfNestedSubstitution", new String[] {"tag"}, new HTMLNode[] {tagNode});
     // it would be nice to handle this correctly, but it seems like more trouble than it's worth
-    // assertEquals("<tag>content <tag>nested</tag></tag>", node.generateChildren());
-    assertEquals("test.selfNestedSubstitution", node.generateChildren());
+    // assertEquals(node.generateChildren(), "<tag>content <tag>nested</tag></tag>");
+    assertEquals(node.generateChildren(), "test.selfNestedSubstitution");
   }
 
   @Test
@@ -152,7 +152,7 @@ public class BaseL10nTest {
     HTMLNode tagNode = new HTMLNode("tag");
     l10n.addL10nSubstitution(
         node, "test.emptySelfNestedSubstitution", new String[] {"tag"}, new HTMLNode[] {tagNode});
-    assertEquals("<tag>content <tag></tag>nested</tag>", node.generateChildren());
+    assertEquals(node.generateChildren(), "<tag>content <tag></tag>nested</tag>");
   }
 
   @Test
@@ -162,7 +162,7 @@ public class BaseL10nTest {
     HTMLNode okNode = new HTMLNode("ok");
     l10n.addL10nSubstitution(
         node, "test.missingBraceSubstitution", new String[] {"ok"}, new HTMLNode[] {okNode});
-    assertEquals("test.missingBraceSubstitution", node.generateChildren());
+    assertEquals(node.generateChildren(), "test.missingBraceSubstitution");
   }
 
   @Test
@@ -172,7 +172,7 @@ public class BaseL10nTest {
     HTMLNode okNode = new HTMLNode("ok");
     l10n.addL10nSubstitution(
         node, "test.unmatchedCloseSubstitution", new String[] {"ok"}, new HTMLNode[] {okNode});
-    assertEquals("test.unmatchedCloseSubstitution", node.generateChildren());
+    assertEquals(node.generateChildren(), "test.unmatchedCloseSubstitution");
   }
 
   @Test
@@ -182,7 +182,7 @@ public class BaseL10nTest {
     HTMLNode tagNode = new HTMLNode("tag");
     l10n.addL10nSubstitution(
         node, "test.badSubstitutionFallback", new String[] {"tag"}, new HTMLNode[] {tagNode});
-    assertEquals("Fallback <tag></tag>", node.generateChildren());
+    assertEquals(node.generateChildren(), "Fallback <tag></tag>");
   }
 
   @Test
@@ -192,63 +192,63 @@ public class BaseL10nTest {
     HTMLNode boldNode = new HTMLNode("b");
     l10n.addL10nSubstitution(
         node, "test.substitution", new String[] {"bold"}, new HTMLNode[] {boldNode});
-    assertEquals("Text with <b>loud</b> string", node.generateChildren());
+    assertEquals(node.generateChildren(), "Text with <b>loud</b> string");
   }
 
   @Test
   public void testGetString() {
     BaseL10n l10n = createTestL10n(LANGUAGE.ENGLISH);
     String value = l10n.getString("test.sanity");
-    assertEquals("Sane", value);
+    assertEquals(value, "Sane");
   }
 
   @Test
   public void testGetStringOverridden() {
     BaseL10n l10n = createTestL10n(LANGUAGE.ENGLISH);
     String value = l10n.getString("test.override");
-    assertEquals("Overridden", value);
+    assertEquals(value, "Overridden");
   }
 
   @Test
   public void testGetStringFallback() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getString("test.sanity");
-    assertEquals("Sane", value);
+    assertEquals(value, "Sane");
   }
 
   @Test
   public void testGetStringFallbackOverridden() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getString("test.override");
-    assertEquals("Not overridden", value);
+    assertEquals(value, "Not overridden");
   }
 
   @Test
   public void testGetStringNonexistent() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getString("test.nonexistent");
-    assertEquals("test.nonexistent", value);
+    assertEquals(value, "test.nonexistent");
   }
 
   @Test
   public void testGetDefaultString() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getDefaultString("test.badSubstitutionFallback");
-    assertEquals("Fallback ${tag}", value);
+    assertEquals(value, "Fallback ${tag}");
   }
 
   @Test
   public void testGetDefaultStringFallback() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getDefaultString("test.sanity");
-    assertEquals("Sane", value);
+    assertEquals(value, "Sane");
   }
 
   @Test
   public void testGetDefaultStringNonexistent() {
     BaseL10n l10n = createTestL10n(LANGUAGE.GERMAN);
     String value = l10n.getDefaultString("test.nonexistent");
-    assertEquals("test.nonexistent", value);
+    assertEquals(value, "test.nonexistent");
   }
 
   @Test

@@ -1,8 +1,8 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToDataInputStream;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -10,13 +10,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import org.apache.commons.compress.utils.IOUtils;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class OggFilterTest {
   private OggFilter filter;
 
-  @Before
+  @BeforeEach
   public void setUp() {
     filter = new OggFilter();
   }

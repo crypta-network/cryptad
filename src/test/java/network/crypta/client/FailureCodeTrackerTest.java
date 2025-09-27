@@ -1,12 +1,12 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.NullOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FailureCodeTrackerTest {
 

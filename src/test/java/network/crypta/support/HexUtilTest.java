@@ -1,6 +1,6 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.BitSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link freenet.support.HexUtil} class.
@@ -253,7 +253,7 @@ public class HexUtilTest {
   public void testBytesToHex_byteIntInt_WithZeroLength() {
     int length = 0;
     byte[] methodBytesArray = {1, 2, 3}; // a non-zero bytes array
-    assertEquals("", HexUtil.bytesToHex(methodBytesArray, 0, length));
+    assertEquals(HexUtil.bytesToHex(methodBytesArray, 0, length), "");
   }
 
   /**
@@ -352,7 +352,7 @@ public class HexUtilTest {
    * handling zero length arrays */
   @Test
   public void testBytesToHexZeroLength() {
-    assertEquals("", HexUtil.bytesToHex(new byte[0], 0, 0));
-    assertEquals("", HexUtil.bytesToHex(new byte[2], 2, 0));
+    assertEquals(HexUtil.bytesToHex(new byte[0], 0, 0), "");
+    assertEquals(HexUtil.bytesToHex(new byte[2], 2, 0), "");
   }
 }

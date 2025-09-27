@@ -1,10 +1,10 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MultiHashDigesterTest {
 
@@ -47,11 +47,11 @@ public class MultiHashDigesterTest {
             HashType.SHA1.bitmask | HashType.MD5.bitmask | HashType.SHA256.bitmask);
 
     List<HashResult> results = digester.getResults();
-    assertEquals("da39a3ee5e6b4b0d3255bfef95601890afd80709", results.get(0).hashAsHex());
-    assertEquals("d41d8cd98f00b204e9800998ecf8427e", results.get(1).hashAsHex());
+    assertEquals(results.get(0).hashAsHex(), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    assertEquals(results.get(1).hashAsHex(), "d41d8cd98f00b204e9800998ecf8427e");
     assertEquals(
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        results.get(2).hashAsHex());
+        results.get(2).hashAsHex(),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
   }
 
   @Test
@@ -62,10 +62,10 @@ public class MultiHashDigesterTest {
     digester.update("$".getBytes(StandardCharsets.UTF_8), 0, 1);
 
     List<HashResult> results = digester.getResults();
-    assertEquals("3cdf2936da2fc556bfa533ab1eb59ce710ac80e5", results.get(0).hashAsHex());
-    assertEquals("c3e97dd6e97fb5125688c97f36720cbe", results.get(1).hashAsHex());
+    assertEquals(results.get(0).hashAsHex(), "3cdf2936da2fc556bfa533ab1eb59ce710ac80e5");
+    assertEquals(results.get(1).hashAsHex(), "c3e97dd6e97fb5125688c97f36720cbe");
     assertEquals(
-        "09fc96082d34c2dfc1295d92073b5ea1dc8ef8da95f14dfded011ffb96d3e54b",
-        results.get(2).hashAsHex());
+        results.get(2).hashAsHex(),
+        "09fc96082d34c2dfc1295d92073b5ea1dc8ef8da95f14dfded011ffb96d3e54b");
   }
 }

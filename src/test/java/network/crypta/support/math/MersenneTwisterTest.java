@@ -1,13 +1,13 @@
 package network.crypta.support.math;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import network.crypta.support.Fields;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MersenneTwisterTest {
 

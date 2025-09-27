@@ -1,10 +1,10 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link Base64} class.
@@ -120,8 +120,8 @@ public class Base64Test {
       encoded = Base64.encode(methodBytesArray[i], true);
       if (i == 0)
         // no occurrences expected
-        assertEquals(encoded.indexOf('='), -1);
-      else assertEquals(encoded.indexOf('='), encoded.length() - i);
+        assertEquals(-1, encoded.indexOf('='));
+      else assertEquals(encoded.length() - i, encoded.indexOf('='));
     }
   }
 
@@ -137,7 +137,7 @@ public class Base64Test {
       Base64.decode(illegalCharString);
       fail("Expected IllegalBase64Exception not thrown");
     } catch (IllegalBase64Exception exception) {
-      assertSame("illegal Base64 character", exception.getMessage());
+      assertSame(exception.getMessage(), "illegal Base64 character");
     }
   }
 
@@ -154,7 +154,7 @@ public class Base64Test {
       Base64.decode(illegalLengthString);
       fail("Expected IllegalBase64Exception not thrown");
     } catch (IllegalBase64Exception exception) {
-      assertSame("illegal Base64 length", exception.getMessage());
+      assertSame(exception.getMessage(), "illegal Base64 length");
     }
   }
 
@@ -172,10 +172,12 @@ public class Base64Test {
       for (int i = 0; i < b.length; i++) b[i] = (byte) (r.nextInt(256));
       String encoded = Base64.encode(b);
       byte[] decoded = Base64.decode(encoded);
-      assertEquals("length mismatch", decoded.length, b.length);
+      assertEquals(decoded.length, b.length, "length mismatch");
 
       for (int i = 0; i < b.length; i++)
         assertEquals(
+            b[i],
+            decoded[i],
             "data mismatch: index "
                 + i
                 + " of "
@@ -183,9 +185,7 @@ public class Base64Test {
                 + " should be 0x"
                 + Integer.toHexString(b[i] & 0xFF)
                 + " was 0x"
-                + Integer.toHexString(decoded[i] & 0xFF),
-            b[i],
-            decoded[i]);
+                + Integer.toHexString(decoded[i] & 0xFF));
     }
   }
 }

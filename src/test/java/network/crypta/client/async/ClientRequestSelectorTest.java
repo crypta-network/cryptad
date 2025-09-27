@@ -1,6 +1,6 @@
 package network.crypta.client.async;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,7 +45,7 @@ import network.crypta.support.io.RAFInputStream;
 import network.crypta.support.io.ReadOnlyRandomAccessBuffer;
 import network.crypta.support.io.TempBucketFactory;
 import network.crypta.support.io.TrivialPersistentFileTracker;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ClientRequestSelectorTest {
 

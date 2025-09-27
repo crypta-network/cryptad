@@ -1,6 +1,6 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.security.*;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -9,7 +9,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import network.crypta.support.HexUtil;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class KeyGenUtilsTest {
   private static final int trueLength = 16;
@@ -112,7 +112,7 @@ public class KeyGenUtilsTest {
   @Test
   public void testGenKeyPair() {
     for (KeyPairType type : trueKeyPairTypes) {
-      assertNotNull("KeyPairType: " + type.name(), KeyGenUtils.genKeyPair(type));
+      assertNotNull(KeyGenUtils.genKeyPair(type), "KeyPairType: " + type.name());
     }
   }
 
@@ -121,18 +121,18 @@ public class KeyGenUtilsTest {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPairType type = trueKeyPairTypes[i];
       byte[] publicKey = KeyGenUtils.genKeyPair(type).getPublic().getEncoded();
-      assertEquals("KeyPairType: " + type.name(), truePublicKeys[i].length, publicKey.length);
+      assertEquals(truePublicKeys[i].length, publicKey.length, "KeyPairType: " + type.name());
     }
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGenKeyPairDSAType() {
-    KeyGenUtils.genKeyPair(falseKeyPairType);
+    assertThrows(UnsupportedTypeException.class, () -> KeyGenUtils.genKeyPair(falseKeyPairType));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGenKeyPairNullInput() {
-    KeyGenUtils.genKeyPair(null);
+    assertThrows(NullPointerException.class, () -> KeyGenUtils.genKeyPair(null));
   }
 
   @Test
@@ -140,25 +140,29 @@ public class KeyGenUtilsTest {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPairType type = trueKeyPairTypes[i];
       PublicKey key = KeyGenUtils.getPublicKey(type, truePublicKeys[i]);
-      assertArrayEquals("KeyPairType: " + type.name(), key.getEncoded(), truePublicKeys[i]);
+      assertArrayEquals(key.getEncoded(), truePublicKeys[i], "KeyPairType: " + type.name());
     }
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGetPublicKeyDSAType() {
     byte[] nullArray = null;
-    KeyGenUtils.getPublicKey(falseKeyPairType, nullArray);
+    assertThrows(
+        UnsupportedTypeException.class,
+        () -> KeyGenUtils.getPublicKey(falseKeyPairType, nullArray));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetPublicKeyNullInput1() {
-    KeyGenUtils.getPublicKey(null, truePublicKeys[0]);
+    assertThrows(
+        NullPointerException.class, () -> KeyGenUtils.getPublicKey(null, truePublicKeys[0]));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetPublicKeyNullInput2() {
     byte[] nullArray = null;
-    KeyGenUtils.getPublicKey(trueKeyPairTypes[0], nullArray);
+    assertThrows(
+        NullPointerException.class, () -> KeyGenUtils.getPublicKey(trueKeyPairTypes[0], nullArray));
   }
 
   @Test
@@ -167,8 +171,8 @@ public class KeyGenUtilsTest {
       KeyPairType type = trueKeyPairTypes[i];
       KeyPair key = KeyGenUtils.getPublicKeyPair(type, truePublicKeys[i]);
       assertArrayEquals(
-          "KeyPairType: " + type.name(), key.getPublic().getEncoded(), truePublicKeys[i]);
-      assertNull("KeyPairType: " + type.name(), key.getPrivate());
+          key.getPublic().getEncoded(), truePublicKeys[i], "KeyPairType: " + type.name());
+      assertNull(key.getPrivate(), "KeyPairType: " + type.name());
     }
   }
 
@@ -177,25 +181,30 @@ public class KeyGenUtilsTest {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPairType type = trueKeyPairTypes[i];
       assertNotNull(
-          "KeyPairType: " + type.name(), KeyGenUtils.getPublicKey(type, truePublicKeys[i]));
+          KeyGenUtils.getPublicKey(type, truePublicKeys[i]), "KeyPairType: " + type.name());
     }
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGetPublicKeyPairDSAType() {
     byte[] nullArray = null;
-    KeyGenUtils.getPublicKeyPair(falseKeyPairType, nullArray);
+    assertThrows(
+        UnsupportedTypeException.class,
+        () -> KeyGenUtils.getPublicKeyPair(falseKeyPairType, nullArray));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetPublicKeyPairNullInput1() {
-    KeyGenUtils.getPublicKeyPair(null, truePublicKeys[0]);
+    assertThrows(
+        NullPointerException.class, () -> KeyGenUtils.getPublicKeyPair(null, truePublicKeys[0]));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetPublicKeyPairNullInput2() {
     byte[] nullArray = null;
-    KeyGenUtils.getPublicKeyPair(trueKeyPairTypes[0], nullArray);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.getPublicKeyPair(trueKeyPairTypes[0], nullArray));
   }
 
   @Test
@@ -203,38 +212,46 @@ public class KeyGenUtilsTest {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPairType type = trueKeyPairTypes[i];
       assertNotNull(
-          "KeyPairType: " + type.name(),
-          KeyGenUtils.getKeyPair(type, truePublicKeys[i], truePrivateKeys[i]));
+          KeyGenUtils.getKeyPair(type, truePublicKeys[i], truePrivateKeys[i]),
+          "KeyPairType: " + type.name());
     }
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGetKeyPairKeyPairTypeByteArrayDSAType() {
     byte[] nullArray = null;
-    KeyGenUtils.getKeyPair(falseKeyPairType, nullArray, nullArray);
+    assertThrows(
+        UnsupportedTypeException.class,
+        () -> KeyGenUtils.getKeyPair(falseKeyPairType, nullArray, nullArray));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetKeyPairKeyPairTypeByteArrayNullInput1() {
-    KeyGenUtils.getKeyPair(null, truePublicKeys[0], truePrivateKeys[0]);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.getKeyPair(null, truePublicKeys[0], truePrivateKeys[0]));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetKeyPairKeyPairTypeByteArrayNullInput2() {
-    KeyGenUtils.getKeyPair(trueKeyPairTypes[0], null, truePrivateKeys[0]);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.getKeyPair(trueKeyPairTypes[0], null, truePrivateKeys[0]));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetKeyPairKeyPairTypeByteArrayNullInput3() {
-    KeyGenUtils.getKeyPair(trueKeyPairTypes[0], truePublicKeys[0], null);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.getKeyPair(trueKeyPairTypes[0], truePublicKeys[0], null));
   }
 
   @Test
   public void testGetKeyPairPublicKeyPrivateKey() {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       assertNotNull(
-          "KeyPairType: " + trueKeyPairTypes[i].name(),
-          KeyGenUtils.getKeyPair(publicKeys[i], privateKeys[i]));
+          KeyGenUtils.getKeyPair(publicKeys[i], privateKeys[i]),
+          "KeyPairType: " + trueKeyPairTypes[i].name());
     }
   }
 
@@ -242,7 +259,7 @@ public class KeyGenUtilsTest {
   public void testGetKeyPairPublicKeyPrivateKeySamePublic() {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPair pair = KeyGenUtils.getKeyPair(publicKeys[i], privateKeys[i]);
-      assertEquals("KeyPairType: " + trueKeyPairTypes[i].name(), pair.getPublic(), publicKeys[i]);
+      assertEquals(pair.getPublic(), publicKeys[i], "KeyPairType: " + trueKeyPairTypes[i].name());
     }
   }
 
@@ -250,14 +267,14 @@ public class KeyGenUtilsTest {
   public void testGetKeyPairPublicKeyPrivateKeySamePrivate() {
     for (int i = 0; i < trueKeyPairTypes.length; i++) {
       KeyPair pair = KeyGenUtils.getKeyPair(publicKeys[i], privateKeys[i]);
-      assertEquals("KeyPairType: " + trueKeyPairTypes[i].name(), pair.getPrivate(), privateKeys[i]);
+      assertEquals(pair.getPrivate(), privateKeys[i], "KeyPairType: " + trueKeyPairTypes[i].name());
     }
   }
 
   @Test
   public void testGenSecretKey() {
     for (KeyType type : keyTypes) {
-      assertNotNull("KeyType: " + type.name(), KeyGenUtils.genSecretKey(type));
+      assertNotNull(KeyGenUtils.genSecretKey(type), "KeyType: " + type.name());
     }
   }
 
@@ -267,13 +284,13 @@ public class KeyGenUtilsTest {
       byte[] key = KeyGenUtils.genSecretKey(type).getEncoded();
       System.out.println(key.length);
       int keySizeBytes = type.keySize >> 3;
-      assertEquals("KeyType: " + type.name(), keySizeBytes, key.length);
+      assertEquals(keySizeBytes, key.length, "KeyType: " + type.name());
     }
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGenSecretKeyNullInput() {
-    KeyGenUtils.genSecretKey(null);
+    assertThrows(NullPointerException.class, () -> KeyGenUtils.genSecretKey(null));
   }
 
   @Test
@@ -281,19 +298,21 @@ public class KeyGenUtilsTest {
     for (int i = 0; i < keyTypes.length; i++) {
       KeyType type = keyTypes[i];
       SecretKey newKey = KeyGenUtils.getSecretKey(type, trueLengthSecretKeys[i]);
-      assertArrayEquals("KeyType: " + type.name(), trueLengthSecretKeys[i], newKey.getEncoded());
+      assertArrayEquals(trueLengthSecretKeys[i], newKey.getEncoded(), "KeyType: " + type.name());
     }
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetSecretKeyNullInput1() {
     byte[] nullArray = null;
-    KeyGenUtils.getSecretKey(keyTypes[1], nullArray);
+    assertThrows(
+        NullPointerException.class, () -> KeyGenUtils.getSecretKey(keyTypes[1], nullArray));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetSecretKeyNullInput2() {
-    KeyGenUtils.getSecretKey(null, trueSecretKeys[0]);
+    assertThrows(
+        NullPointerException.class, () -> KeyGenUtils.getSecretKey(null, trueSecretKeys[0]));
   }
 
   @Test
@@ -301,9 +320,9 @@ public class KeyGenUtilsTest {
     assertEquals(KeyGenUtils.genNonce(trueLength).capacity(), trueLength);
   }
 
-  @Test(expected = NegativeArraySizeException.class)
+  @Test
   public void testGenNonceNegativeLength() {
-    KeyGenUtils.genNonce(falseLength);
+    assertThrows(NegativeArraySizeException.class, () -> KeyGenUtils.genNonce(falseLength));
   }
 
   @Test
@@ -311,9 +330,9 @@ public class KeyGenUtilsTest {
     assertEquals(KeyGenUtils.genIV(trueLength).getIV().length, trueLength);
   }
 
-  @Test(expected = NegativeArraySizeException.class)
+  @Test
   public void testGenIVNegativeLength() {
-    KeyGenUtils.genIV(falseLength);
+    assertThrows(NegativeArraySizeException.class, () -> KeyGenUtils.genIV(falseLength));
   }
 
   @Test
@@ -322,19 +341,25 @@ public class KeyGenUtilsTest {
         KeyGenUtils.getIvParameterSpec(new byte[16], 0, trueLength).getIV().length, trueLength);
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testGetIvParameterSpecNullInput() {
-    KeyGenUtils.getIvParameterSpec(null, 0, trueIV.length);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> KeyGenUtils.getIvParameterSpec(null, 0, trueIV.length));
   }
 
-  @Test(expected = ArrayIndexOutOfBoundsException.class)
+  @Test
   public void testGetIvParameterSpecOffsetOutOfBounds() {
-    KeyGenUtils.getIvParameterSpec(trueIV, -4, trueIV.length);
+    assertThrows(
+        ArrayIndexOutOfBoundsException.class,
+        () -> KeyGenUtils.getIvParameterSpec(trueIV, -4, trueIV.length));
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testGetIvParameterSpecLengthOutOfBounds() {
-    KeyGenUtils.getIvParameterSpec(trueIV, 0, trueIV.length + 20);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> KeyGenUtils.getIvParameterSpec(trueIV, 0, trueIV.length + 20));
   }
 
   @Test
@@ -358,28 +383,36 @@ public class KeyGenUtilsTest {
     }
   }
 
-  @Test(expected = InvalidKeyException.class)
-  public void testDeriveSecretKeyNullInput1() throws InvalidKeyException {
+  @Test
+  public void testDeriveSecretKeyNullInput1() {
     SecretKey kdfKey = null;
-    KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128);
+    assertThrows(
+        InvalidKeyException.class,
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveSecretKeyNullInput2() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveSecretKey(kdfKey, null, kdfInput, KeyType.ChaCha128);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, null, kdfInput, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveSecretKeyNullInput3() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveSecretKeyNullInput4() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, null);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, null));
   }
 
   @Test
@@ -404,27 +437,38 @@ public class KeyGenUtilsTest {
     }
   }
 
-  @Test(expected = InvalidKeyException.class)
-  public void testDeriveIvParameterSpecNullInput1() throws InvalidKeyException {
+  @Test
+  public void testDeriveIvParameterSpecNullInput1() {
     SecretKey kdfKey = null;
-    KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128);
+    assertThrows(
+        InvalidKeyException.class,
+        () ->
+            KeyGenUtils.deriveIvParameterSpec(
+                kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveIvParameterSpecNullInput2() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveIvParameterSpec(kdfKey, null, kdfInput, KeyType.ChaCha128);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.deriveIvParameterSpec(kdfKey, null, kdfInput, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveIvParameterSpecNullInput3() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128);
+    assertThrows(
+        NullPointerException.class,
+        () ->
+            KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveIvParameterSpecNullInput4() throws InvalidKeyException {
     SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
-    KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, null);
+    assertThrows(
+        NullPointerException.class,
+        () -> KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, null));
   }
 }

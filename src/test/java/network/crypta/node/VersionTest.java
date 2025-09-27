@@ -1,9 +1,9 @@
 package network.crypta.node;
 
 import static network.crypta.node.Version.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for the Version.kt functions, focusing on the new functions: - compareBuildNumbers() -
@@ -30,25 +30,25 @@ public class VersionTest {
   public void testCompareBuildNumbers_CryptadVsFred() {
     // Cryptad should always be considered newer than Fred regardless of build numbers
     assertTrue(
-        "Cryptad should be newer than Fred with lower build number",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1, FRED_NODE_NAME, 9999) > 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1, FRED_NODE_NAME, 9999) > 0,
+        "Cryptad should be newer than Fred with lower build number");
     assertTrue(
-        "Cryptad should be newer than Fred with same build number",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1500, FRED_NODE_NAME, 1500) > 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1500, FRED_NODE_NAME, 1500) > 0,
+        "Cryptad should be newer than Fred with same build number");
     assertTrue(
-        "Cryptad should be newer than Fred with higher build number",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 9999, FRED_NODE_NAME, 1) > 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 9999, FRED_NODE_NAME, 1) > 0,
+        "Cryptad should be newer than Fred with higher build number");
 
     // Fred should be older than Cryptad
     assertTrue(
-        "Fred should be older than Cryptad with lower build number",
-        compareBuildNumbers(FRED_NODE_NAME, 1, CRYPTAD_NODE_NAME, 9999) < 0);
+        compareBuildNumbers(FRED_NODE_NAME, 1, CRYPTAD_NODE_NAME, 9999) < 0,
+        "Fred should be older than Cryptad with lower build number");
     assertTrue(
-        "Fred should be older than Cryptad with same build number",
-        compareBuildNumbers(FRED_NODE_NAME, 1500, CRYPTAD_NODE_NAME, 1500) < 0);
+        compareBuildNumbers(FRED_NODE_NAME, 1500, CRYPTAD_NODE_NAME, 1500) < 0,
+        "Fred should be older than Cryptad with same build number");
     assertTrue(
-        "Fred should be older than Cryptad with higher build number",
-        compareBuildNumbers(FRED_NODE_NAME, 9999, CRYPTAD_NODE_NAME, 1) < 0);
+        compareBuildNumbers(FRED_NODE_NAME, 9999, CRYPTAD_NODE_NAME, 1) < 0,
+        "Fred should be older than Cryptad with higher build number");
   }
 
   @Test
@@ -57,198 +57,198 @@ public class VersionTest {
 
     // Cryptad vs Cryptad
     assertTrue(
-        "Higher Cryptad build should be newer",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1505, CRYPTAD_NODE_NAME, 1504) > 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1505, CRYPTAD_NODE_NAME, 1504) > 0,
+        "Higher Cryptad build should be newer");
     assertTrue(
-        "Lower Cryptad build should be older",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, CRYPTAD_NODE_NAME, 1505) < 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, CRYPTAD_NODE_NAME, 1505) < 0,
+        "Lower Cryptad build should be older");
     assertEquals(
-        "Same Cryptad build should be equal",
         0,
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, CRYPTAD_NODE_NAME, 1504));
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, CRYPTAD_NODE_NAME, 1504),
+        "Same Cryptad build should be equal");
 
     // Fred vs Fred
     assertTrue(
-        "Higher Fred build should be newer",
-        compareBuildNumbers(FRED_NODE_NAME, 1503, FRED_NODE_NAME, 1502) > 0);
+        compareBuildNumbers(FRED_NODE_NAME, 1503, FRED_NODE_NAME, 1502) > 0,
+        "Higher Fred build should be newer");
     assertTrue(
-        "Lower Fred build should be older",
-        compareBuildNumbers(FRED_NODE_NAME, 1502, FRED_NODE_NAME, 1503) < 0);
+        compareBuildNumbers(FRED_NODE_NAME, 1502, FRED_NODE_NAME, 1503) < 0,
+        "Lower Fred build should be older");
     assertEquals(
-        "Same Fred build should be equal",
         0,
-        compareBuildNumbers(FRED_NODE_NAME, 1503, FRED_NODE_NAME, 1503));
+        compareBuildNumbers(FRED_NODE_NAME, 1503, FRED_NODE_NAME, 1503),
+        "Same Fred build should be equal");
   }
 
   @Test
   public void testCompareBuildNumbers_NullNodeNames() {
     // When node names are null, should fall back to build number comparison
     assertTrue(
-        "Higher build number should win with null node names",
-        compareBuildNumbers(null, 1505, null, 1504) > 0);
+        compareBuildNumbers(null, 1505, null, 1504) > 0,
+        "Higher build number should win with null node names");
     assertTrue(
-        "Lower build number should lose with null node names",
-        compareBuildNumbers(null, 1504, null, 1505) < 0);
+        compareBuildNumbers(null, 1504, null, 1505) < 0,
+        "Lower build number should lose with null node names");
     assertEquals(
-        "Same build number should be equal with null node names",
         0,
-        compareBuildNumbers(null, 1504, null, 1504));
+        compareBuildNumbers(null, 1504, null, 1504),
+        "Same build number should be equal with null node names");
 
     // One null, one not null - should fall back to build number comparison
     assertTrue(
-        "Higher build number should win with one null node name",
-        compareBuildNumbers(null, 1505, FRED_NODE_NAME, 1504) > 0);
+        compareBuildNumbers(null, 1505, FRED_NODE_NAME, 1504) > 0,
+        "Higher build number should win with one null node name");
     assertTrue(
-        "Lower build number should lose with one null node name",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, null, 1505) < 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1504, null, 1505) < 0,
+        "Lower build number should lose with one null node name");
   }
 
   @Test
   public void testCompareBuildNumbers_EdgeCases() {
     // Test with zero and negative build numbers
     assertTrue(
-        "Positive should be greater than zero",
-        compareBuildNumbers(CRYPTAD_NODE_NAME, 1, CRYPTAD_NODE_NAME, 0) > 0);
+        compareBuildNumbers(CRYPTAD_NODE_NAME, 1, CRYPTAD_NODE_NAME, 0) > 0,
+        "Positive should be greater than zero");
     assertTrue(
-        "Zero should be greater than negative",
-        compareBuildNumbers(FRED_NODE_NAME, 0, FRED_NODE_NAME, -1) > 0);
+        compareBuildNumbers(FRED_NODE_NAME, 0, FRED_NODE_NAME, -1) > 0,
+        "Zero should be greater than negative");
 
     // Test with very large build numbers
     assertTrue(
-        "Large build number comparison should work",
         compareBuildNumbers(
                 CRYPTAD_NODE_NAME, Integer.MAX_VALUE, CRYPTAD_NODE_NAME, Integer.MAX_VALUE - 1)
-            > 0);
+            > 0,
+        "Large build number comparison should work");
   }
 
   @Test
   public void testCompareBuildNumbers_UnknownNodeTypes() {
     // Unknown node types should fall back to build number comparison
     assertTrue(
-        "Unknown node type should compare by build number",
-        compareBuildNumbers("Unknown", 1505, "AnotherUnknown", 1504) > 0);
+        compareBuildNumbers("Unknown", 1505, "AnotherUnknown", 1504) > 0,
+        "Unknown node type should compare by build number");
     assertTrue(
-        "Unknown vs known should compare by build number when not Cryptad/Fred",
-        compareBuildNumbers("Unknown", 1505, "SomeOther", 1504) > 0);
+        compareBuildNumbers("Unknown", 1505, "SomeOther", 1504) > 0,
+        "Unknown vs known should compare by build number when not Cryptad/Fred");
   }
 
   @Test
   public void testIsBuildAtLeast_CryptadNode() {
     // Cryptad nodes should always meet Fred minimum requirements
     assertTrue(
-        "Cryptad should always meet Fred minimum build requirement",
-        isBuildAtLeast(CRYPTAD_NODE_NAME, 1, MIN_FRED_BUILD));
+        isBuildAtLeast(CRYPTAD_NODE_NAME, 1, MIN_FRED_BUILD),
+        "Cryptad should always meet Fred minimum build requirement");
     assertTrue(
-        "Cryptad with low build should still meet Fred minimum",
-        isBuildAtLeast(CRYPTAD_NODE_NAME, 1, 9999));
+        isBuildAtLeast(CRYPTAD_NODE_NAME, 1, 9999),
+        "Cryptad with low build should still meet Fred minimum");
     assertTrue(
-        "Cryptad with zero build should still meet Fred minimum",
-        isBuildAtLeast(CRYPTAD_NODE_NAME, 0, MIN_FRED_BUILD));
+        isBuildAtLeast(CRYPTAD_NODE_NAME, 0, MIN_FRED_BUILD),
+        "Cryptad with zero build should still meet Fred minimum");
     assertTrue(
-        "Cryptad with negative build should still meet Fred minimum",
-        isBuildAtLeast(CRYPTAD_NODE_NAME, -1, MIN_FRED_BUILD));
+        isBuildAtLeast(CRYPTAD_NODE_NAME, -1, MIN_FRED_BUILD),
+        "Cryptad with negative build should still meet Fred minimum");
   }
 
   @Test
   public void testIsBuildAtLeast_FredNode() {
     // Fred nodes should be checked against the minimum build number
     assertTrue(
-        "Fred node with sufficient build should meet minimum",
-        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD, MIN_FRED_BUILD));
+        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD, MIN_FRED_BUILD),
+        "Fred node with sufficient build should meet minimum");
     assertTrue(
-        "Fred node with higher build should meet minimum",
-        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD + 1, MIN_FRED_BUILD));
+        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD + 1, MIN_FRED_BUILD),
+        "Fred node with higher build should meet minimum");
     assertFalse(
-        "Fred node with insufficient build should not meet minimum",
-        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD - 1, MIN_FRED_BUILD));
+        isBuildAtLeast(FRED_NODE_NAME, MIN_FRED_BUILD - 1, MIN_FRED_BUILD),
+        "Fred node with insufficient build should not meet minimum");
     assertFalse(
-        "Fred node with zero build should not meet minimum",
-        isBuildAtLeast(FRED_NODE_NAME, 0, MIN_FRED_BUILD));
+        isBuildAtLeast(FRED_NODE_NAME, 0, MIN_FRED_BUILD),
+        "Fred node with zero build should not meet minimum");
   }
 
   @Test
   public void testIsBuildAtLeast_NullAndUnknownNodeNames() {
     // Null node names should be treated like Fred nodes
     assertTrue(
-        "Null node name with sufficient build should meet minimum",
-        isBuildAtLeast(null, MIN_FRED_BUILD, MIN_FRED_BUILD));
+        isBuildAtLeast(null, MIN_FRED_BUILD, MIN_FRED_BUILD),
+        "Null node name with sufficient build should meet minimum");
     assertFalse(
-        "Null node name with insufficient build should not meet minimum",
-        isBuildAtLeast(null, MIN_FRED_BUILD - 1, MIN_FRED_BUILD));
+        isBuildAtLeast(null, MIN_FRED_BUILD - 1, MIN_FRED_BUILD),
+        "Null node name with insufficient build should not meet minimum");
 
     // Unknown node names should be treated like Fred nodes
     assertTrue(
-        "Unknown node name with sufficient build should meet minimum",
-        isBuildAtLeast("UnknownNode", MIN_FRED_BUILD, MIN_FRED_BUILD));
+        isBuildAtLeast("UnknownNode", MIN_FRED_BUILD, MIN_FRED_BUILD),
+        "Unknown node name with sufficient build should meet minimum");
     assertFalse(
-        "Unknown node name with insufficient build should not meet minimum",
-        isBuildAtLeast("UnknownNode", MIN_FRED_BUILD - 1, MIN_FRED_BUILD));
+        isBuildAtLeast("UnknownNode", MIN_FRED_BUILD - 1, MIN_FRED_BUILD),
+        "Unknown node name with insufficient build should not meet minimum");
   }
 
   @Test
   public void testIsBuildAtLeast_EdgeCases() {
     // Test boundary conditions
-    assertTrue("Exact minimum should meet requirement", isBuildAtLeast(FRED_NODE_NAME, 1000, 1000));
+    assertTrue(isBuildAtLeast(FRED_NODE_NAME, 1000, 1000), "Exact minimum should meet requirement");
     assertFalse(
-        "One below minimum should not meet requirement", isBuildAtLeast(FRED_NODE_NAME, 999, 1000));
+        isBuildAtLeast(FRED_NODE_NAME, 999, 1000), "One below minimum should not meet requirement");
     assertTrue(
-        "One above minimum should meet requirement", isBuildAtLeast(FRED_NODE_NAME, 1001, 1000));
+        isBuildAtLeast(FRED_NODE_NAME, 1001, 1000), "One above minimum should meet requirement");
 
     // Test with zero minimum
-    assertTrue("Any build should meet zero minimum", isBuildAtLeast(FRED_NODE_NAME, 0, 0));
-    assertTrue("Positive build should meet zero minimum", isBuildAtLeast(FRED_NODE_NAME, 1, 0));
+    assertTrue(isBuildAtLeast(FRED_NODE_NAME, 0, 0), "Any build should meet zero minimum");
+    assertTrue(isBuildAtLeast(FRED_NODE_NAME, 1, 0), "Positive build should meet zero minimum");
     assertFalse(
-        "Negative build should not meet zero minimum", isBuildAtLeast(FRED_NODE_NAME, -1, 0));
+        isBuildAtLeast(FRED_NODE_NAME, -1, 0), "Negative build should not meet zero minimum");
   }
 
   @Test
   public void testParseNodeNameFromVersionStr_ValidVersions() {
     // Test valid Cryptad version strings
     assertEquals(
-        "Should extract Cryptad node name",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr(VALID_CRYPTAD_VERSION));
+        parseNodeNameFromVersionStr(VALID_CRYPTAD_VERSION),
+        "Should extract Cryptad node name");
     assertEquals(
-        "Should extract Cryptad from minimal version",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr(MINIMAL_CRYPTAD_VERSION));
+        parseNodeNameFromVersionStr(MINIMAL_CRYPTAD_VERSION),
+        "Should extract Cryptad from minimal version");
 
     // Test valid Fred version strings
     assertEquals(
-        "Should extract Fred node name",
         FRED_NODE_NAME,
-        parseNodeNameFromVersionStr(VALID_FRED_VERSION));
+        parseNodeNameFromVersionStr(VALID_FRED_VERSION),
+        "Should extract Fred node name");
     assertEquals(
-        "Should extract Fred from minimal version",
         FRED_NODE_NAME,
-        parseNodeNameFromVersionStr(MINIMAL_FRED_VERSION));
+        parseNodeNameFromVersionStr(MINIMAL_FRED_VERSION),
+        "Should extract Fred from minimal version");
 
     // Test single component version (edge case)
     assertEquals(
-        "Should extract node name from single component",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr("Cryptad"));
+        parseNodeNameFromVersionStr("Cryptad"),
+        "Should extract node name from single component");
     assertEquals(
-        "Should extract node name from single component",
         FRED_NODE_NAME,
-        parseNodeNameFromVersionStr("Fred"));
+        parseNodeNameFromVersionStr("Fred"),
+        "Should extract node name from single component");
   }
 
   @Test
   public void testParseNodeNameFromVersionStr_NullAndEmptyInputs() {
     // Test null input
-    assertNull("Null version string should return null", parseNodeNameFromVersionStr(null));
+    assertNull(parseNodeNameFromVersionStr(null), "Null version string should return null");
 
     // Test empty input - Fields.commaList("") returns empty array, so we get null
     assertNull(
-        "Empty version string should return null",
-        parseNodeNameFromVersionStr(MALFORMED_VERSION_EMPTY));
+        parseNodeNameFromVersionStr(MALFORMED_VERSION_EMPTY),
+        "Empty version string should return null");
 
     // Test whitespace-only input - Fields.commaList("   ") returns [""] (one empty string)
     assertEquals(
-        "Whitespace-only version string should return empty string",
         "",
-        parseNodeNameFromVersionStr("   "));
+        parseNodeNameFromVersionStr("   "),
+        "Whitespace-only version string should return empty string");
   }
 
   @Test
@@ -256,43 +256,43 @@ public class VersionTest {
     // Test version with wrong separator - semicolon is not a comma, so whole string becomes one
     // element
     assertEquals(
-        "Version with wrong separator should return the whole string as node name",
         MALFORMED_VERSION_WRONG_SEPARATOR,
-        parseNodeNameFromVersionStr(MALFORMED_VERSION_WRONG_SEPARATOR));
+        parseNodeNameFromVersionStr(MALFORMED_VERSION_WRONG_SEPARATOR),
+        "Version with wrong separator should return the whole string as node name");
 
     // Test version that's too short but has a node name
     assertEquals(
-        "Should still extract node name from short version",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr(MALFORMED_VERSION_SHORT));
+        parseNodeNameFromVersionStr(MALFORMED_VERSION_SHORT),
+        "Should still extract node name from short version");
 
     // Test version with only commas - StringTokenizer skips empty tokens, so array is empty and
     // returns null
-    assertNull("Version with only commas should return null", parseNodeNameFromVersionStr(",,,"));
+    assertNull(parseNodeNameFromVersionStr(",,,"), "Version with only commas should return null");
 
     // Test version starting with comma - StringTokenizer skips empty token, so first real token is
     // "Cryptad"
     assertEquals(
-        "Version starting with comma should return first non-empty token",
         "Cryptad",
-        parseNodeNameFromVersionStr(",Cryptad,1504,1.0"));
+        parseNodeNameFromVersionStr(",Cryptad,1504,1.0"),
+        "Version starting with comma should return first non-empty token");
   }
 
   @Test
   public void testParseNodeNameFromVersionStr_UnknownNodeNames() {
     // Test with unknown node names
     assertEquals(
-        "Should extract unknown node name",
         "UnknownNode",
-        parseNodeNameFromVersionStr("UnknownNode,1504,1.0,1504"));
+        parseNodeNameFromVersionStr("UnknownNode,1504,1.0,1504"),
+        "Should extract unknown node name");
     assertEquals(
-        "Should extract numeric node name", "123", parseNodeNameFromVersionStr("123,1504,1.0"));
+        "123", parseNodeNameFromVersionStr("123,1504,1.0"), "Should extract numeric node name");
 
     // Test with special characters in node name
     assertEquals(
-        "Should extract node name with special characters",
         "Node-v2.0",
-        parseNodeNameFromVersionStr("Node-v2.0,1504,1.0,1504"));
+        parseNodeNameFromVersionStr("Node-v2.0,1504,1.0,1504"),
+        "Should extract node name with special characters");
   }
 
   @Test
@@ -300,27 +300,27 @@ public class VersionTest {
     // Test very long node name
     String longNodeName = "VeryLongNodeNameThatExceedsNormalExpectations";
     assertEquals(
-        "Should extract very long node name",
         longNodeName,
-        parseNodeNameFromVersionStr(longNodeName + ",1504,1.0,1504"));
+        parseNodeNameFromVersionStr(longNodeName + ",1504,1.0,1504"),
+        "Should extract very long node name");
 
     // Test node name with spaces (even though this would be unusual)
     assertEquals(
-        "Should extract node name with spaces",
         "Node Name",
-        parseNodeNameFromVersionStr("Node Name,1504,1.0,1504"));
+        parseNodeNameFromVersionStr("Node Name,1504,1.0,1504"),
+        "Should extract node name with spaces");
 
     // Test version string with trailing commas
     assertEquals(
-        "Should extract node name with trailing commas",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr("Cryptad,1504,1.0,1504,"));
+        parseNodeNameFromVersionStr("Cryptad,1504,1.0,1504,"),
+        "Should extract node name with trailing commas");
 
     // Test version string with extra components
     assertEquals(
-        "Should extract node name with extra components",
         FRED_NODE_NAME,
-        parseNodeNameFromVersionStr("Fred,0.7,1.0,1503,extra,data"));
+        parseNodeNameFromVersionStr("Fred,0.7,1.0,1503,extra,data"),
+        "Should extract node name with extra components");
   }
 
   @Test
@@ -329,43 +329,43 @@ public class VersionTest {
     String cryptadName = parseNodeNameFromVersionStr(VALID_CRYPTAD_VERSION);
     String fredName = parseNodeNameFromVersionStr(VALID_FRED_VERSION);
 
-    assertNotNull("Should extract valid Cryptad node name", cryptadName);
-    assertNotNull("Should extract valid Fred node name", fredName);
+    assertNotNull(cryptadName, "Should extract valid Cryptad node name");
+    assertNotNull(fredName, "Should extract valid Fred node name");
 
     // Test with compareBuildNumbers
     assertTrue(
-        "Extracted Cryptad name should work with compareBuildNumbers",
-        compareBuildNumbers(cryptadName, 1504, fredName, 1503) > 0);
+        compareBuildNumbers(cryptadName, 1504, fredName, 1503) > 0,
+        "Extracted Cryptad name should work with compareBuildNumbers");
 
     // Test with isBuildAtLeast
     assertTrue(
-        "Extracted Cryptad name should work with isBuildAtLeast",
-        isBuildAtLeast(cryptadName, 1, MIN_FRED_BUILD));
+        isBuildAtLeast(cryptadName, 1, MIN_FRED_BUILD),
+        "Extracted Cryptad name should work with isBuildAtLeast");
     assertTrue(
-        "Extracted Fred name should work with isBuildAtLeast",
-        isBuildAtLeast(fredName, MIN_FRED_BUILD, MIN_FRED_BUILD));
+        isBuildAtLeast(fredName, MIN_FRED_BUILD, MIN_FRED_BUILD),
+        "Extracted Fred name should work with isBuildAtLeast");
   }
 
   @Test
   public void testParseNodeNameFromVersionStr_RealWorldVersionStrings() {
     // Test with realistic version strings that might be encountered
     assertEquals(
-        "Should handle typical Cryptad version",
         CRYPTAD_NODE_NAME,
-        parseNodeNameFromVersionStr("Cryptad,1504,1.0,1504"));
+        parseNodeNameFromVersionStr("Cryptad,1504,1.0,1504"),
+        "Should handle typical Cryptad version");
     assertEquals(
-        "Should handle typical Fred version",
         FRED_NODE_NAME,
-        parseNodeNameFromVersionStr("Fred,0.7,1.0,1503"));
+        parseNodeNameFromVersionStr("Fred,0.7,1.0,1503"),
+        "Should handle typical Fred version");
 
     // Test with version strings that might come from different Freenet forks
     assertEquals(
-        "Should handle Freenet version",
         "Freenet",
-        parseNodeNameFromVersionStr("Freenet,0.7,1.0,1475"));
+        parseNodeNameFromVersionStr("Freenet,0.7,1.0,1475"),
+        "Should handle Freenet version");
     assertEquals(
-        "Should handle other fork names",
         "Hyphanet",
-        parseNodeNameFromVersionStr("Hyphanet,1.0,1.0,2000"));
+        parseNodeNameFromVersionStr("Hyphanet,1.0,1.0,2000"),
+        "Should handle other fork names");
   }
 }

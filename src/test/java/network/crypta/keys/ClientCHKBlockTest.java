@@ -1,13 +1,13 @@
 package network.crypta.keys;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ClientCHKBlockTest {
 

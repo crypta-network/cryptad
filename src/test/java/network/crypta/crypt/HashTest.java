@@ -1,12 +1,12 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class HashTest {
   private static final byte[] helloWorld = "hello world".getBytes(StandardCharsets.UTF_8);
@@ -50,7 +50,7 @@ public class HashTest {
       Hash hash = new Hash(types[i]);
       byte[] abcResult = hash.genHash(helloWorld);
       byte[] expectedABCResult = Hex.decode(trueHashes[i]);
-      assertArrayEquals("HashType: " + types[i].name(), abcResult, expectedABCResult);
+      assertArrayEquals(abcResult, expectedABCResult, "HashType: " + types[i].name());
     }
   }
 
@@ -61,7 +61,7 @@ public class HashTest {
       Hash hash = new Hash(types[i]);
       byte[] abcResult = hash.genHash(helloWorld);
       byte[] abcResult2 = hash.genHash(helloWorld);
-      assertArrayEquals("HashType: " + types[i].name(), abcResult, abcResult2);
+      assertArrayEquals(abcResult, abcResult2, "HashType: " + types[i].name());
     }
   }
 
@@ -73,7 +73,7 @@ public class HashTest {
       MessageDigest md = types[i].get();
       byte[] mdResult = md.digest(helloWorld);
       byte[] hashResult = hash.genHash(helloWorld);
-      assertArrayEquals("HashType: " + types[i].name(), mdResult, hashResult);
+      assertArrayEquals(mdResult, hashResult, "HashType: " + types[i].name());
     }
   }
 
@@ -89,7 +89,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwNull = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "HashType: " + types[i].name());
     }
   }
 
@@ -105,7 +105,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwNulls = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwNulls);
+      assertTrue(throwNulls, "HashType: " + types[i].name());
     }
   }
 
@@ -116,7 +116,7 @@ public class HashTest {
       HashResult hash2 = new HashResult(types[i], Hex.decode(trueHashes[i]));
       Hash hash = new Hash(types[i]);
       HashResult hash1 = hash.genHashResult(helloWorld);
-      assertTrue("HashType: " + types[i].name(), Hash.verify(hash1, hash2));
+      assertTrue(Hash.verify(hash1, hash2), "HashType: " + types[i].name());
     }
   }
 
@@ -126,7 +126,7 @@ public class HashTest {
       Hash hash = new Hash(types[i]);
       hash.addBytes(helloWorld);
       String hexHash = hash.genHexHash();
-      assertEquals("HashType: " + types[i].name(), trueHashes[i], hexHash);
+      assertEquals(trueHashes[i], hexHash, "HashType: " + types[i].name());
     }
   }
 
@@ -138,7 +138,7 @@ public class HashTest {
       for (int j = 0; j < helloWorld.length; j++) {
         hash.addByte(helloWorld[j]);
       }
-      assertArrayEquals("HashType: " + types[i].name(), Hex.decode(trueHashes[i]), hash.genHash());
+      assertArrayEquals(Hex.decode(trueHashes[i]), hash.genHash(), "HashType: " + types[i].name());
     }
   }
 
@@ -154,7 +154,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwNull = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "HashType: " + types[i].name());
     }
   }
 
@@ -164,7 +164,7 @@ public class HashTest {
       ByteBuffer byteBuffer = ByteBuffer.wrap(helloWorld);
       Hash hash = new Hash(types[i]);
       hash.addBytes(byteBuffer);
-      assertArrayEquals("HashType: " + types[i].name(), Hex.decode(trueHashes[i]), hash.genHash());
+      assertArrayEquals(Hex.decode(trueHashes[i]), hash.genHash(), "HashType: " + types[i].name());
     }
   }
 
@@ -179,7 +179,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwNull = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "HashType: " + types[i].name());
     }
   }
 
@@ -189,7 +189,7 @@ public class HashTest {
       Hash hash = new Hash(types[i]);
       hash.addBytes(helloWorld, 0, helloWorld.length / 2);
       hash.addBytes(helloWorld, helloWorld.length / 2, helloWorld.length - helloWorld.length / 2);
-      assertArrayEquals("HashType: " + types[i].name(), Hex.decode(trueHashes[i]), hash.genHash());
+      assertArrayEquals(Hex.decode(trueHashes[i]), hash.genHash(), "HashType: " + types[i].name());
     }
   }
 
@@ -204,7 +204,7 @@ public class HashTest {
       } catch (IllegalArgumentException e) {
         throwNull = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "HashType: " + types[i].name());
     }
   }
 
@@ -218,7 +218,7 @@ public class HashTest {
       } catch (ArrayIndexOutOfBoundsException e) {
         throwOutOfBounds = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwOutOfBounds);
+      assertTrue(throwOutOfBounds, "HashType: " + types[i].name());
     }
   }
 
@@ -232,7 +232,7 @@ public class HashTest {
       } catch (IllegalArgumentException e) {
         throwOutOfBounds = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwOutOfBounds);
+      assertTrue(throwOutOfBounds, "HashType: " + types[i].name());
     }
   }
 
@@ -241,7 +241,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       Hash hash = new Hash(types[i]);
       assertTrue(
-          "HashType: " + types[i].name(), hash.verify(Hex.decode(trueHashes[i]), helloWorld));
+          hash.verify(Hex.decode(trueHashes[i]), helloWorld), "HashType: " + types[i].name());
     }
   }
 
@@ -250,7 +250,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       Hash hash = new Hash(types[i]);
       assertFalse(
-          "HashType: " + types[i].name(), hash.verify(Hex.decode(falseHashes[i]), helloWorld));
+          hash.verify(Hex.decode(falseHashes[i]), helloWorld), "HashType: " + types[i].name());
     }
   }
 
@@ -259,7 +259,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       Hash hash = new Hash(types[i]);
 
-      assertFalse("HashType: " + types[i].name(), hash.verify(helloWorld, helloWorld));
+      assertFalse(hash.verify(helloWorld, helloWorld), "HashType: " + types[i].name());
     }
   }
 
@@ -274,7 +274,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwResult = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwResult || !valid);
+      assertTrue(throwResult || !valid, "HashType: " + types[i].name());
     }
   }
 
@@ -288,7 +288,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwResult = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwResult);
+      assertTrue(throwResult, "HashType: " + types[i].name());
     }
   }
 
@@ -297,7 +297,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       HashResult hashResult = new HashResult(types[i], Hex.decode(trueHashes[i]));
 
-      assertTrue("HashType: " + types[i].name(), Hash.verify(hashResult, helloWorld));
+      assertTrue(Hash.verify(hashResult, helloWorld), "HashType: " + types[i].name());
     }
   }
 
@@ -306,7 +306,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       HashResult hashResult = new HashResult(types[i], Hex.decode(falseHashes[i]));
 
-      assertFalse("HashType: " + types[i].name(), Hash.verify(hashResult, helloWorld));
+      assertFalse(Hash.verify(hashResult, helloWorld), "HashType: " + types[i].name());
     }
   }
 
@@ -316,7 +316,7 @@ public class HashTest {
       byte[] hash1 = helloWorld;
       HashResult hashResult = new HashResult(types[i], hash1, true);
 
-      assertFalse("HashType: " + types[i].name(), Hash.verify(hashResult, hash1));
+      assertFalse(Hash.verify(hashResult, hash1), "HashType: " + types[i].name());
     }
   }
 
@@ -331,7 +331,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwResult = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwResult);
+      assertTrue(throwResult, "HashType: " + types[i].name());
     }
   }
 
@@ -345,7 +345,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwResult = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwResult);
+      assertTrue(throwResult, "HashType: " + types[i].name());
     }
   }
 
@@ -354,7 +354,7 @@ public class HashTest {
     for (int i = 0; i < types.length; i++) {
       HashResult hash = new HashResult(types[i], Hex.decode(trueHashes[i]));
 
-      assertTrue("HashType: " + types[i].name(), Hash.verify(hash, hash));
+      assertTrue(Hash.verify(hash, hash), "HashType: " + types[i].name());
     }
   }
 
@@ -364,7 +364,7 @@ public class HashTest {
       HashResult hash1 = new HashResult(types[i], Hex.decode(trueHashes[i]));
       HashResult hash2 = new HashResult(types[i], Hex.decode(falseHashes[i]));
 
-      assertFalse("HashType: " + types[i].name(), Hash.verify(hash1, hash2));
+      assertFalse(Hash.verify(hash1, hash2), "HashType: " + types[i].name());
     }
   }
 
@@ -379,7 +379,7 @@ public class HashTest {
       } catch (NullPointerException e) {
         throwResult = true;
       }
-      assertTrue("HashType: " + types[i].name(), throwResult);
+      assertTrue(throwResult, "HashType: " + types[i].name());
     }
   }
 
@@ -389,7 +389,7 @@ public class HashTest {
       HashResult hash = new HashResult(types[i], Hex.decode(trueHashes[i]));
       HashResult nullResult = null;
 
-      assertFalse("HashType: " + types[i].name(), Hash.verify(hash, nullResult));
+      assertFalse(Hash.verify(hash, nullResult), "HashType: " + types[i].name());
     }
   }
 }

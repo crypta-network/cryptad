@@ -1,11 +1,11 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.DataInputStream;
 import java.io.File;
@@ -23,9 +23,9 @@ import network.crypta.support.api.RandomAccessBuffer;
 import network.crypta.support.io.TempBucketFactory.TempBucket;
 import network.crypta.support.io.TempBucketFactory.TempRandomAccessBuffer;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBase {
 
@@ -39,7 +39,7 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
 
   public abstract boolean enableCrypto();
 
-  @Before
+  @BeforeEach
   public void setUp() throws IOException {
     FilenameGenerator fg = new FilenameGenerator(weakPRNG, true, f, "temp-raf-test-");
     factory =
@@ -51,7 +51,7 @@ public abstract class TempBucketFactoryRAFBase extends RandomAccessBufferTestBas
     assertTrue(f.exists() && f.isDirectory());
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     assertEquals(factory.getRamUsed(), 0);
     // Everything should have been free()'ed.

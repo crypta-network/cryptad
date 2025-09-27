@@ -1,10 +1,10 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import network.crypta.node.FastRunnable;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class PrioritizedTickerTest {
 
@@ -54,7 +54,7 @@ public class PrioritizedTickerTest {
     }
   }
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     realExec = new WaitableExecutor(new PooledExecutor());
     ticker = new MyTicker(realExec, 0);

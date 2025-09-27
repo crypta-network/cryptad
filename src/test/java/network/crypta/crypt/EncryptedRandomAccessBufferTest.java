@@ -1,6 +1,6 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -23,11 +23,9 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class EncryptedRandomAccessBufferTest {
   private static final EncryptedRandomAccessBufferType[] types =
@@ -40,8 +38,6 @@ public class EncryptedRandomAccessBufferTest {
     Security.addProvider(new BouncyCastleProvider());
   }
 
-  @Rule public ExpectedException thrown = ExpectedException.none();
-
   @Test
   public void testSuccesfulRoundTrip() throws IOException, GeneralSecurityException {
     for (EncryptedRandomAccessBufferType type : types) {
@@ -52,7 +48,7 @@ public class EncryptedRandomAccessBufferTest {
       byte[] result = new byte[message.length];
       erat.pread(0, result, 0, result.length);
       erat.close();
-      assertArrayEquals(message, result);
+      assertArrayEquals(result, message);
     }
   }
 
@@ -70,7 +66,7 @@ public class EncryptedRandomAccessBufferTest {
       byte[] result = new byte[message.length];
       erat2.pread(0, result, 0, result.length);
       erat2.close();
-      assertArrayEquals(message, result);
+      assertArrayEquals(result, message);
     }
   }
 
@@ -82,10 +78,11 @@ public class EncryptedRandomAccessBufferTest {
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     erat.close();
     ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(IOException.class);
-    thrown.expectMessage("This is not an EncryptedRandomAccessBuffer"); // Different header lengths.
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[1], barat2, secret, false);
+    IOException ex =
+        assertThrows(
+            IOException.class,
+            () -> new EncryptedRandomAccessBuffer(types[1], barat2, secret, false));
+    assertTrue(ex.getMessage().contains("This is not an EncryptedRandomAccessBuffer"));
   }
 
   @Test
@@ -93,11 +90,13 @@ public class EncryptedRandomAccessBufferTest {
       throws GeneralSecurityException, IOException {
     byte[] bytes = new byte[10];
     ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Underlying RandomAccessBuffer is not long enough to include the " + "footer.");
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+    IOException ex =
+        assertThrows(
+            IOException.class,
+            () -> new EncryptedRandomAccessBuffer(types[0], barat, secret, true));
+    assertTrue(
+        ex.getMessage()
+            .contains("Underlying RandomAccessBuffer is not long enough to include the footer."));
   }
 
   @Test
@@ -110,10 +109,11 @@ public class EncryptedRandomAccessBufferTest {
     ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
     byte[] magic = ByteBuffer.allocate(8).putLong(falseMagic).array();
     barat2.pwrite(types[0].headerLen - 8, magic, 0, 8);
-    thrown.expect(IOException.class);
-    thrown.expectMessage("This is not an EncryptedRandomAccessBuffer!");
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[0], barat2, secret, false);
+    IOException ex =
+        assertThrows(
+            IOException.class,
+            () -> new EncryptedRandomAccessBuffer(types[0], barat2, secret, false));
+    assertTrue(ex.getMessage().contains("This is not an EncryptedRandomAccessBuffer!"));
   }
 
   @Test
@@ -124,42 +124,49 @@ public class EncryptedRandomAccessBufferTest {
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     erat.close();
     ByteArrayRandomAccessBuffer barat2 = new ByteArrayRandomAccessBuffer(bytes);
-    thrown.expect(GeneralSecurityException.class);
-    thrown.expectMessage("MAC is incorrect");
-    EncryptedRandomAccessBuffer erat2 =
-        new EncryptedRandomAccessBuffer(types[0], barat2, new MasterSecret(), false);
+    GeneralSecurityException ex =
+        assertThrows(
+            GeneralSecurityException.class,
+            () -> new EncryptedRandomAccessBuffer(types[0], barat2, new MasterSecret(), false));
+    assertTrue(ex.getMessage().contains("MAC is incorrect"));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testEncryptedRandomAccessThingNullInput1()
       throws GeneralSecurityException, IOException {
     byte[] bytes = new byte[10];
     ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(null, barat, secret, true);
+    assertThrows(
+        NullPointerException.class,
+        () -> new EncryptedRandomAccessBuffer(null, barat, secret, true));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testEncryptedRandomAccessThingNullByteArray()
       throws GeneralSecurityException, IOException {
     ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(null);
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+    assertThrows(
+        NullPointerException.class,
+        () -> new EncryptedRandomAccessBuffer(types[0], barat, secret, true));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testEncryptedRandomAccessThingNullBARAT()
       throws GeneralSecurityException, IOException {
     ByteArrayRandomAccessBuffer barat = null;
-    EncryptedRandomAccessBuffer erat =
-        new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
+    assertThrows(
+        NullPointerException.class,
+        () -> new EncryptedRandomAccessBuffer(types[0], barat, secret, true));
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testEncryptedRandomAccessThingNullInput3()
       throws GeneralSecurityException, IOException {
     byte[] bytes = new byte[10];
     ByteArrayRandomAccessBuffer barat = new ByteArrayRandomAccessBuffer(bytes);
-    EncryptedRandomAccessBuffer erat = new EncryptedRandomAccessBuffer(types[0], barat, null, true);
+    assertThrows(
+        NullPointerException.class,
+        () -> new EncryptedRandomAccessBuffer(types[0], barat, null, true));
   }
 
   @Test
@@ -178,9 +185,9 @@ public class EncryptedRandomAccessBufferTest {
     EncryptedRandomAccessBuffer erat =
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     byte[] result = new byte[20];
-    thrown.expect(IllegalArgumentException.class);
-    thrown.expectMessage("Cannot read before zero");
-    erat.pread(-1, result, 0, 20);
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> erat.pread(-1, result, 0, 20));
+    assertTrue(ex.getMessage().contains("Cannot read before zero"));
   }
 
   @Test
@@ -192,15 +199,16 @@ public class EncryptedRandomAccessBufferTest {
     int len = 20;
     byte[] result = new byte[len];
     int offset = 100;
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Cannot read after end: trying to read from "
-            + offset
-            + " to "
-            + (offset + len)
-            + " on block length "
-            + erat.size());
-    erat.pread(offset, result, 0, len);
+    IOException ex = assertThrows(IOException.class, () -> erat.pread(offset, result, 0, len));
+    assertTrue(
+        ex.getMessage()
+            .contains(
+                "Cannot read after end: trying to read from "
+                    + offset
+                    + " to "
+                    + (offset + len)
+                    + " on block length "
+                    + erat.size()));
   }
 
   @Test
@@ -210,9 +218,9 @@ public class EncryptedRandomAccessBufferTest {
     EncryptedRandomAccessBuffer erat =
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     byte[] result = new byte[20];
-    thrown.expect(IllegalArgumentException.class);
-    thrown.expectMessage("Cannot read before zero");
-    erat.pwrite(-1, result, 0, 20);
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> erat.pwrite(-1, result, 0, 20));
+    assertTrue(ex.getMessage().contains("Cannot read before zero"));
   }
 
   @Test
@@ -224,15 +232,16 @@ public class EncryptedRandomAccessBufferTest {
     int len = 20;
     byte[] result = new byte[len];
     int offset = 100;
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "Cannot write after end: trying to write from "
-            + offset
-            + " to "
-            + (offset + len)
-            + " on block length "
-            + erat.size());
-    erat.pwrite(offset, result, 0, len);
+    IOException ex = assertThrows(IOException.class, () -> erat.pwrite(offset, result, 0, len));
+    assertTrue(
+        ex.getMessage()
+            .contains(
+                "Cannot write after end: trying to write from "
+                    + offset
+                    + " to "
+                    + (offset + len)
+                    + " on block length "
+                    + erat.size()));
   }
 
   @Test
@@ -253,10 +262,12 @@ public class EncryptedRandomAccessBufferTest {
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     erat.close();
     byte[] result = new byte[20];
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "This RandomAccessBuffer has already been closed. It can no longer" + " be read from.");
-    erat.pread(0, result, 0, 20);
+    IOException readEx = assertThrows(IOException.class, () -> erat.pread(0, result, 0, 20));
+    assertTrue(
+        readEx
+            .getMessage()
+            .contains(
+                "This RandomAccessBuffer has already been closed. It can no longer be read from."));
   }
 
   @Test
@@ -267,20 +278,23 @@ public class EncryptedRandomAccessBufferTest {
         new EncryptedRandomAccessBuffer(types[0], barat, secret, true);
     erat.close();
     byte[] result = new byte[20];
-    thrown.expect(IOException.class);
-    thrown.expectMessage(
-        "This RandomAccessBuffer has already been closed. It can no longer" + " be written to.");
-    erat.pwrite(0, result, 0, 20);
+    IOException writeEx = assertThrows(IOException.class, () -> erat.pwrite(0, result, 0, 20));
+    assertTrue(
+        writeEx
+            .getMessage()
+            .contains(
+                "This RandomAccessBuffer has already been closed. It can no longer be written"
+                    + " to."));
   }
 
   private final File base = new File("tmp.encrypted-random-access-thing-test");
 
-  @Before
+  @BeforeEach
   public void setUp() {
     base.mkdir();
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(base);
   }

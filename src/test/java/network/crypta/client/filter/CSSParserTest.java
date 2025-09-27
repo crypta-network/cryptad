@@ -2,11 +2,11 @@ package network.crypta.client.filter;
 
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.equalToIgnoringCase;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,8 +30,8 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import org.hamcrest.MatcherAssert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CSSParserTest {
 
@@ -1796,7 +1796,7 @@ public class CSSParserTest {
 
   FilterMIMEType cssMIMEType;
 
-  @Before
+  @BeforeEach
   public void setUp() throws InvalidThresholdException {
     new NodeL10n();
     // if (TestProperty.VERBOSE) {
@@ -1810,23 +1810,23 @@ public class CSSParserTest {
   public void testCSS1Selector() throws IOException, URISyntaxException {
     testCssSelectorFiltering(CSS1_SELECTOR);
     assertEquals(
+        CSS_DELETE_INVALID_SELECTORC,
+        filter(CSS_DELETE_INVALID_SELECTOR),
         "key=\""
             + CSS_DELETE_INVALID_SELECTOR
             + "\" value=\""
             + filter(CSS_DELETE_INVALID_SELECTOR)
             + "\" should be \""
             + CSS_DELETE_INVALID_SELECTORC
-            + "\"",
-        CSS_DELETE_INVALID_SELECTORC,
-        filter(CSS_DELETE_INVALID_SELECTOR));
+            + "\"");
     assertEquals(
+        "",
+        filter(CSS_INVALID_MEDIA_CASCADE),
         "key=\""
             + CSS_INVALID_MEDIA_CASCADE
             + "\" value=\""
             + filter(CSS_INVALID_MEDIA_CASCADE)
-            + "\"",
-        "",
-        filter(CSS_INVALID_MEDIA_CASCADE));
+            + "\"");
   }
 
   private void testCssSelectorFiltering(Map<String, String> cssSelectorMap)
@@ -1835,8 +1835,8 @@ public class CSSParserTest {
       String key = entry.getKey();
       String value = entry.getValue();
       assertTrue(
-          "key=\"" + key + "\" value=\"" + filter(key) + "\" should be \"" + value + "\"",
-          filter(key).contains(value));
+          filter(key).contains(value),
+          "key=\"" + key + "\" value=\"" + filter(key) + "\" should be \"" + value + "\"");
     }
   }
 
@@ -1844,7 +1844,7 @@ public class CSSParserTest {
       throws IOException, URISyntaxException {
     for (String key : badSelectorSet) {
       assertEquals(
-          "Bad selector filtering should produce empty string: '" + key + "'", "", filter(key));
+          "", filter(key), "Bad selector filtering should produce empty string: '" + key + "'");
     }
   }
 
@@ -1873,143 +1873,143 @@ public class CSSParserTest {
   @Test
   public void testNewlines() throws IOException, URISyntaxException {
     assertEquals(
+        CSS_STRING_NEWLINESC,
+        filter(CSS_STRING_NEWLINES),
         "key=\""
             + CSS_STRING_NEWLINES
             + "\" value=\""
             + filter(CSS_STRING_NEWLINES)
             + "\" should be: \""
             + CSS_STRING_NEWLINESC
-            + "\"",
-        CSS_STRING_NEWLINESC,
-        filter(CSS_STRING_NEWLINES));
+            + "\"");
   }
 
   @Test
   public void testBackgroundURL() throws IOException, URISyntaxException {
     assertEquals(
+        CSS_BACKGROUND_URLC,
+        filter(CSS_BACKGROUND_URL),
         "key="
             + CSS_BACKGROUND_URL
             + " value=\""
             + filter(CSS_BACKGROUND_URL)
             + "\" should be \""
             + CSS_BACKGROUND_URLC
-            + "\"",
-        CSS_BACKGROUND_URLC,
-        filter(CSS_BACKGROUND_URL));
+            + "\"");
     assertEquals(
-        "key=" + CSS_LCASE_BACKGROUND_URL + " value=\"" + filter(CSS_LCASE_BACKGROUND_URL) + "\"",
         CSS_LCASE_BACKGROUND_URLC,
-        filter(CSS_LCASE_BACKGROUND_URL));
+        filter(CSS_LCASE_BACKGROUND_URL),
+        "key=" + CSS_LCASE_BACKGROUND_URL + " value=\"" + filter(CSS_LCASE_BACKGROUND_URL) + "\"");
   }
 
   @Test
   public void testImports() throws IOException, URISyntaxException {
     assertEquals(
-        "key=" + CSS_IMPORT + " value=\"" + filter(CSS_IMPORT) + "\"",
         CSS_IMPORTC,
-        filter(CSS_IMPORT));
+        filter(CSS_IMPORT),
+        "key=" + CSS_IMPORT + " value=\"" + filter(CSS_IMPORT) + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT2 + " value=\"" + filter(CSS_IMPORT2) + "\"",
         CSS_IMPORT2C,
-        filter(CSS_IMPORT2));
+        filter(CSS_IMPORT2),
+        "key=" + CSS_IMPORT2 + " value=\"" + filter(CSS_IMPORT2) + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_MULTI_MEDIA + " value=\"" + filter(CSS_IMPORT_MULTI_MEDIA) + "\"",
         CSS_IMPORT_MULTI_MEDIAC,
-        filter(CSS_IMPORT_MULTI_MEDIA));
+        filter(CSS_IMPORT_MULTI_MEDIA),
+        "key=" + CSS_IMPORT_MULTI_MEDIA + " value=\"" + filter(CSS_IMPORT_MULTI_MEDIA) + "\"");
     assertEquals(
+        CSS_IMPORT_MULTI_MEDIA_BOGUSC,
+        filter(CSS_IMPORT_MULTI_MEDIA_BOGUS),
         "key="
             + CSS_IMPORT_MULTI_MEDIA_BOGUS
             + " value=\""
             + filter(CSS_IMPORT_MULTI_MEDIA_BOGUS)
-            + "\"",
-        CSS_IMPORT_MULTI_MEDIA_BOGUSC,
-        filter(CSS_IMPORT_MULTI_MEDIA_BOGUS));
+            + "\"");
     assertEquals(
+        CSS_IMPORT_MULTI_MEDIA_ALLC,
+        filter(CSS_IMPORT_MULTI_MEDIA_ALL),
         "key="
             + CSS_IMPORT_MULTI_MEDIA_ALL
             + " value=\""
             + filter(CSS_IMPORT_MULTI_MEDIA_ALL)
-            + "\"",
-        CSS_IMPORT_MULTI_MEDIA_ALLC,
-        filter(CSS_IMPORT_MULTI_MEDIA_ALL));
+            + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_TYPE + " value=\"" + filter(CSS_IMPORT_TYPE) + "\"",
         CSS_IMPORT_TYPEC,
-        filter(CSS_IMPORT_TYPE));
+        filter(CSS_IMPORT_TYPE),
+        "key=" + CSS_IMPORT_TYPE + " value=\"" + filter(CSS_IMPORT_TYPE) + "\"");
     assertEquals(
+        CSS_IMPORT_SPACE_IN_STRINGC,
+        filter(CSS_IMPORT_SPACE_IN_STRING),
         "key="
             + CSS_IMPORT_SPACE_IN_STRING
             + " value=\""
             + filter(CSS_IMPORT_SPACE_IN_STRING)
-            + "\"",
-        CSS_IMPORT_SPACE_IN_STRINGC,
-        filter(CSS_IMPORT_SPACE_IN_STRING));
+            + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_QUOTED_STUFF + " value=\"" + filter(CSS_IMPORT_QUOTED_STUFF) + "\"",
         CSS_IMPORT_QUOTED_STUFFC,
-        filter(CSS_IMPORT_QUOTED_STUFF));
+        filter(CSS_IMPORT_QUOTED_STUFF),
+        "key=" + CSS_IMPORT_QUOTED_STUFF + " value=\"" + filter(CSS_IMPORT_QUOTED_STUFF) + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_QUOTED_STUFF2 + " value=\"" + filter(CSS_IMPORT_QUOTED_STUFF2) + "\"",
         CSS_IMPORT_QUOTED_STUFF2C,
-        filter(CSS_IMPORT_QUOTED_STUFF2));
+        filter(CSS_IMPORT_QUOTED_STUFF2),
+        "key=" + CSS_IMPORT_QUOTED_STUFF2 + " value=\"" + filter(CSS_IMPORT_QUOTED_STUFF2) + "\"");
     assertEquals(
+        CSS_IMPORT_NOURL_TWOMEDIASC,
+        filter(CSS_IMPORT_NOURL_TWOMEDIAS),
         "key="
             + CSS_IMPORT_NOURL_TWOMEDIAS
             + " value=\""
             + filter(CSS_IMPORT_NOURL_TWOMEDIAS)
-            + "\"",
-        CSS_IMPORT_NOURL_TWOMEDIASC,
-        filter(CSS_IMPORT_NOURL_TWOMEDIAS));
+            + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_UNQUOTED + " should be empty", "", filter(CSS_IMPORT_UNQUOTED));
+        "", filter(CSS_IMPORT_UNQUOTED), "key=" + CSS_IMPORT_UNQUOTED + " should be empty");
     assertEquals(
-        "key=" + CSS_IMPORT_NOURL + " value=\"" + filter(CSS_IMPORT_NOURL) + "\"",
         CSS_IMPORT_NOURLC,
-        filter(CSS_IMPORT_NOURL));
+        filter(CSS_IMPORT_NOURL),
+        "key=" + CSS_IMPORT_NOURL + " value=\"" + filter(CSS_IMPORT_NOURL) + "\"");
     assertEquals(
-        "key=" + CSS_IMPORT_BRACKET + " value=\"" + filter(CSS_IMPORT_BRACKET) + "\"",
         CSS_IMPORT_BRACKETC,
-        filter(CSS_IMPORT_BRACKET));
+        filter(CSS_IMPORT_BRACKET),
+        "key=" + CSS_IMPORT_BRACKET + " value=\"" + filter(CSS_IMPORT_BRACKET) + "\"");
     assertEquals(
-        "key=" + CSS_LATE_IMPORT + " value=\"" + filter(CSS_LATE_IMPORT) + "\"",
         CSS_LATE_IMPORTC,
-        filter(CSS_LATE_IMPORT));
+        filter(CSS_LATE_IMPORT),
+        "key=" + CSS_LATE_IMPORT + " value=\"" + filter(CSS_LATE_IMPORT) + "\"");
     assertEquals(
-        "key=" + CSS_LATE_IMPORT2 + " value=\"" + filter(CSS_LATE_IMPORT2) + "\"",
         CSS_LATE_IMPORT2C,
-        filter(CSS_LATE_IMPORT2));
+        filter(CSS_LATE_IMPORT2),
+        "key=" + CSS_LATE_IMPORT2 + " value=\"" + filter(CSS_LATE_IMPORT2) + "\"");
     assertEquals(
-        "key=" + CSS_LATE_IMPORT3 + " value=\"" + filter(CSS_LATE_IMPORT3) + "\"",
         CSS_LATE_IMPORT3C,
-        filter(CSS_LATE_IMPORT3));
+        filter(CSS_LATE_IMPORT3),
+        "key=" + CSS_LATE_IMPORT3 + " value=\"" + filter(CSS_LATE_IMPORT3) + "\"");
     assertEquals(
-        "key=" + CSS_BOGUS_AT_RULE + " value=\"" + filter(CSS_BOGUS_AT_RULE) + "\"",
         CSS_BOGUS_AT_RULEC,
-        filter(CSS_BOGUS_AT_RULE));
+        filter(CSS_BOGUS_AT_RULE),
+        "key=" + CSS_BOGUS_AT_RULE + " value=\"" + filter(CSS_BOGUS_AT_RULE) + "\"");
     assertEquals(
-        "key=" + PRESERVE_CDO_CDC + " value=\"" + filter(PRESERVE_CDO_CDC) + "\"",
         PRESERVE_CDO_CDCC,
-        filter(PRESERVE_CDO_CDC));
+        filter(PRESERVE_CDO_CDC),
+        "key=" + PRESERVE_CDO_CDC + " value=\"" + filter(PRESERVE_CDO_CDC) + "\"");
     assertEquals(
-        "key=" + BROKEN_BEFORE_IMPORT + " value=\"" + filter(BROKEN_BEFORE_IMPORT) + "\"",
         BROKEN_BEFORE_IMPORTC,
-        filter(BROKEN_BEFORE_IMPORT));
+        filter(BROKEN_BEFORE_IMPORT),
+        "key=" + BROKEN_BEFORE_IMPORT + " value=\"" + filter(BROKEN_BEFORE_IMPORT) + "\"");
     assertEquals(
-        "key=" + BROKEN_BEFORE_MEDIA + " value=\"" + filter(BROKEN_BEFORE_MEDIA) + "\"",
         BROKEN_BEFORE_MEDIAC,
-        filter(BROKEN_BEFORE_MEDIA));
+        filter(BROKEN_BEFORE_MEDIA),
+        "key=" + BROKEN_BEFORE_MEDIA + " value=\"" + filter(BROKEN_BEFORE_MEDIA) + "\"");
   }
 
   @Test
   public void testEscape() throws IOException, URISyntaxException {
     assertEquals(
-        "key=" + CSS_ESCAPED_LINK + " value=\"" + filter(CSS_ESCAPED_LINK) + "\"",
         CSS_ESCAPED_LINKC,
-        filter(CSS_ESCAPED_LINK));
+        filter(CSS_ESCAPED_LINK),
+        "key=" + CSS_ESCAPED_LINK + " value=\"" + filter(CSS_ESCAPED_LINK) + "\"");
     assertEquals(
-        "key=" + CSS_ESCAPED_LINK2 + " value=\"" + filter(CSS_ESCAPED_LINK2) + "\"",
         CSS_ESCAPED_LINK2C,
-        filter(CSS_ESCAPED_LINK2));
+        filter(CSS_ESCAPED_LINK2),
+        "key=" + CSS_ESCAPED_LINK2 + " value=\"" + filter(CSS_ESCAPED_LINK2) + "\"");
   }
 
   @Test
@@ -2018,9 +2018,9 @@ public class CSSParserTest {
       String key = entry.getKey();
       String value = entry.getValue();
       assertEquals(
-          "key=\"" + key + "\" encoded=\"" + filter(key) + "\" should be \"" + value + "\"",
           value,
-          filter(key));
+          filter(key),
+          "key=\"" + key + "\" encoded=\"" + filter(key) + "\" should be \"" + value + "\"");
     }
   }
 
@@ -2042,14 +2042,14 @@ public class CSSParserTest {
   public void testCharset() throws IOException, URISyntaxException {
     // Test whether @charset is passed through when it is correct.
     String test = "@charset \"UTF-8\";\nh2 { color: red;}";
-    assertEquals("key=\"" + test + "\" value=\"" + filter(test) + "\"", filter(test), test);
+    assertEquals(test, filter(test), "key=\"" + test + "\" value=\"" + filter(test) + "\"");
     // No quote marks
     String testUnquoted = "@charset UTF-8;\nh2 { color: red;}";
-    assertEquals("key=\"" + test + "\" value=\"" + filter(test) + "\"", filter(testUnquoted), test);
+    assertEquals(test, filter(testUnquoted), "key=\"" + test + "\" value=\"" + filter(test) + "\"");
     // Test whether the parse fails when @charset is not correct.
     String testFail = "@charset ISO-8859-1;\nh2 { color: red;};";
     assertThrows(
-        "Bogus @charset should have been deleted", IOException.class, () -> filter(testFail));
+        IOException.class, () -> filter(testFail), "Bogus @charset should have been deleted");
 
     // Test charset extraction
     getCharsetTest("UTF-8");
@@ -2084,9 +2084,9 @@ public class CSSParserTest {
 
     // Late charset is invalid
     assertEquals(
-        "key=" + LATE_CHARSET + " value=\"" + filter(LATE_CHARSET) + "\"",
         LATE_CHARSETC,
-        filter(LATE_CHARSET));
+        filter(LATE_CHARSET),
+        "key=" + LATE_CHARSET + " value=\"" + filter(LATE_CHARSET) + "\"");
     try {
       String output = filter(WRONG_CHARSET);
       fail(
@@ -2105,7 +2105,7 @@ public class CSSParserTest {
     }
 
     assertEquals(BOM, filter(BOM));
-    assertEquals("output=\"" + filter(LATE_BOM) + "\"", LATE_BOMC, filter(LATE_BOM));
+    assertEquals(LATE_BOMC, filter(LATE_BOM), "output=\"" + filter(LATE_BOM) + "\"");
   }
 
   private void getCharsetTest(String charset) throws IOException, URISyntaxException {
@@ -2120,35 +2120,35 @@ public class CSSParserTest {
     // Detect with original charset.
     String detectedCharset = filter.getCharset(bytes, bytes.length, charset);
     assertTrue(
+        charset.equalsIgnoreCase(detectedCharset),
         "Charset detected \""
             + detectedCharset
             + "\" should be \""
             + charset
-            + "\" even when parsing with correct charset",
-        charset.equalsIgnoreCase(detectedCharset));
+            + "\" even when parsing with correct charset");
     BOMDetection bom = filter.getCharsetByBOM(bytes, bytes.length);
     String bomCharset = detectedCharset = bom == null ? null : bom.charset;
     assertTrue(
+        detectedCharset == null
+            || charset.equalsIgnoreCase(detectedCharset)
+            || (family != null && family.equalsIgnoreCase(detectedCharset)),
         "Charset detected \""
             + detectedCharset
             + "\" should be \""
             + charset
             + "\" or \""
             + family
-            + "\" from getCharsetByBOM",
-        detectedCharset == null
-            || charset.equalsIgnoreCase(detectedCharset)
-            || (family != null && family.equalsIgnoreCase(detectedCharset)));
+            + "\" from getCharsetByBOM");
     detectedCharset = ContentFilter.detectCharset(bytes, bytes.length, cssMIMEType, null);
     assertTrue(
+        charset.equalsIgnoreCase(detectedCharset),
         "Charset detected \""
             + detectedCharset
             + "\" should be \""
             + charset
             + "\" from ContentFilter.detectCharset bom=\""
             + bomCharset
-            + "\"",
-        charset.equalsIgnoreCase(detectedCharset));
+            + "\"");
 
     ArrayBucket inputBucket = new ArrayBucket(bytes);
     ArrayBucket outputBucket = new ArrayBucket();
@@ -2171,15 +2171,15 @@ public class CSSParserTest {
     assertEquals(charset, filterStatus.charset);
     String filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     assertEquals(
+        original,
+        filtered,
         "ContentFilter.filter() returns \""
             + filtered
             + "\" not original \""
             + original
             + "\" for charset \""
             + charset
-            + "\"",
-        original,
-        filtered);
+            + "\"");
   }
 
   private void charsetTestUnsupported(String charset) throws IOException, URISyntaxException {
@@ -2190,22 +2190,22 @@ public class CSSParserTest {
     BOMDetection bom = filter.getCharsetByBOM(bytes, bytes.length);
     String bomCharset = detectedCharset = bom == null ? null : bom.charset;
     assertNull(
+        detectedCharset,
         "Charset detected \""
             + detectedCharset
             + "\" should be unknown testing unsupported charset \""
             + charset
-            + "\" from getCharsetByBOM",
-        detectedCharset);
+            + "\" from getCharsetByBOM");
     detectedCharset = ContentFilter.detectCharset(bytes, bytes.length, cssMIMEType, null);
     assertTrue(
+        "utf-8".equalsIgnoreCase(detectedCharset),
         "Charset detected \""
             + detectedCharset
             + "\" should be unknown testing unsupported charset \""
             + charset
             + "\" from ContentFilter.detectCharset bom=\""
             + bomCharset
-            + "\"",
-        "utf-8".equalsIgnoreCase(detectedCharset));
+            + "\"");
     SimpleReadOnlyArrayBucket inputBucket = new SimpleReadOnlyArrayBucket(bytes);
     Bucket outputBucket = new ArrayBucket();
     FilterStatus filterStatus;
@@ -2236,15 +2236,15 @@ public class CSSParserTest {
     assertEquals("text/css", filterStatus.mimeType);
     String filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     assertEquals(
+        "",
+        filtered,
         "ContentFilter.filter() returns something: \""
             + filtered
             + "\" should be empty as unsupported charset, original: \""
             + original
             + "\" for charset \""
             + charset
-            + "\"",
-        "",
-        filtered);
+            + "\"");
   }
 
   @Test
@@ -2279,37 +2279,37 @@ public class CSSParserTest {
     assertEquals("text/css", filterStatus.mimeType);
     String filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     assertEquals(
+        original,
+        filtered,
         "ContentFilter.filter() returns \""
             + filtered
             + "\" not original \""
             + original
             + "\" with maybeCharset \""
             + charset
-            + "\"",
-        original,
-        filtered);
+            + "\"");
   }
 
   @Test
   public void testComment() throws IOException, URISyntaxException {
-    assertEquals("value=\"" + filter(COMMENT) + "\"", COMMENTC, filter(COMMENT));
+    assertEquals(COMMENTC, filter(COMMENT), "value=\"" + filter(COMMENT) + "\"");
   }
 
   @Test
   public void testWhitespace() throws IOException, URISyntaxException {
     assertEquals(
-        "value=\"" + filter(CSS_COMMA_WHITESPACE) + "\"",
         CSS_COMMA_WHITESPACE,
-        filter(CSS_COMMA_WHITESPACE));
+        filter(CSS_COMMA_WHITESPACE),
+        "value=\"" + filter(CSS_COMMA_WHITESPACE) + "\"");
   }
 
   @Test
   public void testDoubleCommentStart() throws IOException, URISyntaxException {
-    assertEquals("Double comment start does not crash", filter("/*/*"), "");
+    assertEquals("", filter("/*/*"), "Double comment start does not crash");
   }
 
   @Test
   public void testTripleCommentStart() throws IOException, URISyntaxException {
-    assertEquals("Triple comment start does not crash", filter("/*/*/*"), "");
+    assertEquals("", filter("/*/*/*"), "Triple comment start does not crash");
   }
 }

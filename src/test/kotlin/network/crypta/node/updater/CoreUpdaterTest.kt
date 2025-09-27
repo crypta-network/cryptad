@@ -1,9 +1,9 @@
 package network.crypta.node.updater
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Test
 
 class CoreUpdaterTest {
   @Test
@@ -23,19 +23,19 @@ class CoreUpdaterTest {
       """
         .trimIndent()
     val info = CoreJson.parse(json)
-    assertEquals("1.2.3+build123", info.version)
-    assertEquals("https://example.com/r/1.2.3", info.releasePageUrl)
-    assertEquals("CHK@abc", info.packages["amd64.deb"]?.chk)
+    assertEquals(info.version, "1.2.3+build123")
+    assertEquals(info.releasePageUrl, "https://example.com/r/1.2.3")
+    assertEquals(info.packages["amd64.deb"]?.chk, "CHK@abc")
     assertEquals(10L, info.packages["amd64.deb"]?.size)
-    assertEquals("CHK@chg", info.changelogChk)
-    assertEquals("CHK@full", info.fullChangelogChk)
+    assertEquals(info.changelogChk, "CHK@chg")
+    assertEquals(info.fullChangelogChk, "CHK@full")
   }
 
   @Test
   fun json_missing_optional_fields() {
     val json = """{ "version":"2", "packages": {"amd64.exe": {"chk":"CHK@x"}} }"""
     val info = CoreJson.parse(json)
-    assertEquals("2", info.version)
+    assertEquals(info.version, "2")
     assertNotNull(info.packages["amd64.exe"])
     assertNull(info.releasePageUrl)
   }

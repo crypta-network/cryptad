@@ -1,6 +1,6 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,9 +30,9 @@ import network.crypta.support.io.RandomAccessBufferTestBase;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class EncryptedRandomAccessBucketTest extends BucketTestBase {
 
@@ -134,12 +134,12 @@ public class EncryptedRandomAccessBucketTest extends BucketTestBase {
     }
   }
 
-  @Before
+  @BeforeEach
   public void setUp() {
     base.mkdir();
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(base);
   }

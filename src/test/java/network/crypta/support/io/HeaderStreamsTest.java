@@ -1,14 +1,14 @@
 package network.crypta.support.io;
 
 import static network.crypta.test.Asserts.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.*;
 import java.util.Arrays;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class HeaderStreamsTest {
 
@@ -19,7 +19,7 @@ public class HeaderStreamsTest {
   public static final byte[] bString = strString.getBytes();
   public static final byte[] bJoined = (strHeader + strString).getBytes();
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     InputStream testStream = new ByteArrayInputStream(bString);
     augStream = HeaderStreams.augInput(bHeader, testStream);
@@ -27,7 +27,7 @@ public class HeaderStreamsTest {
     dimStream = HeaderStreams.dimOutput(bHeader, origStream);
   }
 
-  @After
+  @AfterEach
   public void tearDown() throws Exception {}
 
   @Test

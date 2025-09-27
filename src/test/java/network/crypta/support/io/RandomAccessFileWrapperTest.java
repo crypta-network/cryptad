@@ -1,6 +1,6 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,9 +10,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.support.api.RandomAccessBuffer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
 
@@ -20,12 +20,12 @@ public class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
     super(TEST_LIST);
   }
 
-  @Before
+  @BeforeEach
   public void setUp() {
     base.mkdir();
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(base);
   }

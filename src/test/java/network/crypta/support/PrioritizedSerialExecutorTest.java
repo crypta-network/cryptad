@@ -1,6 +1,6 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,11 +9,11 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class PrioritizedSerialExecutorTest {
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     realExec = new PooledExecutor();
     completedJobs = new ArrayList<>();

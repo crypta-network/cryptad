@@ -1,14 +1,14 @@
 package network.crypta.support;
 
 import static java.util.Calendar.MILLISECOND;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.TimeZone;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link TimeUtil} class.
@@ -20,7 +20,7 @@ public class TimeUtilTest {
   // 1w+1d+1h+1m+1s+1ms
   private final long oneForTermLong = 694861001;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     Locale.setDefault(Locale.US);
   }
@@ -160,23 +160,23 @@ public class TimeUtilTest {
 
   @Test
   public void testToMillis_oneForTermLong() {
-    assertEquals(TimeUtil.toMillis("1w1d1h1m1.001s"), oneForTermLong);
+    assertEquals(oneForTermLong, TimeUtil.toMillis("1w1d1h1m1.001s"));
   }
 
   @Test
   public void testToMillis_maxLong() {
-    assertEquals(TimeUtil.toMillis("15250284452w3d7h12m55.807s"), Long.MAX_VALUE);
+    assertEquals(Long.MAX_VALUE, TimeUtil.toMillis("15250284452w3d7h12m55.807s"));
   }
 
   @Test
   public void testToMillis_minLong() {
-    assertEquals(TimeUtil.toMillis("-15250284452w3d7h12m55.808s"), Long.MIN_VALUE);
+    assertEquals(Long.MIN_VALUE, TimeUtil.toMillis("-15250284452w3d7h12m55.808s"));
   }
 
   @Test
   public void testToMillis_empty() {
-    assertEquals(TimeUtil.toMillis(""), 0);
-    assertEquals(TimeUtil.toMillis("-"), 0);
+    assertEquals(0, TimeUtil.toMillis(""));
+    assertEquals(0, TimeUtil.toMillis("-"));
   }
 
   @Test

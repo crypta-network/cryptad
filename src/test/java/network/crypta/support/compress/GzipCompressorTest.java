@@ -1,7 +1,7 @@
 package network.crypta.support.compress;
 
 import static network.crypta.support.compress.Compressor.COMPRESSOR_TYPE.GZIP;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -15,7 +15,7 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.NullBucket;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link GzipCompressor} class.

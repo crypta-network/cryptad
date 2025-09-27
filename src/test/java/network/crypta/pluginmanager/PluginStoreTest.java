@@ -1,12 +1,12 @@
 package network.crypta.pluginmanager;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Random;
 import network.crypta.node.FSParseException;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PluginStoreTest {
 

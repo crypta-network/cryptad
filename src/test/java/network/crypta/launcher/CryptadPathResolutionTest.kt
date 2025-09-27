@@ -4,21 +4,21 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class CryptadPathResolutionTest {
   private var originalCp: String? = null
 
-  @Before
+  @BeforeEach
   fun saveCp() {
     originalCp = System.getProperty("java.class.path")
   }
 
-  @After
+  @AfterEach
   fun restoreCp() {
     if (originalCp != null) System.setProperty("java.class.path", originalCp)
   }

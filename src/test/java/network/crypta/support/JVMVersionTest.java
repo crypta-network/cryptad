@@ -1,8 +1,8 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class JVMVersionTest {
 
@@ -88,7 +88,7 @@ public class JVMVersionTest {
         String v2 = orderedVersions[j];
         int expected = Integer.signum(Integer.compare(i, j));
         int actual = Integer.signum(JVMVersion.compareVersion(v1, v2));
-        assertEquals(v1 + " <> " + v2, expected, actual);
+        assertEquals(expected, actual, v1 + " <> " + v2);
       }
     }
   }

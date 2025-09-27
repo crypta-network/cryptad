@@ -1,8 +1,8 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMessageHandler;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ServerSideFCPMessageHandler;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public final class FCPPluginConnectionImplTest {
   /**
@@ -108,12 +108,12 @@ public final class FCPPluginConnectionImplTest {
     for (int i = 0; i < threadCount; ++i) threads[i].join();
 
     assertFalse(
-        "JUnit failures cannot be passed out of threads, please check stdout/stderr.",
-        failure.get());
+        failure.get(),
+        "JUnit failures cannot be passed out of threads, please check stdout/stderr.");
 
     assertEquals(
-        "FCPPluginConnectionImpl sendSynchronous() map should not leak",
         0,
-        connection.getSendSynchronousCount());
+        connection.getSendSynchronousCount(),
+        "FCPPluginConnectionImpl sendSynchronous() map should not leak");
   }
 }

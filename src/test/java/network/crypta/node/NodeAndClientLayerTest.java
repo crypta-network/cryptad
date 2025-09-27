@@ -1,6 +1,6 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,8 +22,8 @@ import network.crypta.support.PooledExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Creates a node, inserts data to it, and fetches the data back. Note that we need one JUnit class
@@ -65,7 +65,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     assertTrue(BucketTools.equalBuckets(result.asBucket(), block.getData()));
   }
 
-  @After
+  @AfterEach
   public void cleanUp() {
     FileUtil.removeAll(dir);
   }

@@ -7,7 +7,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 
 import network.crypta.client.FetchException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class GetFailedMessageTest {
 

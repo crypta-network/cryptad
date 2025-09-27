@@ -1,15 +1,15 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class DefaultMIMETypesTest {
 
   @Test
   public void testFullList() {
     for (String mimeType : DefaultMIMETypes.getMIMETypes()) {
-      assertTrue("Failed: \"" + mimeType + "\"", DefaultMIMETypes.isPlausibleMIMEType(mimeType));
+      assertTrue(DefaultMIMETypes.isPlausibleMIMEType(mimeType), "Failed: \"" + mimeType + "\"");
     }
   }
 

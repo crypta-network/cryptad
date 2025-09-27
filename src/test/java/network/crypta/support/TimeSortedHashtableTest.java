@@ -1,8 +1,8 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class TimeSortedHashtableTest {
   @Test
@@ -112,26 +112,26 @@ public class TimeSortedHashtableTest {
 
     Object[] p = tsh.pairsAfter(-1, new String[3]);
     assertEquals(100, (long) ((Long[]) p[1])[0]);
-    assertEquals("KEY1", ((String[]) p[0])[0]);
+    assertEquals(((String[]) p[0])[0], "KEY1");
     assertEquals(100, (long) ((Long[]) p[1])[1]);
-    assertEquals("KEY2", ((String[]) p[0])[1]);
+    assertEquals(((String[]) p[0])[1], "KEY2");
     assertEquals(300, (long) ((Long[]) p[1])[2]);
-    assertEquals("KEY3", ((String[]) p[0])[2]);
+    assertEquals(((String[]) p[0])[2], "KEY3");
 
     tsh.push("KEY1", 200); // 100=KEY2, 200=KEY1, 300=KEY3
     p = tsh.pairsAfter(-1, new String[3]);
     assertEquals(100, (long) ((Long[]) p[1])[0]);
-    assertEquals("KEY2", ((String[]) p[0])[0]);
+    assertEquals(((String[]) p[0])[0], "KEY2");
     assertEquals(200, (long) ((Long[]) p[1])[1]);
-    assertEquals("KEY1", ((String[]) p[0])[1]);
+    assertEquals(((String[]) p[0])[1], "KEY1");
     assertEquals(300, (long) ((Long[]) p[1])[2]);
-    assertEquals("KEY3", ((String[]) p[0])[2]);
+    assertEquals(((String[]) p[0])[2], "KEY3");
 
     tsh.removeBefore(105); // 200=KEY1, 300=KEY3
     p = tsh.pairsAfter(-1, new String[2]);
     assertEquals(200, (long) ((Long[]) p[1])[0]);
-    assertEquals("KEY1", ((String[]) p[0])[0]);
+    assertEquals(((String[]) p[0])[0], "KEY1");
     assertEquals(300, (long) ((Long[]) p[1])[1]);
-    assertEquals("KEY3", ((String[]) p[0])[1]);
+    assertEquals(((String[]) p[0])[1], "KEY3");
   }
 }

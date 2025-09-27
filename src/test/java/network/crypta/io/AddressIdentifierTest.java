@@ -1,9 +1,9 @@
 package network.crypta.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import network.crypta.io.AddressIdentifier.AddressType;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for the {@link AddressIdentifier} class.

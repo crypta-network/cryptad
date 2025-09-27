@@ -1,13 +1,13 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.List;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link HTMLNode} class.
@@ -42,7 +42,7 @@ public class HTMLNodeTest {
   // example node content that includes a not ASCII char [Greek omicron]
   private static final String SAMPLE_NODE_CONTENT = "sampleNodeCοntent";
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     exampleNodeNonEmpty = null;
     HTMLNode exampleNodeEmpty = null;
@@ -522,9 +522,9 @@ public class HTMLNodeTest {
       methodHTMLNode =
           new HTMLNode(nodeNamesArray[i], SAMPLE_OKAY_ATTRIBUTE_NAME, SAMPLE_ATTRIBUTE_VALUE);
       assertEquals(
+          methodHTMLNode.generate(),
           generateFullNodeOutput(
-              nodeNamesArray[i], SAMPLE_OKAY_ATTRIBUTE_NAME, SAMPLE_ATTRIBUTE_VALUE, "", newlines),
-          methodHTMLNode.generate());
+              nodeNamesArray[i], SAMPLE_OKAY_ATTRIBUTE_NAME, SAMPLE_ATTRIBUTE_VALUE, "", newlines));
     }
   }
 
@@ -555,6 +555,7 @@ public class HTMLNodeTest {
       methodHTMLNode.addChild(methodChildNode);
 
       assertEquals(
+          methodHTMLNode.generate(),
           ("<" + nodeNamesArray[i] + " ").toLowerCase()
               + SAMPLE_OKAY_ATTRIBUTE_NAME
               + "="
@@ -575,8 +576,7 @@ public class HTMLNodeTest {
                   SAMPLE_NODE_CONTENT)
               + "\n\t"
               + ("</" + nodeNamesArray[i] + ">\n").toLowerCase()
-              + "\t",
-          methodHTMLNode.generate());
+              + "\t");
     }
   }
 
@@ -588,7 +588,7 @@ public class HTMLNodeTest {
   public void testGenerate_fromHTMLNode_String() {
     HTMLNode methodHTMLNode = new HTMLNode(SAMPLE_OKAY_NODE_NAME_EMPTY);
     assertEquals(
-        ("<" + SAMPLE_OKAY_NODE_NAME_EMPTY + " />").toLowerCase(), methodHTMLNode.generate());
+        methodHTMLNode.generate(), ("<" + SAMPLE_OKAY_NODE_NAME_EMPTY + " />").toLowerCase());
   }
 
   /**
@@ -599,10 +599,10 @@ public class HTMLNodeTest {
   public void testGenerate_fromHTMLNode_StringString() {
     HTMLNode methodHTMLNode = new HTMLNode(SAMPLE_OKAY_NODE_NAME_NON_EMPTY, SAMPLE_NODE_CONTENT);
     assertEquals(
+        methodHTMLNode.generate(),
         ("<" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + ">").toLowerCase()
             + SAMPLE_NODE_CONTENT
-            + ("</" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + ">").toLowerCase(),
-        methodHTMLNode.generate());
+            + ("</" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + ">").toLowerCase());
   }
 
   /**
@@ -717,6 +717,7 @@ public class HTMLNodeTest {
     methodHTMLNode.addChild(methodHTMLNodeChild);
 
     assertEquals(
+        methodHTMLNode.generate(),
         ("<" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + " ").toLowerCase()
             + SAMPLE_OKAY_ATTRIBUTE_NAME
             + "="
@@ -732,8 +733,7 @@ public class HTMLNodeTest {
                 SAMPLE_OKAY_ATTRIBUTE_NAME,
                 SAMPLE_ATTRIBUTE_VALUE,
                 SAMPLE_NODE_CONTENT)
-            + ("</" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + ">").toLowerCase(),
-        methodHTMLNode.generate());
+            + ("</" + SAMPLE_OKAY_NODE_NAME_NON_EMPTY + ">").toLowerCase());
   }
 
   /**
@@ -760,7 +760,7 @@ public class HTMLNodeTest {
     String generatedString = methodHTMLNodeDoc.generate();
     // consider only the HTMLDocType generated text
     assertEquals(
-        "<!DOCTYPE " + sampleDocType + " PUBLIC \"" + sampleSystemUri + "\">",
-        readFirstLine(generatedString));
+        readFirstLine(generatedString),
+        "<!DOCTYPE " + sampleDocType + " PUBLIC \"" + sampleSystemUri + "\">");
   }
 }

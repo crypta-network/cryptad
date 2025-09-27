@@ -10,7 +10,7 @@ import java.util.List;
 import network.crypta.support.Logger;
 import network.crypta.support.LoggerHook;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PersistentConfigTest {
 
