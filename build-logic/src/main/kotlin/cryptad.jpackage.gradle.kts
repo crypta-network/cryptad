@@ -343,10 +343,13 @@ val jpackageImageCryptad by
         // On some macOS versions, jpackage ad-hoc signs the bundle and codesign rejects
         // com.apple.FinderInfo on the freshly created <App>.app, yielding:
         //   resource fork, Finder information, or similar detritus not allowed
-        // If we see a failure and the output image exists, clear xattrs and re-sign in place
-        // via jpackage "--type app-image --app-image <path> --mac-sign" (ad-hoc identity).
+        // If we see a failure and the output image exists, clear xattrs and ad-hoc sign the
+        // bundle. When staging is used (destDir != outDir), operate on the staged app and then
+        // relocate the fixed bundle into outDir so downstream tasks find it.
         if (os == "mac") {
-          val appDir = outDir.resolve("$appName.app")
+          val stagedApp = destDir.resolve("$appName.app")
+          val finalApp = outDir.resolve("$appName.app")
+          val appDir = if (stagedApp.isDirectory) stagedApp else finalApp
           if (appDir.isDirectory) {
             try {
               // Best-effort: remove extended attributes recursively.
@@ -376,7 +379,26 @@ val jpackageImageCryptad by
                 csArgs.joinToString(" "),
               )
               execAndLog(csArgs)
-              logger.lifecycle("codesign completed; continuing")
+              logger.lifecycle("codesign completed; relocating if staged")
+
+              // If we fixed the staged app, relocate it now to the final output dir.
+              if (appDir == stagedApp) {
+                if (finalApp.exists()) finalApp.deleteRecursively()
+                stagedApp.copyRecursively(finalApp, overwrite = true)
+                // Remove any staged attrs again just in case
+                try {
+                  val x = File("/usr/bin/xattr")
+                  if (x.canExecute()) {
+                    ProcessBuilder(x.absolutePath, "-cr", finalApp.absolutePath)
+                      .redirectErrorStream(true)
+                      .start()
+                      .waitFor(5, TimeUnit.SECONDS)
+                  }
+                } catch (_: Exception) {}
+                // Clean up staging directory
+                destDir.deleteRecursively()
+                logger.lifecycle("Relocated fixed app image -> {}", finalApp.absolutePath)
+              }
             } catch (fixErr: Exception) {
               logger.warn("macOS fallback sign failed: {}", fixErr.message)
               throw e
