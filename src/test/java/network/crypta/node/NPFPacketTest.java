@@ -1,9 +1,9 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Random;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class NPFPacketTest {
 
@@ -921,7 +921,7 @@ public class NPFPacketTest {
     NPFPacket received = NPFPacket.create(encoded, pn);
     assertEquals(1, received.getFragments().size());
     assertEquals(0, received.countAcks());
-    assertEquals("Seed was " + randomSeed, 2, received.getLossyMessages().size());
+    assertEquals(2, received.getLossyMessages().size(), "Seed was " + randomSeed);
     assertEquals(p.getLength(), received.getLength());
     assertEquals(encoded.length - 20, received.getLength());
     byte[] decodedFragData = received.getFragments().getFirst().fragmentData;
@@ -940,7 +940,7 @@ public class NPFPacketTest {
   }
 
   public static void checkEquals(byte[] correctData, byte[] data) {
-    assertEquals("Packet lengths differ:", correctData.length, data.length);
+    assertEquals(correctData.length, data.length, "Packet lengths differ:");
     for (int i = 0; i < data.length; i++) {
       if (data[i] != correctData[i]) {
         fail(

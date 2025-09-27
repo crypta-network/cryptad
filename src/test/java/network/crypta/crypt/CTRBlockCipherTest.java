@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.HexUtil;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class CTRBlockCipherTest {
 

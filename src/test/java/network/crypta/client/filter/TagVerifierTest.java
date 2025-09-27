@@ -1,14 +1,14 @@
 package network.crypta.client.filter;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
 import network.crypta.client.filter.HTMLFilter.TagVerifier;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class TagVerifierTest {
   private static final String BASE_URI_PROTOCOL = "http";
@@ -25,7 +25,7 @@ public class TagVerifierTest {
   HTMLFilter filter;
   HTMLFilter.HTMLParseContext pc;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     filter = new HTMLFilter();
     attributes = new LinkedHashMap<>();
@@ -39,7 +39,7 @@ public class TagVerifierTest {
             false);
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     filter = null;
     attributes = null;
@@ -63,9 +63,9 @@ public class TagVerifierTest {
     final String HTML_INVALID_XMLNS = "<html version=\"-//W3C//DTD HTML 4.01 Transitional//EN\" />";
 
     assertEquals(
-        "HTML tag containing an invalid xmlns",
         HTML_INVALID_XMLNS,
-        verifier.sanitize(htmlTag, pc).toString());
+        verifier.sanitize(htmlTag, pc).toString(),
+        "HTML tag containing an invalid xmlns");
   }
 
   @Test
@@ -86,7 +86,7 @@ public class TagVerifierTest {
             + " href=\"foo.css?type=text/css&amp;maybecharset=utf-8\" />";
 
     assertEquals(
-        "Link tag importing CSS", LINK_STYLESHEET, verifier.sanitize(htmlTag, pc).toString());
+        LINK_STYLESHEET, verifier.sanitize(htmlTag, pc).toString(), "Link tag importing CSS");
   }
 
   @Test
@@ -99,9 +99,9 @@ public class TagVerifierTest {
     htmlTag = new ParsedTag(tagname, attributes);
 
     assertEquals(
-        "Meta tag describing HTML content-type",
         htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString());
+        verifier.sanitize(htmlTag, pc).toString(),
+        "Meta tag describing HTML content-type");
   }
 
   @Test
@@ -114,9 +114,9 @@ public class TagVerifierTest {
     htmlTag = new ParsedTag(tagname, attributes);
 
     assertEquals(
-        "Meta tag describing XHTML content-type",
         htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString());
+        verifier.sanitize(htmlTag, pc).toString(),
+        "Meta tag describing XHTML content-type");
   }
 
   @Test
@@ -129,9 +129,9 @@ public class TagVerifierTest {
     htmlTag = new ParsedTag(tagname, attributes);
 
     assertEquals(
-        "Meta tag controlling spiders - valid value",
         htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString());
+        verifier.sanitize(htmlTag, pc).toString(),
+        "Meta tag controlling spiders - valid value");
 
     attributes.put("name", "robots");
     attributes.put("content", "noindex,invalid");
@@ -141,9 +141,9 @@ public class TagVerifierTest {
     attributes.put("content", "noindex");
     htmlTagFiltered = new ParsedTag(tagname, attributes);
     assertEquals(
-        "Meta tag controlling spiders - invalid value",
         htmlTagFiltered.toString(),
-        verifier.sanitize(htmlTag, pc).toString());
+        verifier.sanitize(htmlTag, pc).toString(),
+        "Meta tag controlling spiders - invalid value");
   }
 
   @Test
@@ -156,9 +156,9 @@ public class TagVerifierTest {
     htmlTag = new ParsedTag(tagname, attributes);
 
     assertThrows(
-        "Meta tag describing an unknown content-type: should throw an error",
         DataFilterException.class,
-        () -> verifier.sanitize(htmlTag, pc));
+        () -> verifier.sanitize(htmlTag, pc),
+        "Meta tag describing an unknown content-type: should throw an error");
   }
 
   @Test
@@ -174,7 +174,7 @@ public class TagVerifierTest {
 
     final String BODY_TAG = "<body bgcolor=\"pink\" />";
 
-    assertEquals("Body tag", BODY_TAG, verifier.sanitize(htmlTag, pc).toString());
+    assertEquals(BODY_TAG, verifier.sanitize(htmlTag, pc).toString(), "Body tag");
   }
 
   @Test
@@ -192,7 +192,7 @@ public class TagVerifierTest {
         "<form method=\"POST\" accept-charset=\"UTF-8\" action=\"/library/\""
             + " enctype=\"multipart/form-data\" />";
 
-    assertEquals("Form tag", FORM_TAG, verifier.sanitize(htmlTag, pc).toString());
+    assertEquals(FORM_TAG, verifier.sanitize(htmlTag, pc).toString(), "Form tag");
   }
 
   @Test
@@ -205,7 +205,7 @@ public class TagVerifierTest {
 
     htmlTag = new ParsedTag(tagname, attributes);
 
-    assertNull("Form tag with an invalid method", verifier.sanitize(htmlTag, pc));
+    assertNull(verifier.sanitize(htmlTag, pc), "Form tag with an invalid method");
   }
 
   @Test
@@ -234,15 +234,15 @@ public class TagVerifierTest {
 
     htmlTag = new ParsedTag(tagname, attributes);
     assertEquals(
-        "Input tag without type", htmlTag.toString(), verifier.sanitize(htmlTag, pc).toString());
+        htmlTag.toString(), verifier.sanitize(htmlTag, pc).toString(), "Input tag without type");
 
     for (String t : types) {
       attributes.put("type", t);
       htmlTag = new ParsedTag(tagname, attributes);
       assertEquals(
-          "Input tag with a valid type",
           htmlTag.toString(),
-          verifier.sanitize(htmlTag, pc).toString());
+          verifier.sanitize(htmlTag, pc).toString(),
+          "Input tag with a valid type");
     }
   }
 
@@ -259,7 +259,7 @@ public class TagVerifierTest {
     for (String t : types) {
       attributes.put("type", t);
       htmlTag = new ParsedTag(tagname, attributes);
-      assertNull("Input tag with an invalid type", verifier.sanitize(htmlTag, pc));
+      assertNull(verifier.sanitize(htmlTag, pc), "Input tag with an invalid type");
     }
   }
 }

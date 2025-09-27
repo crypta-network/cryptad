@@ -3,8 +3,8 @@ package network.crypta.client.filter;
 import static network.crypta.l10n.BaseL10n.LANGUAGE.ENGLISH;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -24,7 +24,7 @@ import network.crypta.support.TestProperty;
 import network.crypta.support.io.ArrayBucket;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * A simple meta-test to track regressions of the content-filter
@@ -46,7 +46,7 @@ public class ContentFilterTest {
     String s = htmlFilter("<html>" + data + "</html>", false);
     assertTrue(s.startsWith("<html>"));
     s = s.substring("<html>".length());
-    assertTrue("s = \"" + s + "\"", s.endsWith("</html>"));
+    assertTrue(s.endsWith("</html>"), "s = \"" + s + "\"");
     s = s.substring(0, s.length() - "</html>".length());
     return s;
   }
@@ -160,7 +160,7 @@ public class ContentFilterTest {
     assertEquals(META_TIME_ONLY, headFilter(META_TIME_ONLY));
     assertEquals(META_TIME_ONLY, headFilter(META_TIME_ONLY_WRONG_CASE));
     assertEquals(META_TIME_ONLY, headFilter(META_TIME_ONLY_TOO_SHORT));
-    assertEquals("", headFilter(META_TIME_ONLY_NEGATIVE));
+    assertEquals(headFilter(META_TIME_ONLY_NEGATIVE), "");
     assertEquals(META_TIME_ONLY_BADNUM_OUT, headFilter(META_TIME_ONLY_BADNUM1));
     assertEquals(META_TIME_ONLY_BADNUM_OUT, headFilter(META_TIME_ONLY_BADNUM2));
     assertEquals(META_VALID_REDIRECT, headFilter(META_VALID_REDIRECT));
@@ -173,20 +173,20 @@ public class ContentFilterTest {
     assertEquals(META_BOGUS_REDIRECT_NO_URL, headFilter(META_BOGUS_REDIRECT6));
     HTMLFilter.metaRefreshSamePageMinInterval = -1;
     HTMLFilter.metaRefreshRedirectMinInterval = -1;
-    assertEquals("", headFilter(META_TIME_ONLY));
-    assertEquals("", headFilter(META_TIME_ONLY_WRONG_CASE));
-    assertEquals("", headFilter(META_TIME_ONLY_TOO_SHORT));
-    assertEquals("", headFilter(META_TIME_ONLY_NEGATIVE));
-    assertEquals("", headFilter(META_TIME_ONLY_BADNUM1));
-    assertEquals("", headFilter(META_TIME_ONLY_BADNUM2));
-    assertEquals("", headFilter(META_VALID_REDIRECT));
-    assertEquals("", headFilter(META_VALID_REDIRECT_NOSPACE));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT1));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT2));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT3));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT4));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT5));
-    assertEquals("", headFilter(META_BOGUS_REDIRECT6));
+    assertEquals(headFilter(META_TIME_ONLY), "");
+    assertEquals(headFilter(META_TIME_ONLY_WRONG_CASE), "");
+    assertEquals(headFilter(META_TIME_ONLY_TOO_SHORT), "");
+    assertEquals(headFilter(META_TIME_ONLY_NEGATIVE), "");
+    assertEquals(headFilter(META_TIME_ONLY_BADNUM1), "");
+    assertEquals(headFilter(META_TIME_ONLY_BADNUM2), "");
+    assertEquals(headFilter(META_VALID_REDIRECT), "");
+    assertEquals(headFilter(META_VALID_REDIRECT_NOSPACE), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT1), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT2), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT3), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT4), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT5), "");
+    assertEquals(headFilter(META_BOGUS_REDIRECT6), "");
   }
 
   @Test

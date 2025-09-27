@@ -1,12 +1,12 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.FileWriter;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.spaceroots.mantissa.random.ScalarSampleStatistics;
 
 public class YarrowTest {
@@ -22,7 +22,7 @@ public class YarrowTest {
         (byte) 0xCD, (byte) 0xD0, (byte) 0xEB, (byte) 0x37, (byte) 0xF4
       };
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     FileWriter fw = new FileWriter(SEED_FILE);
     for (int i = 0; i < 256; i++) fw.write(i);
@@ -30,7 +30,7 @@ public class YarrowTest {
     fw.close();
   }
 
-  @After
+  @AfterEach
   public void tearDown() throws Exception {
     assertTrue(SEED_FILE.delete());
   }

@@ -1,11 +1,11 @@
 package network.crypta.keys;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.net.MalformedURLException;
 import java.util.Arrays;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FreenetURITest {
   // Some URI for wAnnA? index

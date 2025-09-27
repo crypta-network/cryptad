@@ -57,6 +57,7 @@ tasks.named("compileJava") { dependsOn(tasks.named("compileKotlin")) }
 
 // Tests: settings and module opens needed at runtime
 tasks.withType<Test>().configureEach {
+  useJUnitPlatform()
   // Open JDK internals used by tests
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
     jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")

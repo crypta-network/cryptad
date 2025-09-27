@@ -1,6 +1,6 @@
 package network.crypta.client.async;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -51,9 +51,8 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ByteArrayRandomAccessBufferFactory;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.StorageFormatException;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class SplitFileFetcherStorageTest {
 
@@ -120,7 +119,7 @@ public class SplitFileFetcherStorageTest {
     return blocks;
   }
 
-  @Before
+  @BeforeEach
   public void setUp() {
     // Reset RNG for each test (it's static so not reset by junit).
     random = new DummyRandomSource(1234);
@@ -1276,7 +1275,8 @@ public class SplitFileFetcherStorageTest {
         }
       }
       if (!progress) {
-        Assert.fail("Queued healing block not in the original block list");
+        org.junit.jupiter.api.Assertions.fail(
+            "Queued healing block not in the original block list");
       }
       assertTrue(progress);
     }
@@ -1319,7 +1319,7 @@ public class SplitFileFetcherStorageTest {
       }
       synchronized (this) {
         for (int i = 0; i < encodedBlocks.length; i++) {
-          assertTrue("Block " + i + " not found or decoded", encodedBlocks[i]);
+          assertTrue(encodedBlocks[i], "Block " + i + " not found or decoded");
         }
       }
     }

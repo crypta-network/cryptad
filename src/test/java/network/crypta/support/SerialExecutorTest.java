@@ -2,7 +2,7 @@ package network.crypta.support;
 
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SerialExecutorTest {
 

@@ -1,16 +1,16 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.Enumeration;
 import java.util.NoSuchElementException;
 import network.crypta.support.DoublyLinkedListImpl.Item;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class DoublyLinkedListImplTest {
   @Test
@@ -21,26 +21,26 @@ public class DoublyLinkedListImplTest {
     list.push(new T(2));
     list.push(new T(3));
 
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.pop().assertV(3);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.pop().assertV(2);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
 
     // add again
     list.push(new T(4));
     list.push(new T(5));
 
     list.pop().assertV(5);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.pop().assertV(4);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.pop().assertV(1);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.pop().assertV(0);
 
-    assertTrue("isEmpty()", list.isEmpty());
-    assertNull("pop()", list.pop());
+    assertTrue(list.isEmpty(), "isEmpty()");
+    assertNull(list.pop(), "pop()");
   }
 
   @Test
@@ -51,26 +51,26 @@ public class DoublyLinkedListImplTest {
     list.unshift(new T(2));
     list.unshift(new T(3));
 
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(3);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(2);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
 
     // add again
     list.unshift(new T(4));
     list.unshift(new T(5));
 
     list.shift().assertV(5);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(4);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(1);
-    assertFalse("isEmpty()", list.isEmpty());
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(0);
 
-    assertTrue("isEmpty()", list.isEmpty());
-    assertNull("shift()", list.shift());
+    assertTrue(list.isEmpty(), "isEmpty()");
+    assertNull(list.shift(), "shift()");
   }
 
   @Test
@@ -81,31 +81,31 @@ public class DoublyLinkedListImplTest {
     list.unshift(new T(2));
     list.unshift(new T(3));
 
-    assertEquals("size()", 4, list.size());
-    assertFalse("isEmpty()", list.isEmpty());
+    assertEquals(4, list.size(), "size()");
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(3);
-    assertEquals("size()", 3, list.size());
-    assertFalse("isEmpty()", list.isEmpty());
+    assertEquals(3, list.size(), "size()");
+    assertFalse(list.isEmpty(), "isEmpty()");
     list.shift().assertV(2);
-    assertEquals("size()", 2, list.size());
-    assertFalse("isEmpty()", list.isEmpty());
+    assertEquals(2, list.size(), "size()");
+    assertFalse(list.isEmpty(), "isEmpty()");
 
     list.clear();
 
-    assertEquals("size()", 0, list.size());
-    assertTrue("isEmpty()", list.isEmpty());
+    assertEquals(0, list.size(), "size()");
+    assertTrue(list.isEmpty(), "isEmpty()");
 
     // add again
     list.unshift(new T(4));
     list.unshift(new T(5));
-    assertEquals("size()", 2, list.size());
-    assertFalse("isEmpty()", list.isEmpty());
+    assertEquals(2, list.size(), "size()");
+    assertFalse(list.isEmpty(), "isEmpty()");
 
     list.shift().assertV(5);
     list.shift().assertV(4);
 
-    assertEquals("size()", 0, list.size());
-    assertTrue("isEmpty()", list.isEmpty());
+    assertEquals(0, list.size(), "size()");
+    assertTrue(list.isEmpty(), "isEmpty()");
   }
 
   @Test
@@ -117,22 +117,22 @@ public class DoublyLinkedListImplTest {
     }
 
     DoublyLinkedList<T> list2 = list.shift(2);
-    assertEquals("list2.size()", 2, list2.size());
+    assertEquals(2, list2.size(), "list2.size()");
     list2.shift().assertV(0);
     list2.shift().assertV(1);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
-    assertEquals("list.size()", 3, list.size());
+    assertEquals(3, list.size(), "list.size()");
     list.shift().assertV(2);
 
     list2 = list.shift(20);
-    assertTrue("list.isEmpty()", list.isEmpty());
+    assertTrue(list.isEmpty(), "list.isEmpty()");
     list2.shift().assertV(3);
     list2.shift().assertV(4);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     list2 = list.shift(20);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
   }
 
   //	public void testClone() {
@@ -163,30 +163,30 @@ public class DoublyLinkedListImplTest {
     }
 
     DoublyLinkedList<T> list2 = list.pop(2);
-    assertEquals("list2.size()", 2, list2.size());
+    assertEquals(2, list2.size(), "list2.size()");
     list2.pop().assertV(0);
     list2.pop().assertV(1);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
-    assertEquals("list.size()", 3, list.size());
+    assertEquals(3, list.size(), "list.size()");
     list.pop().assertV(2);
 
     list2 = list.pop(20);
-    assertTrue("list.isEmpty()", list.isEmpty());
+    assertTrue(list.isEmpty(), "list.isEmpty()");
     list2.pop().assertV(3);
     list2.pop().assertV(4);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     list2 = list.pop(20);
-    assertTrue("list2.isEmpty()", list2.isEmpty());
+    assertTrue(list2.isEmpty(), "list2.isEmpty()");
   }
 
   @Test
   public void testHeadTail() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
-    assertNull("head() == null", list.head());
-    assertNull("tail() == null", list.tail());
+    assertNull(list.head(), "head() == null");
+    assertNull(list.tail(), "tail() == null");
 
     T[] array = new T[5];
     for (int i = 0; i < 5; i++) {
@@ -194,21 +194,21 @@ public class DoublyLinkedListImplTest {
       list.push(array[i]);
     }
 
-    assertSame("head() == 0", array[0], list.head());
-    assertSame("tail() == 4", array[4], list.tail());
+    assertSame(array[0], list.head(), "head() == 0");
+    assertSame(array[4], list.tail(), "tail() == 4");
 
     list.shift();
-    assertSame("head() == 1", array[1], list.head());
-    assertSame("tail() == 4", array[4], list.tail());
+    assertSame(array[1], list.head(), "head() == 1");
+    assertSame(array[4], list.tail(), "tail() == 4");
 
     list.pop();
-    assertSame("head() == 1", array[1], list.head());
-    assertSame("tail() == 3", array[3], list.tail());
+    assertSame(array[1], list.head(), "head() == 1");
+    assertSame(array[3], list.tail(), "tail() == 3");
 
     list.clear();
 
-    assertNull("head() == null", list.head());
-    assertNull("tail() == null", list.tail());
+    assertNull(list.head(), "head() == null");
+    assertNull(list.tail(), "tail() == null");
   }
 
   @Test
@@ -224,39 +224,39 @@ public class DoublyLinkedListImplTest {
     // manual, forward
     T h = list.head();
     for (int i = 0; i < 5; i++) {
-      assertEquals("manual iternate, forward", array[i], h);
-      // assertEquals("DoublyLinkedList.next() == Item.next()", h.getNext(), list.next(h));
-      assertEquals("hasNext()", i != 4, list.hasNext(h));
-      assertEquals("hasPrev()", i != 0, list.hasPrev(h));
+      assertEquals(array[i], h, "manual iternate, forward");
+      // assertEquals(h.getNext(), list.next(h), "DoublyLinkedList.next() == Item.next()");
+      assertEquals(i != 4, list.hasNext(h), "hasNext()");
+      assertEquals(i != 0, list.hasPrev(h), "hasPrev()");
 
       h.assertV(i);
 
       h = list.next(h);
     }
-    assertNull("h==null", h);
+    assertNull(h, "h==null");
 
     // manual, reverse
     T t = list.tail();
     for (int i = 4; i >= 0; i--) {
-      assertEquals("manual iternate, reverse", array[i], t);
-      // assertEquals("DoublyLinkedList.prev() == Item.getPrev()", tail.getPrev(), list.prev(tail));
-      assertEquals("hasNext()", i != 4, list.hasNext(t));
-      assertEquals("hasPrev()", i != 0, list.hasPrev(t));
+      assertEquals(array[i], t, "manual iternate, reverse");
+      // assertEquals(tail.getPrev(), list.prev(tail), "DoublyLinkedList.prev() == Item.getPrev()");
+      assertEquals(i != 4, list.hasNext(t), "hasNext()");
+      assertEquals(i != 0, list.hasPrev(t), "hasPrev()");
 
       t.assertV(i);
 
       t = list.prev(t);
     }
-    assertNull("t==null", t);
+    assertNull(t, "t==null");
 
     Enumeration<T> e = list.elements();
     for (int i = 0; i < 5; i++) {
-      assertTrue("hasMoreElements()", e.hasMoreElements());
+      assertTrue(e.hasMoreElements(), "hasMoreElements()");
 
       T n = e.nextElement();
       n.assertV(i);
 
-      assertEquals("hasMoreElements()", i != 4, e.hasMoreElements());
+      assertEquals(i != 4, e.hasMoreElements(), "hasMoreElements()");
     }
     try {
       e.nextElement();

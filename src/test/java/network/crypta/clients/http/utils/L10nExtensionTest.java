@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.BaseL10nTest;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class L10nExtensionTest {
 

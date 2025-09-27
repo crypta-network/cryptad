@@ -1,10 +1,10 @@
 package network.crypta.config;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import network.crypta.test.UTFUtil;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for the {@link Config} class.
@@ -12,7 +12,7 @@ import org.junit.Test;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class ConfigTest {
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     conf = new Config();
     sc = conf.createSubConfig("testing");

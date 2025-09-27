@@ -1,10 +1,10 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import network.crypta.test.UTFUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link HTMLEncoder} and {@link HTMLDecoder} classes.
@@ -46,11 +46,11 @@ public class HTMLEncoderDecoderTest {
     assertEquals(HTMLDecoder.decode("&Phi"), "&Phi");
     // an Entity without a char,
     // which means a not existing Entity
-    assertEquals(HTMLDecoder.decode("&Ph;"), "&Ph;");
+    assertEquals("&Ph;", HTMLDecoder.decode("&Ph;"));
     // without ash
-    assertEquals(HTMLDecoder.decode("&1234;"), "&1234;");
+    assertEquals("&1234;", HTMLDecoder.decode("&1234;"));
     // without ampersand
-    assertEquals(HTMLDecoder.decode("Phi;"), "Phi;");
+    assertEquals("Phi;", HTMLDecoder.decode("Phi;"));
     // emtpy String
     assertEquals(HTMLDecoder.decode(""), "");
   }
@@ -76,7 +76,7 @@ public class HTMLEncoderDecoderTest {
       strBuffer[5].append(ZEROWIDTHSPACE);
 
       for (int j = 0; j < strBuffer.length; j++) {
-        assertEquals(" ", HTMLDecoder.compact(strBuffer[j].toString()));
+        assertEquals(HTMLDecoder.compact(strBuffer[j].toString()), " ");
       }
     }
   }

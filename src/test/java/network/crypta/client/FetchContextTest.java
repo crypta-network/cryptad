@@ -1,6 +1,6 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -9,7 +9,7 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.StorageFormatException;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FetchContextTest {
 

@@ -1,12 +1,12 @@
 package network.crypta.clients.http;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.awt.*;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ImageCreatorToadletTest {
 
@@ -26,15 +26,15 @@ public class ImageCreatorToadletTest {
         g2, fc, ImageCreatorToadlet.DEFAULT_WIDTH, ImageCreatorToadlet.DEFAULT_HEIGHT, text);
     Rectangle2D bounds = g2.getFont().getStringBounds(text, fc);
     assertTrue(
-        "Inscription does not fit on the canvas",
         bounds.getWidth() <= ImageCreatorToadlet.DEFAULT_WIDTH
-            && bounds.getHeight() <= ImageCreatorToadlet.DEFAULT_HEIGHT);
+            && bounds.getHeight() <= ImageCreatorToadlet.DEFAULT_HEIGHT,
+        "Inscription does not fit on the canvas");
 
     g2.setFont(g2.getFont().deriveFont((float) g2.getFont().getSize() + 1));
     bounds = g2.getFont().getStringBounds(text, fc);
     assertFalse(
-        "Large print should not fit on the canvas",
         bounds.getWidth() <= ImageCreatorToadlet.DEFAULT_WIDTH
-            && bounds.getHeight() <= ImageCreatorToadlet.DEFAULT_HEIGHT);
+            && bounds.getHeight() <= ImageCreatorToadlet.DEFAULT_HEIGHT,
+        "Large print should not fit on the canvas");
   }
 }

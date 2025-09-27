@@ -1,6 +1,6 @@
 package network.crypta.client.filter;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,7 +9,7 @@ import java.util.Arrays;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MP3FilterTest {
   @Test
@@ -38,12 +38,12 @@ public class MP3FilterTest {
     Bucket expected = resourceToBucket(fileExpected);
     Bucket filtered = filterMP3(input);
     assertTrue(
+        equalBuckets(filtered, expected),
         "Filtered and expected output are not identical. "
             + "Input = "
             + fileUnfiltered
             + ", expected = "
-            + fileExpected,
-        equalBuckets(filtered, expected));
+            + fileExpected);
   }
 
   /** Checks for equality of Bucket contents. */

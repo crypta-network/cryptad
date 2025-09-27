@@ -1,12 +1,12 @@
 package network.crypta.clients.http.utils;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import network.crypta.config.Config;
 import network.crypta.config.StringOption;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.StringCallback;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class UriFilterProxyHeaderParserTest {
 
@@ -222,6 +222,8 @@ public class UriFilterProxyHeaderParserTest {
                 headers)
             .toString();
     assertEquals(
+        schemeHostAndPort,
+        resultUriPrefix,
         "schemeHostAndPort %s does not match expected %s; portConfig=\"%s\", bindTo=\"%s\", uriScheme=\"%s\", uriHost=\"%s\", headers=%s, expected=\"%s\""
             .formatted(
                 schemeHostAndPort,
@@ -231,9 +233,7 @@ public class UriFilterProxyHeaderParserTest {
                 uriScheme,
                 uriHost,
                 headers,
-                resultUriPrefix),
-        schemeHostAndPort,
-        resultUriPrefix);
+                resultUriPrefix));
   }
 
   private StringOption fakeBindToOption(String value) throws Exception {

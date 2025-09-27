@@ -12,7 +12,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test for {@link FCPMessage}.

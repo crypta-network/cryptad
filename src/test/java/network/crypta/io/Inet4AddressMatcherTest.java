@@ -1,9 +1,9 @@
 package network.crypta.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.InetAddress;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * @author David Roden &lt;droden@gmail.com&gt;

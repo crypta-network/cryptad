@@ -1,14 +1,14 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MultiHashInputStreamTest {
   private static final byte[] MESSAGE = "Hello, World!".getBytes(StandardCharsets.UTF_8);
@@ -24,12 +24,12 @@ public class MultiHashInputStreamTest {
     assertEquals(buf.length - 1, hash.read(buf, 1, buf.length - 1));
     assertEquals(-1, hash.read());
     assertEquals(MESSAGE.length, hash.getReadBytes());
-    assertArrayEquals(MESSAGE, buf);
+    assertArrayEquals(buf, MESSAGE);
 
     HashResult[] results = hash.getResults();
     assertEquals(1, results.length);
     assertEquals(HashType.MD5, results[0].type);
-    assertEquals(MESSAGE_MD5, results[0].hashAsHex());
+    assertEquals(results[0].hashAsHex(), MESSAGE_MD5);
   }
 
   @Test

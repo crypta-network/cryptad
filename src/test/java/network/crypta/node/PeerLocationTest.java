@@ -1,10 +1,10 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.HashSet;
 import java.util.Set;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PeerLocationTest {
   private static final double EPSILON = 1e-15;

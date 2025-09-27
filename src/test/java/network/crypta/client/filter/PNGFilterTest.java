@@ -6,12 +6,14 @@ import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.FileBucket;
@@ -19,9 +21,8 @@ import network.crypta.support.io.NullBucket;
 import network.crypta.test.PngUtil;
 import network.crypta.test.PngUtil.Chunk;
 import org.hamcrest.Matcher;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class PNGFilterTest {
   protected static Object[][] testImages = {
@@ -130,9 +131,9 @@ public class PNGFilterTest {
         filter.readFilter(
             ib.getInputStream(), new NullBucket().getOutputStream(), "", null, null, null);
 
-        assertTrue(filename + " should " + (valid ? "" : "not ") + "be valid", valid);
+        assertTrue(valid, filename + " should " + (valid ? "" : "not ") + "be valid");
       } catch (DataFilterException dfe) {
-        assertFalse(filename + " should " + (valid ? "" : "not ") + "be valid", valid);
+        assertFalse(valid, filename + " should " + (valid ? "" : "not ") + "be valid");
       }
     }
   }
@@ -199,9 +200,9 @@ public class PNGFilterTest {
       Matcher<Iterable<? super Chunk>> chunksVerifier)
       throws IOException {
     PNGFilter filter = new PNGFilter(false, false, true);
-    File pngFile = temporaryFolder.newFile();
+    File pngFile = newTempFile();
     PngUtil.createPngFile(pngFile, preIDATChunks, postIDATChunks);
-    File filteredPngFile = temporaryFolder.newFile();
+    File filteredPngFile = newTempFile();
     Bucket bucket = new FileBucket(pngFile, true, false, false, false);
     try {
       try (FileOutputStream outputStream = new FileOutputStream(filteredPngFile)) {
@@ -213,7 +214,11 @@ public class PNGFilterTest {
     }
   }
 
-  @Rule public final TemporaryFolder temporaryFolder = new TemporaryFolder();
+  @TempDir Path temporaryFolder;
+
+  private File newTempFile() throws IOException {
+    return Files.createTempFile(temporaryFolder, "png-filter", ".png").toFile();
+  }
 
   private static final Chunk cICPChunk = new Chunk("cICP", new byte[] {0xC, 0xD, 0x0, 0x1});
   private static final Chunk PLTEChunk = new Chunk("PLTE", new byte[0]);

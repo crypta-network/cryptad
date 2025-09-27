@@ -1,13 +1,13 @@
 package network.crypta.support;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BloomFilterTest {
   private static final int FILTER_SIZE = 4 * 1024; // MUST be > PASS,
@@ -64,7 +64,7 @@ public class BloomFilterTest {
 
       filter.addKey(b);
       baseList.put(new ByteArrayWrapper(b), b);
-      assertTrue("check add BASE", filter.checkFilter(b));
+      assertTrue(filter.checkFilter(b), "check add BASE");
     }
 
     // Add some FALSE_PASS keys
@@ -80,7 +80,7 @@ public class BloomFilterTest {
 
       filter.addKey(b);
       newList.put(wrapper, b);
-      assertTrue("check add NEW", filter.checkFilter(b));
+      assertTrue(filter.checkFilter(b), "check add NEW");
     }
 
     // Remove the "NEW" keys and count false positive
@@ -88,10 +88,10 @@ public class BloomFilterTest {
     for (byte[] b : newList.values()) if (filter.checkFilter(b)) fPos++;
 
     // Check if some should were removed
-    assertNotEquals("100% false positive?", PASS_REMOVE, fPos);
+    assertNotEquals(PASS_REMOVE, fPos, "100% false positive?");
 
     // Check if old keys still here
-    for (byte[] b : baseList.values()) assertTrue("check original", filter.checkFilter(b));
+    for (byte[] b : baseList.values()) assertTrue(filter.checkFilter(b), "check original");
   }
 
   private void _testFilterFalsePositive(BloomFilter filter) {
@@ -106,7 +106,7 @@ public class BloomFilterTest {
 
       filter.addKey(b);
       list.add(new ByteArrayWrapper(b));
-      assertTrue("check add", filter.checkFilter(b));
+      assertTrue(filter.checkFilter(b), "check add");
     }
 
     System.out.println("---" + filter + "---");
@@ -134,7 +134,7 @@ public class BloomFilterTest {
     System.out.println(" actual / p = " + actual / p);
     /**/
 
-    assertFalse("false positive, p=" + p + ", actual=" + actual, actual > limit);
+    assertFalse(actual > limit, "false positive, p=" + p + ", actual=" + actual);
   }
 
   @Test

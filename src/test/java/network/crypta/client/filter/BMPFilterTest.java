@@ -1,7 +1,7 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,7 +9,7 @@ import java.io.OutputStream;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BMPFilterTest {
   /** File of size less than 54 bytes */
@@ -96,11 +96,11 @@ public class BMPFilterTest {
     Bucket output = filterImage(input, null);
 
     // Filter should return the original
-    assertEquals("Input and output should be the same length", input.size(), output.size());
+    assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
-        "Input and output are not identical",
         BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output));
+        BucketTools.toByteArray(output),
+        "Input and output are not identical");
   }
 
   /** Checks that the image size calculation works for images with padding */
@@ -110,11 +110,11 @@ public class BMPFilterTest {
     Bucket output = filterImage(input, null);
 
     // Filter should return the original
-    assertEquals("Input and output should be the same length", input.size(), output.size());
+    assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
-        "Input and output are not identical",
         BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output));
+        BucketTools.toByteArray(output),
+        "Input and output are not identical");
   }
 
   /** Checks that the image size calculation works for images without padding */
@@ -124,11 +124,11 @@ public class BMPFilterTest {
     Bucket output = filterImage(input, null);
 
     // Filter should return the original
-    assertEquals("Input and output should be the same length", input.size(), output.size());
+    assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
-        "Input and output are not identical",
         BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output));
+        BucketTools.toByteArray(output),
+        "Input and output are not identical");
   }
 
   private Bucket filterImage(Bucket input, Class<? extends Exception> expected) throws IOException {

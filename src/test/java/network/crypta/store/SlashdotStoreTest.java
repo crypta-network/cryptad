@@ -1,7 +1,7 @@
 package network.crypta.store;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,13 +26,13 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.TempBucketFactory;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class SlashdotStoreTest {
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     tempDir = new File("tmp-slashdotstoretest");
     tempDir.mkdir();
@@ -41,7 +41,7 @@ public class SlashdotStoreTest {
     exec.start();
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(tempDir);
   }

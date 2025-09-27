@@ -1,28 +1,28 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
 import java.io.IOException;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class MasterKeysTest {
 
   private final File base = new File("tmp.master-keys-test");
 
-  @Before
+  @BeforeEach
   public void setUp() {
     FileUtil.removeAll(base);
     base.mkdir();
     MasterKeys.ITERATE_TIME = 100; // Speed up test.
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(base);
   }

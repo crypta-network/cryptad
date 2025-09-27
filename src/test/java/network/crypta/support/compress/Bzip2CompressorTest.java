@@ -1,7 +1,7 @@
 package network.crypta.support.compress;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -14,7 +14,7 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.NullBucket;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Test case for {@link Bzip2Compressor} class. */
 public class Bzip2CompressorTest {

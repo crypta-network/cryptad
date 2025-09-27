@@ -1,8 +1,8 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MasterSecretTest {
   private static final KeyType[] types = KeyType.values();
@@ -23,10 +23,10 @@ public class MasterSecretTest {
     }
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveKeyNullInput() {
     MasterSecret secret = new MasterSecret();
-    secret.deriveKey(null);
+    assertThrows(NullPointerException.class, () -> secret.deriveKey(null));
   }
 
   @Test
@@ -45,9 +45,9 @@ public class MasterSecretTest {
     }
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testDeriveIvNullInput() {
     MasterSecret secret = new MasterSecret();
-    secret.deriveIv(null);
+    assertThrows(NullPointerException.class, () -> secret.deriveIv(null));
   }
 }

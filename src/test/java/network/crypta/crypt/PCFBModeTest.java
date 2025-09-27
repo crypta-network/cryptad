@@ -1,11 +1,11 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.HexUtil;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 // 256,256 PCFB is the same as 256,256 CFB, however JCA does not support 256-bit block size, so we
 // can't

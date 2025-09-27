@@ -1,6 +1,6 @@
 package network.crypta.client.async;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import network.crypta.support.CheatingTicker;
 import network.crypta.support.Executor;
@@ -8,7 +8,7 @@ import network.crypta.support.PooledExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.WaitableExecutor;
 import network.crypta.support.io.NativeThread;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PersistentJobRunnerImplTest {
 

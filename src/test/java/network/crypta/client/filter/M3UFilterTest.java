@@ -1,13 +1,13 @@
 package network.crypta.client.filter;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class M3UFilterTest {
   protected static String[][] testPlaylists = {
@@ -44,15 +44,15 @@ public class M3UFilterTest {
         String result = normalizeEol(ibprocessed.toString());
 
         assertEquals(
+            bucketToString(ibc),
+            result,
             original
                 + " should be filtered as "
                 + correct
                 + " but was filtered as\n"
                 + result
                 + "\ninstead of the correct\n"
-                + bucketToString(ibc),
-            bucketToString(ibc),
-            result);
+                + bucketToString(ibc));
       } catch (DataFilterException dfe) {
         fail("Filtering " + original + " failed");
       } catch (URISyntaxException use) {

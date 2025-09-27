@@ -1,12 +1,12 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MultiHashOutputStreamTest {
   private static final byte[] MESSAGE = "Hello, World!".getBytes(StandardCharsets.UTF_8);
@@ -20,11 +20,11 @@ public class MultiHashOutputStreamTest {
   public void write() throws IOException {
     hash.write(MESSAGE[0]);
     hash.write(MESSAGE, 1, MESSAGE.length - 1);
-    assertArrayEquals(MESSAGE, output.toByteArray());
+    assertArrayEquals(output.toByteArray(), MESSAGE);
 
     HashResult[] results = hash.getResults();
     assertEquals(1, results.length);
     assertEquals(HashType.MD5, results[0].type);
-    assertEquals(MESSAGE_MD5, results[0].hashAsHex());
+    assertEquals(results[0].hashAsHex(), MESSAGE_MD5);
   }
 }

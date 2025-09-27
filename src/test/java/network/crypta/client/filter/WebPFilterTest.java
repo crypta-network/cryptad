@@ -1,7 +1,7 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,7 +12,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Unit test for (parts of) {@link WebPFilter}. */
 public class WebPFilterTest {
@@ -135,7 +135,7 @@ public class WebPFilterTest {
     Bucket inputValid = resourceToBucket("./webp/test.webp");
     Bucket input =
         BucketTools.pad(inputValid, (int) inputValid.size() + 1, bf, (int) inputValid.size());
-    assertEquals("Input size is wrong", inputValid.size() + 1L, input.size());
+    assertEquals(inputValid.size() + 1L, input.size(), "Input size is wrong");
     filterImage(input, DataFilterException.class);
   }
 
@@ -158,10 +158,10 @@ public class WebPFilterTest {
     Bucket output = filterImage(input, null);
 
     // Filter should return the original
-    assertEquals("Input and output should be the same length", input.size(), output.size());
+    assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
-        "Input and output are not identical",
         BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output));
+        BucketTools.toByteArray(output),
+        "Input and output are not identical");
   }
 }

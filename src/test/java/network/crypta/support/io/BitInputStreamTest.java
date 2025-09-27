@@ -1,6 +1,6 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.EOFException;
@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class BitInputStreamTest {
 
@@ -89,28 +89,40 @@ public class BitInputStreamTest {
     }
   }
 
-  @Test(expected = EOFException.class)
-  public void endOfStreamTest() throws IOException {
+  @Test
+  public void endOfStreamTest() {
     byte[] ba = {0};
-    try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
-      in.readInt(9);
-    }
+    assertThrows(
+        EOFException.class,
+        () -> {
+          try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
+            in.readInt(9);
+          }
+        });
   }
 
-  @Test(expected = EOFException.class)
-  public void readFully_endOfStreamTest() throws IOException {
+  @Test
+  public void readFully_endOfStreamTest() {
     byte[] ba = {0};
-    try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
-      in.readFully(new byte[2]);
-    }
+    assertThrows(
+        EOFException.class,
+        () -> {
+          try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
+            in.readFully(new byte[2]);
+          }
+        });
   }
 
-  @Test(expected = IllegalArgumentException.class)
-  public void readNegativeNumberOfBitsTest() throws IOException {
+  @Test
+  public void readNegativeNumberOfBitsTest() {
     byte[] ba = {0};
-    try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
-      in.readInt(-1);
-    }
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> {
+          try (BitInputStream in = new BitInputStream(new ByteArrayInputStream(ba))) {
+            in.readInt(-1);
+          }
+        });
   }
 
   @Test

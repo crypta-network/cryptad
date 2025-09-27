@@ -1,12 +1,12 @@
 package network.crypta.clients.http;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Date;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ReceivedCookieTest extends CookieTest {
 
@@ -18,7 +18,7 @@ public class ReceivedCookieTest extends CookieTest {
           + " $Expires = \"Sun, 25 Oct 2030 15:09:37 GMT\"; "
           + " $blah;";
 
-  @Before
+  @BeforeEach
   @SuppressWarnings("deprecation")
   public void setUp() throws Exception {
     super.setUp();
@@ -55,8 +55,8 @@ public class ReceivedCookieTest extends CookieTest {
     assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
     assertEquals(VALID_VALUE, cookie.getValue());
     cookie = cookies.get(1);
-    assertEquals("key2", cookie.getName());
-    assertEquals("valUe2", cookie.getValue());
+    assertEquals(cookie.getName(), "key2");
+    assertEquals(cookie.getValue(), "valUe2");
 
     // Key without value at end:
 

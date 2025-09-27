@@ -1,7 +1,7 @@
 package network.crypta.node;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.DataInputStream;
 import java.io.File;
@@ -30,8 +30,8 @@ import network.crypta.support.TestProperty;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
 
@@ -102,7 +102,7 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     assertTrue(BucketTools.equalBuckets(result.asBucket(), block.getData()));
   }
 
-  @After
+  @AfterEach
   public void cleanUp() {
     FileUtil.removeAll(dir);
   }

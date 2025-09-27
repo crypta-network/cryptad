@@ -1,6 +1,6 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.security.Security;
 import java.util.Random;
@@ -11,12 +11,12 @@ import org.bouncycastle.crypto.macs.HMac;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class HMACTest {
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     Security.addProvider(new BouncyCastleProvider());
     random = new Random(0xAAAAAAAA);

@@ -1,10 +1,11 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +16,7 @@ import javax.crypto.spec.IvParameterSpec;
 import network.crypta.support.Fields;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MessageAuthCodeTest {
   private static final MACType[] types = MACType.values();
@@ -71,7 +72,7 @@ public class MessageAuthCodeTest {
         mac.addByte(messages[i][j]);
       }
       assertArrayEquals(
-          "MACType: " + types[i].name(), Fields.copyToArray(mac.genMac()), trueMacs[i]);
+          Fields.copyToArray(mac.genMac()), trueMacs[i], "MACType: " + types[i].name());
     }
   }
 
@@ -95,7 +96,7 @@ public class MessageAuthCodeTest {
         throwNull = true;
       }
 
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
@@ -112,18 +113,18 @@ public class MessageAuthCodeTest {
       ByteBuffer byteBuffer = ByteBuffer.wrap(messages[i]);
 
       mac.addBytes(byteBuffer);
-      assertArrayEquals("MACType: " + types[i].name(), mac.genMac().array(), trueMacs[i]);
+      assertArrayEquals(mac.genMac().array(), trueMacs[i], "MACType: " + types[i].name());
     }
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void testAddBytesByteBufferNullInput() throws InvalidKeyException {
     int i = 0;
     MessageAuthCode mac;
     mac = new MessageAuthCode(types[i], keys[i]);
 
     ByteBuffer byteBuffer = null;
-    mac.addBytes(byteBuffer);
+    assertThrows(IllegalArgumentException.class, () -> mac.addBytes(byteBuffer));
   }
 
   @Test
@@ -140,7 +141,7 @@ public class MessageAuthCodeTest {
       mac.addBytes(
           messages[i], messages[i].length / 2, messages[i].length - messages[i].length / 2);
 
-      assertArrayEquals("MACType: " + types[i].name(), mac.genMac().array(), trueMacs[i]);
+      assertArrayEquals(mac.genMac().array(), trueMacs[i], "MACType: " + types[i].name());
     }
   }
 
@@ -163,7 +164,7 @@ public class MessageAuthCodeTest {
         throwNull = true;
       }
 
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
@@ -185,7 +186,7 @@ public class MessageAuthCodeTest {
         throwNull = true;
       }
 
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
@@ -207,7 +208,7 @@ public class MessageAuthCodeTest {
         throwNull = true;
       }
 
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
@@ -223,7 +224,7 @@ public class MessageAuthCodeTest {
         mac = new MessageAuthCode(types[i], keys[i]);
       }
       byte[] result = mac.genMac(messages[i]).array();
-      assertTrue("MACType: " + types[i].name(), MessageAuthCode.verify(result, trueMacs[i]));
+      assertTrue(MessageAuthCode.verify(result, trueMacs[i]), "MACType: " + types[i].name());
     }
   }
 
@@ -239,7 +240,7 @@ public class MessageAuthCodeTest {
       }
       mac.addBytes(messages[i]);
       byte[] result = mac.genMac(messages[i]).array();
-      assertArrayEquals("MACType: " + types[i].name(), result, trueMacs[i]);
+      assertArrayEquals(result, trueMacs[i], "MACType: " + types[i].name());
     }
   }
 
@@ -262,16 +263,16 @@ public class MessageAuthCodeTest {
         throwNull = true;
       }
 
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
-  @Test(expected = NullPointerException.class)
+  @Test
   public void testGetMacByteArrayArrayNullMatrixElementInput()
       throws InvalidKeyException, InvalidAlgorithmParameterException {
     MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
     byte[][] nullMatrix = {messages[3], null};
-    mac.genMac(nullMatrix);
+    assertThrows(NullPointerException.class, () -> mac.genMac(nullMatrix));
   }
 
   @Test
@@ -306,7 +307,7 @@ public class MessageAuthCodeTest {
       } else {
         mac = new MessageAuthCode(types[i], keys[i]);
       }
-      assertTrue("MACType: " + types[i].name(), mac.verifyData(trueMacs[i], messages[i]));
+      assertTrue(mac.verifyData(trueMacs[i], messages[i]), "MACType: " + types[i].name());
     }
   }
 
@@ -319,7 +320,7 @@ public class MessageAuthCodeTest {
       } else {
         mac = new MessageAuthCode(types[i], keys[i]);
       }
-      assertFalse("MACType: " + types[i].name(), mac.verifyData(falseMacs[i], messages[i]));
+      assertFalse(mac.verifyData(falseMacs[i], messages[i]), "MACType: " + types[i].name());
     }
   }
 
@@ -334,7 +335,7 @@ public class MessageAuthCodeTest {
         mac = new MessageAuthCode(types[i], keys[i]);
       }
       byte[] nullArray = null;
-      assertFalse("MACType: " + types[i].name(), mac.verifyData(nullArray, messages[i]));
+      assertFalse(mac.verifyData(nullArray, messages[i]), "MACType: " + types[i].name());
     }
   }
 
@@ -355,7 +356,7 @@ public class MessageAuthCodeTest {
       } catch (NullPointerException e) {
         throwNull = true;
       }
-      assertTrue("MACType: " + types[i].name(), throwNull);
+      assertTrue(throwNull, "MACType: " + types[i].name());
     }
   }
 
@@ -368,7 +369,7 @@ public class MessageAuthCodeTest {
       } else {
         mac = new MessageAuthCode(types[i], keys[i]);
       }
-      assertArrayEquals("MACType: " + types[i].name(), mac.getKey().getEncoded(), keys[i]);
+      assertArrayEquals(mac.getKey().getEncoded(), keys[i], "MACType: " + types[i].name());
     }
   }
 
@@ -378,10 +379,10 @@ public class MessageAuthCodeTest {
     assertArrayEquals(mac.getIv().getIV(), IVs[3].getIV());
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGetIVUnsupportedTypeException() throws InvalidKeyException {
     MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.getIv();
+    assertThrows(UnsupportedTypeException.class, mac::getIv);
   }
 
   @Test
@@ -393,19 +394,19 @@ public class MessageAuthCodeTest {
     assertArrayEquals(IVs[3].getIV(), mac.getIv().getIV());
   }
 
-  @Test(expected = InvalidAlgorithmParameterException.class)
+  @Test
   public void testSetIVIvParameterSpecNullInput()
       throws InvalidKeyException, InvalidAlgorithmParameterException {
     IvParameterSpec nullInput = null;
     MessageAuthCode mac = new MessageAuthCode(types[3], keys[3], IVs[3]);
-    mac.setIV(nullInput);
+    assertThrows(InvalidAlgorithmParameterException.class, () -> mac.setIV(nullInput));
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testSetIVIvParameterSpecUnsupportedTypeException()
       throws InvalidKeyException, InvalidAlgorithmParameterException {
     MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.setIV(IVs[1]);
+    assertThrows(UnsupportedTypeException.class, () -> mac.setIV(IVs[1]));
   }
 
   @Test
@@ -420,9 +421,9 @@ public class MessageAuthCodeTest {
     assertEquals(mac.genIV().getIV().length, types[3].ivlen);
   }
 
-  @Test(expected = UnsupportedTypeException.class)
+  @Test
   public void testGenIVUnsupportedTypeException() throws InvalidKeyException {
     MessageAuthCode mac = new MessageAuthCode(types[0], keys[0]);
-    mac.genIV();
+    assertThrows(UnsupportedTypeException.class, mac::genIV);
   }
 }

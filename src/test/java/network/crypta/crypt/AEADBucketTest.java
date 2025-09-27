@@ -1,11 +1,11 @@
 package network.crypta.crypt;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class AEADBucketTest {
 

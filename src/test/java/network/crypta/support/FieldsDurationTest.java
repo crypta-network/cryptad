@@ -1,11 +1,11 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.config.Dimension;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Tests parsing of duration value. */
 public class FieldsDurationTest {
@@ -28,15 +28,15 @@ public class FieldsDurationTest {
         (duration, millis) -> {
           Integer parsed = Fields.parseInt(Fields.trimPerSecond(duration), Dimension.DURATION);
           assertEquals(
-              "Input: %s; Intended: %d; Parsed: %d".formatted(duration, millis, parsed),
               millis,
-              parsed);
+              parsed,
+              "Input: %s; Intended: %d; Parsed: %d".formatted(duration, millis, parsed));
 
           String packed = Fields.intToString(millis, Dimension.DURATION);
           assertEquals(
-              "Input: %d; Intended: %s; Packed: %s".formatted(millis, duration, packed),
               duration,
-              packed);
+              packed,
+              "Input: %d; Intended: %s; Packed: %s".formatted(millis, duration, packed));
         });
   }
 }

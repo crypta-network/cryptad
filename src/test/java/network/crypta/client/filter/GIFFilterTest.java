@@ -1,6 +1,6 @@
 package network.crypta.client.filter;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,7 +10,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.NullOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class GIFFilterTest {
   @Test
@@ -35,9 +35,9 @@ public class GIFFilterTest {
 
         ContentDataFilter filter = new GIFFilter();
         assertThrows(
-            "Filter did not fail on reject sample " + reject,
             DataFilterException.class,
-            () -> filter.readFilter(inStream, outStream, "", null, null, null));
+            () -> filter.readFilter(inStream, outStream, "", null, null, null),
+            "Filter did not fail on reject sample " + reject);
       }
     }
   }
@@ -55,12 +55,12 @@ public class GIFFilterTest {
     Bucket expected = resourceToBucket(fileExpected);
     Bucket filtered = filterGIF(input);
     assertTrue(
+        equalBuckets(filtered, expected),
         "Filtered and expected output are not identical. "
             + "Input = "
             + fileUnfiltered
             + ", expected = "
-            + fileExpected,
-        equalBuckets(filtered, expected));
+            + fileExpected);
   }
 
   /** Checks for equality of Bucket contents. */

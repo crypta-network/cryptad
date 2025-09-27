@@ -1,10 +1,10 @@
 package network.crypta.node.probe;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.HashSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Tests conversion from code and code validity. */
 public class ErrorTest {

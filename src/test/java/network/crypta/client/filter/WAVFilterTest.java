@@ -1,7 +1,7 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +11,7 @@ import java.nio.ByteOrder;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Unit test for (parts of) {@link WAVFilter}. */
 public class WAVFilterTest {
@@ -22,11 +22,11 @@ public class WAVFilterTest {
     Bucket output = filterWAV(input, null);
 
     // Filter should return the original
-    assertEquals("Input and output should be the same length", input.size(), output.size());
+    assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
-        "Input and output are not identical",
         BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output));
+        BucketTools.toByteArray(output),
+        "Input and output are not identical");
   }
 
   // This file is WebP, not WAV!

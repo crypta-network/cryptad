@@ -1,6 +1,6 @@
 package network.crypta.store;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -12,7 +12,7 @@ import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.Global;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.math.MersenneTwister;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PubkeyStoreTest {
 

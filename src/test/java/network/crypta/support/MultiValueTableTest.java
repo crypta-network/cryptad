@@ -2,13 +2,13 @@ package network.crypta.support;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,8 +24,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.Vector;
 import java.util.stream.Collectors;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for {@link MultiValueTable} class.
@@ -43,7 +43,7 @@ public class MultiValueTableTest {
   private Map<Integer, List<Object>> sampleObjects;
   private MultiValueTable<Integer, Object> multiValueTable;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     sampleObjects = createSampleKeyMultiVal(sampleKeyNumber, sampleMaxValueNumber, sampleIsRandom);
     multiValueTable = fillMultiValueTable(sampleObjects);
@@ -101,9 +101,11 @@ public class MultiValueTableTest {
     return multiValueTable;
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void fromThrowsExceptionWhenKeysAndValuesArrayParamsHaveDifferentSize() {
-    MultiValueTable.from(new Integer[] {1, 2, 3}, new String[] {"one", "two"});
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> MultiValueTable.from(new Integer[] {1, 2, 3}, new String[] {"one", "two"}));
   }
 
   @Test
@@ -124,7 +126,7 @@ public class MultiValueTableTest {
   public void testFromMethodWithVarArgParams() {
     MultiValueTable<String, Integer> table = MultiValueTable.from("key", 1, 2, 3);
     assertEquals(1, table.keySet().size());
-    assertEquals("key", table.keySet().iterator().next());
+    assertEquals(table.keySet().iterator().next(), "key");
     assertEquals(Arrays.asList(1, 2, 3), table.getAllAsList("key"));
   }
 
@@ -137,9 +139,9 @@ public class MultiValueTableTest {
     multiValueTable.put(4, "four");
     assertEquals(3, multiValueTable.size());
     assertEquals(2, multiValueTable.countAll(1));
-    assertEquals(Arrays.asList("one", "two"), multiValueTable.getAllAsList(1));
-    assertEquals(Collections.singletonList("three"), multiValueTable.getAllAsList(3));
-    assertEquals(Collections.singletonList("four"), multiValueTable.getAllAsList(4));
+    assertEquals(multiValueTable.getAllAsList(1), Arrays.asList("one", "two"));
+    assertEquals(multiValueTable.getAllAsList(3), Collections.singletonList("three"));
+    assertEquals(multiValueTable.getAllAsList(4), Collections.singletonList("four"));
   }
 
   @Test
@@ -150,8 +152,8 @@ public class MultiValueTableTest {
     multiValueTable.putAll(2, Arrays.asList("five", "six"));
     multiValueTable.putAll(3, Collections.emptyList());
 
-    assertEquals(Arrays.asList("one", "two"), multiValueTable.getAllAsList(1));
-    assertEquals(Arrays.asList("three", "four", "five", "six"), multiValueTable.getAllAsList(2));
+    assertEquals(multiValueTable.getAllAsList(1), Arrays.asList("one", "two"));
+    assertEquals(multiValueTable.getAllAsList(2), Arrays.asList("three", "four", "five", "six"));
     assertTrue(multiValueTable.getAllAsList(3).isEmpty());
   }
 
@@ -378,7 +380,7 @@ public class MultiValueTableTest {
     multiValueTable = new MultiValueTable<>();
     multiValueTable.put(1, "one");
     assertFalse(multiValueTable.removeElement(NON_EXISTING_KEY, "one"));
-    assertEquals("one", multiValueTable.getFirst(1));
+    assertEquals(multiValueTable.getFirst(1), "one");
   }
 
   @Test
@@ -386,7 +388,7 @@ public class MultiValueTableTest {
     multiValueTable = new MultiValueTable<>();
     multiValueTable.put(1, "one");
     assertFalse(multiValueTable.removeElement(1, "two"));
-    assertEquals("one", multiValueTable.getFirst(1));
+    assertEquals(multiValueTable.getFirst(1), "one");
   }
 
   @Test
@@ -409,7 +411,7 @@ public class MultiValueTableTest {
     multiValueTable = new MultiValueTable<>();
     multiValueTable.putAll(1, Arrays.asList("one", "two", "two", "two", "three"));
     assertTrue(multiValueTable.removeElement(1, "two"));
-    assertEquals(Arrays.asList("one", "two", "two", "three"), multiValueTable.values());
+    assertEquals(multiValueTable.values(), Arrays.asList("one", "two", "two", "three"));
   }
 
   @Test

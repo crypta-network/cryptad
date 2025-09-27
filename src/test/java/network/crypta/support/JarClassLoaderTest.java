@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /** Unit test for {@link JarClassLoader}. */
 public class JarClassLoaderTest {

@@ -1,20 +1,20 @@
 package network.crypta.support;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.NoSuchElementException;
 import java.util.Random;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class RandomArrayIteratorTest {
   private static final int NUM_ELEMENTS = 100;
 
   private RandomArrayIterator<Integer> iter;
 
-  @Before
+  @BeforeEach
   public void setUp() {
     Integer[] objects = new Integer[NUM_ELEMENTS];
     for (int i = 0; i < NUM_ELEMENTS; i++) {

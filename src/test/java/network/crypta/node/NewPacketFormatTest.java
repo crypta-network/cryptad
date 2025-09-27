@@ -1,6 +1,6 @@
 package network.crypta.node;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -11,11 +11,11 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class NewPacketFormatTest {
-  @Before
+  @BeforeEach
   public void setUp() {
     // Because we don't call maybeSendPacket, the packet sent times are not updated,
     // so lets turn off the keepalives.
@@ -343,6 +343,6 @@ public class NewPacketFormatTest {
 
     assertEquals(1, receiverNode.decryptedMessages.size());
     assertArrayEquals(message, copyOfMessage);
-    assertArrayEquals(message, receiverNode.decryptedMessages.getFirst());
+    assertArrayEquals(receiverNode.decryptedMessages.getFirst(), message);
   }
 }

@@ -1,13 +1,13 @@
 package network.crypta.support.io;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class LineReadingInputStreamTest {
   public static final String BLOCK = "\ntesting1\ntesting2\r\ntesting3\n\n";
@@ -26,8 +26,8 @@ public class LineReadingInputStreamTest {
     // try utf8
     InputStream is = new ByteArrayInputStream(STRESSED_LINE.getBytes(StandardCharsets.UTF_8));
     LineReadingInputStream instance = new LineReadingInputStream(is);
-    assertEquals("", instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
-    assertEquals("Ĕ", instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
+    assertEquals(instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true), "");
+    assertEquals(instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true), "Ĕ");
     assertNull(instance.readLineWithoutMarking(MAX_LENGTH, BUFFER_SIZE, true));
 
     // try ISO-8859-1
@@ -71,8 +71,8 @@ public class LineReadingInputStreamTest {
     // try utf8
     InputStream is = new ByteArrayInputStream(STRESSED_LINE.getBytes(StandardCharsets.UTF_8));
     LineReadingInputStream instance = new LineReadingInputStream(is);
-    assertEquals("", instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
-    assertEquals("Ĕ", instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
+    assertEquals(instance.readLine(MAX_LENGTH, BUFFER_SIZE, true), "");
+    assertEquals(instance.readLine(MAX_LENGTH, BUFFER_SIZE, true), "Ĕ");
     assertNull(instance.readLine(MAX_LENGTH, BUFFER_SIZE, true));
 
     // try ISO-8859-1

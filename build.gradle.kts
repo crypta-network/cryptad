@@ -35,7 +35,11 @@ dependencies {
   // CLI parsing and UX
   implementation(libs.picocli)
 
-  testImplementation(libs.junit4)
+  testImplementation(libs.junitJupiterApi)
+  testImplementation(libs.junitJupiterParams)
+  testImplementation(libs.junitPlatformSuite)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)

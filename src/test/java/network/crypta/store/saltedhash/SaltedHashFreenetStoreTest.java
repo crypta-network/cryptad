@@ -1,8 +1,8 @@
 package network.crypta.store.saltedhash;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -48,9 +48,9 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * SaltedHashFreenetStoreTest Test for SaltedHashFreenetStore
@@ -64,7 +64,7 @@ public class SaltedHashFreenetStoreTest {
   private final Ticker ticker = new TrivialTicker(exec);
   private File tempDir;
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     tempDir = new File("tmp-saltedHashfreenetstoretest");
     tempDir.mkdir();
@@ -72,7 +72,7 @@ public class SaltedHashFreenetStoreTest {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
   }
 
-  @After
+  @AfterEach
   public void tearDown() {
     FileUtil.removeAll(tempDir);
   }

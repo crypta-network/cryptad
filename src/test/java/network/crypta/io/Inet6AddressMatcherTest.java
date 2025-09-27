@@ -1,9 +1,9 @@
 package network.crypta.io;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.InetAddress;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Test case for the {@link Inet6AddressMatcher} class. Contains some very basic tests. Feel free to

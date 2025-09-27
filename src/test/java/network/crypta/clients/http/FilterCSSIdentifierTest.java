@@ -1,8 +1,8 @@
 package network.crypta.clients.http;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests that valid CSS identifiers without non-ASCII characters or escaped characters are

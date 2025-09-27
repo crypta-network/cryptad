@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.l10n.BaseL10nTest;
 import network.crypta.support.HTMLNode;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PebbleUtilsTest {
 

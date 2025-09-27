@@ -1,6 +1,6 @@
 package network.crypta.client.filter;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit test for (parts of) {@link JPEGFilter}.

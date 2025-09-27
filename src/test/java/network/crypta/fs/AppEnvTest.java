@@ -4,17 +4,17 @@ import static java.nio.file.Files.createTempDirectory;
 import static java.nio.file.Files.deleteIfExists;
 import static java.nio.file.Files.exists;
 import static java.nio.file.Files.write;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class AppEnvTest {
 
@@ -92,9 +92,9 @@ public class AppEnvTest {
       env.put("CRYPTAD_SERVICE", "1");
       AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
       System.setProperty("cryptad.service.mode", "user");
-      assertFalse("system property should force user mode", ae.isServiceMode());
+      assertFalse(ae.isServiceMode(), "system property should force user mode");
       System.setProperty("cryptad.service.mode", "service");
-      assertTrue("system property should force service mode", ae.isServiceMode());
+      assertTrue(ae.isServiceMode(), "system property should force service mode");
     } finally {
       if (old != null) System.setProperty("cryptad.service.mode", old);
       else System.clearProperty("cryptad.service.mode");
@@ -135,9 +135,9 @@ public class AppEnvTest {
       // Make them executable on *nix
       boolean rpmExec = rpm.setExecutable(true);
       boolean flatpakExec = flatpak.setExecutable(true);
-      assertTrue("Failed to mark rpm test binary executable", rpmExec || rpm.canExecute());
+      assertTrue(rpmExec || rpm.canExecute(), "Failed to mark rpm test binary executable");
       assertTrue(
-          "Failed to mark flatpak test binary executable", flatpakExec || flatpak.canExecute());
+          flatpakExec || flatpak.canExecute(), "Failed to mark flatpak test binary executable");
 
       Map<String, String> env = new HashMap<>();
       env.put("PATH", tmp.toString());
@@ -180,13 +180,13 @@ public class AppEnvTest {
             StandardOpenOption.TRUNCATE_EXISTING);
         // Mark executable after creating the file
         boolean ok = flatpak.setExecutable(true);
-        assertTrue("Failed to mark flatpak test binary executable", ok || flatpak.canExecute());
+        assertTrue(ok || flatpak.canExecute(), "Failed to mark flatpak test binary executable");
         Map<String, String> env = new HashMap<>();
         env.put("PATH", tmp.toString());
         AppEnv ae = new AppEnv(env, "Linux", "u", p -> null);
         AppEnv.EnvDetection det = ae.detectEnvironment();
         assertEquals(AppEnv.OsKind.LINUX, det.getOs());
-        assertEquals("arm64", det.getArch());
+        assertEquals(det.getArch(), "arm64");
         assertTrue(det.getAvailableManagers().contains("flatpak"));
       } finally {
         try {
@@ -210,8 +210,8 @@ public class AppEnvTest {
   public void docker_detection_via_cgroup_reader() {
     // Skip on hosts where cgroup file does not exist (non-Linux or unusual setups)
     assumeTrue(
-        "Skipping cgroup-based docker test on non-Linux host",
-        exists(java.nio.file.Path.of("/proc/1/cgroup")));
+        exists(java.nio.file.Path.of("/proc/1/cgroup")),
+        "Skipping cgroup-based docker test on non-Linux host");
     Map<String, String> env = new HashMap<>();
     AppEnv ae = new AppEnv(env, "Linux", "tester", p -> "12:devices:/docker/abcdef\n");
     assertTrue(ae.isDocker());
@@ -223,8 +223,8 @@ public class AppEnvTest {
     try {
       System.setProperty("os.version", "13.3.1");
       AppEnv ae = new AppEnv(new HashMap<>(), "Mac OS X", "u", p -> null);
-      assertEquals("Mac OS X", ae.osNameRaw());
-      assertEquals("13.3.1", ae.osVersionRaw());
+      assertEquals(ae.osNameRaw(), "Mac OS X");
+      assertEquals(ae.osVersionRaw(), "13.3.1");
     } finally {
       if (old != null) System.setProperty("os.version", old);
       else System.clearProperty("os.version");

@@ -1,17 +1,17 @@
 package network.crypta.client;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
 import java.util.Random;
 import network.crypta.support.TestProperty;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /** Test the new (post db4o) high level FEC API */
 public class OnionFECCodecTest {
 
-  @Before
+  @BeforeEach
   public void setUp() throws Exception {
     random = new Random(21482106);
   }
