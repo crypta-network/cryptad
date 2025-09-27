@@ -169,14 +169,14 @@ Refactoring guidance
 
 #### Windows details
 
-- The distribution includes Windows-native wrapper binaries built from the latest release of `crypta-network/wrapper-windows-build`:
+- The distribution includes Windows‑native wrapper binaries built from the latest release of `crypta-network/wrapper-windows-build`:
   - `bin/wrapper-windows-x86-64.exe` and `bin/wrapper-windows-arm-64.exe`.
   - DLLs are placed directly in `lib/` as `wrapper-windows-x86-64.dll` and `wrapper-windows-arm-64.dll`.
 - The main Windows launcher is `bin/cryptad.bat`:
   - Detects `AMD64` vs `ARM64` and runs the matching `wrapper-windows-x86-64.exe` or `wrapper-windows-arm-64.exe`.
   - Passes a per‑user anchor on the command line so the GUI can stop gracefully by deleting it:
     - `"wrapper.anchorfile=%LOCALAPPDATA%\Cryptad.anchor"` (command‑line property overrides any value in `wrapper.conf`).
-  - Temporarily prepends `lib/windows/<arch>` to `PATH` so `wrapper.dll` is found consistently.
+  - Native DLL resolution uses `wrapper.java.library.path=lib` in `wrapper.conf`. No `PATH` edits are required.
   - Accepts the same arguments as the Unix script and uses `conf/wrapper.conf`.
   - The GUI launcher is `bin/cryptad-launcher.bat`.
   
@@ -256,7 +256,7 @@ Tip: If GitHub API rate limits are hit during builds, set `GITHUB_TOKEN` in the 
 
 ## Key Tools and Instructions for Them
 
-- Kotlin lint: ktlint has been installed
+- Formatting: Spotless is configured (Kotlin via ktfmt; Java via google‑java‑format).
 - Build: ./gradlew build
 - Test: ./gradlew :test --tests [replace with TestClassName]
 
