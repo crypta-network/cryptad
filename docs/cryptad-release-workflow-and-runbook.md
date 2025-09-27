@@ -40,7 +40,7 @@
 - **Release notes**: prepare short (user-facing) and full (developer) changelog text files for CHK publishing.
 - **Package matrix**: decide which OS/arch artifacts to ship this cycle. Minimum recommendation is macOS (DMG), Windows (EXE), Linux desktop/server (DEB + RPM), and Flatpak if maintained.
 - **Environment validation**: run smoke tests on each target OS using `build/jpackage/Crypta`, `build/distributions/`, or the staged Flatpak bundle. Ensure the installers launch and locate `cryptad-dist/` correctly.
-- **Dependency review**: plugin and library updates still use `dependencies.properties`; update and publish plugin jars as before.
+- **Dependency review**: plugin updates are unchanged; publish plugin jars as before.
 
 ## Build
 1. Clean build for deterministic artifacts:

@@ -12,7 +12,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
-import java.util.Properties;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import network.crypta.client.FetchContext;
@@ -38,8 +37,6 @@ import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.FileUtil;
-import network.crypta.support.io.NullOutputStream;
 
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
 
@@ -423,72 +420,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     }
   }
 
-  static final String DEPENDENCIES_FILE = "dependencies.properties";
-
-  /**
-   * Read the jar file. Parse the Properties. Read every file in the ZIP; if it is corrupted, we
-   * will get a CRC error and therefore an IOException, and so the update won't be deployed. This is
-   * not entirely foolproof because ZipInputStream doesn't check the CRC for stored files, only for
-   * deflated files, and it's only a CRC32 anyway. But it should reduce the chances of accidental
-   * corruption breaking an update.
-   *
-   * @param is The InputStream for the jar file.
-   * @param filename The filename of the manifest file containing the properties (normally
-   *     META-INF/MANIFEST.MF).
-   * @throws IOException If there is a temporary files error or the jar is corrupted.
-   */
-  static Properties parseProperties(InputStream is, String filename) throws IOException {
-    Properties props = new Properties();
-    try (ZipInputStream zis = new ZipInputStream(is)) {
-      ZipEntry ze;
-      while (true) {
-        ze = zis.getNextEntry();
-        if (ze == null) break;
-        if (ze.isDirectory()) continue;
-        String name = ze.getName();
-
-        if (name.equals(filename)) {
-          if (logMINOR) Logger.minor(NodeUpdater.class, "Found manifest");
-          long size = ze.getSize();
-          if (logMINOR) Logger.minor(NodeUpdater.class, "Manifest size: " + size);
-          if (size > MAX_MANIFEST_SIZE) {
-            Logger.error(
-                NodeUpdater.class,
-                "Manifest is too big: " + size + " bytes, limit is " + MAX_MANIFEST_SIZE);
-            break;
-          }
-          byte[] buf = new byte[(int) size];
-          DataInputStream dis = new DataInputStream(zis);
-          dis.readFully(buf);
-          ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-          props.load(bais);
-        } else {
-          // Read the file. Throw if there is a CRC error.
-          // Note that java.util.zip.ZipInputStream only checks the CRC for compressed
-          // files, so this is not entirely foolproof.
-          long size = ze.getSize();
-          FileUtil.copy(zis, new NullOutputStream(), size);
-          zis.closeEntry();
-        }
-      }
-    }
-    return props;
-  }
-
-  protected void parseDependencies(FetchResult result, int build) {
-    try (InputStream is = result.asBucket().getInputStream()) {
-      parseDependencies(parseProperties(is, DEPENDENCIES_FILE), build);
-    } catch (IOException e) {
-      Logger.error(this, "IOException trying to read manifest on update");
-    } catch (Throwable t) {
-      Logger.error(this, "Failed to parse update manifest: " + t, t);
-    }
-  }
-
-  /** Override if you want to deal with the file dependencies.properties */
-  protected void parseDependencies(Properties props, int build) {
-    // Do nothing
-  }
+  // Legacy dependencies.properties parsing hooks removed.
 
   protected void parseManifestLine(String line) {
     // Do nothing by default, only some NodeUpdater's will use this, those that don't won't call
