@@ -137,7 +137,7 @@ Refactoring guidance
 
 - Java version: 21 or higher
     - Java runtime has been installed in the environment. So you can run java and gradle related commands without issues
-- Kotlin version: 2.2.0 or higher
+- Kotlin version: 2.2.20 or higher
     - ki shell has been installed in the environment.
 
 ## Project-Specific Notes
