@@ -76,10 +76,10 @@ Choose one of the following options.
 
 ### A) Install via Packages (recommended)
 
-- Windows (.exe)
-  - Download the Crypta installer from the Releases page.
-  - Double‑click to install. If Windows SmartScreen blocks it, click “More info” → “Run anyway”.
-  - Launch “Crypta” from the Start Menu.
+- Windows
+  - This repository does not build Windows installers. Use the portable distribution or the
+    jpackage app image below. If a Windows installer is published on the project’s Releases page,
+    you can install it by double‑clicking; if SmartScreen warns, click “More info” → “Run anyway”.
 
 - macOS (.dmg)
   - Download the DMG from the Releases page and open it.
@@ -163,8 +163,9 @@ Clean build:
 ./gradlew clean buildJar
 ```
 
-The wrapper is configured to [verify the distribution checksum](gradle/wrapper/gradle-wrapper.properties) from
-`https://services.gradle.org`.
+The wrapper validates the distribution URL (`validateDistributionUrl=true` in
+`gradle/wrapper/gradle-wrapper.properties`). To also verify the download by checksum, add
+`distributionSha256Sum=<sha256>` for the chosen Gradle distribution.
 
 ## Testing
 
@@ -429,8 +430,10 @@ cd build/jpackage/Crypta.app/Contents
 - Runtime: Java 21+
 - Language/Tooling: Kotlin 2.2.20+, Gradle Wrapper (provided in this repo)
 - External libraries are managed via Gradle.
-- Dependency verification is enabled; update both the `dependencies` and `dependencyVerification` blocks in
-  `build.gradle.kts` when adding libraries.
+- Dependency verification is enabled. When adding or updating libraries:
+  - Declare versions in `gradle/libs.versions.toml` and add usages in `build.gradle.kts`.
+  - Update verification metadata so `gradle/verification-metadata.xml` and keyrings reflect the new
+    artifacts; use the commands in “Spotless + Dependency Verification” below.
 
 Launcher adds:
 - `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` for Swing + coroutine integration.
