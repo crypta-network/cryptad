@@ -428,8 +428,7 @@ cd build/jpackage/Crypta.app/Contents
 
 - Runtime: Java 21+
 - Language/Tooling: Kotlin 2.2.20+, Gradle Wrapper (provided in this repo)
-- External libraries: managed via Gradle; for offline distribution and installer integration, see
-  `dependencies.properties`.
+- External libraries are managed via Gradle.
 - Dependency verification is enabled; update both the `dependencies` and `dependencyVerification` blocks in
   `build.gradle.kts` when adding libraries.
 
@@ -486,9 +485,7 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 - Config (`network.crypta.config`): type‑safe persisted configuration.
 - Support (`network.crypta.support`): logging, data structures, threading, helpers.
 
-You generally do not need to install libraries manually; Gradle resolves them. When preparing installer assets or
-offline bundles, ensure artifacts are listed in `dependencies.properties` and available through the project’s
-distribution process.
+You generally do not need to install libraries manually; Gradle resolves them.
 
 ## License
 

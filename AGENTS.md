@@ -466,5 +466,5 @@ Tips
 
 ## Dependency Metadata
 
-- `dependencies.properties`: consumed by Java updater/runtime (e.g., `MainJarDependenciesChecker`), not by Gradle.
+Note: `dependencies.properties` has been removed (Sep 2025). It is no longer packaged or used by the runtime or build.
 - Gradle dependencies use the version catalog `gradle/libs.versions.toml` and `build.gradle.kts`.

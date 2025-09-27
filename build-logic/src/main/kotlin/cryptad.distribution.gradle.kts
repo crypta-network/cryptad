@@ -673,12 +673,6 @@ val copyResourcesToClasses2 by
         include("network/crypta/l10n/iso-*.tab")
         include("network/crypta/clients/http/staticfiles/**")
         include("network/crypta/clients/http/templates/**")
-        include("../dependencies.properties")
-      }
-      copy {
-        from(projectDir)
-        into(layout.buildDirectory.dir("classes/java/main/"))
-        include("dependencies.properties")
       }
     }
   }
