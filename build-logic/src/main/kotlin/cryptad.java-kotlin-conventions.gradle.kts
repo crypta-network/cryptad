@@ -41,7 +41,11 @@ sourceSets.named("main") {
   java.exclude("network/crypta/node/Version.kt")
 }
 
-tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }
+tasks.withType<JavaCompile>().configureEach {
+  options.encoding = "UTF-8"
+  // Surface deprecation/unchecked sites explicitly during compilation.
+  options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
+}
 
 tasks.withType<Javadoc>().configureEach {
   options.encoding = "UTF-8"

@@ -51,7 +51,6 @@ import network.crypta.support.io.FileUtil;
  *
  * @author sdiz
  */
-@SuppressWarnings("deprecation")
 public class LongTermPushPullTest extends LongTermTest {
   private static final int TEST_SIZE = 64 * 1024;
 

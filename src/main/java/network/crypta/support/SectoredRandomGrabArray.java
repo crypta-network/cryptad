@@ -60,7 +60,6 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
   }
 
   /** Get a grabber. */
-  @SuppressWarnings("unchecked")
   public C getGrabber(T client) {
     synchronized (root) {
       int idx = haveClient(client);
@@ -501,7 +500,6 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
     return clients;
   }
 
-  @SuppressWarnings("unchecked")
   private T[] newClientArray(int length) {
     return (T[]) new Object[length];
   }
@@ -512,7 +510,6 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
     return grabbers;
   }
 
-  @SuppressWarnings("unchecked")
   private RemoveRandomWithObject<T>[] newGrabberArray(int length) {
     return (RemoveRandomWithObject<T>[]) new RemoveRandomWithObject<?>[length];
   }

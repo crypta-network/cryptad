@@ -70,7 +70,6 @@ public class PeerLocationTest {
   }
 
   // Generate sets of sequential omitted values of half the length, plus the empty set
-  @SuppressWarnings("unchecked")
   private Set<Double>[] omit(double[] locs) {
     Set<Double>[] result = (Set<Double>[]) new Set<?>[locs.length + 1];
     result[locs.length] = new HashSet<>();

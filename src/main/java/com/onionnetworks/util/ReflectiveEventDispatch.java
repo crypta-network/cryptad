@@ -6,7 +6,6 @@ import java.util.*;
 /**
  * @author Justin Chapweske
  */
-@SuppressWarnings({"rawtypes", "unchecked"})
 public class ReflectiveEventDispatch implements Runnable {
 
   public static final int DEFAULT_WARNING_TIME = 10;

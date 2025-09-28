@@ -68,7 +68,6 @@ public class Config {
     return configsByPrefix.get(subConfig);
   }
 
-  @SuppressWarnings("deprecation")
   public SubConfig createSubConfig(String subConfig) {
     return new SubConfig(subConfig, this);
   }

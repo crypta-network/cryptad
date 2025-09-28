@@ -155,7 +155,6 @@ public class PrioritizedSerialExecutor implements Executor {
       long jobTimeout,
       ExecutorIdleCallback callback,
       NodeStats statistics) {
-    @SuppressWarnings("unchecked")
     ArrayDeque<Runnable>[] jobs = (ArrayDeque<Runnable>[]) new ArrayDeque<?>[internalPriorityCount];
     for (int i = 0; i < jobs.length; i++) {
       jobs[i] = new ArrayDeque<>();

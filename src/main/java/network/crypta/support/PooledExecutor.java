@@ -21,7 +21,6 @@ public class PooledExecutor implements Executor {
   private final int[] runningThreads = new int[NativeThread.JAVA_PRIORITY_RANGE + 1];
 
   /** Threads waiting for a job */
-  @SuppressWarnings("unchecked")
   private final ArrayList<MyThread>[] waitingThreads =
       (ArrayList<MyThread>[]) new ArrayList<?>[runningThreads.length];
 

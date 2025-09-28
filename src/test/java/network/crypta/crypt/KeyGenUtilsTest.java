@@ -49,7 +49,6 @@ public class KeyGenUtilsTest {
     KeyPairType.ECP256, KeyPairType.ECP384, KeyPairType.ECP521
   };
 
-  @SuppressWarnings("deprecation")
   private static final KeyPairType falseKeyPairType = KeyPairType.DSA;
 
   private static final byte[][] truePublicKeys = {

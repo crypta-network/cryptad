@@ -374,7 +374,6 @@ public class ClientPutDir extends ClientPutBase {
     manifestElements = null;
   }
 
-  @SuppressWarnings("unchecked")
   private void freeData(HashMap<String, Object> manifestElements) {
     if (logMINOR)
       Logger.minor(

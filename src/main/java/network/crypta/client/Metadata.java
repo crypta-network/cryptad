@@ -1994,7 +1994,6 @@ public class Metadata implements Cloneable, Serializable {
    * * Casts the given object to {@code HashMap<String, Object>}, for dismissing * compiler
    * warnings. Use only when you are sure the object matches this type!
    */
-  @SuppressWarnings("unchecked")
   public static HashMap<String, Object> forceMap(Object o) {
     return (HashMap<String, Object>) o;
   }

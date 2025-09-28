@@ -241,10 +241,8 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
     // Now follows the legacy code
 
-    @SuppressWarnings("deprecation")
     PluginTalker pt;
     try {
-      @SuppressWarnings("deprecation")
       PluginTalker talker =
           new PluginTalker(node, handler, pluginname, identifier, handler.hasFullAccess());
       pt = talker;

@@ -347,7 +347,6 @@ public class ContainerInserter implements ClientPutState, Serializable {
       String name = me.getKey();
       Object o = me.getValue();
       if (o instanceof HashMap) {
-        @SuppressWarnings("unchecked")
         HashMap<String, Object> hm = (HashMap<String, Object>) o;
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
@@ -401,7 +400,6 @@ public class ContainerInserter implements ClientPutState, Serializable {
     // Do not call start(). start() immediately transitions to another state.
   }
 
-  @SuppressWarnings("unchecked")
   public static void resumeMetadata(Map<String, Object> map, ClientContext context)
       throws ResumeFailedException {
     for (Object o : map.values()) {

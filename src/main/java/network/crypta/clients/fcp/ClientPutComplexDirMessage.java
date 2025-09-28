@@ -97,7 +97,6 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     addFile(filesByName, f.getName(), f);
   }
 
-  @SuppressWarnings("unchecked")
   private void addFile(HashMap<String, Object> byName, String name, DirPutFile f)
       throws MessageInvalidException {
     int idx = name.indexOf('/');
@@ -170,7 +169,6 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * Convert a hierarchy of HashMap's containing DirPutFile's into a hierarchy of HashMap's
    * containing ManifestElement's.
    */
-  @SuppressWarnings("unchecked")
   private void convertFilesByNameToManifestElements(
       HashMap<String, Object> filesByName, HashMap<String, Object> manifestElements, Node node)
       throws MessageInvalidException {

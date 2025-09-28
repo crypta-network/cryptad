@@ -24,7 +24,6 @@ import network.crypta.support.io.FileUtil;
  *
  * @author toad
  */
-@SuppressWarnings("deprecation")
 public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
 
   static final int NUMBER_OF_NODES = 25;

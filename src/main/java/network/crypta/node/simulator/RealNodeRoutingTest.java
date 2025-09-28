@@ -20,7 +20,6 @@ import network.crypta.support.math.SimpleRunningAverage;
  *     <p>Create a mesh of nodes and let them sort out their locations.
  *     <p>Then run some node-to-node searches.
  */
-@SuppressWarnings("deprecation")
 public class RealNodeRoutingTest extends RealNodeTest {
 
   static final int NUMBER_OF_NODES = 100;

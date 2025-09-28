@@ -27,7 +27,6 @@ import network.crypta.support.Fields;
  * @author unixninja92
  *     <p>Suggested CryptByteBufferType to use: ChaCha128
  */
-@SuppressWarnings("deprecation") // Suppresses warnings about RijndaelPCFB being deprecated
 public final class CryptByteBuffer implements Serializable {
   @Serial private static final long serialVersionUID = 6143338995971755362L;
   private final CryptByteBufferType type;

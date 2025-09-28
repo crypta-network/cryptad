@@ -143,13 +143,10 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     FormModel() {
       float storage = 100;
-      @SuppressWarnings("unchecked")
       Option<Long> sizeOption = (Option<Long>) config.get("node").getOption("storeSize");
       if (!sizeOption.isDefault()) {
-        @SuppressWarnings("unchecked")
         Option<Long> clientCacheSizeOption =
             (Option<Long>) config.get("node").getOption("clientCacheSize");
-        @SuppressWarnings("unchecked")
         Option<Long> slashdotCacheSizeOption =
             (Option<Long>) config.get("node").getOption("slashdotCacheSize");
         long totalSize =

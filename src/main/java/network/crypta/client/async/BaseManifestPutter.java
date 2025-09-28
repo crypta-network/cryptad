@@ -1130,7 +1130,6 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     resolveAndStartBase(context);
   }
 
-  @SuppressWarnings("unchecked")
   private Metadata makeMetadata(HashMap<String, Object> dir) {
     SimpleManifestComposer smc = new SimpleManifestComposer();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {

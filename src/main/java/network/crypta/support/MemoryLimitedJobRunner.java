@@ -33,7 +33,6 @@ public class MemoryLimitedJobRunner {
     Logger.registerClass(MemoryLimitedJobRunner.class);
   }
 
-  @SuppressWarnings("unchecked")
   public MemoryLimitedJobRunner(long capacity, int maxThreads, Executor executor, int priorities) {
     this.capacity = capacity;
     this.counter = 0;

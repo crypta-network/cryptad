@@ -43,7 +43,6 @@ import network.crypta.support.io.FileUtil;
  *
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
-@SuppressWarnings("deprecation")
 public class LongTermManySingleBlocksTest extends LongTermTest {
 
   public static class InsertBatch {

@@ -98,7 +98,6 @@ public class DatastoreChecker implements PrioRunnable {
     this.context = context;
   }
 
-  @SuppressWarnings("unchecked")
   public DatastoreChecker(Node node, boolean lazyStart, Executor executor, String threadName) {
     this.node = node;
     this.lazy = lazyStart;

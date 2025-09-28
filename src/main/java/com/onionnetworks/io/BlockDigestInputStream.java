@@ -12,7 +12,6 @@ import java.util.List;
 /**
  * @author Justin F. Chapweske
  */
-@SuppressWarnings({"unchecked", "rawtypes"})
 public class BlockDigestInputStream extends FilterInputStream {
 
   protected MessageDigest md;

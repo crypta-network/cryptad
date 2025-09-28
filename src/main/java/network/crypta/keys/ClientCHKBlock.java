@@ -107,8 +107,6 @@ public class ClientCHKBlock implements ClientKeyBlock {
    * @return the original data
    * @throws IOException If there is a bucket error.
    */
-  @SuppressWarnings(
-      "deprecation") // FIXME Back compatibility, using dubious ciphers; remove eventually.
   public Bucket decodeOld(BucketFactory bf, int maxLength, boolean dontCompress)
       throws CHKDecodeException, IOException {
     // Overall hash already verified, so first job is to decrypt.
@@ -668,8 +666,6 @@ public class ClientCHKBlock implements ClientKeyBlock {
     }
   }
 
-  @SuppressWarnings(
-      "deprecation") // FIXME Back compatibility, using dubious ciphers; remove eventually.
   public static ClientCHKBlock innerEncode(
       byte[] data,
       int dataLength,

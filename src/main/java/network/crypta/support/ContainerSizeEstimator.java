@@ -100,7 +100,6 @@ public final class ContainerSizeEstimator {
         Object o = entry.getValue();
         if (o instanceof HashMap) {
           result._sizeSubTrees += 512;
-          @SuppressWarnings("unchecked")
           HashMap<String, Object> hm = (HashMap<String, Object>) o;
           ContainerSize tempResult = new ContainerSize();
           getSubTreeSize(

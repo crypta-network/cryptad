@@ -19,7 +19,6 @@ public class ReceivedCookieTest extends CookieTest {
           + " $blah;";
 
   @BeforeEach
-  @SuppressWarnings("deprecation")
   public void setUp() throws Exception {
     super.setUp();
 

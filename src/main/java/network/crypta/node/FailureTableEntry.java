@@ -106,7 +106,6 @@ class FailureTableEntry implements TimedOutNodesList {
   public static final short[] EMPTY_SHORT_ARRAY = new short[0];
   public static final double[] EMPTY_DOUBLE_ARRAY = new double[0];
 
-  @SuppressWarnings("unchecked")
   public static final WeakReference<? extends PeerNodeUnlocked>[] EMPTY_WEAK_REFERENCE =
       (WeakReference<? extends PeerNodeUnlocked>[]) new WeakReference<?>[0];
 
@@ -215,7 +214,6 @@ class FailureTableEntry implements TimedOutNodesList {
         }
       }
     }
-    @SuppressWarnings("unchecked")
     WeakReference<? extends PeerNodeUnlocked>[] newRequestorNodes =
         (WeakReference<? extends PeerNodeUnlocked>[])
             new WeakReference<?>[requestorNodes.length + notIncluded - nulls];
@@ -312,7 +310,6 @@ class FailureTableEntry implements TimedOutNodesList {
         }
       }
     }
-    @SuppressWarnings("unchecked")
     WeakReference<? extends PeerNodeUnlocked>[] newRequestedNodes =
         (WeakReference<? extends PeerNodeUnlocked>[])
             new WeakReference<?>[requestedNodes.length + notIncluded - nulls];

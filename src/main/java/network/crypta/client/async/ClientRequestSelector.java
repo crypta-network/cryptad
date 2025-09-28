@@ -615,7 +615,6 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   }
 
   @Override
-  @SuppressWarnings("unchecked")
   public boolean hasKey(Key key, BaseSendableGet getterWaiting) {
     if (keysFetching == null) {
       throw new NullPointerException();

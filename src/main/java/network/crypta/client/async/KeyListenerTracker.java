@@ -128,7 +128,6 @@ class KeyListenerTracker implements KeySalter {
           if (listener == o) return;
           singleKeyListeners.put(wrapper, new KeyListener[] {keyListener, listener});
         } else {
-          @SuppressWarnings("unchecked")
           KeyListener[] listeners = (KeyListener[]) o;
           if (contains(listeners, listener)) return;
           KeyListener[] newListeners = Arrays.copyOf(listeners, listeners.length + 1);
@@ -165,7 +164,6 @@ class KeyListenerTracker implements KeySalter {
             ret = (listener == o);
             if (ret) singleKeyListeners.remove(wrapper);
           } else {
-            @SuppressWarnings("unchecked")
             KeyListener[] listeners = (KeyListener[]) o;
             KeyListener[] newListeners = new KeyListener[listeners.length - 1];
             int x = 0;
@@ -229,7 +227,6 @@ class KeyListenerTracker implements KeySalter {
               listener.onRemove();
             }
           } else {
-            @SuppressWarnings("unchecked")
             KeyListener[] listeners = (KeyListener[]) o;
             KeyListener[] newListeners = new KeyListener[listeners.length - 1];
             int x = 0;
@@ -306,7 +303,6 @@ class KeyListenerTracker implements KeySalter {
           matches.add(listener);
         } while (false);
       } else {
-        @SuppressWarnings("unchecked")
         KeyListener[] listeners = (KeyListener[]) o;
         for (KeyListener listener : listeners) {
           if (!listener.probablyWantKey(key, saltedKey)) continue;
@@ -349,7 +345,6 @@ class KeyListenerTracker implements KeySalter {
       } else if (o instanceof KeyListener listener1) {
         count += listener1.countKeys();
       } else {
-        @SuppressWarnings("unchecked")
         KeyListener[] listeners = (KeyListener[]) o;
         for (KeyListener listener : listeners) count += listener.countKeys();
       }
@@ -392,7 +387,6 @@ class KeyListenerTracker implements KeySalter {
     } else if (o instanceof KeyListener listener) {
       if (listener.probablyWantKey(key, saltedKey)) return true;
     } else {
-      @SuppressWarnings("unchecked")
       KeyListener[] listeners = (KeyListener[]) o;
       for (KeyListener listener : listeners) {
         if (listener.probablyWantKey(key, saltedKey)) return true;

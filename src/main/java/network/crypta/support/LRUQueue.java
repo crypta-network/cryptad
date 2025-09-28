@@ -157,7 +157,6 @@ public class LRUQueue<T> {
    * @param array The array to fill in. If it is too small a new array of the same type will be
    *     allocated.
    */
-  @SuppressWarnings("unchecked")
   public synchronized <E> E[] toArrayOrdered(E[] array) {
     array = toArray(array);
     int listSize = list.size();

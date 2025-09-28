@@ -56,7 +56,6 @@ public class PlainManifestPutter extends BaseManifestPutter {
     makePutHandlers(getRootBuilder(), manifestElements, defaultName);
   }
 
-  @SuppressWarnings("unchecked")
   private void makePutHandlers(
       FreeFormBuilder builder, HashMap<String, Object> manifestElements, Object defaultName) {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {

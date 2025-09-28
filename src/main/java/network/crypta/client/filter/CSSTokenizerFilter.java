@@ -83,7 +83,6 @@ class CSSTokenizerFilter {
     if (blen == 0) {
       return a;
     }
-    @SuppressWarnings("unchecked")
     final T[] result = (T[]) Array.newInstance(a.getClass().getComponentType(), alen + blen);
     System.arraycopy(a, 0, result, 0, alen);
     System.arraycopy(b, 0, result, alen, blen);

@@ -49,12 +49,9 @@ public class DATASTORE_SIZE implements Step {
     long autodetectedSize = canAutoconfigureDatastoreSize();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
-    @SuppressWarnings("unchecked")
     Option<Long> sizeOption = (Option<Long>) config.get("node").getOption("storeSize");
-    @SuppressWarnings("unchecked")
     Option<Long> clientCacheSizeOption =
         (Option<Long>) config.get("node").getOption("clientCacheSize");
-    @SuppressWarnings("unchecked")
     Option<Long> slashdotCacheSizeOption =
         (Option<Long>) config.get("node").getOption("slashdotCacheSize");
     if (!sizeOption.isDefault()) {

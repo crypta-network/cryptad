@@ -218,7 +218,6 @@ public class Submission {
     }
 
     if ((null != fmt) && fmt.supportsMemAnalyze()) {
-      @SuppressWarnings("unchecked")
       Map<String, String> analyzed = fmt.analyzeFinal();
       hashes.attrs = analyzed;
     }
@@ -443,7 +442,6 @@ public class Submission {
         && fmtHandler.supportsFileAnalyze()
         && !bc.isExitNow()) {
 
-      @SuppressWarnings("unchecked")
       Map<String, String> fileAttrs = fmtHandler.analyzeFile(fileName);
       if ((null != fileAttrs) && (0 < fileAttrs.size())) {
         for (Map.Entry<String, String> entry : fileAttrs.entrySet()) {

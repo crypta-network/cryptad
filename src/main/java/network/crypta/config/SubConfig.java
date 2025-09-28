@@ -489,7 +489,6 @@ public class SubConfig implements Comparable<SubConfig> {
 
   public SimpleFieldSet exportFieldSet(Config.RequestType configRequestType, boolean withDefaults) {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    @SuppressWarnings("unchecked")
     Map.Entry<String, Option<?>>[] entries =
         (Map.Entry<String, Option<?>>[]) new Map.Entry<?, ?>[map.size()];
     // FIXME is any locking at all necessary here? After it has finished init, it's constant...
