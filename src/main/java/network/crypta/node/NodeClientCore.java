@@ -35,6 +35,7 @@ import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.config.Config;
+import network.crypta.config.Dimension;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
@@ -111,28 +112,13 @@ public class NodeClientCore implements Persistable {
     Logger.registerClass(NodeClientCore.class);
   }
 
-  /**
-   * @deprecated Use {@link #getBandwidthStatsPutter()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PersistentStatsPutter bandwidthStatsPutter;
+  private final PersistentStatsPutter bandwidthStatsPutter;
 
-  /**
-   * @deprecated Use {@link #getUskManager()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final USKManager uskManager;
+  private final USKManager uskManager;
 
   public final ArchiveManager archiveManager;
 
-  /**
-   * @deprecated Use {@link #getRequestStarters()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final RequestStarterGroup requestStarters;
+  private final RequestStarterGroup requestStarters;
 
   private final HealingQueue healingQueue;
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
@@ -162,9 +148,9 @@ public class NodeClientCore implements Persistable {
    * <p>To validate that the right password was received, use {@link
    * WebInterfaceToadlet#isFormPassword(HTTPRequest)}.
    *
-   * @deprecated Use {@link #getFormPassword()} instead of accessing this directly
+   * <p>Use {@link #getFormPassword()} instead of accessing this field directly.
    */
-  @Deprecated public final String formPassword;
+  private final String formPassword;
 
   final ProgramDirectory downloadsDir;
   private File[] downloadAllowedDirs;
@@ -174,85 +160,35 @@ public class NodeClientCore implements Persistable {
   private File[] uploadAllowedDirs;
   private boolean uploadAllowedEverywhere;
 
-  /**
-   * @deprecated Use {@link #getTempFilenameGenerator()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final FilenameGenerator tempFilenameGenerator;
+  private final FilenameGenerator tempFilenameGenerator;
 
-  /**
-   * @deprecated Use {@link #getPersistentFilenameGenerator()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final FilenameGenerator persistentFilenameGenerator;
+  private final FilenameGenerator persistentFilenameGenerator;
 
-  /**
-   * @deprecated Use {@link #getTempBucketFactory()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final TempBucketFactory tempBucketFactory;
+  private final TempBucketFactory tempBucketFactory;
 
-  /**
-   * @deprecated Use {@link #getPersistentTempBucketFactory()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final PersistentTempBucketFactory persistentTempBucketFactory;
+  private final PersistentTempBucketFactory persistentTempBucketFactory;
 
   private final DiskSpaceCheckingRandomAccessBufferFactory persistentDiskChecker;
   public final MaybeEncryptedRandomAccessBufferFactory persistentRAFFactory;
 
-  /**
-   * @deprecated Use {@link #getClientLayerPersister()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final ClientLayerPersister clientLayerPersister;
+  private final ClientLayerPersister clientLayerPersister;
 
-  /**
-   * @deprecated Use {@link #getNode()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final Node node;
+  private final Node node;
 
   public final RequestTracker tracker;
 
-  /**
-   * @deprecated Use {@link #getNodeStats()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  final NodeStats nodeStats;
+  private final NodeStats nodeStats;
 
-  /**
-   * @deprecated Use {@link #getRandom()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final RandomSource random;
+  private final RandomSource random;
 
   final ProgramDirectory tempDir; // Persistent temporary buckets
   final ProgramDirectory persistentTempDir;
 
-  /**
-   * @deprecated Use {@link #getAlerts()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final UserAlertManager alerts;
+  private final UserAlertManager alerts;
 
   final TextModeClientInterfaceServer tmci;
 
-  /**
-   * @deprecated Use {@link #getDirectTMCI()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  TextModeClientInterface directTMCI;
+  private TextModeClientInterface directTMCI;
 
   private final PersistentRequestRoot fcpPersistentRoot;
   final FCPServer fcpServer;
@@ -263,12 +199,7 @@ public class NodeClientCore implements Persistable {
   /** If true, requests are resumed lazily i.e. startup does not block waiting for them. */
   protected final Persister persister;
 
-  /**
-   * @deprecated Use {@link #getStoreChecker()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final DatastoreChecker storeChecker;
+  private final DatastoreChecker storeChecker;
 
   /**
    * How much disk space must be free when starting a long-term, unpredictable duration job such as
@@ -282,12 +213,7 @@ public class NodeClientCore implements Persistable {
    */
   private long minDiskFreeShortTerm;
 
-  /**
-   * @deprecated Use {@link #getClientContext()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  public final transient ClientContext clientContext;
+  private final transient ClientContext clientContext;
 
   private static int maxBackgroundUSKFetchers; // Client stuff that needs to be configged - FIXME
   static final int MAX_ARCHIVE_HANDLERS = 200; // don't take up much RAM... FIXME
@@ -951,7 +877,7 @@ public class NodeClientCore implements Persistable {
             maxBackgroundUSKFetchers = uskFetch;
           }
         },
-        false);
+        Dimension.NOT);
 
     maxBackgroundUSKFetchers = nodeConfig.getInt("maxBackgroundUSKFetchers");
 

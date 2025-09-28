@@ -1339,7 +1339,7 @@ public class QueueToadlet extends Toadlet
     if (!(count || keys)) {
       try {
         RequestStatus[] reqs = fcp.getGlobalRequests();
-        HTMLNode pageNode = handleGetInner(pageMaker, reqs, core.clientContext, request, ctx);
+        HTMLNode pageNode = handleGetInner(pageMaker, reqs, core.getClientContext(), request, ctx);
         writeHTMLReply(ctx, 200, "OK", new MultiValueTable<>(), pageNode.generate());
         return;
       } catch (PersistenceDisabledException e) {
