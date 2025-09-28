@@ -44,6 +44,7 @@ public class BootstrapPushPullTest {
       if (args.length > 0) {
         ipOverride = args[0];
       }
+      final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-push-pull-test");
       FileUtil.removeAll(dir);
       RandomSource random =
@@ -61,8 +62,27 @@ public class BootstrapPushPullTest {
       // Create one node
       Executor executor = new PooledExecutor();
       TestNodeParameters firstParams =
-          buildTestNodeParameters(
-              DARKNET_PORT1, OPENNET_PORT1, dir, random, executor, ipOverride, 12 * 1024);
+          TestNodeParameterFactory.create(
+              dir,
+              random,
+              executor,
+              p -> {
+                p.port = DARKNET_PORT1;
+                p.opennetPort = OPENNET_PORT1;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 5 * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.connectToSeednodes = true;
+                p.ipAddressOverride = ipOverrideFinal;
+              });
       node = NodeStarter.createTestNode(firstParams);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
       // Logger.setupStdoutLogging(LogLevel.MINOR, "freenet:NORMAL,freenet.node
@@ -120,8 +140,27 @@ public class BootstrapPushPullTest {
       fis.close();
       executor = new PooledExecutor();
       TestNodeParameters secondParams =
-          buildTestNodeParameters(
-              DARKNET_PORT2, OPENNET_PORT2, dir, random, executor, ipOverride, 12 * 1024);
+          TestNodeParameterFactory.create(
+              dir,
+              random,
+              executor,
+              p -> {
+                p.port = DARKNET_PORT2;
+                p.opennetPort = OPENNET_PORT2;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 5 * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.connectToSeednodes = true;
+                p.ipAddressOverride = ipOverrideFinal;
+              });
       secondNode = NodeStarter.createTestNode(secondParams);
       secondNode.start(true);
       if (!TestUtil.waitForNodes(secondNode)) {
@@ -169,35 +208,5 @@ public class BootstrapPushPullTest {
 
       System.exit(EXIT_THREW_SOMETHING);
     }
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int darknetPort,
-      int opennetPort,
-      File baseDirectory,
-      RandomSource random,
-      Executor executor,
-      String ipOverride,
-      int outputBandwidthLimit) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = darknetPort;
-    params.opennetPort = opennetPort;
-    params.maxHTL = Node.DEFAULT_MAX_HTL;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 1000;
-    params.storeSize = 5 * 1024 * 1024;
-    params.ramStore = true;
-    params.enableSwapping = true;
-    params.enableARKs = true;
-    params.enableULPRs = true;
-    params.enablePerNodeFailureTables = true;
-    params.enableSwapQueueing = true;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = outputBandwidthLimit;
-    params.connectToSeednodes = true;
-    params.ipAddressOverride = ipOverride;
-    return params;
   }
 }

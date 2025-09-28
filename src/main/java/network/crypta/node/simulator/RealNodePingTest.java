@@ -49,10 +49,40 @@ public class RealNodePingTest {
     // Create 2 nodes
     Executor executor = new PooledExecutor();
     TestNodeParameters node1Params =
-        buildTestNodeParameters(DARKNET_PORT1, baseDirectory, random, executor);
+        TestNodeParameterFactory.create(
+            baseDirectory,
+            random,
+            executor,
+            params -> {
+              params.port = DARKNET_PORT1;
+              params.opennetPort = 0;
+              params.disableProbabilisticHTLs = true;
+              params.maxHTL = Node.DEFAULT_MAX_HTL;
+              params.threadLimit = 1000;
+              params.storeSize = 65536;
+              params.ramStore = true;
+              params.enablePacketCoalescing = true;
+              params.outputBandwidthLimit = 0;
+              params.longPingTimes = true;
+            });
     Node node1 = NodeStarter.createTestNode(node1Params);
     TestNodeParameters node2Params =
-        buildTestNodeParameters(DARKNET_PORT2, baseDirectory, random, executor);
+        TestNodeParameterFactory.create(
+            baseDirectory,
+            random,
+            executor,
+            params -> {
+              params.port = DARKNET_PORT2;
+              params.opennetPort = 0;
+              params.disableProbabilisticHTLs = true;
+              params.maxHTL = Node.DEFAULT_MAX_HTL;
+              params.threadLimit = 1000;
+              params.storeSize = 65536;
+              params.ramStore = true;
+              params.enablePacketCoalescing = true;
+              params.outputBandwidthLimit = 0;
+              params.longPingTimes = true;
+            });
     Node node2 = NodeStarter.createTestNode(node2Params);
     // Connect
     node1.connect(node2, trust, visibility);
@@ -83,24 +113,5 @@ public class RealNodePingTest {
       }
       pingID++;
     }
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int port, File baseDirectory, RandomSource random, Executor executor) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = port;
-    params.opennetPort = 0;
-    params.disableProbabilisticHTLs = true;
-    params.maxHTL = Node.DEFAULT_MAX_HTL;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 1000;
-    params.storeSize = 65536;
-    params.ramStore = true;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = 0;
-    params.longPingTimes = true;
-    return params;
   }
 }

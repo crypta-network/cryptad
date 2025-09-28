@@ -7,7 +7,6 @@ import java.io.InputStreamReader;
 import java.text.NumberFormat;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.DummyRandomSource;
-import network.crypta.crypt.RandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
@@ -64,8 +63,35 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
+      final int port = DARKNET_PORT_BASE + i;
+      final boolean enableFcp = i == 0;
       TestNodeParameters params =
-          buildTestNodeParameters(DARKNET_PORT_BASE + i, baseDirectory, random, executor, i == 0);
+          TestNodeParameterFactory.create(
+              baseDirectory,
+              random,
+              executor,
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = true;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 0;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 256L * 1024;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableARKs = false;
+                p.enableULPRs = false;
+                p.enablePerNodeFailureTables = false;
+                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = OUTPUT_BANDWIDTH_LIMIT;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+                p.useSlashdotCache = false;
+                p.enableFCP = enableFcp;
+              });
       nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeProbeTest.class, "Created node " + i);
     }
@@ -253,35 +279,5 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
         System.exit(0);
       }
     }
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int port, File baseDirectory, RandomSource random, Executor executor, boolean enableFcp) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = port;
-    params.opennetPort = 0;
-    params.disableProbabilisticHTLs = true;
-    params.maxHTL = MAX_HTL;
-    params.dropProb = 0;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 500 * NUMBER_OF_NODES;
-    params.storeSize = 256L * 1024;
-    params.ramStore = true;
-    params.enableSwapping = ENABLE_SWAPPING;
-    params.enableARKs = false;
-    params.enableULPRs = false;
-    params.enablePerNodeFailureTables = false;
-    params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = OUTPUT_BANDWIDTH_LIMIT;
-    params.enableFOAF = ENABLE_FOAF;
-    params.connectToSeednodes = false;
-    params.longPingTimes = true;
-    params.useSlashdotCache = false;
-    params.ipAddressOverride = null;
-    params.enableFCP = enableFcp;
-    return params;
   }
 }

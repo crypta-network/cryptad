@@ -104,8 +104,34 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
+      final int port = DARKNET_PORT_BASE + i;
       TestNodeParameters params =
-          buildTestNodeParameters(DARKNET_PORT_BASE + i, wd, random, executor);
+          TestNodeParameterFactory.create(
+              wd,
+              random,
+              executor,
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = DISABLE_PROBABILISTIC_HTLS;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 20;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 256L * 1024;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableARKs = false;
+                p.enableULPRs = ENABLE_ULPRS;
+                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+                p.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
+                p.outputBandwidthLimit = BWLIMIT;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+                p.useSlashdotCache = USE_SLASHDOT_CACHE;
+                p.enableFCP = false;
+              });
       nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
@@ -144,36 +170,6 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
         Logger.error(RealNodeRequestInsertTest.class, "Caught " + t, t);
       }
     }
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int port, File baseDirectory, RandomSource random, Executor executor) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = port;
-    params.opennetPort = 0;
-    params.disableProbabilisticHTLs = DISABLE_PROBABILISTIC_HTLS;
-    params.maxHTL = MAX_HTL;
-    params.dropProb = 20;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 500 * NUMBER_OF_NODES;
-    params.storeSize = 256L * 1024;
-    params.ramStore = true;
-    params.enableSwapping = ENABLE_SWAPPING;
-    params.enableARKs = false;
-    params.enableULPRs = ENABLE_ULPRS;
-    params.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
-    params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
-    params.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
-    params.outputBandwidthLimit = BWLIMIT;
-    params.enableFOAF = ENABLE_FOAF;
-    params.connectToSeednodes = false;
-    params.longPingTimes = true;
-    params.useSlashdotCache = USE_SLASHDOT_CACHE;
-    params.ipAddressOverride = null;
-    params.enableFCP = false;
-    return params;
   }
 
   public RealNodeRequestInsertTest(Node[] nodes, DummyRandomSource random, int targetSuccesses) {

@@ -3,7 +3,6 @@ package network.crypta.node.simulator;
 import java.io.File;
 import java.io.IOException;
 import network.crypta.crypt.DummyRandomSource;
-import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
@@ -116,9 +115,31 @@ public class RealNodeULPRTest extends RealNodeTest {
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
+      final int port = DARKNET_PORT_BASE + i;
       TestNodeParameters params =
-          buildTestNodeParameters(
-              DARKNET_PORT_BASE + i, wd, random, executor, 500 * NUMBER_OF_NODES, 1024 * 1024);
+          TestNodeParameterFactory.create(
+              wd,
+              random,
+              executor,
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = true;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 20;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 1024L * 1024L;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableULPRs = ENABLE_ULPRS;
+                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 0;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+              });
       nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
@@ -368,37 +389,6 @@ public class RealNodeULPRTest extends RealNodeTest {
     System.err.println(
         "Overall average propagation time: " + (totalPropagationTime / successfulTests) + "ms");
     System.exit(0);
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int port,
-      File baseDirectory,
-      RandomSource random,
-      Executor executor,
-      int threadLimit,
-      int storeSize) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = port;
-    params.opennetPort = 0;
-    params.disableProbabilisticHTLs = true;
-    params.maxHTL = MAX_HTL;
-    params.dropProb = 20;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = threadLimit;
-    params.storeSize = storeSize;
-    params.ramStore = true;
-    params.enableSwapping = ENABLE_SWAPPING;
-    params.enableULPRs = ENABLE_ULPRS;
-    params.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
-    params.enableSwapQueueing = true;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = 0;
-    params.enableFOAF = ENABLE_FOAF;
-    params.connectToSeednodes = false;
-    params.longPingTimes = true;
-    return params;
   }
 
   // Exit codes

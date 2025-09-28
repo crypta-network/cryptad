@@ -1,0 +1,30 @@
+package network.crypta.node.simulator;
+
+import java.io.File;
+import java.util.Objects;
+import java.util.function.Consumer;
+import network.crypta.crypt.RandomSource;
+import network.crypta.node.NodeStarter.TestNodeParameters;
+import network.crypta.support.Executor;
+
+/** Utility for constructing {@link TestNodeParameters} instances with shared defaults. */
+public final class TestNodeParameterFactory {
+
+  private TestNodeParameterFactory() {}
+
+  public static TestNodeParameters create(
+      File baseDirectory,
+      RandomSource random,
+      Executor executor,
+      Consumer<TestNodeParameters> customizer) {
+    Objects.requireNonNull(baseDirectory, "baseDirectory");
+    Objects.requireNonNull(customizer, "customizer");
+
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.random = random;
+    params.executor = executor;
+    customizer.accept(params);
+    return params;
+  }
+}

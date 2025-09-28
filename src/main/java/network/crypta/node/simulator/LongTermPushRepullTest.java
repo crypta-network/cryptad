@@ -19,7 +19,6 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
-import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
@@ -78,15 +77,27 @@ public class LongTermPushRepullTest extends LongTermTest {
 
       // Create one node
       TestNodeParameters firstNodeParams =
-          buildTestNodeParameters(
-              DARKNET_PORT1,
-              OPENNET_PORT1,
+          TestNodeParameterFactory.create(
               dir,
               random,
               new PooledExecutor(),
-              4 * 1024 * 1024,
-              12 * 1024,
-              true);
+              p -> {
+                p.port = DARKNET_PORT1;
+                p.opennetPort = OPENNET_PORT1;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 4L * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.enableFOAF = true;
+                p.connectToSeednodes = true;
+              });
       node = NodeStarter.createTestNode(firstNodeParams);
       Logger.getChain().setThreshold(LogLevel.ERROR);
 
@@ -133,15 +144,27 @@ public class LongTermPushRepullTest extends LongTermTest {
       FileUtil.writeTo(fis, new File(innerDir2, "seednodes.fref"));
       fis.close();
       TestNodeParameters secondNodeParams =
-          buildTestNodeParameters(
-              DARKNET_PORT2,
-              OPENNET_PORT2,
+          TestNodeParameterFactory.create(
               dir,
               random,
               new PooledExecutor(),
-              5 * 1024 * 1024,
-              12 * 1024,
-              false);
+              p -> {
+                p.port = DARKNET_PORT2;
+                p.opennetPort = OPENNET_PORT2;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 5L * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.enableFOAF = false;
+                p.connectToSeednodes = true;
+              });
       node2 = NodeStarter.createTestNode(secondNodeParams);
       node2.start(true);
 
@@ -194,37 +217,6 @@ public class LongTermPushRepullTest extends LongTermTest {
 
       System.exit(exitCode);
     }
-  }
-
-  private static TestNodeParameters buildTestNodeParameters(
-      int darknetPort,
-      int opennetPort,
-      File baseDirectory,
-      RandomSource random,
-      Executor executor,
-      int storeSize,
-      int outputBandwidthLimit,
-      boolean enableFoaf) {
-    TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = darknetPort;
-    params.opennetPort = opennetPort;
-    params.maxHTL = Node.DEFAULT_MAX_HTL;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 1000;
-    params.storeSize = storeSize;
-    params.ramStore = true;
-    params.enableSwapping = true;
-    params.enableARKs = true;
-    params.enableULPRs = true;
-    params.enablePerNodeFailureTables = true;
-    params.enableSwapQueueing = true;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = outputBandwidthLimit;
-    params.enableFOAF = enableFoaf;
-    params.connectToSeednodes = true;
-    return params;
   }
 
   private static RandomAccessBucket randomData(Node node) throws IOException {
