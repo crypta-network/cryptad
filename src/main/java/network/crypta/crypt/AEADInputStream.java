@@ -7,6 +7,7 @@ import java.io.InputStream;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.OCBBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
@@ -18,14 +19,11 @@ public class AEADInputStream extends FilterInputStream {
 
   /**
    * Create a decrypting, authenticating InputStream. IMPORTANT: We only authenticate when closing
-   * the stream, so do NOT use IOUtils.closeQuietly() etc and swallow IOException's on close(), as
-   * that's what we will throw if authentication fails. We will read the nonce from the stream; it
-   * functions similarly to an IV.
+   * the stream, so do NOT swallow IOExceptions on close(); that's when authentication failures are
+   * raised. Reads a 15-byte OCB nonce from the stream.
    *
    * @param is The underlying InputStream.
    * @param key The encryption key.
-   * @param nonce The nonce. This serves the function of an IV. As a nonce, this MUST be unique. We
-   *     will write it to the stream so the other side can pick it up, like an IV.
    * @param mainCipher The BlockCipher for encrypting data. E.g. AES; not a block mode. This will be
    *     used for encrypting a fairly large amount of data so could be any of the 3 BC AES impl's.
    * @param hashCipher The BlockCipher for the final hash. E.g. AES, not a block mode. This will not
@@ -34,9 +32,9 @@ public class AEADInputStream extends FilterInputStream {
   public AEADInputStream(InputStream is, byte[] key, BlockCipher hashCipher, BlockCipher mainCipher)
       throws IOException {
     super(is);
-    byte[] nonce = new byte[mainCipher.getBlockSize()];
+    byte[] nonce = new byte[15];
     new DataInputStream(is).readFully(nonce);
-    AEADBlockCipher ocb = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    AEADBlockCipher ocb = new OCBBlockCipher(hashCipher, mainCipher);
     cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
@@ -47,7 +45,7 @@ public class AEADInputStream extends FilterInputStream {
   }
 
   public final int getIVSize() {
-    return cipher.getUnderlyingCipher().getBlockSize() / 8;
+    return 15;
   }
 
   private final byte[] excess;

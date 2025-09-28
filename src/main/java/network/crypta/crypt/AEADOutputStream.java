@@ -8,6 +8,7 @@ import java.util.Random;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.OCBBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
@@ -23,13 +24,13 @@ public class AEADOutputStream extends FilterOutputStream {
   private final AEADBlockCipher cipher;
 
   /**
-   * Create an encrypting, authenticating OutputStream. Will write the nonce to the stream.
+   * Create an encrypting, authenticating OutputStream. Writes a 15-byte OCB nonce (RFC 7253) to the
+   * stream so the reader can initialize decryption.
    *
    * @param os The underlying OutputStream.
    * @param key The encryption key.
-   * @param nonce The nonce. This serves the function of an IV. As a nonce, this MUST be unique. We
-   *     will write it to the stream so the other side can pick it up, like an IV. Should generally
-   *     be generated from a SecureRandom. The top bit must be 0, i.e. nonce[0] &= 0x7F.
+   * @param nonce The nonce. MUST be unique per key. We write it to the stream for the other side to
+   *     read. Should generally be generated from a {@link SecureRandom}.
    * @param mainCipher The BlockCipher for encrypting data. E.g. AES; not a block mode. This will be
    *     used for encrypting a fairly large amount of data so could be any of the 3 BC AES impl's.
    * @param hashCipher The BlockCipher for the final hash. E.g. AES, not a block mode. This will not
@@ -40,7 +41,7 @@ public class AEADOutputStream extends FilterOutputStream {
       throws IOException {
     super(os);
     os.write(nonce);
-    AEADBlockCipher ocb = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    AEADBlockCipher ocb = new OCBBlockCipher(hashCipher, mainCipher);
     cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
@@ -79,8 +80,9 @@ public class AEADOutputStream extends FilterOutputStream {
 
   static final int MAC_SIZE_BITS = 128;
   static final int MAC_SIZE_BYTES = MAC_SIZE_BITS / 8;
-  static final int AES_BLOCK_SIZE = 16;
-  public static final int AES_OVERHEAD = AES_BLOCK_SIZE + MAC_SIZE_BYTES;
+  // OCB in BC expects nonce length <= 15 bytes; we use the full 15
+  static final int OCB_NONCE_SIZE = 15;
+  public static final int AES_OVERHEAD = OCB_NONCE_SIZE + MAC_SIZE_BYTES;
 
   public static AEADOutputStream createAES(OutputStream os, byte[] key, SecureRandom random)
       throws IOException {
@@ -92,9 +94,9 @@ public class AEADOutputStream extends FilterOutputStream {
       throws IOException {
     BlockCipher mainCipher = BlockCiphers.aes();
     BlockCipher hashCipher = BlockCiphers.aes();
-    byte[] nonce = new byte[mainCipher.getBlockSize()];
+    byte[] nonce = new byte[OCB_NONCE_SIZE];
     random.nextBytes(nonce);
-    nonce[0] &= 0x7F;
+    // No need to mask top bit; nonce length is already <= 120 bits per RFC 7253.
     return new AEADOutputStream(os, key, nonce, hashCipher, mainCipher);
   }
 
