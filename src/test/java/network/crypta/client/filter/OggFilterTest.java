@@ -9,7 +9,6 @@ import java.io.DataInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
-import org.apache.commons.compress.utils.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,7 +51,7 @@ public class OggFilterTest {
     try (DataInputStream input =
         resourceToDataInputStream(
             "./ogg/36C3_-_opening--cc-by--c3voc--fem-ags-opensuse--ccc--filtered.ogv")) {
-      IOUtils.copy(input, expectedData);
+      input.transferTo(expectedData);
     }
     try (DataInputStream input =
         resourceToDataInputStream(

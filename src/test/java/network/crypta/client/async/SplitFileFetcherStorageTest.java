@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
@@ -78,7 +79,7 @@ public class SplitFileFetcherStorageTest {
 
   public static Bucket makeRandomBucket(long size) throws IOException {
     Bucket b = bf.makeBucket(size);
-    BucketTools.fill(b, random, size);
+    fillBucketWithRandom(b, random, size);
     return b;
   }
 
@@ -117,6 +118,22 @@ public class SplitFileFetcherStorageTest {
       blocks[i] = new byte[BLOCK_SIZE];
     }
     return blocks;
+  }
+
+  private static final int BUCKET_FILL_BUFFER_SIZE = 64 * 1024;
+
+  private static void fillBucketWithRandom(Bucket bucket, Random random, long length)
+      throws IOException {
+    byte[] buffer = new byte[(int) Math.min(BUCKET_FILL_BUFFER_SIZE, length)];
+    try (OutputStream out = bucket.getOutputStream()) {
+      long remaining = length;
+      while (remaining > 0) {
+        int toWrite = (int) Math.min(buffer.length, remaining);
+        random.nextBytes(buffer);
+        out.write(buffer, 0, toWrite);
+        remaining -= toWrite;
+      }
+    }
   }
 
   @BeforeEach

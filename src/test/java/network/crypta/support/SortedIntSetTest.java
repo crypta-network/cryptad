@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("deprecation")
 public class SortedIntSetTest {
   private static final int[] SORTED_UNIQUE =
       new int[] {

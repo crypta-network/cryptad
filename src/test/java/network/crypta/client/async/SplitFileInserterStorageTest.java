@@ -802,8 +802,25 @@ public class SplitFileInserterStorageTest {
   private LockableRandomAccessBuffer generateData(
       Random random, long size, LockableRandomAccessBufferFactory factory) throws IOException {
     LockableRandomAccessBuffer thing = factory.makeRAF(size);
-    BucketTools.fill(thing, random, 0, size);
+    fillRandomAccessBuffer(thing, random, 0, size);
     return new ReadOnlyRandomAccessBuffer(thing);
+  }
+
+  private static final int RAF_FILL_BUFFER_SIZE = 64 * 1024;
+
+  private static void fillRandomAccessBuffer(
+      LockableRandomAccessBuffer buffer, Random random, long offset, long length)
+      throws IOException {
+    byte[] chunk = new byte[(int) Math.min(RAF_FILL_BUFFER_SIZE, length)];
+    long position = offset;
+    long remaining = length;
+    while (remaining > 0) {
+      int toWrite = (int) Math.min(chunk.length, remaining);
+      random.nextBytes(chunk);
+      buffer.pwrite(position, chunk, 0, toWrite);
+      position += toWrite;
+      remaining -= toWrite;
+    }
   }
 
   private void testRoundTripSimpleRandom(long size, CompatibilityMode cmode) throws Exception {

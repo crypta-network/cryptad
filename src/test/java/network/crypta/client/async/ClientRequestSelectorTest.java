@@ -33,7 +33,6 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ByteArrayRandomAccessBufferFactory;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FilenameGenerator;
@@ -161,8 +160,25 @@ public class ClientRequestSelectorTest {
       Random random, long size, LockableRandomAccessBufferFactory smallRAFFactory)
       throws IOException {
     LockableRandomAccessBuffer thing = smallRAFFactory.makeRAF(size);
-    BucketTools.fill(thing, random, 0, size);
+    fillRandomAccessBuffer(thing, random, 0, size);
     return new ReadOnlyRandomAccessBuffer(thing);
+  }
+
+  private static final int RAF_FILL_BUFFER_SIZE = 64 * 1024;
+
+  private static void fillRandomAccessBuffer(
+      LockableRandomAccessBuffer buffer, Random random, long offset, long length)
+      throws IOException {
+    byte[] chunk = new byte[(int) Math.min(RAF_FILL_BUFFER_SIZE, length)];
+    long position = offset;
+    long remaining = length;
+    while (remaining > 0) {
+      int toWrite = (int) Math.min(chunk.length, remaining);
+      random.nextBytes(chunk);
+      buffer.pwrite(position, chunk, 0, toWrite);
+      position += toWrite;
+      remaining -= toWrite;
+    }
   }
 
   private static class MyCallback implements SplitFileInserterStorageCallback {
