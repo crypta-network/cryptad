@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import static network.crypta.testsupport.TestRandomData.fillRandomAccessBuffer;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
@@ -162,23 +163,6 @@ public class ClientRequestSelectorTest {
     LockableRandomAccessBuffer thing = smallRAFFactory.makeRAF(size);
     fillRandomAccessBuffer(thing, random, 0, size);
     return new ReadOnlyRandomAccessBuffer(thing);
-  }
-
-  private static final int RAF_FILL_BUFFER_SIZE = 64 * 1024;
-
-  private static void fillRandomAccessBuffer(
-      LockableRandomAccessBuffer buffer, Random random, long offset, long length)
-      throws IOException {
-    byte[] chunk = new byte[(int) Math.min(RAF_FILL_BUFFER_SIZE, length)];
-    long position = offset;
-    long remaining = length;
-    while (remaining > 0) {
-      int toWrite = (int) Math.min(chunk.length, remaining);
-      random.nextBytes(chunk);
-      buffer.pwrite(position, chunk, 0, toWrite);
-      position += toWrite;
-      remaining -= toWrite;
-    }
   }
 
   private static class MyCallback implements SplitFileInserterStorageCallback {

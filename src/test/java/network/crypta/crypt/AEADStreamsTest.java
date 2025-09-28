@@ -1,5 +1,6 @@
 package network.crypta.crypt;
 
+import static network.crypta.testsupport.TestRandomData.fillBucketWithRandom;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataInputStream;
@@ -21,7 +22,7 @@ public class AEADStreamsTest {
     Random random = new Random(0x96231307);
     for (int i = 0; i < 10; i++) {
       ArrayBucket input = new ArrayBucket();
-      fillWithRandomBytes(input, random, 65536);
+      fillBucketWithRandom(input, random, 65536L, true);
       checkSuccessfulRoundTrip(16, random, input, new ArrayBucket(), new ArrayBucket());
       checkSuccessfulRoundTrip(24, random, input, new ArrayBucket(), new ArrayBucket());
       checkSuccessfulRoundTrip(32, random, input, new ArrayBucket(), new ArrayBucket());
@@ -33,7 +34,7 @@ public class AEADStreamsTest {
     Random random = new Random(0x96231307); // Same seed as first test, intentionally.
     for (int i = 0; i < 10; i++) {
       ArrayBucket input = new ArrayBucket();
-      fillWithRandomBytes(input, random, 65536);
+      fillBucketWithRandom(input, random, 65536L, true);
       checkFailedCorruptedRoundTrip(16, random, input, new ArrayBucket(), new ArrayBucket());
       checkFailedCorruptedRoundTrip(24, random, input, new ArrayBucket(), new ArrayBucket());
       checkFailedCorruptedRoundTrip(32, random, input, new ArrayBucket(), new ArrayBucket());
@@ -44,7 +45,7 @@ public class AEADStreamsTest {
   public void testTruncatedReadsWritesRoundTrip() throws IOException {
     Random random = new Random(0x49ee92f5);
     ArrayBucket input = new ArrayBucket();
-    fillWithRandomBytes(input, random, 512 * 1024);
+    fillBucketWithRandom(input, random, 512L * 1024L, true);
     checkSuccessfulRoundTripRandomSplits(16, random, input, new ArrayBucket(), new ArrayBucket());
     checkSuccessfulRoundTripRandomSplits(24, random, input, new ArrayBucket(), new ArrayBucket());
     checkSuccessfulRoundTripRandomSplits(32, random, input, new ArrayBucket(), new ArrayBucket());
@@ -167,22 +168,6 @@ public class AEADStreamsTest {
       fail("Hash should be bogus due to garbage data at end");
     } catch (AEADVerificationFailedException e) {
       // Expected.
-    }
-  }
-
-  private static final int FILL_BUFFER_SIZE = 64 * 1024;
-
-  private static void fillWithRandomBytes(Bucket bucket, Random random, int length)
-      throws IOException {
-    byte[] buffer = new byte[Math.min(FILL_BUFFER_SIZE, length)];
-    try (OutputStream out = bucket.getOutputStreamUnbuffered()) {
-      int remaining = length;
-      while (remaining > 0) {
-        int chunkSize = Math.min(buffer.length, remaining);
-        random.nextBytes(buffer);
-        out.write(buffer, 0, chunkSize);
-        remaining -= chunkSize;
-      }
     }
   }
 }
