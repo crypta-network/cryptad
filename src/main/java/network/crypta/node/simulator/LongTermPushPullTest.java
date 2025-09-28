@@ -118,31 +118,27 @@ public class LongTermPushPullTest extends LongTermTest {
       fis.close();
 
       // Create one node
-      node =
-          NodeStarter.createTestNode(
-              DARKNET_PORT1,
-              OPENNET_PORT1,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              new PooledExecutor(),
-              1000,
-              4 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              true,
-              true,
-              false,
-              false,
-              null);
+      NodeStarter.TestNodeParameters firstParams = new NodeStarter.TestNodeParameters();
+      firstParams.port = DARKNET_PORT1;
+      firstParams.opennetPort = OPENNET_PORT1;
+      firstParams.baseDirectory = dir;
+      firstParams.disableProbabilisticHTLs = false;
+      firstParams.maxHTL = Node.DEFAULT_MAX_HTL;
+      firstParams.random = random;
+      firstParams.executor = new PooledExecutor();
+      firstParams.threadLimit = 1000;
+      firstParams.storeSize = 4L * 1024 * 1024;
+      firstParams.ramStore = true;
+      firstParams.enableSwapping = true;
+      firstParams.enableARKs = true;
+      firstParams.enableULPRs = true;
+      firstParams.enablePerNodeFailureTables = true;
+      firstParams.enableSwapQueueing = true;
+      firstParams.enablePacketCoalescing = true;
+      firstParams.outputBandwidthLimit = 12 * 1024;
+      firstParams.enableFOAF = true;
+      firstParams.connectToSeednodes = true;
+      node = NodeStarter.createTestNode(firstParams);
       Logger.getChain().setThreshold(LogLevel.ERROR);
 
       // Start it
@@ -190,31 +186,27 @@ public class LongTermPushPullTest extends LongTermTest {
       fis = new FileInputStream(seednodes);
       FileUtil.writeTo(fis, new File(innerDir2, "seednodes.fref"));
       fis.close();
-      node2 =
-          NodeStarter.createTestNode(
-              DARKNET_PORT2,
-              OPENNET_PORT2,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              new PooledExecutor(),
-              1000,
-              5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              false,
-              true,
-              false,
-              false,
-              null);
+      NodeStarter.TestNodeParameters secondParams = new NodeStarter.TestNodeParameters();
+      secondParams.port = DARKNET_PORT2;
+      secondParams.opennetPort = OPENNET_PORT2;
+      secondParams.baseDirectory = dir;
+      secondParams.disableProbabilisticHTLs = false;
+      secondParams.maxHTL = Node.DEFAULT_MAX_HTL;
+      secondParams.random = random;
+      secondParams.executor = new PooledExecutor();
+      secondParams.threadLimit = 1000;
+      secondParams.storeSize = 5L * 1024 * 1024;
+      secondParams.ramStore = true;
+      secondParams.enableSwapping = true;
+      secondParams.enableARKs = true;
+      secondParams.enableULPRs = true;
+      secondParams.enablePerNodeFailureTables = true;
+      secondParams.enableSwapQueueing = true;
+      secondParams.enablePacketCoalescing = true;
+      secondParams.outputBandwidthLimit = 12 * 1024;
+      secondParams.enableFOAF = false;
+      secondParams.connectToSeednodes = true;
+      node2 = NodeStarter.createTestNode(secondParams);
       node2.start(true);
 
       t1 = System.currentTimeMillis();

@@ -71,31 +71,27 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              name,
-              false,
-              MAX_HTL,
-              20 /* 5% */,
-              random,
-              executor,
-              500 * NUMBER_OF_NODES,
-              (CHKBlock.DATA_LENGTH + CHKBlock.TOTAL_HEADERS_LENGTH) * 100,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              ENABLE_ULPRS,
-              ENABLE_PER_NODE_FAILURE_TABLES,
-              ENABLE_SWAP_QUEUEING,
-              ENABLE_PACKET_COALESCING,
-              8000,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null);
+      NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
+      params.port = DARKNET_PORT_BASE + i;
+      params.opennetPort = 0;
+      params.baseDirectory = wd;
+      params.disableProbabilisticHTLs = false;
+      params.maxHTL = MAX_HTL;
+      params.dropProb = 20;
+      params.random = random;
+      params.executor = executor;
+      params.threadLimit = 500 * NUMBER_OF_NODES;
+      params.storeSize = (CHKBlock.DATA_LENGTH + CHKBlock.TOTAL_HEADERS_LENGTH) * 100L;
+      params.ramStore = true;
+      params.enableSwapping = ENABLE_SWAPPING;
+      params.enableULPRs = ENABLE_ULPRS;
+      params.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+      params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+      params.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
+      params.outputBandwidthLimit = 8000;
+      params.enableFOAF = ENABLE_FOAF;
+      params.longPingTimes = true;
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
 
