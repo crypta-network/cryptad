@@ -2,8 +2,12 @@ package com.onionnetworks.fec;
 
 import com.onionnetworks.util.Tuple;
 import java.io.IOException;
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Properties;
+import java.util.StringTokenizer;
 
 /**
  * This is the default FECCodeFactory that wraps all of the FECCode implementations. It provides a
@@ -26,8 +30,8 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
   public static final int DEFAULT_CACHE_TIME = 2 * 60 * 1000;
 
   // protected TimedSoftHashMap codeCache = new HashMap();
-  protected ArrayList eightBitCodes = new ArrayList();
-  protected ArrayList sixteenBitCodes = new ArrayList();
+  protected final List<Constructor<? extends FECCode>> eightBitCodes = new ArrayList<>();
+  protected final List<Constructor<? extends FECCode>> sixteenBitCodes = new ArrayList<>();
   protected Properties fecProperties;
 
   public DefaultFECCodeFactory() {
@@ -53,14 +57,14 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
     while (st.hasMoreTokens()) {
       String key = st.nextToken();
       try {
-        Constructor con =
-            Class.forName(getProperty("com.onionnetworks.fec." + key + ".class"))
-                .getConstructor(new Class[] {int.class, int.class});
+        Class<?> codeClass = Class.forName(getProperty("com.onionnetworks.fec." + key + ".class"));
+        Constructor<? extends FECCode> constructor =
+            codeClass.asSubclass(FECCode.class).getConstructor(int.class, int.class);
         String numBits = getProperty("com.onionnetworks.fec." + key + ".bits");
         if ("8".equals(numBits)) {
-          eightBitCodes.add(con);
+          eightBitCodes.add(constructor);
         } else if ("16".equals(numBits)) {
-          sixteenBitCodes.add(con);
+          sixteenBitCodes.add(constructor);
         } else {
           throw new IllegalArgumentException("Only 8 and 16 bit codes are currently supported");
         }
@@ -81,9 +85,7 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
 
   /** If you're only asking for an 8 bit code we will NOT give you a 16 bit one. */
   public synchronized FECCode createFECCode(int k, int n) {
-    Integer K = Integer.valueOf(k);
-    Integer N = Integer.valueOf(n);
-    Tuple t = new Tuple(K, N);
+    Tuple t = new Tuple(Integer.valueOf(k), Integer.valueOf(n));
 
     // See if there is a cached code.
     FECCode result = null; // (FECCode) codeCache.get(t);
@@ -97,7 +99,7 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
                 + n);
       }
 
-      Iterator it;
+      Iterator<Constructor<? extends FECCode>> it;
       if (n <= 256 && !eightBitCodes.isEmpty()) {
         it = eightBitCodes.iterator();
       } else {
@@ -105,7 +107,9 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
       }
       while (it.hasNext()) {
         try {
-          result = (FECCode) ((Constructor) it.next()).newInstance(new Object[] {K, N});
+          Constructor<? extends FECCode> constructor = it.next();
+          result = constructor.newInstance(k, n);
+          // Tuple t is retained to support potential cache reactivation.
           break;
         } catch (Throwable doh) {
           doh.printStackTrace();

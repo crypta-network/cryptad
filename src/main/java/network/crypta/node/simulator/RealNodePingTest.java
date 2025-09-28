@@ -1,5 +1,6 @@
 package network.crypta.node.simulator;
 
+import java.io.File;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerParseException;
@@ -10,6 +11,7 @@ import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.support.Executor;
@@ -41,59 +43,17 @@ public class RealNodePingTest {
           NodeInitException,
           InvalidThresholdException,
           PeerTooOldException {
-    RandomSource random = NodeStarter.globalTestInit("pingtest", false, LogLevel.ERROR, "", true);
+    File baseDirectory = new File("pingtest");
+    RandomSource random =
+        NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, null);
     // Create 2 nodes
     Executor executor = new PooledExecutor();
-    Node node1 =
-        NodeStarter.createTestNode(
-            DARKNET_PORT1,
-            0,
-            "pingtest",
-            true,
-            Node.DEFAULT_MAX_HTL,
-            0,
-            random,
-            executor,
-            1000,
-            65536,
-            true,
-            false,
-            false,
-            false,
-            false,
-            false,
-            true,
-            0,
-            false,
-            false,
-            true,
-            false,
-            null);
-    Node node2 =
-        NodeStarter.createTestNode(
-            DARKNET_PORT2,
-            0,
-            "pingtest",
-            true,
-            Node.DEFAULT_MAX_HTL,
-            0,
-            random,
-            executor,
-            1000,
-            65536,
-            true,
-            false,
-            false,
-            false,
-            false,
-            false,
-            true,
-            0,
-            false,
-            false,
-            true,
-            false,
-            null);
+    TestNodeParameters node1Params =
+        buildTestNodeParameters(DARKNET_PORT1, baseDirectory, random, executor);
+    Node node1 = NodeStarter.createTestNode(node1Params);
+    TestNodeParameters node2Params =
+        buildTestNodeParameters(DARKNET_PORT2, baseDirectory, random, executor);
+    Node node2 = NodeStarter.createTestNode(node2Params);
     // Connect
     node1.connect(node2, trust, visibility);
     node2.connect(node1, trust, visibility);
@@ -123,5 +83,24 @@ public class RealNodePingTest {
       }
       pingID++;
     }
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      int port, File baseDirectory, RandomSource random, Executor executor) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = port;
+    params.opennetPort = 0;
+    params.disableProbabilisticHTLs = true;
+    params.maxHTL = Node.DEFAULT_MAX_HTL;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 1000;
+    params.storeSize = 65536;
+    params.ramStore = true;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = 0;
+    params.longPingTimes = true;
+    return params;
   }
 }

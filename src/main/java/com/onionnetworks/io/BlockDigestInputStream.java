@@ -1,18 +1,23 @@
 package com.onionnetworks.io;
 
 import com.onionnetworks.util.Buffer;
-import java.io.*;
-import java.security.*;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author Justin F. Chapweske
  */
+@SuppressWarnings({"unchecked", "rawtypes"})
 public class BlockDigestInputStream extends FilterInputStream {
 
   protected MessageDigest md;
   protected int blockSize, byteCount;
-  ArrayList digestList = new ArrayList();
+  List<Buffer> digestList = new ArrayList<>();
   Buffer[] digests = null;
 
   public BlockDigestInputStream(InputStream is, String algorithm, int blockSize)
@@ -68,7 +73,7 @@ public class BlockDigestInputStream extends FilterInputStream {
     if (byteCount != 0) {
       digestList.add(new Buffer(md.digest()));
     }
-    digests = (Buffer[]) digestList.toArray(new Buffer[0]);
+    digests = digestList.toArray(Buffer[]::new);
     digestList = null;
   }
 

@@ -52,7 +52,7 @@ public class BandwidthOption extends IntOption {
         shortDesc,
         longDesc,
         cb,
-        true);
+        Dimension.SIZE);
   }
 
   @Override

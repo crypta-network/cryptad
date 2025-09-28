@@ -34,7 +34,7 @@ public class TigerTree extends MessageDigest {
   private MessageDigest tiger;
 
   /** Interim tree node hash values */
-  private LinkedList nodes;
+  private LinkedList<byte[]> nodes;
 
   /** Blocks handled until now */
   long blockCount;
@@ -46,7 +46,7 @@ public class TigerTree extends MessageDigest {
     bufferOffset = 0;
     byteCount = 0;
     blockCount = 0;
-    nodes = new LinkedList();
+    nodes = new LinkedList<>();
     tiger = new Tiger();
   }
 
@@ -107,7 +107,7 @@ public class TigerTree extends MessageDigest {
   protected void engineReset() {
     bufferOffset = 0;
     byteCount = 0;
-    nodes = new LinkedList();
+    nodes = new LinkedList<>();
     tiger.reset();
   }
 
@@ -141,8 +141,8 @@ public class TigerTree extends MessageDigest {
 
   /** */
   protected void composeNodes() {
-    byte[] right = (byte[]) nodes.removeLast();
-    byte[] left = (byte[]) nodes.removeLast();
+    byte[] right = nodes.removeLast();
+    byte[] left = nodes.removeLast();
     tiger.reset();
     tiger.update((byte) 1); // internal node prefix
     tiger.update(left);

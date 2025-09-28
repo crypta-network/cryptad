@@ -66,7 +66,7 @@ public final class KeyGenUtils {
    * @return Returns the generated key pair
    */
   public static KeyPair genKeyPair(KeyPairType type) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {
@@ -93,7 +93,7 @@ public final class KeyGenUtils {
    * @return Public key as PublicKey
    */
   public static PublicKey getPublicKey(KeyPairType type, byte[] pub) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {
@@ -157,7 +157,7 @@ public final class KeyGenUtils {
    * @return The public key and private key in a KeyPair
    */
   public static KeyPair getKeyPair(KeyPairType type, byte[] pub, byte[] pri) {
-    if (type.equals(KeyPairType.DSA)) {
+    if (type.spec == null) {
       throw new UnsupportedTypeException(type);
     }
     try {

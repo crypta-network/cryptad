@@ -89,7 +89,7 @@ public class SubConfig implements Comparable<SubConfig> {
             shortDesc,
             longDesc,
             cb,
-            isSize));
+            isSize ? Dimension.SIZE : Dimension.NOT));
   }
 
   public void register(
@@ -189,17 +189,15 @@ public class SubConfig implements Comparable<SubConfig> {
       boolean isSize) {
     if (cb == null) cb = new NullIntCallback();
     register(
-        new IntOption(
-            this,
-            optionName,
-            defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            isSize));
+        optionName,
+        defaultValueString,
+        sortOrder,
+        expert,
+        forceWrite,
+        shortDesc,
+        longDesc,
+        cb,
+        isSize ? Dimension.SIZE : Dimension.NOT);
   }
 
   public void register(

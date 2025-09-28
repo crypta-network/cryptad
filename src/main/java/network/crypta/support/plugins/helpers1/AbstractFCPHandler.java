@@ -8,6 +8,7 @@ import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 
+@SuppressWarnings("deprecation")
 public abstract class AbstractFCPHandler {
 
   private static volatile boolean logDEBUG;

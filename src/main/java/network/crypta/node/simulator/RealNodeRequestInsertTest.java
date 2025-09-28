@@ -25,6 +25,7 @@ import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -86,6 +87,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
     wd.mkdir();
+    DummyRandomSource random = new DummyRandomSource(3142);
     // NOTE: globalTestInit returns in ignored random source
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.Location:normal,freenet.node.simulator.RealNode:minor,freenet.node.Insert:MINOR,freenet.node.Request:MINOR,freenet.node.Node:MINOR");
@@ -93,41 +95,18 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(name, false, LogLevel.ERROR, "", true);
+    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, random);
     System.out.println("Insert/retrieve test");
     System.out.println();
-    DummyRandomSource random = new DummyRandomSource(3142);
     DummyRandomSource topologyRandom = new DummyRandomSource(3143);
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              name,
-              DISABLE_PROBABILISTIC_HTLS,
-              MAX_HTL,
-              20 /* 5% */,
-              random,
-              executor,
-              500 * NUMBER_OF_NODES,
-              256 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              ENABLE_ULPRS,
-              ENABLE_PER_NODE_FAILURE_TABLES,
-              ENABLE_SWAP_QUEUEING,
-              ENABLE_PACKET_COALESCING,
-              BWLIMIT,
-              ENABLE_FOAF,
-              false,
-              true,
-              USE_SLASHDOT_CACHE,
-              null);
+      TestNodeParameters params =
+          buildTestNodeParameters(DARKNET_PORT_BASE + i, wd, random, executor);
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
 
@@ -165,6 +144,36 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
         Logger.error(RealNodeRequestInsertTest.class, "Caught " + t, t);
       }
     }
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      int port, File baseDirectory, RandomSource random, Executor executor) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = port;
+    params.opennetPort = 0;
+    params.disableProbabilisticHTLs = DISABLE_PROBABILISTIC_HTLS;
+    params.maxHTL = MAX_HTL;
+    params.dropProb = 20;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 500 * NUMBER_OF_NODES;
+    params.storeSize = 256L * 1024;
+    params.ramStore = true;
+    params.enableSwapping = ENABLE_SWAPPING;
+    params.enableARKs = false;
+    params.enableULPRs = ENABLE_ULPRS;
+    params.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+    params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+    params.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
+    params.outputBandwidthLimit = BWLIMIT;
+    params.enableFOAF = ENABLE_FOAF;
+    params.connectToSeednodes = false;
+    params.longPingTimes = true;
+    params.useSlashdotCache = USE_SLASHDOT_CACHE;
+    params.ipAddressOverride = null;
+    params.enableFCP = false;
+    return params;
   }
 
   public RealNodeRequestInsertTest(Node[] nodes, DummyRandomSource random, int targetSuccesses) {

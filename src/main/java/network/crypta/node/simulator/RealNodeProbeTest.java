@@ -7,8 +7,10 @@ import java.io.InputStreamReader;
 import java.text.NumberFormat;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.DummyRandomSource;
+import network.crypta.crypt.RandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
@@ -44,50 +46,27 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     System.out.println("Probe test using real nodes:");
     System.out.println();
     String dir = "realNodeProbeTest";
-    File wd = new File(dir);
-    if (!FileUtil.removeAll(wd)) {
+    File baseDirectory = new File(dir);
+    if (!FileUtil.removeAll(baseDirectory)) {
       System.err.println("Mass delete failed, test may not be accurate.");
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
-    if (!wd.mkdir()) {
+    if (!baseDirectory.mkdir()) {
       System.err.println("Unabled to create test directory \"" + dir + "\".");
       return;
     }
-    NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", true);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
+    NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     Logger.normal(RealNodeProbeTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              dir,
-              true,
-              MAX_HTL,
-              0 /* no dropped packets */,
-              random,
-              executor,
-              500 * NUMBER_OF_NODES,
-              256 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              false,
-              false,
-              ENABLE_SWAP_QUEUEING,
-              true,
-              OUTPUT_BANDWIDTH_LIMIT,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null,
-              i == 0);
+      TestNodeParameters params =
+          buildTestNodeParameters(DARKNET_PORT_BASE + i, baseDirectory, random, executor, i == 0);
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeProbeTest.class, "Created node " + i);
     }
     Logger.normal(RealNodeProbeTest.class, "Created " + NUMBER_OF_NODES + " nodes");
@@ -274,5 +253,35 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
         System.exit(0);
       }
     }
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      int port, File baseDirectory, RandomSource random, Executor executor, boolean enableFcp) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = port;
+    params.opennetPort = 0;
+    params.disableProbabilisticHTLs = true;
+    params.maxHTL = MAX_HTL;
+    params.dropProb = 0;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 500 * NUMBER_OF_NODES;
+    params.storeSize = 256L * 1024;
+    params.ramStore = true;
+    params.enableSwapping = ENABLE_SWAPPING;
+    params.enableARKs = false;
+    params.enableULPRs = false;
+    params.enablePerNodeFailureTables = false;
+    params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = OUTPUT_BANDWIDTH_LIMIT;
+    params.enableFOAF = ENABLE_FOAF;
+    params.connectToSeednodes = false;
+    params.longPingTimes = true;
+    params.useSlashdotCache = false;
+    params.ipAddressOverride = null;
+    params.enableFCP = enableFcp;
+    return params;
   }
 }

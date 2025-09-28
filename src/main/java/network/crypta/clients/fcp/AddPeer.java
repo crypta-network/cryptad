@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -136,7 +137,12 @@ public class AddPeer extends FCPMessage {
         } catch (MalformedURLException | FetchException e) {
           Logger.warning(
               this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urlString);
-          URL url = new URL(urlString);
+          URL url;
+          try {
+            url = URI.create(urlString).toURL();
+          } catch (IllegalArgumentException uriException) {
+            throw new MalformedURLException(uriException.getMessage());
+          }
           ref = AddPeer.getReferenceFromURL(url);
         }
       } catch (MalformedURLException e) {

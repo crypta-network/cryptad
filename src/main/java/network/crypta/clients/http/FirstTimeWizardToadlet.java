@@ -107,7 +107,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
   public static final String TOADLET_URL = "/wizard/";
 
   private void addWizardConfiguration(Config configuration) {
-    SubConfig wizardConfiguration = new SubConfig("firstTimeWizard", configuration);
+    SubConfig wizardConfiguration = configuration.createSubConfig("firstTimeWizard");
     wizardConfiguration.register(
         "loadUPnPPlugin",
         true,

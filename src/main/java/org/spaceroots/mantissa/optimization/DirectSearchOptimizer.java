@@ -530,18 +530,16 @@ public abstract class DirectSearchOptimizer {
   }
 
   /** Comparator for {@link PointCostPair PointCostPair} objects. */
-  private static Comparator pointCostPairComparator =
-      new Comparator() {
-        public int compare(Object o1, Object o2) {
+  private static final Comparator<PointCostPair> pointCostPairComparator =
+      new Comparator<PointCostPair>() {
+        @Override
+        public int compare(PointCostPair o1, PointCostPair o2) {
           if (o1 == null) {
-            return (o2 == null) ? 0 : +1;
+            return (o2 == null) ? 0 : 1;
           } else if (o2 == null) {
             return -1;
-          } else {
-            double cost1 = ((PointCostPair) o1).cost;
-            double cost2 = ((PointCostPair) o2).cost;
-            return (cost1 < cost2) ? -1 : ((o1 == o2) ? 0 : +1);
           }
+          return Double.compare(o1.cost, o2.cost);
         }
       };
 

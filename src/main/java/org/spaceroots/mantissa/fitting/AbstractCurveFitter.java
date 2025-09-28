@@ -26,7 +26,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
   protected AbstractCurveFitter(int n, Estimator estimator) {
 
     coefficients = new EstimatedParameter[n];
-    measurements = new ArrayList();
+    measurements = new ArrayList<>();
     this.estimator = estimator;
   }
 
@@ -41,7 +41,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
   protected AbstractCurveFitter(EstimatedParameter[] coefficients, Estimator estimator) {
 
     this.coefficients = coefficients;
-    measurements = new ArrayList();
+    measurements = new ArrayList<>();
     this.estimator = estimator;
   }
 
@@ -80,7 +80,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
   }
 
   public WeightedMeasurement[] getMeasurements() {
-    return (WeightedMeasurement[]) measurements.toArray(new FitMeasurement[measurements.size()]);
+    return measurements.toArray(new FitMeasurement[0]);
   }
 
   /**
@@ -114,24 +114,24 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
     // Since the samples are almost always already sorted, this
     // method is implemented as an insertion sort that reorders the
     // elements in place. Insertion sort is very efficient in this case.
-    FitMeasurement curr = (FitMeasurement) measurements.get(0);
+    FitMeasurement curr = measurements.get(0);
     for (int j = 1; j < measurements.size(); ++j) {
       FitMeasurement prec = curr;
-      curr = (FitMeasurement) measurements.get(j);
+      curr = measurements.get(j);
       if (curr.x < prec.x) {
         // the current element should be inserted closer to the beginning
         int i = j - 1;
-        FitMeasurement mI = (FitMeasurement) measurements.get(i);
+        FitMeasurement mI = measurements.get(i);
         while ((i >= 0) && (curr.x < mI.x)) {
           measurements.set(i + 1, mI);
           if (i-- != 0) {
-            mI = (FitMeasurement) measurements.get(i);
+            mI = measurements.get(i);
           } else {
             mI = null;
           }
         }
         measurements.set(i + 1, curr);
-        curr = (FitMeasurement) measurements.get(j);
+        curr = measurements.get(j);
       }
     }
   }
@@ -203,7 +203,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
   protected EstimatedParameter[] coefficients;
 
   /** Measurements vector */
-  protected List measurements;
+  protected List<FitMeasurement> measurements;
 
   /** Estimator for the fitting problem. */
   private Estimator estimator;

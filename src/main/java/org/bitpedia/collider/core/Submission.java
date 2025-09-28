@@ -11,7 +11,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.bitpedia.util.ArrayUtils;
@@ -25,7 +24,7 @@ public class Submission {
 
   private Bitcollider bc;
 
-  private Map attrs = new LinkedHashMap();
+  private Map<String, String> attrs = new LinkedHashMap<>();
 
   private int numBitprints = 0;
 
@@ -52,7 +51,7 @@ public class Submission {
 
     String firstHex;
 
-    Map attrs;
+    Map<String, String> attrs;
   }
 
   public Submission(Bitcollider bc, String checkAsExt, boolean autoSubmit) {
@@ -80,7 +79,7 @@ public class Submission {
 
   public String getAttribute(String key) {
 
-    return (String) attrs.get(key);
+    return attrs.get(key);
   }
 
   public void addAttribute(String key, String value) {
@@ -102,14 +101,11 @@ public class Submission {
 
   private void toMultiple() {
 
-    Map newAttrs = new LinkedHashMap();
+    Map<String, String> newAttrs = new LinkedHashMap<>();
 
-    Iterator iter = attrs.entrySet().iterator();
-    while (iter.hasNext()) {
-
-      Map.Entry entry = (Map.Entry) iter.next();
-      String key = (String) entry.getKey();
-      String value = (String) entry.getValue();
+    for (Map.Entry<String, String> entry : attrs.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
 
       if ("head.".equals(key.substring(0, 5))) {
         if ("head.version".equals(key)) {
@@ -222,7 +218,9 @@ public class Submission {
     }
 
     if ((null != fmt) && fmt.supportsMemAnalyze()) {
-      hashes.attrs = fmt.analyzeFinal();
+      @SuppressWarnings("unchecked")
+      Map<String, String> analyzed = fmt.analyzeFinal();
+      hashes.attrs = analyzed;
     }
 
     if (bc.isCalcCrc32()) {
@@ -433,10 +431,8 @@ public class Submission {
     }
 
     if (null != hashes.attrs) {
-      Iterator iter = hashes.attrs.entrySet().iterator();
-      while (iter.hasNext()) {
-        Map.Entry entry = (Map.Entry) iter.next();
-        addAttribute((String) entry.getKey(), (String) entry.getValue());
+      for (Map.Entry<String, String> entry : hashes.attrs.entrySet()) {
+        addAttribute(entry.getKey(), entry.getValue());
       }
     }
 
@@ -447,12 +443,11 @@ public class Submission {
         && fmtHandler.supportsFileAnalyze()
         && !bc.isExitNow()) {
 
-      Map fileAttrs = fmtHandler.analyzeFile(fileName);
+      @SuppressWarnings("unchecked")
+      Map<String, String> fileAttrs = fmtHandler.analyzeFile(fileName);
       if ((null != fileAttrs) && (0 < fileAttrs.size())) {
-        Iterator iter = fileAttrs.entrySet().iterator();
-        while (iter.hasNext()) {
-          Map.Entry entry = (Map.Entry) iter.next();
-          addAttribute((String) entry.getKey(), (String) entry.getValue());
+        for (Map.Entry<String, String> entry : fileAttrs.entrySet()) {
+          addAttribute(entry.getKey(), entry.getValue());
         }
       } else {
         /* If we selected a plugin, but the no attributes were returned,
@@ -591,11 +586,9 @@ public class Submission {
     dest.println("<PRE>");
 
     int i = 0, attrInd = -1, lastAttrInd = -1;
-    Iterator iter = attrs.keySet().iterator();
-    while (iter.hasNext()) {
-
-      String key = (String) iter.next();
-      String value = (String) attrs.get(key);
+    for (Map.Entry<String, String> entry : attrs.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
 
       try {
         attrInd = Integer.parseInt(key.substring(0, key.indexOf(".")));

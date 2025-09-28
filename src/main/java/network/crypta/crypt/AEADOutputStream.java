@@ -40,7 +40,9 @@ public class AEADOutputStream extends FilterOutputStream {
       throws IOException {
     super(os);
     os.write(nonce);
-    cipher = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    @SuppressWarnings("deprecation")
+    AEADBlockCipher ocb = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
     cipher.init(true, params);

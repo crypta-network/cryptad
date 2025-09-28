@@ -158,6 +158,10 @@ public class FCPConnectionHandler implements Closeable {
   public final RequestClient connectionRequestClientRT =
       new RequestClientBuilder().realTime().build();
 
+  public UUID getConnectionIdentifierUUID() {
+    return connectionIdentifierUUID;
+  }
+
   public FCPConnectionHandler(Socket s, FCPServer server) {
     this.sock = s;
     this.server = server;

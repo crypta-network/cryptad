@@ -7,6 +7,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.util.Enumeration;
 import java.util.NoSuchElementException;
@@ -134,7 +135,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
         return null;
       }
 
-      return new URL("jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + name);
+      return jarEntryUrl(name);
     } catch (MalformedURLException e) {
     }
     return null;
@@ -155,8 +156,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
           JarEntry jarEntry = jarFileEntries.nextElement();
           if (jarEntry.getName().equals(name) || jarEntry.getName().equals(name + "/")) {
             try {
-              nextElement =
-                  new URL("jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + name);
+              nextElement = jarEntryUrl(name);
             } catch (MalformedURLException e) {
               /* ignore. */
             }
@@ -233,7 +233,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     int i = name.lastIndexOf('.');
     if (i != -1) {
       String pkgname = name.substring(0, i);
-      pkg = getPackage(pkgname);
+      pkg = getDefinedPackage(pkgname);
       if (pkg == null) {
         try {
           Manifest man = tempJarFile.getManifest();
@@ -290,6 +290,17 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     }
     return definePackage(
         name, specTitle, specVersion, specVendor, implTitle, implVersion, implVendor, sealBase);
+  }
+
+  private URL jarEntryUrl(String entry) throws MalformedURLException {
+    try {
+      String spec = "jar:" + new File(tempJarFile.getName()).toURI().toURL() + "!/" + entry;
+      return URI.create(spec).toURL();
+    } catch (IllegalArgumentException e) {
+      MalformedURLException malformed = new MalformedURLException(e.getMessage());
+      malformed.initCause(e);
+      throw malformed;
+    }
   }
 
   @Override

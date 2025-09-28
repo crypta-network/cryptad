@@ -53,6 +53,7 @@ import network.crypta.support.math.SimpleRunningAverage;
  *     "<(grep 'Routed ping' real-node-pitch-black-mitigation-test-results-11.log | grep FAILED |
  *     sed 's/Routed ping //;s/FAILED from//')" using 1:(($0+1)/$1) pt 6 ps 1 lw 1 title "FAILED"
  */
+@SuppressWarnings("deprecation")
 public class RealNodePitchBlackMitigationTest extends RealNodeTest {
 
   static final int NUMBER_OF_NODES = 300;

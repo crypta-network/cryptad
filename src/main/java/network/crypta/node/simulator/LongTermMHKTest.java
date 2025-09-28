@@ -26,7 +26,9 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
+import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
@@ -85,7 +87,7 @@ public class LongTermMHKTest extends LongTermTest {
       if (!dumpOnly) {
         FileUtil.removeAll(dir);
         RandomSource random =
-            NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+            NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
         File seednodes = new File("seednodes.fref");
         if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
           System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -99,31 +101,9 @@ public class LongTermMHKTest extends LongTermTest {
         }
 
         // Create one node
-        node =
-            NodeStarter.createTestNode(
-                DARKNET_PORT1,
-                OPENNET_PORT1,
-                dir.getPath(),
-                false,
-                Node.DEFAULT_MAX_HTL,
-                0,
-                random,
-                new PooledExecutor(),
-                1000,
-                4 * 1024 * 1024,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                12 * 1024,
-                true,
-                true,
-                false,
-                false,
-                null);
+        TestNodeParameters params =
+            buildTestNodeParameters(dir, random, new PooledExecutor(), 4 * 1024 * 1024, 12 * 1024);
+        node = NodeStarter.createTestNode(params);
         Logger.getChain().setThreshold(LogLevel.ERROR);
 
         // Start it
@@ -458,6 +438,34 @@ public class LongTermMHKTest extends LongTermTest {
       }
       System.exit(exitCode);
     }
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      File baseDirectory,
+      RandomSource random,
+      Executor executor,
+      int storeSize,
+      int outputBandwidthLimit) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = DARKNET_PORT1;
+    params.opennetPort = OPENNET_PORT1;
+    params.maxHTL = Node.DEFAULT_MAX_HTL;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 1000;
+    params.storeSize = storeSize;
+    params.ramStore = true;
+    params.enableSwapping = true;
+    params.enableARKs = true;
+    params.enableULPRs = true;
+    params.enablePerNodeFailureTables = true;
+    params.enableSwapQueueing = true;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = outputBandwidthLimit;
+    params.enableFOAF = true;
+    params.connectToSeednodes = true;
+    return params;
   }
 
   private static RandomAccessBucket randomData(Node node) throws IOException {

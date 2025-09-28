@@ -598,7 +598,7 @@ public class NodeUpdateManager {
     // @see https://emu.freenetproject.org/pipermail/devl/2015-November/038581.html
     long minVer = (plugin.essential ? plugin.minimumVersion : plugin.recommendedVersion);
     // But it might already be past that ...
-    PluginInfoWrapper info = node.getPluginManager().getPluginInfo(name);
+    PluginInfoWrapper info = findPluginInfoByName(name);
     if (info == null) {
       if (!(node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(name))) {
         if (logMINOR) {
@@ -639,6 +639,26 @@ public class NodeUpdateManager {
     }
     updater.start();
     System.out.println("Started plugin update fetcher for " + name);
+  }
+
+  private PluginInfoWrapper findPluginInfoByName(String pluginName) {
+    for (PluginInfoWrapper info : node.getPluginManager().getPlugins()) {
+      if (pluginName.equals(info.getPluginClassName())) {
+        return info;
+      }
+      String filename = info.getFilename();
+      if (filename != null) {
+        String basename = new File(filename).getName();
+        if (pluginName.equals(basename)) {
+          return info;
+        }
+        if (basename.endsWith(".jar")
+            && pluginName.equals(basename.substring(0, basename.length() - 4))) {
+          return info;
+        }
+      }
+    }
+    return null;
   }
 
   public void stopPluginUpdater(String plugName) {

@@ -36,7 +36,9 @@ public class AEADInputStream extends FilterInputStream {
     super(is);
     byte[] nonce = new byte[mainCipher.getBlockSize()];
     new DataInputStream(is).readFully(nonce);
-    cipher = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    @SuppressWarnings("deprecation")
+    AEADBlockCipher ocb = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
     cipher.init(false, params);

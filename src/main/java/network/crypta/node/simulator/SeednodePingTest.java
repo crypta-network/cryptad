@@ -27,6 +27,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.OpennetDisabledException;
 import network.crypta.node.SeedServerPeerNode;
 import network.crypta.node.SeedServerTestPeerNode;
@@ -62,35 +63,23 @@ public class SeednodePingTest extends RealNodeTest {
     Node node = null;
     try {
       if (args.length == 1) STATUS_DIR = new File(args[0]);
+      File baseDir = new File("seednode-pingtest");
       RandomSource random =
-          NodeStarter.globalTestInit("seednode-pingtest", false, LogLevel.ERROR, "", false);
+          NodeStarter.globalTestInit(baseDir, false, LogLevel.ERROR, "", false, null);
       // Create one node
       Executor executor = new PooledExecutor();
-      node =
-          NodeStarter.createTestNode(
-              DARKNET_PORT,
-              OPENNET_PORT,
-              "seednode-pingtest",
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              executor,
-              1000,
-              5 * 1024 * 1024,
-              true,
-              false,
-              false,
-              false,
-              false,
-              false,
-              false,
-              0,
-              false,
-              false,
-              false,
-              false,
-              null);
+      TestNodeParameters params = new TestNodeParameters();
+      params.baseDirectory = baseDir;
+      params.port = DARKNET_PORT;
+      params.opennetPort = OPENNET_PORT;
+      params.maxHTL = Node.DEFAULT_MAX_HTL;
+      params.random = random;
+      params.executor = executor;
+      params.threadLimit = 1000;
+      params.storeSize = 5 * 1024 * 1024;
+      params.ramStore = true;
+      params.outputBandwidthLimit = 0;
+      node = NodeStarter.createTestNode(params);
       // Connect & ping
       List<SeedServerTestPeerNode> seedNodes = new ArrayList<>();
       List<SimpleFieldSet> seedNodesAsSFS =

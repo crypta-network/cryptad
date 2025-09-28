@@ -2,7 +2,9 @@ package com.onionnetworks.io;
 
 import com.onionnetworks.util.*;
 import java.io.*;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 public class CommitRaf extends FilterRAF {
 
@@ -12,7 +14,7 @@ public class CommitRaf extends FilterRAF {
   // Make sure not to key buffers off of a Range, or any other non-unique
   // object, as multiple readers may be using the same key and will trash
   // each other.
-  HashMap buffers = new HashMap();
+  Map<Object, Tuple> buffers = new HashMap<>();
 
   public CommitRaf(RAF raf) {
     super(raf);
@@ -65,9 +67,9 @@ public class CommitRaf extends FilterRAF {
     Range r = new Range(pos, pos + len - 1);
 
     // Iterate through the blocked readers and fill their buffers.
-    for (Iterator it = buffers.keySet().iterator(); it.hasNext(); ) {
-      Object key = (Object) it.next();
-      Tuple t = (Tuple) buffers.get(key);
+    for (Iterator<Map.Entry<Object, Tuple>> it = buffers.entrySet().iterator(); it.hasNext(); ) {
+      Map.Entry<Object, Tuple> entry = it.next();
+      Tuple t = entry.getValue();
       Range r2 = (Range) t.getLeft();
       Buffer buf = (Buffer) t.getRight();
 

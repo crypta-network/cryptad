@@ -280,6 +280,16 @@ public class TextModeClientInterface implements Runnable {
    *
    * @throws IOException If we could not write the data to stdout.
    */
+  private static URL parseUrl(String spec) throws MalformedURLException {
+    try {
+      return URI.create(spec).toURL();
+    } catch (IllegalArgumentException e) {
+      MalformedURLException malformed = new MalformedURLException("Invalid URL: " + spec);
+      malformed.initCause(e);
+      throw malformed;
+    }
+  }
+
   private boolean processLine(BufferedReader reader) throws IOException {
     String line;
     StringBuilder outsb = new StringBuilder();
@@ -858,7 +868,7 @@ public class TextModeClientInterface implements Runnable {
           }
         } else {
           outsb.append("Given string seems to be an URL, loading...\r\n");
-          URL url = new URL(key);
+          URL url = parseUrl(key);
           content = AddPeer.getReferenceFromURL(url).toString();
         }
       } else {

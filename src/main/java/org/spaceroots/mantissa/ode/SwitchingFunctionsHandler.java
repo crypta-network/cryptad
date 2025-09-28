@@ -1,7 +1,7 @@
 package org.spaceroots.mantissa.ode;
 
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.List;
 
 /**
  * This class handles several {@link SwitchingFunction switching functions} during integration.
@@ -14,7 +14,7 @@ public class SwitchingFunctionsHandler {
 
   /** Simple constructor. Create an empty handler */
   public SwitchingFunctionsHandler() {
-    functions = new ArrayList();
+    functions = new ArrayList<>();
     first = null;
     initialized = false;
   }
@@ -65,17 +65,15 @@ public class SwitchingFunctionsHandler {
         double t0 = interpolator.getPreviousTime();
         interpolator.setInterpolatedTime(t0);
         double[] y = interpolator.getInterpolatedState();
-        for (Iterator iter = functions.iterator(); iter.hasNext(); ) {
-          ((SwitchState) iter.next()).reinitializeBegin(t0, y);
+        for (SwitchState state : functions) {
+          state.reinitializeBegin(t0, y);
         }
 
         initialized = true;
       }
 
       // check events occurrence
-      for (Iterator iter = functions.iterator(); iter.hasNext(); ) {
-
-        SwitchState state = (SwitchState) iter.next();
+      for (SwitchState state : functions) {
         if (state.evaluateStep(interpolator)) {
           if (first == null) {
             first = state;
@@ -117,8 +115,8 @@ public class SwitchingFunctionsHandler {
    * @param y array containing the current value of the state vector at the end of the step
    */
   public void stepAccepted(double t, double[] y) {
-    for (Iterator iter = functions.iterator(); iter.hasNext(); ) {
-      ((SwitchState) iter.next()).stepAccepted(t, y);
+    for (SwitchState state : functions) {
+      state.stepAccepted(t, y);
     }
   }
 
@@ -128,8 +126,8 @@ public class SwitchingFunctionsHandler {
    * @return true if the integration should be stopped
    */
   public boolean stop() {
-    for (Iterator iter = functions.iterator(); iter.hasNext(); ) {
-      if (((SwitchState) iter.next()).stop()) {
+    for (SwitchState state : functions) {
+      if (state.stop()) {
         return true;
       }
     }
@@ -145,8 +143,8 @@ public class SwitchingFunctionsHandler {
    */
   public boolean reset(double t, double[] y) {
     boolean resetDerivatives = false;
-    for (Iterator iter = functions.iterator(); iter.hasNext(); ) {
-      if (((SwitchState) iter.next()).reset(t, y)) {
+    for (SwitchState state : functions) {
+      if (state.reset(t, y)) {
         resetDerivatives = true;
       }
     }
@@ -154,7 +152,7 @@ public class SwitchingFunctionsHandler {
   }
 
   /** Switching functions. */
-  private ArrayList functions;
+  private final List<SwitchState> functions;
 
   /** First active switching function. */
   private SwitchState first;

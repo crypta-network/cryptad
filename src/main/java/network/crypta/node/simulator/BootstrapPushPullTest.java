@@ -10,6 +10,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -46,7 +47,7 @@ public class BootstrapPushPullTest {
       File dir = new File("bootstrap-push-pull-test");
       FileUtil.removeAll(dir);
       RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.NORMAL, "", false);
+          NodeStarter.globalTestInit(dir, false, LogLevel.NORMAL, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -59,31 +60,10 @@ public class BootstrapPushPullTest {
       fis.close();
       // Create one node
       Executor executor = new PooledExecutor();
-      node =
-          NodeStarter.createTestNode(
-              DARKNET_PORT1,
-              OPENNET_PORT1,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              executor,
-              1000,
-              5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              false,
-              true,
-              false,
-              false,
-              ipOverride);
+      TestNodeParameters firstParams =
+          buildTestNodeParameters(
+              DARKNET_PORT1, OPENNET_PORT1, dir, random, executor, ipOverride, 12 * 1024);
+      node = NodeStarter.createTestNode(firstParams);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
       // Logger.setupStdoutLogging(LogLevel.MINOR, "freenet:NORMAL,freenet.node
       // .NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
@@ -139,31 +119,10 @@ public class BootstrapPushPullTest {
       FileUtil.writeTo(fis, new File(secondInnerDir, "seednodes.fref"));
       fis.close();
       executor = new PooledExecutor();
-      secondNode =
-          NodeStarter.createTestNode(
-              DARKNET_PORT2,
-              OPENNET_PORT2,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              executor,
-              1000,
-              5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              false,
-              true,
-              false,
-              false,
-              ipOverride);
+      TestNodeParameters secondParams =
+          buildTestNodeParameters(
+              DARKNET_PORT2, OPENNET_PORT2, dir, random, executor, ipOverride, 12 * 1024);
+      secondNode = NodeStarter.createTestNode(secondParams);
       secondNode.start(true);
       if (!TestUtil.waitForNodes(secondNode)) {
         secondNode.park();
@@ -210,5 +169,35 @@ public class BootstrapPushPullTest {
 
       System.exit(EXIT_THREW_SOMETHING);
     }
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      int darknetPort,
+      int opennetPort,
+      File baseDirectory,
+      RandomSource random,
+      Executor executor,
+      String ipOverride,
+      int outputBandwidthLimit) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = darknetPort;
+    params.opennetPort = opennetPort;
+    params.maxHTL = Node.DEFAULT_MAX_HTL;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 1000;
+    params.storeSize = 5 * 1024 * 1024;
+    params.ramStore = true;
+    params.enableSwapping = true;
+    params.enableARKs = true;
+    params.enableULPRs = true;
+    params.enablePerNodeFailureTables = true;
+    params.enableSwapQueueing = true;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = outputBandwidthLimit;
+    params.connectToSeednodes = true;
+    params.ipAddressOverride = ipOverride;
+    return params;
   }
 }

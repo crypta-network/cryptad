@@ -143,7 +143,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     if (oldResult != null) oldResult.free();
 
-    PluginInfoWrapper loaded = pluginManager.getPluginInfo(pluginName);
+    PluginInfoWrapper loaded = findPluginInfo();
 
     if (loaded == null) {
       if (!node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
@@ -154,7 +154,7 @@ public class PluginJarUpdater extends NodeUpdater {
       }
     }
 
-    if (loaded.getPluginLongVersion() >= fetchedVersion) {
+    if (loaded != null && loaded.getPluginLongVersion() >= fetchedVersion) {
       tempBlobFile.delete();
       return;
     }
@@ -295,5 +295,28 @@ public class PluginJarUpdater extends NodeUpdater {
   @Override
   public RequestClient getRequestClient() {
     return pluginManager.getSingleUpdaterRequestClient();
+  }
+
+  private PluginInfoWrapper findPluginInfo() {
+    for (PluginInfoWrapper info : pluginManager.getPlugins()) {
+      String className = info.getPluginClassName();
+      if (pluginName.equals(className)) {
+        return info;
+      }
+      String filename = info.getFilename();
+      if (filename != null) {
+        String basename = new File(filename).getName();
+        if (pluginName.equals(basename)) {
+          return info;
+        }
+        if (basename.endsWith(".jar")) {
+          String withoutExt = basename.substring(0, basename.length() - 4);
+          if (pluginName.equals(withoutExt)) {
+            return info;
+          }
+        }
+      }
+    }
+    return null;
   }
 }

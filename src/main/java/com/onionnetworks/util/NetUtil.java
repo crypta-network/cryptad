@@ -5,6 +5,8 @@ package com.onionnetworks.util;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 
 public class NetUtil {
@@ -25,7 +27,8 @@ public class NetUtil {
     String userInfo = url.getUserInfo();
     String protocol = url.getProtocol();
     String host = url.getHost();
-    String file = url.getFile();
+    String path = url.getPath();
+    String query = url.getQuery();
     String ref = url.getRef();
     int port = url.getPort();
 
@@ -46,14 +49,20 @@ public class NetUtil {
     InetAddress[] addrs = InetAddress.getAllByName(host);
     URL[] retval = new URL[addrs.length];
     for (int i = 0; i < addrs.length; i++) {
-      retval[i] =
-          new URL(
-              protocol,
-              ((userInfo == null)
-                  ? addrs[i].getHostAddress()
-                  : (userInfo + "@" + addrs[i].getHostAddress())),
-              port, // -1 is okay
-              ((ref == null) ? file : (file + "#" + ref)));
+      try {
+        URI uri =
+            new URI(
+                protocol,
+                userInfo,
+                addrs[i].getHostAddress(),
+                port, // -1 is okay
+                path,
+                query,
+                ref);
+        retval[i] = uri.toURL();
+      } catch (URISyntaxException e) {
+        throw new IOException("Unable to build URL for host " + host, e);
+      }
     }
 
     return retval;
@@ -90,7 +99,8 @@ public class NetUtil {
 
     for (int j = 0; j < args.length; j++) {
       System.out.println("----------[ Matches for: " + args[j]);
-      URL[] urls = getIpUrlsByName(new URL(args[j]));
+      URI example = URI.create(args[j]);
+      URL[] urls = getIpUrlsByName(example.toURL());
 
       for (int i = 0; i < urls.length; i++) {
         System.out.println(urls[i].toExternalForm());

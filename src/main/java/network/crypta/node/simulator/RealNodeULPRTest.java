@@ -3,6 +3,7 @@ package network.crypta.node.simulator;
 import java.io.File;
 import java.io.IOException;
 import network.crypta.crypt.DummyRandomSource;
+import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
@@ -24,6 +25,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeDispatcher.NodeDispatcherCallback;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Executor;
@@ -91,7 +93,7 @@ public class RealNodeULPRTest extends RealNodeTest {
     // Uncomment as appropriate.
     // For testing high-level stuff (requests/ULPRs/FT bugs)
     NodeStarter.globalTestInit(
-        testName,
+        wd,
         false,
         LogLevel.ERROR,
         "network.crypta.node.Location:normal,network.crypta.node.simulator"
@@ -102,7 +104,8 @@ public class RealNodeULPRTest extends RealNodeTest {
             + ".PeerNode:MINOR,network.crypta.node.DarknetPeerNode:MINOR,network"
             + ".crypta.io.xfer.PacketThrottle:MINOR,network.crypta.node"
             + ".PeerManager:MINOR,network.crypta.client.async:MINOR",
-        true);
+        true,
+        null);
     // For testing low-level stuff (connection bugs)
     // NodeStarter.globalTestInit(testName, false, LogLevel.ERROR, "network.crypta.node
     // .Location:normal,network.crypta.node.simulator.RealNodeRoutingTest:normal,network.crypta
@@ -113,31 +116,10 @@ public class RealNodeULPRTest extends RealNodeTest {
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              testName,
-              true,
-              MAX_HTL,
-              20 /* 5% */,
-              random,
-              executor,
-              500 * NUMBER_OF_NODES,
-              1024 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              ENABLE_ULPRS,
-              ENABLE_PER_NODE_FAILURE_TABLES,
-              true,
-              true,
-              0,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null);
+      TestNodeParameters params =
+          buildTestNodeParameters(
+              DARKNET_PORT_BASE + i, wd, random, executor, 500 * NUMBER_OF_NODES, 1024 * 1024);
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
     SimpleFieldSet[] refs = new SimpleFieldSet[NUMBER_OF_NODES];
@@ -386,6 +368,37 @@ public class RealNodeULPRTest extends RealNodeTest {
     System.err.println(
         "Overall average propagation time: " + (totalPropagationTime / successfulTests) + "ms");
     System.exit(0);
+  }
+
+  private static TestNodeParameters buildTestNodeParameters(
+      int port,
+      File baseDirectory,
+      RandomSource random,
+      Executor executor,
+      int threadLimit,
+      int storeSize) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = port;
+    params.opennetPort = 0;
+    params.disableProbabilisticHTLs = true;
+    params.maxHTL = MAX_HTL;
+    params.dropProb = 20;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = threadLimit;
+    params.storeSize = storeSize;
+    params.ramStore = true;
+    params.enableSwapping = ENABLE_SWAPPING;
+    params.enableULPRs = ENABLE_ULPRS;
+    params.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+    params.enableSwapQueueing = true;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = 0;
+    params.enableFOAF = ENABLE_FOAF;
+    params.connectToSeednodes = false;
+    params.longPingTimes = true;
+    return params;
   }
 
   // Exit codes

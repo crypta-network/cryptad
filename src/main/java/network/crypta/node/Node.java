@@ -136,12 +136,12 @@ import network.crypta.support.JVMVersion;
 import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.OutputThrottle;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PrioritizedTicker;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
-import network.crypta.support.TokenBucket;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
@@ -880,7 +880,7 @@ public class Node implements TimeSkewDetectorCallback {
    */
   @Deprecated
   /* It’s not the field that is deprecated but accessing it directly is. */
-  public final TokenBucket outputThrottle;
+  public final OutputThrottle outputThrottle;
 
   /**
    * @deprecated Use {@link #isThrottleLocalData()} instead of accessing this directly.
@@ -2101,7 +2101,7 @@ public class Node implements TimeSkewDetectorCallback {
     // FIXME: make compatible with alternate transports.
     bucketSize = Math.max(bucketSize, 2048);
     try {
-      outputThrottle = new TokenBucket(bucketSize, SECONDS.toNanos(1) / obwLimit, obwLimit / 2);
+      outputThrottle = new OutputThrottle(bucketSize, SECONDS.toNanos(1) / obwLimit, obwLimit / 2);
     } catch (IllegalArgumentException e) {
       throw new NodeInitException(NodeInitException.EXIT_BAD_BWLIMIT, e.getMessage());
     }
@@ -6239,7 +6239,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return uptime;
   }
 
-  public TokenBucket getOutputThrottle() {
+  public OutputThrottle getOutputThrottle() {
     return outputThrottle;
   }
 

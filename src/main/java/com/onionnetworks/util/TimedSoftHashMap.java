@@ -3,6 +3,7 @@ package com.onionnetworks.util;
 import java.lang.ref.*;
 import java.util.*;
 
+@SuppressWarnings({"rawtypes", "unchecked"})
 public class TimedSoftHashMap extends HashMap {
 
   public static final int DEFAULT_TTL = 2 * 60 * 1000;

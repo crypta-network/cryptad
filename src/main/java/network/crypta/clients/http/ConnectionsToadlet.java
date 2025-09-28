@@ -961,7 +961,12 @@ public abstract class ConnectionsToadlet extends Toadlet {
           } catch (MalformedURLException | FetchException e) {
             Logger.warning(
                 this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urltext);
-            URL url = new URL(urltext);
+            URL url;
+            try {
+              url = URI.create(urltext).toURL();
+            } catch (IllegalArgumentException uriException) {
+              throw new MalformedURLException(uriException.getMessage());
+            }
             ref = AddPeer.getReferenceFromURL(url);
           }
         } catch (IOException e) {

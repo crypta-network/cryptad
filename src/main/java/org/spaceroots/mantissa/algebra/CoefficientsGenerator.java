@@ -1,6 +1,7 @@
 package org.spaceroots.mantissa.algebra;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public abstract class CoefficientsGenerator {
 
@@ -16,7 +17,7 @@ public abstract class CoefficientsGenerator {
    * @param a11 X term for the degree 1 polynomial
    */
   protected CoefficientsGenerator(RationalNumber a00, RationalNumber a01, RationalNumber a11) {
-    l = new ArrayList();
+    l = new ArrayList<>();
     l.add(a00);
     l.add(a01);
     l.add(a11);
@@ -70,8 +71,8 @@ public abstract class CoefficientsGenerator {
       setRecurrenceCoefficients(k);
 
       RationalNumber ckPrev = null;
-      RationalNumber ck = (RationalNumber) l.get(startK);
-      RationalNumber ckm1 = (RationalNumber) l.get(startKm1);
+      RationalNumber ck = l.get(startK);
+      RationalNumber ckm1 = l.get(startKm1);
 
       // degree 0 coefficient
       l.add(ck.multiply(b2k).subtract(ckm1.multiply(b4k)));
@@ -79,14 +80,14 @@ public abstract class CoefficientsGenerator {
       // degree 1 to degree k-1 coefficients
       for (int i = 1; i < k; ++i) {
         ckPrev = ck;
-        ck = (RationalNumber) l.get(startK + i);
-        ckm1 = (RationalNumber) l.get(startKm1 + i);
+        ck = l.get(startK + i);
+        ckm1 = l.get(startKm1 + i);
         l.add(ck.multiply(b2k).add(ckPrev.multiply(b3k)).subtract(ckm1.multiply(b4k)));
       }
 
       // degree k coefficient
       ckPrev = ck;
-      ck = (RationalNumber) l.get(startK + k);
+      ck = l.get(startK + k);
       l.add(ck.multiply(b2k).add(ckPrev.multiply(b3k)));
 
       // degree k+1 coefficient
@@ -122,14 +123,14 @@ public abstract class CoefficientsGenerator {
 
     RationalNumber[] a = new RationalNumber[degree + 1];
     for (int i = 0; i <= degree; ++i) {
-      a[i] = (RationalNumber) l.get(start + i);
+      a[i] = l.get(start + i);
     }
 
     return a;
   }
 
   /** List holding the coefficients of the polynomials computed so far. */
-  private ArrayList l;
+  private final List<RationalNumber> l;
 
   /** Maximal degree of the polynomials computed so far. */
   private int maxDegree;
