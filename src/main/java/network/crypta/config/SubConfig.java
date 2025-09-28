@@ -34,11 +34,8 @@ public class SubConfig implements Comparable<SubConfig> {
         });
   }
 
-  /**
-   * @deprecated Use {@link Config#createSubConfig(String)} instead
-   */
-  @Deprecated
-  public SubConfig(String prefix, Config config) {
+  /** Use {@link Config#createSubConfig(String)} instead. */
+  SubConfig(String prefix, Config config) {
     this.config = config;
     this.prefix = prefix;
     map = new LinkedHashMap<>();
