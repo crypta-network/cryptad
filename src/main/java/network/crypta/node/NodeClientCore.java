@@ -112,13 +112,28 @@ public class NodeClientCore implements Persistable {
     Logger.registerClass(NodeClientCore.class);
   }
 
-  private final PersistentStatsPutter bandwidthStatsPutter;
+  /**
+   * @deprecated Use {@link #getBandwidthStatsPutter()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but accessing it directly is. */
+  public final PersistentStatsPutter bandwidthStatsPutter;
 
-  private final USKManager uskManager;
+  /**
+   * @deprecated Use {@link #getUskManager()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but accessing it directly is. */
+  public final USKManager uskManager;
 
   public final ArchiveManager archiveManager;
 
-  private final RequestStarterGroup requestStarters;
+  /**
+   * @deprecated Use {@link #getRequestStarters()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but accessing it directly is. */
+  public final RequestStarterGroup requestStarters;
 
   private final HealingQueue healingQueue;
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
@@ -148,9 +163,9 @@ public class NodeClientCore implements Persistable {
    * <p>To validate that the right password was received, use {@link
    * WebInterfaceToadlet#isFormPassword(HTTPRequest)}.
    *
-   * <p>Use {@link #getFormPassword()} instead of accessing this field directly.
+   * @deprecated Use {@link #getFormPassword()} instead of accessing this directly
    */
-  private final String formPassword;
+  @Deprecated public final String formPassword;
 
   final ProgramDirectory downloadsDir;
   private File[] downloadAllowedDirs;
@@ -160,35 +175,80 @@ public class NodeClientCore implements Persistable {
   private File[] uploadAllowedDirs;
   private boolean uploadAllowedEverywhere;
 
-  private final FilenameGenerator tempFilenameGenerator;
+  /**
+   * @deprecated Use {@link #getTempFilenameGenerator()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final FilenameGenerator tempFilenameGenerator;
 
-  private final FilenameGenerator persistentFilenameGenerator;
+  /**
+   * @deprecated Use {@link #getPersistentFilenameGenerator()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final FilenameGenerator persistentFilenameGenerator;
 
-  private final TempBucketFactory tempBucketFactory;
+  /**
+   * @deprecated Use {@link #getTempBucketFactory()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final TempBucketFactory tempBucketFactory;
 
-  private final PersistentTempBucketFactory persistentTempBucketFactory;
+  /**
+   * @deprecated Use {@link #getPersistentTempBucketFactory()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final PersistentTempBucketFactory persistentTempBucketFactory;
 
   private final DiskSpaceCheckingRandomAccessBufferFactory persistentDiskChecker;
   public final MaybeEncryptedRandomAccessBufferFactory persistentRAFFactory;
 
-  private final ClientLayerPersister clientLayerPersister;
+  /**
+   * @deprecated Use {@link #getClientLayerPersister()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final ClientLayerPersister clientLayerPersister;
 
-  private final Node node;
+  /**
+   * @deprecated Use {@link #getNode()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final Node node;
 
   public final RequestTracker tracker;
 
   private final NodeStats nodeStats;
 
-  private final RandomSource random;
+  /**
+   * @deprecated Use {@link #getRandom()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final RandomSource random;
 
   final ProgramDirectory tempDir; // Persistent temporary buckets
   final ProgramDirectory persistentTempDir;
 
-  private final UserAlertManager alerts;
+  /**
+   * @deprecated Use {@link #getAlerts()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final UserAlertManager alerts;
 
   final TextModeClientInterfaceServer tmci;
 
-  private TextModeClientInterface directTMCI;
+  /**
+   * @deprecated Use {@link #getDirectTMCI()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  TextModeClientInterface directTMCI;
 
   private final PersistentRequestRoot fcpPersistentRoot;
   final FCPServer fcpServer;
@@ -199,7 +259,12 @@ public class NodeClientCore implements Persistable {
   /** If true, requests are resumed lazily i.e. startup does not block waiting for them. */
   protected final Persister persister;
 
-  private final DatastoreChecker storeChecker;
+  /**
+   * @deprecated Use {@link #getStoreChecker()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final DatastoreChecker storeChecker;
 
   /**
    * How much disk space must be free when starting a long-term, unpredictable duration job such as
@@ -213,7 +278,12 @@ public class NodeClientCore implements Persistable {
    */
   private long minDiskFreeShortTerm;
 
-  private final transient ClientContext clientContext;
+  /**
+   * @deprecated Use {@link #getClientContext()} instead of accessing this directly.
+   */
+  @Deprecated
+  /* It’s not the field that is deprecated but directly accessing it is. */
+  public final transient ClientContext clientContext;
 
   private static int maxBackgroundUSKFetchers; // Client stuff that needs to be configged - FIXME
   static final int MAX_ARCHIVE_HANDLERS = 200; // don't take up much RAM... FIXME
