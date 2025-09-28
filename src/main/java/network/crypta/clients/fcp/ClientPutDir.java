@@ -12,6 +12,7 @@ import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
+import network.crypta.client.Metadata;
 import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
@@ -386,7 +387,7 @@ public class ClientPutDir extends ClientPutBase {
               + manifestElements.size());
     for (Object o : manifestElements.values()) {
       if (o instanceof HashMap) {
-        freeData((HashMap<String, Object>) o);
+        freeData(Metadata.forceMap(o));
       } else {
         ManifestElement e = (ManifestElement) o;
         if (logMINOR) Logger.minor(this, "Freeing " + e);

@@ -4,6 +4,7 @@ import java.io.Serial;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.InsertContext;
+import network.crypta.client.Metadata;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.Logger;
 import network.crypta.support.api.ManifestElement;
@@ -62,7 +63,7 @@ public class PlainManifestPutter extends BaseManifestPutter {
       String name = entry.getKey();
       Object o = entry.getValue();
       if (o instanceof HashMap) {
-        HashMap<String, Object> subMap = (HashMap<String, Object>) o;
+        HashMap<String, Object> subMap = Metadata.forceMap(o);
         builder.pushCurrentDir();
         builder.makeSubDirCD(name);
         makePutHandlers(builder, subMap, defaultName);

@@ -347,7 +347,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       String name = me.getKey();
       Object o = me.getValue();
       if (o instanceof HashMap) {
-        HashMap<String, Object> hm = (HashMap<String, Object>) o;
+        HashMap<String, Object> hm = Metadata.forceMap(o);
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
         if (logDEBUG) Logger.debug(this, "Sub map for " + name + " : " + hm.size() + " elements");
@@ -404,7 +404,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       throws ResumeFailedException {
     for (Object o : map.values()) {
       switch (o) {
-        case HashMap hashMap -> resumeMetadata((Map<String, Object>) o, context);
+        case HashMap hashMap -> resumeMetadata(Metadata.forceMap(o), context);
         case ManifestElement e -> e.onResume(context);
         case Metadata metadata -> {
           // Ignore

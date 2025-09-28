@@ -3,6 +3,7 @@ package network.crypta.support;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
+import network.crypta.client.Metadata;
 import network.crypta.support.api.ManifestElement;
 
 /**
@@ -100,7 +101,7 @@ public final class ContainerSizeEstimator {
         Object o = entry.getValue();
         if (o instanceof HashMap) {
           result._sizeSubTrees += 512;
-          HashMap<String, Object> hm = (HashMap<String, Object>) o;
+          HashMap<String, Object> hm = Metadata.forceMap(o);
           ContainerSize tempResult = new ContainerSize();
           getSubTreeSize(
               hm, tempResult, maxItemSize, (maxContainerSize - result._sizeSubTrees), maxDeep - 1);
