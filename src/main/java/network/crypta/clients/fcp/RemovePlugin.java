@@ -1,9 +1,7 @@
 package network.crypta.clients.fcp;
 
-import java.io.File;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginInfoWrapper;
-import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.SimpleFieldSet;
 
 /** remove a plugin */
@@ -50,7 +48,7 @@ public class RemovePlugin extends FCPMessage {
     node.getExecutor()
         .execute(
             () -> {
-              PluginInfoWrapper pi = findPluginInfo(node);
+              PluginInfoWrapper pi = node.getPluginManager().findPluginByIdentifier(plugname);
               if (pi == null) {
                 handler.send(
                     new ProtocolErrorMessage(
@@ -68,28 +66,5 @@ public class RemovePlugin extends FCPMessage {
               }
             },
             "Remove Plugin");
-  }
-
-  private PluginInfoWrapper findPluginInfo(Node node) {
-    PluginManager manager = node.getPluginManager();
-    for (PluginInfoWrapper info : manager.getPlugins()) {
-      if (plugname.equals(info.getPluginClassName())) {
-        return info;
-      }
-      String filename = info.getFilename();
-      if (filename != null) {
-        String basename = new File(filename).getName();
-        if (plugname.equals(basename)) {
-          return info;
-        }
-        if (basename.endsWith(".jar")) {
-          String withoutExt = basename.substring(0, basename.length() - 4);
-          if (plugname.equals(withoutExt)) {
-            return info;
-          }
-        }
-      }
-    }
-    return null;
   }
 }

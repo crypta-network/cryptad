@@ -143,7 +143,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     if (oldResult != null) oldResult.free();
 
-    PluginInfoWrapper loaded = findPluginInfo();
+    PluginInfoWrapper loaded = pluginManager.findPluginByIdentifier(pluginName);
 
     if (loaded == null) {
       if (!node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
@@ -295,28 +295,5 @@ public class PluginJarUpdater extends NodeUpdater {
   @Override
   public RequestClient getRequestClient() {
     return pluginManager.getSingleUpdaterRequestClient();
-  }
-
-  private PluginInfoWrapper findPluginInfo() {
-    for (PluginInfoWrapper info : pluginManager.getPlugins()) {
-      String className = info.getPluginClassName();
-      if (pluginName.equals(className)) {
-        return info;
-      }
-      String filename = info.getFilename();
-      if (filename != null) {
-        String basename = new File(filename).getName();
-        if (pluginName.equals(basename)) {
-          return info;
-        }
-        if (basename.endsWith(".jar")) {
-          String withoutExt = basename.substring(0, basename.length() - 4);
-          if (pluginName.equals(withoutExt)) {
-            return info;
-          }
-        }
-      }
-    }
-    return null;
   }
 }
