@@ -184,8 +184,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
       final File dir = new File("longterm-mhk-test-" + uid);
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");

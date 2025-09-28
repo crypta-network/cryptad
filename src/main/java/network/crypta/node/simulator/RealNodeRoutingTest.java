@@ -46,7 +46,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
     }
     wd.mkdir();
     // NOTE: globalTestInit returns in ignored random source
-    NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", true);
+    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, null);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);

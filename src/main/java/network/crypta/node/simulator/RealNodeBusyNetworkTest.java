@@ -62,7 +62,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(name, false, LogLevel.ERROR, "", true);
+    NodeStarter.globalTestInit(new File(name), false, LogLevel.ERROR, "", true, null);
     System.out.println("Busy network test (inserts/retrieves in quantity/stress test)");
     System.out.println();
     DummyRandomSource random = new DummyRandomSource();

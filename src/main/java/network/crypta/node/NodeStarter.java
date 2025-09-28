@@ -87,19 +87,6 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * @see #globalTestInit(File, boolean, LogLevel, String, boolean, RandomSource)
-   * @deprecated Instead use {@link #globalTestInit(File, boolean, LogLevel, String, boolean,
-   *     RandomSource)}.
-   */
-  @Deprecated
-  public static RandomSource globalTestInit(
-      String testName, boolean enablePlug, LogLevel logThreshold, String details, boolean noDNS)
-      throws InvalidThresholdException {
-
-    return globalTestInit(new File(testName), enablePlug, logThreshold, details, noDNS, null);
-  }
-
-  /**
    * VM-specific init. Not Node-specific; many nodes may be created later.
    *
    * @param baseDirectory The directory in which the test data will be placed. Will be created
