@@ -218,7 +218,7 @@ public class Submission {
     }
 
     if ((null != fmt) && fmt.supportsMemAnalyze()) {
-      Map<String, String> analyzed = fmt.analyzeFinal();
+      Map<String, String> analyzed = castStringMap(fmt.analyzeFinal());
       hashes.attrs = analyzed;
     }
 
@@ -442,7 +442,7 @@ public class Submission {
         && fmtHandler.supportsFileAnalyze()
         && !bc.isExitNow()) {
 
-      Map<String, String> fileAttrs = fmtHandler.analyzeFile(fileName);
+      Map<String, String> fileAttrs = castStringMap(fmtHandler.analyzeFile(fileName));
       if ((null != fileAttrs) && (0 < fileAttrs.size())) {
         for (Map.Entry<String, String> entry : fileAttrs.entrySet()) {
           addAttribute(entry.getKey(), entry.getValue());
@@ -488,6 +488,41 @@ public class Submission {
     }
 
     return count;
+  }
+
+  /**
+   * Converts a raw Map to a Map<String,String> with runtime checks. When the input is null, returns
+   * null. If any key or value is not a String, throws ClassCastException.
+   */
+  @SuppressWarnings("unchecked")
+  private static Map<String, String> castStringMap(Map<?, ?> raw) {
+    if (raw == null) return null;
+    // Fast-path: if the map already has String types at runtime, return an unchecked view.
+    boolean allString = true;
+    for (Map.Entry<?, ?> e : raw.entrySet()) {
+      if (!(e.getKey() instanceof String) || !(e.getValue() instanceof String)) {
+        allString = false;
+        break;
+      }
+    }
+    if (allString) {
+      return (Map<String, String>) (Map<?, ?>) raw;
+    }
+    // Fallback: copy into a typed map after validating entries.
+    Map<String, String> out = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> e : raw.entrySet()) {
+      Object k = e.getKey();
+      Object v = e.getValue();
+      if (!(k instanceof String) || !(v instanceof String)) {
+        throw new ClassCastException(
+            "Expected Map<String,String>, found entry key="
+                + (k == null ? "null" : k.getClass().getName())
+                + ", value="
+                + (v == null ? "null" : v.getClass().getName()));
+      }
+      out.put((String) k, (String) v);
+    }
+    return out;
   }
 
   private static String toEscaped(String value) {
