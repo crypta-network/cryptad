@@ -9,12 +9,6 @@ import java.io.Serializable;
  * @author unixninja92
  */
 public enum CryptByteBufferType implements Serializable {
-  @Deprecated
-  RijndaelECB(1, KeyType.Rijndael256),
-  @Deprecated
-  RijndaelECB128(2, KeyType.Rijndael256, 128),
-  @Deprecated
-  RijndaelPCFB(8, 32, KeyType.Rijndael256),
   AESCTR(16, 16, "AES/CTR/NOPADDING", KeyType.AES256),
   ChaCha128(32, 8, "CHACHA", KeyType.ChaCha128),
   ChaCha256(64, 8, "CHACHA", KeyType.ChaCha256);
@@ -30,10 +24,10 @@ public enum CryptByteBufferType implements Serializable {
   public final boolean isStreamCipher;
 
   /**
-   * Creates the RijndaelECB enum value. iv is null.
+   * Creates an enum value for block ciphers without an IV.
    *
-   * @param bitmask
-   * @param keyType The type of key the alg requires
+   * @param bitmask Aggregation bitmask for the type
+   * @param keyType The type of key the algorithm requires
    */
   CryptByteBufferType(int bitmask, KeyType keyType) {
     this.bitmask = bitmask;
@@ -46,11 +40,11 @@ public enum CryptByteBufferType implements Serializable {
   }
 
   /**
-   * Creates the RijndaelECB128 enum value. iv is null. and sets the non-standard blocksize.
+   * Creates an enum value for block ciphers without an IV and a custom block size.
    *
-   * @param bitmask
-   * @param keyType The type of key the alg requires
-   * @param blockSize The blocksize the alg uses
+   * @param bitmask Aggregation bitmask for the type
+   * @param keyType The type of key the algorithm requires
+   * @param blockSize The block size used by the algorithm
    */
   CryptByteBufferType(int bitmask, KeyType keyType, int blockSize) {
     this.bitmask = bitmask;
@@ -63,11 +57,11 @@ public enum CryptByteBufferType implements Serializable {
   }
 
   /**
-   * Creates the RijndaelPCFB enum value.
+   * Creates an enum value for stream/feedback modes with a fixed IV size.
    *
-   * @param bitmask
-   * @param ivSize Size of the iv
-   * @param keyType The type of key the alg requires
+   * @param bitmask Aggregation bitmask for the type
+   * @param ivSize Size of the IV in bytes
+   * @param keyType The type of key the algorithm requires
    */
   CryptByteBufferType(int bitmask, int ivSize, KeyType keyType) {
     this.bitmask = bitmask;
@@ -80,13 +74,13 @@ public enum CryptByteBufferType implements Serializable {
   }
 
   /**
-   * Creates an enum value for the specified algorithm, keytype, and iv size. Also stores the name
-   * of the alg that java recognizes
+   * Creates an enum value for the specified algorithm, key type, and IV size. Also stores the
+   * provider algorithm name recognized by the JCE.
    *
-   * @param bitmask
-   * @param ivSize Size of the iv
-   * @param algName The name the java provider uses for the alg
-   * @param keyType The type of key the alg requires
+   * @param bitmask Aggregation bitmask for the type
+   * @param ivSize Size of the IV in bytes
+   * @param algName The JCE provider algorithm name
+   * @param keyType The type of key the algorithm requires
    */
   CryptByteBufferType(int bitmask, int ivSize, String algName, KeyType keyType) {
     this.bitmask = bitmask;

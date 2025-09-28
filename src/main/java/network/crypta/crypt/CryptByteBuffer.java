@@ -13,7 +13,6 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
-import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.Fields;
 
 /**
@@ -37,10 +36,7 @@ public final class CryptByteBuffer implements Serializable {
   private Cipher encryptCipher;
   private Cipher decryptCipher;
 
-  // These variables are used with Rijndael ciphers
-  private BlockCipher blockCipher;
-  private PCFBMode encryptPCFB;
-  private PCFBMode decryptPCFB;
+  // Legacy Rijndael/PCFB support was removed from CryptByteBuffer.
 
   /**
    * Creates an instance of CryptByteBuffer that will be able to encrypt and decrypt sets of bytes
@@ -66,22 +62,11 @@ public final class CryptByteBuffer implements Serializable {
     this.type = type;
     this.key = key;
     try {
-      if (type.cipherName.equals("RIJNDAEL")) {
-        blockCipher = new Rijndael(type.keyType.keySize, type.blockSize);
-        blockCipher.initialize(key.getEncoded());
-        if (type == CryptByteBufferType.RijndaelPCFB) {
-          encryptPCFB = PCFBMode.create(blockCipher, this.iv.getIV());
-          decryptPCFB = PCFBMode.create(blockCipher, this.iv.getIV());
-        }
-      } else {
-        encryptCipher = Cipher.getInstance(type.algName);
-        decryptCipher = Cipher.getInstance(type.algName);
+      encryptCipher = Cipher.getInstance(type.algName);
+      decryptCipher = Cipher.getInstance(type.algName);
 
-        encryptCipher.init(Cipher.ENCRYPT_MODE, this.key, this.iv);
-        decryptCipher.init(Cipher.DECRYPT_MODE, this.key, this.iv);
-      }
-    } catch (UnsupportedCipherException e) {
-      throw new Error(e); // Should be impossible as we bundle BC
+      encryptCipher.init(Cipher.ENCRYPT_MODE, this.key, this.iv);
+      decryptCipher.init(Cipher.DECRYPT_MODE, this.key, this.iv);
     } catch (NoSuchAlgorithmException e) {
       throw new Error(e); // Should be impossible as we bundle BC
     } catch (NoSuchPaddingException e) {
@@ -238,18 +223,7 @@ public final class CryptByteBuffer implements Serializable {
       System.arraycopy(temp, 0, output, outputOffset, len);
       return;
     }
-    if (type == CryptByteBufferType.RijndaelPCFB) {
-      System.arraycopy(input, offset, output, outputOffset, len);
-      encryptPCFB.blockEncipher(output, outputOffset, len);
-    } else if (type.cipherName.equals("RIJNDAEL")) {
-      if (offset == 0 && len == input.length && outputOffset == 0 && len == output.length)
-        blockCipher.encipher(input, output);
-      else {
-        byte[] result = new byte[len];
-        blockCipher.encipher(Arrays.copyOfRange(input, offset, offset + len), result);
-        System.arraycopy(result, 0, output, outputOffset, len);
-      }
-    } else {
+    {
       try {
         int copied = encryptCipher.update(input, offset, len, output, outputOffset);
         if (copied != len) throw new IllegalStateException("Not a stream cipher???");
@@ -265,9 +239,8 @@ public final class CryptByteBuffer implements Serializable {
   }
 
   /**
-   * Encrypts the specified section of provided byte[] into a new array returned as a ByteBuffer.
-   * Does not modify the original array. If you are using a RijndaelECB alg then len must equal the
-   * block size.
+   * Encrypts the specified section of the provided byte[] into a new array. Does not modify the
+   * original array.
    *
    * @param input The bytes to be encrypted. Contents will not be modified.
    * @param offset The position of input to start encrypting at
@@ -281,8 +254,7 @@ public final class CryptByteBuffer implements Serializable {
   }
 
   /**
-   * Encrypts the provided byte[]. If you are using a RijndaelECB alg then the length of input must
-   * equal the block size.
+   * Encrypts the provided byte[].
    *
    * @param input The byte[] to be encrypted
    * @return The encrypted data. The original data will be unchanged.
@@ -293,9 +265,7 @@ public final class CryptByteBuffer implements Serializable {
 
   /**
    * Encrypts the provided ByteBuffer, returning a new ByteBuffer. Only reads the bytes that are
-   * actually readable, i.e. from position to limit, so equivalent to get()ing into a buffer,
-   * encrypting that and returning. If you are using a RijndaelECB alg then the length of input must
-   * equal the block size.
+   * actually readable, i.e. from position to limit.
    *
    * @param input The byte[] to be encrypted
    * @return A new ByteBuffer containing the ciphertext. It will have a backing array and its
@@ -323,7 +293,7 @@ public final class CryptByteBuffer implements Serializable {
           output.arrayOffset() + output.position());
       input.position(input.position() + moved);
       output.position(output.position() + moved);
-    } else if (!(type == CryptByteBufferType.RijndaelPCFB || type.cipherName.equals("RIJNDAEL"))) {
+    } else {
       // Use ByteBuffer to ByteBuffer operations.
       try {
         int copy = Math.min(input.remaining(), output.remaining());
@@ -332,13 +302,6 @@ public final class CryptByteBuffer implements Serializable {
       } catch (ShortBufferException e) {
         throw new Error("Impossible: " + e, e);
       }
-    } else {
-      // FIXME use a smaller temporary buffer
-      int moved = Math.min(input.remaining(), output.remaining());
-      byte[] buf = new byte[moved];
-      input.get(buf);
-      encrypt(buf, 0, buf.length);
-      output.put(buf);
     }
   }
 
@@ -350,8 +313,8 @@ public final class CryptByteBuffer implements Serializable {
    * we do switch to using java 7's BitSet.toByteArray(). The javadocs give a precise definition
    * so you can test it with unit tests. */
   //    /**
-  //     * Encrypts the provided BitSet. If you are using a RijndaelECB
-  //     * alg then the length of input must equal the block size.
+  //     * Encrypts the provided BitSet. For fixed-size block ciphers, the length of input must
+  //     * equal the block size.
   //     * @param input The BitSet to encrypt
   //     * @return The encrypted BitSet
   //     */
@@ -372,18 +335,7 @@ public final class CryptByteBuffer implements Serializable {
       System.arraycopy(temp, 0, output, outputOffset, len);
       return;
     }
-    if (type == CryptByteBufferType.RijndaelPCFB) {
-      System.arraycopy(input, offset, output, outputOffset, len);
-      decryptPCFB.blockDecipher(output, outputOffset, len);
-    } else if (type.cipherName.equals("RIJNDAEL")) {
-      if (offset == 0 && len == input.length && outputOffset == 0 && len == output.length)
-        blockCipher.decipher(input, output);
-      else {
-        byte[] result = new byte[len];
-        blockCipher.decipher(Arrays.copyOfRange(input, offset, offset + len), result);
-        System.arraycopy(result, 0, output, outputOffset, len);
-      }
-    } else {
+    {
       try {
         int copied = decryptCipher.update(input, offset, len, output, outputOffset);
         if (copied != len) throw new IllegalStateException("Not a stream cipher???");
@@ -400,8 +352,7 @@ public final class CryptByteBuffer implements Serializable {
 
   /**
    * Decrypts the specified section of provided byte[] into an array which is returned as a
-   * ByteBuffer. Does not modify the original array. If you are using a RijndaelECB alg then len
-   * must equal the block size.
+   * ByteBuffer. Does not modify the original array.
    *
    * @param input The bytes to be decrypted. Contents will not be modified.
    * @param offset The position of input to start decrypting at
@@ -416,8 +367,7 @@ public final class CryptByteBuffer implements Serializable {
   }
 
   /**
-   * Decrypts the provided byte[]. If you are using a RijndaelECB alg then the length of input must
-   * equal the block size.
+   * Decrypts the provided byte[].
    *
    * @param input The byte[] to be decrypted
    * @return The decrypted plaintext bytes.
@@ -428,9 +378,7 @@ public final class CryptByteBuffer implements Serializable {
 
   /**
    * Decrypts the provided ByteBuffer, returning a new ByteBuffer. Only reads the bytes that are
-   * actually readable, i.e. from position to limit, so equivalent to get()ing into a buffer,
-   * decrypting that and returning. If you are using a RijndaelECB alg then the length of input must
-   * equal the block size.
+   * actually readable, i.e. from position to limit.
    *
    * @param input The buffer to be decrypted
    * @return A new ByteBuffer containing the plaintext. It will have a backing array and its
@@ -456,7 +404,7 @@ public final class CryptByteBuffer implements Serializable {
           output.arrayOffset() + output.position());
       input.position(input.position() + moved);
       output.position(output.position() + moved);
-    } else if (!(type == CryptByteBufferType.RijndaelPCFB || type.cipherName.equals("RIJNDAEL"))) {
+    } else {
       // Use ByteBuffer to ByteBuffer operations.
       try {
         int copy = Math.min(input.remaining(), output.remaining());
@@ -465,20 +413,13 @@ public final class CryptByteBuffer implements Serializable {
       } catch (ShortBufferException e) {
         throw new Error("Impossible: " + e, e);
       }
-    } else {
-      // FIXME use a smaller temporary buffer
-      int moved = Math.min(input.remaining(), output.remaining());
-      byte[] buf = new byte[moved];
-      input.get(buf);
-      decrypt(buf, 0, buf.length);
-      output.put(buf);
     }
   }
 
   // FIXME
   //    /**
-  //     * Decrypts the provided BitSet. If you are using a RijndaelECB
-  //     * alg then the length of input must equal the block size.
+  //     * Decrypts the provided BitSet. For fixed-size block ciphers, the length of input must
+  //     * equal the block size.
   //     * @param input The BitSet to decrypt
   //     * @return The decrypted BitSet
   //     */
@@ -487,8 +428,7 @@ public final class CryptByteBuffer implements Serializable {
   //    }
 
   /**
-   * Changes the current iv to the provided iv and initializes the cipher instances with the new iv.
-   * Only works with algorithms that support IVs, not RijndaelPCFB.
+   * Changes the current IV to the provided IV and re-initializes the ciphers.
    *
    * @param iv The new iv to use as IvParameterSpec
    * @throws InvalidAlgorithmParameterException
@@ -507,8 +447,7 @@ public final class CryptByteBuffer implements Serializable {
   }
 
   /**
-   * Generates a new IV to be used and initializes the cipher instances with the new iv. Only works
-   * with algorithms that support IVs, not RijndaelPCFB.
+   * Generates a new IV to be used and re-initializes the ciphers.
    *
    * @return The generated IV
    */

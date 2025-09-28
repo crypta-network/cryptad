@@ -31,28 +31,24 @@ public class CryptByteBufferTest {
           + "f69f2445df4f9b17ad2b417be66c3710";
 
   private static final String[] plainText = {
-    "0123456789abcdef1123456789abcdef2123456789abcdef3123456789abcdef",
-    "0123456789abcdef1123456789abcdef",
-    ivPlainText,
-    ivPlainText,
-    ivPlainText,
-    ivPlainText
+    // AESCTR, ChaCha128, ChaCha256
+    ivPlainText, ivPlainText, ivPlainText
   };
 
   private static final byte[][] keys = {
-    Hex.decode("deadbeefcafebabe0123456789abcdefcafebabedeadbeefcafebabe01234567"),
-    Hex.decode("deadbeefcafebabe0123456789abcdefcafebabedeadbeefcafebabe01234567"),
+    // AESCTR
     Hex.decode("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
-    Hex.decode("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
+    // ChaCha128
     Hex.decode("8c123cffb0297a71ae8388109a6527dd"),
+    // ChaCha256
     Hex.decode("a63add96a3d5975e2dad2f904ff584a32920e8aa54263254161362d1fb785790")
   };
   private static final byte[][] ivs = {
-    null,
-    null,
-    Hex.decode("f0f1f2f3f4f5f6f7f8f9fafbfcfdfefff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+    // AESCTR (16 bytes)
     Hex.decode("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+    // ChaCha128 (8 bytes)
     Hex.decode("73c3c8df749084bb"),
+    // ChaCha256 (8 bytes)
     Hex.decode("7b471cf26ee479fb")
   };
 
@@ -721,7 +717,7 @@ public class CryptByteBufferTest {
 
   @Test
   public void testGetIV() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    int i = 4;
+    int i = 1; // ChaCha128 after enum cleanup (AESCTR=0, ChaCha128=1)
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
     assertArrayEquals(crypt.getIV().getIV(), ivs[i]);
   }
@@ -729,7 +725,7 @@ public class CryptByteBufferTest {
   @Test
   public void testSetIVIvParameterSpec()
       throws InvalidKeyException, InvalidAlgorithmParameterException {
-    int i = 4;
+    int i = 1; // ChaCha128 after enum cleanup
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
     crypt.genIV();
     crypt.setIV(new IvParameterSpec(ivs[i]));
@@ -740,37 +736,23 @@ public class CryptByteBufferTest {
   public void testSetIVIvParameterSpecNullInput()
       throws InvalidKeyException, InvalidAlgorithmParameterException {
     IvParameterSpec nullInput = null;
-    int i = 4;
+    int i = 1; // ChaCha128 after enum cleanup
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
     assertThrows(InvalidAlgorithmParameterException.class, () -> crypt.setIV(nullInput));
   }
 
   @Test
-  public void testSetIVIvParameterSpecUnsupportedTypeException() throws GeneralSecurityException {
-    int i = 0;
-    CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i]);
-    assertThrows(UnsupportedTypeException.class, () -> crypt.setIV(new IvParameterSpec(ivs[4])));
-  }
-
-  @Test
   public void testGenIV() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    int i = 4;
+    int i = 1; // ChaCha128 after enum cleanup
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
     assertNotNull(crypt.genIV());
   }
 
   @Test
   public void testGenIVLength() throws InvalidKeyException, InvalidAlgorithmParameterException {
-    int i = 4;
+    int i = 1; // ChaCha128 after enum cleanup
     CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i], ivs[i]);
     assertEquals(crypt.genIV().getIV().length, cipherTypes[i].ivSize.intValue());
-  }
-
-  @Test
-  public void testGenIVUnsupportedTypeException() throws GeneralSecurityException {
-    int i = 1;
-    CryptByteBuffer crypt = new CryptByteBuffer(cipherTypes[i], keys[i]);
-    assertThrows(UnsupportedTypeException.class, crypt::genIV);
   }
 
   @Test
