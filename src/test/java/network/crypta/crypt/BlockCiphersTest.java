@@ -21,16 +21,17 @@ public class BlockCiphersTest {
 
   @Test
   public void isCompatibleWithBouncyCastle() {
-    BlockCipher bouncyCastle = new AESEngine();
+    BlockCipher bouncyCastle = AESEngine.newInstance();
 
+    SecureRandom random = new SecureRandom();
     assertEquals(bouncyCastle.getBlockSize(), selected.getBlockSize());
     assertEquals(bouncyCastle.getAlgorithmName(), selected.getAlgorithmName());
 
-    KeyParameter key = new KeyParameter(SecureRandom.getSeed(16));
+    KeyParameter key = new KeyParameter(random.generateSeed(16));
     bouncyCastle.init(true, key);
     selected.init(true, key);
 
-    byte[] block = SecureRandom.getSeed(24);
+    byte[] block = random.generateSeed(24);
     byte[] expectedOut = new byte[block.length];
     byte[] actualOut = new byte[block.length];
     assertEquals(
