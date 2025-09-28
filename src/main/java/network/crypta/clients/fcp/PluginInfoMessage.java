@@ -28,11 +28,8 @@ public class PluginInfoMessage extends FCPMessage {
     classname = pi.getPluginClassName();
     originuri = pi.getFilename();
     started = pi.getStarted();
-    // isFCPPlugin() is the deprecated old plugin FCP API, isFCPServerPlugin() the new one.
-    // Plugins may implement only the old, or the new, or both. As the on-network format is
-    // backwards compatible, we report them as talkable if any is implemented.
-    boolean legacyFcp = pi.isFCPPlugin();
-    isTalkable = legacyFcp || pi.isFCPServerPlugin();
+    // Only the server-side FCP API is considered talkable going forward.
+    isTalkable = pi.isFCPServerPlugin();
     longVersion = pi.getPluginLongVersion();
     version = pi.getPluginVersion();
   }
