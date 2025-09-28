@@ -4,6 +4,12 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 /**
+ * Dispatches {@link java.util.EventObject} instances to registered {@link EventListener}s by
+ * reflectively invoking a named method on each listener. Uses an internal queue and background
+ * thread to process events asynchronously.
+ *
+ * <p>This version adds generics to internal collections to avoid unchecked operations.
+ *
  * @author Justin Chapweske
  */
 public class ReflectiveEventDispatch implements Runnable {
@@ -11,9 +17,10 @@ public class ReflectiveEventDispatch implements Runnable {
   public static final int DEFAULT_WARNING_TIME = 10;
 
   private final Thread thread;
-  private HashMap methodCache = new HashMap();
-  private HashMap listeners = new HashMap();
-  private LinkedList eventQueue = new LinkedList();
+  private final Map<Tuple, Method> methodCache = new HashMap<>();
+  private final Map<Object, Map<String, Set<EventListener>>> listeners = new HashMap<>();
+  // Holds either Tuple(event, methodName) or a sentinel (this) to signal shutdown
+  private final LinkedList<Object> eventQueue = new LinkedList<>();
   private ExceptionHandler handler;
 
   public ReflectiveEventDispatch() {
@@ -30,21 +37,23 @@ public class ReflectiveEventDispatch implements Runnable {
     handler = h;
   }
 
+  /** Adds a listener for a single method name for events originating from the provided source. */
   public synchronized void addListener(Object source, EventListener el, String methodName) {
     this.addListener(source, el, new String[] {methodName});
   }
 
+  /** Adds a listener for multiple method names for events originating from the provided source. */
   public synchronized void addListener(Object source, EventListener el, String[] methodNames) {
-    HashMap hm = (HashMap) listeners.get(source);
+    Map<String, Set<EventListener>> hm = listeners.get(source);
     if (hm == null) {
-      hm = new HashMap();
+      hm = new HashMap<>();
       listeners.put(source, hm);
     }
 
     for (int i = 0; i < methodNames.length; i++) {
-      HashSet set = (HashSet) hm.get(methodNames[i]);
+      Set<EventListener> set = hm.get(methodNames[i]);
       if (set == null) {
-        set = new HashSet();
+        set = new HashSet<>();
         hm.put(methodNames[i], set);
       }
       set.add(el);
@@ -56,12 +65,12 @@ public class ReflectiveEventDispatch implements Runnable {
   }
 
   public synchronized void removeListener(Object source, EventListener el, String[] methodNames) {
-    HashMap hm = (HashMap) listeners.get(source);
+    Map<String, Set<EventListener>> hm = listeners.get(source);
     if (hm == null) {
       throw new IllegalArgumentException("Listener not registered.");
     }
     for (int i = 0; i < methodNames.length; i++) {
-      HashSet set = (HashSet) hm.get(methodNames[i]);
+      Set<EventListener> set = hm.get(methodNames[i]);
       if (set == null || !set.contains(el)) {
         throw new IllegalArgumentException("Listener not registered.");
       }
@@ -70,11 +79,13 @@ public class ReflectiveEventDispatch implements Runnable {
     }
   }
 
+  /** Queues an event for asynchronous dispatch to listeners of the given method. */
   public synchronized void fire(EventObject ev, String methodName) {
     eventQueue.add(new Tuple(ev, methodName));
     this.notifyAll();
   }
 
+  /** Signals the dispatch thread to stop after processing queued events. */
   public synchronized void close() {
     // Place this on the queue to signify that we are done.
     eventQueue.add(this);
@@ -87,7 +98,7 @@ public class ReflectiveEventDispatch implements Runnable {
     while (!done) {
       EventObject ev = null;
       String methodName = null;
-      HashSet set = null;
+      Set<EventListener> set = null;
       synchronized (this) {
         if (eventQueue.isEmpty()) {
           try {
@@ -106,20 +117,19 @@ public class ReflectiveEventDispatch implements Runnable {
         Tuple t = (Tuple) obj;
         ev = (EventObject) t.getLeft();
         methodName = (String) t.getRight();
-        HashMap hm = (HashMap) listeners.get(ev.getSource());
+        Map<String, Set<EventListener>> hm = listeners.get(ev.getSource());
         if (hm == null) {
           continue;
         }
-        set = (HashSet) hm.get(methodName);
+        set = hm.get(methodName);
         if (set == null) {
           continue;
         }
         // Make a copy incase its modified while we're doing the shit.
-        set = (HashSet) set.clone();
+        set = new HashSet<>(set);
       }
 
-      for (Iterator it = set.iterator(); it.hasNext(); ) {
-        EventListener el = (EventListener) it.next();
+      for (EventListener el : set) {
         // Get the method and invoke it, passing the event.
         // long t1 = System.currentTimeMillis();
         try {
@@ -129,7 +139,7 @@ public class ReflectiveEventDispatch implements Runnable {
           // Cache the method because getPublicMethod is very
           // expensive to invoke.
           Tuple cacheKey = new Tuple(elc, new Tuple(methodName, evc));
-          Method m = (Method) methodCache.get(cacheKey);
+          Method m = methodCache.get(cacheKey);
           if (m == null) {
             final Class ca[] = new Class[] {evc};
             // This version of getMethod supports subclasses as
