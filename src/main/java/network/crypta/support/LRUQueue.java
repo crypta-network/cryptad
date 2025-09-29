@@ -165,9 +165,23 @@ public class LRUQueue<T> {
           "array.length=" + array.length + " but list.size=" + listSize);
     int x = 0;
     for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
-      array[x++] = (E) e.nextElement().obj;
+      array[x++] = castElementForArray(array, e.nextElement().obj);
     }
     return array;
+  }
+
+  private static <E> E castElementForArray(E[] array, Object value) {
+    Class<?> component = array.getClass().getComponentType();
+    if (!component.isInstance(value)) {
+      throw new ArrayStoreException(
+          "Attempted to store "
+              + (value == null ? "null" : value.getClass().getName())
+              + " into array of "
+              + component.getName());
+    }
+    @SuppressWarnings("unchecked")
+    E cast = (E) value;
+    return cast;
   }
 
   public synchronized boolean isEmpty() {
