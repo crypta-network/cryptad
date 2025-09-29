@@ -429,7 +429,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
     @Override
     public final T setNext(DoublyLinkedList.Item<?> i) {
       T old = next;
-      next = (T) i;
+      next = castItem(i);
       return old;
     }
 
@@ -441,7 +441,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
     @Override
     public final T setPrev(DoublyLinkedList.Item<?> i) {
       T old = prev;
-      prev = (T) i;
+      prev = castItem(i);
       return old;
     }
 
@@ -455,6 +455,13 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<? extends T>>
       DoublyLinkedList<? super T> old = list;
       list = l;
       return old;
+    }
+
+    @SuppressWarnings("unchecked")
+    private T castItem(DoublyLinkedList.Item<?> i) {
+      // Safe by construction: this Item<T> only participates in lists of T, and callers
+      // use the same T throughout DoublyLinkedList<T>. We localize the unchecked cast here.
+      return (T) i;
     }
   }
 
