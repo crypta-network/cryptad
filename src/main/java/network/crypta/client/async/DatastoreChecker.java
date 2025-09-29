@@ -88,8 +88,8 @@ public class DatastoreChecker implements PrioRunnable {
     }
   }
 
-  /** List of requests to check the datastore for. */
-  private final ArrayDeque<QueueItem>[] queue;
+  /** List of requests to check the datastore for, bucketed by priority. */
+  private final ArrayList<ArrayDeque<QueueItem>> queue;
 
   private ClientContext context;
   private final Node node;
@@ -98,15 +98,14 @@ public class DatastoreChecker implements PrioRunnable {
     this.context = context;
   }
 
-  @SuppressWarnings("unchecked")
   public DatastoreChecker(Node node, boolean lazyStart, Executor executor, String threadName) {
     this.node = node;
     this.lazy = lazyStart;
     this.executor = executor;
     this.threadName = threadName;
     int priorities = RequestStarter.NUMBER_OF_PRIORITY_CLASSES;
-    queue = (ArrayDeque<QueueItem>[]) new ArrayDeque<?>[priorities];
-    for (int i = 0; i < priorities; i++) queue[i] = new ArrayDeque<>();
+    queue = new ArrayList<>(priorities);
+    for (int i = 0; i < priorities; i++) queue.add(new ArrayDeque<>());
   }
 
   public void queueRequest(SendableGet getter, BlockSet blocks) {
@@ -126,11 +125,11 @@ public class DatastoreChecker implements PrioRunnable {
     synchronized (this) {
       Collections.addAll(finalKeysToCheck, checkKeys);
       QueueItem queueItem = new QueueItem(finalKeysToCheck.toArray(new Key[0]), getter, blocks);
-      if (logMINOR && queue[prio].contains(queueItem)) {
+      if (logMINOR && queue.get(prio).contains(queueItem)) {
         Logger.error(this, "Transient request " + getter + " is already queued!");
         return;
       }
-      queue[prio].add(queueItem);
+      queue.get(prio).add(queueItem);
       wakeUp();
     }
   }
@@ -162,9 +161,9 @@ public class DatastoreChecker implements PrioRunnable {
     boolean waited = false;
     synchronized (this) {
       while (true) {
-        for (short prio = 0; prio < queue.length; prio++) {
+        for (short prio = 0; prio < queue.size(); prio++) {
           QueueItem trans;
-          if ((trans = queue[prio].pollFirst()) != null) {
+          if ((trans = queue.get(prio).pollFirst()) != null) {
             keys = trans.keys;
             getter = trans.getter;
             // sched assigned out of loop
@@ -177,7 +176,7 @@ public class DatastoreChecker implements PrioRunnable {
                       + " prio "
                       + prio
                       + " of "
-                      + queue[prio].size());
+                      + queue.get(prio).size());
             break;
           }
         }
@@ -299,7 +298,7 @@ public class DatastoreChecker implements PrioRunnable {
     if (logMINOR) Logger.minor(this, "Removing request prio=" + prio + " persistent=" + persistent);
     QueueItem requestMatcher = new QueueItem(null, request, null);
     synchronized (this) {
-      if (!queue[prio].remove(requestMatcher)) return;
+      if (!queue.get(prio).remove(requestMatcher)) return;
     }
     if (logMINOR) Logger.minor(this, "Removed transient request");
   }

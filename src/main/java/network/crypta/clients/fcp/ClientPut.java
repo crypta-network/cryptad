@@ -237,7 +237,7 @@ public class ClientPut extends ClientPutBase {
 
       if (message.fileHash != null) {
         try {
-          salt = handler.connectionIdentifier + '-' + message.identifier + '-';
+          salt = handler.getConnectionIdentifierUUID().toString() + '-' + message.identifier + '-';
           saltedHash = Base64.decodeStandard(message.fileHash);
         } catch (IllegalBase64Exception e) {
           try {

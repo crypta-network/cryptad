@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import static network.crypta.testsupport.TestRandomData.fillRandomAccessBuffer;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.File;
@@ -33,7 +34,6 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ByteArrayRandomAccessBufferFactory;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FilenameGenerator;
@@ -161,7 +161,7 @@ public class ClientRequestSelectorTest {
       Random random, long size, LockableRandomAccessBufferFactory smallRAFFactory)
       throws IOException {
     LockableRandomAccessBuffer thing = smallRAFFactory.makeRAF(size);
-    BucketTools.fill(thing, random, 0, size);
+    fillRandomAccessBuffer(thing, random, 0, size);
     return new ReadOnlyRandomAccessBuffer(thing);
   }
 

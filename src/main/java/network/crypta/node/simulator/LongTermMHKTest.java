@@ -26,6 +26,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -85,7 +86,7 @@ public class LongTermMHKTest extends LongTermTest {
       if (!dumpOnly) {
         FileUtil.removeAll(dir);
         RandomSource random =
-            NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+            NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
         File seednodes = new File("seednodes.fref");
         if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
           System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -99,31 +100,29 @@ public class LongTermMHKTest extends LongTermTest {
         }
 
         // Create one node
-        node =
-            NodeStarter.createTestNode(
-                DARKNET_PORT1,
-                OPENNET_PORT1,
-                dir.getPath(),
-                false,
-                Node.DEFAULT_MAX_HTL,
-                0,
+        TestNodeParameters params =
+            TestNodeParameterFactory.create(
+                dir,
                 random,
                 new PooledExecutor(),
-                1000,
-                4 * 1024 * 1024,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                12 * 1024,
-                true,
-                true,
-                false,
-                false,
-                null);
+                p -> {
+                  p.port = DARKNET_PORT1;
+                  p.opennetPort = OPENNET_PORT1;
+                  p.maxHTL = Node.DEFAULT_MAX_HTL;
+                  p.threadLimit = 1000;
+                  p.storeSize = 4L * 1024 * 1024;
+                  p.ramStore = true;
+                  p.enableSwapping = true;
+                  p.enableARKs = true;
+                  p.enableULPRs = true;
+                  p.enablePerNodeFailureTables = true;
+                  p.enableSwapQueueing = true;
+                  p.enablePacketCoalescing = true;
+                  p.outputBandwidthLimit = 12 * 1024;
+                  p.enableFOAF = true;
+                  p.connectToSeednodes = true;
+                });
+        node = NodeStarter.createTestNode(params);
         Logger.getChain().setThreshold(LogLevel.ERROR);
 
         // Start it

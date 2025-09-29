@@ -20,9 +20,9 @@ import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 
 /**
- * Encrypted and authenticated Bucket implementation using AES cipher and OCB mode. Warning: Avoid
- * using IOUtils.closeQuietly() on InputStream's opened on this Bucket. The MAC is only checked when
- * the end of the bucket is reached, which may be in read() or may be in close().
+ * Encrypted and authenticated Bucket implementation using AES‑GCM. Warning: Avoid using
+ * IOUtils.closeQuietly() on InputStream's opened on this Bucket. The MAC is only checked when the
+ * end of the bucket is reached, which may be in read() or may be in close().
  *
  * @author toad
  */

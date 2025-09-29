@@ -1991,12 +1991,42 @@ public class Metadata implements Cloneable, Serializable {
   }
 
   /**
-   * * Casts the given object to {@code HashMap<String, Object>}, for dismissing * compiler
-   * warnings. Use only when you are sure the object matches this type!
+   * Returns a mutable {@code HashMap<String, Object>} view of the given object.
+   *
+   * <p>Behavior: - If {@code o} is already a {@code HashMap<?, ?>}, it returns the same instance
+   * with a localized, justified unchecked cast. - If {@code o} is a {@code Map<?, ?>} but not a
+   * {@code HashMap}, it creates a new {@code HashMap<String, Object>} and copies entries after
+   * verifying keys are {@code String}. - Otherwise it throws {@link ClassCastException}.
+   *
+   * <p>Rationale: Some builder paths store subdirectories as {@code HashMap<String,Object>} and
+   * mutate them in-place. We centralize the only unavoidable unchecked cast here, backed by runtime
+   * checks when the source is not a {@code HashMap}.
    */
-  @SuppressWarnings("unchecked")
   public static HashMap<String, Object> forceMap(Object o) {
-    return (HashMap<String, Object>) o;
+    if (o instanceof HashMap<?, ?> raw) {
+      return uncheckedCast(raw);
+    }
+    if (o instanceof Map<?, ?> m) {
+      HashMap<String, Object> typed = new HashMap<>();
+      for (Map.Entry<?, ?> e : m.entrySet()) {
+        Object k = e.getKey();
+        if (!(k instanceof String)) {
+          throw new ClassCastException(
+              "Expected String keys in map, got " + (k == null ? "null" : k.getClass().getName()));
+        }
+        typed.put((String) k, e.getValue());
+      }
+      return typed;
+    }
+    throw new ClassCastException(
+        "Expected Map, got " + (o == null ? "null" : o.getClass().getName()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static HashMap<String, Object> uncheckedCast(HashMap<?, ?> raw) {
+    // Safe by construction in our code paths: subdirectory maps are created as
+    // HashMap<String,Object>.
+    return (HashMap<String, Object>) raw;
   }
 
   public short getParsedVersion() {

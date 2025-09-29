@@ -143,7 +143,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     if (oldResult != null) oldResult.free();
 
-    PluginInfoWrapper loaded = pluginManager.getPluginInfo(pluginName);
+    PluginInfoWrapper loaded = pluginManager.findPluginByIdentifier(pluginName);
 
     if (loaded == null) {
       if (!node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
@@ -154,7 +154,7 @@ public class PluginJarUpdater extends NodeUpdater {
       }
     }
 
-    if (loaded.getPluginLongVersion() >= fetchedVersion) {
+    if (loaded != null && loaded.getPluginLongVersion() >= fetchedVersion) {
       tempBlobFile.delete();
       return;
     }

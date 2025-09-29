@@ -21,7 +21,7 @@ public class ProcessPriority {
 
   /// Windows interface (kernel32.dll) ///
   public interface WindowsHolder extends StdCallLibrary {
-    WindowsHolder INSTANCE = Native.loadLibrary("kernel32", WindowsHolder.class);
+    WindowsHolder INSTANCE = Native.load("kernel32", WindowsHolder.class);
 
     boolean SetPriorityClass(HANDLE hProcess, DWORD dwPriorityClass);
 

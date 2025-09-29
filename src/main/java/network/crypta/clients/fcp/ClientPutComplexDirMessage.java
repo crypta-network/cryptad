@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.node.Node;
 import network.crypta.support.Logger;
@@ -97,7 +98,6 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     addFile(filesByName, f.getName(), f);
   }
 
-  @SuppressWarnings("unchecked")
   private void addFile(HashMap<String, Object> byName, String name, DirPutFile f)
       throws MessageInvalidException {
     int idx = name.indexOf('/');
@@ -109,7 +109,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       Object o = byName.get(before);
       if (o != null) {
         if (o instanceof HashMap) {
-          addFile((HashMap<String, Object>) o, after, f);
+          addFile(Metadata.forceMap(o), after, f);
         } else {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_MESSAGE,
@@ -118,9 +118,9 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
               global);
         }
       } else {
-        o = new HashMap<>();
-        byName.put(before, o);
-        addFile((HashMap<String, Object>) o, after, f);
+        HashMap<String, Object> newDir = new HashMap<>();
+        byName.put(before, newDir);
+        addFile(newDir, after, f);
       }
     }
   }
@@ -170,7 +170,6 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * Convert a hierarchy of HashMap's containing DirPutFile's into a hierarchy of HashMap's
    * containing ManifestElement's.
    */
-  @SuppressWarnings("unchecked")
   private void convertFilesByNameToManifestElements(
       HashMap<String, Object> filesByName, HashMap<String, Object> manifestElements, Node node)
       throws MessageInvalidException {
@@ -179,7 +178,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       String tempName = entry.getKey();
       Object val = entry.getValue();
       if (val instanceof HashMap) {
-        HashMap<String, Object> h = (HashMap<String, Object>) val;
+        HashMap<String, Object> h = Metadata.forceMap(val);
         HashMap<String, Object> manifests = new HashMap<>();
         manifestElements.put(tempName, manifests);
         convertFilesByNameToManifestElements(h, manifests, node);

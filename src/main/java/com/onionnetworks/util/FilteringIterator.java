@@ -31,10 +31,10 @@ import java.util.NoSuchElementException;
  *
  * @author Ry4an
  */
-public abstract class FilteringIterator implements Iterator {
+public abstract class FilteringIterator<T> implements Iterator<T> {
 
-  private Iterator parent;
-  private Object next;
+  private final Iterator<T> parent;
+  private T next;
   private boolean removeOkay = true;
 
   /**
@@ -42,7 +42,7 @@ public abstract class FilteringIterator implements Iterator {
    *
    * @param Iterator the iterator to wrap w/ the filter
    */
-  public FilteringIterator(Iterator p) {
+  public FilteringIterator(Iterator<T> p) {
     parent = p;
   }
 
@@ -60,7 +60,7 @@ public abstract class FilteringIterator implements Iterator {
    */
   public boolean hasNext() {
     while ((next == null) && (parent.hasNext())) {
-      Object o = parent.next();
+      T o = parent.next();
       if (accept(o)) {
         next = o;
         return true;
@@ -76,7 +76,7 @@ public abstract class FilteringIterator implements Iterator {
    * @param o the object which may be passed through the filter
    * @return true indciated the object should be returned. else false.
    */
-  protected abstract boolean accept(Object o);
+  protected abstract boolean accept(T o);
 
   /**
    * Returns the next object from the parent iterator which passes the filter defined by <code>
@@ -85,32 +85,32 @@ public abstract class FilteringIterator implements Iterator {
    * @return Object an object which passes <code>accept</code>
    * @see accept
    */
-  public Object next() {
+  public T next() {
     if (!hasNext()) {
       throw new NoSuchElementException();
     }
-    Object retval = next;
+    T retval = next;
     next = null;
     return retval;
   }
 
   /** Test and example. */
   public static void main(String[] args) {
-    List l = new LinkedList(Arrays.asList(new String[] {"a", null, "was", null})); // the test array
-    Iterator i = l.iterator();
-    Iterator f =
-        new FilteringIterator(i) {
-          public boolean accept(Object o) {
+    List<String> l = new LinkedList<>(Arrays.asList(new String[] {"a", null, "was", null}));
+    Iterator<String> i = l.iterator();
+    FilteringIterator<String> f =
+        new FilteringIterator<String>(i) {
+          public boolean accept(String o) {
             return (o != null);
           }
         };
     System.out.println("--[ Unfiltered list: ]--");
-    for (Iterator j = l.iterator(); j.hasNext(); ) {
-      System.out.println("Item: " + j.next());
+    for (String item : l) {
+      System.out.println("Item: " + item);
     }
     System.out.println("--[ List with null filter: ]--");
     try { // note: this test code is dependent on the test array
-      Object o;
+      String o;
       if (!f.hasNext()) {
         throw new Exception();
       }

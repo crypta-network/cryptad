@@ -59,9 +59,9 @@ public class PluginTalker {
     pluginRef = findPlugin(pluginname2);
     access = access2 ? FredPluginFCP.ACCESS_FCP_FULL : FredPluginFCP.ACCESS_FCP_RESTRICTED;
 
-    // FCPConnectionHandler.connectionIdentifier is unique for each network connection of a client,
-    // which is exactly what the PluginReplySenderFCP() wants.
-    final String clientIdentifier = handler.connectionIdentifier;
+    // The connection identifier UUID is unique for each network connection of a client, which is
+    // exactly what the PluginReplySenderFCP() wants.
+    final String clientIdentifier = handler.getConnectionIdentifierUUID().toString();
 
     replysender =
         new PluginReplySenderFCP(handler, pluginname2, clientIdentifier, clientSideIdentifier);

@@ -8,6 +8,7 @@ import java.util.Random;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.GCMBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
@@ -23,26 +24,34 @@ public class AEADOutputStream extends FilterOutputStream {
   private final AEADBlockCipher cipher;
 
   /**
-   * Create an encrypting, authenticating OutputStream. Will write the nonce to the stream.
+   * Create an encrypting, authenticating OutputStream using AES-GCM.
+   *
+   * <p>Format: Writes a 16-byte prefix to the stream. GCM uses only the first 12 bytes as the
+   * nonce/IV; the remaining 4 bytes are currently unused and reserved. Keeping a 16-byte prefix
+   * preserves overall overhead (16-byte prefix + 16-byte tag).
    *
    * @param os The underlying OutputStream.
    * @param key The encryption key.
-   * @param nonce The nonce. This serves the function of an IV. As a nonce, this MUST be unique. We
-   *     will write it to the stream so the other side can pick it up, like an IV. Should generally
-   *     be generated from a SecureRandom. The top bit must be 0, i.e. nonce[0] &= 0x7F.
-   * @param mainCipher The BlockCipher for encrypting data. E.g. AES; not a block mode. This will be
-   *     used for encrypting a fairly large amount of data so could be any of the 3 BC AES impl's.
-   * @param hashCipher The BlockCipher for the final hash. E.g. AES, not a block mode. This will not
-   *     be used very much so should be e.g. an AESLightEngine.
+   * @param writtenNonce The 16-byte prefix to persist at the start of the stream.
+   * @param gcmNonce The 12-byte GCM nonce (first 12 bytes of {@code writtenNonce}).
+   * @param mainCipher The BlockCipher (AES) used by GCM; not a block mode.
+   * @param hashCipher Unused for GCM (retained for signature compatibility).
    */
   public AEADOutputStream(
-      OutputStream os, byte[] key, byte[] nonce, BlockCipher hashCipher, BlockCipher mainCipher)
+      OutputStream os,
+      byte[] key,
+      byte[] writtenNonce,
+      byte[] gcmNonce,
+      BlockCipher hashCipher,
+      BlockCipher mainCipher)
       throws IOException {
     super(os);
-    os.write(nonce);
-    cipher = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    // Persist the 16-byte prefix (block size: 16 for AES) to keep file overhead stable.
+    os.write(writtenNonce);
+    AEADBlockCipher gcm = new GCMBlockCipher(mainCipher);
+    cipher = gcm;
     KeyParameter keyParam = new KeyParameter(key);
-    AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
+    AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, gcmNonce);
     cipher.init(true, params);
   }
 
@@ -78,8 +87,12 @@ public class AEADOutputStream extends FilterOutputStream {
 
   static final int MAC_SIZE_BITS = 128;
   static final int MAC_SIZE_BYTES = MAC_SIZE_BITS / 8;
-  static final int AES_BLOCK_SIZE = 16;
-  public static final int AES_OVERHEAD = AES_BLOCK_SIZE + MAC_SIZE_BYTES;
+  // Recommended GCM nonce size is 12 bytes.
+  static final int GCM_NONCE_SIZE = 12;
+  // Number of bytes we write before the ciphertext to store the nonce on disk.
+  // For AES we preserve the historical 16-byte prefix for compatibility.
+  static final int WRITTEN_NONCE_SIZE = 16;
+  public static final int AES_OVERHEAD = WRITTEN_NONCE_SIZE + MAC_SIZE_BYTES;
 
   public static AEADOutputStream createAES(OutputStream os, byte[] key, SecureRandom random)
       throws IOException {
@@ -91,10 +104,12 @@ public class AEADOutputStream extends FilterOutputStream {
       throws IOException {
     BlockCipher mainCipher = BlockCiphers.aes();
     BlockCipher hashCipher = BlockCiphers.aes();
-    byte[] nonce = new byte[mainCipher.getBlockSize()];
-    random.nextBytes(nonce);
-    nonce[0] &= 0x7F;
-    return new AEADOutputStream(os, key, nonce, hashCipher, mainCipher);
+    byte[] writtenNonce = new byte[WRITTEN_NONCE_SIZE];
+    random.nextBytes(writtenNonce);
+    // GCM uses the first 12 bytes of the prefix as nonce.
+    byte[] gcmNonce = new byte[GCM_NONCE_SIZE];
+    System.arraycopy(writtenNonce, 0, gcmNonce, 0, gcmNonce.length);
+    return new AEADOutputStream(os, key, writtenNonce, gcmNonce, hashCipher, mainCipher);
   }
 
   @Override

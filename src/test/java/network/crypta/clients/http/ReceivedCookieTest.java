@@ -3,6 +3,8 @@ package network.crypta.clients.http;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.text.ParseException;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,11 +21,11 @@ public class ReceivedCookieTest extends CookieTest {
           + " $blah;";
 
   @BeforeEach
-  @SuppressWarnings("deprecation")
   public void setUp() throws Exception {
     super.setUp();
 
-    validExpiresDate = new Date(2030 - 1900, 10 - 1, 25, 15, 9, 37);
+    validExpiresDate =
+        Date.from(ZonedDateTime.of(2030, 10, 25, 15, 9, 37, 0, ZoneOffset.UTC).toInstant());
 
     cookie = ReceivedCookie.parseHeader(validEncodedCookie).getFirst();
   }

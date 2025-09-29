@@ -19,7 +19,7 @@ public class InvisibleWebInterfaceToadlet extends WebInterfaceToadlet {
   }
 
   @Override
-  public Toadlet showAsToadlet() {
+  public Toadlet showAsToadlet(ToadletContext context) {
     return _showAsToadlet;
   }
 

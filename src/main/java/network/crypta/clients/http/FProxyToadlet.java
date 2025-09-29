@@ -1216,7 +1216,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           if ((keyUtil =
                   core.getNode()
                       .getPluginManager()
-                      .getPluginInfo("plugins.KeyUtils.KeyUtilsPlugin"))
+                      .getPluginInfoByClassName("plugins.KeyUtils.KeyUtilsPlugin"))
               != null) {
             option = optionList.addChild("li");
             if (keyUtil.getPluginLongVersion() < 5010)
@@ -1246,7 +1246,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           } else if ((keyUtil =
                   core.getNode()
                       .getPluginManager()
-                      .getPluginInfo("plugins.KeyExplorer.KeyExplorer"))
+                      .getPluginInfoByClassName("plugins.KeyExplorer.KeyExplorer"))
               != null) {
             option = optionList.addChild("li");
             if (keyUtil.getPluginLongVersion() > 4999)

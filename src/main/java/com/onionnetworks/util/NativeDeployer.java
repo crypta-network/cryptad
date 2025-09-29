@@ -2,7 +2,11 @@ package com.onionnetworks.util;
 
 import java.io.*;
 import java.net.URL;
-import java.util.*;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.StringTokenizer;
 
 /**
  * This class is used for deploying native libraries that are stored inside jar files.
@@ -67,7 +71,7 @@ public class NativeDeployer {
     IOException iox = null;
     /* this code avoids try {} finally {} idiom for the sake of GCJ 3.0 */
     try {
-      String libPath = (String) findLibraries(cl).get(libName);
+      String libPath = findLibraries(cl).get(libName);
       if (libPath == null) {
         return null;
       }
@@ -117,13 +121,17 @@ public class NativeDeployer {
   /**
    * @return A HashMap mapping library names to paths for this os/arch.
    */
-  private static final HashMap findLibraries(ClassLoader cl) throws IOException {
+  private static final Map<String, String> findLibraries(ClassLoader cl) throws IOException {
 
-    HashMap libMap = new HashMap();
+    Map<String, String> libMap = new HashMap<>();
     // loop through all of the properties files.
-    for (Enumeration en = cl.getResources(NATIVE_PROPERTIES_PATH); en.hasMoreElements(); ) {
+    Enumeration<URL> resources = cl.getResources(NATIVE_PROPERTIES_PATH);
+    while (resources.hasMoreElements()) {
       Properties p = new Properties();
-      p.load(((URL) en.nextElement()).openStream());
+      URL resource = resources.nextElement();
+      try (InputStream stream = resource.openStream()) {
+        p.load(stream);
+      }
       // Extract the keys and loop through all of the libs.
       for (StringTokenizer st =
               new StringTokenizer(p.getProperty("com.onionnetworks.native.keys"), ",");

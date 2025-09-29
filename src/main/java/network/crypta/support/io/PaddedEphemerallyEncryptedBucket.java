@@ -317,7 +317,6 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
     return aes;
   }
 
-  @SuppressWarnings("deprecation")
   public PCFBMode getPCFB() {
     Rijndael aes = getRijndael();
     if (iv != null) return PCFBMode.create(aes, iv);

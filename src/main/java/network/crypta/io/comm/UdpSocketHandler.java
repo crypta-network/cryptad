@@ -22,7 +22,6 @@ import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
-import sun.misc.Unsafe;
 
 public class UdpSocketHandler
     implements PrioRunnable, PacketSocketHandler, PortForwardSensitiveSocketHandler {
@@ -107,11 +106,9 @@ public class UdpSocketHandler
 
     private static int getFd(DatagramChannel channel) {
       try {
-        Field unsafe = Unsafe.class.getDeclaredField("theUnsafe");
-        unsafe.setAccessible(true);
-        Unsafe theUnsafe = (Unsafe) unsafe.get(null);
         Field fdVal = channel.getClass().getDeclaredField("fdVal");
-        return theUnsafe.getInt(channel, theUnsafe.objectFieldOffset(fdVal));
+        fdVal.setAccessible(true);
+        return fdVal.getInt(channel);
       } catch (Exception e) {
         Logger.warning(UdpSocketHandler.class, e.getMessage(), e);
         return -1;

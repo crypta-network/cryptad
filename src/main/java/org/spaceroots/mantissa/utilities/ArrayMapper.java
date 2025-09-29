@@ -1,7 +1,7 @@
 package org.spaceroots.mantissa.utilities;
 
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.List;
 
 /**
  * This class dispatch data between an array and several domain objects.
@@ -17,7 +17,7 @@ public class ArrayMapper {
 
   /** Simple constructor. Build an empty array mapper */
   public ArrayMapper() {
-    domainObjects = new ArrayList();
+    domainObjects = new ArrayList<>();
     size = 0;
     internalData = null;
   }
@@ -31,7 +31,7 @@ public class ArrayMapper {
    */
   public ArrayMapper(ArraySliceMappable object) {
 
-    domainObjects = new ArrayList();
+    domainObjects = new ArrayList<>();
     domainObjects.add(new ArrayMapperEntry(object, 0));
 
     size = object.getStateDimension();
@@ -64,7 +64,7 @@ public class ArrayMapper {
     if (internalData == null) {
       internalData = new double[size];
     }
-    return (double[]) internalData.clone();
+    return internalData.clone();
   }
 
   /** Map data from the internal array to the domain objects. */
@@ -81,8 +81,7 @@ public class ArrayMapper {
    * @param data flat array holding the data to dispatch
    */
   public void updateObjects(double[] data) {
-    for (Iterator iter = domainObjects.iterator(); iter.hasNext(); ) {
-      ArrayMapperEntry entry = (ArrayMapperEntry) iter.next();
+    for (ArrayMapperEntry entry : domainObjects) {
       entry.object.mapStateFromArray(entry.offset, data);
     }
   }
@@ -101,14 +100,13 @@ public class ArrayMapper {
    * @param data flat array where to put the data
    */
   public void updateArray(double[] data) {
-    for (Iterator iter = domainObjects.iterator(); iter.hasNext(); ) {
-      ArrayMapperEntry entry = (ArrayMapperEntry) iter.next();
+    for (ArrayMapperEntry entry : domainObjects) {
       entry.object.mapStateToArray(entry.offset, data);
     }
   }
 
   /** Container for all handled objects. */
-  private ArrayList domainObjects;
+  private final List<ArrayMapperEntry> domainObjects;
 
   /** Total number of scalar elements handled. (size of the array) */
   private int size;

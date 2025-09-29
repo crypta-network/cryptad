@@ -1130,7 +1130,6 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     resolveAndStartBase(context);
   }
 
-  @SuppressWarnings("unchecked")
   private Metadata makeMetadata(HashMap<String, Object> dir) {
     SimpleManifestComposer smc = new SimpleManifestComposer();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
@@ -1139,7 +1138,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (item == null) throw new NullPointerException();
       Metadata m;
       if (item instanceof HashMap) {
-        m = makeMetadata((HashMap<String, Object>) item);
+        m = makeMetadata(Metadata.forceMap(item));
         if (m == null) throw new NullPointerException("HERE!!");
       } else {
         m = ((PutHandler) item).metadata;

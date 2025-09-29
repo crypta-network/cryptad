@@ -50,7 +50,7 @@ public class ReloadPlugin extends FCPMessage {
     node.getExecutor()
         .execute(
             () -> {
-              PluginInfoWrapper pi = node.getPluginManager().getPluginInfo(plugname);
+              PluginInfoWrapper pi = node.getPluginManager().findPluginByIdentifier(plugname);
               if (pi == null) {
                 handler.send(
                     new ProtocolErrorMessage(

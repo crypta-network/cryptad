@@ -243,7 +243,9 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
     PluginTalker pt;
     try {
-      pt = new PluginTalker(node, handler, pluginname, identifier, handler.hasFullAccess());
+      PluginTalker talker =
+          new PluginTalker(node, handler, pluginname, identifier, handler.hasFullAccess());
+      pt = talker;
     } catch (PluginNotFoundException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.NO_SUCH_PLUGIN,

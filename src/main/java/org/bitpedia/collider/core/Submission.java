@@ -11,7 +11,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.bitpedia.util.ArrayUtils;
@@ -25,7 +24,7 @@ public class Submission {
 
   private Bitcollider bc;
 
-  private Map attrs = new LinkedHashMap();
+  private Map<String, String> attrs = new LinkedHashMap<>();
 
   private int numBitprints = 0;
 
@@ -52,7 +51,7 @@ public class Submission {
 
     String firstHex;
 
-    Map attrs;
+    Map<String, String> attrs;
   }
 
   public Submission(Bitcollider bc, String checkAsExt, boolean autoSubmit) {
@@ -80,7 +79,7 @@ public class Submission {
 
   public String getAttribute(String key) {
 
-    return (String) attrs.get(key);
+    return attrs.get(key);
   }
 
   public void addAttribute(String key, String value) {
@@ -102,14 +101,11 @@ public class Submission {
 
   private void toMultiple() {
 
-    Map newAttrs = new LinkedHashMap();
+    Map<String, String> newAttrs = new LinkedHashMap<>();
 
-    Iterator iter = attrs.entrySet().iterator();
-    while (iter.hasNext()) {
-
-      Map.Entry entry = (Map.Entry) iter.next();
-      String key = (String) entry.getKey();
-      String value = (String) entry.getValue();
+    for (Map.Entry<String, String> entry : attrs.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
 
       if ("head.".equals(key.substring(0, 5))) {
         if ("head.version".equals(key)) {
@@ -222,7 +218,8 @@ public class Submission {
     }
 
     if ((null != fmt) && fmt.supportsMemAnalyze()) {
-      hashes.attrs = fmt.analyzeFinal();
+      Map<String, String> analyzed = castStringMap(fmt.analyzeFinal());
+      hashes.attrs = analyzed;
     }
 
     if (bc.isCalcCrc32()) {
@@ -433,10 +430,8 @@ public class Submission {
     }
 
     if (null != hashes.attrs) {
-      Iterator iter = hashes.attrs.entrySet().iterator();
-      while (iter.hasNext()) {
-        Map.Entry entry = (Map.Entry) iter.next();
-        addAttribute((String) entry.getKey(), (String) entry.getValue());
+      for (Map.Entry<String, String> entry : hashes.attrs.entrySet()) {
+        addAttribute(entry.getKey(), entry.getValue());
       }
     }
 
@@ -447,12 +442,10 @@ public class Submission {
         && fmtHandler.supportsFileAnalyze()
         && !bc.isExitNow()) {
 
-      Map fileAttrs = fmtHandler.analyzeFile(fileName);
+      Map<String, String> fileAttrs = castStringMap(fmtHandler.analyzeFile(fileName));
       if ((null != fileAttrs) && (0 < fileAttrs.size())) {
-        Iterator iter = fileAttrs.entrySet().iterator();
-        while (iter.hasNext()) {
-          Map.Entry entry = (Map.Entry) iter.next();
-          addAttribute((String) entry.getKey(), (String) entry.getValue());
+        for (Map.Entry<String, String> entry : fileAttrs.entrySet()) {
+          addAttribute(entry.getKey(), entry.getValue());
         }
       } else {
         /* If we selected a plugin, but the no attributes were returned,
@@ -495,6 +488,41 @@ public class Submission {
     }
 
     return count;
+  }
+
+  /**
+   * Converts a raw Map to a Map<String,String> with runtime checks. When the input is null, returns
+   * null. If any key or value is not a String, throws ClassCastException.
+   */
+  @SuppressWarnings("unchecked")
+  private static Map<String, String> castStringMap(Map<?, ?> raw) {
+    if (raw == null) return null;
+    // Fast-path: if the map already has String types at runtime, return an unchecked view.
+    boolean allString = true;
+    for (Map.Entry<?, ?> e : raw.entrySet()) {
+      if (!(e.getKey() instanceof String) || !(e.getValue() instanceof String)) {
+        allString = false;
+        break;
+      }
+    }
+    if (allString) {
+      return (Map<String, String>) (Map<?, ?>) raw;
+    }
+    // Fallback: copy into a typed map after validating entries.
+    Map<String, String> out = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> e : raw.entrySet()) {
+      Object k = e.getKey();
+      Object v = e.getValue();
+      if (!(k instanceof String) || !(v instanceof String)) {
+        throw new ClassCastException(
+            "Expected Map<String,String>, found entry key="
+                + (k == null ? "null" : k.getClass().getName())
+                + ", value="
+                + (v == null ? "null" : v.getClass().getName()));
+      }
+      out.put((String) k, (String) v);
+    }
+    return out;
   }
 
   private static String toEscaped(String value) {
@@ -591,11 +619,9 @@ public class Submission {
     dest.println("<PRE>");
 
     int i = 0, attrInd = -1, lastAttrInd = -1;
-    Iterator iter = attrs.keySet().iterator();
-    while (iter.hasNext()) {
-
-      String key = (String) iter.next();
-      String value = (String) attrs.get(key);
+    for (Map.Entry<String, String> entry : attrs.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
 
       try {
         attrInd = Integer.parseInt(key.substring(0, key.indexOf(".")));

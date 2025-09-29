@@ -1,7 +1,9 @@
 package network.crypta.support;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
 
@@ -19,8 +21,8 @@ public class MemoryLimitedJobRunner {
   /** The amount of some limited resource that is in use */
   private long counter;
 
-  /** The jobs we can't start yet. FIXME Always FIFO order? Small jobs first? Prioritised even? */
-  private final Deque<MemoryLimitedJob>[] jobs;
+  /** The jobs we can't start yet, bucketed by priority. */
+  private final List<Deque<MemoryLimitedJob>> jobs;
 
   private final Executor executor;
   private int runningThreads;
@@ -33,12 +35,11 @@ public class MemoryLimitedJobRunner {
     Logger.registerClass(MemoryLimitedJobRunner.class);
   }
 
-  @SuppressWarnings("unchecked")
   public MemoryLimitedJobRunner(long capacity, int maxThreads, Executor executor, int priorities) {
     this.capacity = capacity;
     this.counter = 0;
-    this.jobs = (ArrayDeque<MemoryLimitedJob>[]) new ArrayDeque<?>[priorities];
-    for (int i = 0; i < jobs.length; i++) jobs[i] = new ArrayDeque<>();
+    this.jobs = new ArrayList<>(priorities);
+    for (int i = 0; i < priorities; i++) jobs.add(new ArrayDeque<>());
     this.executor = executor;
     this.maxThreads = maxThreads;
   }
@@ -53,7 +54,7 @@ public class MemoryLimitedJobRunner {
       throw new IllegalArgumentException(
           "Job size " + job.initialAllocation + " > capacity " + capacity);
     if (logMINOR) Logger.minor(this, "Queueing job " + job + " at priority " + job.getPriority());
-    jobs[job.getPriority()].add(job);
+    jobs.get(job.getPriority()).add(job);
     maybeStartJobs();
   }
 
@@ -74,13 +75,13 @@ public class MemoryLimitedJobRunner {
     while (true) {
       MemoryLimitedJob job = null;
       int prio = 0;
-      for (; prio < jobs.length; prio++) {
-        job = jobs[prio].peekFirst();
+      for (; prio < jobs.size(); prio++) {
+        job = jobs.get(prio).peekFirst();
         if (job != null) break;
       }
       if (job == null) return;
       if (job.initialAllocation + counter <= capacity && runningThreads < maxThreads) {
-        jobs[prio].removeFirst();
+        jobs.get(prio).removeFirst();
         startJob(job);
       } else return;
     }

@@ -7,6 +7,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -37,10 +38,10 @@ public class BootstrapSeedTest {
     try {
       String ipOverride = null;
       if (args.length > 0) ipOverride = args[0];
+      final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-test");
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -53,31 +54,29 @@ public class BootstrapSeedTest {
       fis.close();
       // Create one node
       Executor executor = new PooledExecutor();
-      node =
-          NodeStarter.createTestNode(
-              DARKNET_PORT,
-              OPENNET_PORT,
-              "bootstrap-test",
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
+      TestNodeParameters params =
+          TestNodeParameterFactory.create(
+              dir,
               random,
               executor,
-              1000,
-              5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              false,
-              true,
-              false,
-              false,
-              ipOverride);
+              p -> {
+                p.port = DARKNET_PORT;
+                p.opennetPort = OPENNET_PORT;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 5 * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.connectToSeednodes = true;
+                p.ipAddressOverride = ipOverrideFinal;
+              });
+      node = NodeStarter.createTestNode(params);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
       // Logger.setupStdoutLogging(LogLevel.MINOR,
       // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");

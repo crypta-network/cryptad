@@ -3,6 +3,7 @@ package network.crypta.support;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.node.PrioRunnable;
@@ -21,9 +22,7 @@ public class PooledExecutor implements Executor {
   private final int[] runningThreads = new int[NativeThread.JAVA_PRIORITY_RANGE + 1];
 
   /** Threads waiting for a job */
-  @SuppressWarnings("unchecked")
-  private final ArrayList<MyThread>[] waitingThreads =
-      (ArrayList<MyThread>[]) new ArrayList<?>[runningThreads.length];
+  private final List<ArrayList<MyThread>> waitingThreads = new ArrayList<>(runningThreads.length);
 
   private volatile int waitingThreadsCount;
   AtomicLong[] threadCounter = new AtomicLong[runningThreads.length];
@@ -40,7 +39,7 @@ public class PooledExecutor implements Executor {
   public PooledExecutor() {
     for (int i = 0; i < runningThreads.length; i++) {
       /* runningThreads[i] = 0; */
-      waitingThreads[i] = new ArrayList<>();
+      waitingThreads.add(new ArrayList<>());
       threadCounter[i] = new AtomicLong();
     }
     waitingThreadsCount = 0;
@@ -80,8 +79,9 @@ public class PooledExecutor implements Executor {
       boolean miss = false;
       synchronized (this) {
         jobCount++;
-        if (!waitingThreads[prio - 1].isEmpty()) {
-          t = waitingThreads[prio - 1].remove(waitingThreads[prio - 1].size() - 1);
+        if (!waitingThreads.get(prio - 1).isEmpty()) {
+          ArrayList<MyThread> list = waitingThreads.get(prio - 1);
+          t = list.remove(list.size() - 1);
           if (t != null) waitingThreadsCount--;
           if (logMINOR) Logger.minor(this, "Reusing thread " + t);
         } else {
@@ -156,14 +156,14 @@ public class PooledExecutor implements Executor {
   public synchronized int[] runningThreads() {
     int[] result = new int[runningThreads.length];
     for (int i = 0; i < result.length; i++)
-      result[i] = runningThreads[i] - waitingThreads[i].size();
+      result[i] = runningThreads[i] - waitingThreads.get(i).size();
     return result;
   }
 
   @Override
   public synchronized int[] waitingThreads() {
-    int[] result = new int[waitingThreads.length];
-    for (int i = 0; i < result.length; i++) result[i] = waitingThreads[i].size();
+    int[] result = new int[waitingThreads.size()];
+    for (int i = 0; i < result.length; i++) result[i] = waitingThreads.get(i).size();
     return result;
   }
 
@@ -232,7 +232,7 @@ public class PooledExecutor implements Executor {
 
         if (job == null) {
           synchronized (PooledExecutor.this) {
-            waitingThreads[nativePriority - 1].add(this);
+            waitingThreads.get(nativePriority - 1).add(this);
             waitingThreadsCount++;
           }
           synchronized (this) {
@@ -246,7 +246,7 @@ public class PooledExecutor implements Executor {
             }
           }
           synchronized (PooledExecutor.this) {
-            if (waitingThreads[nativePriority - 1].remove(this)) waitingThreadsCount--;
+            if (waitingThreads.get(nativePriority - 1).remove(this)) waitingThreadsCount--;
 
             synchronized (this) {
               job = nextJob;

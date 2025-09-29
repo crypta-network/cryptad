@@ -19,7 +19,7 @@ class BlockCiphers {
 
   static BlockCipher aes() {
     try {
-      return USE_JCE_FOR_AES ? new JceEcbBlockCipher("AES") : new AESEngine();
+      return USE_JCE_FOR_AES ? new JceEcbBlockCipher("AES") : (BlockCipher) AESEngine.newInstance();
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }

@@ -1,7 +1,5 @@
 package network.crypta.support;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -22,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.Vector;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -115,7 +111,7 @@ public class MultiValueTableTest {
     MultiValueTable<Integer, String> table = MultiValueTable.from(keys, values);
     assertEquals(3, table.keySet().size());
     for (int i = 0; i < keys.length; i++) {
-      assertEquals(values[i], table.get(keys[i]));
+      assertEquals(values[i], table.getFirst(keys[i]));
     }
 
     assertArrayEquals(keys, table.keySet().toArray(new Integer[0]));
@@ -171,13 +167,6 @@ public class MultiValueTableTest {
   }
 
   @Test
-  public void testGet() {
-    for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
-      assertEquals(entry.getValue().getFirst(), multiValueTable.get(entry.getKey()));
-    }
-  }
-
-  @Test
   public void containsKeyReturnsFalseForNonExistingKey() {
     assertFalse(multiValueTable.containsKey(NON_EXISTING_KEY));
   }
@@ -204,42 +193,6 @@ public class MultiValueTableTest {
   }
 
   @Test
-  public void getAllMethodReturnsEmptyEnumerationForNonExistentKey() {
-    Enumeration<Object> elements = multiValueTable.getAll(NON_EXISTING_KEY);
-    assertNotNull(elements);
-    assertFalse(elements.hasMoreElements());
-  }
-
-  @Test
-  public void getAllMethodReturnsImmutableEnumeration() {
-    multiValueTable = new MultiValueTable<>();
-    multiValueTable.putAll(1, Arrays.asList("one", "two"));
-
-    Enumeration<Object> enumeration = multiValueTable.getAll(1);
-
-    multiValueTable.put(1, "three");
-
-    int count = 0;
-    while (enumeration.hasMoreElements()) {
-      enumeration.nextElement();
-      ++count;
-    }
-    assertEquals(2, count);
-  }
-
-  @Test
-  public void testGetAll() {
-    for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
-      Enumeration<Object> actualElements = multiValueTable.getAll(entry.getKey());
-      for (Object element : entry.getValue()) {
-        assertTrue(actualElements.hasMoreElements());
-        assertEquals(element, actualElements.nextElement());
-      }
-      assertFalse(actualElements.hasMoreElements());
-    }
-  }
-
-  @Test
   public void testGetAllAsList() {
     for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
       assertEquals(entry.getValue(), multiValueTable.getAllAsList(entry.getKey()));
@@ -259,41 +212,6 @@ public class MultiValueTableTest {
 
     assertThrows(UnsupportedOperationException.class, () -> list.add("four"));
     assertEquals(3, multiValueTable.getAllAsList(1).size());
-  }
-
-  @Test
-  public void testGetArray() {
-    for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
-      assertArrayEquals(entry.getValue().toArray(), multiValueTable.getArray(entry.getKey()));
-    }
-  }
-
-  @Test
-  public void getArrayMethodReturnsNullValueWhenKeyIsMissing() {
-    assertNull(new MultiValueTable<>().getArray(1));
-  }
-
-  @Test
-  public void testGetSync() {
-    for (Map.Entry<Integer, List<Object>> entry : sampleObjects.entrySet()) {
-      assertEquals(entry.getValue(), multiValueTable.getSync(entry.getKey()));
-    }
-  }
-
-  @Test
-  public void getSyncMethodReturnsVectorObject() {
-    List<String> values = Arrays.asList("one", "two");
-    multiValueTable = new MultiValueTable<>();
-    multiValueTable.putAll(1, values);
-
-    Object object = multiValueTable.getSync(1);
-    assertThat(object, instanceOf(Vector.class));
-    assertEquals(new Vector<>(values), object);
-  }
-
-  @Test
-  public void getSyncMethodReturnsNullIfKeyIsMissing() {
-    assertNull(new MultiValueTable<>().getSync("notExistingKey"));
   }
 
   @Test
@@ -427,47 +345,11 @@ public class MultiValueTableTest {
   }
 
   @Test
-  public void keysMethodReturnsEmptyEnumerationForEmptyTable() {
-    multiValueTable = new MultiValueTable<>();
-    Enumeration<Integer> keys = multiValueTable.keys();
-    assertNotNull(keys);
-    assertFalse(keys.hasMoreElements());
-  }
-
-  @Test
-  public void keysMethodReturnsImmutableEnumeration() {
-    multiValueTable = new MultiValueTable<>();
-    multiValueTable.put(1, "one");
-    multiValueTable.put(2, "two");
-
-    Enumeration<Integer> enumeration = multiValueTable.keys();
-
-    multiValueTable.put(3, "three");
-
-    int count = 0;
-    while (enumeration.hasMoreElements()) {
-      enumeration.nextElement();
-      ++count;
-    }
-    assertEquals(2, count);
-  }
-
-  @Test
   public void keySetMethodReturnsEmptyCollectionForEmptyTable() {
     multiValueTable = new MultiValueTable<>();
     Set<Integer> keys = multiValueTable.keySet();
     assertNotNull(keys);
     assertTrue(keys.isEmpty());
-  }
-
-  @Test
-  public void testKeys() {
-    Enumeration<Integer> keys = multiValueTable.keys();
-    assertNotNull(keys);
-    while (keys.hasMoreElements()) {
-      assertNotNull(sampleObjects.remove(keys.nextElement()));
-    }
-    assertTrue(sampleObjects.isEmpty());
   }
 
   @Test
@@ -489,37 +371,6 @@ public class MultiValueTableTest {
 
     assertThrows(UnsupportedOperationException.class, () -> keys.remove(3));
     assertEquals(3, multiValueTable.keySet().size());
-  }
-
-  @Test
-  public void testElements() {
-    Set<Object> expectedObjects =
-        sampleObjects.values().stream()
-            .flatMap(List::stream)
-            .collect(Collectors.toCollection(HashSet::new));
-    Enumeration<Object> elements = multiValueTable.elements();
-    assertNotNull(elements);
-    while (elements.hasMoreElements()) {
-      assertTrue(expectedObjects.remove(elements.nextElement()));
-    }
-    assertTrue(expectedObjects.isEmpty());
-  }
-
-  @Test
-  public void elementsMethodReturnsImmutableEnumeration() {
-    multiValueTable = new MultiValueTable<>();
-    multiValueTable.putAll(1, Arrays.asList("one", "two"));
-
-    Enumeration<Object> enumeration = multiValueTable.elements();
-
-    multiValueTable.put(3, "three");
-
-    int count = 0;
-    while (enumeration.hasMoreElements()) {
-      enumeration.nextElement();
-      ++count;
-    }
-    assertEquals(2, count);
   }
 
   @Test

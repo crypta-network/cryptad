@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import static network.crypta.testsupport.TestRandomData.fillRandomAccessBuffer;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataOutputStream;
@@ -802,7 +803,7 @@ public class SplitFileInserterStorageTest {
   private LockableRandomAccessBuffer generateData(
       Random random, long size, LockableRandomAccessBufferFactory factory) throws IOException {
     LockableRandomAccessBuffer thing = factory.makeRAF(size);
-    BucketTools.fill(thing, random, 0, size);
+    fillRandomAccessBuffer(thing, random, 0, size);
     return new ReadOnlyRandomAccessBuffer(thing);
   }
 

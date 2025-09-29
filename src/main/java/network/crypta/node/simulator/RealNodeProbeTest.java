@@ -9,6 +9,7 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
@@ -44,50 +45,54 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     System.out.println("Probe test using real nodes:");
     System.out.println();
     String dir = "realNodeProbeTest";
-    File wd = new File(dir);
-    if (!FileUtil.removeAll(wd)) {
+    File baseDirectory = new File(dir);
+    if (!FileUtil.removeAll(baseDirectory)) {
       System.err.println("Mass delete failed, test may not be accurate.");
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
-    if (!wd.mkdir()) {
+    if (!baseDirectory.mkdir()) {
       System.err.println("Unabled to create test directory \"" + dir + "\".");
       return;
     }
-    NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", true);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
+    NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     Logger.normal(RealNodeProbeTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              dir,
-              true,
-              MAX_HTL,
-              0 /* no dropped packets */,
+      final int port = DARKNET_PORT_BASE + i;
+      final boolean enableFcp = i == 0;
+      TestNodeParameters params =
+          TestNodeParameterFactory.create(
+              baseDirectory,
               random,
               executor,
-              500 * NUMBER_OF_NODES,
-              256 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              false,
-              false,
-              ENABLE_SWAP_QUEUEING,
-              true,
-              OUTPUT_BANDWIDTH_LIMIT,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null,
-              i == 0);
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = true;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 0;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 256L * 1024;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableARKs = false;
+                p.enableULPRs = false;
+                p.enablePerNodeFailureTables = false;
+                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = OUTPUT_BANDWIDTH_LIMIT;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+                p.useSlashdotCache = false;
+                p.enableFCP = enableFcp;
+              });
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeProbeTest.class, "Created node " + i);
     }
     Logger.normal(RealNodeProbeTest.class, "Created " + NUMBER_OF_NODES + " nodes");

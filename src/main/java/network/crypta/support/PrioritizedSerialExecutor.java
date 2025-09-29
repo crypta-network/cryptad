@@ -3,6 +3,8 @@ package network.crypta.support;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.Logger.LogLevel;
@@ -21,7 +23,7 @@ public class PrioritizedSerialExecutor implements Executor {
         });
   }
 
-  private final ArrayDeque<Runnable>[] jobs;
+  private final List<ArrayDeque<Runnable>> jobs;
   private final int priority;
   private final int defaultPriority;
   private boolean waiting;
@@ -122,17 +124,17 @@ public class PrioritizedSerialExecutor implements Executor {
 
     private Runnable checkQueue() {
       if (!invertOrder) {
-        for (int i = 0; i < jobs.length; i++) {
-          if (!jobs[i].isEmpty()) {
+        for (int i = 0; i < jobs.size(); i++) {
+          if (!jobs.get(i).isEmpty()) {
             if (logMINOR) Logger.minor(this, "Chosen job at priority " + i);
-            return jobs[i].removeFirst();
+            return jobs.get(i).removeFirst();
           }
         }
       } else {
-        for (int i = jobs.length - 1; i >= 0; i--) {
-          if (!jobs[i].isEmpty()) {
+        for (int i = jobs.size() - 1; i >= 0; i--) {
+          if (!jobs.get(i).isEmpty()) {
             if (logMINOR) Logger.minor(this, "Chosen job at priority " + i);
-            return jobs[i].removeFirst();
+            return jobs.get(i).removeFirst();
           }
         }
       }
@@ -155,12 +157,10 @@ public class PrioritizedSerialExecutor implements Executor {
       long jobTimeout,
       ExecutorIdleCallback callback,
       NodeStats statistics) {
-    @SuppressWarnings("unchecked")
-    ArrayDeque<Runnable>[] jobs = (ArrayDeque<Runnable>[]) new ArrayDeque<?>[internalPriorityCount];
-    for (int i = 0; i < jobs.length; i++) {
-      jobs[i] = new ArrayDeque<>();
+    this.jobs = new ArrayList<>(internalPriorityCount);
+    for (int i = 0; i < internalPriorityCount; i++) {
+      this.jobs.add(new ArrayDeque<>());
     }
-    this.jobs = jobs;
     this.priority = priority;
     this.defaultPriority = defaultPriority;
     this.invertOrder = invertOrder;
@@ -236,7 +236,7 @@ public class PrioritizedSerialExecutor implements Executor {
                 + running
                 + " waiting="
                 + waiting);
-      jobs[prio].addLast(job);
+      jobs.get(prio).addLast(job);
       jobs.notifyAll();
       if (!running && realExecutor != null) {
         reallyStart();
@@ -246,7 +246,7 @@ public class PrioritizedSerialExecutor implements Executor {
 
   public void executeNoDupes(Runnable job, int prio, String jobName) {
     synchronized (jobs) {
-      if (jobs[prio].contains(job)) {
+      if (jobs.get(prio).contains(job)) {
         if (logMINOR) Logger.minor(this, "Not queueing job: Job already queued: " + job);
         return;
       }
@@ -265,7 +265,7 @@ public class PrioritizedSerialExecutor implements Executor {
                 + " waiting="
                 + waiting);
 
-      jobs[prio].addLast(job);
+      jobs.get(prio).addLast(job);
       jobs.notifyAll();
       if (!running && realExecutor != null) {
         reallyStart();
@@ -303,19 +303,19 @@ public class PrioritizedSerialExecutor implements Executor {
   }
 
   public int[] getQueuedJobsCountByPriority() {
-    int[] retval = new int[jobs.length];
+    int[] retval = new int[jobs.size()];
     synchronized (jobs) {
-      for (int i = 0; i < retval.length; i++) retval[i] = jobs[i].size();
+      for (int i = 0; i < retval.length; i++) retval[i] = jobs.get(i).size();
     }
     return retval;
   }
 
   public Runnable[][] getQueuedJobsByPriority() {
-    final Runnable[][] ret = new Runnable[jobs.length][];
+    final Runnable[][] ret = new Runnable[jobs.size()][];
 
     synchronized (jobs) {
-      for (int i = 0; i < jobs.length; ++i) {
-        ret[i] = jobs[i].toArray(new Runnable[0]);
+      for (int i = 0; i < jobs.size(); ++i) {
+        ret[i] = jobs.get(i).toArray(new Runnable[0]);
       }
     }
 
@@ -324,7 +324,7 @@ public class PrioritizedSerialExecutor implements Executor {
 
   public int getQueueSize(int priority) {
     synchronized (jobs) {
-      return jobs[priority].size();
+      return jobs.get(priority).size();
     }
   }
 
@@ -337,7 +337,7 @@ public class PrioritizedSerialExecutor implements Executor {
 
   public boolean anyQueued() {
     synchronized (jobs) {
-      for (int i = 0; i < jobs.length; i++) if (!jobs[i].isEmpty()) return true;
+      for (int i = 0; i < jobs.size(); i++) if (!jobs.get(i).isEmpty()) return true;
     }
     return false;
   }

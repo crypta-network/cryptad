@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import network.crypta.client.InsertContext;
+import network.crypta.client.Metadata;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.ContainerSizeEstimator;
 import network.crypta.support.ContainerSizeEstimator.ContainerSize;
@@ -111,8 +112,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     for (Map.Entry<String, Object> entry : metadata.entrySet()) {
       Object o = entry.getValue();
       if (o instanceof HashMap) {
-        @SuppressWarnings("unchecked")
-        HashMap<String, Object> hm = (HashMap<String, Object>) o;
+        HashMap<String, Object> hm = Metadata.forceMap(o);
         verifyManifest(hm);
         continue;
       }
@@ -220,8 +220,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
         Object o = entry.getValue();
         // 512 bytes for the dir entry already included in tmpSize.
         if (o instanceof HashMap) {
-          @SuppressWarnings("unchecked")
-          HashMap<String, Object> hm = (HashMap<String, Object>) o;
+          HashMap<String, Object> hm = Metadata.forceMap(o);
           // It will be possible to make it fit provided there is at least space for every subdir
           // and file to be a redirect/external.
           if (tmpSize < maxSize - (512L * hm.size())) {
@@ -282,8 +281,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
           String name = entry.getKey();
           Object o = entry.getValue();
           if (o instanceof HashMap) {
-            @SuppressWarnings("unchecked")
-            HashMap<String, Object> hm = (HashMap<String, Object>) o;
+            HashMap<String, Object> hm = Metadata.forceMap(o);
             containerBuilder.pushCurrentDir();
             containerBuilder.makeSubDirCD(name);
             makeEveryThingUnlimitedPutHandlers(containerBuilder, hm, defaultName, prefix);
@@ -297,8 +295,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
           String name = entry.getKey();
           Object o = entry.getValue();
           if (o instanceof HashMap) {
-            @SuppressWarnings("unchecked")
-            HashMap<String, Object> hm = (HashMap<String, Object>) o;
+            HashMap<String, Object> hm = Metadata.forceMap(o);
             containerBuilder.pushCurrentDir();
             containerBuilder.makeSubDirCD(name);
             makeEveryThingPutHandlers(containerBuilder, hm, defaultName, prefix);
@@ -315,8 +312,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
         String name = entry.getKey();
         Object o = entry.getValue();
         if (o instanceof HashMap) {
-          @SuppressWarnings("unchecked")
-          HashMap<String, Object> hm = (HashMap<String, Object>) o;
+          HashMap<String, Object> hm = Metadata.forceMap(o);
           ContainerBuilder subC = containerBuilder.makeSubContainer(name);
           makePutHandlers(subC, hm, defaultName, "", DEFAULT_MAX_CONTAINERSIZE, name);
           tmpSize += 512;
@@ -426,8 +422,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
       if (o instanceof ManifestElement element) {
         containerBuilder.addItem(name, prefix + name, element, name.equals(defaultName));
       } else {
-        @SuppressWarnings("unchecked")
-        HashMap<String, Object> hm = (HashMap<String, Object>) o;
+        HashMap<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingUnlimitedPutHandlers(containerBuilder, hm, defaultName, "");
@@ -450,8 +445,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
               name, element.getData(), element.getMimeTypeOverride(), name.equals(defaultName));
         else containerBuilder.addItem(name, prefix + name, element, name.equals(defaultName));
       } else {
-        @SuppressWarnings("unchecked")
-        HashMap<String, Object> hm = (HashMap<String, Object>) o;
+        HashMap<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingPutHandlers(containerBuilder, hm, defaultName, "");

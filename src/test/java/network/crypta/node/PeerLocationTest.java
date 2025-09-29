@@ -70,19 +70,18 @@ public class PeerLocationTest {
   }
 
   // Generate sets of sequential omitted values of half the length, plus the empty set
-  @SuppressWarnings("unchecked")
-  private Set<Double>[] omit(double[] locs) {
-    Set<Double>[] result = (Set<Double>[]) new Set<?>[locs.length + 1];
-    result[locs.length] = new HashSet<>();
+  private java.util.List<Set<Double>> omit(double[] locs) {
+    java.util.List<Set<Double>> result = new java.util.ArrayList<>(locs.length + 1);
     int n = locs.length / 2 + 1;
     for (int i = 0; i < locs.length; i++) {
       Set<Double> s = new HashSet<>();
       for (int j = 0; j < n; j++) {
         s.add(locs[(i + j) % locs.length]);
       }
-      result[i] = s;
-      assertFalse(result[i].isEmpty());
+      result.add(s);
+      assertFalse(s.isEmpty());
     }
+    result.add(new HashSet<>()); // Include the empty set
     return result;
   }
 

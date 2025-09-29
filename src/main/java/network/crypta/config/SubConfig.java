@@ -1,6 +1,8 @@
 package network.crypta.config;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import network.crypta.support.LogThresholdCallback;
@@ -34,11 +36,8 @@ public class SubConfig implements Comparable<SubConfig> {
         });
   }
 
-  /**
-   * @deprecated Use {@link Config#createSubConfig(String)} instead
-   */
-  @Deprecated
-  public SubConfig(String prefix, Config config) {
+  /** Use {@link Config#createSubConfig(String)} instead. */
+  SubConfig(String prefix, Config config) {
     this.config = config;
     this.prefix = prefix;
     map = new LinkedHashMap<>();
@@ -89,7 +88,7 @@ public class SubConfig implements Comparable<SubConfig> {
             shortDesc,
             longDesc,
             cb,
-            isSize));
+            isSize ? Dimension.SIZE : Dimension.NOT));
   }
 
   public void register(
@@ -189,17 +188,15 @@ public class SubConfig implements Comparable<SubConfig> {
       boolean isSize) {
     if (cb == null) cb = new NullIntCallback();
     register(
-        new IntOption(
-            this,
-            optionName,
-            defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            isSize));
+        optionName,
+        defaultValueString,
+        sortOrder,
+        expert,
+        forceWrite,
+        shortDesc,
+        longDesc,
+        cb,
+        isSize ? Dimension.SIZE : Dimension.NOT);
   }
 
   public void register(
@@ -491,12 +488,10 @@ public class SubConfig implements Comparable<SubConfig> {
 
   public SimpleFieldSet exportFieldSet(Config.RequestType configRequestType, boolean withDefaults) {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    @SuppressWarnings("unchecked")
-    Map.Entry<String, Option<?>>[] entries =
-        (Map.Entry<String, Option<?>>[]) new Map.Entry<?, ?>[map.size()];
-    // FIXME is any locking at all necessary here? After it has finished init, it's constant...
+    // Snapshot entries into a typed List to avoid generic array casts.
+    final List<Map.Entry<String, Option<?>>> entries;
     synchronized (this) {
-      entries = map.entrySet().toArray(entries);
+      entries = new ArrayList<>(map.entrySet());
     }
     if (logMINOR) Logger.minor(this, "Prefix=" + prefix);
     for (Map.Entry<String, Option<?>> entry : entries) {

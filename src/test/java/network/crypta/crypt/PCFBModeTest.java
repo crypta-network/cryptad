@@ -2,9 +2,9 @@ package network.crypta.crypt;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.Random;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.HexUtil;
-import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
 
 // 256,256 PCFB is the same as 256,256 CFB, however JCA does not support 256-bit block size, so we
@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 // need PCFB for a while if only for old keys, so we need to test it.
 public class PCFBModeTest {
 
-  private final MersenneTwister mt = new MersenneTwister(1634);
+  private final Random mt = new Random(1634L);
 
   // FIXME I don't think there are any standard test vectors?
   byte[] PCFB_256_ENCRYPT_KEY =
@@ -80,7 +80,7 @@ public class PCFBModeTest {
       throws UnsupportedCipherException {
     Rijndael cipher = new Rijndael(bits, bits);
     cipher.initialize(key);
-    PCFBMode ctr = PCFBMode.create(cipher);
+    PCFBMode ctr = PCFBMode.create(cipher, iv);
     ctr.reset(iv);
     byte[] output = new byte[plaintext.length];
     System.arraycopy(plaintext, 0, output, 0, plaintext.length);
@@ -102,10 +102,10 @@ public class PCFBModeTest {
 
       Rijndael cipher = new Rijndael(bits, bits);
       cipher.initialize(key);
-      PCFBMode ctr = PCFBMode.create(cipher);
+      PCFBMode ctr = PCFBMode.create(cipher, iv);
       ctr.reset(iv);
       byte[] output = new byte[plaintext.length];
-      MersenneTwister random = new MersenneTwister(seed);
+      Random random = new Random(seed);
       int ptr = 0;
       System.arraycopy(plaintext, 0, output, 0, plaintext.length);
       while (ptr < plaintext.length) {
@@ -141,14 +141,14 @@ public class PCFBModeTest {
       // First encrypt as a block.
       Rijndael cipher = new Rijndael(256, 256);
       cipher.initialize(key);
-      PCFBMode ctr = PCFBMode.create(cipher);
+      PCFBMode ctr = PCFBMode.create(cipher, iv);
       ctr.reset(iv);
       byte[] ciphertext = new byte[plaintext.length];
       System.arraycopy(plaintext, 0, ciphertext, 0, ciphertext.length);
       // ctr.blockEncipher(plaintext, 0, plaintext.length, ciphertext, 0);
       ctr.blockEncipher(ciphertext, 0, ciphertext.length);
       // Now decrypt.
-      ctr = PCFBMode.create(cipher);
+      ctr = PCFBMode.create(cipher, iv);
       ctr.reset(iv);
       byte[] finalPlaintext = new byte[plaintext.length];
       System.arraycopy(ciphertext, 0, finalPlaintext, 0, ciphertext.length);
@@ -158,11 +158,11 @@ public class PCFBModeTest {
 
       // Now encrypt again, in random pieces.
       cipher.initialize(key);
-      ctr = PCFBMode.create(cipher);
+      ctr = PCFBMode.create(cipher, iv);
       ctr.reset(iv);
       byte[] output = new byte[plaintext.length];
 
-      MersenneTwister random = new MersenneTwister(mt.nextLong());
+      Random random = new Random(mt.nextLong());
       int ptr = 0;
       System.arraycopy(plaintext, 0, output, 0, plaintext.length);
       while (ptr < plaintext.length) {

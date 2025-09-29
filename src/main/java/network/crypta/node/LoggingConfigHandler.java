@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -284,7 +285,7 @@ public class LoggingConfigHandler {
             throw new NodeNeedRestartException("logger.maxCachedLogLines");
           }
         },
-        false);
+        Dimension.NOT);
 
     maxCachedLogLines = config.getInt("maxCachedLines");
 

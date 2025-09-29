@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import network.crypta.pluginmanager.PluginManager.PluginProgress;
@@ -15,7 +17,13 @@ public class PluginDownLoaderURL extends PluginDownLoader<URL> {
   @Override
   public URL checkSource(String source) throws PluginNotFoundException {
     try {
-      return new URL(source);
+      try {
+        return URI.create(source).toURL();
+      } catch (IllegalArgumentException e1) {
+        MalformedURLException malformed = new MalformedURLException(e1.getMessage());
+        malformed.initCause(e1);
+        throw malformed;
+      }
     } catch (MalformedURLException e) {
       // Generate a meaningful error message when file not found falls back to a URL.
       // Maybe it's a file?
@@ -77,7 +85,13 @@ public class PluginDownLoaderURL extends PluginDownLoader<URL> {
           String loc = http.getHeaderField("Location");
           URL target = null;
           if (loc != null) {
-            target = new URL(base, loc);
+            try {
+              target = base.toURI().resolve(loc).toURL();
+            } catch (URISyntaxException | IllegalArgumentException e) {
+              MalformedURLException malformed = new MalformedURLException(e.getMessage());
+              malformed.initCause(e);
+              throw malformed;
+            }
           }
           http.disconnect();
           // Redirection should be allowed only for HTTP and HTTPS

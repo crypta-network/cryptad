@@ -156,12 +156,6 @@ public class FreenetURITest {
   }
 
   @Test
-  public void internedUskIsPreserved() throws MalformedURLException {
-    FreenetURI uri1 = new FreenetURI(WANNA_USK_1);
-    assertEquals(uri1.toString(), uri1.intern().toString());
-  }
-
-  @Test
   public void addedValidSchemaPrefixesAreIgnored() throws MalformedURLException {
     for (String prefix :
         Arrays.asList(

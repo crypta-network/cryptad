@@ -184,8 +184,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
       final File dir = new File("longterm-mhk-test-" + uid);
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -199,31 +198,27 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       }
 
       // Create one node
-      node =
-          NodeStarter.createTestNode(
-              DARKNET_PORT1,
-              OPENNET_PORT1,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
-              random,
-              new PooledExecutor(),
-              1000,
-              4 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              true,
-              true,
-              false,
-              false,
-              null);
+      NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
+      params.port = DARKNET_PORT1;
+      params.opennetPort = OPENNET_PORT1;
+      params.baseDirectory = dir;
+      params.disableProbabilisticHTLs = false;
+      params.maxHTL = Node.DEFAULT_MAX_HTL;
+      params.random = random;
+      params.executor = new PooledExecutor();
+      params.threadLimit = 1000;
+      params.storeSize = 4L * 1024 * 1024;
+      params.ramStore = true;
+      params.enableSwapping = true;
+      params.enableARKs = true;
+      params.enableULPRs = true;
+      params.enablePerNodeFailureTables = true;
+      params.enableSwapQueueing = true;
+      params.enablePacketCoalescing = true;
+      params.outputBandwidthLimit = 12 * 1024;
+      params.enableFOAF = true;
+      params.connectToSeednodes = true;
+      node = NodeStarter.createTestNode(params);
       Logger.getChain().setThreshold(LogLevel.ERROR);
 
       // Start it

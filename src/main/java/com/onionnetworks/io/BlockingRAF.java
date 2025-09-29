@@ -1,8 +1,14 @@
 package com.onionnetworks.io;
 
-import com.onionnetworks.util.*;
-import java.io.*;
-import java.util.*;
+import com.onionnetworks.util.Buffer;
+import com.onionnetworks.util.Range;
+import com.onionnetworks.util.RangeSet;
+import com.onionnetworks.util.Tuple;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 public class BlockingRAF extends FilterRAF {
 
@@ -12,7 +18,7 @@ public class BlockingRAF extends FilterRAF {
   // Make sure not to key buffers off of a Range, or any other non-unique
   // object, as multiple readers may be using the same key and will trash
   // each other.
-  HashMap buffers = new HashMap();
+  Map<Object, Tuple> buffers = new HashMap<>();
 
   public BlockingRAF(RAF raf) {
     super(raf);
@@ -45,9 +51,9 @@ public class BlockingRAF extends FilterRAF {
 
     Range r = new Range(pos, pos + len - 1);
 
-    for (Iterator it = buffers.keySet().iterator(); it.hasNext(); ) {
-      Object key = (Object) it.next();
-      Tuple t = (Tuple) buffers.get(key);
+    for (Iterator<Map.Entry<Object, Tuple>> it = buffers.entrySet().iterator(); it.hasNext(); ) {
+      Map.Entry<Object, Tuple> entry = it.next();
+      Tuple t = entry.getValue();
       Range r2 = (Range) t.getLeft();
       Buffer buf = (Buffer) t.getRight();
 

@@ -17,6 +17,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
@@ -59,10 +60,10 @@ public class BootstrapPullTest {
     try {
       String ipOverride = null;
       if (args.length > 0) ipOverride = args[0];
+      final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-pull-test");
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
       byte[] seed = new byte[64];
       random.nextBytes(seed);
       MersenneTwister fastRandom = MersenneTwister.createUnsynchronized(seed);
@@ -100,31 +101,29 @@ public class BootstrapPullTest {
       FileUtil.writeTo(fis, new File(secondInnerDir, "seednodes.fref"));
       fis.close();
       PooledExecutor executor = new PooledExecutor();
-      secondNode =
-          NodeStarter.createTestNode(
-              DARKNET_PORT,
-              OPENNET_PORT,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
+      TestNodeParameters params =
+          TestNodeParameterFactory.create(
+              dir,
               random,
               executor,
-              1000,
-              5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              12 * 1024,
-              false,
-              true,
-              false,
-              false,
-              ipOverride);
+              p -> {
+                p.port = DARKNET_PORT;
+                p.opennetPort = OPENNET_PORT;
+                p.maxHTL = Node.DEFAULT_MAX_HTL;
+                p.threadLimit = 1000;
+                p.storeSize = 5 * 1024 * 1024;
+                p.ramStore = true;
+                p.enableSwapping = true;
+                p.enableARKs = true;
+                p.enableULPRs = true;
+                p.enablePerNodeFailureTables = true;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 12 * 1024;
+                p.connectToSeednodes = true;
+                p.ipAddressOverride = ipOverrideFinal;
+              });
+      secondNode = NodeStarter.createTestNode(params);
       secondNode.start(true);
 
       if (!TestUtil.waitForNodes(secondNode)) {

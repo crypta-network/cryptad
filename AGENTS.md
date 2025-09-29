@@ -56,6 +56,14 @@ architecture review).
 
 ## Recent Changes & Tips (Sep 2025)
 
+- AEAD: OCB replaced with AES‑GCM (breaking)
+  - We migrated AEAD streams from OCB to AES‑GCM and removed all legacy compatibility paths. Readers now treat the first 12 bytes of the 16‑byte on‑disk prefix as the GCM nonce; the remaining 4 bytes are reserved. Overhead remains 32 bytes (16‑byte prefix + 16‑byte tag).
+  - Impact: Any AEAD‑encrypted data written by previous OCB code will fail to decrypt. Specifically:
+    - Client persistence: `client.dat.crypt` / `client.dat.bak.crypt` cannot be read; the node will start without resuming persistent requests.
+    - Plugin stores: `*.data.crypt` cannot be read; plugins will start with empty/default store data.
+  - No fallback is provided. If you must retain old data, do not upgrade to this build or export/decrypt with an older version first.
+  - Files: `src/main/java/network/crypta/crypt/AEADInputStream.java`, `src/main/java/network/crypta/crypt/AEADOutputStream.java`.
+
 - Remote debugging (Wrapper/JDWP)
   - Set `CRYPTAD_REMOTE_DEBUG=1` to enable JDWP for the wrapped JVM at runtime (no `wrapper.conf` edits).
   - Tunables via env: `CRYPTAD_DEBUG_PORT` (default 5005), `CRYPTAD_DEBUG_HOST` (default 127.0.0.1), `CRYPTAD_DEBUG_SUSPEND` (`y|n`, default `n`), `CRYPTAD_DEBUG_TIMEOUT` (ms, optional).
@@ -74,6 +82,15 @@ architecture review).
 
 - Launcher code style guardrails
   - Use the `APP_NAME` constant for window titles; prefer logging via `LauncherLog` over silent catches; keep Desktop integration hooks inside `try/catch` with debug logs.
+
+- AEAD/OCB nonce compatibility (Sep 2025)
+  - Legacy on-disk format wrote `mainCipher.getBlockSize()` bytes (16 for AES) before the ciphertext; BouncyCastle OCB uses a nonce of at most 15 bytes.
+  - Reader: `AEADInputStream` now consumes the full block size from the stream and initializes OCB with only the first 15 bytes. The extra byte is intentionally discarded so ciphertext is aligned.
+  - Writer: `AEADOutputStream` persists a 16-byte prefix again (`WRITTEN_NONCE_SIZE=16`) while using only the first 15 bytes internally for OCB. This preserves backward compatibility.
+  - Overhead: For AES, `AES_OVERHEAD` is 32 bytes (16-byte written nonce + 16-byte MAC).
+  - Files: `src/main/java/network/crypta/crypt/AEADInputStream.java`, `src/main/java/network/crypta/crypt/AEADOutputStream.java`.
+  - Guardrail: Do not change the on-disk prefix to 15 bytes; doing so would break reading of previously stored data.
+  - Migration note: If any data was written during the brief 15-byte-prefix regression window, coordinate with maintainers for an optional autodetect path before enabling any reader changes.
 
 ### CoreUpdater Migration (Sep 2025)
 

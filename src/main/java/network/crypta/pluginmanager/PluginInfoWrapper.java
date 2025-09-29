@@ -67,7 +67,8 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
     isIPDetectorPlugin = (plug instanceof FredPluginIPDetector);
     isPortForwardPlugin = (plug instanceof FredPluginPortForward);
     isMultiplePlugin = (plug instanceof FredPluginMultiple);
-    isFCPPlugin = (plug instanceof FredPluginFCP);
+    boolean legacyFcpPlugin = plug instanceof FredPluginFCP;
+    isFCPPlugin = legacyFcpPlugin;
     isFCPServerPlugin = (plug instanceof FredPluginFCPMessageHandler.ServerSideFCPMessageHandler);
     isVersionedPlugin = (plug instanceof FredPluginVersioned);
     isLongVersionedPlugin = (plug instanceof FredPluginRealVersioned);

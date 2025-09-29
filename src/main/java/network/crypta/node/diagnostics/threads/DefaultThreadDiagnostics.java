@@ -68,7 +68,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
             .map(
                 thread ->
                     new NodeThreadInfo(
-                        thread.getId(),
+                        thread.threadId(),
                         getJobId(thread),
                         getCpuTimeDelta(thread),
                         getJobName(thread),
@@ -112,7 +112,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
     // while we're measuring it.
     synchronized (thread) {
       name = thread.getName();
-      current = threadMxBean.getThreadCpuTime(thread.getId());
+      current = threadMxBean.getThreadCpuTime(thread.threadId());
       jobId = getJobId(thread);
     }
 
@@ -130,7 +130,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
    * @return Job ID or Thread ID.
    */
   private long getJobId(Thread thread) {
-    long jobId = thread.getId();
+    long jobId = thread.threadId();
     if ((thread instanceof PooledExecutor.MyThread myThread)) {
       jobId = myThread.getJobId();
     }

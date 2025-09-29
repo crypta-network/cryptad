@@ -46,7 +46,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
     }
     wd.mkdir();
     // NOTE: globalTestInit returns in ignored random source
-    NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", true);
+    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, null);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
@@ -56,31 +56,23 @@ public class RealNodeRoutingTest extends RealNodeTest {
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              dir,
-              true,
-              MAX_HTL,
-              0 /* no dropped packets */,
-              random,
-              executor,
-              500 * NUMBER_OF_NODES,
-              65536,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              false,
-              false,
-              ENABLE_SWAP_QUEUEING,
-              true,
-              0,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null);
+      NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
+      params.port = DARKNET_PORT_BASE + i;
+      params.opennetPort = 0;
+      params.baseDirectory = wd;
+      params.disableProbabilisticHTLs = true;
+      params.maxHTL = MAX_HTL;
+      params.random = random;
+      params.executor = executor;
+      params.threadLimit = 500 * NUMBER_OF_NODES;
+      params.storeSize = 65_536L;
+      params.ramStore = true;
+      params.enableSwapping = ENABLE_SWAPPING;
+      params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+      params.enablePacketCoalescing = true;
+      params.enableFOAF = ENABLE_FOAF;
+      params.longPingTimes = true;
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
     Logger.normal(RealNodeRoutingTest.class, "Created " + NUMBER_OF_NODES + " nodes");

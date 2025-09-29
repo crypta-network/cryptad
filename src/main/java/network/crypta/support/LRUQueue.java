@@ -157,7 +157,6 @@ public class LRUQueue<T> {
    * @param array The array to fill in. If it is too small a new array of the same type will be
    *     allocated.
    */
-  @SuppressWarnings("unchecked")
   public synchronized <E> E[] toArrayOrdered(E[] array) {
     array = toArray(array);
     int listSize = list.size();
@@ -166,9 +165,23 @@ public class LRUQueue<T> {
           "array.length=" + array.length + " but list.size=" + listSize);
     int x = 0;
     for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
-      array[x++] = (E) e.nextElement().obj;
+      array[x++] = castElementForArray(array, e.nextElement().obj);
     }
     return array;
+  }
+
+  private static <E> E castElementForArray(E[] array, Object value) {
+    Class<?> component = array.getClass().getComponentType();
+    if (!component.isInstance(value)) {
+      throw new ArrayStoreException(
+          "Attempted to store "
+              + (value == null ? "null" : value.getClass().getName())
+              + " into array of "
+              + component.getName());
+    }
+    @SuppressWarnings("unchecked")
+    E cast = (E) value;
+    return cast;
   }
 
   public synchronized boolean isEmpty() {

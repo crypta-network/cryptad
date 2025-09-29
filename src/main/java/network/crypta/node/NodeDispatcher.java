@@ -341,7 +341,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
 
   private void rejectRequest(Message m, ByteCounter ctr) {
     long uid = m.getLong(DMT.UID);
-    Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
+    Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       m.getSource().sendAsync(msg, null, ctr);
     } catch (NotConnectedException e) {
@@ -415,7 +415,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       if (reject != null) {
         Logger.normal(
             this, "Rejecting FNPGetOfferedKey from " + source + " for " + key + " : " + reject);
-        Message rejected = DMT.createFNPRejectedOverload(uid, true, true, realTimeFlag);
+        Message rejected = DMT.createFNPRejectedOverload(uid, true);
         if (reject.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
         try {
           source.sendAsync(rejected, null, node.getFailureTable().senderCounter);
@@ -564,7 +564,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
               + source.getPeer()
               + " preemptively because "
               + rejectReason);
-      Message rejected = DMT.createFNPRejectedOverload(id, true, true, realTimeFlag);
+      Message rejected = DMT.createFNPRejectedOverload(id, true);
       if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
@@ -633,7 +633,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       Logger.normal(
           this,
           "Rejecting insert from " + source.getPeer() + " preemptively because " + rejectReason);
-      Message rejected = DMT.createFNPRejectedOverload(id, true, true, realTimeFlag);
+      Message rejected = DMT.createFNPRejectedOverload(id, true);
       if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
@@ -733,7 +733,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         || paddedLength < 0
         || paddedLength > OpennetManager.MAX_OPENNET_NODEREF_LENGTH
         || noderefLength > paddedLength) {
-      Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
+      Message msg = DMT.createFNPRejectedOverload(uid, true);
       try {
         source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
       } catch (NotConnectedException e) {
@@ -769,7 +769,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           om.getSeedTracker().rejectedAnnounce(peerNode);
         Message msg = null;
         if (NodeStats.AnnouncementDecision.OVERLOAD == shouldAcceptAnnouncement) {
-          msg = DMT.createFNPRejectedOverload(uid, true, false, false);
+          msg = DMT.createFNPRejectedOverload(uid, true);
           if (logMINOR)
             Logger.minor(this, "Rejected announcement (overall overload) from " + source);
         } else if (NodeStats.AnnouncementDecision.LOOP == shouldAcceptAnnouncement) {
@@ -790,7 +790,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         if (om != null && source instanceof SeedClientPeerNode peerNode)
           om.getSeedTracker().rejectedAnnounce(peerNode);
         node.getNodeStats().endAnnouncement(uid);
-        Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
+        Message msg = DMT.createFNPRejectedOverload(uid, true);
         try {
           source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
         } catch (NotConnectedException e) {
@@ -802,7 +802,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       if (om != null && source instanceof SeedClientPeerNode peerNode) {
         if (!om.getSeedTracker().acceptAnnounce(peerNode, node.getFastWeakRandom())) {
           node.getNodeStats().endAnnouncement(uid);
-          Message msg = DMT.createFNPRejectedOverload(uid, true, false, false);
+          Message msg = DMT.createFNPRejectedOverload(uid, true);
           try {
             source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
           } catch (NotConnectedException e) {

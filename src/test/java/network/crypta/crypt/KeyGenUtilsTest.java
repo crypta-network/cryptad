@@ -49,9 +49,6 @@ public class KeyGenUtilsTest {
     KeyPairType.ECP256, KeyPairType.ECP384, KeyPairType.ECP521
   };
 
-  @SuppressWarnings("deprecation")
-  private static final KeyPairType falseKeyPairType = KeyPairType.DSA;
-
   private static final byte[][] truePublicKeys = {
     HexUtil.hexToBytes(
         "3059301306072a8648ce3d020106082a8648ce3d030107034200040126491fbe391419f"
@@ -126,11 +123,6 @@ public class KeyGenUtilsTest {
   }
 
   @Test
-  public void testGenKeyPairDSAType() {
-    assertThrows(UnsupportedTypeException.class, () -> KeyGenUtils.genKeyPair(falseKeyPairType));
-  }
-
-  @Test
   public void testGenKeyPairNullInput() {
     assertThrows(NullPointerException.class, () -> KeyGenUtils.genKeyPair(null));
   }
@@ -142,14 +134,6 @@ public class KeyGenUtilsTest {
       PublicKey key = KeyGenUtils.getPublicKey(type, truePublicKeys[i]);
       assertArrayEquals(key.getEncoded(), truePublicKeys[i], "KeyPairType: " + type.name());
     }
-  }
-
-  @Test
-  public void testGetPublicKeyDSAType() {
-    byte[] nullArray = null;
-    assertThrows(
-        UnsupportedTypeException.class,
-        () -> KeyGenUtils.getPublicKey(falseKeyPairType, nullArray));
   }
 
   @Test
@@ -186,14 +170,6 @@ public class KeyGenUtilsTest {
   }
 
   @Test
-  public void testGetPublicKeyPairDSAType() {
-    byte[] nullArray = null;
-    assertThrows(
-        UnsupportedTypeException.class,
-        () -> KeyGenUtils.getPublicKeyPair(falseKeyPairType, nullArray));
-  }
-
-  @Test
   public void testGetPublicKeyPairNullInput1() {
     assertThrows(
         NullPointerException.class, () -> KeyGenUtils.getPublicKeyPair(null, truePublicKeys[0]));
@@ -215,14 +191,6 @@ public class KeyGenUtilsTest {
           KeyGenUtils.getKeyPair(type, truePublicKeys[i], truePrivateKeys[i]),
           "KeyPairType: " + type.name());
     }
-  }
-
-  @Test
-  public void testGetKeyPairKeyPairTypeByteArrayDSAType() {
-    byte[] nullArray = null;
-    assertThrows(
-        UnsupportedTypeException.class,
-        () -> KeyGenUtils.getKeyPair(falseKeyPairType, nullArray, nullArray));
   }
 
   @Test

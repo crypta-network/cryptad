@@ -1,7 +1,6 @@
 package org.spaceroots.mantissa.utilities;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -20,7 +19,7 @@ public class IntervalsList {
 
   /** Build an empty intervals list. */
   public IntervalsList() {
-    intervals = new ArrayList();
+    intervals = new ArrayList<>();
   }
 
   /**
@@ -30,7 +29,7 @@ public class IntervalsList {
    * @param b second bound of the interval
    */
   public IntervalsList(double a, double b) {
-    intervals = new ArrayList();
+    intervals = new ArrayList<>();
     intervals.add(new Interval(a, b));
   }
 
@@ -40,7 +39,7 @@ public class IntervalsList {
    * @param i interval
    */
   public IntervalsList(Interval i) {
-    intervals = new ArrayList();
+    intervals = new ArrayList<>();
     intervals.add(i);
   }
 
@@ -51,7 +50,7 @@ public class IntervalsList {
    * @param i2 second interval
    */
   public IntervalsList(Interval i1, Interval i2) {
-    intervals = new ArrayList();
+    intervals = new ArrayList<>();
     if (i1.intersects(i2)) {
       intervals.add(
           new Interval(Math.min(i1.getInf(), i2.getInf()), Math.max(i1.getSup(), i2.getSup())));
@@ -73,9 +72,9 @@ public class IntervalsList {
    * @param list intervals list to copy
    */
   public IntervalsList(IntervalsList list) {
-    intervals = new ArrayList(list.intervals.size());
-    for (Iterator iterator = list.intervals.iterator(); iterator.hasNext(); ) {
-      intervals.add(new Interval((Interval) iterator.next()));
+    intervals = new ArrayList<>(list.intervals.size());
+    for (Interval interval : list.intervals) {
+      intervals.add(new Interval(interval));
     }
   }
 
@@ -105,7 +104,7 @@ public class IntervalsList {
    * @return lower bound of the list or Double.NaN if the list does not contain any interval
    */
   public double getInf() {
-    return intervals.isEmpty() ? Double.NaN : ((Interval) intervals.get(0)).getInf();
+    return intervals.isEmpty() ? Double.NaN : intervals.get(0).getInf();
   }
 
   /**
@@ -114,9 +113,7 @@ public class IntervalsList {
    * @return upper bound of the list or Double.NaN if the list does not contain any interval
    */
   public double getSup() {
-    return intervals.isEmpty()
-        ? Double.NaN
-        : ((Interval) intervals.get(intervals.size() - 1)).getSup();
+    return intervals.isEmpty() ? Double.NaN : intervals.get(intervals.size() - 1).getSup();
   }
 
   /**
@@ -135,7 +132,7 @@ public class IntervalsList {
    * @return interval at index i
    */
   public Interval getInterval(int i) {
-    return (Interval) intervals.get(i);
+    return intervals.get(i);
   }
 
   /**
@@ -143,7 +140,7 @@ public class IntervalsList {
    *
    * @return list of disjoints intervals in ascending order
    */
-  public List getIntervals() {
+  public List<Interval> getIntervals() {
     return intervals;
   }
 
@@ -154,8 +151,8 @@ public class IntervalsList {
    * @return true if the list contains x
    */
   public boolean contains(double x) {
-    for (Iterator iterator = intervals.iterator(); iterator.hasNext(); ) {
-      if (((Interval) iterator.next()).contains(x)) {
+    for (Interval interval : intervals) {
+      if (interval.contains(x)) {
         return true;
       }
     }
@@ -169,8 +166,8 @@ public class IntervalsList {
    * @return true if i is completely included in the instance
    */
   public boolean contains(Interval i) {
-    for (Iterator iterator = intervals.iterator(); iterator.hasNext(); ) {
-      if (((Interval) iterator.next()).contains(i)) {
+    for (Interval interval : intervals) {
+      if (interval.contains(i)) {
         return true;
       }
     }
@@ -184,8 +181,8 @@ public class IntervalsList {
    * @return true if i intersects the instance
    */
   public boolean intersects(Interval i) {
-    for (Iterator iterator = intervals.iterator(); iterator.hasNext(); ) {
-      if (((Interval) iterator.next()).intersects(i)) {
+    for (Interval interval : intervals) {
+      if (interval.intersects(i)) {
         return true;
       }
     }
@@ -204,13 +201,12 @@ public class IntervalsList {
    */
   public void addToSelf(Interval i) {
 
-    List newIntervals = new ArrayList();
+    List<Interval> newIntervals = new ArrayList<>(intervals.size() + 1);
     double inf = Double.NaN;
     double sup = Double.NaN;
     boolean pending = false;
     boolean processed = false;
-    for (Iterator iterator = intervals.iterator(); iterator.hasNext(); ) {
-      Interval local = (Interval) iterator.next();
+    for (Interval local : intervals) {
 
       if (local.getSup() < i.getInf()) {
         newIntervals.add(local);
@@ -290,9 +286,8 @@ public class IntervalsList {
    * @param i interval
    */
   public void intersectSelf(Interval i) {
-    List newIntervals = new ArrayList();
-    for (Iterator iterator = intervals.iterator(); iterator.hasNext(); ) {
-      Interval local = (Interval) iterator.next();
+    List<Interval> newIntervals = new ArrayList<>(intervals.size());
+    for (Interval local : intervals) {
       if (local.intersects(i)) {
         newIntervals.add(Interval.intersection(local, i));
       }
@@ -324,8 +319,8 @@ public class IntervalsList {
    * @param list intervals list to add to the instance
    */
   public void addToSelf(IntervalsList list) {
-    for (Iterator iterator = list.intervals.iterator(); iterator.hasNext(); ) {
-      addToSelf((Interval) iterator.next());
+    for (Interval interval : list.intervals) {
+      addToSelf(interval);
     }
   }
 
@@ -348,8 +343,8 @@ public class IntervalsList {
    * @param list intervals list to remove
    */
   public void subtractFromSelf(IntervalsList list) {
-    for (Iterator iterator = list.intervals.iterator(); iterator.hasNext(); ) {
-      subtractFromSelf((Interval) iterator.next());
+    for (Interval interval : list.intervals) {
+      subtractFromSelf(interval);
     }
   }
 
@@ -384,12 +379,12 @@ public class IntervalsList {
    */
   public static IntervalsList intersection(IntervalsList list1, IntervalsList list2) {
     IntervalsList list = new IntervalsList();
-    for (Iterator iterator = list2.intervals.iterator(); iterator.hasNext(); ) {
-      list.addToSelf(intersection(list1, (Interval) iterator.next()));
+    for (Interval interval : list2.intervals) {
+      list.addToSelf(intersection(list1, interval));
     }
     return list;
   }
 
   /** The list of intervals. */
-  private List intervals;
+  private List<Interval> intervals;
 }

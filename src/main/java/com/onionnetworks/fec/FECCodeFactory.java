@@ -28,12 +28,12 @@ public abstract class FECCodeFactory {
   public static synchronized FECCodeFactory getDefault() {
     if (def == null) {
       try {
-        Class clazz =
-            Class.forName(
-                System.getProperty(
-                    "com.onionnetworks.fec.defaultcodefactoryclass",
-                    "com.onionnetworks.fec.DefaultFECCodeFactory"));
-        def = (FECCodeFactory) clazz.newInstance();
+        String factoryClass =
+            System.getProperty(
+                "com.onionnetworks.fec.defaultcodefactoryclass",
+                "com.onionnetworks.fec.DefaultFECCodeFactory");
+        Class<?> clazz = Class.forName(factoryClass);
+        def = clazz.asSubclass(FECCodeFactory.class).getDeclaredConstructor().newInstance();
       } catch (Exception e) {
         // krunky structure, but the easiest way to deal with the
         // exception.

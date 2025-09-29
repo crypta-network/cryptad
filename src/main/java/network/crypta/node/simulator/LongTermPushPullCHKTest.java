@@ -19,7 +19,9 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
+import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
@@ -69,8 +71,7 @@ public class LongTermPushPullCHKTest extends LongTermTest {
     try {
       final File dir = new File("longterm-push-pull-test-" + uid);
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir.getPath(), false, LogLevel.ERROR, "", false);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -84,31 +85,18 @@ public class LongTermPushPullCHKTest extends LongTermTest {
       fis.close();
 
       // Create one node
-      node =
-          NodeStarter.createTestNode(
+      TestNodeParameters nodeParams =
+          buildNodeParameters(
               DARKNET_PORT1,
               OPENNET_PORT1,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
+              dir,
               random,
               new PooledExecutor(),
-              1000,
               4 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
               12 * 1024,
               true,
-              true,
-              false,
-              false,
-              null);
+              true);
+      node = NodeStarter.createTestNode(nodeParams);
       Logger.getChain().setThreshold(LogLevel.ERROR);
 
       // Start it
@@ -158,31 +146,18 @@ public class LongTermPushPullCHKTest extends LongTermTest {
       fis = new FileInputStream(seednodes);
       FileUtil.writeTo(fis, new File(innerDir2, "seednodes.fref"));
       fis.close();
-      node2 =
-          NodeStarter.createTestNode(
+      TestNodeParameters node2Params =
+          buildNodeParameters(
               DARKNET_PORT2,
               OPENNET_PORT2,
-              dir.getPath(),
-              false,
-              Node.DEFAULT_MAX_HTL,
-              0,
+              dir,
               random,
               new PooledExecutor(),
-              1000,
               5 * 1024 * 1024,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
-              true,
               12 * 1024,
               false,
-              true,
-              false,
-              false,
-              null);
+              true);
+      node2 = NodeStarter.createTestNode(node2Params);
       node2.start(true);
 
       t1 = System.currentTimeMillis();
@@ -268,6 +243,38 @@ public class LongTermPushPullCHKTest extends LongTermTest {
     } finally {
       fis.close();
     }
+  }
+
+  private static TestNodeParameters buildNodeParameters(
+      int darknetPort,
+      int opennetPort,
+      File baseDirectory,
+      RandomSource random,
+      Executor executor,
+      int storeSize,
+      int outputBandwidthLimit,
+      boolean enableFoaf,
+      boolean connectToSeednodes) {
+    TestNodeParameters params = new TestNodeParameters();
+    params.baseDirectory = baseDirectory;
+    params.port = darknetPort;
+    params.opennetPort = opennetPort;
+    params.maxHTL = Node.DEFAULT_MAX_HTL;
+    params.random = random;
+    params.executor = executor;
+    params.threadLimit = 1000;
+    params.storeSize = storeSize;
+    params.ramStore = true;
+    params.enableSwapping = true;
+    params.enableARKs = true;
+    params.enableULPRs = true;
+    params.enablePerNodeFailureTables = true;
+    params.enableSwapQueueing = true;
+    params.enablePacketCoalescing = true;
+    params.outputBandwidthLimit = outputBandwidthLimit;
+    params.enableFOAF = enableFoaf;
+    params.connectToSeednodes = connectToSeednodes;
+    return params;
   }
 
   private static RandomAccessBucket randomData(Node node) throws IOException {

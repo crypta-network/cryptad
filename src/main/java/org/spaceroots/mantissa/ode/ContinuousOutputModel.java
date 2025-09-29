@@ -2,7 +2,7 @@ package org.spaceroots.mantissa.ode;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.List;
 
 /**
  * This class stores all information provided by an ODE integrator during the integration process
@@ -51,7 +51,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
 
   /** Simple constructor. Build an empty continuous output model. */
   public ContinuousOutputModel() {
-    steps = new ArrayList();
+    steps = new ArrayList<>();
     reset();
   }
 
@@ -81,7 +81,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
         throw new IllegalArgumentException("propagation direction mismatch");
       }
 
-      StepInterpolator lastInterpolator = (StepInterpolator) steps.get(index);
+      StepInterpolator lastInterpolator = steps.get(index);
       double current = lastInterpolator.getCurrentTime();
       double previous = lastInterpolator.getPreviousTime();
       double step = current - previous;
@@ -91,13 +91,12 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
       }
     }
 
-    for (Iterator iter = model.steps.iterator(); iter.hasNext(); ) {
-      AbstractStepInterpolator ai = (AbstractStepInterpolator) iter.next();
-      steps.add(ai.clone());
+    for (AbstractStepInterpolator ai : model.steps) {
+      steps.add((AbstractStepInterpolator) ai.clone());
     }
 
     index = steps.size() - 1;
-    finalTime = ((StepInterpolator) steps.get(index)).getCurrentTime();
+    finalTime = steps.get(index).getCurrentTime();
   }
 
   /**
@@ -143,7 +142,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
     }
 
     ai.finalizeStep();
-    steps.add(ai.clone());
+    steps.add((AbstractStepInterpolator) ai.clone());
 
     if (isLast) {
       finalTime = ai.getCurrentTime();
@@ -176,7 +175,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    * @return interpolation point time
    */
   public double getInterpolatedTime() {
-    return ((StepInterpolator) steps.get(index)).getInterpolatedTime();
+    return steps.get(index).getInterpolatedTime();
   }
 
   /**
@@ -197,11 +196,11 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
     try {
       // initialize the search with the complete steps table
       int iMin = 0;
-      StepInterpolator sMin = (StepInterpolator) steps.get(iMin);
+      StepInterpolator sMin = steps.get(iMin);
       double tMin = 0.5 * (sMin.getPreviousTime() + sMin.getCurrentTime());
 
       int iMax = steps.size() - 1;
-      StepInterpolator sMax = (StepInterpolator) steps.get(iMax);
+      StepInterpolator sMax = steps.get(iMax);
       double tMax = 0.5 * (sMax.getPreviousTime() + sMax.getCurrentTime());
 
       // handle points outside of the integration interval
@@ -221,7 +220,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
       while (iMax - iMin > 5) {
 
         // use the last estimated index as the splitting index
-        StepInterpolator si = (StepInterpolator) steps.get(index);
+        StepInterpolator si = steps.get(index);
         int location = locatePoint(time, si);
         if (location < 0) {
           iMax = index;
@@ -237,7 +236,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
 
         // compute a new estimate of the index in the reduced table slice
         int iMed = (iMin + iMax) / 2;
-        StepInterpolator sMed = (StepInterpolator) steps.get(iMed);
+        StepInterpolator sMed = steps.get(iMed);
         double tMed = 0.5 * (sMed.getPreviousTime() + sMed.getCurrentTime());
 
         if ((Math.abs(tMed - tMin) < 1e-6) || (Math.abs(tMax - tMed) < 1e-6)) {
@@ -271,11 +270,11 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
 
       // now the table slice is very small, we perform an iterative search
       index = iMin;
-      while ((index <= iMax) && (locatePoint(time, (StepInterpolator) steps.get(index)) > 0)) {
+      while ((index <= iMax) && (locatePoint(time, steps.get(index)) > 0)) {
         ++index;
       }
 
-      StepInterpolator si = (StepInterpolator) steps.get(index);
+      StepInterpolator si = steps.get(index);
 
       si.setInterpolatedTime(time);
 
@@ -290,7 +289,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    * @return state vector at time {@link #getInterpolatedTime}
    */
   public double[] getInterpolatedState() {
-    return ((StepInterpolator) steps.get(index)).getInterpolatedState();
+    return steps.get(index).getInterpolatedState();
   }
 
   /**
@@ -333,7 +332,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
   private int index;
 
   /** Steps table. */
-  private ArrayList steps;
+  private final List<AbstractStepInterpolator> steps;
 
   private static final long serialVersionUID = 2259286184268533249L;
 }

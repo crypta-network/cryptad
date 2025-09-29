@@ -24,6 +24,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeDispatcher.NodeDispatcherCallback;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Executor;
@@ -91,7 +92,7 @@ public class RealNodeULPRTest extends RealNodeTest {
     // Uncomment as appropriate.
     // For testing high-level stuff (requests/ULPRs/FT bugs)
     NodeStarter.globalTestInit(
-        testName,
+        wd,
         false,
         LogLevel.ERROR,
         "network.crypta.node.Location:normal,network.crypta.node.simulator"
@@ -102,7 +103,8 @@ public class RealNodeULPRTest extends RealNodeTest {
             + ".PeerNode:MINOR,network.crypta.node.DarknetPeerNode:MINOR,network"
             + ".crypta.io.xfer.PacketThrottle:MINOR,network.crypta.node"
             + ".PeerManager:MINOR,network.crypta.client.async:MINOR",
-        true);
+        true,
+        null);
     // For testing low-level stuff (connection bugs)
     // NodeStarter.globalTestInit(testName, false, LogLevel.ERROR, "network.crypta.node
     // .Location:normal,network.crypta.node.simulator.RealNodeRoutingTest:normal,network.crypta
@@ -113,31 +115,32 @@ public class RealNodeULPRTest extends RealNodeTest {
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              testName,
-              true,
-              MAX_HTL,
-              20 /* 5% */,
+      final int port = DARKNET_PORT_BASE + i;
+      TestNodeParameters params =
+          TestNodeParameterFactory.create(
+              wd,
               random,
               executor,
-              500 * NUMBER_OF_NODES,
-              1024 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              ENABLE_ULPRS,
-              ENABLE_PER_NODE_FAILURE_TABLES,
-              true,
-              true,
-              0,
-              ENABLE_FOAF,
-              false,
-              true,
-              false,
-              null);
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = true;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 20;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 1024L * 1024L;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableULPRs = ENABLE_ULPRS;
+                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+                p.enableSwapQueueing = true;
+                p.enablePacketCoalescing = true;
+                p.outputBandwidthLimit = 0;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+              });
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
     SimpleFieldSet[] refs = new SimpleFieldSet[NUMBER_OF_NODES];

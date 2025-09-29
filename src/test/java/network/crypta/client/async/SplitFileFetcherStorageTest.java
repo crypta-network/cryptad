@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import static network.crypta.testsupport.TestRandomData.fillBucketWithRandom;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.DataInputStream;
@@ -78,7 +79,7 @@ public class SplitFileFetcherStorageTest {
 
   public static Bucket makeRandomBucket(long size) throws IOException {
     Bucket b = bf.makeBucket(size);
-    BucketTools.fill(b, random, size);
+    fillBucketWithRandom(b, random, size);
     return b;
   }
 

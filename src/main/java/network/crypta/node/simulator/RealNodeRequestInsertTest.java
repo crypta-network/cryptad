@@ -25,6 +25,7 @@ import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
+import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -86,6 +87,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
     wd.mkdir();
+    DummyRandomSource random = new DummyRandomSource(3142);
     // NOTE: globalTestInit returns in ignored random source
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.Location:normal,freenet.node.simulator.RealNode:minor,freenet.node.Insert:MINOR,freenet.node.Request:MINOR,freenet.node.Node:MINOR");
@@ -93,41 +95,44 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(name, false, LogLevel.ERROR, "", true);
+    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, random);
     System.out.println("Insert/retrieve test");
     System.out.println();
-    DummyRandomSource random = new DummyRandomSource(3142);
     DummyRandomSource topologyRandom = new DummyRandomSource(3143);
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i] =
-          NodeStarter.createTestNode(
-              DARKNET_PORT_BASE + i,
-              0,
-              name,
-              DISABLE_PROBABILISTIC_HTLS,
-              MAX_HTL,
-              20 /* 5% */,
+      final int port = DARKNET_PORT_BASE + i;
+      TestNodeParameters params =
+          TestNodeParameterFactory.create(
+              wd,
               random,
               executor,
-              500 * NUMBER_OF_NODES,
-              256 * 1024,
-              true,
-              ENABLE_SWAPPING,
-              false,
-              ENABLE_ULPRS,
-              ENABLE_PER_NODE_FAILURE_TABLES,
-              ENABLE_SWAP_QUEUEING,
-              ENABLE_PACKET_COALESCING,
-              BWLIMIT,
-              ENABLE_FOAF,
-              false,
-              true,
-              USE_SLASHDOT_CACHE,
-              null);
+              p -> {
+                p.port = port;
+                p.opennetPort = 0;
+                p.disableProbabilisticHTLs = DISABLE_PROBABILISTIC_HTLS;
+                p.maxHTL = MAX_HTL;
+                p.dropProb = 20;
+                p.threadLimit = 500 * NUMBER_OF_NODES;
+                p.storeSize = 256L * 1024;
+                p.ramStore = true;
+                p.enableSwapping = ENABLE_SWAPPING;
+                p.enableARKs = false;
+                p.enableULPRs = ENABLE_ULPRS;
+                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
+                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
+                p.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
+                p.outputBandwidthLimit = BWLIMIT;
+                p.enableFOAF = ENABLE_FOAF;
+                p.connectToSeednodes = false;
+                p.longPingTimes = true;
+                p.useSlashdotCache = USE_SLASHDOT_CACHE;
+                p.enableFCP = false;
+              });
+      nodes[i] = NodeStarter.createTestNode(params);
       Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
     }
 

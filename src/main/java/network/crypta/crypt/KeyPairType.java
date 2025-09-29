@@ -3,18 +3,12 @@ package network.crypta.crypt;
 import java.security.spec.ECGenParameterSpec;
 
 /**
- * Keeps track of curve names and specs for EC based algorithms available to Freenet. Also includes
- * DSA for legacy support of old network content.
+ * Enumerates EC-based keypair algorithms available to Crypta.
  *
- * @author unixninja92
+ * <p>Legacy DSA handling remains in dedicated DSA classes for verification of historical content,
+ * but is no longer exposed via this enum.
  */
 public enum KeyPairType {
-  /**
-   * @deprecated DSA should only be used for legacy support of old network content. Replaced by
-   *     {@link #ECP256}
-   */
-  @Deprecated
-  DSA(),
   ECP256("EC", "secp256r1", 91),
   ECP384("EC", "secp384r1", 120),
   ECP521("EC", "secp521r1", 158);
@@ -22,21 +16,13 @@ public enum KeyPairType {
   public final String alg;
   public final String specName;
 
-  /** Expected size of a DER encoded pubkey in bytes */
+  /** Expected size of a DER encoded pubkey in bytes. */
   public final int modulusSize;
 
   public final ECGenParameterSpec spec;
 
-  /** Creates the DSA enum value. */
-  KeyPairType() {
-    alg = name();
-    specName = alg;
-    modulusSize = 128;
-    spec = null;
-  }
-
   /**
-   * Creates EC enum values and creates ECGenparameterSpecs for them.
+   * Creates EC enum values and creates ECGenParameterSpec for them.
    *
    * @param alg What algorithm KeyPairGenerators should use
    * @param specName The elliptic curve to use.
@@ -46,6 +32,6 @@ public enum KeyPairType {
     this.alg = alg;
     this.specName = specName;
     this.modulusSize = modulusSize;
-    spec = new ECGenParameterSpec(specName);
+    this.spec = new ECGenParameterSpec(specName);
   }
 }

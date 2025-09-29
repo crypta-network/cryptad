@@ -7,6 +7,7 @@ import java.io.InputStream;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.GCMBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
@@ -17,26 +18,33 @@ public class AEADInputStream extends FilterInputStream {
   private boolean finished;
 
   /**
-   * Create a decrypting, authenticating InputStream. IMPORTANT: We only authenticate when closing
-   * the stream, so do NOT use IOUtils.closeQuietly() etc and swallow IOException's on close(), as
-   * that's what we will throw if authentication fails. We will read the nonce from the stream; it
-   * functions similarly to an IV.
+   * Create a decrypting, authenticating InputStream using AES-GCM.
+   *
+   * <p>Format: The stream starts with a 16-byte written prefix carrying the nonce; AES-GCM uses the
+   * first 12 bytes of that prefix as its IV/nonce. The remaining 4 bytes are currently unused and
+   * reserved. We keep the 16-byte prefix to preserve overall overhead consistency (prefix + 16-byte
+   * GCM tag = 32 bytes for AES), but this reader performs no legacy-OCB compatibility handling.
+   *
+   * <p>IMPORTANT: Authentication is verified at end-of-stream when {@code doFinal()} is called, so
+   * do NOT swallow IOExceptions on close(); that's when authentication failures are raised.
    *
    * @param is The underlying InputStream.
    * @param key The encryption key.
-   * @param nonce The nonce. This serves the function of an IV. As a nonce, this MUST be unique. We
-   *     will write it to the stream so the other side can pick it up, like an IV.
-   * @param mainCipher The BlockCipher for encrypting data. E.g. AES; not a block mode. This will be
-   *     used for encrypting a fairly large amount of data so could be any of the 3 BC AES impl's.
-   * @param hashCipher The BlockCipher for the final hash. E.g. AES, not a block mode. This will not
-   *     be used very much so should be e.g. an AESLightEngine.
+   * @param mainCipher The BlockCipher (AES) used by GCM; not a block mode.
+   * @param hashCipher Unused for GCM (retained for signature compatibility).
    */
   public AEADInputStream(InputStream is, byte[] key, BlockCipher hashCipher, BlockCipher mainCipher)
       throws IOException {
     super(is);
-    byte[] nonce = new byte[mainCipher.getBlockSize()];
-    new DataInputStream(is).readFully(nonce);
-    cipher = new OCBBlockCipher_v149(hashCipher, mainCipher);
+    // Read the 16-byte written prefix and take the first 12 bytes as the GCM nonce.
+    final int blockSize = mainCipher.getBlockSize();
+    byte[] writtenNonce = new byte[blockSize];
+    DataInputStream dis = new DataInputStream(is);
+    dis.readFully(writtenNonce);
+    byte[] nonce = new byte[AEADOutputStream.GCM_NONCE_SIZE];
+    System.arraycopy(writtenNonce, 0, nonce, 0, nonce.length);
+    AEADBlockCipher gcm = new GCMBlockCipher(mainCipher);
+    cipher = gcm;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
     cipher.init(false, params);
@@ -46,7 +54,7 @@ public class AEADInputStream extends FilterInputStream {
   }
 
   public final int getIVSize() {
-    return cipher.getUnderlyingCipher().getBlockSize() / 8;
+    return AEADOutputStream.GCM_NONCE_SIZE;
   }
 
   private final byte[] excess;

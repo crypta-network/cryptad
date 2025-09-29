@@ -6,6 +6,7 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.StringTokenizer;
 
 /**
@@ -127,8 +128,8 @@ public class RangeSet {
    * @param rs The set whose elements should be added to this set.
    */
   public void add(RangeSet rs) {
-    for (Iterator it = rs.iterator(); it.hasNext(); ) {
-      add((Range) it.next());
+    for (Iterator<Range> it = rs.iterator(); it.hasNext(); ) {
+      add(it.next());
     }
   }
 
@@ -203,8 +204,8 @@ public class RangeSet {
   }
 
   public void remove(RangeSet r) {
-    for (Iterator it = r.iterator(); it.hasNext(); ) {
-      remove((Range) it.next());
+    for (Iterator<Range> it = r.iterator(); it.hasNext(); ) {
+      remove(it.next());
     }
   }
 
@@ -230,20 +231,20 @@ public class RangeSet {
   /**
    * @return An iterator of Range objects that this RangeSet contains.
    */
-  public Iterator iterator() {
-    ArrayList l = new ArrayList(rangeCount);
+  public Iterator<Range> iterator() {
+    List<Range> rangeList = new ArrayList<>(rangeCount);
     for (int i = 0; i < rangeCount; i++) {
       if (rangeCount == 1 && negInf && posInf) {
-        l.add(new Range(true, true));
+        rangeList.add(new Range(true, true));
       } else if (i == 0 && negInf) {
-        l.add(new Range(true, ranges[i * 2 + 1]));
+        rangeList.add(new Range(true, ranges[i * 2 + 1]));
       } else if (i == rangeCount - 1 && posInf) {
-        l.add(new Range(ranges[i * 2], true));
+        rangeList.add(new Range(ranges[i * 2], true));
       } else {
-        l.add(new Range(ranges[i * 2], ranges[i * 2 + 1]));
+        rangeList.add(new Range(ranges[i * 2], ranges[i * 2 + 1]));
       }
     }
-    return l.iterator();
+    return rangeList.iterator();
   }
 
   /**
@@ -254,8 +255,8 @@ public class RangeSet {
       return -1;
     }
     long result = 0;
-    for (Iterator it = iterator(); it.hasNext(); ) {
-      result += ((Range) it.next()).size();
+    for (Iterator<Range> it = iterator(); it.hasNext(); ) {
+      result += it.next().size();
     }
     return result;
   }
@@ -310,7 +311,7 @@ public class RangeSet {
    */
   public String toString() {
     StringBuffer sb = new StringBuffer();
-    for (Iterator it = iterator(); it.hasNext(); ) {
+    for (Iterator<Range> it = iterator(); it.hasNext(); ) {
       sb.append(it.next().toString());
       if (it.hasNext()) {
         sb.append(",");

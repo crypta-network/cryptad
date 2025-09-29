@@ -35,6 +35,7 @@ import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.config.Config;
+import network.crypta.config.Dimension;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
@@ -221,12 +222,7 @@ public class NodeClientCore implements Persistable {
 
   public final RequestTracker tracker;
 
-  /**
-   * @deprecated Use {@link #getNodeStats()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but directly accessing it is. */
-  final NodeStats nodeStats;
+  private final NodeStats nodeStats;
 
   /**
    * @deprecated Use {@link #getRandom()} instead of accessing this directly.
@@ -951,7 +947,7 @@ public class NodeClientCore implements Persistable {
             maxBackgroundUSKFetchers = uskFetch;
           }
         },
-        false);
+        Dimension.NOT);
 
     maxBackgroundUSKFetchers = nodeConfig.getInt("maxBackgroundUSKFetchers");
 

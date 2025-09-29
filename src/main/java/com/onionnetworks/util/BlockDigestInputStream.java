@@ -3,6 +3,7 @@ package com.onionnetworks.util;
 import java.io.*;
 import java.security.*;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author Justin F. Chapweske
@@ -11,7 +12,7 @@ public class BlockDigestInputStream extends FilterInputStream {
 
   protected MessageDigest md;
   protected int blockSize, byteCount;
-  ArrayList digestList = new ArrayList();
+  List<Buffer> digestList = new ArrayList<>();
   Buffer[] digests = null;
 
   public BlockDigestInputStream(InputStream is, String algorithm, int blockSize)
@@ -67,7 +68,7 @@ public class BlockDigestInputStream extends FilterInputStream {
     if (byteCount != 0) {
       digestList.add(new Buffer(md.digest()));
     }
-    digests = (Buffer[]) digestList.toArray(new Buffer[0]);
+    digests = digestList.toArray(Buffer[]::new);
     digestList = null;
   }
 

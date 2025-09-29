@@ -60,12 +60,11 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
   }
 
   /** Get a grabber. */
-  @SuppressWarnings("unchecked")
   public C getGrabber(T client) {
     synchronized (root) {
       int idx = haveClient(client);
       if (idx == -1) return null;
-      else return (C) grabArrays[idx];
+      else return castGrabber(grabArrays[idx]);
     }
   }
 
@@ -503,6 +502,8 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
 
   @SuppressWarnings("unchecked")
   private T[] newClientArray(int length) {
+    // Safe: we only store values of type T in this array. Generic arrays require an unchecked
+    // creation; localize it here.
     return (T[]) new Object[length];
   }
 
@@ -514,6 +515,13 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
 
   @SuppressWarnings("unchecked")
   private RemoveRandomWithObject<T>[] newGrabberArray(int length) {
+    // Safe: array stores RemoveRandomWithObject<T> elements only; creation is centralized here.
     return (RemoveRandomWithObject<T>[]) new RemoveRandomWithObject<?>[length];
+  }
+
+  @SuppressWarnings("unchecked")
+  private C castGrabber(RemoveRandomWithObject<T> r) {
+    // grabArrays holds elements of C which extends RemoveRandomWithObject<T> by construction.
+    return (C) r;
   }
 }

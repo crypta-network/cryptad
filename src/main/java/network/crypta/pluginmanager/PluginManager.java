@@ -837,6 +837,47 @@ public class PluginManager {
   }
 
   /**
+   * Finds a loaded plugin whose class name, filename, or filename without the `.jar` suffix matches
+   * the provided identifier.
+   *
+   * @param identifier plugin class name or jar filename (with or without extension)
+   * @return matching {@link PluginInfoWrapper}, or {@code null} if not found
+   */
+  public PluginInfoWrapper findPluginByIdentifier(String identifier) {
+    if (identifier == null) {
+      return null;
+    }
+    for (PluginInfoWrapper info : loadedPlugins.getLoadedPlugins()) {
+      if (pluginIdentifierMatches(info, identifier)) {
+        return info;
+      }
+    }
+    return null;
+  }
+
+  private boolean pluginIdentifierMatches(PluginInfoWrapper info, String identifier) {
+    if (identifier.equals(info.getPluginClassName())) {
+      return true;
+    }
+    String filename = info.getFilename();
+    if (filename == null) {
+      return false;
+    }
+    if (identifier.equals(filename)) {
+      return true;
+    }
+    String basename = new File(filename).getName();
+    if (identifier.equals(basename)) {
+      return true;
+    }
+    if (basename.endsWith(".jar")) {
+      String withoutExtension = basename.substring(0, basename.length() - 4);
+      return identifier.equals(withoutExtension);
+    }
+    return false;
+  }
+
+  /**
    * Look for PluginInfo for a Plugin with given classname or filename.
    *
    * @return the PluginInfo or null if not found
@@ -848,13 +889,7 @@ public class PluginManager {
    */
   @Deprecated
   public PluginInfoWrapper getPluginInfo(String plugname) {
-    for (PluginInfoWrapper pluginInfoWrapper : loadedPlugins.getLoadedPlugins()) {
-      if (pluginInfoWrapper.getPluginClassName().equals(plugname)
-          || pluginInfoWrapper.getFilename().equals(plugname)) {
-        return pluginInfoWrapper;
-      }
-    }
-    return null;
+    return findPluginByIdentifier(plugname);
   }
 
   /**
