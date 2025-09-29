@@ -8,6 +8,7 @@ import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
+import network.crypta.config.OptionUtils;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -49,9 +50,11 @@ public class DATASTORE_SIZE implements Step {
     long autodetectedSize = canAutoconfigureDatastoreSize();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
-    Option<Long> sizeOption = longOption("storeSize");
-    Option<Long> clientCacheSizeOption = longOption("clientCacheSize");
-    Option<Long> slashdotCacheSizeOption = longOption("slashdotCacheSize");
+    Option<Long> sizeOption = OptionUtils.longOption(config.get("node"), "storeSize");
+    Option<Long> clientCacheSizeOption =
+        OptionUtils.longOption(config.get("node"), "clientCacheSize");
+    Option<Long> slashdotCacheSizeOption =
+        OptionUtils.longOption(config.get("node"), "slashdotCacheSize");
     if (!sizeOption.isDefault()) {
       long current =
           sizeOption.getValue()
@@ -100,15 +103,6 @@ public class DATASTORE_SIZE implements Step {
         "input",
         new String[] {"type", "name", "value"},
         new String[] {"submit", "next", NodeL10n.getBase().getString("Toadlet.next")});
-  }
-
-  @SuppressWarnings("unchecked")
-  private Option<Long> longOption(String key) {
-    Option<?> opt = config.get("node").getOption(key);
-    if (opt.getDataType() != Option.DataType.NUMBER) {
-      throw new ClassCastException("Option '" + key + "' is not numeric: " + opt.getDataType());
-    }
-    return (Option<Long>) opt;
   }
 
   @Override
