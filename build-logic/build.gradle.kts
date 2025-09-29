@@ -24,6 +24,8 @@ dependencies {
   // Allow precompiled plugins to apply these without specifying versions in their scripts
   implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
+  // SonarQube plugin marker for precompiled convention plugin usage
+  implementation("org.sonarqube:org.sonarqube.gradle.plugin:${libs.versions.sonarqube.get()}")
 }
 
 // Align Kotlin JVM target with Java 21 for build-logic itself
