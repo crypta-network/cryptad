@@ -49,11 +49,9 @@ public class DATASTORE_SIZE implements Step {
     long autodetectedSize = canAutoconfigureDatastoreSize();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
-    Option<Long> sizeOption = (Option<Long>) config.get("node").getOption("storeSize");
-    Option<Long> clientCacheSizeOption =
-        (Option<Long>) config.get("node").getOption("clientCacheSize");
-    Option<Long> slashdotCacheSizeOption =
-        (Option<Long>) config.get("node").getOption("slashdotCacheSize");
+    Option<Long> sizeOption = longOption("storeSize");
+    Option<Long> clientCacheSizeOption = longOption("clientCacheSize");
+    Option<Long> slashdotCacheSizeOption = longOption("slashdotCacheSize");
     if (!sizeOption.isDefault()) {
       long current =
           sizeOption.getValue()
@@ -102,6 +100,15 @@ public class DATASTORE_SIZE implements Step {
         "input",
         new String[] {"type", "name", "value"},
         new String[] {"submit", "next", NodeL10n.getBase().getString("Toadlet.next")});
+  }
+
+  @SuppressWarnings("unchecked")
+  private Option<Long> longOption(String key) {
+    Option<?> opt = config.get("node").getOption(key);
+    if (opt.getDataType() != Option.DataType.NUMBER) {
+      throw new ClassCastException("Option '" + key + "' is not numeric: " + opt.getDataType());
+    }
+    return (Option<Long>) opt;
   }
 
   @Override
