@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write # required for actions/cache to reserve/upload caches
 
     # Expose selected secrets as env so we can use them in step `if:`
     env:
