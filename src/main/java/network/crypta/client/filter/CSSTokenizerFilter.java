@@ -3,7 +3,6 @@ package network.crypta.client.filter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
-import java.lang.reflect.Array;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,10 +82,10 @@ class CSSTokenizerFilter {
     if (blen == 0) {
       return a;
     }
-    final T[] result = (T[]) Array.newInstance(a.getClass().getComponentType(), alen + blen);
-    System.arraycopy(a, 0, result, 0, alen);
-    System.arraycopy(b, 0, result, alen, blen);
-    return result;
+    // Avoid unchecked generic array creation by using Arrays.copyOf to extend 'a'.
+    final T[] extended = Arrays.copyOf(a, alen + blen);
+    System.arraycopy(b, 0, extended, alen, blen);
+    return extended;
   }
 
   /* To save the memory, only those Verifier objects would be created which are actually present in the CSS document.
