@@ -13,6 +13,10 @@ on:
       artifact-id:
         description: The artifact-id for built cryptad.jar
         value: ${{ jobs.build.outputs.artifact-id }}
+    secrets:
+      SONAR_TOKEN:
+        description: SonarCloud token forwarded from caller
+        required: false
 jobs:
   build:
 
@@ -50,14 +54,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build and analyze (Gradle)
-        if: ${{ secrets.SONAR_TOKEN != '' }}
+        if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_TOKEN != null }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew build sonar --info
 
       - name: Build (no Sonar token)
-        if: ${{ secrets.SONAR_TOKEN == '' }}
+        if: ${{ secrets.SONAR_TOKEN == '' || secrets.SONAR_TOKEN == null }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./gradlew build
