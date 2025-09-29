@@ -24,6 +24,10 @@ jobs:
     permissions:
       contents: read
 
+    # Expose selected secrets as env so we can use them in step `if:`
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
     outputs:
       artifact-id: ${{ steps.upload-artifact.outputs.artifact-id}}
 
@@ -54,14 +58,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build and analyze (Gradle)
-        if: ${{ secrets.SONAR_TOKEN != '' && secrets.SONAR_TOKEN != null }}
+        if: ${{ env.SONAR_TOKEN != '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
         run: ./gradlew build sonar --info
 
       - name: Build (no Sonar token)
-        if: ${{ secrets.SONAR_TOKEN == '' || secrets.SONAR_TOKEN == null }}
+        if: ${{ env.SONAR_TOKEN == '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./gradlew build
