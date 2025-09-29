@@ -7,6 +7,7 @@ plugins {
   id("cryptad.distribution")
   id("cryptad.runtime")
   id("cryptad.jpackage")
+  id("cryptad.sonar")
   application
 }
 
@@ -57,4 +58,8 @@ tasks.register("printVersion") {
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the Kotlin main directly.
 // Align with actual top-level entry in Launcher.kt
-application { mainClass.set("network.crypta.launcher.LauncherKt") }
+application {
+  mainClass.set("network.crypta.launcher.LauncherKt")
+}
+
+// Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'

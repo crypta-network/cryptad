@@ -17,6 +17,7 @@ jsystemTheme = "ea2f8582ea"
 dbusJava = "5.1.1"
 junitJupiter = "5.13.4"
 junitPlatform = "1.13.4"
+sonarqube = "6.3.1.5724"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -45,3 +46,4 @@ junitPlatformSuite = { group = "org.junit.platform", name = "junit-platform-suit
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }

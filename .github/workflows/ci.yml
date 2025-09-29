@@ -5,7 +5,7 @@ name: Java CI with Gradle
 
 on:
   push:
-    branches: [ main, 'release/**', 'hotfix/**' ]
+    branches: [ main, develop, 'release/**', 'hotfix/**' ]
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main, develop, 'feature/**', 'bugfix/**', 'hotfix/**', 'release/**' ]
@@ -15,6 +15,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       git-ref: ${{ github.head_ref || github.ref_name }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   dependency-submission:
 
