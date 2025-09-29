@@ -8,7 +8,6 @@ import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.Option;
-import network.crypta.config.OptionUtils;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -50,11 +49,10 @@ public class DATASTORE_SIZE implements Step {
     long autodetectedSize = canAutoconfigureDatastoreSize();
     if (maxSize < autodetectedSize) autodetectedSize = maxSize;
 
-    Option<Long> sizeOption = OptionUtils.longOption(config.get("node"), "storeSize");
-    Option<Long> clientCacheSizeOption =
-        OptionUtils.longOption(config.get("node"), "clientCacheSize");
+    Option<Long> sizeOption = Config.longOption(config.get("node"), "storeSize");
+    Option<Long> clientCacheSizeOption = Config.longOption(config.get("node"), "clientCacheSize");
     Option<Long> slashdotCacheSizeOption =
-        OptionUtils.longOption(config.get("node"), "slashdotCacheSize");
+        Config.longOption(config.get("node"), "slashdotCacheSize");
     if (!sizeOption.isDefault()) {
       long current =
           sizeOption.getValue()

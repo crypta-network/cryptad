@@ -144,12 +144,12 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     FormModel() {
       float storage = 100;
       Option<Long> sizeOption =
-          network.crypta.config.OptionUtils.longOption(config.get("node"), "storeSize");
+          network.crypta.config.Config.longOption(config.get("node"), "storeSize");
       if (!sizeOption.isDefault()) {
         Option<Long> clientCacheSizeOption =
-            network.crypta.config.OptionUtils.longOption(config.get("node"), "clientCacheSize");
+            network.crypta.config.Config.longOption(config.get("node"), "clientCacheSize");
         Option<Long> slashdotCacheSizeOption =
-            network.crypta.config.OptionUtils.longOption(config.get("node"), "slashdotCacheSize");
+            network.crypta.config.Config.longOption(config.get("node"), "slashdotCacheSize");
         long totalSize =
             sizeOption.getValue()
                 + clientCacheSizeOption.getValue()
