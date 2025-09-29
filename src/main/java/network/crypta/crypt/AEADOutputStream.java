@@ -37,14 +37,20 @@ public class AEADOutputStream extends FilterOutputStream {
    *     be used very much so should be e.g. an AESLightEngine.
    */
   public AEADOutputStream(
-      OutputStream os, byte[] key, byte[] nonce, BlockCipher hashCipher, BlockCipher mainCipher)
+      OutputStream os,
+      byte[] key,
+      byte[] writtenNonce,
+      byte[] ocbNonce,
+      BlockCipher hashCipher,
+      BlockCipher mainCipher)
       throws IOException {
     super(os);
-    os.write(nonce);
+    // Persist the full legacy nonce length (block size: 16 for AES) for backward compatibility.
+    os.write(writtenNonce);
     AEADBlockCipher ocb = new OCBBlockCipher(hashCipher, mainCipher);
     cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);
-    AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
+    AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, ocbNonce);
     cipher.init(true, params);
   }
 
@@ -82,7 +88,10 @@ public class AEADOutputStream extends FilterOutputStream {
   static final int MAC_SIZE_BYTES = MAC_SIZE_BITS / 8;
   // OCB in BC expects nonce length <= 15 bytes; we use the full 15
   static final int OCB_NONCE_SIZE = 15;
-  public static final int AES_OVERHEAD = OCB_NONCE_SIZE + MAC_SIZE_BYTES;
+  // Number of bytes we write before the ciphertext to store the nonce on disk.
+  // For AES we preserve the historical 16-byte prefix for compatibility.
+  static final int WRITTEN_NONCE_SIZE = 16;
+  public static final int AES_OVERHEAD = WRITTEN_NONCE_SIZE + MAC_SIZE_BYTES;
 
   public static AEADOutputStream createAES(OutputStream os, byte[] key, SecureRandom random)
       throws IOException {
@@ -94,10 +103,12 @@ public class AEADOutputStream extends FilterOutputStream {
       throws IOException {
     BlockCipher mainCipher = BlockCiphers.aes();
     BlockCipher hashCipher = BlockCiphers.aes();
-    byte[] nonce = new byte[OCB_NONCE_SIZE];
-    random.nextBytes(nonce);
-    // No need to mask top bit; nonce length is already <= 120 bits per RFC 7253.
-    return new AEADOutputStream(os, key, nonce, hashCipher, mainCipher);
+    byte[] writtenNonce = new byte[WRITTEN_NONCE_SIZE];
+    random.nextBytes(writtenNonce);
+    // OCB uses only the first 15 bytes per RFC 7253 (<=120 bits).
+    byte[] ocbNonce = new byte[OCB_NONCE_SIZE];
+    System.arraycopy(writtenNonce, 0, ocbNonce, 0, ocbNonce.length);
+    return new AEADOutputStream(os, key, writtenNonce, ocbNonce, hashCipher, mainCipher);
   }
 
   @Override

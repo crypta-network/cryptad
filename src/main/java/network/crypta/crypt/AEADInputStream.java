@@ -18,9 +18,17 @@ public class AEADInputStream extends FilterInputStream {
   private boolean finished;
 
   /**
-   * Create a decrypting, authenticating InputStream. IMPORTANT: We only authenticate when closing
-   * the stream, so do NOT swallow IOExceptions on close(); that's when authentication failures are
-   * raised. Reads a 15-byte OCB nonce from the stream.
+   * Create a decrypting, authenticating InputStream.
+   *
+   * <p>Compatibility note: Older on-disk data written by the legacy implementation prefixed the
+   * ciphertext with {@code mainCipher.getBlockSize()} bytes of nonce material (16 for AES). Bouncy
+   * Castle's OCB implementation requires a nonce of at most 15 bytes per RFC 7253. To preserve
+   * compatibility with existing data, we read {@code mainCipher.getBlockSize()} bytes from the
+   * stream but initialize OCB with only the first 15 bytes. The extra (16th) byte is consumed from
+   * the stream so the ciphertext is correctly aligned.
+   *
+   * <p>IMPORTANT: We only authenticate when closing the stream, so do NOT swallow IOExceptions on
+   * close(); that's when authentication failures are raised.
    *
    * @param is The underlying InputStream.
    * @param key The encryption key.
@@ -32,8 +40,15 @@ public class AEADInputStream extends FilterInputStream {
   public AEADInputStream(InputStream is, byte[] key, BlockCipher hashCipher, BlockCipher mainCipher)
       throws IOException {
     super(is);
-    byte[] nonce = new byte[15];
-    new DataInputStream(is).readFully(nonce);
+    // Read the legacy written nonce length (block size for AES = 16). For new data, writers may
+    // only use 15 bytes for OCB, but we must keep accepting older 16-byte-prefixed streams. We
+    // therefore always consume blockSize bytes here, and feed only the first 15 bytes into OCB.
+    final int blockSize = mainCipher.getBlockSize();
+    byte[] writtenNonce = new byte[blockSize];
+    DataInputStream dis = new DataInputStream(is);
+    dis.readFully(writtenNonce);
+    byte[] nonce = new byte[AEADOutputStream.OCB_NONCE_SIZE];
+    System.arraycopy(writtenNonce, 0, nonce, 0, nonce.length);
     AEADBlockCipher ocb = new OCBBlockCipher(hashCipher, mainCipher);
     cipher = ocb;
     KeyParameter keyParam = new KeyParameter(key);

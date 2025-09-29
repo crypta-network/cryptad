@@ -75,6 +75,15 @@ architecture review).
 - Launcher code style guardrails
   - Use the `APP_NAME` constant for window titles; prefer logging via `LauncherLog` over silent catches; keep Desktop integration hooks inside `try/catch` with debug logs.
 
+- AEAD/OCB nonce compatibility (Sep 2025)
+  - Legacy on-disk format wrote `mainCipher.getBlockSize()` bytes (16 for AES) before the ciphertext; BouncyCastle OCB uses a nonce of at most 15 bytes.
+  - Reader: `AEADInputStream` now consumes the full block size from the stream and initializes OCB with only the first 15 bytes. The extra byte is intentionally discarded so ciphertext is aligned.
+  - Writer: `AEADOutputStream` persists a 16-byte prefix again (`WRITTEN_NONCE_SIZE=16`) while using only the first 15 bytes internally for OCB. This preserves backward compatibility.
+  - Overhead: For AES, `AES_OVERHEAD` is 32 bytes (16-byte written nonce + 16-byte MAC).
+  - Files: `src/main/java/network/crypta/crypt/AEADInputStream.java`, `src/main/java/network/crypta/crypt/AEADOutputStream.java`.
+  - Guardrail: Do not change the on-disk prefix to 15 bytes; doing so would break reading of previously stored data.
+  - Migration note: If any data was written during the brief 15-byte-prefix regression window, coordinate with maintainers for an optional autodetect path before enabling any reader changes.
+
 ### CoreUpdater Migration (Sep 2025)
 
 - Core package-based updates
