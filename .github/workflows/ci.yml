@@ -15,6 +15,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       git-ref: ${{ github.head_ref || github.ref_name }}
+    secrets: inherit
 
   dependency-submission:
 
