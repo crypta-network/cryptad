@@ -15,7 +15,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       git-ref: ${{ github.head_ref || github.ref_name }}
-    secrets: inherit
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   dependency-submission:
 
