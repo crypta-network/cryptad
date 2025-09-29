@@ -107,7 +107,14 @@ class FailureTableEntry implements TimedOutNodesList {
   public static final double[] EMPTY_DOUBLE_ARRAY = new double[0];
 
   public static final WeakReference<? extends PeerNodeUnlocked>[] EMPTY_WEAK_REFERENCE =
-      (WeakReference<? extends PeerNodeUnlocked>[]) new WeakReference<?>[0];
+      weakArrayOfSize(0);
+
+  @SuppressWarnings("unchecked")
+  private static WeakReference<? extends PeerNodeUnlocked>[] weakArrayOfSize(int size) {
+    // All arrays store WeakReference to PeerNodeUnlocked (or subclasses). This localized cast is
+    // safe and centralizes the unchecked conversion.
+    return (WeakReference<? extends PeerNodeUnlocked>[]) new WeakReference<?>[size];
+  }
 
   FailureTableEntry(Key key) {
     this.key = key.archivalCopy();
@@ -215,8 +222,7 @@ class FailureTableEntry implements TimedOutNodesList {
       }
     }
     WeakReference<? extends PeerNodeUnlocked>[] newRequestorNodes =
-        (WeakReference<? extends PeerNodeUnlocked>[])
-            new WeakReference<?>[requestorNodes.length + notIncluded - nulls];
+        weakArrayOfSize(requestorNodes.length + notIncluded - nulls);
     long[] newRequestorTimes = new long[requestorNodes.length + notIncluded - nulls];
     long[] newRequestorBootIDs = new long[requestorNodes.length + notIncluded - nulls];
     short[] newRequestorHTLs = new short[requestorNodes.length + notIncluded - nulls];
@@ -311,8 +317,7 @@ class FailureTableEntry implements TimedOutNodesList {
       }
     }
     WeakReference<? extends PeerNodeUnlocked>[] newRequestedNodes =
-        (WeakReference<? extends PeerNodeUnlocked>[])
-            new WeakReference<?>[requestedNodes.length + notIncluded - nulls];
+        weakArrayOfSize(requestedNodes.length + notIncluded - nulls);
     double[] newRequestedLocs = new double[requestedNodes.length + notIncluded - nulls];
     long[] newRequestedBootIDs = new long[requestedNodes.length + notIncluded - nulls];
     long[] newRequestedTimes = new long[requestedNodes.length + notIncluded - nulls];
