@@ -56,6 +56,14 @@ architecture review).
 
 ## Recent Changes & Tips (Sep 2025)
 
+- AEAD: OCB replaced with AES‑GCM (breaking)
+  - We migrated AEAD streams from OCB to AES‑GCM and removed all legacy compatibility paths. Readers now treat the first 12 bytes of the 16‑byte on‑disk prefix as the GCM nonce; the remaining 4 bytes are reserved. Overhead remains 32 bytes (16‑byte prefix + 16‑byte tag).
+  - Impact: Any AEAD‑encrypted data written by previous OCB code will fail to decrypt. Specifically:
+    - Client persistence: `client.dat.crypt` / `client.dat.bak.crypt` cannot be read; the node will start without resuming persistent requests.
+    - Plugin stores: `*.data.crypt` cannot be read; plugins will start with empty/default store data.
+  - No fallback is provided. If you must retain old data, do not upgrade to this build or export/decrypt with an older version first.
+  - Files: `src/main/java/network/crypta/crypt/AEADInputStream.java`, `src/main/java/network/crypta/crypt/AEADOutputStream.java`.
+
 - Remote debugging (Wrapper/JDWP)
   - Set `CRYPTAD_REMOTE_DEBUG=1` to enable JDWP for the wrapped JVM at runtime (no `wrapper.conf` edits).
   - Tunables via env: `CRYPTAD_DEBUG_PORT` (default 5005), `CRYPTAD_DEBUG_HOST` (default 127.0.0.1), `CRYPTAD_DEBUG_SUSPEND` (`y|n`, default `n`), `CRYPTAD_DEBUG_TIMEOUT` (ms, optional).

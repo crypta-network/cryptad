@@ -7,7 +7,7 @@ import java.io.InputStream;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.modes.AEADBlockCipher;
-import org.bouncycastle.crypto.modes.OCBBlockCipher;
+import org.bouncycastle.crypto.modes.GCMBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
@@ -18,39 +18,33 @@ public class AEADInputStream extends FilterInputStream {
   private boolean finished;
 
   /**
-   * Create a decrypting, authenticating InputStream.
+   * Create a decrypting, authenticating InputStream using AES-GCM.
    *
-   * <p>Compatibility note: Older on-disk data written by the legacy implementation prefixed the
-   * ciphertext with {@code mainCipher.getBlockSize()} bytes of nonce material (16 for AES). Bouncy
-   * Castle's OCB implementation requires a nonce of at most 15 bytes per RFC 7253. To preserve
-   * compatibility with existing data, we read {@code mainCipher.getBlockSize()} bytes from the
-   * stream but initialize OCB with only the first 15 bytes. The extra (16th) byte is consumed from
-   * the stream so the ciphertext is correctly aligned.
+   * <p>Format: The stream starts with a 16-byte written prefix carrying the nonce; AES-GCM uses the
+   * first 12 bytes of that prefix as its IV/nonce. The remaining 4 bytes are currently unused and
+   * reserved. We keep the 16-byte prefix to preserve overall overhead consistency (prefix + 16-byte
+   * GCM tag = 32 bytes for AES), but this reader performs no legacy-OCB compatibility handling.
    *
-   * <p>IMPORTANT: We only authenticate when closing the stream, so do NOT swallow IOExceptions on
-   * close(); that's when authentication failures are raised.
+   * <p>IMPORTANT: Authentication is verified at end-of-stream when {@code doFinal()} is called, so
+   * do NOT swallow IOExceptions on close(); that's when authentication failures are raised.
    *
    * @param is The underlying InputStream.
    * @param key The encryption key.
-   * @param mainCipher The BlockCipher for encrypting data. E.g. AES; not a block mode. This will be
-   *     used for encrypting a fairly large amount of data so could be any of the 3 BC AES impl's.
-   * @param hashCipher The BlockCipher for the final hash. E.g. AES, not a block mode. This will not
-   *     be used very much so should be e.g. an AESLightEngine.
+   * @param mainCipher The BlockCipher (AES) used by GCM; not a block mode.
+   * @param hashCipher Unused for GCM (retained for signature compatibility).
    */
   public AEADInputStream(InputStream is, byte[] key, BlockCipher hashCipher, BlockCipher mainCipher)
       throws IOException {
     super(is);
-    // Read the legacy written nonce length (block size for AES = 16). For new data, writers may
-    // only use 15 bytes for OCB, but we must keep accepting older 16-byte-prefixed streams. We
-    // therefore always consume blockSize bytes here, and feed only the first 15 bytes into OCB.
+    // Read the 16-byte written prefix and take the first 12 bytes as the GCM nonce.
     final int blockSize = mainCipher.getBlockSize();
     byte[] writtenNonce = new byte[blockSize];
     DataInputStream dis = new DataInputStream(is);
     dis.readFully(writtenNonce);
-    byte[] nonce = new byte[AEADOutputStream.OCB_NONCE_SIZE];
+    byte[] nonce = new byte[AEADOutputStream.GCM_NONCE_SIZE];
     System.arraycopy(writtenNonce, 0, nonce, 0, nonce.length);
-    AEADBlockCipher ocb = new OCBBlockCipher(hashCipher, mainCipher);
-    cipher = ocb;
+    AEADBlockCipher gcm = new GCMBlockCipher(mainCipher);
+    cipher = gcm;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, nonce);
     cipher.init(false, params);
@@ -60,7 +54,7 @@ public class AEADInputStream extends FilterInputStream {
   }
 
   public final int getIVSize() {
-    return 15;
+    return AEADOutputStream.GCM_NONCE_SIZE;
   }
 
   private final byte[] excess;
