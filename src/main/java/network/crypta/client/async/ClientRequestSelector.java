@@ -146,6 +146,12 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
   private final transient HashSet<SendableRequestItemKey> runningInserts;
 
+  @SuppressWarnings("unchecked")
+  private static WeakReference<BaseSendableGet>[] newWeakGetterArray(int length) {
+    // Centralize unchecked array creation for WeakReference<BaseSendableGet>[]
+    return (WeakReference<BaseSendableGet>[]) new WeakReference<?>[length];
+  }
+
   /**
    * Choose a priority to start requests from.
    *
@@ -627,10 +633,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       if (getterWaiting != null) {
         WeakReference<BaseSendableGet>[] waiting = transientRequestsWaitingForKeysFetching.get(key);
         if (waiting == null) {
-          transientRequestsWaitingForKeysFetching.put(
-              key,
-              (WeakReference<BaseSendableGet>[])
-                  new WeakReference<?>[] {new WeakReference<>(getterWaiting)});
+          WeakReference<BaseSendableGet>[] single = newWeakGetterArray(1);
+          single[0] = new WeakReference<>(getterWaiting);
+          transientRequestsWaitingForKeysFetching.put(key, single);
         } else {
           for (WeakReference<BaseSendableGet> ref : waiting) {
             if (ref.get() == getterWaiting) return true;
