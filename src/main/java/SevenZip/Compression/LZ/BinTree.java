@@ -165,7 +165,86 @@ public class BinTree extends InWindow {
     }
 
     int count = cutValue;
+    MatchResult mr =
+        traverseAndCollect(
+            curMatch,
+            matchMinPos,
+            cur,
+            lenLimit,
+            maxLen,
+            ptr0,
+            ptr1,
+            len0,
+            len1,
+            distances,
+            offset,
+            count);
+    offset = mr.offset;
+    MovePos();
+    return offset;
+  }
 
+  public void skip(int num) throws IOException {
+    do {
+      int lenLimit;
+      if (_pos + matchMaxLen <= _streamPos) lenLimit = matchMaxLen;
+      else {
+        lenLimit = _streamPos - _pos;
+        if (lenLimit < kMinMatchCheck) {
+          MovePos();
+          continue;
+        }
+      }
+
+      int matchMinPos = (_pos > cyclicBufferSize) ? (_pos - cyclicBufferSize) : 0;
+      int cur = _bufferOffset + _pos;
+
+      int hashValue;
+
+      if (hashArray) {
+        int temp = CrcTable[_bufferBase[cur] & 0xFF] ^ (_bufferBase[cur + 1] & 0xFF);
+        int hash2Value = temp & (K_HASH2_SIZE - 1);
+        hash[hash2Value] = _pos;
+        temp ^= ((_bufferBase[cur + 2] & 0xFF) << 8);
+        int hash3Value = temp & (K_HASH3_SIZE - 1);
+        hash[K_HASH3_OFFSET + hash3Value] = _pos;
+        hashValue = (temp ^ (CrcTable[_bufferBase[cur + 3] & 0xFF] << 5)) & hashMask;
+      } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((_bufferBase[cur + 1] & 0xFF) << 8));
+
+      int curMatch = hash[kFixHashSize + hashValue];
+      hash[kFixHashSize + hashValue] = _pos;
+
+      int ptr0 = (cyclicBufferPos << 1) + 1;
+      int ptr1 = (cyclicBufferPos << 1);
+
+      int len0;
+      int len1;
+      len0 = len1 = kNumHashDirectBytes;
+
+      traverseAndSkip(curMatch, matchMinPos, cur, lenLimit, ptr0, ptr1, len0, len1, cutValue);
+      MovePos();
+    } while (--num != 0);
+  }
+
+  private static final class MatchResult {
+    int offset;
+    int maxLen;
+  }
+
+  private MatchResult traverseAndCollect(
+      int curMatch,
+      int matchMinPos,
+      int cur,
+      int lenLimit,
+      int maxLen,
+      int ptr0,
+      int ptr1,
+      int len0,
+      int len1,
+      int[] distances,
+      int offset,
+      int count) {
+    MatchResult res = new MatchResult();
     while (true) {
       boolean exitLoop = false;
       if (curMatch <= matchMinPos || count-- == 0) {
@@ -209,89 +288,60 @@ public class BinTree extends InWindow {
       }
       if (exitLoop) break;
     }
-    MovePos();
-    return offset;
+    res.offset = offset;
+    res.maxLen = maxLen;
+    return res;
   }
 
-  public void skip(int num) throws IOException {
-    do {
-      int lenLimit;
-      if (_pos + matchMaxLen <= _streamPos) lenLimit = matchMaxLen;
-      else {
-        lenLimit = _streamPos - _pos;
-        if (lenLimit < kMinMatchCheck) {
-          MovePos();
-          continue;
-        }
-      }
+  private void traverseAndSkip(
+      int curMatch,
+      int matchMinPos,
+      int cur,
+      int lenLimit,
+      int ptr0,
+      int ptr1,
+      int len0,
+      int len1,
+      int count) {
+    while (true) {
+      boolean exitLoop = false;
+      if (curMatch <= matchMinPos || count-- == 0) {
+        son[ptr0] = son[ptr1] = K_EMPTY_HASH_VALUE;
+        exitLoop = true;
+      } else {
+        int delta = _pos - curMatch;
+        int cyclicPos =
+            ((delta <= cyclicBufferPos)
+                    ? (cyclicBufferPos - delta)
+                    : (cyclicBufferPos - delta + cyclicBufferSize))
+                << 1;
 
-      int matchMinPos = (_pos > cyclicBufferSize) ? (_pos - cyclicBufferSize) : 0;
-      int cur = _bufferOffset + _pos;
-
-      int hashValue;
-
-      if (hashArray) {
-        int temp = CrcTable[_bufferBase[cur] & 0xFF] ^ (_bufferBase[cur + 1] & 0xFF);
-        int hash2Value = temp & (K_HASH2_SIZE - 1);
-        hash[hash2Value] = _pos;
-        temp ^= ((_bufferBase[cur + 2] & 0xFF) << 8);
-        int hash3Value = temp & (K_HASH3_SIZE - 1);
-        hash[K_HASH3_OFFSET + hash3Value] = _pos;
-        hashValue = (temp ^ (CrcTable[_bufferBase[cur + 3] & 0xFF] << 5)) & hashMask;
-      } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((_bufferBase[cur + 1] & 0xFF) << 8));
-
-      int curMatch = hash[kFixHashSize + hashValue];
-      hash[kFixHashSize + hashValue] = _pos;
-
-      int ptr0 = (cyclicBufferPos << 1) + 1;
-      int ptr1 = (cyclicBufferPos << 1);
-
-      int len0;
-      int len1;
-      len0 = len1 = kNumHashDirectBytes;
-
-      int count = cutValue;
-      while (true) {
-        boolean exitLoop = false;
-        if (curMatch <= matchMinPos || count-- == 0) {
-          son[ptr0] = son[ptr1] = K_EMPTY_HASH_VALUE;
-          exitLoop = true;
-        } else {
-          int delta = _pos - curMatch;
-          int cyclicPos =
-              ((delta <= cyclicBufferPos)
-                      ? (cyclicBufferPos - delta)
-                      : (cyclicBufferPos - delta + cyclicBufferSize))
-                  << 1;
-
-          int pby1 = _bufferOffset + curMatch;
-          int len = Math.min(len0, len1);
-          if (_bufferBase[pby1 + len] == _bufferBase[cur + len]) {
-            while (++len != lenLimit) if (_bufferBase[pby1 + len] != _bufferBase[cur + len]) break;
-            if (len == lenLimit) {
-              son[ptr1] = son[cyclicPos];
-              son[ptr0] = son[cyclicPos + 1];
-              exitLoop = true;
-            }
-          }
-          if (!exitLoop) {
-            if ((_bufferBase[pby1 + len] & 0xFF) < (_bufferBase[cur + len] & 0xFF)) {
-              son[ptr1] = curMatch;
-              ptr1 = cyclicPos + 1;
-              curMatch = son[ptr1];
-              len1 = len;
-            } else {
-              son[ptr0] = curMatch;
-              ptr0 = cyclicPos;
-              curMatch = son[ptr0];
-              len0 = len;
-            }
+        int pby1 = _bufferOffset + curMatch;
+        int len = Math.min(len0, len1);
+        if (_bufferBase[pby1 + len] == _bufferBase[cur + len]) {
+          while (++len != lenLimit) if (_bufferBase[pby1 + len] != _bufferBase[cur + len]) break;
+          if (len == lenLimit) {
+            son[ptr1] = son[cyclicPos];
+            son[ptr0] = son[cyclicPos + 1];
+            exitLoop = true;
           }
         }
-        if (exitLoop) break;
+        if (!exitLoop) {
+          if ((_bufferBase[pby1 + len] & 0xFF) < (_bufferBase[cur + len] & 0xFF)) {
+            son[ptr1] = curMatch;
+            ptr1 = cyclicPos + 1;
+            curMatch = son[ptr1];
+            len1 = len;
+          } else {
+            son[ptr0] = curMatch;
+            ptr0 = cyclicPos;
+            curMatch = son[ptr0];
+            len0 = len;
+          }
+        }
       }
-      MovePos();
-    } while (--num != 0);
+      if (exitLoop) break;
+    }
   }
 
   void normalizeLinks(int[] items, int numItems, int subValue) {
