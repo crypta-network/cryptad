@@ -135,24 +135,24 @@ public class LzmaBench {
     private final CRC crc = new CRC();
 
     public void init() {
-      crc.Init();
+      crc.init();
     }
 
     public int getDigest() {
-      return crc.GetDigest();
+      return crc.getDigest();
     }
 
     @Override
     public void write(byte @NotNull [] b, int off, int len) throws IOException {
       if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
-      crc.Update(b, off, len);
+      crc.update(b, off, len);
     }
 
     // Use OutputStream default bulk write implementation
 
     @Override
     public void write(int b) {
-      crc.UpdateByte(b);
+      crc.updateByte(b);
     }
   }
 
@@ -306,7 +306,7 @@ public class LzmaBench {
         if (!decoder.Code(inputCompressedStream, crcOutStream, outSize))
           throw (new IllegalStateException("Decoding Error"));
         decodeTime = System.currentTimeMillis() - startTime;
-        if (crcOutStream.getDigest() != crc.GetDigest())
+        if (crcOutStream.getDigest() != crc.getDigest())
           throw (new IllegalStateException("CRC Error"));
       }
     }
@@ -341,8 +341,8 @@ public class LzmaBench {
     rg.set(kBufferSize);
     rg.generate();
     CRC crc = new CRC();
-    crc.Init();
-    crc.Update(rg.buffer, 0, rg.bufferSize);
+    crc.init();
+    crc.update(rg.buffer, 0, rg.bufferSize);
 
     CProgressInfo progressInfo = new CProgressInfo();
     progressInfo.approvedStart = dictionarySize;
