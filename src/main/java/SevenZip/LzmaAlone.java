@@ -191,7 +191,7 @@ public class LzmaAlone {
     }
   }
 
-  private static void handleBenchmark(CommandLine params) throws Exception {
+  private static void handleBenchmark(CommandLine params) throws IOException {
     int dictionary = (1 << 21);
     if (params.dictionarySizeIsDefined) dictionary = params.dictionarySize;
     if (params.matchFinder > 1) throw new IllegalArgumentException("Unsupported match finder");
