@@ -1,5 +1,5 @@
 package SevenZip;
 
 public interface ICodeProgress {
-  public void SetProgress(long inSize, long outSize);
+  void setProgress(long inSize, long outSize);
 }

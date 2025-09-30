@@ -230,7 +230,7 @@ public class LzmaBench {
       inSize = 0;
     }
 
-    public void SetProgress(long inSize, long outSize) {
+    public void setProgress(long inSize, long outSize) {
       if (inSize >= approvedStart && this.inSize == 0) {
         time = System.currentTimeMillis();
         this.inSize = inSize;

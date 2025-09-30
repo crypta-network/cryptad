@@ -1143,7 +1143,7 @@ public class Encoder {
         CodeOneBlock(processedInSize, processedOutSize, finished);
         if (finished[0]) return;
         if (progress != null) {
-          progress.SetProgress(processedInSize[0], processedOutSize[0]);
+          progress.setProgress(processedInSize[0], processedOutSize[0]);
         }
       }
     } finally {

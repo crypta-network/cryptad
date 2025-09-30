@@ -89,7 +89,7 @@ public class NewLZMACompressor extends AbstractCompressor {
             boolean compressionEffectShouldBeChecked = minimumCompressionPercentage != 0;
 
             @Override
-            public void SetProgress(long processedInSize, long processedOutSize) {
+            public void setProgress(long processedInSize, long processedOutSize) {
               if (compressionEffectShouldBeChecked
                   && processedInSize > amountOfDataToCheckCompressionRatio) {
                 try {
