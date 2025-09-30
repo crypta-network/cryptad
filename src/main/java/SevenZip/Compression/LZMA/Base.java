@@ -3,75 +3,84 @@
 package SevenZip.Compression.LZMA;
 
 public class Base {
-  public static final int kNumRepDistances = 4;
-  public static final int kNumStates = 12;
+  public static final int NUM_REP_DISTANCES = 4;
+  public static final int NUM_STATES = 12;
+  public static final int STATE_INIT = 0;
 
-  public static final int StateInit() {
-    return 0;
-  }
-
-  public static final int StateUpdateChar(int index) {
+  /** Transition state for a literal (char) emission. */
+  public static int stateUpdateChar(int index) {
     if (index < 4) return 0;
     if (index < 10) return index - 3;
     return index - 6;
   }
 
-  public static final int StateUpdateMatch(int index) {
+  /** Transition state for a match. */
+  public static int stateUpdateMatch(int index) {
     return (index < 7 ? 7 : 10);
   }
 
-  public static final int StateUpdateRep(int index) {
+  /** Transition state for a repeated match. */
+  public static int stateUpdateRep(int index) {
     return (index < 7 ? 8 : 11);
   }
 
-  public static final int StateUpdateShortRep(int index) {
+  /** Transition state for a short repeated match. */
+  public static int stateUpdateShortRep(int index) {
     return (index < 7 ? 9 : 11);
   }
 
-  public static final boolean StateIsCharState(int index) {
-    return index < 7;
+  /**
+   * True when the given state is a "non-match" (literal) state. Kept to align with existing callers
+   * (semantics: index >= 7).
+   */
+  public static boolean isCharState(int index) {
+    return index >= 7;
   }
 
-  public static final int kNumPosSlotBits = 6;
-  public static final int kDicLogSizeMin = 0;
-  // public static final int kDicLogSizeMax = 28;
-  // public static final int kDistTableSizeMax = kDicLogSizeMax * 2;
+  public static final int NUM_POS_SLOT_BITS = 6;
+  public static final int DIC_LOG_SIZE_MIN = 0;
+  /*
+   * Note: historical constants (kDicLogSizeMax, kDistTableSizeMax) were intentionally removed
+   * as they are unused in this codebase.
+   */
 
-  public static final int kNumLenToPosStatesBits = 2; // it's for speed optimization
-  public static final int kNumLenToPosStates = 1 << kNumLenToPosStatesBits;
+  public static final int NUM_LEN_TO_POS_STATES_BITS = 2; // it's for speed optimization
+  public static final int NUM_LEN_TO_POS_STATES = 1 << NUM_LEN_TO_POS_STATES_BITS;
 
-  public static final int kMatchMinLen = 2;
+  public static final int MATCH_MIN_LEN = 2;
 
-  public static final int GetLenToPosState(int len) {
-    len -= kMatchMinLen;
-    if (len < kNumLenToPosStates) return len;
-    return (int) (kNumLenToPosStates - 1);
+  /** Computes the length-to-position state bucket. */
+  public static int getLenToPosState(int len) {
+    len -= MATCH_MIN_LEN;
+    if (len < NUM_LEN_TO_POS_STATES) return len;
+    return NUM_LEN_TO_POS_STATES - 1;
   }
 
-  public static final int kNumAlignBits = 4;
-  public static final int kAlignTableSize = 1 << kNumAlignBits;
-  public static final int kAlignMask = (kAlignTableSize - 1);
+  public static final int NUM_ALIGN_BITS = 4;
+  public static final int ALIGN_TABLE_SIZE = 1 << NUM_ALIGN_BITS;
+  public static final int ALIGN_MASK = (ALIGN_TABLE_SIZE - 1);
 
-  public static final int kStartPosModelIndex = 4;
-  public static final int kEndPosModelIndex = 14;
-  public static final int kNumPosModels = kEndPosModelIndex - kStartPosModelIndex;
+  public static final int START_POS_MODEL_INDEX = 4;
+  public static final int END_POS_MODEL_INDEX = 14;
 
-  public static final int kNumFullDistances = 1 << (kEndPosModelIndex / 2);
+  public static final int NUM_FULL_DISTANCES = 1 << (END_POS_MODEL_INDEX / 2);
 
-  public static final int kNumLitPosStatesBitsEncodingMax = 4;
-  public static final int kNumLitContextBitsMax = 8;
+  public static final int NUM_LIT_POS_STATES_BITS_ENCODING_MAX = 4;
+  public static final int NUM_LIT_CONTEXT_BITS_MAX = 8;
 
-  public static final int kNumPosStatesBitsMax = 4;
-  public static final int kNumPosStatesMax = (1 << kNumPosStatesBitsMax);
-  public static final int kNumPosStatesBitsEncodingMax = 4;
-  public static final int kNumPosStatesEncodingMax = (1 << kNumPosStatesBitsEncodingMax);
+  public static final int NUM_POS_STATES_BITS_MAX = 4;
+  public static final int NUM_POS_STATES_MAX = (1 << NUM_POS_STATES_BITS_MAX);
+  public static final int NUM_POS_STATES_BITS_ENCODING_MAX = 4;
+  public static final int NUM_POS_STATES_ENCODING_MAX = (1 << NUM_POS_STATES_BITS_ENCODING_MAX);
 
-  public static final int kNumLowLenBits = 3;
-  public static final int kNumMidLenBits = 3;
-  public static final int kNumHighLenBits = 8;
-  public static final int kNumLowLenSymbols = 1 << kNumLowLenBits;
-  public static final int kNumMidLenSymbols = 1 << kNumMidLenBits;
-  public static final int kNumLenSymbols =
-      kNumLowLenSymbols + kNumMidLenSymbols + (1 << kNumHighLenBits);
-  public static final int kMatchMaxLen = kMatchMinLen + kNumLenSymbols - 1;
+  public static final int NUM_LOW_LEN_BITS = 3;
+  public static final int NUM_MID_LEN_BITS = 3;
+  public static final int NUM_HIGH_LEN_BITS = 8;
+  public static final int NUM_LOW_LEN_SYMBOLS = 1 << NUM_LOW_LEN_BITS;
+  public static final int NUM_MID_LEN_SYMBOLS = 1 << NUM_MID_LEN_BITS;
+  public static final int NUM_LEN_SYMBOLS =
+      NUM_LOW_LEN_SYMBOLS + NUM_MID_LEN_SYMBOLS + (1 << NUM_HIGH_LEN_BITS);
+  public static final int MATCH_MAX_LEN = MATCH_MIN_LEN + NUM_LEN_SYMBOLS - 1;
+
+  private Base() {}
 }
