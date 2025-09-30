@@ -43,6 +43,7 @@ public class BinTree extends InWindow {
     }
   }
 
+  @Override
   public void Init() throws IOException {
     super.Init();
     for (int i = 0; i < _hashSizeSum; i++) _hash[i] = kEmptyHashValue;
@@ -50,6 +51,7 @@ public class BinTree extends InWindow {
     ReduceOffsets(-1);
   }
 
+  @Override
   public void MovePos() throws IOException {
     if (++_cyclicBufferPos >= _cyclicBufferSize) _cyclicBufferPos = 0;
     super.MovePos();
@@ -70,8 +72,10 @@ public class BinTree extends InWindow {
     _matchMaxLen = matchMaxLen;
 
     int cyclicBufferSize = historySize + 1;
-    if (_cyclicBufferSize != cyclicBufferSize)
-      _son = new int[(_cyclicBufferSize = cyclicBufferSize) * 2];
+    if (_cyclicBufferSize != cyclicBufferSize) {
+      _cyclicBufferSize = cyclicBufferSize;
+      _son = new int[_cyclicBufferSize * 2];
+    }
 
     int hs = kBT2HashSize;
 
@@ -88,7 +92,10 @@ public class BinTree extends InWindow {
       hs++;
       hs += kFixHashSize;
     }
-    if (hs != _hashSizeSum) _hash = new int[_hashSizeSum = hs];
+    if (hs != _hashSizeSum) {
+      _hashSizeSum = hs;
+      _hash = new int[_hashSizeSum];
+    }
     return true;
   }
 
@@ -107,15 +114,17 @@ public class BinTree extends InWindow {
     int matchMinPos = (_pos > _cyclicBufferSize) ? (_pos - _cyclicBufferSize) : 0;
     int cur = _bufferOffset + _pos;
     int maxLen = kStartMaxLen; // to avoid items for len < hashSize;
-    int hashValue, hash2Value = 0, hash3Value = 0;
+    int hashValue;
+    int hash2Value = 0;
+    int hash3Value = 0;
 
     if (HASH_ARRAY) {
       int temp = CrcTable[_bufferBase[cur] & 0xFF] ^ (_bufferBase[cur + 1] & 0xFF);
       hash2Value = temp & (kHash2Size - 1);
-      temp ^= ((int) (_bufferBase[cur + 2] & 0xFF) << 8);
+      temp ^= ((_bufferBase[cur + 2] & 0xFF) << 8);
       hash3Value = temp & (kHash3Size - 1);
       hashValue = (temp ^ (CrcTable[_bufferBase[cur + 3] & 0xFF] << 5)) & _hashMask;
-    } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((int) (_bufferBase[cur + 1] & 0xFF) << 8));
+    } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((_bufferBase[cur + 1] & 0xFF) << 8));
 
     int curMatch = _hash[kFixHashSize + hashValue];
     if (HASH_ARRAY) {
@@ -123,18 +132,16 @@ public class BinTree extends InWindow {
       int curMatch3 = _hash[kHash3Offset + hash3Value];
       _hash[hash2Value] = _pos;
       _hash[kHash3Offset + hash3Value] = _pos;
-      if (curMatch2 > matchMinPos)
-        if (_bufferBase[_bufferOffset + curMatch2] == _bufferBase[cur]) {
-          distances[offset++] = maxLen = 2;
-          distances[offset++] = _pos - curMatch2 - 1;
-        }
-      if (curMatch3 > matchMinPos)
-        if (_bufferBase[_bufferOffset + curMatch3] == _bufferBase[cur]) {
-          if (curMatch3 == curMatch2) offset -= 2;
-          distances[offset++] = maxLen = 3;
-          distances[offset++] = _pos - curMatch3 - 1;
-          curMatch2 = curMatch3;
-        }
+      if (curMatch2 > matchMinPos && _bufferBase[_bufferOffset + curMatch2] == _bufferBase[cur]) {
+        distances[offset++] = maxLen = 2;
+        distances[offset++] = _pos - curMatch2 - 1;
+      }
+      if (curMatch3 > matchMinPos && _bufferBase[_bufferOffset + curMatch3] == _bufferBase[cur]) {
+        if (curMatch3 == curMatch2) offset -= 2;
+        distances[offset++] = maxLen = 3;
+        distances[offset++] = _pos - curMatch3 - 1;
+        curMatch2 = curMatch3;
+      }
       if (offset != 0 && curMatch2 == curMatch) {
         offset -= 2;
         maxLen = kStartMaxLen;
@@ -146,17 +153,16 @@ public class BinTree extends InWindow {
     int ptr0 = (_cyclicBufferPos << 1) + 1;
     int ptr1 = (_cyclicBufferPos << 1);
 
-    int len0, len1;
+    int len0;
+    int len1;
     len0 = len1 = kNumHashDirectBytes;
 
-    if (kNumHashDirectBytes != 0) {
-      if (curMatch > matchMinPos) {
-        if (_bufferBase[_bufferOffset + curMatch + kNumHashDirectBytes]
+    if (kNumHashDirectBytes != 0
+        && curMatch > matchMinPos
+        && _bufferBase[_bufferOffset + curMatch + kNumHashDirectBytes]
             != _bufferBase[cur + kNumHashDirectBytes]) {
-          distances[offset++] = maxLen = kNumHashDirectBytes;
-          distances[offset++] = _pos - curMatch - 1;
-        }
-      }
+      distances[offset++] = maxLen = kNumHashDirectBytes;
+      distances[offset++] = _pos - curMatch - 1;
     }
 
     int count = _cutValue;
@@ -224,11 +230,11 @@ public class BinTree extends InWindow {
         int temp = CrcTable[_bufferBase[cur] & 0xFF] ^ (_bufferBase[cur + 1] & 0xFF);
         int hash2Value = temp & (kHash2Size - 1);
         _hash[hash2Value] = _pos;
-        temp ^= ((int) (_bufferBase[cur + 2] & 0xFF) << 8);
+        temp ^= ((_bufferBase[cur + 2] & 0xFF) << 8);
         int hash3Value = temp & (kHash3Size - 1);
         _hash[kHash3Offset + hash3Value] = _pos;
         hashValue = (temp ^ (CrcTable[_bufferBase[cur + 3] & 0xFF] << 5)) & _hashMask;
-      } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((int) (_bufferBase[cur + 1] & 0xFF) << 8));
+      } else hashValue = ((_bufferBase[cur] & 0xFF) ^ ((_bufferBase[cur + 1] & 0xFF) << 8));
 
       int curMatch = _hash[kFixHashSize + hashValue];
       _hash[kFixHashSize + hashValue] = _pos;
@@ -236,7 +242,8 @@ public class BinTree extends InWindow {
       int ptr0 = (_cyclicBufferPos << 1) + 1;
       int ptr1 = (_cyclicBufferPos << 1);
 
-      int len0, len1;
+      int len0;
+      int len1;
       len0 = len1 = kNumHashDirectBytes;
 
       int count = _cutValue;
@@ -295,9 +302,7 @@ public class BinTree extends InWindow {
     ReduceOffsets(subValue);
   }
 
-  public void SetCutValue(int cutValue) {
-    _cutValue = cutValue;
-  }
+  // Removed unused setter to eliminate dead code and IDE warning.
 
   private static final int[] CrcTable = new int[256];
 
