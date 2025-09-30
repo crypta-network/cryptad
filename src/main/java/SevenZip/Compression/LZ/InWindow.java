@@ -6,120 +6,125 @@ import java.io.IOException;
 import java.io.InputStream;
 
 public class InWindow {
-  public byte[] _bufferBase; // pointer to buffer with data
-  InputStream _stream;
-  int _posLimit; // offset (from _buffer) of first byte when new block reading must be done
-  boolean _streamEndWasReached; // if (true) then _streamPos shows real end of stream
+  // pointer to buffer with data
+  protected byte[] bufferBase;
+  InputStream stream;
+  int posLimit; // offset (from buffer) of first byte when new block reading must be done
 
-  int _pointerToLastSafePosition;
+  /** When true, streamPos shows real end of stream. */
+  boolean streamEndWasReached;
 
-  public int _bufferOffset;
+  int pointerToLastSafePosition;
 
-  public int _blockSize; // Size of Allocated memory block
-  public int _pos; // offset (from _buffer) of curent byte
-  int _keepSizeBefore; // how many BYTEs must be kept in buffer before _pos
-  int _keepSizeAfter; // how many BYTEs must be kept buffer after _pos
-  public int _streamPos; // offset (from _buffer) of first not read byte from Stream
+  protected int bufferOffset;
 
-  public void MoveBlock() {
-    int offset = _bufferOffset + _pos - _keepSizeBefore;
+  // Size of allocated memory block
+  protected int blockSize;
+  // offset (from buffer) of current byte
+  protected int pos;
+  int keepSizeBefore; // how many BYTEs must be kept in buffer before pos
+  int keepSizeAfter; // how many BYTEs must be kept buffer after pos
+  // offset (from buffer) of first not read byte from Stream
+  protected int streamPos;
+
+  public void moveBlock() {
+    int offset = bufferOffset + pos - keepSizeBefore;
     // we need one additional byte, since MovePos moves on 1 byte.
     if (offset > 0) offset--;
 
-    int numBytes = _bufferOffset + _streamPos - offset;
+    int numBytes = bufferOffset + streamPos - offset;
 
-    // check negative offset ????
-    for (int i = 0; i < numBytes; i++) _bufferBase[i] = _bufferBase[offset + i];
-    _bufferOffset -= offset;
+    // Copy existing data into the beginning of the buffer.
+    for (int i = 0; i < numBytes; i++) bufferBase[i] = bufferBase[offset + i];
+    bufferOffset -= offset;
   }
 
-  public void ReadBlock() throws IOException {
-    if (_streamEndWasReached) return;
+  public void readBlock() throws IOException {
+    if (streamEndWasReached) return;
     while (true) {
-      int size = (0 - _bufferOffset) + _blockSize - _streamPos;
+      int size = -bufferOffset + blockSize - streamPos;
       if (size == 0) return;
-      int numReadBytes = _stream.read(_bufferBase, _bufferOffset + _streamPos, size);
+      int numReadBytes = stream.read(bufferBase, bufferOffset + streamPos, size);
       if (numReadBytes == -1) {
-        _posLimit = _streamPos;
-        int pointerToPostion = _bufferOffset + _posLimit;
-        if (pointerToPostion > _pointerToLastSafePosition)
-          _posLimit = _pointerToLastSafePosition - _bufferOffset;
+        posLimit = streamPos;
+        int pointerToPostion = bufferOffset + posLimit;
+        if (pointerToPostion > pointerToLastSafePosition)
+          posLimit = pointerToLastSafePosition - bufferOffset;
 
-        _streamEndWasReached = true;
+        streamEndWasReached = true;
         return;
       }
-      _streamPos += numReadBytes;
-      if (_streamPos >= _pos + _keepSizeAfter) _posLimit = _streamPos - _keepSizeAfter;
+      streamPos += numReadBytes;
+      if (streamPos >= pos + keepSizeAfter) posLimit = streamPos - keepSizeAfter;
     }
   }
 
-  void Free() {
-    _bufferBase = null;
+  void free() {
+    bufferBase = null;
   }
 
-  public void Create(int keepSizeBefore, int keepSizeAfter, int keepSizeReserv) {
-    _keepSizeBefore = keepSizeBefore;
-    _keepSizeAfter = keepSizeAfter;
-    int blockSize = keepSizeBefore + keepSizeAfter + keepSizeReserv;
-    if (_bufferBase == null || _blockSize != blockSize) {
-      Free();
-      _blockSize = blockSize;
-      _bufferBase = new byte[_blockSize];
+  public void create(int keepSizeBefore, int keepSizeAfter, int keepSizeReserv) {
+    this.keepSizeBefore = keepSizeBefore;
+    this.keepSizeAfter = keepSizeAfter;
+    int newBlockSize = keepSizeBefore + keepSizeAfter + keepSizeReserv;
+    if (bufferBase == null || blockSize != newBlockSize) {
+      free();
+      blockSize = newBlockSize;
+      bufferBase = new byte[blockSize];
     }
-    _pointerToLastSafePosition = _blockSize - keepSizeAfter;
+    pointerToLastSafePosition = blockSize - keepSizeAfter;
   }
 
-  public void SetStream(InputStream stream) {
-    _stream = stream;
+  public void setStream(InputStream stream) {
+    this.stream = stream;
   }
 
-  public void ReleaseStream() {
-    _stream = null;
+  public void releaseStream() {
+    stream = null;
   }
 
-  public void Init() throws IOException {
-    _bufferOffset = 0;
-    _pos = 0;
-    _streamPos = 0;
-    _streamEndWasReached = false;
-    ReadBlock();
+  public void init() throws IOException {
+    bufferOffset = 0;
+    pos = 0;
+    streamPos = 0;
+    streamEndWasReached = false;
+    readBlock();
   }
 
-  public void MovePos() throws IOException {
-    _pos++;
-    if (_pos > _posLimit) {
-      int pointerToPostion = _bufferOffset + _pos;
-      if (pointerToPostion > _pointerToLastSafePosition) MoveBlock();
-      ReadBlock();
+  public void movePos() throws IOException {
+    pos++;
+    if (pos > posLimit) {
+      int pointerToPostion = bufferOffset + pos;
+      if (pointerToPostion > pointerToLastSafePosition) moveBlock();
+      readBlock();
     }
   }
 
-  public byte GetIndexByte(int index) {
-    return _bufferBase[_bufferOffset + _pos + index];
+  public byte getIndexByte(int index) {
+    return bufferBase[bufferOffset + pos + index];
   }
 
-  // index + limit have not to exceed _keepSizeAfter;
-  public int GetMatchLen(int index, int distance, int limit) {
-    if (_streamEndWasReached)
-      if ((_pos + index) + limit > _streamPos) limit = _streamPos - (_pos + index);
+  public int getMatchLen(int index, int distance, int limit) {
+    if (streamEndWasReached && (pos + index) + limit > streamPos) limit = streamPos - (pos + index);
     distance++;
-    // Byte *pby = _buffer + (size_t)_pos + index;
-    int pby = _bufferOffset + _pos + index;
+    int pby = bufferOffset + pos + index;
 
     int i;
-    for (i = 0; i < limit && _bufferBase[pby + i] == _bufferBase[pby + i - distance]; i++)
-      ;
+    i = 0;
+    while (i < limit && bufferBase[pby + i] == bufferBase[pby + i - distance]) {
+      i++;
+    }
     return i;
   }
 
-  public int GetNumAvailableBytes() {
-    return _streamPos - _pos;
+  public int getNumAvailableBytes() {
+    return streamPos - pos;
   }
 
-  public void ReduceOffsets(int subValue) {
-    _bufferOffset += subValue;
-    _posLimit -= subValue;
-    _pos -= subValue;
-    _streamPos -= subValue;
+  public void reduceOffsets(int subValue) {
+    bufferOffset += subValue;
+    posLimit -= subValue;
+    pos -= subValue;
+    streamPos -= subValue;
   }
 }
