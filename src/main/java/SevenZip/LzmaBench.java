@@ -6,279 +6,319 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import org.jetbrains.annotations.NotNull;
 
 public class LzmaBench {
-  static final int kAdditionalSize = (1 << 21);
-  static final int kCompressedAdditionalSize = (1 << 10);
+  private LzmaBench() {}
+
+  static final int K_ADDITIONAL_SIZE = (1 << 21);
+  static final int K_COMPRESSED_ADDITIONAL_SIZE = (1 << 10);
 
   static class CRandomGenerator {
-    int A1;
-    int A2;
+    int a1;
+    int a2;
 
     public CRandomGenerator() {
-      Init();
+      init();
     }
 
-    public void Init() {
-      A1 = 362436069;
-      A2 = 521288629;
+    public void init() {
+      a1 = 362436069;
+      a2 = 521288629;
     }
 
-    public int GetRnd() {
-      return ((A1 = 36969 * (A1 & 0xffff) + (A1 >>> 16)) << 16)
-          ^ ((A2 = 18000 * (A2 & 0xffff) + (A2 >>> 16)));
+    public int getRnd() {
+      a1 = 36969 * (a1 & 0xffff) + (a1 >>> 16);
+      int left = a1 << 16;
+      a2 = 18000 * (a2 & 0xffff) + (a2 >>> 16);
+      int right = a2;
+      return left ^ right;
     }
   }
-  ;
 
   static class CBitRandomGenerator {
-    CRandomGenerator RG = new CRandomGenerator();
-    int Value;
-    int NumBits;
+    CRandomGenerator rg = new CRandomGenerator();
+    int value;
+    int numBits;
 
-    public void Init() {
-      Value = 0;
-      NumBits = 0;
+    public void init() {
+      value = 0;
+      numBits = 0;
     }
 
-    public int GetRnd(int numBits) {
+    public int getRnd(int numBits) {
       int result;
-      if (NumBits > numBits) {
-        result = Value & ((1 << numBits) - 1);
-        Value >>>= numBits;
-        NumBits -= numBits;
+      if (this.numBits > numBits) {
+        result = value & ((1 << numBits) - 1);
+        value >>>= numBits;
+        this.numBits -= numBits;
         return result;
       }
-      numBits -= NumBits;
-      result = (Value << numBits);
-      Value = RG.GetRnd();
-      result |= Value & (((int) 1 << numBits) - 1);
-      Value >>>= numBits;
-      NumBits = 32 - numBits;
+      numBits -= this.numBits;
+      result = (value << numBits);
+      value = rg.getRnd();
+      result |= value & ((1 << numBits) - 1);
+      value >>>= numBits;
+      this.numBits = 32 - numBits;
       return result;
     }
   }
-  ;
 
   static class CBenchRandomGenerator {
-    CBitRandomGenerator RG = new CBitRandomGenerator();
-    int Pos;
-    int Rep0;
+    CBitRandomGenerator rg = new CBitRandomGenerator();
+    int pos;
+    int rep0;
 
-    public int BufferSize;
-    public byte[] Buffer = null;
+    int bufferSize;
+    byte[] buffer = null;
 
-    public CBenchRandomGenerator() {}
-
-    public void Set(int bufferSize) {
-      Buffer = new byte[bufferSize];
-      Pos = 0;
-      BufferSize = bufferSize;
+    public CBenchRandomGenerator() {
+      // Intentionally empty: lazily configured via set(bufferSize)
     }
 
-    int GetRndBit() {
-      return RG.GetRnd(1);
+    public void set(int bufferSize) {
+      buffer = new byte[bufferSize];
+      pos = 0;
+      this.bufferSize = bufferSize;
     }
 
-    int GetLogRandBits(int numBits) {
-      int len = RG.GetRnd(numBits);
-      return RG.GetRnd((int) len);
+    int getRndBit() {
+      return rg.getRnd(1);
     }
 
-    int GetOffset() {
-      if (GetRndBit() == 0) return GetLogRandBits(4);
-      return (GetLogRandBits(4) << 10) | RG.GetRnd(10);
+    int getLogRandBits() {
+      int len = rg.getRnd(4);
+      return rg.getRnd(len);
     }
 
-    int GetLen1() {
-      return RG.GetRnd(1 + (int) RG.GetRnd(2));
+    int getOffset() {
+      if (getRndBit() == 0) return getLogRandBits();
+      return (getLogRandBits() << 10) | rg.getRnd(10);
     }
 
-    int GetLen2() {
-      return RG.GetRnd(2 + (int) RG.GetRnd(2));
+    int getLen1() {
+      return rg.getRnd(1 + rg.getRnd(2));
     }
 
-    public void Generate() {
-      RG.Init();
-      Rep0 = 1;
-      while (Pos < BufferSize) {
-        if (GetRndBit() == 0 || Pos < 1) Buffer[Pos++] = (byte) (RG.GetRnd(8));
-        else {
-          int len;
-          if (RG.GetRnd(3) == 0) len = 1 + GetLen1();
-          else {
-            do Rep0 = GetOffset();
-            while (Rep0 >= Pos);
-            Rep0++;
-            len = 2 + GetLen2();
-          }
-          for (int i = 0; i < len && Pos < BufferSize; i++, Pos++) Buffer[Pos] = Buffer[Pos - Rep0];
-        }
+    int getLen2() {
+      return rg.getRnd(2 + rg.getRnd(2));
+    }
+
+    public void generate() {
+      rg.init();
+      rep0 = 1;
+      while (pos < bufferSize) writeLiteralOrMatch();
+    }
+
+    private void writeLiteralOrMatch() {
+      if (getRndBit() == 0 || pos < 1) {
+        buffer[pos++] = (byte) (rg.getRnd(8));
+      } else {
+        int len = (rg.getRnd(3) == 0) ? 1 + getLen1() : computeCopyLenAfterOffset();
+        copyLoop(len);
       }
     }
+
+    private int computeCopyLenAfterOffset() {
+      do rep0 = getOffset();
+      while (rep0 >= pos);
+      rep0++;
+      return 2 + getLen2();
+    }
+
+    private void copyLoop(int len) {
+      for (int i = 0; i < len && pos < bufferSize; i++, pos++) buffer[pos] = buffer[pos - rep0];
+    }
   }
-  ;
 
   static class CrcOutStream extends OutputStream {
-    public CRC CRC = new CRC();
+    private final CRC crc = new CRC();
 
-    public void Init() {
-      CRC.Init();
+    public void init() {
+      crc.Init();
     }
 
-    public int GetDigest() {
-      return CRC.GetDigest();
+    public int getDigest() {
+      return crc.GetDigest();
     }
 
-    public void write(byte[] b) {
-      CRC.Update(b);
+    @Override
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
+      if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
+      crc.Update(b, off, len);
     }
 
-    public void write(byte[] b, int off, int len) {
-      CRC.Update(b, off, len);
-    }
+    // Use OutputStream default bulk write implementation
 
+    @Override
     public void write(int b) {
-      CRC.UpdateByte(b);
+      crc.UpdateByte(b);
     }
   }
-  ;
 
   static class MyOutputStream extends OutputStream {
-    byte[] _buffer;
-    int _size;
-    int _pos;
+    byte[] buffer;
+    int size;
+    int pos;
 
     public MyOutputStream(byte[] buffer) {
-      _buffer = buffer;
-      _size = _buffer.length;
+      this.buffer = buffer;
+      size = this.buffer.length;
     }
 
     public void reset() {
-      _pos = 0;
+      pos = 0;
     }
 
+    @Override
     public void write(int b) throws IOException {
-      if (_pos >= _size) throw new IOException("Error");
-      _buffer[_pos++] = (byte) b;
+      if (pos >= size) throw new IOException("Error");
+      buffer[pos++] = (byte) b;
     }
 
     public int size() {
-      return _pos;
+      return pos;
+    }
+
+    @Override
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
+      if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
+      for (int i = 0; i < len; i++) write(b[off + i]);
     }
   }
-  ;
 
   static class MyInputStream extends InputStream {
-    byte[] _buffer;
-    int _size;
-    int _pos;
+    byte[] buffer;
+    int size;
+    int pos;
 
     public MyInputStream(byte[] buffer, int size) {
-      _buffer = buffer;
-      _size = size;
+      this.buffer = buffer;
+      this.size = size;
     }
 
+    @Override
     public void reset() {
-      _pos = 0;
+      pos = 0;
     }
 
+    @Override
     public int read() {
-      if (_pos >= _size) return -1;
-      return _buffer[_pos++] & 0xFF;
+      if (pos >= size) return -1;
+      return buffer[pos++] & 0xFF;
+    }
+
+    @Override
+    public int read(byte @NotNull [] b, int off, int len) {
+      if (off < 0 || len < 0 || off + len > b.length) throw new IndexOutOfBoundsException();
+      if (len == 0) return 0;
+      if (pos >= size) return -1;
+      int remaining = size - pos;
+      int toRead = Math.min(len, remaining);
+      System.arraycopy(buffer, pos, b, off, toRead);
+      pos += toRead;
+      return toRead;
     }
   }
-  ;
 
   static class CProgressInfo implements ICodeProgress {
-    public long ApprovedStart;
-    public long InSize;
-    public long Time;
+    long approvedStart;
+    long inSize;
+    long time;
 
-    public void Init() {
-      InSize = 0;
+    public void init() {
+      inSize = 0;
     }
 
     public void SetProgress(long inSize, long outSize) {
-      if (inSize >= ApprovedStart && InSize == 0) {
-        Time = System.currentTimeMillis();
-        InSize = inSize;
+      if (inSize >= approvedStart && this.inSize == 0) {
+        time = System.currentTimeMillis();
+        this.inSize = inSize;
       }
     }
   }
 
-  static final int kSubBits = 8;
+  static final int K_SUB_BITS = 8;
 
-  static int GetLogSize(int size) {
-    for (int i = kSubBits; i < 32; i++)
-      for (int j = 0; j < (1 << kSubBits); j++)
-        if (size <= ((1) << i) + (j << (i - kSubBits))) return (i << kSubBits) + j;
-    return (32 << kSubBits);
+  static int getLogSize(int size) {
+    for (int i = K_SUB_BITS; i < 32; i++)
+      for (int j = 0; j < (1 << K_SUB_BITS); j++)
+        if (size <= ((1) << i) + (j << (i - K_SUB_BITS))) return (i << K_SUB_BITS) + j;
+    return (32 << K_SUB_BITS);
   }
 
-  static long MyMultDiv64(long value, long elapsedTime) {
+  static long myMultDiv64(long value, long elapsedTime) {
     long freq = 1000; // ms
     long elTime = elapsedTime;
-    while (freq > 1000000) {
-      freq >>>= 1;
-      elTime >>>= 1;
-    }
     if (elTime == 0) elTime = 1;
     return value * freq / elTime;
   }
 
-  static long GetCompressRating(int dictionarySize, long elapsedTime, long size) {
-    long t = GetLogSize(dictionarySize) - (18 << kSubBits);
-    long numCommandsForOne = 1060 + ((t * t * 10) >> (2 * kSubBits));
-    long numCommands = (long) (size) * numCommandsForOne;
-    return MyMultDiv64(numCommands, elapsedTime);
+  static long getCompressRating(int dictionarySize, long elapsedTime, long size) {
+    long t = getLogSize(dictionarySize) - (18L << K_SUB_BITS);
+    long numCommandsForOne = 1060 + ((t * t * 10) >> (2 * K_SUB_BITS));
+    long numCommands = size * numCommandsForOne;
+    return myMultDiv64(numCommands, elapsedTime);
   }
 
-  static long GetDecompressRating(long elapsedTime, long outSize, long inSize) {
+  static long getDecompressRating(long elapsedTime, long outSize, long inSize) {
     long numCommands = inSize * 220 + outSize * 20;
-    return MyMultDiv64(numCommands, elapsedTime);
+    return myMultDiv64(numCommands, elapsedTime);
   }
 
-  static long GetTotalRating(
-      int dictionarySize,
-      long elapsedTimeEn,
-      long sizeEn,
-      long elapsedTimeDe,
-      long inSizeDe,
-      long outSizeDe) {
-    return (GetCompressRating(dictionarySize, elapsedTimeEn, sizeEn)
-            + GetDecompressRating(elapsedTimeDe, inSizeDe, outSizeDe))
-        / 2;
-  }
-
-  static void PrintValue(long v) {
+  static void printValue(long v) {
     String s = "";
     s += v;
     for (int i = 0; i + s.length() < 6; i++) System.out.print(" ");
     System.out.print(s);
   }
 
-  static void PrintRating(long rating) {
-    PrintValue(rating / 1000000);
+  static void printRating(long rating) {
+    printValue(rating / 1000000);
     System.out.print(" MIPS");
   }
 
-  static void PrintResults(
+  static void printResults(
       int dictionarySize, long elapsedTime, long size, boolean decompressMode, long secondSize) {
-    long speed = MyMultDiv64(size, elapsedTime);
-    PrintValue(speed / 1024);
+    long speed = myMultDiv64(size, elapsedTime);
+    printValue(speed / 1024);
     System.out.print(" KB/s  ");
     long rating;
-    if (decompressMode) rating = GetDecompressRating(elapsedTime, size, secondSize);
-    else rating = GetCompressRating(dictionarySize, elapsedTime, size);
-    PrintRating(rating);
+    if (decompressMode) rating = getDecompressRating(elapsedTime, size, secondSize);
+    else rating = getCompressRating(dictionarySize, elapsedTime, size);
+    printRating(rating);
   }
 
-  public static int LzmaBenchmark(int numIterations, int dictionarySize) throws Exception {
-    if (numIterations <= 0) return 0;
+  private static long decodeTwiceAndCheck(
+      int outSize,
+      int compressedSize,
+      byte[] compressedBuffer,
+      CrcOutStream crcOutStream,
+      Decoder decoder,
+      CRC crc)
+      throws java.io.IOException {
+    long decodeTime = 0;
+    for (int j = 0; j < 2; j++) {
+      try (MyInputStream inputCompressedStream =
+          new MyInputStream(compressedBuffer, compressedSize)) {
+        crcOutStream.init();
+        long startTime = System.currentTimeMillis();
+        if (!decoder.Code(inputCompressedStream, crcOutStream, outSize))
+          throw (new IllegalStateException("Decoding Error"));
+        decodeTime = System.currentTimeMillis() - startTime;
+        if (crcOutStream.getDigest() != crc.GetDigest())
+          throw (new IllegalStateException("CRC Error"));
+      }
+    }
+    return decodeTime;
+  }
+
+  public static void lzmaBenchmark(int numIterations, int dictionarySize)
+      throws java.io.IOException {
+    if (numIterations <= 0) return;
     if (dictionarySize < (1 << 18)) {
       System.out.println("\nError: dictionary size for benchmark must be >= 18 (256 KB)");
-      return 1;
+      return;
     }
     System.out.print("\n       Compressing                Decompressing\n\n");
 
@@ -286,10 +326,10 @@ public class LzmaBench {
     Decoder decoder = new Decoder();
 
     if (!encoder.SetDictionarySize(dictionarySize))
-      throw new Exception("Incorrect dictionary size");
+      throw new IllegalArgumentException("Incorrect dictionary size");
 
-    int kBufferSize = dictionarySize + kAdditionalSize;
-    int kCompressedBufferSize = (kBufferSize / 2) + kCompressedAdditionalSize;
+    int kBufferSize = dictionarySize + K_ADDITIONAL_SIZE;
+    int kCompressedBufferSize = (kBufferSize / 2) + K_COMPRESSED_ADDITIONAL_SIZE;
 
     ByteArrayOutputStream propStream = new ByteArrayOutputStream();
     encoder.WriteCoderProperties(propStream);
@@ -298,75 +338,63 @@ public class LzmaBench {
 
     CBenchRandomGenerator rg = new CBenchRandomGenerator();
 
-    rg.Set(kBufferSize);
-    rg.Generate();
+    rg.set(kBufferSize);
+    rg.generate();
     CRC crc = new CRC();
     crc.Init();
-    crc.Update(rg.Buffer, 0, rg.BufferSize);
+    crc.Update(rg.buffer, 0, rg.bufferSize);
 
     CProgressInfo progressInfo = new CProgressInfo();
-    progressInfo.ApprovedStart = dictionarySize;
+    progressInfo.approvedStart = dictionarySize;
 
     long totalBenchSize = 0;
     long totalEncodeTime = 0;
     long totalDecodeTime = 0;
     long totalCompressedSize = 0;
 
-    MyInputStream inStream = new MyInputStream(rg.Buffer, rg.BufferSize);
-
     byte[] compressedBuffer = new byte[kCompressedBufferSize];
-    MyOutputStream compressedStream = new MyOutputStream(compressedBuffer);
-    CrcOutStream crcOutStream = new CrcOutStream();
-    MyInputStream inputCompressedStream = null;
-    int compressedSize = 0;
-    for (int i = 0; i < numIterations; i++) {
-      progressInfo.Init();
-      inStream.reset();
-      compressedStream.reset();
-      encoder.Code(inStream, compressedStream, -1, -1, progressInfo);
-      long encodeTime = System.currentTimeMillis() - progressInfo.Time;
+    try (MyInputStream inStream = new MyInputStream(rg.buffer, rg.bufferSize);
+        MyOutputStream compressedStream = new MyOutputStream(compressedBuffer);
+        CrcOutStream crcOutStream = new CrcOutStream()) {
+      int compressedSize = 0;
+      for (int i = 0; i < numIterations; i++) {
+        progressInfo.init();
+        inStream.reset();
+        compressedStream.reset();
+        encoder.Code(inStream, compressedStream, -1, -1, progressInfo);
+        long encodeTime = System.currentTimeMillis() - progressInfo.time;
 
-      if (i == 0) {
-        compressedSize = compressedStream.size();
-        inputCompressedStream = new MyInputStream(compressedBuffer, compressedSize);
-      } else if (compressedSize != compressedStream.size()) throw (new Exception("Encoding error"));
+        if (i == 0) {
+          compressedSize = compressedStream.size();
+        } else if (compressedSize != compressedStream.size())
+          throw (new IllegalStateException("Encoding error"));
 
-      if (progressInfo.InSize == 0) throw (new Exception("Internal ERROR 1282"));
+        if (progressInfo.inSize == 0) throw (new IllegalStateException("Internal ERROR 1282"));
 
-      long decodeTime = 0;
-      for (int j = 0; j < 2; j++) {
-        inputCompressedStream.reset();
-        crcOutStream.Init();
+        long decodeTime =
+            decodeTwiceAndCheck(
+                kBufferSize, compressedSize, compressedBuffer, crcOutStream, decoder, crc);
+        long benchSize = kBufferSize - progressInfo.inSize;
+        printResults(dictionarySize, encodeTime, benchSize, false, 0);
+        System.out.print("     ");
+        printResults(dictionarySize, decodeTime, kBufferSize, true, compressedSize);
+        System.out.println();
 
-        long outSize = kBufferSize;
-        long startTime = System.currentTimeMillis();
-        if (!decoder.Code(inputCompressedStream, crcOutStream, outSize))
-          throw (new Exception("Decoding Error"));
-        ;
-        decodeTime = System.currentTimeMillis() - startTime;
-        if (crcOutStream.GetDigest() != crc.GetDigest()) throw (new Exception("CRC Error"));
+        totalBenchSize += benchSize;
+        totalEncodeTime += encodeTime;
+        totalDecodeTime += decodeTime;
+        totalCompressedSize += compressedSize;
       }
-      long benchSize = kBufferSize - (long) progressInfo.InSize;
-      PrintResults(dictionarySize, encodeTime, benchSize, false, 0);
-      System.out.print("     ");
-      PrintResults(dictionarySize, decodeTime, kBufferSize, true, compressedSize);
-      System.out.println();
-
-      totalBenchSize += benchSize;
-      totalEncodeTime += encodeTime;
-      totalDecodeTime += decodeTime;
-      totalCompressedSize += compressedSize;
     }
     System.out.println("---------------------------------------------------");
-    PrintResults(dictionarySize, totalEncodeTime, totalBenchSize, false, 0);
+    printResults(dictionarySize, totalEncodeTime, totalBenchSize, false, 0);
     System.out.print("     ");
-    PrintResults(
+    printResults(
         dictionarySize,
         totalDecodeTime,
         kBufferSize * (long) numIterations,
         true,
         totalCompressedSize);
     System.out.println("    Average");
-    return 0;
   }
 }
