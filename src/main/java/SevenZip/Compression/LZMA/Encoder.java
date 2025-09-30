@@ -337,13 +337,13 @@ public class Encoder {
       BinTree bt = new BinTree();
       int numHashBytes = 4;
       if (_matchFinderType == EMatchFinderTypeBT2) numHashBytes = 2;
-      bt.SetType(numHashBytes);
+      bt.setType(numHashBytes);
       _matchFinder = bt;
     }
     _literalEncoder.Create(_numLiteralPosStateBits, _numLiteralContextBits);
 
     if (_dictionarySize == _dictionarySizePrev && _numFastBytesPrev == _numFastBytes) return;
-    _matchFinder.Create(_dictionarySize, kNumOpts, _numFastBytes, Base.kMatchMaxLen + 1);
+    _matchFinder.createMatchFinder(_dictionarySize, kNumOpts, _numFastBytes, Base.kMatchMaxLen + 1);
     _dictionarySizePrev = _dictionarySize;
     _numFastBytesPrev = _numFastBytes;
   }
@@ -386,7 +386,7 @@ public class Encoder {
 
   int ReadMatchDistances() throws IOException {
     int lenRes = 0;
-    _numDistancePairs = _matchFinder.GetMatches(_matchDistances);
+    _numDistancePairs = _matchFinder.getMatches(_matchDistances);
     if (_numDistancePairs > 0) {
       lenRes = _matchDistances[_numDistancePairs - 2];
       if (lenRes == _numFastBytes)
@@ -402,7 +402,7 @@ public class Encoder {
 
   void MovePos(int num) throws IOException {
     if (num > 0) {
-      _matchFinder.Skip(num);
+      _matchFinder.skip(num);
       _additionalOffset += num;
     }
   }
