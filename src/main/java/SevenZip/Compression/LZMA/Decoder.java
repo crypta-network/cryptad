@@ -138,7 +138,7 @@ public class Decoder {
     if (m_DictionarySize != dictionarySize) {
       m_DictionarySize = dictionarySize;
       m_DictionarySizeCheck = Math.max(m_DictionarySize, 1);
-      m_OutWindow.Create(Math.max(m_DictionarySizeCheck, (1 << 12)));
+      m_OutWindow.create(Math.max(m_DictionarySizeCheck, (1 << 12)));
     }
     return true;
   }
@@ -154,7 +154,7 @@ public class Decoder {
   }
 
   void Init() throws IOException {
-    m_OutWindow.Init(false);
+    m_OutWindow.init(false);
 
     SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsMatchDecoders);
     SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRep0LongDecoders);
@@ -176,7 +176,7 @@ public class Decoder {
   public boolean Code(InputStream inStream, OutputStream outStream, long outSize)
       throws IOException {
     m_RangeDecoder.SetStream(inStream);
-    m_OutWindow.SetStream(outStream);
+    m_OutWindow.setStream(outStream);
     Init();
 
     int state = Base.StateInit();
@@ -191,9 +191,9 @@ public class Decoder {
           == 0) {
         LiteralDecoder.Decoder2 decoder2 = m_LiteralDecoder.GetDecoder((int) nowPos64, prevByte);
         if (!Base.StateIsCharState(state))
-          prevByte = decoder2.DecodeWithMatchByte(m_RangeDecoder, m_OutWindow.GetByte(rep0));
+          prevByte = decoder2.DecodeWithMatchByte(m_RangeDecoder, m_OutWindow.getByte(rep0));
         else prevByte = decoder2.DecodeNormal(m_RangeDecoder);
-        m_OutWindow.PutByte(prevByte);
+        m_OutWindow.putByte(prevByte);
         state = Base.StateUpdateChar(state);
         nowPos64++;
       } else {
@@ -255,13 +255,13 @@ public class Decoder {
           // m_OutWindow.Flush();
           return false;
         }
-        m_OutWindow.CopyBlock(rep0, len);
+        m_OutWindow.copyBlock(rep0, len);
         nowPos64 += len;
-        prevByte = m_OutWindow.GetByte(0);
+        prevByte = m_OutWindow.getByte(0);
       }
     }
-    m_OutWindow.Flush();
-    m_OutWindow.ReleaseStream();
+    m_OutWindow.flush();
+    m_OutWindow.releaseStream();
     m_RangeDecoder.ReleaseStream();
     return true;
   }

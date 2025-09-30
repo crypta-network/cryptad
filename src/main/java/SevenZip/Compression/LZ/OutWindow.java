@@ -6,62 +6,62 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 public class OutWindow {
-  byte[] _buffer;
-  int _pos;
-  int _windowSize = 0;
-  int _streamPos;
-  OutputStream _stream;
+  byte[] buffer;
+  int pos;
+  int windowSize = 0;
+  int streamPos;
+  OutputStream stream;
 
-  public void Create(int windowSize) {
-    if (_buffer == null || _windowSize != windowSize) _buffer = new byte[windowSize];
-    _windowSize = windowSize;
-    _pos = 0;
-    _streamPos = 0;
+  public void create(int windowSize) {
+    if (buffer == null || this.windowSize != windowSize) buffer = new byte[windowSize];
+    this.windowSize = windowSize;
+    pos = 0;
+    streamPos = 0;
   }
 
-  public void SetStream(OutputStream stream) throws IOException {
-    ReleaseStream();
-    _stream = stream;
+  public void setStream(OutputStream stream) throws IOException {
+    releaseStream();
+    this.stream = stream;
   }
 
-  public void ReleaseStream() throws IOException {
-    Flush();
-    _stream = null;
+  public void releaseStream() throws IOException {
+    flush();
+    stream = null;
   }
 
-  public void Init(boolean solid) {
+  public void init(boolean solid) {
     if (!solid) {
-      _streamPos = 0;
-      _pos = 0;
+      streamPos = 0;
+      pos = 0;
     }
   }
 
-  public void Flush() throws IOException {
-    int size = _pos - _streamPos;
+  public void flush() throws IOException {
+    int size = pos - streamPos;
     if (size == 0) return;
-    _stream.write(_buffer, _streamPos, size);
-    if (_pos >= _windowSize) _pos = 0;
-    _streamPos = _pos;
+    stream.write(buffer, streamPos, size);
+    if (pos >= windowSize) pos = 0;
+    streamPos = pos;
   }
 
-  public void CopyBlock(int distance, int len) throws IOException {
-    int pos = _pos - distance - 1;
-    if (pos < 0) pos += _windowSize;
+  public void copyBlock(int distance, int len) throws IOException {
+    int srcPos = pos - distance - 1;
+    if (srcPos < 0) srcPos += windowSize;
     for (; len != 0; len--) {
-      if (pos >= _windowSize) pos = 0;
-      _buffer[_pos++] = _buffer[pos++];
-      if (_pos >= _windowSize) Flush();
+      if (srcPos >= windowSize) srcPos = 0;
+      buffer[pos++] = buffer[srcPos++];
+      if (pos >= windowSize) flush();
     }
   }
 
-  public void PutByte(byte b) throws IOException {
-    _buffer[_pos++] = b;
-    if (_pos >= _windowSize) Flush();
+  public void putByte(byte b) throws IOException {
+    buffer[pos++] = b;
+    if (pos >= windowSize) flush();
   }
 
-  public byte GetByte(int distance) {
-    int pos = _pos - distance - 1;
-    if (pos < 0) pos += _windowSize;
-    return _buffer[pos];
+  public byte getByte(int distance) {
+    int srcPos = pos - distance - 1;
+    if (srcPos < 0) srcPos += windowSize;
+    return buffer[srcPos];
   }
 }
