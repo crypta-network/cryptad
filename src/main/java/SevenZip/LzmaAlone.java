@@ -7,185 +7,249 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 
 public class LzmaAlone {
   public static class CommandLine {
-    public static final int kEncode = 0;
-    public static final int kDecode = 1;
-    public static final int kBenchmak = 2;
+    public static final int K_ENCODE = 0;
+    public static final int K_DECODE = 1;
+    public static final int K_BENCHMARK = 2;
 
-    public int Command = -1;
-    public int NumBenchmarkPasses = 10;
+    private int command = -1;
+    private int numBenchmarkPasses = 10;
 
-    public int DictionarySize = 1 << 23;
-    public boolean DictionarySizeIsDefined = false;
+    private int dictionarySize = 1 << 23;
+    private boolean dictionarySizeIsDefined = false;
 
-    public int Lc = 3;
-    public int Lp = 0;
-    public int Pb = 2;
+    private int lc = 3;
+    private int lp = 0;
+    private int pb = 2;
 
-    public int Fb = 128;
-    public boolean FbIsDefined = false;
+    private int fb = 128;
 
-    public boolean Eos = false;
+    private boolean eos = false;
 
-    public int Algorithm = 2;
-    public int MatchFinder = 1;
+    private int algorithm = 2;
+    private int matchFinder = 1;
 
-    public String InFile;
-    public String OutFile;
+    private String inFile;
+    private String outFile;
 
-    boolean ParseSwitch(String s) {
+    boolean parseSwitch(String s) {
       if (s.startsWith("d")) {
-        DictionarySize = 1 << Integer.parseInt(s.substring(1));
-        DictionarySizeIsDefined = true;
+        dictionarySize = 1 << Integer.parseInt(s.substring(1));
+        dictionarySizeIsDefined = true;
       } else if (s.startsWith("fb")) {
-        Fb = Integer.parseInt(s.substring(2));
-        FbIsDefined = true;
-      } else if (s.startsWith("a")) Algorithm = Integer.parseInt(s.substring(1));
-      else if (s.startsWith("lc")) Lc = Integer.parseInt(s.substring(2));
-      else if (s.startsWith("lp")) Lp = Integer.parseInt(s.substring(2));
-      else if (s.startsWith("pb")) Pb = Integer.parseInt(s.substring(2));
-      else if (s.startsWith("eos")) Eos = true;
+        fb = Integer.parseInt(s.substring(2));
+      } else if (s.startsWith("a")) algorithm = Integer.parseInt(s.substring(1));
+      else if (s.startsWith("lc")) lc = Integer.parseInt(s.substring(2));
+      else if (s.startsWith("lp")) lp = Integer.parseInt(s.substring(2));
+      else if (s.startsWith("pb")) pb = Integer.parseInt(s.substring(2));
+      else if (s.startsWith("eos")) eos = true;
       else if (s.startsWith("mf")) {
         String mfs = s.substring(2);
-        if (mfs.equals("bt2")) MatchFinder = 0;
-        else if (mfs.equals("bt4")) MatchFinder = 1;
-        else if (mfs.equals("bt4b")) MatchFinder = 2;
-        else return false;
+        switch (mfs) {
+          case "bt2":
+            matchFinder = 0;
+            break;
+          case "bt4":
+            matchFinder = 1;
+            break;
+          case "bt4b":
+            matchFinder = 2;
+            break;
+          default:
+            return false;
+        }
       } else return false;
       return true;
     }
 
-    public boolean Parse(String[] args) throws Exception {
-      int pos = 0;
-      boolean switchMode = true;
-      for (int i = 0; i < args.length; i++) {
-        String s = args[i];
-        if (s.length() == 0) return false;
-        if (switchMode) {
-          if (s.compareTo("--") == 0) {
-            switchMode = false;
-            continue;
-          }
-          if (s.charAt(0) == '-') {
-            String sw = s.substring(1).toLowerCase();
-            if (sw.length() == 0) return false;
-            try {
-              if (!ParseSwitch(sw)) return false;
-            } catch (NumberFormatException e) {
-              return false;
-            }
-            continue;
-          }
-        }
-        if (pos == 0) {
-          if (s.equalsIgnoreCase("e")) Command = kEncode;
-          else if (s.equalsIgnoreCase("d")) Command = kDecode;
-          else if (s.equalsIgnoreCase("b")) Command = kBenchmak;
-          else return false;
-        } else if (pos == 1) {
-          if (Command == kBenchmak) {
-            try {
-              NumBenchmarkPasses = Integer.parseInt(s);
-              if (NumBenchmarkPasses < 1) return false;
-            } catch (NumberFormatException e) {
-              return false;
-            }
-          } else InFile = s;
-        } else if (pos == 2) OutFile = s;
-        else return false;
-        pos++;
-        continue;
+    public boolean parse(String[] args) {
+      ParseState state = new ParseState(true, 0);
+      for (String s : args) {
+        if (!processArg(s, state)) return false;
       }
       return true;
     }
+
+    private static final class ParseState {
+      boolean switchMode;
+      int pos;
+
+      ParseState(boolean switchMode, int pos) {
+        this.switchMode = switchMode;
+        this.pos = pos;
+      }
+    }
+
+    private boolean processArg(String s, ParseState state) {
+      if (s.isEmpty()) return false;
+      if (state.switchMode && isSwitchToken(s)) {
+        return processSwitchToken(s, state);
+      }
+      int next = processPositional(s, state.pos);
+      if (next < 0) return false;
+      state.pos = next;
+      return true;
+    }
+
+    private boolean processSwitchToken(String s, ParseState state) {
+      if ("--".equals(s)) {
+        state.switchMode = false;
+        return true;
+      }
+      String sw = s.substring(1).toLowerCase();
+      if (sw.isEmpty()) return false;
+      try {
+        return parseSwitch(sw);
+      } catch (NumberFormatException e) {
+        return false;
+      }
+    }
+
+    private static boolean isSwitchToken(String s) {
+      return s.charAt(0) == '-' || "--".equals(s);
+    }
+
+    private int processPositional(String s, int pos) {
+      return switch (pos) {
+        case 0 -> {
+          if (s.equalsIgnoreCase("e")) command = K_ENCODE;
+          else if (s.equalsIgnoreCase("d")) command = K_DECODE;
+          else if (s.equalsIgnoreCase("b")) command = K_BENCHMARK;
+          else yield -1;
+          yield 1;
+        }
+        case 1 -> {
+          if (command == K_BENCHMARK) {
+            try {
+              numBenchmarkPasses = Integer.parseInt(s);
+              if (numBenchmarkPasses < 1) yield -1;
+            } catch (NumberFormatException e) {
+              yield -1;
+            }
+          } else {
+            inFile = s;
+          }
+          yield 2;
+        }
+        case 2 -> {
+          outFile = s;
+          yield 3;
+        }
+        default -> -1;
+      };
+    }
   }
 
-  static void PrintHelp() {
+  static void printHelp() {
     System.out.println(
-        "\nUsage:  LZMA <e|d> [<switches>...] inputFile outputFile\n"
-            + "  e: encode file\n"
-            + "  d: decode file\n"
-            + "  b: Benchmark\n"
-            + "<Switches>\n"
-            +
-            // "  -a{N}:  set compression mode - [0, 1], default: 1 (max)\n" +
-            "  -d{N}:  set dictionary - [0,28], default: 23 (8MB)\n"
-            + "  -fb{N}: set number of fast bytes - [5, 273], default: 128\n"
-            + "  -lc{N}: set number of literal context bits - [0, 8], default: 3\n"
-            + "  -lp{N}: set number of literal pos bits - [0, 4], default: 0\n"
-            + "  -pb{N}: set number of pos bits - [0, 4], default: 2\n"
-            + "  -mf{MF_ID}: set Match Finder: [bt2, bt4], default: bt4\n"
-            + "  -eos:   write End Of Stream marker\n");
+        """
+
+            Usage:  LZMA <e|d> [<switches>...] inputFile outputFile
+              e: encode file
+              d: decode file
+              b: Benchmark
+            <Switches>
+          -d{N}:  set dictionary - [0,28], default: 23 (8MB)
+          -fb{N}: set number of fast bytes - [5, 273], default: 128
+          -lc{N}: set number of literal context bits - [0, 8], default: 3
+          -lp{N}: set number of literal pos bits - [0, 4], default: 0
+          -pb{N}: set number of pos bits - [0, 4], default: 2
+          -mf{MF_ID}: set Match Finder: [bt2, bt4], default: bt4
+          -eos:   write End Of Stream marker
+        """);
   }
 
   public static void main(String[] args) throws Exception {
     System.out.println("\nLZMA (Java) 4.61  2008-11-23\n");
 
     if (args.length < 1) {
-      PrintHelp();
+      printHelp();
       return;
     }
 
     CommandLine params = new CommandLine();
-    if (!params.Parse(args)) {
+    if (!params.parse(args)) {
       System.out.println("\nIncorrect command");
       return;
     }
 
-    if (params.Command == CommandLine.kBenchmak) {
-      int dictionary = (1 << 21);
-      if (params.DictionarySizeIsDefined) dictionary = params.DictionarySize;
-      if (params.MatchFinder > 1) throw new Exception("Unsupported match finder");
-      LzmaBench.LzmaBenchmark(params.NumBenchmarkPasses, dictionary);
-    } else if (params.Command == CommandLine.kEncode || params.Command == CommandLine.kDecode) {
-      File inFile = new File(params.InFile);
-      File outFile = new File(params.OutFile);
+    switch (params.command) {
+      case CommandLine.K_BENCHMARK:
+        handleBenchmark(params);
+        break;
+      case CommandLine.K_ENCODE:
+        encode(params);
+        break;
+      case CommandLine.K_DECODE:
+        decode(params);
+        break;
+      default:
+        throw new IllegalArgumentException("Incorrect command");
+    }
+  }
 
-      BufferedInputStream inStream = new BufferedInputStream(new FileInputStream(inFile));
-      BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(outFile));
+  private static void handleBenchmark(CommandLine params) throws Exception {
+    int dictionary = (1 << 21);
+    if (params.dictionarySizeIsDefined) dictionary = params.dictionarySize;
+    if (params.matchFinder > 1) throw new IllegalArgumentException("Unsupported match finder");
+    LzmaBench.LzmaBenchmark(params.numBenchmarkPasses, dictionary);
+  }
 
-      boolean eos = false;
-      if (params.Eos) eos = true;
-      if (params.Command == CommandLine.kEncode) {
-        Encoder encoder = new Encoder();
-        if (!encoder.SetAlgorithm(params.Algorithm))
-          throw new Exception("Incorrect compression mode");
-        if (!encoder.SetDictionarySize(params.DictionarySize))
-          throw new Exception("Incorrect dictionary size");
-        if (!encoder.SetNumFastBytes(params.Fb)) throw new Exception("Incorrect -fb value");
-        if (!encoder.SetMatchFinder(params.MatchFinder)) throw new Exception("Incorrect -mf value");
-        if (!encoder.SetLcLpPb(params.Lc, params.Lp, params.Pb))
-          throw new Exception("Incorrect -lc or -lp or -pb value");
-        encoder.SetEndMarkerMode(eos);
-        encoder.WriteCoderProperties(outStream);
-        long fileSize;
-        if (eos) fileSize = -1;
-        else fileSize = inFile.length();
-        for (int i = 0; i < 8; i++) outStream.write((int) (fileSize >>> (8 * i)) & 0xFF);
-        encoder.Code(inStream, outStream, -1, -1, null);
-      } else {
-        int propertiesSize = 5;
-        byte[] properties = new byte[propertiesSize];
-        if (inStream.read(properties, 0, propertiesSize) != propertiesSize)
-          throw new Exception("input .lzma file is too short");
-        Decoder decoder = new Decoder();
-        if (!decoder.SetDecoderProperties(properties))
-          throw new Exception("Incorrect stream properties");
-        long outSize = 0;
-        for (int i = 0; i < 8; i++) {
-          int v = inStream.read();
-          if (v < 0) throw new Exception("Can't read stream size");
-          outSize |= ((long) v) << (8 * i);
-        }
-        if (!decoder.Code(inStream, outStream, outSize))
-          throw new Exception("Error in data stream");
+  private static void encode(CommandLine params) throws IOException {
+    File inFile = new File(params.inFile);
+    File outFile = new File(params.outFile);
+    try (BufferedInputStream inStream = new BufferedInputStream(new FileInputStream(inFile));
+        BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(outFile))) {
+      boolean eos = params.eos;
+      Encoder encoder = createConfiguredEncoder(params, eos);
+      encoder.WriteCoderProperties(outStream);
+      long fileSize;
+      if (eos) fileSize = -1;
+      else fileSize = inFile.length();
+      for (int i = 0; i < 8; i++) outStream.write((int) (fileSize >>> (8 * i)) & 0xFF);
+      encoder.Code(inStream, outStream, -1, -1, null);
+    }
+  }
+
+  private static Encoder createConfiguredEncoder(CommandLine params, boolean eos) {
+    Encoder encoder = new Encoder();
+    if (!encoder.SetAlgorithm(params.algorithm))
+      throw new IllegalArgumentException("Incorrect compression mode");
+    if (!encoder.SetDictionarySize(params.dictionarySize))
+      throw new IllegalArgumentException("Incorrect dictionary size");
+    if (!encoder.SetNumFastBytes(params.fb))
+      throw new IllegalArgumentException("Incorrect -fb value");
+    if (!encoder.SetMatchFinder(params.matchFinder))
+      throw new IllegalArgumentException("Incorrect -mf value");
+    if (!encoder.SetLcLpPb(params.lc, params.lp, params.pb))
+      throw new IllegalArgumentException("Incorrect -lc or -lp or -pb value");
+    encoder.SetEndMarkerMode(eos);
+    return encoder;
+  }
+
+  private static void decode(CommandLine params) throws IOException {
+    File inFile = new File(params.inFile);
+    File outFile = new File(params.outFile);
+    try (BufferedInputStream inStream = new BufferedInputStream(new FileInputStream(inFile));
+        BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(outFile))) {
+      int propertiesSize = 5;
+      byte[] properties = new byte[propertiesSize];
+      if (inStream.read(properties, 0, propertiesSize) != propertiesSize)
+        throw new IllegalArgumentException("input .lzma file is too short");
+      Decoder decoder = new Decoder();
+      if (!decoder.SetDecoderProperties(properties))
+        throw new IllegalArgumentException("Incorrect stream properties");
+      long outSize = 0;
+      for (int i = 0; i < 8; i++) {
+        int v = inStream.read();
+        if (v < 0) throw new IllegalArgumentException("Can't read stream size");
+        outSize |= ((long) v) << (8 * i);
       }
-      outStream.flush();
-      outStream.close();
-      inStream.close();
-    } else throw new Exception("Incorrect command");
-    return;
+      if (!decoder.Code(inStream, outStream, outSize))
+        throw new IllegalArgumentException("Error in data stream");
+    }
   }
 }
