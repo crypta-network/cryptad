@@ -124,6 +124,8 @@ public class NewLZMACompressor extends AbstractCompressor {
   /** Input stream wrapper that stops reading after {@code max} bytes have been returned. */
   private static final class BoundedInputStream extends CountedInputStream {
     private final long max;
+    private boolean eofChecked = false;
+    private boolean eofReachedAtLimit = false;
 
     BoundedInputStream(InputStream in, long max) {
       super(in);
@@ -133,24 +135,45 @@ public class NewLZMACompressor extends AbstractCompressor {
 
     @Override
     public int read() throws IOException {
-      if (count() >= max) return -1;
-      return super.read();
+      if (count() < max) return super.read();
+      // We are at the limit; determine whether the underlying stream has more data.
+      int next = in.read();
+      if (next == -1) {
+        eofReachedAtLimit = true;
+        return -1; // true EOF coincides with limit
+      }
+      throw new CompressionInputSizeException(max);
     }
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
       long remaining = max - count();
-      if (remaining <= 0) return -1;
-      int toRead = (int) Math.min(len, remaining);
-      return super.read(b, off, toRead);
+      if (remaining > 0) {
+        int toRead = (int) Math.min(len, remaining);
+        return super.read(b, off, toRead);
+      }
+      // No remaining budget: check if there is more data beyond the limit.
+      int next = in.read();
+      if (next == -1) {
+        eofReachedAtLimit = true;
+        return -1;
+      }
+      throw new CompressionInputSizeException(max);
     }
 
     @Override
     public int read(byte[] b) throws IOException {
       long remaining = max - count();
-      if (remaining <= 0) return -1;
-      int toRead = (int) Math.min(b.length, remaining);
-      return super.read(b, 0, toRead);
+      if (remaining > 0) {
+        int toRead = (int) Math.min(b.length, remaining);
+        return super.read(b, 0, toRead);
+      }
+      int next = in.read();
+      if (next == -1) {
+        eofReachedAtLimit = true;
+        return -1;
+      }
+      throw new CompressionInputSizeException(max);
     }
   }
 
