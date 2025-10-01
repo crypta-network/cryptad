@@ -34,12 +34,8 @@ dependencies {
   implementation(
     "name.remal.gradle-plugins.sonarlint:sonarlint:${libs.versions.remalSonarlint.get()}"
   )
-  // Palantir suppressible-error-prone plugin marker
-  implementation(
-    "com.palantir.suppressible-error-prone:com.palantir.suppressible-error-prone.gradle.plugin:${libs.versions.palantirSuppressibleErrorProne.get()}"
-  )
-  // LTGT Error Prone plugin API for typed options in precompiled plugin
-  implementation("net.ltgt.gradle:gradle-errorprone-plugin:${libs.versions.ltgtErrorprone.get()}")
+  // Error Prone plugin marker
+  implementation("net.ltgt.gradle:gradle-errorprone-plugin:${libs.versions.errorpronePlugin.get()}")
 }
 
 // Align Kotlin JVM target with Java 21 for build-logic itself
