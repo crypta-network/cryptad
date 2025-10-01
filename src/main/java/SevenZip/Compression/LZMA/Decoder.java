@@ -26,18 +26,18 @@ public class Decoder {
     public void init() {
       initBitModels(choice);
       for (int posState = 0; posState < numPosStates; posState++) {
-        lowCoder[posState].Init();
-        midCoder[posState].Init();
+        lowCoder[posState].init();
+        midCoder[posState].init();
       }
-      highCoder.Init();
+      highCoder.init();
     }
 
     public int decode(SevenZip.Compression.RangeCoder.Decoder rangeDecoder, int posState)
         throws IOException {
-      if (rangeDecoder.decodeBit(choice, 0) == 0) return lowCoder[posState].Decode(rangeDecoder);
+      if (rangeDecoder.decodeBit(choice, 0) == 0) return lowCoder[posState].decode(rangeDecoder);
       int symbol = Base.NUM_LOW_LEN_SYMBOLS;
-      if (rangeDecoder.decodeBit(choice, 1) == 0) symbol += midCoder[posState].Decode(rangeDecoder);
-      else symbol += Base.NUM_MID_LEN_SYMBOLS + highCoder.Decode(rangeDecoder);
+      if (rangeDecoder.decodeBit(choice, 1) == 0) symbol += midCoder[posState].decode(rangeDecoder);
+      else symbol += Base.NUM_MID_LEN_SYMBOLS + highCoder.decode(rangeDecoder);
       return symbol;
     }
   }
@@ -167,10 +167,10 @@ public class Decoder {
 
     literalDecoder.init();
     int i;
-    for (i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) posSlotDecoder[i].Init();
+    for (i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) posSlotDecoder[i].init();
     lenDecoder.init();
     repLenDecoder.init();
-    posAlignDecoder.Init();
+    posAlignDecoder.init();
     rangeDecoder.init();
   }
 
@@ -276,19 +276,19 @@ public class Decoder {
     r.rep1 = r.rep0;
     int len = Base.MATCH_MIN_LEN + lenDecoder.decode(rangeDecoder, posState);
     state = Base.stateUpdateMatch(state);
-    int posSlot = posSlotDecoder[Base.getLenToPosState(len)].Decode(rangeDecoder);
+    int posSlot = posSlotDecoder[Base.getLenToPosState(len)].decode(rangeDecoder);
     if (posSlot >= Base.START_POS_MODEL_INDEX) {
       int numDirectBits = (posSlot >> 1) - 1;
       r.rep0 = ((2 | (posSlot & 1)) << numDirectBits);
       if (posSlot < Base.END_POS_MODEL_INDEX)
         r.rep0 +=
-            BitTreeDecoder.ReverseDecode(
+            BitTreeDecoder.reverseDecode(
                 posDecoders, r.rep0 - posSlot - 1, rangeDecoder, numDirectBits);
       else {
         r.rep0 +=
             (rangeDecoder.decodeDirectBits(numDirectBits - Base.NUM_ALIGN_BITS)
                 << Base.NUM_ALIGN_BITS);
-        r.rep0 += posAlignDecoder.ReverseDecode(rangeDecoder);
+        r.rep0 += posAlignDecoder.reverseDecode(rangeDecoder);
       }
     } else r.rep0 = posSlot;
     return new MatchResult(len, state);
