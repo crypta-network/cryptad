@@ -902,7 +902,8 @@ public class Encoder {
                 isMatch[(encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState])
             + literalEncoder
                 .getSubCoder(position, previousByte)
-                .getPrice(Base.isCharState(encoderState), matchByte, currentByte);
+                // Use matchByte price model only when in a match state (not a literal state).
+                .getPrice(!Base.isCharState(encoderState), matchByte, currentByte);
     optimum[1].makeAsChar();
 
     int matchPrice =
@@ -1022,7 +1023,8 @@ public class Encoder {
                   isMatch[(state << Base.NUM_POS_STATES_BITS_MAX) + posState])
               + literalEncoder
                   .getSubCoder(position, matchFinder.getIndexByte(-2))
-                  .getPrice(Base.isCharState(state), matchByte, currentByte);
+                  // Use matchByte price model only when in a match state
+                  .getPrice(!Base.isCharState(state), matchByte, currentByte);
 
       int matchPrice =
           curPrice
@@ -1137,10 +1139,12 @@ public class Encoder {
     byte curByte = matchFinder.getIndexByte(-additionalOffset);
     LiteralEncoder.Encoder2 subCoder = literalEncoder.getSubCoder((int) nowPos64, previousByte);
     if (Base.isCharState(encoderState)) {
+      // Literal state: encode without match context
+      subCoder.encode(rangeEncoder, curByte);
+    } else {
+      // Match/repetition state: use match context
       byte matchByte = matchFinder.getIndexByte(-repDistances[0] - 1 - additionalOffset);
       subCoder.encodeMatched(rangeEncoder, matchByte, curByte);
-    } else {
-      subCoder.encode(rangeEncoder, curByte);
     }
     previousByte = curByte;
     encoderState = Base.stateUpdateChar(encoderState);

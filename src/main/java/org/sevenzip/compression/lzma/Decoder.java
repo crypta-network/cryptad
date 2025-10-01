@@ -225,9 +225,9 @@ public class Decoder {
 
   private byte decodeLiteral(long nowPos64, byte prevByte, int state, int rep0) throws IOException {
     LiteralDecoder.Decoder2 decoder2 = literalDecoder.getDecoder((int) nowPos64, prevByte);
-    if (Base.isCharState(state))
-      return decoder2.decodeWithMatchByte(rangeDecoder, outWindow.getByte(rep0));
-    return decoder2.decodeNormal(rangeDecoder);
+    // In literal (non-match) states, decode without match context; otherwise use match-byte path.
+    if (Base.isCharState(state)) return decoder2.decodeNormal(rangeDecoder);
+    return decoder2.decodeWithMatchByte(rangeDecoder, outWindow.getByte(rep0));
   }
 
   private static final class Reps {

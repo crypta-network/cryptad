@@ -30,11 +30,14 @@ public class Base {
   }
 
   /**
-   * True when the given state is a "non-match" (literal) state. Kept to align with existing callers
-   * (semantics: index >= 7).
+   * Returns true when the given state is a literal (non-match) state.
+   *
+   * <p>Legacy LZMA semantics: states {@code 0..6} represent literal states and {@code 7..11}
+   * represent match/repetition states. Some encoder/decoder branches depend on this exact split. Do
+   * not invert this condition.
    */
   public static boolean isCharState(int index) {
-    return index >= 7;
+    return index < 7;
   }
 
   public static final int NUM_POS_SLOT_BITS = 6;
