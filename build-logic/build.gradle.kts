@@ -34,6 +34,8 @@ dependencies {
   implementation(
     "name.remal.gradle-plugins.sonarlint:sonarlint:${libs.versions.remalSonarlint.get()}"
   )
+  // Error Prone plugin marker
+  implementation("net.ltgt.gradle:gradle-errorprone-plugin:${libs.versions.errorpronePlugin.get()}")
 }
 
 // Align Kotlin JVM target with Java 21 for build-logic itself

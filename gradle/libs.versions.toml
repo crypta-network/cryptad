@@ -19,6 +19,9 @@ junitJupiter = "5.13.4"
 junitPlatform = "1.13.4"
 sonarqube = "6.3.1.5724"
 remalSonarlint = "7.0.0-rc-2"
+errorpronePlugin = "4.3.0"
+# Error Prone core used by the plugin (can be overridden via -Pcrypta.errorproneVersion)
+errorproneCore = "2.33.0"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
@@ -43,6 +46,7 @@ junitJupiterParams = { group = "org.junit.jupiter", name = "junit-jupiter-params
 junitJupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junitJupiter" }
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
 junitPlatformSuite = { group = "org.junit.platform", name = "junit-platform-suite", version.ref = "junitPlatform" }
+errorproneCore = { group = "com.google.errorprone", name = "error_prone_core", version.ref = "errorproneCore" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
