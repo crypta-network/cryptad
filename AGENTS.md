@@ -491,7 +491,7 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
 - Plugins & wiring (grouped)
   - The `cryptad.sonar` convention plugin (`build-logic/src/main/kotlin/cryptad.sonar.gradle.kts`) groups static analysis:
     - SonarLint: `name.remal.sonarlint` (version `remalSonarlint = "7.0.0-rc-2"`).
-    - Error Prone: `net.ltgt.errorprone` (gradle-errorprone-plugin `errorpronePlugin = "4.3.0"`).
+    - Error Prone (Palantir): `com.palantir.suppressible-error-prone` (plugin `palantirSuppressibleErrorProne = "2.10.0"`).
   - The convention also applies `org.sonarqube` for SonarQube/SonarCloud.
 - Defaults
   - SonarLint is configured not to fail builds by default (`ignoreFailures = true`) to ease adoption.
@@ -504,10 +504,10 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
     - Report: `build/reports/sonarLint/sonarlintFile/sonarlintFile.xml`.
   - Note: `sonarlintMain` may still index the full project; use `sonarlintFile` when scoping strictly to one file.
 - Error Prone
-  - Enabled via `net.ltgt.errorprone` and attached to `JavaCompile` tasks.
+  - Enabled via Palantir plugin and attached to `JavaCompile` tasks.
   - Default: builds do not fail on checks (all errors are demoted to warnings). Enable strict with `-Pcrypta.errorproneStrict=true`.
   - Core is added automatically: `com.google.errorprone:error_prone_core:${version}`.
-    - Version defaults to `libs.versions.errorproneCore` (currently `2.38.0`), override with `-Pcrypta.errorproneVersion=...`.
+    - Version defaults to `libs.versions.errorproneCore` (currently `2.42.0`), override with `-Pcrypta.errorproneVersion=...`.
   - Toggle: disable entirely with `-Pcrypta.errorprone=false`.
 - Dependency verification & keys
   - Verification metadata and keyring were refreshed to include SonarLint artifacts.

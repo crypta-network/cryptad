@@ -2,14 +2,13 @@ import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
 import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.api.tasks.compile.JavaCompile
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
   id("org.sonarqube")
   id("name.remal.sonarlint")
-  // Error Prone static analysis
-  id("net.ltgt.errorprone")
+  // Error Prone static analysis (Palantir)
+  id("com.palantir.suppressible-error-prone")
 }
 
 // Central Sonar configuration for all projects applying this convention
@@ -37,39 +36,49 @@ extensions.configure<SonarLintSettings>("sonarLint") {
   }
 }
 
-// Error Prone configuration (applies to all JavaCompile tasks)
-val errorProneEnabled =
-  providers
-    .gradleProperty("crypta.errorprone")
-    .map { it.equals("true", ignoreCase = true) || it.equals("on", ignoreCase = true) }
-    .orElse(true)
-
 // Version can be overridden per-build with -Pcrypta.errorproneVersion
-val errorProneVersion = providers.gradleProperty("crypta.errorproneVersion").orElse("2.33.0")
+val errorProneVersion = providers.gradleProperty("crypta.errorproneVersion").orElse("2.42.0")
 
 dependencies {
   add("errorprone", "com.google.errorprone:error_prone_core:${errorProneVersion.get()}")
 }
 
-tasks.withType(JavaCompile::class.java).configureEach {
-  options.errorprone.isEnabled.set(errorProneEnabled.get())
-  // Common, safe defaults
-  options.errorprone.disableWarningsInGeneratedCode.set(true)
+// Map our toggle to Palantir's property when not explicitly set
+val cryptaErrorProne =
+  providers
+    .gradleProperty("crypta.errorprone")
+    .map { it.equals("true", ignoreCase = true) || it.equals("on", ignoreCase = true) }
+    .orElse(true)
 
-  // Default to warnings-only so local builds don't fail.
+if (!cryptaErrorProne.get() && !project.hasProperty("errorProneDisable")) {
+  // Palantir plugin looks for this project property
+  extensions.extraProperties.set("errorProneDisable", "true")
+}
+
+// To tweak Error Prone severities or options, prefer passing properties at
+// invocation time, e.g.:
+//  -PerrorProneDisable=true                 (disable EP)
+//  -PerrorProneSuppress=Check1,Check2       (suppress checks)
+//  -PerrorProneApply=Check1,Check2          (auto-fix when supported)
+
+// Demote errors to warnings by default via LTGT typed options (available via Palantir plugin)
+tasks.withType(org.gradle.api.tasks.compile.JavaCompile::class.java).configureEach {
+  val enabled =
+    providers
+      .gradleProperty("crypta.errorprone")
+      .map { it.equals("true", ignoreCase = true) || it.equals("on", ignoreCase = true) }
+      .orElse(true)
   val strict =
     providers
       .gradleProperty("crypta.errorproneStrict")
       .map { it.equals("true", ignoreCase = true) || it.equals("on", ignoreCase = true) }
       .orElse(false)
 
+  options.errorprone.isEnabled.set(enabled.get())
+  options.errorprone.disableWarningsInGeneratedCode.set(true)
   if (!strict.get()) {
-    // Demote all Error Prone errors to warnings in non-strict mode
-    options.errorprone.errorproneArgs.addAll("-XepAllErrorsAsWarnings")
+    options.errorprone.allErrorsAsWarnings.set(true)
   }
-
-  // Keep disabled checks as warnings to surface signal
-  options.errorprone.errorproneArgs.addAll("-XepAllDisabledChecksAsWarnings")
 }
 
 // Convenience task: run SonarLint on a single file
