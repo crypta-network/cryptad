@@ -197,9 +197,6 @@ The wrapper validates the distribution URL (`validateDistributionUrl=true` in
 
 - Formatting via Spotless is configured; see the Spotless + Dependency Verification section if verification blocks resolution.
 - Gradle daemon is enabled by default; avoid passing `--no-daemon`.
- - Static analysis:
-   - SonarLint (local): `./gradlew sonarlintMain` or single file: `./gradlew --quiet sonarlintFile -Psonarlint.file=path/to/File.java`
-   - Error Prone: runs during Java compilation; override version with `-Pcrypta.errorproneVersion=...`, disable via `-Pcrypta.errorprone=false`.
 
 ## Running Your Build
 

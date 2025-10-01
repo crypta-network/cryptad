@@ -488,11 +488,10 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
 
 ## SonarLint (Gradle) — Oct 2025
 
-- Plugins & wiring (grouped)
-  - The `cryptad.sonar` convention plugin (`build-logic/src/main/kotlin/cryptad.sonar.gradle.kts`) groups static analysis:
-    - SonarLint: `name.remal.sonarlint` (version `remalSonarlint = "7.0.0-rc-2"`).
-    - Error Prone: `net.ltgt.errorprone` (gradle-errorprone-plugin `errorpronePlugin = "4.3.0"`).
-  - The convention also applies `org.sonarqube` for SonarQube/SonarCloud.
+- Plugin & wiring
+  - Added Gradle plugin `name.remal.sonarlint` via the build-logic convention plugin `cryptad.sonar` (`build-logic/src/main/kotlin/cryptad.sonar.gradle.kts`).
+  - Version pinned in the version catalog: `remalSonarlint = "7.0.0-rc-2"`.
+  - The convention applies both `org.sonarqube` and `name.remal.sonarlint`.
 - Defaults
   - SonarLint is configured not to fail builds by default (`ignoreFailures = true`) to ease adoption.
   - A property passthrough recognizes `-Psonarlint.sources`/`-Psonar.inclusions` and forwards to `sonar.inclusions`.
@@ -503,15 +502,8 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
     - Aliases: `-Pfile=...`, `-Psonarlint.sources=...`.
     - Report: `build/reports/sonarLint/sonarlintFile/sonarlintFile.xml`.
   - Note: `sonarlintMain` may still index the full project; use `sonarlintFile` when scoping strictly to one file.
-- Error Prone
-  - Enabled via `net.ltgt.errorprone` and attached to `JavaCompile` tasks.
-  - Default: builds do not fail on checks (all errors are demoted to warnings). Enable strict with `-Pcrypta.errorproneStrict=true`.
-  - Core is added automatically: `com.google.errorprone:error_prone_core:${version}`.
-    - Version defaults to `libs.versions.errorproneCore` (currently `2.38.0`), override with `-Pcrypta.errorproneVersion=...`.
-  - Toggle: disable entirely with `-Pcrypta.errorprone=false`.
 - Dependency verification & keys
   - Verification metadata and keyring were refreshed to include SonarLint artifacts.
-  - If Error Prone core version changes, refresh verification metadata after the first compile resolution.
   - To refresh on future bumps:
     1) Temporarily set `org.gradle.dependency.verification=lenient` in `gradle.properties`.
     2) Run: `./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin`
