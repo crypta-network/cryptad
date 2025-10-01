@@ -67,3 +67,31 @@ tasks.register("sonarlintFile", SonarLint::class.java) {
     logger.warn("sonarlint.file not specified; use -Psonarlint.file=<path> to scope analysis")
   }
 }
+
+// Do not run SonarLint as part of a regular `build`.
+// Keep the task available when explicitly requested (any task name containing "sonarlint").
+tasks.named("sonarlintMain", SonarLint::class.java).configure {
+  onlyIf {
+    val explicitlyRequested =
+      gradle.startParameter.taskNames.any { it.contains("sonarlint", ignoreCase = true) }
+    if (!explicitlyRequested) {
+      logger.info(
+        "Skipping sonarlintMain during standard builds; run :sonarlintMain explicitly to enable."
+      )
+    }
+    explicitlyRequested
+  }
+}
+
+tasks.named("sonarlintTest", SonarLint::class.java).configure {
+  onlyIf {
+    val explicitlyRequested =
+      gradle.startParameter.taskNames.any { it.contains("sonarlint", ignoreCase = true) }
+    if (!explicitlyRequested) {
+      logger.info(
+        "Skipping sonarlintTest during standard builds; run :sonarlintTest explicitly to enable."
+      )
+    }
+    explicitlyRequested
+  }
+}

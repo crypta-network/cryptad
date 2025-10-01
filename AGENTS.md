@@ -497,6 +497,13 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
   - A property passthrough recognizes `-Psonarlint.sources`/`-Psonar.inclusions` and forwards to `sonar.inclusions`.
 - Tasks
   - Standard: `sonarlintMain`, `sonarlintTest` (from the plugin), plus `sonar`.
+  - Build integration: SonarLint does NOT run during regular lifecycles (`build`, `check`).
+    - Both `sonarlintMain` and `sonarlintTest` are gated with `onlyIf` and execute only when explicitly requested
+      (i.e., when any requested task name contains `sonarlint`).
+    - Example: `./gradlew build` → SonarLint tasks are skipped; `./gradlew sonarlintMain` → runs analysis.
+  - Run manually:
+    - Full main sources: `./gradlew sonarlintMain`
+    - Test sources: `./gradlew sonarlintTest`
   - Single-file: added `sonarlintFile` to analyze one file only.
     - Usage: `./gradlew --quiet sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java`
     - Aliases: `-Pfile=...`, `-Psonarlint.sources=...`.
