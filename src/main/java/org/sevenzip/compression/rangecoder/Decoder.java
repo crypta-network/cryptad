@@ -1,4 +1,4 @@
-package SevenZip.Compression.RangeCoder;
+package org.sevenzip.compression.rangecoder;
 
 import java.io.IOException;
 import java.io.InputStream;

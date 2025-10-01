@@ -1,6 +1,6 @@
 // SevenZip/CRC.java
 
-package SevenZip;
+package org.sevenzip;
 
 /**
  * CRC-32 calculator (polynomial 0xEDB88320).

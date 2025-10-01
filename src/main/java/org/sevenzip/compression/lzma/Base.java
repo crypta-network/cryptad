@@ -1,6 +1,6 @@
 // Base.java
 
-package SevenZip.Compression.LZMA;
+package org.sevenzip.compression.lzma;
 
 public class Base {
   public static final int NUM_REP_DISTANCES = 4;

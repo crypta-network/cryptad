@@ -1,7 +1,5 @@
 package network.crypta.support.compress;
 
-import SevenZip.Compression.LZMA.Decoder;
-import SevenZip.Compression.LZMA.Encoder;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,6 +13,8 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedInputStream;
 import network.crypta.support.io.CountedOutputStream;
+import org.sevenzip.compression.lzma.Decoder;
+import org.sevenzip.compression.lzma.Encoder;
 
 public class OldLZMACompressor implements Compressor {
   private static volatile boolean logMINOR;

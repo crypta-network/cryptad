@@ -1,12 +1,12 @@
-package SevenZip;
+package org.sevenzip;
 
-import SevenZip.Compression.LZMA.Decoder;
-import SevenZip.Compression.LZMA.Encoder;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.jetbrains.annotations.NotNull;
+import org.sevenzip.compression.lzma.Decoder;
+import org.sevenzip.compression.lzma.Encoder;
 
 public class LzmaBench {
   private LzmaBench() {}

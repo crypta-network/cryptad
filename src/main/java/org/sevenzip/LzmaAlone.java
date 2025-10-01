@@ -1,13 +1,13 @@
-package SevenZip;
+package org.sevenzip;
 
-import SevenZip.Compression.LZMA.Decoder;
-import SevenZip.Compression.LZMA.Encoder;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import org.sevenzip.compression.lzma.Decoder;
+import org.sevenzip.compression.lzma.Encoder;
 
 public class LzmaAlone {
   public static class CommandLine {

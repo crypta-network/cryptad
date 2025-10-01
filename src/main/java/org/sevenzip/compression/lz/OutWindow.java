@@ -1,6 +1,6 @@
 // LZ.OutWindow
 
-package SevenZip.Compression.LZ;
+package org.sevenzip.compression.lz;
 
 import java.io.IOException;
 import java.io.OutputStream;

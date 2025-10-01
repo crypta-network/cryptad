@@ -1,12 +1,12 @@
-package SevenZip.Compression.LZMA;
+package org.sevenzip.compression.lzma;
 
-import static SevenZip.Compression.RangeCoder.Decoder.initBitModels;
+import static org.sevenzip.compression.rangecoder.Decoder.initBitModels;
 
-import SevenZip.Compression.LZ.OutWindow;
-import SevenZip.Compression.RangeCoder.BitTreeDecoder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import org.sevenzip.compression.lz.OutWindow;
+import org.sevenzip.compression.rangecoder.BitTreeDecoder;
 
 public class Decoder {
   static class LenDecoder {
@@ -32,7 +32,7 @@ public class Decoder {
       highCoder.init();
     }
 
-    public int decode(SevenZip.Compression.RangeCoder.Decoder rangeDecoder, int posState)
+    public int decode(org.sevenzip.compression.rangecoder.Decoder rangeDecoder, int posState)
         throws IOException {
       if (rangeDecoder.decodeBit(choice, 0) == 0) return lowCoder[posState].decode(rangeDecoder);
       int symbol = Base.NUM_LOW_LEN_SYMBOLS;
@@ -50,7 +50,7 @@ public class Decoder {
         initBitModels(decoders);
       }
 
-      public byte decodeNormal(SevenZip.Compression.RangeCoder.Decoder rangeDecoder)
+      public byte decodeNormal(org.sevenzip.compression.rangecoder.Decoder rangeDecoder)
           throws IOException {
         int symbol = 1;
         do symbol = (symbol << 1) | rangeDecoder.decodeBit(decoders, symbol);
@@ -59,7 +59,8 @@ public class Decoder {
       }
 
       public byte decodeWithMatchByte(
-          SevenZip.Compression.RangeCoder.Decoder rangeDecoder, byte matchByte) throws IOException {
+          org.sevenzip.compression.rangecoder.Decoder rangeDecoder, byte matchByte)
+          throws IOException {
         int symbol = 1;
         do {
           int matchBit = (matchByte >> 7) & 1;
@@ -103,8 +104,8 @@ public class Decoder {
   }
 
   OutWindow outWindow = new OutWindow();
-  SevenZip.Compression.RangeCoder.Decoder rangeDecoder =
-      new SevenZip.Compression.RangeCoder.Decoder();
+  org.sevenzip.compression.rangecoder.Decoder rangeDecoder =
+      new org.sevenzip.compression.rangecoder.Decoder();
 
   short[] isMatchDecoders = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
   short[] isRepDecoders = new short[Base.NUM_STATES];

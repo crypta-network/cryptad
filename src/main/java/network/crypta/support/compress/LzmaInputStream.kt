@@ -1,12 +1,12 @@
 package network.crypta.support.compress
 
-import SevenZip.Compression.LZMA.Decoder
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.CountDownLatch
+import org.sevenzip.compression.lzma.Decoder
 
 /**
  * LZMA [InputStream] compatible with the historical lzmajio API.
