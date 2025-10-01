@@ -1,7 +1,5 @@
 package network.crypta.support.compress;
 
-import SevenZip.Compression.LZMA.Decoder;
-import SevenZip.Compression.LZMA.Encoder;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,6 +13,8 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedInputStream;
 import network.crypta.support.io.CountedOutputStream;
+import org.sevenzip.compression.lzma.Decoder;
+import org.sevenzip.compression.lzma.Encoder;
 
 public class OldLZMACompressor implements Compressor {
   private static volatile boolean logMINOR;
@@ -62,14 +62,14 @@ public class OldLZMACompressor implements Compressor {
     cis = new CountedInputStream(is);
     cos = new CountedOutputStream(os);
     Encoder encoder = new Encoder();
-    encoder.SetEndMarkerMode(true);
+    encoder.setEndMarkerMode(true);
     // Dictionary size 1MB, this is equivalent to lzma -4, it uses 16MB to compress and 2MB to
     // decompress.
     // Next one up is 2MB = -5 = 26M compress, 3M decompress.
-    encoder.SetDictionarySize(1 << 20);
+    encoder.setDictionarySize(1 << 20);
     // enc.WriteCoderProperties( out );
     // 5d 00 00 10 00
-    encoder.Code(cis, cos, -1, -1, null);
+    encoder.code(cis, cos, null);
     if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
     if (cos.written() > maxWriteLength) throw new CompressionOutputSizeException();
     cos.flush();
@@ -128,8 +128,8 @@ public class OldLZMACompressor implements Compressor {
       throws IOException {
     CountedOutputStream cos = new CountedOutputStream(os);
     Decoder decoder = new Decoder();
-    decoder.SetDecoderProperties(props);
-    decoder.Code(is, cos, maxLength);
+    decoder.setDecoderProperties(props);
+    decoder.code(is, cos, maxLength);
     return cos.written();
   }
 

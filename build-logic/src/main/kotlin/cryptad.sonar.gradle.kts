@@ -1,6 +1,11 @@
+import name.remal.gradle_plugins.sonarlint.SonarLint
+import name.remal.gradle_plugins.sonarlint.SonarLintSettings
+import org.gradle.api.tasks.SourceSetContainer
+
 plugins {
-  // Apply SonarQube/SonarCloud plugin centrally via convention plugin
+  // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
   id("org.sonarqube")
+  id("name.remal.sonarlint")
 }
 
 // Central Sonar configuration for all projects applying this convention
@@ -8,5 +13,85 @@ sonar {
   properties {
     property("sonar.projectKey", "crypta-network_cryptad")
     property("sonar.organization", "crypta-network")
+  }
+}
+
+// Minimal SonarLint configuration with optional file scoping via -Psonarlint.sources
+extensions.configure<SonarLintSettings>("sonarLint") {
+  // default: don't fail builds on findings until CI is configured to be green
+  ignoreFailures.convention(true)
+
+  val includeProp =
+    providers
+      .gradleProperty("sonarlint.sources")
+      .orElse(providers.gradleProperty("sonarlint.include"))
+      .orElse(providers.gradleProperty("sonar.inclusions"))
+
+  includeProp.orNull?.let { value ->
+    // Use Sonar's standard inclusions property so the engine narrows the scope
+    sonarProperty("sonar.inclusions", value)
+  }
+}
+
+// Convenience task: run SonarLint on a single file
+// Usage:
+//   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
+//   (aliases: -Pfile=..., -Psonarlint.sources=...)
+val sourceSets = extensions.getByType(SourceSetContainer::class.java)
+
+tasks.register("sonarlintFile", SonarLint::class.java) {
+  group = "verification"
+  description = "Run SonarLint on a single file (-Psonarlint.file=<path>)."
+  // Analyze against main sources by default
+  setSource(sourceSets.named("main").get().allSource)
+  // Pick a file pattern from properties
+  val fileProp =
+    providers
+      .gradleProperty("sonarlint.file")
+      .orElse(providers.gradleProperty("file"))
+      .orElse(providers.gradleProperty("sonarlint.sources"))
+      .orElse(providers.gradleProperty("sonar.inclusions"))
+
+  val pattern = fileProp.orNull
+  if (pattern != null && pattern.isNotBlank()) {
+    // Normalize to project-relative path and set it as the only source
+    val f = project.layout.projectDirectory.file(pattern).asFile
+    if (f.isFile) {
+      setSource(f)
+    } else {
+      // Fall back to include when a glob or directory is provided
+      val rel = project.relativePath(f)
+      include(rel)
+    }
+  } else {
+    logger.warn("sonarlint.file not specified; use -Psonarlint.file=<path> to scope analysis")
+  }
+}
+
+// Do not run SonarLint as part of a regular `build`.
+// Keep the task available when explicitly requested (any task name containing "sonarlint").
+tasks.named("sonarlintMain", SonarLint::class.java).configure {
+  onlyIf {
+    val explicitlyRequested =
+      gradle.startParameter.taskNames.any { it.contains("sonarlint", ignoreCase = true) }
+    if (!explicitlyRequested) {
+      logger.info(
+        "Skipping sonarlintMain during standard builds; run :sonarlintMain explicitly to enable."
+      )
+    }
+    explicitlyRequested
+  }
+}
+
+tasks.named("sonarlintTest", SonarLint::class.java).configure {
+  onlyIf {
+    val explicitlyRequested =
+      gradle.startParameter.taskNames.any { it.contains("sonarlint", ignoreCase = true) }
+    if (!explicitlyRequested) {
+      logger.info(
+        "Skipping sonarlintTest during standard builds; run :sonarlintTest explicitly to enable."
+      )
+    }
+    explicitlyRequested
   }
 }

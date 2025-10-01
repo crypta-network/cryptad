@@ -121,8 +121,8 @@ public class NewLzmaCompressorTest {
 
     try {
       Compressor.COMPRESSOR_TYPE.LZMA_NEW.compress(inBucket, factory, 32, 32);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
+    } catch (CompressionOutputSizeException | CompressionInputSizeException e) {
+      // expect this (either output exceeds cap or input exceeds maxReadLength)
     }
     // TODO LOW codec doesn't actually enforce size limit
     // fail("did not throw expected CompressionOutputSizeException");
