@@ -303,7 +303,7 @@ public class LzmaBench {
           new MyInputStream(compressedBuffer, compressedSize)) {
         crcOutStream.init();
         long startTime = System.currentTimeMillis();
-        if (!decoder.Code(inputCompressedStream, crcOutStream, outSize))
+        if (!decoder.code(inputCompressedStream, crcOutStream, outSize))
           throw (new IllegalStateException("Decoding Error"));
         decodeTime = System.currentTimeMillis() - startTime;
         if (crcOutStream.getDigest() != crc.getDigest())
@@ -334,7 +334,7 @@ public class LzmaBench {
     ByteArrayOutputStream propStream = new ByteArrayOutputStream();
     encoder.WriteCoderProperties(propStream);
     byte[] propArray = propStream.toByteArray();
-    decoder.SetDecoderProperties(propArray);
+    decoder.setDecoderProperties(propArray);
 
     CBenchRandomGenerator rg = new CBenchRandomGenerator();
 

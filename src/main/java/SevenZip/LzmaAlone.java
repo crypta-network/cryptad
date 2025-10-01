@@ -240,7 +240,7 @@ public class LzmaAlone {
       if (inStream.read(properties, 0, propertiesSize) != propertiesSize)
         throw new IllegalArgumentException("input .lzma file is too short");
       Decoder decoder = new Decoder();
-      if (!decoder.SetDecoderProperties(properties))
+      if (!decoder.setDecoderProperties(properties))
         throw new IllegalArgumentException("Incorrect stream properties");
       long outSize = 0;
       for (int i = 0; i < 8; i++) {
@@ -248,7 +248,7 @@ public class LzmaAlone {
         if (v < 0) throw new IllegalArgumentException("Can't read stream size");
         outSize |= ((long) v) << (8 * i);
       }
-      if (!decoder.Code(inStream, outStream, outSize))
+      if (!decoder.code(inStream, outStream, outSize))
         throw new IllegalArgumentException("Error in data stream");
     }
   }

@@ -128,8 +128,8 @@ public class OldLZMACompressor implements Compressor {
       throws IOException {
     CountedOutputStream cos = new CountedOutputStream(os);
     Decoder decoder = new Decoder();
-    decoder.SetDecoderProperties(props);
-    decoder.Code(is, cos, maxLength);
+    decoder.setDecoderProperties(props);
+    decoder.code(is, cos, maxLength);
     return cos.written();
   }
 

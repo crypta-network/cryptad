@@ -147,9 +147,9 @@ public class NewLZMACompressor extends AbstractCompressor {
     if (dictionarySize < 0) throw new InvalidCompressedDataException("Invalid dictionary size");
     if (dictionarySize > MAX_DICTIONARY_SIZE) throw new TooBigDictionaryException();
     Decoder decoder = new Decoder();
-    if (!decoder.SetDecoderProperties(props))
+    if (!decoder.setDecoderProperties(props))
       throw new InvalidCompressedDataException("Invalid properties");
-    decoder.Code(is, cos, maxLength);
+    decoder.code(is, cos, maxLength);
     // cos.flush();
     return cos.written();
   }

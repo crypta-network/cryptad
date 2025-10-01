@@ -1,5 +1,7 @@
 package SevenZip.Compression.LZMA;
 
+import static SevenZip.Compression.RangeCoder.Decoder.InitBitModels;
+
 import SevenZip.Compression.LZ.OutWindow;
 import SevenZip.Compression.RangeCoder.BitTreeDecoder;
 import java.io.IOException;
@@ -7,68 +9,66 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class Decoder {
-  class LenDecoder {
-    short[] m_Choice = new short[2];
-    BitTreeDecoder[] m_LowCoder = new BitTreeDecoder[Base.NUM_POS_STATES_MAX];
-    BitTreeDecoder[] m_MidCoder = new BitTreeDecoder[Base.NUM_POS_STATES_MAX];
-    BitTreeDecoder m_HighCoder = new BitTreeDecoder(Base.NUM_HIGH_LEN_BITS);
-    int m_NumPosStates = 0;
+  static class LenDecoder {
+    short[] choice = new short[2];
+    BitTreeDecoder[] lowCoder = new BitTreeDecoder[Base.NUM_POS_STATES_MAX];
+    BitTreeDecoder[] midCoder = new BitTreeDecoder[Base.NUM_POS_STATES_MAX];
+    BitTreeDecoder highCoder = new BitTreeDecoder(Base.NUM_HIGH_LEN_BITS);
+    int numPosStates = 0;
 
-    public void Create(int numPosStates) {
-      for (; m_NumPosStates < numPosStates; m_NumPosStates++) {
-        m_LowCoder[m_NumPosStates] = new BitTreeDecoder(Base.NUM_LOW_LEN_BITS);
-        m_MidCoder[m_NumPosStates] = new BitTreeDecoder(Base.NUM_MID_LEN_BITS);
+    public void create(int numPosStates) {
+      for (; this.numPosStates < numPosStates; this.numPosStates++) {
+        lowCoder[this.numPosStates] = new BitTreeDecoder(Base.NUM_LOW_LEN_BITS);
+        midCoder[this.numPosStates] = new BitTreeDecoder(Base.NUM_MID_LEN_BITS);
       }
     }
 
-    public void Init() {
-      SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_Choice);
-      for (int posState = 0; posState < m_NumPosStates; posState++) {
-        m_LowCoder[posState].Init();
-        m_MidCoder[posState].Init();
+    public void init() {
+      InitBitModels(choice);
+      for (int posState = 0; posState < numPosStates; posState++) {
+        lowCoder[posState].Init();
+        midCoder[posState].Init();
       }
-      m_HighCoder.Init();
+      highCoder.Init();
     }
 
-    public int Decode(SevenZip.Compression.RangeCoder.Decoder rangeDecoder, int posState)
+    public int decode(SevenZip.Compression.RangeCoder.Decoder rangeDecoder, int posState)
         throws IOException {
-      if (rangeDecoder.DecodeBit(m_Choice, 0) == 0)
-        return m_LowCoder[posState].Decode(rangeDecoder);
+      if (rangeDecoder.DecodeBit(choice, 0) == 0) return lowCoder[posState].Decode(rangeDecoder);
       int symbol = Base.NUM_LOW_LEN_SYMBOLS;
-      if (rangeDecoder.DecodeBit(m_Choice, 1) == 0)
-        symbol += m_MidCoder[posState].Decode(rangeDecoder);
-      else symbol += Base.NUM_MID_LEN_SYMBOLS + m_HighCoder.Decode(rangeDecoder);
+      if (rangeDecoder.DecodeBit(choice, 1) == 0) symbol += midCoder[posState].Decode(rangeDecoder);
+      else symbol += Base.NUM_MID_LEN_SYMBOLS + highCoder.Decode(rangeDecoder);
       return symbol;
     }
   }
 
-  class LiteralDecoder {
-    class Decoder2 {
-      short[] m_Decoders = new short[0x300];
+  static class LiteralDecoder {
+    static class Decoder2 {
+      short[] decoders = new short[0x300];
 
-      public void Init() {
-        SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_Decoders);
+      public void init() {
+        InitBitModels(decoders);
       }
 
-      public byte DecodeNormal(SevenZip.Compression.RangeCoder.Decoder rangeDecoder)
+      public byte decodeNormal(SevenZip.Compression.RangeCoder.Decoder rangeDecoder)
           throws IOException {
         int symbol = 1;
-        do symbol = (symbol << 1) | rangeDecoder.DecodeBit(m_Decoders, symbol);
+        do symbol = (symbol << 1) | rangeDecoder.DecodeBit(decoders, symbol);
         while (symbol < 0x100);
         return (byte) symbol;
       }
 
-      public byte DecodeWithMatchByte(
+      public byte decodeWithMatchByte(
           SevenZip.Compression.RangeCoder.Decoder rangeDecoder, byte matchByte) throws IOException {
         int symbol = 1;
         do {
           int matchBit = (matchByte >> 7) & 1;
           matchByte <<= 1;
-          int bit = rangeDecoder.DecodeBit(m_Decoders, ((1 + matchBit) << 8) + symbol);
+          int bit = rangeDecoder.DecodeBit(decoders, ((1 + matchBit) << 8) + symbol);
           symbol = (symbol << 1) | bit;
           if (matchBit != bit) {
             while (symbol < 0x100)
-              symbol = (symbol << 1) | rangeDecoder.DecodeBit(m_Decoders, symbol);
+              symbol = (symbol << 1) | rangeDecoder.DecodeBit(decoders, symbol);
             break;
           }
         } while (symbol < 0x100);
@@ -76,207 +76,252 @@ public class Decoder {
       }
     }
 
-    Decoder2[] m_Coders;
-    int m_NumPrevBits;
-    int m_NumPosBits;
-    int m_PosMask;
+    Decoder2[] coders;
+    int numPrevBits;
+    int numPosBits;
+    int posMask;
 
-    public void Create(int numPosBits, int numPrevBits) {
-      if (m_Coders != null && m_NumPrevBits == numPrevBits && m_NumPosBits == numPosBits) return;
-      m_NumPosBits = numPosBits;
-      m_PosMask = (1 << numPosBits) - 1;
-      m_NumPrevBits = numPrevBits;
-      int numStates = 1 << (m_NumPrevBits + m_NumPosBits);
-      m_Coders = new Decoder2[numStates];
-      for (int i = 0; i < numStates; i++) m_Coders[i] = new Decoder2();
+    public void create(int numPosBits, int numPrevBits) {
+      if (coders != null && this.numPrevBits == numPrevBits && this.numPosBits == numPosBits)
+        return;
+      this.numPosBits = numPosBits;
+      posMask = (1 << numPosBits) - 1;
+      this.numPrevBits = numPrevBits;
+      int numStates = 1 << (this.numPrevBits + this.numPosBits);
+      coders = new Decoder2[numStates];
+      for (int i = 0; i < numStates; i++) coders[i] = new Decoder2();
     }
 
-    public void Init() {
-      int numStates = 1 << (m_NumPrevBits + m_NumPosBits);
-      for (int i = 0; i < numStates; i++) m_Coders[i].Init();
+    public void init() {
+      int numStates = 1 << (numPrevBits + numPosBits);
+      for (int i = 0; i < numStates; i++) coders[i].init();
     }
 
-    Decoder2 GetDecoder(int pos, byte prevByte) {
-      return m_Coders[
-          ((pos & m_PosMask) << m_NumPrevBits) + ((prevByte & 0xFF) >>> (8 - m_NumPrevBits))];
+    Decoder2 getDecoder(int pos, byte prevByte) {
+      return coders[((pos & posMask) << numPrevBits) + ((prevByte & 0xFF) >>> (8 - numPrevBits))];
     }
   }
 
-  OutWindow m_OutWindow = new OutWindow();
-  SevenZip.Compression.RangeCoder.Decoder m_RangeDecoder =
+  OutWindow outWindow = new OutWindow();
+  SevenZip.Compression.RangeCoder.Decoder rangeDecoder =
       new SevenZip.Compression.RangeCoder.Decoder();
 
-  short[] m_IsMatchDecoders = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
-  short[] m_IsRepDecoders = new short[Base.NUM_STATES];
-  short[] m_IsRepG0Decoders = new short[Base.NUM_STATES];
-  short[] m_IsRepG1Decoders = new short[Base.NUM_STATES];
-  short[] m_IsRepG2Decoders = new short[Base.NUM_STATES];
-  short[] m_IsRep0LongDecoders = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
+  short[] isMatchDecoders = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
+  short[] isRepDecoders = new short[Base.NUM_STATES];
+  short[] isRepG0Decoders = new short[Base.NUM_STATES];
+  short[] isRepG1Decoders = new short[Base.NUM_STATES];
+  short[] isRepG2Decoders = new short[Base.NUM_STATES];
+  short[] isRep0LongDecoders = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
 
-  BitTreeDecoder[] m_PosSlotDecoder = new BitTreeDecoder[Base.NUM_LEN_TO_POS_STATES];
-  short[] m_PosDecoders = new short[Base.NUM_FULL_DISTANCES - Base.END_POS_MODEL_INDEX];
+  BitTreeDecoder[] posSlotDecoder = new BitTreeDecoder[Base.NUM_LEN_TO_POS_STATES];
+  short[] posDecoders = new short[Base.NUM_FULL_DISTANCES - Base.END_POS_MODEL_INDEX];
 
-  BitTreeDecoder m_PosAlignDecoder = new BitTreeDecoder(Base.NUM_ALIGN_BITS);
+  BitTreeDecoder posAlignDecoder = new BitTreeDecoder(Base.NUM_ALIGN_BITS);
 
-  LenDecoder m_LenDecoder = new LenDecoder();
-  LenDecoder m_RepLenDecoder = new LenDecoder();
+  LenDecoder lenDecoder = new LenDecoder();
+  LenDecoder repLenDecoder = new LenDecoder();
 
-  LiteralDecoder m_LiteralDecoder = new LiteralDecoder();
+  LiteralDecoder literalDecoder = new LiteralDecoder();
 
-  int m_DictionarySize = -1;
-  int m_DictionarySizeCheck = -1;
+  int dictionarySize = -1;
+  int dictionarySizeCheck = -1;
 
-  int m_PosStateMask;
+  int posStateMask;
 
   public Decoder() {
     for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++)
-      m_PosSlotDecoder[i] = new BitTreeDecoder(Base.NUM_POS_SLOT_BITS);
+      posSlotDecoder[i] = new BitTreeDecoder(Base.NUM_POS_SLOT_BITS);
   }
 
-  boolean SetDictionarySize(int dictionarySize) {
+  boolean setDictionarySize(int dictionarySize) {
     if (dictionarySize < 0) return false;
-    if (m_DictionarySize != dictionarySize) {
-      m_DictionarySize = dictionarySize;
-      m_DictionarySizeCheck = Math.max(m_DictionarySize, 1);
-      m_OutWindow.create(Math.max(m_DictionarySizeCheck, (1 << 12)));
+    if (this.dictionarySize != dictionarySize) {
+      this.dictionarySize = dictionarySize;
+      dictionarySizeCheck = Math.max(this.dictionarySize, 1);
+      outWindow.create(Math.max(dictionarySizeCheck, (1 << 12)));
     }
     return true;
   }
 
-  boolean SetLcLpPb(int lc, int lp, int pb) {
+  boolean setLcLpPb(int lc, int lp, int pb) {
     if (lc > Base.NUM_LIT_CONTEXT_BITS_MAX || lp > 4 || pb > Base.NUM_POS_STATES_BITS_MAX)
       return false;
-    m_LiteralDecoder.Create(lp, lc);
+    literalDecoder.create(lp, lc);
     int numPosStates = 1 << pb;
-    m_LenDecoder.Create(numPosStates);
-    m_RepLenDecoder.Create(numPosStates);
-    m_PosStateMask = numPosStates - 1;
+    lenDecoder.create(numPosStates);
+    repLenDecoder.create(numPosStates);
+    posStateMask = numPosStates - 1;
     return true;
   }
 
-  void Init() throws IOException {
-    m_OutWindow.init(false);
+  void init() throws IOException {
+    outWindow.init(false);
 
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsMatchDecoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRep0LongDecoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRepDecoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRepG0Decoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRepG1Decoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_IsRepG2Decoders);
-    SevenZip.Compression.RangeCoder.Decoder.InitBitModels(m_PosDecoders);
+    InitBitModels(isMatchDecoders);
+    InitBitModels(isRep0LongDecoders);
+    InitBitModels(isRepDecoders);
+    InitBitModels(isRepG0Decoders);
+    InitBitModels(isRepG1Decoders);
+    InitBitModels(isRepG2Decoders);
+    InitBitModels(posDecoders);
 
-    m_LiteralDecoder.Init();
+    literalDecoder.init();
     int i;
-    for (i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) m_PosSlotDecoder[i].Init();
-    m_LenDecoder.Init();
-    m_RepLenDecoder.Init();
-    m_PosAlignDecoder.Init();
-    m_RangeDecoder.Init();
+    for (i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) posSlotDecoder[i].Init();
+    lenDecoder.init();
+    repLenDecoder.init();
+    posAlignDecoder.Init();
+    rangeDecoder.Init();
   }
 
-  public boolean Code(InputStream inStream, OutputStream outStream, long outSize)
+  public boolean code(InputStream inStream, OutputStream outStream, long outSize)
       throws IOException {
-    m_RangeDecoder.SetStream(inStream);
-    m_OutWindow.setStream(outStream);
-    Init();
+    rangeDecoder.SetStream(inStream);
+    outWindow.setStream(outStream);
+    init();
 
     int state = Base.STATE_INIT;
-    int rep0 = 0, rep1 = 0, rep2 = 0, rep3 = 0;
+    Reps reps = new Reps();
 
     long nowPos64 = 0;
     byte prevByte = 0;
     while (outSize < 0 || nowPos64 < outSize) {
-      int posState = (int) nowPos64 & m_PosStateMask;
-      if (m_RangeDecoder.DecodeBit(
-              m_IsMatchDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
-          == 0) {
-        LiteralDecoder.Decoder2 decoder2 = m_LiteralDecoder.GetDecoder((int) nowPos64, prevByte);
-        if (Base.isCharState(state))
-          prevByte = decoder2.DecodeWithMatchByte(m_RangeDecoder, m_OutWindow.getByte(rep0));
-        else prevByte = decoder2.DecodeNormal(m_RangeDecoder);
-        m_OutWindow.putByte(prevByte);
+      int posState = (int) nowPos64 & posStateMask;
+      if (isLiteralState(state, posState)) {
+        prevByte = decodeLiteral(nowPos64, prevByte, state, reps.rep0);
+        outWindow.putByte(prevByte);
         state = Base.stateUpdateChar(state);
         nowPos64++;
       } else {
-        int len;
-        if (m_RangeDecoder.DecodeBit(m_IsRepDecoders, state) == 1) {
-          len = 0;
-          if (m_RangeDecoder.DecodeBit(m_IsRepG0Decoders, state) == 0) {
-            if (m_RangeDecoder.DecodeBit(
-                    m_IsRep0LongDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
-                == 0) {
-              state = Base.stateUpdateShortRep(state);
-              len = 1;
-            }
-          } else {
-            int distance;
-            if (m_RangeDecoder.DecodeBit(m_IsRepG1Decoders, state) == 0) distance = rep1;
-            else {
-              if (m_RangeDecoder.DecodeBit(m_IsRepG2Decoders, state) == 0) distance = rep2;
-              else {
-                distance = rep3;
-                rep3 = rep2;
-              }
-              rep2 = rep1;
-            }
-            rep1 = rep0;
-            rep0 = distance;
-          }
-          if (len == 0) {
-            len = m_RepLenDecoder.Decode(m_RangeDecoder, posState) + Base.MATCH_MIN_LEN;
-            state = Base.stateUpdateRep(state);
-          }
-        } else {
-          rep3 = rep2;
-          rep2 = rep1;
-          rep1 = rep0;
-          len = Base.MATCH_MIN_LEN + m_LenDecoder.Decode(m_RangeDecoder, posState);
-          state = Base.stateUpdateMatch(state);
-          int posSlot = m_PosSlotDecoder[Base.getLenToPosState(len)].Decode(m_RangeDecoder);
-          if (posSlot >= Base.START_POS_MODEL_INDEX) {
-            int numDirectBits = (posSlot >> 1) - 1;
-            rep0 = ((2 | (posSlot & 1)) << numDirectBits);
-            if (posSlot < Base.END_POS_MODEL_INDEX)
-              rep0 +=
-                  BitTreeDecoder.ReverseDecode(
-                      m_PosDecoders, rep0 - posSlot - 1, m_RangeDecoder, numDirectBits);
-            else {
-              rep0 +=
-                  (m_RangeDecoder.DecodeDirectBits(numDirectBits - Base.NUM_ALIGN_BITS)
-                      << Base.NUM_ALIGN_BITS);
-              rep0 += m_PosAlignDecoder.ReverseDecode(m_RangeDecoder);
-              if (rep0 < 0) {
-                if (rep0 == -1) break;
-                return false;
-              }
-            }
-          } else rep0 = posSlot;
-        }
-        if (rep0 >= nowPos64 || rep0 >= m_DictionarySizeCheck) {
-          // m_OutWindow.Flush();
+        LenState step = nextLenAndState(state, posState, reps);
+        state = step.state;
+        int len = step.len;
+        int v = validateRep0(nowPos64, reps.rep0);
+        if (v != 0) {
+          if (v > 0) break; // end marker
           return false;
         }
-        m_OutWindow.copyBlock(rep0, len);
+        outWindow.copyBlock(reps.rep0, len);
         nowPos64 += len;
-        prevByte = m_OutWindow.getByte(0);
+        prevByte = outWindow.getByte(0);
       }
     }
-    m_OutWindow.flush();
-    m_OutWindow.releaseStream();
-    m_RangeDecoder.ReleaseStream();
+    outWindow.flush();
+    outWindow.releaseStream();
+    rangeDecoder.ReleaseStream();
     return true;
   }
 
-  public boolean SetDecoderProperties(byte[] properties) {
+  private boolean isLiteralState(int state, int posState) throws IOException {
+    return rangeDecoder.DecodeBit(
+            isMatchDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
+        == 0;
+  }
+
+  private boolean isRep(int state) throws IOException {
+    return rangeDecoder.DecodeBit(isRepDecoders, state) == 1;
+  }
+
+  private byte decodeLiteral(long nowPos64, byte prevByte, int state, int rep0) throws IOException {
+    LiteralDecoder.Decoder2 decoder2 = literalDecoder.getDecoder((int) nowPos64, prevByte);
+    if (Base.isCharState(state))
+      return decoder2.decodeWithMatchByte(rangeDecoder, outWindow.getByte(rep0));
+    return decoder2.decodeNormal(rangeDecoder);
+  }
+
+  private static final class Reps {
+    int rep0 = 0;
+    int rep1 = 0;
+    int rep2 = 0;
+    int rep3 = 0;
+  }
+
+  private record RepResult(int len, int state) {}
+
+  private RepResult decodeRep(int state, int posState, Reps r) throws IOException {
+    int len = 0;
+    if (rangeDecoder.DecodeBit(isRepG0Decoders, state) == 0) {
+      if (rangeDecoder.DecodeBit(
+              isRep0LongDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
+          == 0) {
+        state = Base.stateUpdateShortRep(state);
+        len = 1;
+      }
+    } else {
+      int distance;
+      if (rangeDecoder.DecodeBit(isRepG1Decoders, state) == 0) distance = r.rep1;
+      else {
+        if (rangeDecoder.DecodeBit(isRepG2Decoders, state) == 0) distance = r.rep2;
+        else {
+          distance = r.rep3;
+          r.rep3 = r.rep2;
+        }
+        r.rep2 = r.rep1;
+      }
+      r.rep1 = r.rep0;
+      r.rep0 = distance;
+    }
+    if (len == 0) {
+      len = repLenDecoder.decode(rangeDecoder, posState) + Base.MATCH_MIN_LEN;
+      state = Base.stateUpdateRep(state);
+    }
+    return new RepResult(len, state);
+  }
+
+  private record MatchResult(int len, int state) {}
+
+  private MatchResult decodeMatch(int state, int posState, Reps r) throws IOException {
+    r.rep3 = r.rep2;
+    r.rep2 = r.rep1;
+    r.rep1 = r.rep0;
+    int len = Base.MATCH_MIN_LEN + lenDecoder.decode(rangeDecoder, posState);
+    state = Base.stateUpdateMatch(state);
+    int posSlot = posSlotDecoder[Base.getLenToPosState(len)].Decode(rangeDecoder);
+    if (posSlot >= Base.START_POS_MODEL_INDEX) {
+      int numDirectBits = (posSlot >> 1) - 1;
+      r.rep0 = ((2 | (posSlot & 1)) << numDirectBits);
+      if (posSlot < Base.END_POS_MODEL_INDEX)
+        r.rep0 +=
+            BitTreeDecoder.ReverseDecode(
+                posDecoders, r.rep0 - posSlot - 1, rangeDecoder, numDirectBits);
+      else {
+        r.rep0 +=
+            (rangeDecoder.DecodeDirectBits(numDirectBits - Base.NUM_ALIGN_BITS)
+                << Base.NUM_ALIGN_BITS);
+        r.rep0 += posAlignDecoder.ReverseDecode(rangeDecoder);
+      }
+    } else r.rep0 = posSlot;
+    return new MatchResult(len, state);
+  }
+
+  private int validateRep0(long nowPos64, int rep0) {
+    if (rep0 < 0) return (rep0 == -1) ? 1 : -1;
+    if (rep0 >= nowPos64 || rep0 >= dictionarySizeCheck) return -1;
+    return 0;
+  }
+
+  private record LenState(int len, int state) {}
+
+  private LenState nextLenAndState(int state, int posState, Reps reps) throws IOException {
+    if (isRep(state)) {
+      RepResult rep = decodeRep(state, posState, reps);
+      return new LenState(rep.len, rep.state);
+    } else {
+      MatchResult match = decodeMatch(state, posState, reps);
+      return new LenState(match.len, match.state);
+    }
+  }
+
+  public boolean setDecoderProperties(byte[] properties) {
     if (properties.length < 5) return false;
     int val = properties[0] & 0xFF;
     int lc = val % 9;
     int remainder = val / 9;
     int lp = remainder % 5;
     int pb = remainder / 5;
-    int dictionarySize = 0;
-    for (int i = 0; i < 4; i++) dictionarySize += ((int) (properties[1 + i]) & 0xFF) << (i * 8);
-    if (!SetLcLpPb(lc, lp, pb)) return false;
-    return SetDictionarySize(dictionarySize);
+    int dictSize = 0;
+    for (int i = 0; i < 4; i++) dictSize += ((properties[1 + i]) & 0xFF) << (i * 8);
+    if (!setLcLpPb(lc, lp, pb)) return false;
+    return setDictionarySize(dictSize);
   }
 }

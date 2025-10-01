@@ -47,13 +47,13 @@ class LzmaInputStream(private val source: InputStream) : InputStream() {
           }
 
           val decoder = Decoder()
-          if (!decoder.SetDecoderProperties(props)) {
+          if (!decoder.setDecoderProperties(props)) {
             throw IOException("Invalid LZMA properties")
           }
           // Ready for readers
           started.countDown()
 
-          if (!decoder.Code(inBuf, out, outSize)) {
+          if (!decoder.code(inBuf, out, outSize)) {
             throw IOException("LZMA decode error")
           }
           out.flush()
