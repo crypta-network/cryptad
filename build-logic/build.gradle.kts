@@ -26,6 +26,14 @@ dependencies {
   implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
   // SonarQube plugin marker for precompiled convention plugin usage
   implementation("org.sonarqube:org.sonarqube.gradle.plugin:${libs.versions.sonarqube.get()}")
+  // name.remal.sonarlint plugin marker so our convention plugin can apply it without a version
+  implementation(
+    "name.remal.sonarlint:name.remal.sonarlint.gradle.plugin:${libs.versions.remalSonarlint.get()}"
+  )
+  // SonarLint implementation API for typed configuration in precompiled plugin
+  implementation(
+    "name.remal.gradle-plugins.sonarlint:sonarlint:${libs.versions.remalSonarlint.get()}"
+  )
 }
 
 // Align Kotlin JVM target with Java 21 for build-logic itself

@@ -485,3 +485,30 @@ Tips
 
 Note: `dependencies.properties` has been removed (Sep 2025). It is no longer packaged or used by the runtime or build.
 - Gradle dependencies use the version catalog `gradle/libs.versions.toml` and `build.gradle.kts`.
+
+## SonarLint (Gradle) — Oct 2025
+
+- Plugin & wiring
+  - Added Gradle plugin `name.remal.sonarlint` via the build-logic convention plugin `cryptad.sonar` (`build-logic/src/main/kotlin/cryptad.sonar.gradle.kts`).
+  - Version pinned in the version catalog: `remalSonarlint = "7.0.0-rc-2"`.
+  - The convention applies both `org.sonarqube` and `name.remal.sonarlint`.
+- Defaults
+  - SonarLint is configured not to fail builds by default (`ignoreFailures = true`) to ease adoption.
+  - A property passthrough recognizes `-Psonarlint.sources`/`-Psonar.inclusions` and forwards to `sonar.inclusions`.
+- Tasks
+  - Standard: `sonarlintMain`, `sonarlintTest` (from the plugin), plus `sonar`.
+  - Single-file: added `sonarlintFile` to analyze one file only.
+    - Usage: `./gradlew --quiet sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java`
+    - Aliases: `-Pfile=...`, `-Psonarlint.sources=...`.
+    - Report: `build/reports/sonarLint/sonarlintFile/sonarlintFile.xml`.
+  - Note: `sonarlintMain` may still index the full project; use `sonarlintFile` when scoping strictly to one file.
+- Dependency verification & keys
+  - Verification metadata and keyring were refreshed to include SonarLint artifacts.
+  - To refresh on future bumps:
+    1) Temporarily set `org.gradle.dependency.verification=lenient` in `gradle.properties`.
+    2) Run: `./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin`
+    3) Restore `org.gradle.dependency.verification=strict`.
+    4) Optional: `./gradlew --export-keys`.
+- Memory
+  - Increased Gradle daemon heap to reduce OOM risk during SonarLint indexing:
+    - `gradle.properties`: `org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8`.

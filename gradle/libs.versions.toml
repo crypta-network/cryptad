@@ -18,6 +18,7 @@ dbusJava = "5.1.1"
 junitJupiter = "5.13.4"
 junitPlatform = "1.13.4"
 sonarqube = "6.3.1.5724"
+remalSonarlint = "7.0.0-rc-2"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
