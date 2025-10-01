@@ -38,16 +38,19 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets = extensions.getByType(SourceSetContainer::class.java)
+
 tasks.register("sonarlintFile", SonarLint::class.java) {
   group = "verification"
   description = "Run SonarLint on a single file (-Psonarlint.file=<path>)."
   // Analyze against main sources by default
   setSource(sourceSets.named("main").get().allSource)
   // Pick a file pattern from properties
-  val fileProp = providers.gradleProperty("sonarlint.file")
-    .orElse(providers.gradleProperty("file"))
-    .orElse(providers.gradleProperty("sonarlint.sources"))
-    .orElse(providers.gradleProperty("sonar.inclusions"))
+  val fileProp =
+    providers
+      .gradleProperty("sonarlint.file")
+      .orElse(providers.gradleProperty("file"))
+      .orElse(providers.gradleProperty("sonarlint.sources"))
+      .orElse(providers.gradleProperty("sonar.inclusions"))
 
   val pattern = fileProp.orNull
   if (pattern != null && pattern.isNotBlank()) {
