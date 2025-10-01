@@ -1,6 +1,6 @@
 package SevenZip.Compression.LZMA;
 
-import static SevenZip.Compression.RangeCoder.Decoder.InitBitModels;
+import static SevenZip.Compression.RangeCoder.Decoder.initBitModels;
 
 import SevenZip.Compression.LZ.OutWindow;
 import SevenZip.Compression.RangeCoder.BitTreeDecoder;
@@ -24,7 +24,7 @@ public class Decoder {
     }
 
     public void init() {
-      InitBitModels(choice);
+      initBitModels(choice);
       for (int posState = 0; posState < numPosStates; posState++) {
         lowCoder[posState].Init();
         midCoder[posState].Init();
@@ -34,9 +34,9 @@ public class Decoder {
 
     public int decode(SevenZip.Compression.RangeCoder.Decoder rangeDecoder, int posState)
         throws IOException {
-      if (rangeDecoder.DecodeBit(choice, 0) == 0) return lowCoder[posState].Decode(rangeDecoder);
+      if (rangeDecoder.decodeBit(choice, 0) == 0) return lowCoder[posState].Decode(rangeDecoder);
       int symbol = Base.NUM_LOW_LEN_SYMBOLS;
-      if (rangeDecoder.DecodeBit(choice, 1) == 0) symbol += midCoder[posState].Decode(rangeDecoder);
+      if (rangeDecoder.decodeBit(choice, 1) == 0) symbol += midCoder[posState].Decode(rangeDecoder);
       else symbol += Base.NUM_MID_LEN_SYMBOLS + highCoder.Decode(rangeDecoder);
       return symbol;
     }
@@ -47,13 +47,13 @@ public class Decoder {
       short[] decoders = new short[0x300];
 
       public void init() {
-        InitBitModels(decoders);
+        initBitModels(decoders);
       }
 
       public byte decodeNormal(SevenZip.Compression.RangeCoder.Decoder rangeDecoder)
           throws IOException {
         int symbol = 1;
-        do symbol = (symbol << 1) | rangeDecoder.DecodeBit(decoders, symbol);
+        do symbol = (symbol << 1) | rangeDecoder.decodeBit(decoders, symbol);
         while (symbol < 0x100);
         return (byte) symbol;
       }
@@ -64,11 +64,11 @@ public class Decoder {
         do {
           int matchBit = (matchByte >> 7) & 1;
           matchByte <<= 1;
-          int bit = rangeDecoder.DecodeBit(decoders, ((1 + matchBit) << 8) + symbol);
+          int bit = rangeDecoder.decodeBit(decoders, ((1 + matchBit) << 8) + symbol);
           symbol = (symbol << 1) | bit;
           if (matchBit != bit) {
             while (symbol < 0x100)
-              symbol = (symbol << 1) | rangeDecoder.DecodeBit(decoders, symbol);
+              symbol = (symbol << 1) | rangeDecoder.decodeBit(decoders, symbol);
             break;
           }
         } while (symbol < 0x100);
@@ -157,13 +157,13 @@ public class Decoder {
   void init() throws IOException {
     outWindow.init(false);
 
-    InitBitModels(isMatchDecoders);
-    InitBitModels(isRep0LongDecoders);
-    InitBitModels(isRepDecoders);
-    InitBitModels(isRepG0Decoders);
-    InitBitModels(isRepG1Decoders);
-    InitBitModels(isRepG2Decoders);
-    InitBitModels(posDecoders);
+    initBitModels(isMatchDecoders);
+    initBitModels(isRep0LongDecoders);
+    initBitModels(isRepDecoders);
+    initBitModels(isRepG0Decoders);
+    initBitModels(isRepG1Decoders);
+    initBitModels(isRepG2Decoders);
+    initBitModels(posDecoders);
 
     literalDecoder.init();
     int i;
@@ -171,12 +171,12 @@ public class Decoder {
     lenDecoder.init();
     repLenDecoder.init();
     posAlignDecoder.Init();
-    rangeDecoder.Init();
+    rangeDecoder.init();
   }
 
   public boolean code(InputStream inStream, OutputStream outStream, long outSize)
       throws IOException {
-    rangeDecoder.SetStream(inStream);
+    rangeDecoder.setStream(inStream);
     outWindow.setStream(outStream);
     init();
 
@@ -208,18 +208,18 @@ public class Decoder {
     }
     outWindow.flush();
     outWindow.releaseStream();
-    rangeDecoder.ReleaseStream();
+    rangeDecoder.releaseStream();
     return true;
   }
 
   private boolean isLiteralState(int state, int posState) throws IOException {
-    return rangeDecoder.DecodeBit(
+    return rangeDecoder.decodeBit(
             isMatchDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
         == 0;
   }
 
   private boolean isRep(int state) throws IOException {
-    return rangeDecoder.DecodeBit(isRepDecoders, state) == 1;
+    return rangeDecoder.decodeBit(isRepDecoders, state) == 1;
   }
 
   private byte decodeLiteral(long nowPos64, byte prevByte, int state, int rep0) throws IOException {
@@ -240,8 +240,8 @@ public class Decoder {
 
   private RepResult decodeRep(int state, int posState, Reps r) throws IOException {
     int len = 0;
-    if (rangeDecoder.DecodeBit(isRepG0Decoders, state) == 0) {
-      if (rangeDecoder.DecodeBit(
+    if (rangeDecoder.decodeBit(isRepG0Decoders, state) == 0) {
+      if (rangeDecoder.decodeBit(
               isRep0LongDecoders, (state << Base.NUM_POS_STATES_BITS_MAX) + posState)
           == 0) {
         state = Base.stateUpdateShortRep(state);
@@ -249,9 +249,9 @@ public class Decoder {
       }
     } else {
       int distance;
-      if (rangeDecoder.DecodeBit(isRepG1Decoders, state) == 0) distance = r.rep1;
+      if (rangeDecoder.decodeBit(isRepG1Decoders, state) == 0) distance = r.rep1;
       else {
-        if (rangeDecoder.DecodeBit(isRepG2Decoders, state) == 0) distance = r.rep2;
+        if (rangeDecoder.decodeBit(isRepG2Decoders, state) == 0) distance = r.rep2;
         else {
           distance = r.rep3;
           r.rep3 = r.rep2;
@@ -286,7 +286,7 @@ public class Decoder {
                 posDecoders, r.rep0 - posSlot - 1, rangeDecoder, numDirectBits);
       else {
         r.rep0 +=
-            (rangeDecoder.DecodeDirectBits(numDirectBits - Base.NUM_ALIGN_BITS)
+            (rangeDecoder.decodeDirectBits(numDirectBits - Base.NUM_ALIGN_BITS)
                 << Base.NUM_ALIGN_BITS);
         r.rep0 += posAlignDecoder.ReverseDecode(rangeDecoder);
       }

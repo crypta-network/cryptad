@@ -2,73 +2,81 @@ package SevenZip.Compression.RangeCoder;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 
+/**
+ * Range coder decoder used by the LZMA implementation.
+ *
+ * <p>Method and constant names follow Java naming conventions to satisfy static analysis rules. The
+ * behavior is unchanged from the original SevenZip reference implementation.
+ */
 public class Decoder {
-  static final int kTopMask = ~((1 << 24) - 1);
+  // Constants follow UPPER_SNAKE_CASE per Java conventions.
+  static final int TOP_MASK = -(1 << 24);
 
-  static final int kNumBitModelTotalBits = 11;
-  static final int kBitModelTotal = (1 << kNumBitModelTotalBits);
-  static final int kNumMoveBits = 5;
+  static final int NUM_BIT_MODEL_TOTAL_BITS = 11;
+  static final int BIT_MODEL_TOTAL = (1 << NUM_BIT_MODEL_TOTAL_BITS);
+  static final int NUM_MOVE_BITS = 5;
 
-  int Range;
-  int Code;
+  int range;
+  int code;
 
-  InputStream Stream;
+  InputStream stream;
 
-  public final void SetStream(InputStream stream) {
-    Stream = stream;
+  public final void setStream(InputStream stream) {
+    this.stream = stream;
   }
 
-  public final void ReleaseStream() {
-    Stream = null;
+  public final void releaseStream() {
+    this.stream = null;
   }
 
-  public final void Init() throws IOException {
-    Code = 0;
-    Range = -1;
-    for (int i = 0; i < 5; i++) Code = (Code << 8) | Stream.read();
+  public final void init() throws IOException {
+    code = 0;
+    range = -1;
+    for (int i = 0; i < 5; i++) code = (code << 8) | stream.read();
   }
 
-  public final int DecodeDirectBits(int numTotalBits) throws IOException {
+  public final int decodeDirectBits(int numTotalBits) throws IOException {
     int result = 0;
     for (int i = numTotalBits; i != 0; i--) {
-      Range >>>= 1;
-      int t = ((Code - Range) >>> 31);
-      Code -= Range & (t - 1);
+      range >>>= 1;
+      int t = ((code - range) >>> 31);
+      code -= range & (t - 1);
       result = (result << 1) | (1 - t);
 
-      if ((Range & kTopMask) == 0) {
-        Code = (Code << 8) | Stream.read();
-        Range <<= 8;
+      if ((range & TOP_MASK) == 0) {
+        code = (code << 8) | stream.read();
+        range <<= 8;
       }
     }
     return result;
   }
 
-  public int DecodeBit(short[] probs, int index) throws IOException {
+  public int decodeBit(short[] probs, int index) throws IOException {
     int prob = probs[index];
-    int newBound = (Range >>> kNumBitModelTotalBits) * prob;
-    if ((Code ^ 0x80000000) < (newBound ^ 0x80000000)) {
-      Range = newBound;
-      probs[index] = (short) (prob + ((kBitModelTotal - prob) >>> kNumMoveBits));
-      if ((Range & kTopMask) == 0) {
-        Code = (Code << 8) | Stream.read();
-        Range <<= 8;
+    int newBound = (range >>> NUM_BIT_MODEL_TOTAL_BITS) * prob;
+    if ((code ^ 0x80000000) < (newBound ^ 0x80000000)) {
+      range = newBound;
+      probs[index] = (short) (prob + ((BIT_MODEL_TOTAL - prob) >>> NUM_MOVE_BITS));
+      if ((range & TOP_MASK) == 0) {
+        code = (code << 8) | stream.read();
+        range <<= 8;
       }
       return 0;
     } else {
-      Range -= newBound;
-      Code -= newBound;
-      probs[index] = (short) (prob - ((prob) >>> kNumMoveBits));
-      if ((Range & kTopMask) == 0) {
-        Code = (Code << 8) | Stream.read();
-        Range <<= 8;
+      range -= newBound;
+      code -= newBound;
+      probs[index] = (short) (prob - (prob >>> NUM_MOVE_BITS));
+      if ((range & TOP_MASK) == 0) {
+        code = (code << 8) | stream.read();
+        range <<= 8;
       }
       return 1;
     }
   }
 
-  public static void InitBitModels(short[] probs) {
-    for (int i = 0; i < probs.length; i++) probs[i] = (kBitModelTotal >>> 1);
+  public static void initBitModels(short[] probs) {
+    Arrays.fill(probs, (short) (BIT_MODEL_TOTAL >>> 1));
   }
 }

@@ -12,13 +12,13 @@ public class BitTreeDecoder {
   }
 
   public void Init() {
-    Decoder.InitBitModels(Models);
+    Decoder.initBitModels(Models);
   }
 
   public int Decode(Decoder rangeDecoder) throws IOException {
     int m = 1;
     for (int bitIndex = NumBitLevels; bitIndex != 0; bitIndex--)
-      m = (m << 1) + rangeDecoder.DecodeBit(Models, m);
+      m = (m << 1) + rangeDecoder.decodeBit(Models, m);
     return m - (1 << NumBitLevels);
   }
 
@@ -26,7 +26,7 @@ public class BitTreeDecoder {
     int m = 1;
     int symbol = 0;
     for (int bitIndex = 0; bitIndex < NumBitLevels; bitIndex++) {
-      int bit = rangeDecoder.DecodeBit(Models, m);
+      int bit = rangeDecoder.decodeBit(Models, m);
       m <<= 1;
       m += bit;
       symbol |= (bit << bitIndex);
@@ -39,7 +39,7 @@ public class BitTreeDecoder {
     int m = 1;
     int symbol = 0;
     for (int bitIndex = 0; bitIndex < NumBitLevels; bitIndex++) {
-      int bit = rangeDecoder.DecodeBit(Models, startIndex + m);
+      int bit = rangeDecoder.decodeBit(Models, startIndex + m);
       m <<= 1;
       m += bit;
       symbol |= (bit << bitIndex);

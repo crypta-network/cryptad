@@ -12,7 +12,7 @@ public class BitTreeEncoder {
   }
 
   public void Init() {
-    Decoder.InitBitModels(Models);
+    Decoder.initBitModels(Models);
   }
 
   public void Encode(Encoder rangeEncoder, int symbol) throws IOException {
