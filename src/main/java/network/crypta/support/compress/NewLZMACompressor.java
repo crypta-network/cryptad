@@ -60,10 +60,15 @@ public class NewLZMACompressor extends AbstractCompressor {
       final long amountOfDataToCheckCompressionRatio,
       final int minimumCompressionPercentage)
       throws IOException, CompressionRatioException {
-    CountedInputStream cis = null;
-    CountedOutputStream cos = null;
-    cis = new CountedInputStream(is);
-    cos = new CountedOutputStream(os);
+    // Enforce caller-provided read/write limits during compression.
+    CountedInputStream cis =
+        (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
+            ? new BoundedInputStream(is, maxReadLength)
+            : new CountedInputStream(is);
+    CountedOutputStream cos =
+        (maxWriteLength >= 0 && maxWriteLength != Long.MAX_VALUE)
+            ? new BoundedOutputStream(os, maxWriteLength)
+            : new CountedOutputStream(os);
     Encoder encoder = new Encoder();
     encoder.setEndMarkerMode(true);
     int dictionarySize = 1;
@@ -78,7 +83,9 @@ public class NewLZMACompressor extends AbstractCompressor {
         dictionarySize <<= 1;
     }
     encoder.setDictionarySize(dictionarySize);
-    encoder.writeCoderProperties(os);
+    // Coder properties are part of the output stream and must count toward the
+    // maxWriteLength constraint; write them through the bounded stream.
+    encoder.writeCoderProperties(cos);
     try {
       encoder.code(
           cis,
@@ -107,10 +114,69 @@ public class NewLZMACompressor extends AbstractCompressor {
         throw e;
       }
     }
-    if (cos.written() > maxWriteLength) throw new CompressionOutputSizeException(cos.written());
+    if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
+      throw new CompressionOutputSizeException(cos.written());
     cos.flush();
     if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
     return cos.written();
+  }
+
+  /** Input stream wrapper that stops reading after {@code max} bytes have been returned. */
+  private static final class BoundedInputStream extends CountedInputStream {
+    private final long max;
+
+    BoundedInputStream(InputStream in, long max) {
+      super(in);
+      if (max < 0) throw new IllegalArgumentException("maxReadLength < 0");
+      this.max = max;
+    }
+
+    @Override
+    public int read() throws IOException {
+      if (count() >= max) return -1;
+      return super.read();
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      long remaining = max - count();
+      if (remaining <= 0) return -1;
+      int toRead = (int) Math.min(len, remaining);
+      return super.read(b, off, toRead);
+    }
+
+    @Override
+    public int read(byte[] b) throws IOException {
+      long remaining = max - count();
+      if (remaining <= 0) return -1;
+      int toRead = (int) Math.min(b.length, remaining);
+      return super.read(b, 0, toRead);
+    }
+  }
+
+  /** Output stream wrapper that throws when more than {@code max} bytes are written. */
+  private static final class BoundedOutputStream extends CountedOutputStream {
+    private final long max;
+
+    BoundedOutputStream(OutputStream out, long max) {
+      super(out);
+      if (max < 0) throw new IllegalArgumentException("maxWriteLength < 0");
+      this.max = max;
+    }
+
+    @Override
+    public void write(int b) throws IOException {
+      if (written() + 1 > max) throw new CompressionOutputSizeException(written() + 1);
+      super.write(b);
+    }
+
+    @Override
+    public void write(byte[] b, int off, int len) throws IOException {
+      if (len < 0) throw new ArrayIndexOutOfBoundsException(len);
+      if (written() + (long) len > max)
+        throw new CompressionOutputSizeException(written() + (long) len);
+      super.write(b, off, len);
+    }
   }
 
   public Bucket decompress(
