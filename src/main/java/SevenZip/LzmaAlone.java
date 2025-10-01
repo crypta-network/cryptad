@@ -205,28 +205,28 @@ public class LzmaAlone {
         BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(outFile))) {
       boolean eos = params.eos;
       Encoder encoder = createConfiguredEncoder(params, eos);
-      encoder.WriteCoderProperties(outStream);
+      encoder.writeCoderProperties(outStream);
       long fileSize;
       if (eos) fileSize = -1;
       else fileSize = inFile.length();
       for (int i = 0; i < 8; i++) outStream.write((int) (fileSize >>> (8 * i)) & 0xFF);
-      encoder.Code(inStream, outStream, -1, -1, null);
+      encoder.code(inStream, outStream, null);
     }
   }
 
   private static Encoder createConfiguredEncoder(CommandLine params, boolean eos) {
     Encoder encoder = new Encoder();
-    if (!encoder.SetAlgorithm(params.algorithm))
+    if (!encoder.setAlgorithm(params.algorithm))
       throw new IllegalArgumentException("Incorrect compression mode");
-    if (!encoder.SetDictionarySize(params.dictionarySize))
+    if (!encoder.setDictionarySize(params.dictionarySize))
       throw new IllegalArgumentException("Incorrect dictionary size");
-    if (!encoder.SetNumFastBytes(params.fb))
+    if (!encoder.setNumFastBytes(params.fb))
       throw new IllegalArgumentException("Incorrect -fb value");
-    if (!encoder.SetMatchFinder(params.matchFinder))
+    if (!encoder.setMatchFinder(params.matchFinder))
       throw new IllegalArgumentException("Incorrect -mf value");
-    if (!encoder.SetLcLpPb(params.lc, params.lp, params.pb))
+    if (!encoder.setLcLpPb(params.lc, params.lp, params.pb))
       throw new IllegalArgumentException("Incorrect -lc or -lp or -pb value");
-    encoder.SetEndMarkerMode(eos);
+    encoder.setEndMarkerMode(eos);
     return encoder;
   }
 

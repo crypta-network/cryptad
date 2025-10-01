@@ -65,7 +65,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     cis = new CountedInputStream(is);
     cos = new CountedOutputStream(os);
     Encoder encoder = new Encoder();
-    encoder.SetEndMarkerMode(true);
+    encoder.setEndMarkerMode(true);
     int dictionarySize = 1;
     if (maxReadLength == Long.MAX_VALUE || maxReadLength < 0) {
       dictionarySize = MAX_DICTIONARY_SIZE;
@@ -77,14 +77,12 @@ public class NewLZMACompressor extends AbstractCompressor {
       while (dictionarySize < maxReadLength && dictionarySize < MAX_DICTIONARY_SIZE)
         dictionarySize <<= 1;
     }
-    encoder.SetDictionarySize(dictionarySize);
-    encoder.WriteCoderProperties(os);
+    encoder.setDictionarySize(dictionarySize);
+    encoder.writeCoderProperties(os);
     try {
-      encoder.Code(
+      encoder.code(
           cis,
           cos,
-          maxReadLength,
-          maxWriteLength,
           new ICodeProgress() {
             boolean compressionEffectShouldBeChecked = minimumCompressionPercentage != 0;
 

@@ -62,14 +62,14 @@ public class OldLZMACompressor implements Compressor {
     cis = new CountedInputStream(is);
     cos = new CountedOutputStream(os);
     Encoder encoder = new Encoder();
-    encoder.SetEndMarkerMode(true);
+    encoder.setEndMarkerMode(true);
     // Dictionary size 1MB, this is equivalent to lzma -4, it uses 16MB to compress and 2MB to
     // decompress.
     // Next one up is 2MB = -5 = 26M compress, 3M decompress.
-    encoder.SetDictionarySize(1 << 20);
+    encoder.setDictionarySize(1 << 20);
     // enc.WriteCoderProperties( out );
     // 5d 00 00 10 00
-    encoder.Code(cis, cos, -1, -1, null);
+    encoder.code(cis, cos, null);
     if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
     if (cos.written() > maxWriteLength) throw new CompressionOutputSizeException();
     cos.flush();

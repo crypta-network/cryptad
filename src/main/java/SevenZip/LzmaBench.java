@@ -325,14 +325,14 @@ public class LzmaBench {
     Encoder encoder = new Encoder();
     Decoder decoder = new Decoder();
 
-    if (!encoder.SetDictionarySize(dictionarySize))
+    if (!encoder.setDictionarySize(dictionarySize))
       throw new IllegalArgumentException("Incorrect dictionary size");
 
     int kBufferSize = dictionarySize + K_ADDITIONAL_SIZE;
     int kCompressedBufferSize = (kBufferSize / 2) + K_COMPRESSED_ADDITIONAL_SIZE;
 
     ByteArrayOutputStream propStream = new ByteArrayOutputStream();
-    encoder.WriteCoderProperties(propStream);
+    encoder.writeCoderProperties(propStream);
     byte[] propArray = propStream.toByteArray();
     decoder.setDecoderProperties(propArray);
 
@@ -361,7 +361,7 @@ public class LzmaBench {
         progressInfo.init();
         inStream.reset();
         compressedStream.reset();
-        encoder.Code(inStream, compressedStream, -1, -1, progressInfo);
+        encoder.code(inStream, compressedStream, progressInfo);
         long encodeTime = System.currentTimeMillis() - progressInfo.time;
 
         if (i == 0) {

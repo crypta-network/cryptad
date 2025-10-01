@@ -6,70 +6,431 @@ import SevenZip.ICodeProgress;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 public class Encoder {
-  public static final int EMatchFinderTypeBT2 = 0;
-  public static final int EMatchFinderTypeBT4 = 1;
+  // Match finder type constants (BT2/BT4) in UPPER_SNAKE_CASE per conventions
+  public static final int MATCH_FINDER_TYPE_BT2 = 0;
+  public static final int MATCH_FINDER_TYPE_BT4 = 1;
 
-  static final int kIfinityPrice = 0xFFFFFFF;
+  static final int INFINITY_PRICE = 0xFFFFFFF;
 
-  static byte[] g_FastPos = new byte[1 << 11];
+  static byte[] gFastPos = new byte[1 << 11];
 
   static {
     int kFastSlots = 22;
     int c = 2;
-    g_FastPos[0] = 0;
-    g_FastPos[1] = 1;
+    gFastPos[0] = 0;
+    gFastPos[1] = 1;
     for (int slotFast = 2; slotFast < kFastSlots; slotFast++) {
       int k = (1 << ((slotFast >> 1) - 1));
-      for (int j = 0; j < k; j++, c++) g_FastPos[c] = (byte) slotFast;
+      for (int j = 0; j < k; j++, c++) gFastPos[c] = (byte) slotFast;
     }
   }
 
-  static int GetPosSlot(int pos) {
-    if (pos < (1 << 11)) return g_FastPos[pos];
-    if (pos < (1 << 21)) return (g_FastPos[pos >> 10] + 20);
-    return (g_FastPos[pos >> 20] + 40);
+  // Extracted helpers to reduce cognitive complexity in GetOptimum
+  private int updateStateForCur(int cur) {
+    int posPrev = optimum[cur].posPrev;
+    int state =
+        (optimum[cur].prev1IsChar) ? stateAfterPrevIsChar(cur, posPrev) : optimum[posPrev].state;
+    if (posPrev == cur - 1) {
+      return optimum[cur].isShortRep()
+          ? Base.stateUpdateShortRep(state)
+          : Base.stateUpdateChar(state);
+    }
+    return stateAfterNonAdjacentPrev(cur, state);
   }
 
-  static int GetPosSlot2(int pos) {
-    if (pos < (1 << 17)) return (g_FastPos[pos >> 6] + 12);
-    if (pos < (1 << 27)) return (g_FastPos[pos >> 16] + 32);
-    return (g_FastPos[pos >> 26] + 52);
+  private int stateAfterPrevIsChar(int cur, int posPrev) {
+    posPrev--;
+    int state;
+    if (optimum[cur].prev2) {
+      state = optimum[optimum[cur].posPrev2].state;
+      state =
+          (optimum[cur].backPrev2 < Base.NUM_REP_DISTANCES)
+              ? Base.stateUpdateRep(state)
+              : Base.stateUpdateMatch(state);
+    } else {
+      state = optimum[posPrev].state;
+    }
+    return Base.stateUpdateChar(state);
   }
 
-  int _state = Base.STATE_INIT;
-  byte _previousByte;
-  int[] _repDistances = new int[Base.NUM_REP_DISTANCES];
-
-  void BaseInit() {
-    _state = Base.STATE_INIT;
-    _previousByte = 0;
-    for (int i = 0; i < Base.NUM_REP_DISTANCES; i++) _repDistances[i] = 0;
+  private void loadRepsFromOptimal(Optimal opt, int pos) {
+    switch (pos) {
+      case 0 -> {
+        reps[0] = opt.backs0;
+        reps[1] = opt.backs1;
+        reps[2] = opt.backs2;
+        reps[3] = opt.backs3;
+      }
+      case 1 -> {
+        reps[0] = opt.backs1;
+        reps[1] = opt.backs0;
+        reps[2] = opt.backs2;
+        reps[3] = opt.backs3;
+      }
+      case 2 -> {
+        reps[0] = opt.backs2;
+        reps[1] = opt.backs0;
+        reps[2] = opt.backs1;
+        reps[3] = opt.backs3;
+      }
+      default -> {
+        reps[0] = opt.backs3;
+        reps[1] = opt.backs0;
+        reps[2] = opt.backs1;
+        reps[3] = opt.backs2;
+      }
+    }
   }
 
-  static final int kDefaultDictionaryLogSize = 22;
-  static final int kNumFastBytesDefault = 0x20;
+  private int stateAfterNonAdjacentPrev(int cur, int state) {
+    int posPrev = optimum[cur].posPrev;
+    int pos;
+    if (optimum[cur].prev1IsChar && optimum[cur].prev2) {
+      posPrev = optimum[cur].posPrev2;
+      pos = optimum[cur].backPrev2;
+      state = Base.stateUpdateRep(state);
+    } else {
+      pos = optimum[cur].backPrev;
+      state =
+          (pos < Base.NUM_REP_DISTANCES)
+              ? Base.stateUpdateRep(state)
+              : Base.stateUpdateMatch(state);
+    }
+    Optimal opt = optimum[posPrev];
+    if (pos < Base.NUM_REP_DISTANCES) {
+      loadRepsFromOptimal(opt, pos);
+    } else {
+      reps[0] = (pos - Base.NUM_REP_DISTANCES);
+      reps[1] = opt.backs0;
+      reps[2] = opt.backs1;
+      reps[3] = opt.backs2;
+    }
+    return state;
+  }
 
-  class LiteralEncoder {
-    class Encoder2 {
-      short[] m_Encoders = new short[0x300];
+  private record MatchContext(boolean nextIsChar, byte matchByte, byte currentByte) {}
 
-      public void Init() {
-        SevenZip.Compression.RangeCoder.Encoder.InitBitModels(m_Encoders);
+  private record CurContext(
+      int state, int cur, int numAvailableBytesFull, int curAnd1Price, int position) {}
+
+  // Packs common inputs for the rep-candidates processing stage.
+  private record RepCandidatesContext(
+      int state,
+      int position,
+      int posState,
+      int cur,
+      int numAvailableBytesFull,
+      int numAvailableBytes,
+      int repMatchPrice) {}
+
+  // Packs common inputs for normal (non-rep) matches processing.
+  private record NormalMatchesContext(
+      int state, int position, int posState, int cur, int numAvailableBytesFull, int matchPrice) {}
+
+  // Packs common inputs for normal match lookahead.
+  private record LookaheadContext(int state, int position, int cur, int numAvailableBytesFull) {}
+
+  // Helper object to return two values from rep-candidates processing
+  private record RepProcessResult(int lenEnd, int startLen) {}
+
+  // Helper object to return adjusted newLen and numDistancePairs
+  private record NewLenAdjustResult(int newLen, int numDistancePairsLocal) {}
+
+  private void handleLiteralPlusRep0(MatchContext mctx, CurContext cctx, int lenEnd) {
+    if (!mctx.nextIsChar && mctx.matchByte != mctx.currentByte) {
+      int t = Math.min(cctx.numAvailableBytesFull - 1, numFastBytes);
+      int lenTest2 = matchFinder.getMatchLen(0, reps[0], t);
+      if (lenTest2 >= 2) {
+        int state2 = Base.stateUpdateChar(cctx.state);
+        int posStateNext = (cctx.position + 1) & posStateMask;
+        int nextRepMatchPrice =
+            cctx.curAnd1Price
+                + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
+                    isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
+                + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRep[state2]);
+        int offset = cctx.cur + 1 + lenTest2;
+        while (lenEnd < offset) this.optimum[++lenEnd].price = INFINITY_PRICE;
+        int curAndLenPrice = nextRepMatchPrice + getRepPrice(0, lenTest2, state2, posStateNext);
+        Optimal optEntry = this.optimum[offset];
+        if (curAndLenPrice < optEntry.price) {
+          optEntry.price = curAndLenPrice;
+          optEntry.posPrev = cctx.cur + 1;
+          optEntry.backPrev = 0;
+          optEntry.prev1IsChar = true;
+          optEntry.prev2 = false;
+        }
+      }
+    }
+  }
+
+  /**
+   * Update the next optimum for the literal and short-rep paths.
+   *
+   * <p>Side effects: updates {@code optimum[cur + 1]} when a cheaper price is found.
+   *
+   * @return true when the next step is now a char (literal or short-rep) candidate
+   */
+  private boolean updateNextOptimumForCharAndShortRep(
+      int state,
+      int posState,
+      int cur,
+      int curAnd1Price,
+      byte matchByte,
+      byte currentByte,
+      int repMatchPrice) {
+    Optimal nextOptimum = optimum[cur + 1];
+
+    boolean nextIsChar = false;
+    if (curAnd1Price < nextOptimum.price) {
+      nextOptimum.price = curAnd1Price;
+      nextOptimum.posPrev = cur;
+      nextOptimum.makeAsChar();
+      nextIsChar = true;
+    }
+
+    if (matchByte == currentByte && !(nextOptimum.posPrev < cur && nextOptimum.backPrev == 0)) {
+      int shortRepPrice = repMatchPrice + getRepLen1Price(state, posState);
+      if (shortRepPrice <= nextOptimum.price) {
+        nextOptimum.price = shortRepPrice;
+        nextOptimum.posPrev = cur;
+        nextOptimum.makeAsShortRep();
+        nextIsChar = true;
+      }
+    }
+    return nextIsChar;
+  }
+
+  /**
+   * Handle the main rep-candidates loop inside getOptimum.
+   *
+   * <p>Side effects: updates {@code optimum[]} table entries; reads from {@code matchFinder}.
+   */
+  private RepProcessResult processRepCandidates(RepCandidatesContext rctx, int lenEnd) {
+    int startLen = 2; // speed optimization
+    for (int repIndex = 0; repIndex < Base.NUM_REP_DISTANCES; repIndex++) {
+      int lenTest = matchFinder.getMatchLen(-1, reps[repIndex], rctx.numAvailableBytes);
+      if (lenTest < 2) continue;
+
+      lenEnd =
+          updateRepRangeForIndex(
+              repIndex, lenTest, rctx.state, rctx.posState, rctx.cur, lenEnd, rctx.repMatchPrice);
+      if (repIndex == 0) startLen = lenTest + 1;
+      if (lenTest < rctx.numAvailableBytesFull) {
+        lenEnd = handleRepLenTest2(repIndex, lenTest, rctx, lenEnd);
+      }
+    }
+    return new RepProcessResult(lenEnd, startLen);
+  }
+
+  private int updateRepRangeForIndex(
+      int repIndex, int lenTest, int state, int posState, int cur, int lenEnd, int repMatchPrice) {
+    int lt = lenTest;
+    do {
+      while (lenEnd < cur + lt) this.optimum[++lenEnd].price = INFINITY_PRICE;
+      int curAndLenPrice = repMatchPrice + getRepPrice(repIndex, lt, state, posState);
+      Optimal optEntry = this.optimum[cur + lt];
+      if (curAndLenPrice < optEntry.price) {
+        optEntry.price = curAndLenPrice;
+        optEntry.posPrev = cur;
+        optEntry.backPrev = repIndex;
+        optEntry.prev1IsChar = false;
+      }
+    } while (--lt >= 2);
+    return lenEnd;
+  }
+
+  private int handleRepLenTest2(int repIndex, int lenTest, RepCandidatesContext rctx, int lenEnd) {
+    int t = Math.min(rctx.numAvailableBytesFull - 1 - lenTest, numFastBytes);
+    int lenTest2 = matchFinder.getMatchLen(lenTest, reps[repIndex], t);
+    if (lenTest2 < 2) return lenEnd;
+
+    int state2 = Base.stateUpdateRep(rctx.state);
+    int posStateNext = (rctx.position + lenTest) & posStateMask;
+    int curAndLenCharPrice =
+        rctx.repMatchPrice
+            + getRepPrice(repIndex, lenTest, rctx.state, rctx.posState)
+            + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
+                isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
+            + literalEncoder
+                .getSubCoder(rctx.position + lenTest, matchFinder.getIndexByte(lenTest - 1 - 1))
+                .getPrice(
+                    true,
+                    matchFinder.getIndexByte(lenTest - 1 - (reps[repIndex] + 1)),
+                    matchFinder.getIndexByte(lenTest - 1));
+    state2 = Base.stateUpdateChar(state2);
+    posStateNext = (rctx.position + lenTest + 1) & posStateMask;
+    int nextMatchPrice =
+        curAndLenCharPrice
+            + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
+                isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext]);
+    int nextRepMatchPrice =
+        nextMatchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRep[state2]);
+
+    int offset = lenTest + 1 + lenTest2;
+    while (lenEnd < rctx.cur + offset) this.optimum[++lenEnd].price = INFINITY_PRICE;
+    int curAndLenPrice = nextRepMatchPrice + getRepPrice(0, lenTest2, state2, posStateNext);
+    Optimal optEntry = this.optimum[rctx.cur + offset];
+    if (curAndLenPrice < optEntry.price) {
+      optEntry.price = curAndLenPrice;
+      optEntry.posPrev = rctx.cur + lenTest + 1;
+      optEntry.backPrev = 0;
+      optEntry.prev1IsChar = true;
+      optEntry.prev2 = true;
+      optEntry.posPrev2 = rctx.cur;
+      optEntry.backPrev2 = repIndex;
+    }
+    return lenEnd;
+  }
+
+  /** Clamp newLen to availability and update {@code matchDistances} pairs list. */
+  private NewLenAdjustResult adjustNewLenAndPairs(int newLen, int numAvailableBytes) {
+    int numDistancePairsLocal;
+    if (newLen > numAvailableBytes) {
+      newLen = numAvailableBytes;
+      numDistancePairsLocal = 0;
+      while (newLen > matchDistances[numDistancePairsLocal]) {
+        // advance to next distance/length pair
+        numDistancePairsLocal += 2;
+      }
+      matchDistances[numDistancePairsLocal] = newLen;
+      numDistancePairsLocal += 2;
+    } else {
+      numDistancePairsLocal = this.numDistancePairs; // unchanged
+    }
+    return new NewLenAdjustResult(newLen, numDistancePairsLocal);
+  }
+
+  /** Process normal match candidates (non-rep) for the current position. */
+  private int processNormalMatches(
+      NormalMatchesContext nctx, int newLen, int startLen, int lenEnd, int numDistancePairsLocal) {
+    if (newLen < startLen) return lenEnd;
+
+    int normalMatchPrice =
+        nctx.matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(isRep[nctx.state]);
+    while (lenEnd < nctx.cur + newLen) this.optimum[++lenEnd].price = INFINITY_PRICE;
+
+    int offs = 0;
+    while (startLen > matchDistances[offs]) offs += 2;
+
+    for (int lenTest = startLen; ; lenTest++) {
+      int curBack = matchDistances[offs + 1];
+      int curAndLenPrice = normalMatchPrice + getPosLenPrice(curBack, lenTest, nctx.posState);
+      Optimal optEntry = this.optimum[nctx.cur + lenTest];
+      if (curAndLenPrice < optEntry.price) {
+        optEntry.price = curAndLenPrice;
+        optEntry.posPrev = nctx.cur;
+        optEntry.backPrev = curBack + Base.NUM_REP_DISTANCES;
+        optEntry.prev1IsChar = false;
       }
 
-      public void Encode(SevenZip.Compression.RangeCoder.Encoder rangeEncoder, byte symbol)
+      if (lenTest == matchDistances[offs]) {
+        lenEnd =
+            handleNormalMatchLookahead(
+                new LookaheadContext(
+                    nctx.state, nctx.position, nctx.cur, nctx.numAvailableBytesFull),
+                lenTest,
+                curBack,
+                lenEnd,
+                curAndLenPrice);
+
+        offs += 2;
+        if (offs == numDistancePairsLocal) break;
+      }
+    }
+    return lenEnd;
+  }
+
+  private int handleNormalMatchLookahead(
+      LookaheadContext lctx, int lenTest, int curBack, int lenEnd, int curAndLenPrice) {
+    if (lenTest >= lctx.numAvailableBytesFull) return lenEnd;
+    int t = Math.min(lctx.numAvailableBytesFull - 1 - lenTest, numFastBytes);
+    int lenTest2 = matchFinder.getMatchLen(lenTest, curBack, t);
+    if (lenTest2 < 2) return lenEnd;
+
+    int state2 = Base.stateUpdateMatch(lctx.state);
+    int posStateNext = (lctx.position + lenTest) & posStateMask;
+    int curAndLenCharPrice =
+        curAndLenPrice
+            + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
+                isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
+            + literalEncoder
+                .getSubCoder(lctx.position + lenTest, matchFinder.getIndexByte(lenTest - 1 - 1))
+                .getPrice(
+                    true,
+                    matchFinder.getIndexByte(lenTest - (curBack + 1) - 1),
+                    matchFinder.getIndexByte(lenTest - 1));
+    state2 = Base.stateUpdateChar(state2);
+    posStateNext = (lctx.position + lenTest + 1) & posStateMask;
+    int nextMatchPrice =
+        curAndLenCharPrice
+            + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
+                isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext]);
+    int nextRepMatchPrice =
+        nextMatchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRep[state2]);
+
+    int offset = lenTest + 1 + lenTest2;
+    while (lenEnd < lctx.cur + offset) this.optimum[++lenEnd].price = INFINITY_PRICE;
+    int price = nextRepMatchPrice + getRepPrice(0, lenTest2, state2, posStateNext);
+    Optimal optEntry = this.optimum[lctx.cur + offset];
+    if (price < optEntry.price) {
+      optEntry.price = price;
+      optEntry.posPrev = lctx.cur + lenTest + 1;
+      optEntry.backPrev = 0;
+      optEntry.prev1IsChar = true;
+      optEntry.prev2 = true;
+      optEntry.posPrev2 = lctx.cur;
+      optEntry.backPrev2 = curBack + Base.NUM_REP_DISTANCES;
+    }
+    return lenEnd;
+  }
+
+  static int getPosSlot(int pos) {
+    if (pos < (1 << 11)) return gFastPos[pos];
+    if (pos < (1 << 21)) return (gFastPos[pos >> 10] + 20);
+    return (gFastPos[pos >> 20] + 40);
+  }
+
+  static int getPosSlot2(int pos) {
+    if (pos < (1 << 17)) return (gFastPos[pos >> 6] + 12);
+    if (pos < (1 << 27)) return (gFastPos[pos >> 16] + 32);
+    return (gFastPos[pos >> 26] + 52);
+  }
+
+  int encoderState = Base.STATE_INIT;
+  byte previousByte;
+  int[] repDistances = new int[Base.NUM_REP_DISTANCES];
+
+  void baseInit() {
+    encoderState = Base.STATE_INIT;
+    previousByte = 0;
+    Arrays.fill(repDistances, 0);
+  }
+
+  static final int DEFAULT_DICTIONARY_LOG_SIZE = 22;
+  static final int NUM_FAST_BYTES_DEFAULT = 0x20;
+
+  static class LiteralEncoder {
+    static class Encoder2 {
+      short[] encoders = new short[0x300];
+
+      public void init() {
+        SevenZip.Compression.RangeCoder.Encoder.InitBitModels(encoders);
+      }
+
+      public void encode(SevenZip.Compression.RangeCoder.Encoder rangeEncoder, byte symbol)
           throws IOException {
         int context = 1;
         for (int i = 7; i >= 0; i--) {
           int bit = ((symbol >> i) & 1);
-          rangeEncoder.Encode(m_Encoders, context, bit);
+          rangeEncoder.Encode(encoders, context, bit);
           context = (context << 1) | bit;
         }
       }
 
-      public void EncodeMatched(
+      public void encodeMatched(
           SevenZip.Compression.RangeCoder.Encoder rangeEncoder, byte matchByte, byte symbol)
           throws IOException {
         int context = 1;
@@ -82,12 +443,12 @@ public class Encoder {
             state += ((1 + matchBit) << 8);
             same = (matchBit == bit);
           }
-          rangeEncoder.Encode(m_Encoders, state, bit);
+          rangeEncoder.Encode(encoders, state, bit);
           context = (context << 1) | bit;
         }
       }
 
-      public int GetPrice(boolean matchMode, byte matchByte, byte symbol) {
+      public int getPrice(boolean matchMode, byte matchByte, byte symbol) {
         int price = 0;
         int context = 1;
         int i = 7;
@@ -97,7 +458,7 @@ public class Encoder {
             int bit = (symbol >> i) & 1;
             price +=
                 SevenZip.Compression.RangeCoder.Encoder.GetPrice(
-                    m_Encoders[((1 + matchBit) << 8) + context], bit);
+                    encoders[((1 + matchBit) << 8) + context], bit);
             context = (context << 1) | bit;
             if (matchBit != bit) {
               i--;
@@ -107,1021 +468,828 @@ public class Encoder {
         }
         for (; i >= 0; i--) {
           int bit = (symbol >> i) & 1;
-          price += SevenZip.Compression.RangeCoder.Encoder.GetPrice(m_Encoders[context], bit);
+          price += SevenZip.Compression.RangeCoder.Encoder.GetPrice(encoders[context], bit);
           context = (context << 1) | bit;
         }
         return price;
       }
     }
 
-    Encoder2[] m_Coders;
-    int m_NumPrevBits;
-    int m_NumPosBits;
-    int m_PosMask;
+    Encoder2[] coders;
+    int numPrevBits;
+    int numPosBits;
+    int posMask;
 
-    public void Create(int numPosBits, int numPrevBits) {
-      if (m_Coders != null && m_NumPrevBits == numPrevBits && m_NumPosBits == numPosBits) return;
-      m_NumPosBits = numPosBits;
-      m_PosMask = (1 << numPosBits) - 1;
-      m_NumPrevBits = numPrevBits;
-      int numStates = 1 << (m_NumPrevBits + m_NumPosBits);
-      m_Coders = new Encoder2[numStates];
-      for (int i = 0; i < numStates; i++) m_Coders[i] = new Encoder2();
+    public void create(int numPosBits, int numPrevBits) {
+      if (coders != null && this.numPrevBits == numPrevBits && this.numPosBits == numPosBits)
+        return;
+      this.numPosBits = numPosBits;
+      posMask = (1 << numPosBits) - 1;
+      this.numPrevBits = numPrevBits;
+      int numStates = 1 << (this.numPrevBits + this.numPosBits);
+      coders = new Encoder2[numStates];
+      for (int i = 0; i < numStates; i++) coders[i] = new Encoder2();
     }
 
-    public void Init() {
-      int numStates = 1 << (m_NumPrevBits + m_NumPosBits);
-      for (int i = 0; i < numStates; i++) m_Coders[i].Init();
+    public void init() {
+      int numStates = 1 << (numPrevBits + numPosBits);
+      for (int i = 0; i < numStates; i++) coders[i].init();
     }
 
-    public Encoder2 GetSubCoder(int pos, byte prevByte) {
-      return m_Coders[
-          ((pos & m_PosMask) << m_NumPrevBits) + ((prevByte & 0xFF) >>> (8 - m_NumPrevBits))];
+    public Encoder2 getSubCoder(int pos, byte prevByte) {
+      return coders[((pos & posMask) << numPrevBits) + ((prevByte & 0xFF) >>> (8 - numPrevBits))];
     }
   }
 
-  class LenEncoder {
-    short[] _choice = new short[2];
-    BitTreeEncoder[] _lowCoder = new BitTreeEncoder[Base.NUM_POS_STATES_ENCODING_MAX];
-    BitTreeEncoder[] _midCoder = new BitTreeEncoder[Base.NUM_POS_STATES_ENCODING_MAX];
-    BitTreeEncoder _highCoder = new BitTreeEncoder(Base.NUM_HIGH_LEN_BITS);
+  static class LenEncoder {
+    short[] choice = new short[2];
+    BitTreeEncoder[] lowCoder = new BitTreeEncoder[Base.NUM_POS_STATES_ENCODING_MAX];
+    BitTreeEncoder[] midCoder = new BitTreeEncoder[Base.NUM_POS_STATES_ENCODING_MAX];
+    BitTreeEncoder highCoder = new BitTreeEncoder(Base.NUM_HIGH_LEN_BITS);
 
     public LenEncoder() {
       for (int posState = 0; posState < Base.NUM_POS_STATES_ENCODING_MAX; posState++) {
-        _lowCoder[posState] = new BitTreeEncoder(Base.NUM_LOW_LEN_BITS);
-        _midCoder[posState] = new BitTreeEncoder(Base.NUM_MID_LEN_BITS);
+        lowCoder[posState] = new BitTreeEncoder(Base.NUM_LOW_LEN_BITS);
+        midCoder[posState] = new BitTreeEncoder(Base.NUM_MID_LEN_BITS);
       }
     }
 
-    public void Init(int numPosStates) {
-      SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_choice);
+    public void init(int numPosStates) {
+      SevenZip.Compression.RangeCoder.Encoder.InitBitModels(choice);
 
       for (int posState = 0; posState < numPosStates; posState++) {
-        _lowCoder[posState].Init();
-        _midCoder[posState].Init();
+        lowCoder[posState].Init();
+        midCoder[posState].Init();
       }
-      _highCoder.Init();
+      highCoder.Init();
     }
 
-    public void Encode(
+    public void encode(
         SevenZip.Compression.RangeCoder.Encoder rangeEncoder, int symbol, int posState)
         throws IOException {
       if (symbol < Base.NUM_LOW_LEN_SYMBOLS) {
-        rangeEncoder.Encode(_choice, 0, 0);
-        _lowCoder[posState].Encode(rangeEncoder, symbol);
+        rangeEncoder.Encode(choice, 0, 0);
+        lowCoder[posState].Encode(rangeEncoder, symbol);
       } else {
         symbol -= Base.NUM_LOW_LEN_SYMBOLS;
-        rangeEncoder.Encode(_choice, 0, 1);
+        rangeEncoder.Encode(choice, 0, 1);
         if (symbol < Base.NUM_MID_LEN_SYMBOLS) {
-          rangeEncoder.Encode(_choice, 1, 0);
-          _midCoder[posState].Encode(rangeEncoder, symbol);
+          rangeEncoder.Encode(choice, 1, 0);
+          midCoder[posState].Encode(rangeEncoder, symbol);
         } else {
-          rangeEncoder.Encode(_choice, 1, 1);
-          _highCoder.Encode(rangeEncoder, symbol - Base.NUM_MID_LEN_SYMBOLS);
+          rangeEncoder.Encode(choice, 1, 1);
+          highCoder.Encode(rangeEncoder, symbol - Base.NUM_MID_LEN_SYMBOLS);
         }
       }
     }
 
-    public void SetPrices(int posState, int numSymbols, int[] prices, int st) {
-      int a0 = SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_choice[0]);
-      int a1 = SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_choice[0]);
-      int b0 = a1 + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_choice[1]);
-      int b1 = a1 + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_choice[1]);
-      int i = 0;
+    public void setPrices(int posState, int numSymbols, int[] prices, int st) {
+      int a0 = SevenZip.Compression.RangeCoder.Encoder.GetPrice0(choice[0]);
+      int a1 = SevenZip.Compression.RangeCoder.Encoder.GetPrice1(choice[0]);
+      int b0 = a1 + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(choice[1]);
+      int b1 = a1 + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(choice[1]);
+      int i;
       for (i = 0; i < Base.NUM_LOW_LEN_SYMBOLS; i++) {
         if (i >= numSymbols) return;
-        prices[st + i] = a0 + _lowCoder[posState].GetPrice(i);
+        prices[st + i] = a0 + lowCoder[posState].GetPrice(i);
       }
       for (; i < Base.NUM_LOW_LEN_SYMBOLS + Base.NUM_MID_LEN_SYMBOLS; i++) {
         if (i >= numSymbols) return;
-        prices[st + i] = b0 + _midCoder[posState].GetPrice(i - Base.NUM_LOW_LEN_SYMBOLS);
+        prices[st + i] = b0 + midCoder[posState].GetPrice(i - Base.NUM_LOW_LEN_SYMBOLS);
       }
       for (; i < numSymbols; i++)
         prices[st + i] =
-            b1 + _highCoder.GetPrice(i - Base.NUM_LOW_LEN_SYMBOLS - Base.NUM_MID_LEN_SYMBOLS);
+            b1 + highCoder.GetPrice(i - Base.NUM_LOW_LEN_SYMBOLS - Base.NUM_MID_LEN_SYMBOLS);
     }
   }
-  ;
 
-  public static final int kNumLenSpecSymbols = Base.NUM_LOW_LEN_SYMBOLS + Base.NUM_MID_LEN_SYMBOLS;
+  static class LenPriceTableEncoder extends LenEncoder {
+    int[] prices = new int[Base.NUM_LEN_SYMBOLS << Base.NUM_POS_STATES_BITS_ENCODING_MAX];
+    int tableSize;
+    int[] counters = new int[Base.NUM_POS_STATES_ENCODING_MAX];
 
-  class LenPriceTableEncoder extends LenEncoder {
-    int[] _prices = new int[Base.NUM_LEN_SYMBOLS << Base.NUM_POS_STATES_BITS_ENCODING_MAX];
-    int _tableSize;
-    int[] _counters = new int[Base.NUM_POS_STATES_ENCODING_MAX];
-
-    public void SetTableSize(int tableSize) {
-      _tableSize = tableSize;
+    public void setTableSize(int tableSize) {
+      this.tableSize = tableSize;
     }
 
-    public int GetPrice(int symbol, int posState) {
-      return _prices[posState * Base.NUM_LEN_SYMBOLS + symbol];
+    public int getPrice(int symbol, int posState) {
+      return prices[posState * Base.NUM_LEN_SYMBOLS + symbol];
     }
 
-    void UpdateTable(int posState) {
-      SetPrices(posState, _tableSize, _prices, posState * Base.NUM_LEN_SYMBOLS);
-      _counters[posState] = _tableSize;
+    void updateTable(int posState) {
+      setPrices(posState, tableSize, prices, posState * Base.NUM_LEN_SYMBOLS);
+      counters[posState] = tableSize;
     }
 
-    public void UpdateTables(int numPosStates) {
-      for (int posState = 0; posState < numPosStates; posState++) UpdateTable(posState);
+    public void updateTables(int numPosStates) {
+      for (int posState = 0; posState < numPosStates; posState++) updateTable(posState);
     }
 
-    public void Encode(
+    @Override
+    public void encode(
         SevenZip.Compression.RangeCoder.Encoder rangeEncoder, int symbol, int posState)
         throws IOException {
-      super.Encode(rangeEncoder, symbol, posState);
-      if (--_counters[posState] == 0) UpdateTable(posState);
+      super.encode(rangeEncoder, symbol, posState);
+      if (--counters[posState] == 0) updateTable(posState);
     }
   }
 
-  static final int kNumOpts = 1 << 12;
+  static final int NUM_OPTS = 1 << 12;
 
-  class Optimal {
-    public int State;
+  static class Optimal {
+    int state;
 
-    public boolean Prev1IsChar;
-    public boolean Prev2;
+    boolean prev1IsChar;
+    boolean prev2;
 
-    public int PosPrev2;
-    public int BackPrev2;
+    int posPrev2;
+    int backPrev2;
 
-    public int Price;
-    public int PosPrev;
-    public int BackPrev;
+    int price;
+    int posPrev;
+    int backPrev;
 
-    public int Backs0;
-    public int Backs1;
-    public int Backs2;
-    public int Backs3;
+    int backs0;
+    int backs1;
+    int backs2;
+    int backs3;
 
-    public void MakeAsChar() {
-      BackPrev = -1;
-      Prev1IsChar = false;
+    public void makeAsChar() {
+      backPrev = -1;
+      prev1IsChar = false;
     }
 
-    public void MakeAsShortRep() {
-      BackPrev = 0;
-      ;
-      Prev1IsChar = false;
+    public void makeAsShortRep() {
+      backPrev = 0;
+      prev1IsChar = false;
     }
 
-    public boolean IsShortRep() {
-      return (BackPrev == 0);
+    public boolean isShortRep() {
+      return (backPrev == 0);
     }
   }
-  ;
 
-  Optimal[] _optimum = new Optimal[kNumOpts];
-  BinTree _matchFinder = null;
-  SevenZip.Compression.RangeCoder.Encoder _rangeEncoder =
+  Optimal[] optimum = new Optimal[NUM_OPTS];
+  BinTree matchFinder = null;
+  SevenZip.Compression.RangeCoder.Encoder rangeEncoder =
       new SevenZip.Compression.RangeCoder.Encoder();
 
-  short[] _isMatch = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
-  short[] _isRep = new short[Base.NUM_STATES];
-  short[] _isRepG0 = new short[Base.NUM_STATES];
-  short[] _isRepG1 = new short[Base.NUM_STATES];
-  short[] _isRepG2 = new short[Base.NUM_STATES];
-  short[] _isRep0Long = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
+  short[] isMatch = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
+  short[] isRep = new short[Base.NUM_STATES];
+  short[] isRepG0 = new short[Base.NUM_STATES];
+  short[] isRepG1 = new short[Base.NUM_STATES];
+  short[] isRepG2 = new short[Base.NUM_STATES];
+  short[] isRep0Long = new short[Base.NUM_STATES << Base.NUM_POS_STATES_BITS_MAX];
 
-  BitTreeEncoder[] _posSlotEncoder =
+  BitTreeEncoder[] posSlotEncoder =
       new BitTreeEncoder[Base.NUM_LEN_TO_POS_STATES]; // NUM_POS_SLOT_BITS
 
-  short[] _posEncoders = new short[Base.NUM_FULL_DISTANCES - Base.END_POS_MODEL_INDEX];
-  BitTreeEncoder _posAlignEncoder = new BitTreeEncoder(Base.NUM_ALIGN_BITS);
+  short[] posEncoders = new short[Base.NUM_FULL_DISTANCES - Base.END_POS_MODEL_INDEX];
+  BitTreeEncoder posAlignEncoder = new BitTreeEncoder(Base.NUM_ALIGN_BITS);
 
-  LenPriceTableEncoder _lenEncoder = new LenPriceTableEncoder();
-  LenPriceTableEncoder _repMatchLenEncoder = new LenPriceTableEncoder();
+  LenPriceTableEncoder lenEncoder = new LenPriceTableEncoder();
+  LenPriceTableEncoder repMatchLenEncoder = new LenPriceTableEncoder();
 
-  LiteralEncoder _literalEncoder = new LiteralEncoder();
+  LiteralEncoder literalEncoder = new LiteralEncoder();
 
-  int[] _matchDistances = new int[Base.MATCH_MAX_LEN * 2 + 2];
+  int[] matchDistances = new int[Base.MATCH_MAX_LEN * 2 + 2];
 
-  int _numFastBytes = kNumFastBytesDefault;
-  int _longestMatchLength;
-  int _numDistancePairs;
+  int numFastBytes = NUM_FAST_BYTES_DEFAULT;
+  int longestMatchLength;
+  int numDistancePairs;
 
-  int _additionalOffset;
+  int additionalOffset;
 
-  int _optimumEndIndex;
-  int _optimumCurrentIndex;
+  int optimumEndIndex;
+  int optimumCurrentIndex;
 
-  boolean _longestMatchWasFound;
+  boolean longestMatchWasFound;
 
-  int[] _posSlotPrices = new int[1 << (Base.NUM_POS_SLOT_BITS + Base.NUM_LEN_TO_POS_STATES_BITS)];
-  int[] _distancesPrices = new int[Base.NUM_FULL_DISTANCES << Base.NUM_LEN_TO_POS_STATES_BITS];
-  int[] _alignPrices = new int[Base.ALIGN_TABLE_SIZE];
-  int _alignPriceCount;
+  int[] posSlotPrices = new int[1 << (Base.NUM_POS_SLOT_BITS + Base.NUM_LEN_TO_POS_STATES_BITS)];
+  int[] distancesPrices = new int[Base.NUM_FULL_DISTANCES << Base.NUM_LEN_TO_POS_STATES_BITS];
+  int[] alignPrices = new int[Base.ALIGN_TABLE_SIZE];
+  int alignPriceCount;
 
-  int _distTableSize = (kDefaultDictionaryLogSize * 2);
+  int distTableSize = (DEFAULT_DICTIONARY_LOG_SIZE * 2);
 
-  int _posStateBits = 2;
-  int _posStateMask = (4 - 1);
-  int _numLiteralPosStateBits = 0;
-  int _numLiteralContextBits = 3;
+  int posStateBits = 2;
+  int posStateMask = (4 - 1);
+  int numLiteralPosStateBits = 0;
+  int numLiteralContextBits = 3;
 
-  int _dictionarySize = (1 << kDefaultDictionaryLogSize);
-  int _dictionarySizePrev = -1;
-  int _numFastBytesPrev = -1;
+  int dictionarySize = (1 << DEFAULT_DICTIONARY_LOG_SIZE);
+  int dictionarySizePrev = -1;
+  int numFastBytesPrev = -1;
 
   long nowPos64;
-  boolean _finished;
-  InputStream _inStream;
+  boolean isFinished;
+  InputStream inStream;
 
-  int _matchFinderType = EMatchFinderTypeBT4;
-  boolean _writeEndMark = false;
+  int matchFinderType = MATCH_FINDER_TYPE_BT4;
+  boolean writeEndMark = false;
 
-  boolean _needReleaseMFStream = false;
+  boolean needReleaseMFStream = false;
 
-  void Create() {
-    if (_matchFinder == null) {
+  void create() {
+    if (matchFinder == null) {
       BinTree bt = new BinTree();
       int numHashBytes = 4;
-      if (_matchFinderType == EMatchFinderTypeBT2) numHashBytes = 2;
+      if (matchFinderType == MATCH_FINDER_TYPE_BT2) numHashBytes = 2;
       bt.setType(numHashBytes);
-      _matchFinder = bt;
+      matchFinder = bt;
     }
-    _literalEncoder.Create(_numLiteralPosStateBits, _numLiteralContextBits);
+    literalEncoder.create(numLiteralPosStateBits, numLiteralContextBits);
 
-    if (_dictionarySize == _dictionarySizePrev && _numFastBytesPrev == _numFastBytes) return;
-    _matchFinder.createMatchFinder(
-        _dictionarySize, kNumOpts, _numFastBytes, Base.MATCH_MAX_LEN + 1);
-    _dictionarySizePrev = _dictionarySize;
-    _numFastBytesPrev = _numFastBytes;
+    if (dictionarySize == dictionarySizePrev && numFastBytesPrev == numFastBytes) return;
+    matchFinder.createMatchFinder(dictionarySize, NUM_OPTS, numFastBytes, Base.MATCH_MAX_LEN + 1);
+    dictionarySizePrev = dictionarySize;
+    numFastBytesPrev = numFastBytes;
   }
 
   public Encoder() {
-    for (int i = 0; i < kNumOpts; i++) _optimum[i] = new Optimal();
+    for (int i = 0; i < NUM_OPTS; i++) optimum[i] = new Optimal();
     for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++)
-      _posSlotEncoder[i] = new BitTreeEncoder(Base.NUM_POS_SLOT_BITS);
+      posSlotEncoder[i] = new BitTreeEncoder(Base.NUM_POS_SLOT_BITS);
   }
 
-  void SetWriteEndMarkerMode(boolean writeEndMarker) {
-    _writeEndMark = writeEndMarker;
+  void init() {
+    baseInit();
+    rangeEncoder.Init();
+
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isMatch);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isRep0Long);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isRep);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isRepG0);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isRepG1);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(isRepG2);
+    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(posEncoders);
+
+    literalEncoder.init();
+    for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) posSlotEncoder[i].Init();
+
+    lenEncoder.init(1 << posStateBits);
+    repMatchLenEncoder.init(1 << posStateBits);
+
+    posAlignEncoder.Init();
+
+    longestMatchWasFound = false;
+    optimumEndIndex = 0;
+    optimumCurrentIndex = 0;
+    additionalOffset = 0;
   }
 
-  void Init() {
-    BaseInit();
-    _rangeEncoder.Init();
-
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isMatch);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isRep0Long);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isRep);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isRepG0);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isRepG1);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_isRepG2);
-    SevenZip.Compression.RangeCoder.Encoder.InitBitModels(_posEncoders);
-
-    _literalEncoder.Init();
-    for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++) _posSlotEncoder[i].Init();
-
-    _lenEncoder.Init(1 << _posStateBits);
-    _repMatchLenEncoder.Init(1 << _posStateBits);
-
-    _posAlignEncoder.Init();
-
-    _longestMatchWasFound = false;
-    _optimumEndIndex = 0;
-    _optimumCurrentIndex = 0;
-    _additionalOffset = 0;
-  }
-
-  int ReadMatchDistances() throws IOException {
+  int readMatchDistances() throws IOException {
     int lenRes = 0;
-    _numDistancePairs = _matchFinder.getMatches(_matchDistances);
-    if (_numDistancePairs > 0) {
-      lenRes = _matchDistances[_numDistancePairs - 2];
-      if (lenRes == _numFastBytes)
+    numDistancePairs = matchFinder.getMatches(matchDistances);
+    if (numDistancePairs > 0) {
+      lenRes = matchDistances[numDistancePairs - 2];
+      if (lenRes == numFastBytes)
         lenRes +=
-            _matchFinder.getMatchLen(
-                (int) lenRes - 1,
-                _matchDistances[_numDistancePairs - 1],
-                Base.MATCH_MAX_LEN - lenRes);
+            matchFinder.getMatchLen(
+                lenRes - 1, matchDistances[numDistancePairs - 1], Base.MATCH_MAX_LEN - lenRes);
     }
-    _additionalOffset++;
+    additionalOffset++;
     return lenRes;
   }
 
-  void MovePos(int num) throws IOException {
+  void movePos(int num) throws IOException {
     if (num > 0) {
-      _matchFinder.skip(num);
-      _additionalOffset += num;
+      matchFinder.skip(num);
+      additionalOffset += num;
     }
   }
 
-  int GetRepLen1Price(int state, int posState) {
-    return SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_isRepG0[state])
+  int getRepLen1Price(int state, int posState) {
+    return SevenZip.Compression.RangeCoder.Encoder.GetPrice0(isRepG0[state])
         + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
-            _isRep0Long[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
+            isRep0Long[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
   }
 
-  int GetPureRepPrice(int repIndex, int state, int posState) {
+  int getPureRepPrice(int repIndex, int state, int posState) {
     int price;
     if (repIndex == 0) {
-      price = SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_isRepG0[state]);
+      price = SevenZip.Compression.RangeCoder.Encoder.GetPrice0(isRepG0[state]);
       price +=
           SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-              _isRep0Long[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
+              isRep0Long[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
     } else {
-      price = SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRepG0[state]);
-      if (repIndex == 1)
-        price += SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_isRepG1[state]);
+      price = SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRepG0[state]);
+      if (repIndex == 1) price += SevenZip.Compression.RangeCoder.Encoder.GetPrice0(isRepG1[state]);
       else {
-        price += SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRepG1[state]);
-        price += SevenZip.Compression.RangeCoder.Encoder.GetPrice(_isRepG2[state], repIndex - 2);
+        price += SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRepG1[state]);
+        price += SevenZip.Compression.RangeCoder.Encoder.GetPrice(isRepG2[state], repIndex - 2);
       }
     }
     return price;
   }
 
-  int GetRepPrice(int repIndex, int len, int state, int posState) {
-    int price = _repMatchLenEncoder.GetPrice(len - Base.MATCH_MIN_LEN, posState);
-    return price + GetPureRepPrice(repIndex, state, posState);
+  int getRepPrice(int repIndex, int len, int state, int posState) {
+    int price = repMatchLenEncoder.getPrice(len - Base.MATCH_MIN_LEN, posState);
+    return price + getPureRepPrice(repIndex, state, posState);
   }
 
-  int GetPosLenPrice(int pos, int len, int posState) {
+  int getPosLenPrice(int pos, int len, int posState) {
     int price;
     int lenToPosState = Base.getLenToPosState(len);
     if (pos < Base.NUM_FULL_DISTANCES)
-      price = _distancesPrices[(lenToPosState * Base.NUM_FULL_DISTANCES) + pos];
+      price = distancesPrices[(lenToPosState * Base.NUM_FULL_DISTANCES) + pos];
     else
       price =
-          _posSlotPrices[(lenToPosState << Base.NUM_POS_SLOT_BITS) + GetPosSlot2(pos)]
-              + _alignPrices[pos & Base.ALIGN_MASK];
-    return price + _lenEncoder.GetPrice(len - Base.MATCH_MIN_LEN, posState);
+          posSlotPrices[(lenToPosState << Base.NUM_POS_SLOT_BITS) + getPosSlot2(pos)]
+              + alignPrices[pos & Base.ALIGN_MASK];
+    return price + lenEncoder.getPrice(len - Base.MATCH_MIN_LEN, posState);
   }
 
-  int Backward(int cur) {
-    _optimumEndIndex = cur;
-    int posMem = _optimum[cur].PosPrev;
-    int backMem = _optimum[cur].BackPrev;
+  int backward(int cur) {
+    optimumEndIndex = cur;
+    int posMem = optimum[cur].posPrev;
+    int backMem = optimum[cur].backPrev;
     do {
-      if (_optimum[cur].Prev1IsChar) {
-        _optimum[posMem].MakeAsChar();
-        _optimum[posMem].PosPrev = posMem - 1;
-        if (_optimum[cur].Prev2) {
-          _optimum[posMem - 1].Prev1IsChar = false;
-          _optimum[posMem - 1].PosPrev = _optimum[cur].PosPrev2;
-          _optimum[posMem - 1].BackPrev = _optimum[cur].BackPrev2;
+      if (optimum[cur].prev1IsChar) {
+        optimum[posMem].makeAsChar();
+        optimum[posMem].posPrev = posMem - 1;
+        if (optimum[cur].prev2) {
+          optimum[posMem - 1].prev1IsChar = false;
+          optimum[posMem - 1].posPrev = optimum[cur].posPrev2;
+          optimum[posMem - 1].backPrev = optimum[cur].backPrev2;
         }
       }
       int posPrev = posMem;
       int backCur = backMem;
 
-      backMem = _optimum[posPrev].BackPrev;
-      posMem = _optimum[posPrev].PosPrev;
+      backMem = optimum[posPrev].backPrev;
+      posMem = optimum[posPrev].posPrev;
 
-      _optimum[posPrev].BackPrev = backCur;
-      _optimum[posPrev].PosPrev = cur;
+      optimum[posPrev].backPrev = backCur;
+      optimum[posPrev].posPrev = cur;
       cur = posPrev;
     } while (cur > 0);
-    backRes = _optimum[0].BackPrev;
-    _optimumCurrentIndex = _optimum[0].PosPrev;
-    return _optimumCurrentIndex;
+    backRes = optimum[0].backPrev;
+    optimumCurrentIndex = optimum[0].posPrev;
+    return optimumCurrentIndex;
   }
 
   int[] reps = new int[Base.NUM_REP_DISTANCES];
   int[] repLens = new int[Base.NUM_REP_DISTANCES];
   int backRes;
 
-  int GetOptimum(int position) throws IOException {
-    if (_optimumEndIndex != _optimumCurrentIndex) {
-      int lenRes = _optimum[_optimumCurrentIndex].PosPrev - _optimumCurrentIndex;
-      backRes = _optimum[_optimumCurrentIndex].BackPrev;
-      _optimumCurrentIndex = _optimum[_optimumCurrentIndex].PosPrev;
+  int getOptimum(int position) throws IOException {
+    if (optimumEndIndex != optimumCurrentIndex) {
+      int lenRes = optimum[optimumCurrentIndex].posPrev - optimumCurrentIndex;
+      backRes = optimum[optimumCurrentIndex].backPrev;
+      optimumCurrentIndex = optimum[optimumCurrentIndex].posPrev;
       return lenRes;
     }
-    _optimumCurrentIndex = _optimumEndIndex = 0;
+    optimumCurrentIndex = optimumEndIndex = 0;
 
-    int lenMain, numDistancePairs;
-    if (!_longestMatchWasFound) {
-      lenMain = ReadMatchDistances();
+    int lenMain;
+    int numDistancePairsLocal;
+    if (!longestMatchWasFound) {
+      lenMain = readMatchDistances();
     } else {
-      lenMain = _longestMatchLength;
-      _longestMatchWasFound = false;
+      lenMain = longestMatchLength;
+      longestMatchWasFound = false;
     }
-    numDistancePairs = _numDistancePairs;
+    numDistancePairsLocal = this.numDistancePairs;
 
-    int numAvailableBytes = _matchFinder.getNumAvailableBytes() + 1;
+    int numAvailableBytes = matchFinder.getNumAvailableBytes() + 1;
     if (numAvailableBytes < 2) {
       backRes = -1;
       return 1;
     }
-    if (numAvailableBytes > Base.MATCH_MAX_LEN) numAvailableBytes = Base.MATCH_MAX_LEN;
+    // No need to clamp here since this local value is not used afterward.
 
     int repMaxIndex = 0;
     int i;
     for (i = 0; i < Base.NUM_REP_DISTANCES; i++) {
-      reps[i] = _repDistances[i];
-      repLens[i] = _matchFinder.getMatchLen(0 - 1, reps[i], Base.MATCH_MAX_LEN);
+      reps[i] = repDistances[i];
+      repLens[i] = matchFinder.getMatchLen(-1, reps[i], Base.MATCH_MAX_LEN);
       if (repLens[i] > repLens[repMaxIndex]) repMaxIndex = i;
     }
-    if (repLens[repMaxIndex] >= _numFastBytes) {
+    if (repLens[repMaxIndex] >= numFastBytes) {
       backRes = repMaxIndex;
       int lenRes = repLens[repMaxIndex];
-      MovePos(lenRes - 1);
+      movePos(lenRes - 1);
       return lenRes;
     }
 
-    if (lenMain >= _numFastBytes) {
-      backRes = _matchDistances[numDistancePairs - 1] + Base.NUM_REP_DISTANCES;
-      MovePos(lenMain - 1);
+    if (lenMain >= numFastBytes) {
+      backRes = matchDistances[numDistancePairsLocal - 1] + Base.NUM_REP_DISTANCES;
+      movePos(lenMain - 1);
       return lenMain;
     }
 
-    byte currentByte = _matchFinder.getIndexByte(0 - 1);
-    byte matchByte = _matchFinder.getIndexByte(0 - _repDistances[0] - 1 - 1);
+    int lenEnd = initializePreludeAndReturnLenEnd(position, lenMain, repMaxIndex);
+    if (lenEnd == 1) return 1;
+    return runMainOptimumLoop(position, lenEnd);
+  }
+
+  private int initializePreludeAndReturnLenEnd(int position, int lenMain, int repMaxIndex) {
+    byte currentByte = matchFinder.getIndexByte(-1);
+    byte matchByte = matchFinder.getIndexByte(-repDistances[0] - 1 - 1);
 
     if (lenMain < 2 && currentByte != matchByte && repLens[repMaxIndex] < 2) {
       backRes = -1;
       return 1;
     }
 
-    _optimum[0].State = _state;
+    optimum[0].state = encoderState;
+    int posState = (position & posStateMask);
 
-    int posState = (position & _posStateMask);
-
-    _optimum[1].Price =
+    optimum[1].price =
         SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
-                _isMatch[(_state << Base.NUM_POS_STATES_BITS_MAX) + posState])
-            + _literalEncoder
-                .GetSubCoder(position, _previousByte)
-                .GetPrice(Base.isCharState(_state), matchByte, currentByte);
-    _optimum[1].MakeAsChar();
+                isMatch[(encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState])
+            + literalEncoder
+                .getSubCoder(position, previousByte)
+                .getPrice(Base.isCharState(encoderState), matchByte, currentByte);
+    optimum[1].makeAsChar();
 
     int matchPrice =
         SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-            _isMatch[(_state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
+            isMatch[(encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState]);
     int repMatchPrice =
-        matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRep[_state]);
+        matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRep[encoderState]);
 
     if (matchByte == currentByte) {
-      int shortRepPrice = repMatchPrice + GetRepLen1Price(_state, posState);
-      if (shortRepPrice < _optimum[1].Price) {
-        _optimum[1].Price = shortRepPrice;
-        _optimum[1].MakeAsShortRep();
+      int shortRepPrice = repMatchPrice + getRepLen1Price(encoderState, posState);
+      if (shortRepPrice < optimum[1].price) {
+        optimum[1].price = shortRepPrice;
+        optimum[1].makeAsShortRep();
       }
     }
 
-    int lenEnd = ((lenMain >= repLens[repMaxIndex]) ? lenMain : repLens[repMaxIndex]);
+    int lenEnd = Math.max(lenMain, repLens[repMaxIndex]);
 
     if (lenEnd < 2) {
-      backRes = _optimum[1].BackPrev;
+      backRes = optimum[1].backPrev;
       return 1;
     }
 
-    _optimum[1].PosPrev = 0;
+    optimum[1].posPrev = 0;
+    optimum[0].backs0 = reps[0];
+    optimum[0].backs1 = reps[1];
+    optimum[0].backs2 = reps[2];
+    optimum[0].backs3 = reps[3];
 
-    _optimum[0].Backs0 = reps[0];
-    _optimum[0].Backs1 = reps[1];
-    _optimum[0].Backs2 = reps[2];
-    _optimum[0].Backs3 = reps[3];
+    fillInfinityFromLenEnd(lenEnd);
+    initRepLenEntries(posState, repMatchPrice);
 
+    int normalMatchPrice =
+        matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(isRep[encoderState]);
+    int lenStart = ((repLens[0] >= 2) ? repLens[0] + 1 : 2);
+    initNormalMatchEntries(lenMain, posState, normalMatchPrice, lenStart);
+
+    return lenEnd;
+  }
+
+  private void fillInfinityFromLenEnd(int lenEnd) {
     int len = lenEnd;
-    do _optimum[len--].Price = kIfinityPrice;
-    while (len >= 2);
+    do {
+      optimum[len--].price = INFINITY_PRICE;
+    } while (len >= 2);
+  }
 
-    for (i = 0; i < Base.NUM_REP_DISTANCES; i++) {
+  private void initRepLenEntries(int posState, int repMatchPrice) {
+    for (int i = 0; i < Base.NUM_REP_DISTANCES; i++) {
       int repLen = repLens[i];
       if (repLen < 2) continue;
-      int price = repMatchPrice + GetPureRepPrice(i, _state, posState);
+      int price = repMatchPrice + getPureRepPrice(i, encoderState, posState);
       do {
-        int curAndLenPrice = price + _repMatchLenEncoder.GetPrice(repLen - 2, posState);
-        Optimal optimum = _optimum[repLen];
-        if (curAndLenPrice < optimum.Price) {
-          optimum.Price = curAndLenPrice;
-          optimum.PosPrev = 0;
-          optimum.BackPrev = i;
-          optimum.Prev1IsChar = false;
+        int curAndLenPrice = price + repMatchLenEncoder.getPrice(repLen - 2, posState);
+        Optimal optEntry = this.optimum[repLen];
+        if (curAndLenPrice < optEntry.price) {
+          optEntry.price = curAndLenPrice;
+          optEntry.posPrev = 0;
+          optEntry.backPrev = i;
+          optEntry.prev1IsChar = false;
         }
       } while (--repLen >= 2);
     }
+  }
 
-    int normalMatchPrice =
-        matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_isRep[_state]);
-
-    len = ((repLens[0] >= 2) ? repLens[0] + 1 : 2);
-    if (len <= lenMain) {
-      int offs = 0;
-      while (len > _matchDistances[offs]) offs += 2;
-      for (; ; len++) {
-        int distance = _matchDistances[offs + 1];
-        int curAndLenPrice = normalMatchPrice + GetPosLenPrice(distance, len, posState);
-        Optimal optimum = _optimum[len];
-        if (curAndLenPrice < optimum.Price) {
-          optimum.Price = curAndLenPrice;
-          optimum.PosPrev = 0;
-          optimum.BackPrev = distance + Base.NUM_REP_DISTANCES;
-          optimum.Prev1IsChar = false;
-        }
-        if (len == _matchDistances[offs]) {
-          offs += 2;
-          if (offs == numDistancePairs) break;
-        }
+  private void initNormalMatchEntries(
+      int lenMain, int posState, int normalMatchPrice, int lenStart) {
+    int len = lenStart;
+    if (len > lenMain) return;
+    int offs = 0;
+    while (len > matchDistances[offs]) offs += 2;
+    for (; ; len++) {
+      int distance = matchDistances[offs + 1];
+      int curAndLenPrice = normalMatchPrice + getPosLenPrice(distance, len, posState);
+      Optimal optEntry = this.optimum[len];
+      if (curAndLenPrice < optEntry.price) {
+        optEntry.price = curAndLenPrice;
+        optEntry.posPrev = 0;
+        optEntry.backPrev = distance + Base.NUM_REP_DISTANCES;
+        optEntry.prev1IsChar = false;
+      }
+      if (len == matchDistances[offs]) {
+        offs += 2;
+        if (offs == numDistancePairs) break;
       }
     }
+  }
 
+  private int runMainOptimumLoop(int position, int lenEnd) throws IOException {
     int cur = 0;
-
     while (true) {
       cur++;
-      if (cur == lenEnd) return Backward(cur);
-      int newLen = ReadMatchDistances();
-      numDistancePairs = _numDistancePairs;
-      if (newLen >= _numFastBytes) {
-
-        _longestMatchLength = newLen;
-        _longestMatchWasFound = true;
-        return Backward(cur);
+      if (cur == lenEnd) return backward(cur);
+      int newLen = readMatchDistances();
+      if (newLen >= numFastBytes) {
+        longestMatchLength = newLen;
+        longestMatchWasFound = true;
+        return backward(cur);
       }
       position++;
-      int posPrev = _optimum[cur].PosPrev;
-      int state;
-      if (_optimum[cur].Prev1IsChar) {
-        posPrev--;
-        if (_optimum[cur].Prev2) {
-          state = _optimum[_optimum[cur].PosPrev2].State;
-          if (_optimum[cur].BackPrev2 < Base.NUM_REP_DISTANCES) state = Base.stateUpdateRep(state);
-          else state = Base.stateUpdateMatch(state);
-        } else state = _optimum[posPrev].State;
-        state = Base.stateUpdateChar(state);
-      } else state = _optimum[posPrev].State;
-      if (posPrev == cur - 1) {
-        if (_optimum[cur].IsShortRep()) state = Base.stateUpdateShortRep(state);
-        else state = Base.stateUpdateChar(state);
-      } else {
-        int pos;
-        if (_optimum[cur].Prev1IsChar && _optimum[cur].Prev2) {
-          posPrev = _optimum[cur].PosPrev2;
-          pos = _optimum[cur].BackPrev2;
-          state = Base.stateUpdateRep(state);
-        } else {
-          pos = _optimum[cur].BackPrev;
-          if (pos < Base.NUM_REP_DISTANCES) state = Base.stateUpdateRep(state);
-          else state = Base.stateUpdateMatch(state);
-        }
-        Optimal opt = _optimum[posPrev];
-        if (pos < Base.NUM_REP_DISTANCES) {
-          if (pos == 0) {
-            reps[0] = opt.Backs0;
-            reps[1] = opt.Backs1;
-            reps[2] = opt.Backs2;
-            reps[3] = opt.Backs3;
-          } else if (pos == 1) {
-            reps[0] = opt.Backs1;
-            reps[1] = opt.Backs0;
-            reps[2] = opt.Backs2;
-            reps[3] = opt.Backs3;
-          } else if (pos == 2) {
-            reps[0] = opt.Backs2;
-            reps[1] = opt.Backs0;
-            reps[2] = opt.Backs1;
-            reps[3] = opt.Backs3;
-          } else {
-            reps[0] = opt.Backs3;
-            reps[1] = opt.Backs0;
-            reps[2] = opt.Backs1;
-            reps[3] = opt.Backs2;
-          }
-        } else {
-          reps[0] = (pos - Base.NUM_REP_DISTANCES);
-          reps[1] = opt.Backs0;
-          reps[2] = opt.Backs1;
-          reps[3] = opt.Backs2;
-        }
-      }
-      _optimum[cur].State = state;
-      _optimum[cur].Backs0 = reps[0];
-      _optimum[cur].Backs1 = reps[1];
-      _optimum[cur].Backs2 = reps[2];
-      _optimum[cur].Backs3 = reps[3];
-      int curPrice = _optimum[cur].Price;
+      int state = updateStateForCur(cur);
+      optimum[cur].state = state;
+      optimum[cur].backs0 = reps[0];
+      optimum[cur].backs1 = reps[1];
+      optimum[cur].backs2 = reps[2];
+      optimum[cur].backs3 = reps[3];
+      int curPrice = optimum[cur].price;
 
-      currentByte = _matchFinder.getIndexByte(0 - 1);
-      matchByte = _matchFinder.getIndexByte(0 - reps[0] - 1 - 1);
+      byte currentByte = matchFinder.getIndexByte(-1);
+      byte matchByte = matchFinder.getIndexByte(-reps[0] - 1 - 1);
 
-      posState = (position & _posStateMask);
+      int posState = (position & posStateMask);
 
       int curAnd1Price =
           curPrice
               + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
-                  _isMatch[(state << Base.NUM_POS_STATES_BITS_MAX) + posState])
-              + _literalEncoder
-                  .GetSubCoder(position, _matchFinder.getIndexByte(0 - 2))
-                  .GetPrice(Base.isCharState(state), matchByte, currentByte);
+                  isMatch[(state << Base.NUM_POS_STATES_BITS_MAX) + posState])
+              + literalEncoder
+                  .getSubCoder(position, matchFinder.getIndexByte(-2))
+                  .getPrice(Base.isCharState(state), matchByte, currentByte);
 
-      Optimal nextOptimum = _optimum[cur + 1];
-
-      boolean nextIsChar = false;
-      if (curAnd1Price < nextOptimum.Price) {
-        nextOptimum.Price = curAnd1Price;
-        nextOptimum.PosPrev = cur;
-        nextOptimum.MakeAsChar();
-        nextIsChar = true;
-      }
-
-      matchPrice =
+      int matchPrice =
           curPrice
               + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-                  _isMatch[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
-      repMatchPrice = matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRep[state]);
+                  isMatch[(state << Base.NUM_POS_STATES_BITS_MAX) + posState]);
+      int repMatchPrice =
+          matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(isRep[state]);
+      boolean nextIsChar =
+          updateNextOptimumForCharAndShortRep(
+              state, posState, cur, curAnd1Price, matchByte, currentByte, repMatchPrice);
 
-      if (matchByte == currentByte && !(nextOptimum.PosPrev < cur && nextOptimum.BackPrev == 0)) {
-        int shortRepPrice = repMatchPrice + GetRepLen1Price(state, posState);
-        if (shortRepPrice <= nextOptimum.Price) {
-          nextOptimum.Price = shortRepPrice;
-          nextOptimum.PosPrev = cur;
-          nextOptimum.MakeAsShortRep();
-          nextIsChar = true;
-        }
-      }
-
-      int numAvailableBytesFull = _matchFinder.getNumAvailableBytes() + 1;
-      numAvailableBytesFull = Math.min(kNumOpts - 1 - cur, numAvailableBytesFull);
-      numAvailableBytes = numAvailableBytesFull;
+      int numAvailableBytesFull = matchFinder.getNumAvailableBytes() + 1;
+      numAvailableBytesFull = Math.min(NUM_OPTS - 1 - cur, numAvailableBytesFull);
+      int numAvailableBytes = numAvailableBytesFull;
 
       if (numAvailableBytes < 2) continue;
-      if (numAvailableBytes > _numFastBytes) numAvailableBytes = _numFastBytes;
-      if (!nextIsChar && matchByte != currentByte) {
-        // try Literal + rep0
-        int t = Math.min(numAvailableBytesFull - 1, _numFastBytes);
-        int lenTest2 = _matchFinder.getMatchLen(0, reps[0], t);
-        if (lenTest2 >= 2) {
-          int state2 = Base.stateUpdateChar(state);
+      if (numAvailableBytes > numFastBytes) numAvailableBytes = numFastBytes;
+      handleLiteralPlusRep0(
+          new MatchContext(nextIsChar, matchByte, currentByte),
+          new CurContext(state, cur, numAvailableBytesFull, curAnd1Price, position),
+          lenEnd);
 
-          int posStateNext = (position + 1) & _posStateMask;
-          int nextRepMatchPrice =
-              curAnd1Price
-                  + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-                      _isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
-                  + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRep[state2]);
-          {
-            int offset = cur + 1 + lenTest2;
-            while (lenEnd < offset) _optimum[++lenEnd].Price = kIfinityPrice;
-            int curAndLenPrice = nextRepMatchPrice + GetRepPrice(0, lenTest2, state2, posStateNext);
-            Optimal optimum = _optimum[offset];
-            if (curAndLenPrice < optimum.Price) {
-              optimum.Price = curAndLenPrice;
-              optimum.PosPrev = cur + 1;
-              optimum.BackPrev = 0;
-              optimum.Prev1IsChar = true;
-              optimum.Prev2 = false;
-            }
-          }
-        }
-      }
+      RepProcessResult repResult =
+          processRepCandidates(
+              new RepCandidatesContext(
+                  state,
+                  position,
+                  posState,
+                  cur,
+                  numAvailableBytesFull,
+                  numAvailableBytes,
+                  repMatchPrice),
+              lenEnd);
+      lenEnd = repResult.lenEnd;
+      int startLen = repResult.startLen;
 
-      int startLen = 2; // speed optimization
-
-      for (int repIndex = 0; repIndex < Base.NUM_REP_DISTANCES; repIndex++) {
-        int lenTest = _matchFinder.getMatchLen(0 - 1, reps[repIndex], numAvailableBytes);
-        if (lenTest < 2) continue;
-        int lenTestTemp = lenTest;
-        do {
-          while (lenEnd < cur + lenTest) _optimum[++lenEnd].Price = kIfinityPrice;
-          int curAndLenPrice = repMatchPrice + GetRepPrice(repIndex, lenTest, state, posState);
-          Optimal optimum = _optimum[cur + lenTest];
-          if (curAndLenPrice < optimum.Price) {
-            optimum.Price = curAndLenPrice;
-            optimum.PosPrev = cur;
-            optimum.BackPrev = repIndex;
-            optimum.Prev1IsChar = false;
-          }
-        } while (--lenTest >= 2);
-        lenTest = lenTestTemp;
-
-        if (repIndex == 0) startLen = lenTest + 1;
-
-        // if (_maxMode)
-        if (lenTest < numAvailableBytesFull) {
-          int t = Math.min(numAvailableBytesFull - 1 - lenTest, _numFastBytes);
-          int lenTest2 = _matchFinder.getMatchLen(lenTest, reps[repIndex], t);
-          if (lenTest2 >= 2) {
-            int state2 = Base.stateUpdateRep(state);
-
-            int posStateNext = (position + lenTest) & _posStateMask;
-            int curAndLenCharPrice =
-                repMatchPrice
-                    + GetRepPrice(repIndex, lenTest, state, posState)
-                    + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
-                        _isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
-                    + _literalEncoder
-                        .GetSubCoder(position + lenTest, _matchFinder.getIndexByte(lenTest - 1 - 1))
-                        .GetPrice(
-                            true,
-                            _matchFinder.getIndexByte(lenTest - 1 - (reps[repIndex] + 1)),
-                            _matchFinder.getIndexByte(lenTest - 1));
-            state2 = Base.stateUpdateChar(state2);
-            posStateNext = (position + lenTest + 1) & _posStateMask;
-            int nextMatchPrice =
-                curAndLenCharPrice
-                    + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-                        _isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext]);
-            int nextRepMatchPrice =
-                nextMatchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRep[state2]);
-
-            // for(; lenTest2 >= 2; lenTest2--)
-            {
-              int offset = lenTest + 1 + lenTest2;
-              while (lenEnd < cur + offset) _optimum[++lenEnd].Price = kIfinityPrice;
-              int curAndLenPrice =
-                  nextRepMatchPrice + GetRepPrice(0, lenTest2, state2, posStateNext);
-              Optimal optimum = _optimum[cur + offset];
-              if (curAndLenPrice < optimum.Price) {
-                optimum.Price = curAndLenPrice;
-                optimum.PosPrev = cur + lenTest + 1;
-                optimum.BackPrev = 0;
-                optimum.Prev1IsChar = true;
-                optimum.Prev2 = true;
-                optimum.PosPrev2 = cur;
-                optimum.BackPrev2 = repIndex;
-              }
-            }
-          }
-        }
-      }
-
-      if (newLen > numAvailableBytes) {
-        newLen = numAvailableBytes;
-        for (numDistancePairs = 0;
-            newLen > _matchDistances[numDistancePairs];
-            numDistancePairs += 2)
-          ;
-        _matchDistances[numDistancePairs] = newLen;
-        numDistancePairs += 2;
-      }
-      if (newLen >= startLen) {
-        normalMatchPrice =
-            matchPrice + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(_isRep[state]);
-        while (lenEnd < cur + newLen) _optimum[++lenEnd].Price = kIfinityPrice;
-
-        int offs = 0;
-        while (startLen > _matchDistances[offs]) offs += 2;
-
-        for (int lenTest = startLen; ; lenTest++) {
-          int curBack = _matchDistances[offs + 1];
-          int curAndLenPrice = normalMatchPrice + GetPosLenPrice(curBack, lenTest, posState);
-          Optimal optimum = _optimum[cur + lenTest];
-          if (curAndLenPrice < optimum.Price) {
-            optimum.Price = curAndLenPrice;
-            optimum.PosPrev = cur;
-            optimum.BackPrev = curBack + Base.NUM_REP_DISTANCES;
-            optimum.Prev1IsChar = false;
-          }
-
-          if (lenTest == _matchDistances[offs]) {
-            if (lenTest < numAvailableBytesFull) {
-              int t = Math.min(numAvailableBytesFull - 1 - lenTest, _numFastBytes);
-              int lenTest2 = _matchFinder.getMatchLen(lenTest, curBack, t);
-              if (lenTest2 >= 2) {
-                int state2 = Base.stateUpdateMatch(state);
-
-                int posStateNext = (position + lenTest) & _posStateMask;
-                int curAndLenCharPrice =
-                    curAndLenPrice
-                        + SevenZip.Compression.RangeCoder.Encoder.GetPrice0(
-                            _isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext])
-                        + _literalEncoder
-                            .GetSubCoder(
-                                position + lenTest, _matchFinder.getIndexByte(lenTest - 1 - 1))
-                            .GetPrice(
-                                true,
-                                _matchFinder.getIndexByte(lenTest - (curBack + 1) - 1),
-                                _matchFinder.getIndexByte(lenTest - 1));
-                state2 = Base.stateUpdateChar(state2);
-                posStateNext = (position + lenTest + 1) & _posStateMask;
-                int nextMatchPrice =
-                    curAndLenCharPrice
-                        + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(
-                            _isMatch[(state2 << Base.NUM_POS_STATES_BITS_MAX) + posStateNext]);
-                int nextRepMatchPrice =
-                    nextMatchPrice
-                        + SevenZip.Compression.RangeCoder.Encoder.GetPrice1(_isRep[state2]);
-
-                int offset = lenTest + 1 + lenTest2;
-                while (lenEnd < cur + offset) _optimum[++lenEnd].Price = kIfinityPrice;
-                curAndLenPrice = nextRepMatchPrice + GetRepPrice(0, lenTest2, state2, posStateNext);
-                optimum = _optimum[cur + offset];
-                if (curAndLenPrice < optimum.Price) {
-                  optimum.Price = curAndLenPrice;
-                  optimum.PosPrev = cur + lenTest + 1;
-                  optimum.BackPrev = 0;
-                  optimum.Prev1IsChar = true;
-                  optimum.Prev2 = true;
-                  optimum.PosPrev2 = cur;
-                  optimum.BackPrev2 = curBack + Base.NUM_REP_DISTANCES;
-                }
-              }
-            }
-            offs += 2;
-            if (offs == numDistancePairs) break;
-          }
-        }
-      }
+      NewLenAdjustResult adj = adjustNewLenAndPairs(newLen, numAvailableBytes);
+      newLen = adj.newLen;
+      lenEnd =
+          processNormalMatches(
+              new NormalMatchesContext(
+                  state, position, posState, cur, numAvailableBytesFull, matchPrice),
+              newLen,
+              startLen,
+              lenEnd,
+              adj.numDistancePairsLocal);
     }
   }
 
-  boolean ChangePair(int smallDist, int bigDist) {
-    int kDif = 7;
-    return (smallDist < (1 << (32 - kDif)) && bigDist >= (smallDist << kDif));
-  }
+  void writeEndMarker(int posState) throws IOException {
+    if (!writeEndMark) return;
 
-  void WriteEndMarker(int posState) throws IOException {
-    if (!_writeEndMark) return;
-
-    _rangeEncoder.Encode(_isMatch, (_state << Base.NUM_POS_STATES_BITS_MAX) + posState, 1);
-    _rangeEncoder.Encode(_isRep, _state, 0);
-    _state = Base.stateUpdateMatch(_state);
+    rangeEncoder.Encode(isMatch, (encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState, 1);
+    rangeEncoder.Encode(isRep, encoderState, 0);
+    encoderState = Base.stateUpdateMatch(encoderState);
     int len = Base.MATCH_MIN_LEN;
-    _lenEncoder.Encode(_rangeEncoder, len - Base.MATCH_MIN_LEN, posState);
+    lenEncoder.encode(rangeEncoder, 0, posState);
     int posSlot = (1 << Base.NUM_POS_SLOT_BITS) - 1;
     int lenToPosState = Base.getLenToPosState(len);
-    _posSlotEncoder[lenToPosState].Encode(_rangeEncoder, posSlot);
+    posSlotEncoder[lenToPosState].Encode(rangeEncoder, posSlot);
     int footerBits = 30;
     int posReduced = (1 << footerBits) - 1;
-    _rangeEncoder.EncodeDirectBits(
+    rangeEncoder.EncodeDirectBits(
         posReduced >> Base.NUM_ALIGN_BITS, footerBits - Base.NUM_ALIGN_BITS);
-    _posAlignEncoder.ReverseEncode(_rangeEncoder, posReduced & Base.ALIGN_MASK);
+    posAlignEncoder.ReverseEncode(rangeEncoder, posReduced & Base.ALIGN_MASK);
   }
 
-  void Flush(int nowPos) throws IOException {
-    ReleaseMFStream();
-    WriteEndMarker(nowPos & _posStateMask);
-    _rangeEncoder.FlushData();
-    _rangeEncoder.FlushStream();
+  void flush(int nowPos) throws IOException {
+    releaseMFStream();
+    writeEndMarker(nowPos & posStateMask);
+    rangeEncoder.FlushData();
+    rangeEncoder.FlushStream();
   }
 
-  public void CodeOneBlock(long[] inSize, long[] outSize, boolean[] finished) throws IOException {
+  private boolean handleStartOfStream() throws IOException {
+    if (nowPos64 != 0) return false;
+    if (matchFinder.getNumAvailableBytes() == 0) {
+      flush((int) nowPos64);
+      return true;
+    }
+
+    readMatchDistances();
+    int posState = (int) (nowPos64) & posStateMask;
+    rangeEncoder.Encode(isMatch, (encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState, 0);
+    encoderState = Base.stateUpdateChar(encoderState);
+    byte curByte = matchFinder.getIndexByte(-additionalOffset);
+    literalEncoder.getSubCoder((int) (nowPos64), previousByte).encode(rangeEncoder, curByte);
+    previousByte = curByte;
+    additionalOffset--;
+    nowPos64++;
+    return false;
+  }
+
+  private void encodeMatchOrLiteral(int len, int pos, int posState, int complexState)
+      throws IOException {
+    if (len == 1 && pos == -1) {
+      encodeLiteralBranch(complexState);
+      return;
+    }
+
+    rangeEncoder.Encode(isMatch, complexState, 1);
+    if (pos < Base.NUM_REP_DISTANCES) {
+      encodeRepBranch(len, pos, posState, complexState);
+    } else {
+      encodeMatchBranch(len, pos, posState);
+    }
+    previousByte = matchFinder.getIndexByte(len - 1 - additionalOffset);
+  }
+
+  private void encodeLiteralBranch(int complexState) throws IOException {
+    rangeEncoder.Encode(isMatch, complexState, 0);
+    byte curByte = matchFinder.getIndexByte(-additionalOffset);
+    LiteralEncoder.Encoder2 subCoder = literalEncoder.getSubCoder((int) nowPos64, previousByte);
+    if (Base.isCharState(encoderState)) {
+      byte matchByte = matchFinder.getIndexByte(-repDistances[0] - 1 - additionalOffset);
+      subCoder.encodeMatched(rangeEncoder, matchByte, curByte);
+    } else {
+      subCoder.encode(rangeEncoder, curByte);
+    }
+    previousByte = curByte;
+    encoderState = Base.stateUpdateChar(encoderState);
+  }
+
+  private void encodeRepBranch(int len, int pos, int posState, int complexState)
+      throws IOException {
+    rangeEncoder.Encode(isRep, encoderState, 1);
+    if (pos == 0) {
+      rangeEncoder.Encode(isRepG0, encoderState, 0);
+      if (len == 1) rangeEncoder.Encode(isRep0Long, complexState, 0);
+      else rangeEncoder.Encode(isRep0Long, complexState, 1);
+    } else {
+      rangeEncoder.Encode(isRepG0, encoderState, 1);
+      if (pos == 1) rangeEncoder.Encode(isRepG1, encoderState, 0);
+      else {
+        rangeEncoder.Encode(isRepG1, encoderState, 1);
+        rangeEncoder.Encode(isRepG2, encoderState, pos - 2);
+      }
+    }
+    if (len == 1) encoderState = Base.stateUpdateShortRep(encoderState);
+    else {
+      repMatchLenEncoder.encode(rangeEncoder, len - Base.MATCH_MIN_LEN, posState);
+      encoderState = Base.stateUpdateRep(encoderState);
+    }
+    int distance = repDistances[pos];
+    if (pos != 0) {
+      for (int i = pos; i >= 1; i--) repDistances[i] = repDistances[i - 1];
+      repDistances[0] = distance;
+    }
+  }
+
+  private void encodeMatchBranch(int len, int pos, int posState) throws IOException {
+    rangeEncoder.Encode(isRep, encoderState, 0);
+    encoderState = Base.stateUpdateMatch(encoderState);
+    lenEncoder.encode(rangeEncoder, len - Base.MATCH_MIN_LEN, posState);
+    pos -= Base.NUM_REP_DISTANCES;
+    int posSlot = getPosSlot(pos);
+    int lenToPosState = Base.getLenToPosState(len);
+    posSlotEncoder[lenToPosState].Encode(rangeEncoder, posSlot);
+
+    if (posSlot >= Base.START_POS_MODEL_INDEX) {
+      int footerBits = ((posSlot >> 1) - 1);
+      int baseVal = ((2 | (posSlot & 1)) << footerBits);
+      int posReduced = pos - baseVal;
+
+      if (posSlot < Base.END_POS_MODEL_INDEX)
+        BitTreeEncoder.ReverseEncode(
+            posEncoders, baseVal - posSlot - 1, rangeEncoder, footerBits, posReduced);
+      else {
+        rangeEncoder.EncodeDirectBits(
+            posReduced >> Base.NUM_ALIGN_BITS, footerBits - Base.NUM_ALIGN_BITS);
+        posAlignEncoder.ReverseEncode(rangeEncoder, posReduced & Base.ALIGN_MASK);
+        alignPriceCount++;
+      }
+    }
+    int distance = pos;
+    for (int i = Base.NUM_REP_DISTANCES - 1; i >= 1; i--) repDistances[i] = repDistances[i - 1];
+    repDistances[0] = distance;
+    matchPriceCount++;
+  }
+
+  private boolean updateAndMaybeFlush(
+      long progressPosValuePrev, long[] inSize, long[] outSize, boolean[] finished)
+      throws IOException {
+    if (matchPriceCount >= (1 << 7)) fillDistancesPrices();
+    if (alignPriceCount >= Base.ALIGN_TABLE_SIZE) fillAlignPrices();
+    inSize[0] = nowPos64;
+    outSize[0] = rangeEncoder.GetProcessedSizeAdd();
+    if (matchFinder.getNumAvailableBytes() == 0) {
+      flush((int) nowPos64);
+      return true;
+    }
+
+    if (nowPos64 - progressPosValuePrev >= (1 << 12)) {
+      isFinished = false;
+      finished[0] = false;
+      return true;
+    }
+    return false;
+  }
+
+  public void codeOneBlock(long[] inSize, long[] outSize, boolean[] finished) throws IOException {
     inSize[0] = 0;
     outSize[0] = 0;
     finished[0] = true;
 
-    if (_inStream != null) {
-      _matchFinder.setStream(_inStream);
-      _matchFinder.init();
-      _needReleaseMFStream = true;
-      _inStream = null;
+    if (inStream != null) {
+      matchFinder.setStream(inStream);
+      matchFinder.init();
+      needReleaseMFStream = true;
+      inStream = null;
     }
 
-    if (_finished) return;
-    _finished = true;
+    if (isFinished) return;
+    isFinished = true;
 
     long progressPosValuePrev = nowPos64;
-    if (nowPos64 == 0) {
-      if (_matchFinder.getNumAvailableBytes() == 0) {
-        Flush((int) nowPos64);
-        return;
-      }
-
-      ReadMatchDistances();
-      int posState = (int) (nowPos64) & _posStateMask;
-      _rangeEncoder.Encode(_isMatch, (_state << Base.NUM_POS_STATES_BITS_MAX) + posState, 0);
-      _state = Base.stateUpdateChar(_state);
-      byte curByte = _matchFinder.getIndexByte(0 - _additionalOffset);
-      _literalEncoder.GetSubCoder((int) (nowPos64), _previousByte).Encode(_rangeEncoder, curByte);
-      _previousByte = curByte;
-      _additionalOffset--;
-      nowPos64++;
-    }
-    if (_matchFinder.getNumAvailableBytes() == 0) {
-      Flush((int) nowPos64);
+    if (handleStartOfStream()) return;
+    if (matchFinder.getNumAvailableBytes() == 0) {
+      flush((int) nowPos64);
       return;
     }
     while (true) {
-
-      int len = GetOptimum((int) nowPos64);
+      int len = getOptimum((int) nowPos64);
       int pos = backRes;
-      int posState = ((int) nowPos64) & _posStateMask;
-      int complexState = (_state << Base.NUM_POS_STATES_BITS_MAX) + posState;
-      if (len == 1 && pos == -1) {
-        _rangeEncoder.Encode(_isMatch, complexState, 0);
-        byte curByte = _matchFinder.getIndexByte((int) (0 - _additionalOffset));
-        LiteralEncoder.Encoder2 subCoder =
-            _literalEncoder.GetSubCoder((int) nowPos64, _previousByte);
-        if (Base.isCharState(_state)) {
-          byte matchByte =
-              _matchFinder.getIndexByte((int) (0 - _repDistances[0] - 1 - _additionalOffset));
-          subCoder.EncodeMatched(_rangeEncoder, matchByte, curByte);
-        } else subCoder.Encode(_rangeEncoder, curByte);
-        _previousByte = curByte;
-        _state = Base.stateUpdateChar(_state);
-      } else {
-        _rangeEncoder.Encode(_isMatch, complexState, 1);
-        if (pos < Base.NUM_REP_DISTANCES) {
-          _rangeEncoder.Encode(_isRep, _state, 1);
-          if (pos == 0) {
-            _rangeEncoder.Encode(_isRepG0, _state, 0);
-            if (len == 1) _rangeEncoder.Encode(_isRep0Long, complexState, 0);
-            else _rangeEncoder.Encode(_isRep0Long, complexState, 1);
-          } else {
-            _rangeEncoder.Encode(_isRepG0, _state, 1);
-            if (pos == 1) _rangeEncoder.Encode(_isRepG1, _state, 0);
-            else {
-              _rangeEncoder.Encode(_isRepG1, _state, 1);
-              _rangeEncoder.Encode(_isRepG2, _state, pos - 2);
-            }
-          }
-          if (len == 1) _state = Base.stateUpdateShortRep(_state);
-          else {
-            _repMatchLenEncoder.Encode(_rangeEncoder, len - Base.MATCH_MIN_LEN, posState);
-            _state = Base.stateUpdateRep(_state);
-          }
-          int distance = _repDistances[pos];
-          if (pos != 0) {
-            for (int i = pos; i >= 1; i--) _repDistances[i] = _repDistances[i - 1];
-            _repDistances[0] = distance;
-          }
-        } else {
-          _rangeEncoder.Encode(_isRep, _state, 0);
-          _state = Base.stateUpdateMatch(_state);
-          _lenEncoder.Encode(_rangeEncoder, len - Base.MATCH_MIN_LEN, posState);
-          pos -= Base.NUM_REP_DISTANCES;
-          int posSlot = GetPosSlot(pos);
-          int lenToPosState = Base.getLenToPosState(len);
-          _posSlotEncoder[lenToPosState].Encode(_rangeEncoder, posSlot);
-
-          if (posSlot >= Base.START_POS_MODEL_INDEX) {
-            int footerBits = (int) ((posSlot >> 1) - 1);
-            int baseVal = ((2 | (posSlot & 1)) << footerBits);
-            int posReduced = pos - baseVal;
-
-            if (posSlot < Base.END_POS_MODEL_INDEX)
-              BitTreeEncoder.ReverseEncode(
-                  _posEncoders, baseVal - posSlot - 1, _rangeEncoder, footerBits, posReduced);
-            else {
-              _rangeEncoder.EncodeDirectBits(
-                  posReduced >> Base.NUM_ALIGN_BITS, footerBits - Base.NUM_ALIGN_BITS);
-              _posAlignEncoder.ReverseEncode(_rangeEncoder, posReduced & Base.ALIGN_MASK);
-              _alignPriceCount++;
-            }
-          }
-          int distance = pos;
-          for (int i = Base.NUM_REP_DISTANCES - 1; i >= 1; i--)
-            _repDistances[i] = _repDistances[i - 1];
-          _repDistances[0] = distance;
-          _matchPriceCount++;
-        }
-        _previousByte = _matchFinder.getIndexByte(len - 1 - _additionalOffset);
-      }
-      _additionalOffset -= len;
+      int posState = ((int) nowPos64) & posStateMask;
+      int complexState = (encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState;
+      encodeMatchOrLiteral(len, pos, posState, complexState);
+      additionalOffset -= len;
       nowPos64 += len;
-      if (_additionalOffset == 0) {
-        // if (!_fastMode)
-        if (_matchPriceCount >= (1 << 7)) FillDistancesPrices();
-        if (_alignPriceCount >= Base.ALIGN_TABLE_SIZE) FillAlignPrices();
-        inSize[0] = nowPos64;
-        outSize[0] = _rangeEncoder.GetProcessedSizeAdd();
-        if (_matchFinder.getNumAvailableBytes() == 0) {
-          Flush((int) nowPos64);
-          return;
-        }
-
-        if (nowPos64 - progressPosValuePrev >= (1 << 12)) {
-          _finished = false;
-          finished[0] = false;
-          return;
-        }
-      }
+      if (additionalOffset == 0
+          && updateAndMaybeFlush(progressPosValuePrev, inSize, outSize, finished)) return;
     }
   }
 
-  void ReleaseMFStream() {
-    if (_matchFinder != null && _needReleaseMFStream) {
-      _matchFinder.releaseStream();
-      _needReleaseMFStream = false;
+  void releaseMFStream() {
+    if (matchFinder != null && needReleaseMFStream) {
+      matchFinder.releaseStream();
+      needReleaseMFStream = false;
     }
   }
 
-  void SetOutStream(OutputStream outStream) {
-    _rangeEncoder.SetStream(outStream);
+  void setOutStream(OutputStream outStream) {
+    rangeEncoder.SetStream(outStream);
   }
 
-  void ReleaseOutStream() {
-    _rangeEncoder.ReleaseStream();
+  void releaseOutStream() {
+    rangeEncoder.ReleaseStream();
   }
 
-  void ReleaseStreams() {
-    ReleaseMFStream();
-    ReleaseOutStream();
+  void releaseStreams() {
+    releaseMFStream();
+    releaseOutStream();
   }
 
-  void SetStreams(InputStream inStream, OutputStream outStream, long inSize, long outSize) {
-    _inStream = inStream;
-    _finished = false;
-    Create();
-    SetOutStream(outStream);
-    Init();
+  void setStreams(InputStream inStream, OutputStream outStream) {
+    this.inStream = inStream;
+    isFinished = false;
+    create();
+    setOutStream(outStream);
+    init();
 
-    // if (!_fastMode)
-    {
-      FillDistancesPrices();
-      FillAlignPrices();
-    }
+    fillDistancesPrices();
+    fillAlignPrices();
 
-    _lenEncoder.SetTableSize(_numFastBytes + 1 - Base.MATCH_MIN_LEN);
-    _lenEncoder.UpdateTables(1 << _posStateBits);
-    _repMatchLenEncoder.SetTableSize(_numFastBytes + 1 - Base.MATCH_MIN_LEN);
-    _repMatchLenEncoder.UpdateTables(1 << _posStateBits);
+    lenEncoder.setTableSize(numFastBytes + 1 - Base.MATCH_MIN_LEN);
+    lenEncoder.updateTables(1 << posStateBits);
+    repMatchLenEncoder.setTableSize(numFastBytes + 1 - Base.MATCH_MIN_LEN);
+    repMatchLenEncoder.updateTables(1 << posStateBits);
 
     nowPos64 = 0;
   }
@@ -1130,132 +1298,126 @@ public class Encoder {
   long[] processedOutSize = new long[1];
   boolean[] finished = new boolean[1];
 
-  public void Code(
-      InputStream inStream,
-      OutputStream outStream,
-      long inSize,
-      long outSize,
-      ICodeProgress progress)
+  public void code(InputStream inStream, OutputStream outStream, ICodeProgress progress)
       throws IOException {
-    _needReleaseMFStream = false;
+    needReleaseMFStream = false;
     try {
-      SetStreams(inStream, outStream, inSize, outSize);
+      setStreams(inStream, outStream);
       while (true) {
 
-        CodeOneBlock(processedInSize, processedOutSize, finished);
+        codeOneBlock(processedInSize, processedOutSize, finished);
         if (finished[0]) return;
         if (progress != null) {
           progress.setProgress(processedInSize[0], processedOutSize[0]);
         }
       }
     } finally {
-      ReleaseStreams();
+      releaseStreams();
     }
   }
 
-  public static final int kPropSize = 5;
-  byte[] properties = new byte[kPropSize];
+  public static final int PROP_SIZE = 5;
+  byte[] properties = new byte[PROP_SIZE];
 
-  public void WriteCoderProperties(OutputStream outStream) throws IOException {
+  public void writeCoderProperties(OutputStream outStream) throws IOException {
     properties[0] =
-        (byte) ((_posStateBits * 5 + _numLiteralPosStateBits) * 9 + _numLiteralContextBits);
-    for (int i = 0; i < 4; i++) properties[1 + i] = (byte) (_dictionarySize >> (8 * i));
-    outStream.write(properties, 0, kPropSize);
+        (byte) ((posStateBits * 5 + numLiteralPosStateBits) * 9 + numLiteralContextBits);
+    for (int i = 0; i < 4; i++) properties[1 + i] = (byte) (dictionarySize >> (8 * i));
+    outStream.write(properties, 0, PROP_SIZE);
   }
 
   int[] tempPrices = new int[Base.NUM_FULL_DISTANCES];
-  int _matchPriceCount;
+  int matchPriceCount;
 
-  void FillDistancesPrices() {
+  void fillDistancesPrices() {
     for (int i = Base.START_POS_MODEL_INDEX; i < Base.NUM_FULL_DISTANCES; i++) {
-      int posSlot = GetPosSlot(i);
-      int footerBits = (int) ((posSlot >> 1) - 1);
+      int posSlot = getPosSlot(i);
+      int footerBits = ((posSlot >> 1) - 1);
       int baseVal = ((2 | (posSlot & 1)) << footerBits);
       tempPrices[i] =
           BitTreeEncoder.ReverseGetPrice(
-              _posEncoders, baseVal - posSlot - 1, footerBits, i - baseVal);
+              posEncoders, baseVal - posSlot - 1, footerBits, i - baseVal);
     }
 
     for (int lenToPosState = 0; lenToPosState < Base.NUM_LEN_TO_POS_STATES; lenToPosState++) {
       int posSlot;
-      BitTreeEncoder encoder = _posSlotEncoder[lenToPosState];
+      BitTreeEncoder encoder = posSlotEncoder[lenToPosState];
 
       int st = (lenToPosState << Base.NUM_POS_SLOT_BITS);
-      for (posSlot = 0; posSlot < _distTableSize; posSlot++)
-        _posSlotPrices[st + posSlot] = encoder.GetPrice(posSlot);
-      for (posSlot = Base.END_POS_MODEL_INDEX; posSlot < _distTableSize; posSlot++)
-        _posSlotPrices[st + posSlot] +=
+      for (posSlot = 0; posSlot < distTableSize; posSlot++)
+        posSlotPrices[st + posSlot] = encoder.GetPrice(posSlot);
+      for (posSlot = Base.END_POS_MODEL_INDEX; posSlot < distTableSize; posSlot++)
+        posSlotPrices[st + posSlot] +=
             ((((posSlot >> 1) - 1) - Base.NUM_ALIGN_BITS)
                 << SevenZip.Compression.RangeCoder.Encoder.kNumBitPriceShiftBits);
 
       int st2 = lenToPosState * Base.NUM_FULL_DISTANCES;
       int i;
       for (i = 0; i < Base.START_POS_MODEL_INDEX; i++)
-        _distancesPrices[st2 + i] = _posSlotPrices[st + i];
+        distancesPrices[st2 + i] = posSlotPrices[st + i];
       for (; i < Base.NUM_FULL_DISTANCES; i++)
-        _distancesPrices[st2 + i] = _posSlotPrices[st + GetPosSlot(i)] + tempPrices[i];
+        distancesPrices[st2 + i] = posSlotPrices[st + getPosSlot(i)] + tempPrices[i];
     }
-    _matchPriceCount = 0;
+    matchPriceCount = 0;
   }
 
-  void FillAlignPrices() {
+  void fillAlignPrices() {
     for (int i = 0; i < Base.ALIGN_TABLE_SIZE; i++)
-      _alignPrices[i] = _posAlignEncoder.ReverseGetPrice(i);
-    _alignPriceCount = 0;
+      alignPrices[i] = posAlignEncoder.ReverseGetPrice(i);
+    alignPriceCount = 0;
   }
 
-  public boolean SetAlgorithm(int algorithm) {
-    /*
-    _fastMode = (algorithm == 0);
-    _maxMode = (algorithm >= 2);
-    */
-    return true;
+  public boolean setAlgorithm(int algorithm) {
+    // Accept historical values 0..2 (0=fast, 1=normal, 2=max). Values outside this
+    // range are rejected to match typical LZMA command-line expectations.
+    return algorithm >= 0 && algorithm <= 2;
   }
 
-  public boolean SetDictionarySize(int dictionarySize) {
+  public boolean setDictionarySize(int dictionarySize) {
     int kDicLogSizeMaxCompress = 29;
     if (dictionarySize < (1 << Base.DIC_LOG_SIZE_MIN)
         || dictionarySize > (1 << kDicLogSizeMaxCompress)) return false;
-    _dictionarySize = dictionarySize;
-    int dicLogSize;
-    for (dicLogSize = 0; dictionarySize > (1 << dicLogSize); dicLogSize++)
-      ;
-    _distTableSize = dicLogSize * 2;
+    this.dictionarySize = dictionarySize;
+    int dicLogSize = 0;
+    while (dictionarySize > (1 << dicLogSize)) {
+      dicLogSize++;
+    }
+    distTableSize = dicLogSize * 2;
     return true;
   }
 
-  public boolean SetNumFastBytes(int numFastBytes) {
+  public boolean setNumFastBytes(int numFastBytes) {
     if (numFastBytes < 5 || numFastBytes > Base.MATCH_MAX_LEN) return false;
-    _numFastBytes = numFastBytes;
+    this.numFastBytes = numFastBytes;
     return true;
   }
 
-  public boolean SetMatchFinder(int matchFinderIndex) {
+  public boolean setMatchFinder(int matchFinderIndex) {
     if (matchFinderIndex < 0 || matchFinderIndex > 2) return false;
-    int matchFinderIndexPrev = _matchFinderType;
-    _matchFinderType = matchFinderIndex;
-    if (_matchFinder != null && matchFinderIndexPrev != _matchFinderType) {
-      _dictionarySizePrev = -1;
-      _matchFinder = null;
+    int matchFinderIndexPrev = matchFinderType;
+    matchFinderType = matchFinderIndex;
+    if (matchFinder != null && matchFinderIndexPrev != matchFinderType) {
+      dictionarySizePrev = -1;
+      matchFinder = null;
     }
     return true;
   }
 
-  public boolean SetLcLpPb(int lc, int lp, int pb) {
+  public boolean setLcLpPb(int lc, int lp, int pb) {
     if (lp < 0
         || lp > Base.NUM_LIT_POS_STATES_BITS_ENCODING_MAX
         || lc < 0
         || lc > Base.NUM_LIT_CONTEXT_BITS_MAX
         || pb < 0
         || pb > Base.NUM_POS_STATES_BITS_ENCODING_MAX) return false;
-    _numLiteralPosStateBits = lp;
-    _numLiteralContextBits = lc;
-    _posStateBits = pb;
-    _posStateMask = ((1) << _posStateBits) - 1;
+    numLiteralPosStateBits = lp;
+    numLiteralContextBits = lc;
+    posStateBits = pb;
+    posStateMask = ((1) << posStateBits) - 1;
     return true;
   }
 
-  public void SetEndMarkerMode(boolean endMarkerMode) {
-    _writeEndMark = endMarkerMode;
+  public void setEndMarkerMode(boolean endMarkerMode) {
+    writeEndMark = endMarkerMode;
   }
 }
