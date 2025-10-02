@@ -1,4 +1,6 @@
 import java.math.BigDecimal
+import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.kotlin.dsl.getByType
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
@@ -87,9 +89,10 @@ tasks.withType<Test>().configureEach {
 tasks.withType<Test>().configureEach { enableAssertions = false }
 
 // JaCoCo setup: use a recent agent and produce XML for Sonar
+// Version is sourced from the version catalog (gradle/libs.versions.toml: [versions].jacoco)
+val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 extensions.configure<JacocoPluginExtension>("jacoco") {
-  // Use a version available on Maven Central (0.8.13 as of Apr 2025)
-  toolVersion = "0.8.13"
+  toolVersion = libs.findVersion("jacoco").get().requiredVersion
 }
 
 // Generate XML + HTML reports; ensure reports run after tests
