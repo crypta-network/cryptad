@@ -1,8 +1,13 @@
+import java.math.BigDecimal
+import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
   java
   id("org.jetbrains.kotlin.jvm")
+  jacoco
 }
 
 java {
@@ -80,3 +85,41 @@ tasks.withType<Test>().configureEach {
 
 // Match prior behavior: disable assertions in tests
 tasks.withType<Test>().configureEach { enableAssertions = false }
+
+// JaCoCo setup: use a recent agent and produce XML for Sonar
+extensions.configure<JacocoPluginExtension>("jacoco") {
+  // Use a version available on Maven Central (0.8.13 as of Apr 2025)
+  toolVersion = "0.8.13"
+}
+
+// Generate XML + HTML reports; ensure reports run after tests
+tasks.withType<JacocoReport>().configureEach {
+  dependsOn(tasks.withType<Test>())
+  reports {
+    xml.required.set(true)
+    csv.required.set(false)
+    html.required.set(true)
+  }
+}
+
+// Enforce coverage threshold (80% minimum)
+tasks.withType<JacocoCoverageVerification>().configureEach {
+  dependsOn(tasks.withType<Test>())
+  violationRules {
+    // Do not fail the build on coverage violations; still log them
+    isFailOnViolation = false
+    rule {
+      limit {
+        counter = "LINE"
+        value = "COVEREDRATIO"
+        minimum = BigDecimal("0.80")
+      }
+    }
+  }
+}
+
+// Integrate coverage checks with the standard lifecycle
+tasks.named("check") {
+  dependsOn(tasks.withType<JacocoReport>())
+  dependsOn(tasks.withType<JacocoCoverageVerification>())
+}

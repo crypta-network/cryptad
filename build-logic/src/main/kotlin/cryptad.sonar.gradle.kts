@@ -1,6 +1,7 @@
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
@@ -13,6 +14,21 @@ sonar {
   properties {
     property("sonar.projectKey", "crypta-network_cryptad")
     property("sonar.organization", "crypta-network")
+    property("sonar.host.url", "https://sonarcloud.io")
+
+    // Point Sonar to the JaCoCo XML report produced by jacocoTestReport
+    val jacocoXml =
+      layout.buildDirectory
+        .file("reports/jacoco/test/jacocoTestReport.xml")
+        .get()
+        .asFile
+        .absolutePath
+    property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
+
+    // Read token from environment if provided to avoid passing on CLI
+    providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
+      if (token.isNotBlank()) property("sonar.token", token)
+    }
   }
 }
 
@@ -95,3 +111,8 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
     explicitlyRequested
   }
 }
+
+// Ensure coverage reports exist before publishing analysis
+tasks
+  .matching { it.name == "sonar" || it.name == "sonarqube" }
+  .configureEach { dependsOn(tasks.withType(JacocoReport::class.java)) }
