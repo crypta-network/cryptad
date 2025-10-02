@@ -1,5 +1,6 @@
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
+import org.gradle.api.tasks.SourceSetContainer
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
