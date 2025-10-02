@@ -24,7 +24,7 @@ sonar {
         .absolutePath
     property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
 
-    // Read token from environment if provided to avoid passing on CLI
+    // Read token from environment if provided to avoid passing on CLI (modern scanners read sonar.token)
     providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
       if (token.isNotBlank()) property("sonar.token", token)
     }
