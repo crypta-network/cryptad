@@ -6,6 +6,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import network.crypta.support.LogThresholdCallback;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
@@ -23,6 +24,8 @@ public class NewLZMACompressor extends AbstractCompressor {
   // decompress.
   // Next one up is 2MB = -5 = 26M compress, 3M decompress.
   static final int MAX_DICTIONARY_SIZE = 1 << 20;
+
+  private static final String SIZE_LITERAL = " size ";
 
   private static volatile boolean logMINOR;
 
@@ -45,7 +48,7 @@ public class NewLZMACompressor extends AbstractCompressor {
         OutputStream os = output.getOutputStream()) {
       if (logMINOR)
         Logger.minor(
-            this, "Compressing " + data + " size " + data.size() + " to new bucket " + output);
+            this, "Compressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
       compress(is, os, maxReadLength, maxWriteLength);
     }
     return output;
@@ -61,16 +64,39 @@ public class NewLZMACompressor extends AbstractCompressor {
       final int minimumCompressionPercentage)
       throws IOException, CompressionRatioException {
     // Enforce caller-provided read/write limits during compression.
-    CountedInputStream cis =
-        (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
-            ? new BoundedInputStream(is, maxReadLength)
-            : new CountedInputStream(is);
-    CountedOutputStream cos =
-        (maxWriteLength >= 0 && maxWriteLength != Long.MAX_VALUE)
-            ? new BoundedOutputStream(os, maxWriteLength)
-            : new CountedOutputStream(os);
+    CountedInputStream cis = createCountedInputStream(is, maxReadLength);
+    CountedOutputStream cos = createCountedOutputStream(os, maxWriteLength);
+
     Encoder encoder = new Encoder();
     encoder.setEndMarkerMode(true);
+    encoder.setDictionarySize(selectDictionarySize(maxReadLength));
+    // Coder properties are part of the output stream and must count toward the
+    // maxWriteLength constraint; write them through the bounded stream.
+    encoder.writeCoderProperties(cos);
+
+    ICodeProgress progress =
+        createProgressChecker(amountOfDataToCheckCompressionRatio, minimumCompressionPercentage);
+    runEncoder(encoder, cis, cos, progress);
+    if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
+      throw new CompressionOutputSizeException(cos.written());
+    cos.flush();
+    if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
+    return cos.written();
+  }
+
+  private CountedInputStream createCountedInputStream(InputStream is, long maxReadLength) {
+    return (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
+        ? new BoundedInputStream(is, maxReadLength)
+        : new CountedInputStream(is);
+  }
+
+  private CountedOutputStream createCountedOutputStream(OutputStream os, long maxWriteLength) {
+    return (maxWriteLength >= 0 && maxWriteLength != Long.MAX_VALUE)
+        ? new BoundedOutputStream(os, maxWriteLength)
+        : new CountedOutputStream(os);
+  }
+
+  private int selectDictionarySize(long maxReadLength) {
     int dictionarySize = 1;
     if (maxReadLength == Long.MAX_VALUE || maxReadLength < 0) {
       dictionarySize = MAX_DICTIONARY_SIZE;
@@ -79,53 +105,58 @@ public class NewLZMACompressor extends AbstractCompressor {
           "No indication of size, having to use maximum dictionary size",
           new Exception("debug"));
     } else {
-      while (dictionarySize < maxReadLength && dictionarySize < MAX_DICTIONARY_SIZE)
+      while (dictionarySize < maxReadLength && dictionarySize < MAX_DICTIONARY_SIZE) {
         dictionarySize <<= 1;
-    }
-    encoder.setDictionarySize(dictionarySize);
-    // Coder properties are part of the output stream and must count toward the
-    // maxWriteLength constraint; write them through the bounded stream.
-    encoder.writeCoderProperties(cos);
-    try {
-      encoder.code(
-          cis,
-          cos,
-          new ICodeProgress() {
-            boolean compressionEffectShouldBeChecked = minimumCompressionPercentage != 0;
-
-            @Override
-            public void setProgress(long processedInSize, long processedOutSize) {
-              if (compressionEffectShouldBeChecked
-                  && processedInSize > amountOfDataToCheckCompressionRatio) {
-                try {
-                  checkCompressionEffect(
-                      processedInSize, processedOutSize, minimumCompressionPercentage);
-                } catch (CompressionRatioException e) {
-                  throw new RuntimeException(e); // need to escape from foreign API :-(
-                }
-                compressionEffectShouldBeChecked = false;
-              }
-            }
-          });
-    } catch (RuntimeException e) {
-      if (e.getCause() instanceof CompressionRatioException) {
-        throw (CompressionRatioException) e.getCause();
-      } else {
-        throw e;
       }
     }
-    if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
-      throw new CompressionOutputSizeException(cos.written());
-    cos.flush();
-    if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
-    return cos.written();
+    return dictionarySize;
+  }
+
+  private ICodeProgress createProgressChecker(
+      final long amountOfDataToCheckCompressionRatio, final int minimumCompressionPercentage) {
+    return new ICodeProgress() {
+      boolean compressionEffectShouldBeChecked = minimumCompressionPercentage != 0;
+
+      @Override
+      public void setProgress(long processedInSize, long processedOutSize) {
+        if (compressionEffectShouldBeChecked
+            && processedInSize > amountOfDataToCheckCompressionRatio) {
+          try {
+            checkCompressionEffect(processedInSize, processedOutSize, minimumCompressionPercentage);
+          } catch (CompressionRatioException e) {
+            // Wrap to escape through foreign API with a dedicated unchecked type.
+            throw new ProgressAbortException(e);
+          }
+          compressionEffectShouldBeChecked = false;
+        }
+      }
+    };
+  }
+
+  private void runEncoder(
+      Encoder encoder, InputStream input, CountedOutputStream output, ICodeProgress progress)
+      throws IOException, CompressionRatioException {
+    try {
+      encoder.code(input, output, progress);
+    } catch (RuntimeException e) {
+      if (e.getCause() instanceof CompressionRatioException compressionRatioException) {
+        throw compressionRatioException;
+      }
+      throw e;
+    }
+  }
+
+  private static final class ProgressAbortException extends RuntimeException {
+    ProgressAbortException(Throwable cause) {
+      super(cause);
+    }
   }
 
   /** Input stream wrapper that stops reading after {@code max} bytes have been returned. */
   private static final class BoundedInputStream extends CountedInputStream {
     private final long max;
-    private boolean eofChecked = false;
-    private boolean eofReachedAtLimit = false;
+
+    // Removed unused EOF tracking flags (no external readers, dead code).
 
     BoundedInputStream(InputStream in, long max) {
       super(in);
@@ -139,7 +170,6 @@ public class NewLZMACompressor extends AbstractCompressor {
       // We are at the limit; determine whether the underlying stream has more data.
       int next = in.read();
       if (next == -1) {
-        eofReachedAtLimit = true;
         return -1; // true EOF coincides with limit
       }
       throw new CompressionInputSizeException(max);
@@ -155,7 +185,6 @@ public class NewLZMACompressor extends AbstractCompressor {
       // No remaining budget: check if there is more data beyond the limit.
       int next = in.read();
       if (next == -1) {
-        eofReachedAtLimit = true;
         return -1;
       }
       throw new CompressionInputSizeException(max);
@@ -170,7 +199,6 @@ public class NewLZMACompressor extends AbstractCompressor {
       }
       int next = in.read();
       if (next == -1) {
-        eofReachedAtLimit = true;
         return -1;
       }
       throw new CompressionInputSizeException(max);
@@ -196,8 +224,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
       if (len < 0) throw new ArrayIndexOutOfBoundsException(len);
-      if (written() + (long) len > max)
-        throw new CompressionOutputSizeException(written() + (long) len);
+      if (written() + len > max) throw new CompressionOutputSizeException(written() + len);
       super.write(b, off, len);
     }
   }
@@ -210,12 +237,13 @@ public class NewLZMACompressor extends AbstractCompressor {
     else output = bf.makeBucket(maxLength);
     if (logMINOR)
       Logger.minor(
-          this, "Decompressing " + data + " size " + data.size() + " to new bucket " + output);
+          this, "Decompressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
     try (CountedInputStream is = new CountedInputStream(data.getInputStream());
         OutputStream os = output.getOutputStream()) {
       decompress(is, os, maxLength, maxCheckSizeLength);
       if (logMINOR)
-        Logger.minor(this, "Output: " + output + " size " + output.size() + " read " + is.count());
+        Logger.minor(
+            this, "Output: " + output + SIZE_LITERAL + output.size() + " read " + is.count());
     }
     return output;
   }
@@ -237,24 +265,22 @@ public class NewLZMACompressor extends AbstractCompressor {
     if (!decoder.setDecoderProperties(props))
       throw new InvalidCompressedDataException("Invalid properties");
     decoder.code(is, cos, maxLength);
-    // cos.flush();
     return cos.written();
   }
 
   @Override
   public int decompress(byte[] dbuf, int i, int j, byte[] output)
       throws CompressionOutputSizeException {
-    // Didn't work with Inflater.
-    // FIXME fix sometimes to use Inflater - format issue?
+    // Note: Using Inflater is not applicable here due to LZMA format specifics.
     ByteArrayInputStream bais = new ByteArrayInputStream(dbuf, i, j);
     ByteArrayOutputStream baos = new ByteArrayOutputStream(output.length);
-    int bytes = 0;
+    int bytes;
     try {
       decompress(bais, baos, output.length, -1);
       bytes = baos.size();
     } catch (IOException e) {
-      // Impossible
-      throw new Error("Got IOException: " + e.getMessage(), e);
+      // Unexpected I/O, wrap in a more specific unchecked exception.
+      throw new UncheckedIOException("Unexpected I/O during LZMA decompression", e);
     }
     byte[] buf = baos.toByteArray();
     System.arraycopy(buf, 0, output, 0, bytes);
