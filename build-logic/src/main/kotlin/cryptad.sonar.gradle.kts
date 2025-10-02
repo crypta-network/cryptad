@@ -112,7 +112,7 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
   }
 }
 
-// Ensure coverage reports exist before publishing analysis
-tasks
-  .matching { it.name == "sonar" || it.name == "sonarqube" }
-  .configureEach { dependsOn(tasks.withType(JacocoReport::class.java)) }
+// Ensure coverage reports exist before publishing analysis.
+// Explicitly depend on jacocoTestReport for the SonarQube task; guard optional 'sonar' alias.
+tasks.named("sonarqube").configure { dependsOn("jacocoTestReport") }
+tasks.findByName("sonar")?.dependsOn("jacocoTestReport")
