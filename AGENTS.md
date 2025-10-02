@@ -519,3 +519,28 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
 - Memory
   - Increased Gradle daemon heap to reduce OOM risk during SonarLint indexing:
     - `gradle.properties`: `org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8`.
+
+## JaCoCo & SonarCloud Coverage — Oct 2025
+
+- Plugin & wiring
+  - JaCoCo is applied via the build-logic convention plugin `cryptad.java-kotlin-conventions` (toolVersion `0.8.13`).
+  - XML and HTML reports are enabled; XML lives at `build/reports/jacoco/test/jacocoTestReport.xml`.
+  - The `check` lifecycle depends on both `jacocoTestReport` and `jacocoTestCoverageVerification`.
+  - Coverage verification rule: 80% line coverage (LINE/COVEREDRATIO >= 0.80).
+  - Builds do not fail on coverage by default: `isFailOnViolation = false` (violations are logged).
+
+- SonarCloud
+  - Sonar is configured via the `cryptad.sonar` convention plugin.
+  - Host: `https://sonarcloud.io` with project `crypta-network_cryptad` and organization `crypta-network`.
+  - Coverage is read from the JaCoCo XML path above (`sonar.coverage.jacoco.xmlReportPaths`).
+  - The `sonarqube` task depends on `jacocoTestReport` to ensure XML is generated. If present, the optional `sonar` alias also depends on it.
+  - Authentication: set `SONAR_TOKEN` in the environment; the convention maps it to `sonar.token`. No CLI flag is required.
+
+- How to run locally
+  - Tests + coverage: `./gradlew --parallel test jacocoTestReport`
+  - Enforced check (non-failing gate): `./gradlew check`
+  - Upload to SonarCloud: `export SONAR_TOKEN=<token>` then `./gradlew --parallel sonarqube`
+
+- CI tips
+  - Minimal job step: `./gradlew --parallel test jacocoTestReport sonarqube`
+  - Provide the token securely (env `SONAR_TOKEN`).

@@ -13,6 +13,21 @@ sonar {
   properties {
     property("sonar.projectKey", "crypta-network_cryptad")
     property("sonar.organization", "crypta-network")
+    property("sonar.host.url", "https://sonarcloud.io")
+
+    // Point Sonar to the JaCoCo XML report produced by jacocoTestReport
+    val jacocoXml =
+      layout.buildDirectory
+        .file("reports/jacoco/test/jacocoTestReport.xml")
+        .get()
+        .asFile
+        .absolutePath
+    property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
+
+    // Read token from environment if provided to avoid passing on CLI (modern scanners read sonar.token)
+    providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
+      if (token.isNotBlank()) property("sonar.token", token)
+    }
   }
 }
 
@@ -95,3 +110,8 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
     explicitlyRequested
   }
 }
+
+// Ensure coverage reports exist before publishing analysis.
+// Explicitly depend on jacocoTestReport for the SonarQube task; guard optional 'sonar' alias.
+tasks.named("sonarqube").configure { dependsOn("jacocoTestReport") }
+tasks.findByName("sonar")?.dependsOn("jacocoTestReport")

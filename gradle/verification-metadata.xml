@@ -93,6 +93,7 @@
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.23.200"/>
          </trusted-key>
          <trusted-key id="A31DDE881C3E3C4C985BD0D02C7F998F4272C851" group="com.diffplug.spotless"/>
+         <trusted-key id="A413F67D71BEEC23ADD0CE0ACB43338E060CF9FA" group="org.jacoco"/>
          <trusted-key id="A4FACCFE5AFA1EB5FA3F4155A41774F54142A24C" group="de.jangassen" name="jfa" version="1.2.0"/>
          <trusted-key id="A58D5AF54809A8A63F458BBD56CD8D5D24452160" group="org.codehaus.sonar"/>
          <trusted-key id="A5BD02B93E7A40482EB1D66A5F69AD087600B22C" group="org.ow2.asm"/>
