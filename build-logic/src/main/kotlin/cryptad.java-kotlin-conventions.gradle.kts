@@ -91,6 +91,7 @@ tasks.withType<Test>().configureEach { enableAssertions = false }
 // JaCoCo setup: use a recent agent and produce XML for Sonar
 // Version is sourced from the version catalog (gradle/libs.versions.toml: [versions].jacoco)
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
+
 extensions.configure<JacocoPluginExtension>("jacoco") {
   toolVersion = libs.findVersion("jacoco").get().requiredVersion
 }

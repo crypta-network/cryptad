@@ -24,7 +24,8 @@ sonar {
         .absolutePath
     property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
 
-    // Read token from environment if provided to avoid passing on CLI (modern scanners read sonar.token)
+    // Read token from environment if provided to avoid passing on CLI (modern scanners read
+    // sonar.token)
     providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
       if (token.isNotBlank()) property("sonar.token", token)
     }
@@ -114,4 +115,5 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
 // Ensure coverage reports exist before publishing analysis.
 // Explicitly depend on jacocoTestReport for the SonarQube task; guard optional 'sonar' alias.
 tasks.named("sonarqube").configure { dependsOn("jacocoTestReport") }
+
 tasks.findByName("sonar")?.dependsOn("jacocoTestReport")
