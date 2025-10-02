@@ -1,7 +1,5 @@
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
-import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
