@@ -24,6 +24,8 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
+  // Compile-time access to Logback classes for runtime reconfiguration
+  compileOnly("ch.qos.logback:logback-classic:1.5.6")
   // Coroutines (Swing Main dispatcher)
   implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)

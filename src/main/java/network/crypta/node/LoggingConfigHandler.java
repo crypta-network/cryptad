@@ -127,12 +127,16 @@ public class LoggingConfigHandler {
             logDir = f;
             // Keep SLF4J rolling appender in the same directory
             System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
+            // Reconfigure Logback file appender to the new directory immediately
+            reconfigureLogbackFileDirectory(logDir);
           }
         });
 
     logDir = new File(config.getString("dirname"));
     // Initialize SLF4J rolling file location to mirror FileLoggerHook directory
     System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
+    // Ensure Logback's file appender targets the initial directory
+    reconfigureLogbackFileDirectory(logDir);
     if (loggingEnabled) {
       preSetLogDir(logDir);
     }
@@ -381,6 +385,58 @@ public class LoggingConfigHandler {
       slf4jHookRef = new java.lang.ref.WeakReference<>(slf4jHook);
 
       // No FileLoggerHook; SLF4J/Logback handles outputs
+    }
+  }
+
+  /**
+   * Reconfigure Logback's rolling file appender to point to a new directory without restarting the
+   * JVM.
+   */
+  private void reconfigureLogbackFileDirectory(File newDir) {
+    try {
+      org.slf4j.ILoggerFactory lf = org.slf4j.LoggerFactory.getILoggerFactory();
+      if (!(lf instanceof ch.qos.logback.classic.LoggerContext)) return;
+      ch.qos.logback.classic.LoggerContext ctx = (ch.qos.logback.classic.LoggerContext) lf;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      ch.qos.logback.core.Appender<?> async = root.getAppender("ASYNC_FILE");
+      if (!(async instanceof ch.qos.logback.classic.AsyncAppender)) return;
+      ch.qos.logback.classic.AsyncAppender aa = (ch.qos.logback.classic.AsyncAppender) async;
+      for (java.util.Iterator<
+                  ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent>>
+              it = aa.iteratorForAppenders();
+          it.hasNext(); ) {
+        ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent> child = it.next();
+        if (child instanceof ch.qos.logback.core.rolling.RollingFileAppender) {
+          ch.qos.logback.core.rolling.RollingFileAppender<ch.qos.logback.classic.spi.ILoggingEvent>
+              rfa =
+                  (ch.qos.logback.core.rolling.RollingFileAppender<
+                          ch.qos.logback.classic.spi.ILoggingEvent>)
+                      child;
+          String newFile = new File(newDir, "crypta-latest.log").getAbsolutePath();
+          String newPattern =
+              new File(newDir, "crypta-%d{yyyy-MM-dd_HH}.%i.log.gz").getAbsolutePath();
+
+          // Stop, update, and restart the rolling policy and appender
+          rfa.stop();
+          ch.qos.logback.core.rolling.RollingPolicy rp = rfa.getRollingPolicy();
+          if (rp instanceof ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy) {
+            ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
+                    ch.qos.logback.classic.spi.ILoggingEvent>
+                st =
+                    (ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
+                            ch.qos.logback.classic.spi.ILoggingEvent>)
+                        rp;
+            st.stop();
+            st.setFileNamePattern(newPattern);
+            st.start();
+          }
+          rfa.setFile(newFile);
+          rfa.start();
+          break; // updated first rolling file appender
+        }
+      }
+    } catch (Throwable t) {
+      System.err.println("Failed to reconfigure Logback file directory: " + t);
     }
   }
 
