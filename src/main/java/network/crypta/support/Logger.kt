@@ -3,7 +3,6 @@ package network.crypta.support
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import network.crypta.support.FileLoggerHook.IntervalParseException
 import network.crypta.support.LoggerHook.InvalidThresholdException
 
 abstract class Logger {
@@ -69,27 +68,20 @@ abstract class Logger {
     @Synchronized
     @JvmStatic
     @Throws(InvalidThresholdException::class)
-    fun setupStdoutLogging(level: LogLevel, detail: String?): FileLoggerHook {
+    fun setupStdoutLogging(level: LogLevel, detail: String?) {
+      // Initialize the chain and thresholds, and add an SLF4J sink so output
+      // goes to configured appenders (console/file) during tests/tools.
       setupChain()
       logger.setThreshold(level)
       logger.setDetailedThresholds(detail)
-      val fh: FileLoggerHook =
-        try {
-          FileLoggerHook(System.out, "d (c, t, p): m", "MMM dd, yyyy HH:mm:ss:SSS", level.name)
-        } catch (e: IntervalParseException) {
-          throw Error(e)
-        }
-      detail?.let { fh.setDetailedThresholds(it) }
-      (logger as LoggerHookChain).addHook(fh)
-      fh.start()
-      return fh
+      (logger as LoggerHookChain).addHook(Slf4jLoggerHook(LogLevel.DEBUG))
     }
 
     @Deprecated("use other overload")
     @Synchronized
     @JvmStatic
     @Throws(InvalidThresholdException::class)
-    fun setupStdoutLogging(level: Int, detail: String?): FileLoggerHook =
+    fun setupStdoutLogging(level: Int, detail: String?) =
       setupStdoutLogging(LogLevel.entries.getOrNull(level) ?: LogLevel.NORMAL, detail)
 
     @Synchronized

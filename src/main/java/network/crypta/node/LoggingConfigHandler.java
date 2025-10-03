@@ -1,7 +1,6 @@
 package network.crypta.node;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
@@ -10,8 +9,6 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.OptionFormatException;
 import network.crypta.config.SubConfig;
 import network.crypta.support.Executor;
-import network.crypta.support.FileLoggerHook;
-import network.crypta.support.FileLoggerHook.IntervalParseException;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook;
@@ -62,7 +59,7 @@ public class LoggingConfigHandler {
 
   protected static final String LOG_PREFIX = "freenet";
   private final SubConfig config;
-  private FileLoggerHook fileLoggerHook;
+  // FileLoggerHook removed; SLF4J/Logback handles outputs
   private Slf4jLoggerHook slf4jHook;
   // Weak reference to allow static callbacks to update the hook without leaks
   private static java.lang.ref.WeakReference<Slf4jLoggerHook> slf4jHookRef =
@@ -91,13 +88,12 @@ public class LoggingConfigHandler {
         new BooleanCallback() {
           @Override
           public Boolean get() {
-            // Consider logging enabled when any sink is active
-            return fileLoggerHook != null || slf4jHook != null;
+            return slf4jHook != null;
           }
 
           @Override
           public void set(Boolean val) throws InvalidConfigValueException {
-            if (val == (fileLoggerHook != null)) return;
+            if (val == (slf4jHook != null)) return;
             if (!val) {
               disableLogger();
             } else {
@@ -128,14 +124,7 @@ public class LoggingConfigHandler {
             if (f.equals(logDir)) return;
             preSetLogDir(f);
             // Still here
-            if (fileLoggerHook == null) {
-              logDir = f;
-            } else {
-              // Discard old data
-              fileLoggerHook.switchBaseFilename(f.getPath() + File.separator + LOG_PREFIX);
-              logDir = f;
-              new Deleter(logDir).start();
-            }
+            logDir = f;
             // Keep SLF4J rolling appender in the same directory
             System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
           }
@@ -169,9 +158,7 @@ public class LoggingConfigHandler {
           public void set(Long val) throws InvalidConfigValueException {
             if (val < 0) val = 0L;
             maxZippedLogsSize = val;
-            if (fileLoggerHook != null) {
-              fileLoggerHook.setMaxOldLogsSize(val);
-            }
+            // No-op: Logback totalSizeCap governs disk usage
           }
         },
         true);
@@ -224,8 +211,7 @@ public class LoggingConfigHandler {
           }
         });
 
-    // interval
-
+    // interval (kept for compatibility; handled by Logback)
     config.register(
         "interval",
         "1HOUR",
@@ -242,14 +228,6 @@ public class LoggingConfigHandler {
 
           @Override
           public void set(String val) throws InvalidConfigValueException {
-            if (val.equals(logRotateInterval)) return;
-            if (fileLoggerHook != null) {
-              try {
-                fileLoggerHook.setInterval(val);
-              } catch (FileLoggerHook.IntervalParseException e) {
-                throw new OptionFormatException(e.getMessage());
-              }
-            }
             logRotateInterval = val;
           }
         });
@@ -276,7 +254,7 @@ public class LoggingConfigHandler {
             if (val < 0) val = 0L;
             if (val == maxCachedLogBytes) return;
             maxCachedLogBytes = val;
-            if (fileLoggerHook != null) fileLoggerHook.setMaxListBytes(val);
+            // No-op under SLF4J/Logback
           }
         },
         true);
@@ -331,7 +309,7 @@ public class LoggingConfigHandler {
             if (val < 0) throw new InvalidConfigValueException("Must be >= 0");
             if (val == maxBacklogNotBusy) return;
             maxBacklogNotBusy = val;
-            if (fileLoggerHook != null) fileLoggerHook.setMaxBacklogNotBusy(val);
+            // No-op under SLF4J/Logback
           }
         },
         false);
@@ -353,7 +331,7 @@ public class LoggingConfigHandler {
       e3.printStackTrace();
     }
     synchronized (enableLoggerLock) {
-      if (fileLoggerHook != null) return;
+      if (slf4jHook != null) return;
       Logger.setupChain();
       try {
         config.forceUpdate("priority");
@@ -402,62 +380,13 @@ public class LoggingConfigHandler {
       // Publish weak ref for callbacks to update on future config changes
       slf4jHookRef = new java.lang.ref.WeakReference<>(slf4jHook);
 
-      FileLoggerHook hook;
-      try {
-        hook =
-            new FileLoggerHook(
-                true,
-                new File(logDir, LOG_PREFIX).getAbsolutePath(),
-                "d (c, t, p): m",
-                "MMM dd, yyyy HH:mm:ss:SSS",
-                logRotateInterval,
-                LogLevel.DEBUG /* filtered by chain */,
-                false,
-                true,
-                maxZippedLogsSize /* 1GB of old compressed logfiles */,
-                maxCachedLogLines);
-      } catch (IOException e) {
-        System.err.println("CANNOT START LOGGER: " + e.getMessage());
-        return;
-      } catch (IntervalParseException e) {
-        System.err.println("INVALID LOGGING INTERVAL: " + e.getMessage());
-        logRotateInterval = "5MINUTE";
-        try {
-          hook =
-              new FileLoggerHook(
-                  true,
-                  new File(logDir, LOG_PREFIX).getAbsolutePath(),
-                  "d (c, t, p): m",
-                  "MMM dd, yyyy HH:mm:ss:SSS",
-                  logRotateInterval,
-                  LogLevel.DEBUG /* filtered by chain */,
-                  false,
-                  true,
-                  maxZippedLogsSize /* 1GB of old compressed logfiles */,
-                  maxCachedLogLines);
-        } catch (IntervalParseException e1) {
-          System.err.println("CANNOT START LOGGER: IMPOSSIBLE: " + e1.getMessage());
-          return;
-        } catch (IOException e1) {
-          System.err.println("CANNOT START LOGGER: " + e1.getMessage());
-          return;
-        }
-      }
-      hook.setMaxListBytes(maxCachedLogBytes);
-      hook.setMaxBacklogNotBusy(maxBacklogNotBusy);
-      fileLoggerHook = hook;
-      Logger.globalAddHook(hook);
-      hook.start();
+      // No FileLoggerHook; SLF4J/Logback handles outputs
     }
   }
 
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
-      if (fileLoggerHook == null) return;
-      FileLoggerHook hook = fileLoggerHook;
-      Logger.globalRemoveHook(hook);
-      hook.close();
-      fileLoggerHook = null;
+      if (slf4jHook == null) return;
       if (slf4jHook != null) {
         Logger.globalRemoveHook(slf4jHook);
         slf4jHook = null;
@@ -480,52 +409,7 @@ public class LoggingConfigHandler {
     }
   }
 
-  class Deleter implements Runnable {
-
-    File logDir;
-
-    public Deleter(File logDir) {
-      this.logDir = logDir;
-    }
-
-    void start() {
-      executor.execute(this, "Old log directory " + logDir + " deleter");
-    }
-
-    @Override
-    public void run() {
-      fileLoggerHook.waitForSwitch();
-      delete(logDir);
-    }
-
-    /**
-     * @return true if we can't delete due to presence of non-Freenet files
-     */
-    private boolean delete(File dir) {
-      boolean failed = false;
-      File[] files = dir.listFiles();
-      for (File f : files) {
-        String s = f.getName();
-        if (s.startsWith("freenet-") && s.contains(".log")) {
-          if (f.isFile()) {
-            if (!f.delete()) failed = true;
-          } else if (f.isDirectory()) {
-            if (delete(f)) failed = true;
-          }
-        } else {
-          failed = true;
-        }
-      }
-      if (!failed) {
-        failed = !(dir.delete());
-      }
-      return failed;
-    }
-  }
-
-  public FileLoggerHook getFileLoggerHook() {
-    return fileLoggerHook;
-  }
+  // Deleter and getFileLoggerHook removed with FileLoggerHook
 
   public void forceEnableLogging() {
     enableLogger();

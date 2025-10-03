@@ -39,6 +39,8 @@ dependencies {
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
+  // For tests asserting SLF4J integration
+  testImplementation("ch.qos.logback:logback-classic:1.5.6")
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
   testImplementation(libs.mockitoCore)
