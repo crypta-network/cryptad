@@ -434,14 +434,37 @@ public class LoggingConfigHandler {
                     (ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
                             ch.qos.logback.classic.spi.ILoggingEvent>)
                         rp;
+            // Stop appender and policy before applying changes
             st.stop();
+            rfa.stop();
             st.setFileNamePattern(newPattern);
             // Keep total size cap aligned with configured maxZippedLogsSize
             st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(maxZippedLogsSize));
+            // Install a modulo triggering policy when a multiplier is present
+            int multiple = parseIntervalMultiple(logRotateInterval);
+            String unit = parseIntervalUnit(logRotateInterval);
+            network.crypta.support.ModuloTimeTriggeringPolicy<
+                    ch.qos.logback.classic.spi.ILoggingEvent>
+                mod = new network.crypta.support.ModuloTimeTriggeringPolicy<>();
+            if ("MINUTE".equals(unit)) {
+              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.MINUTE);
+            } else if ("HOUR".equals(unit)) {
+              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.HOUR);
+            } else if ("DAY".equals(unit)) {
+              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.DAY);
+            } else {
+              mod = null; // unsupported units fall back to default
+            }
+            if (mod != null && multiple > 1) {
+              mod.setMultiple(multiple);
+              mod.setContext(ctx);
+              st.setTimeBasedFileNamingAndTriggeringPolicy(mod);
+            }
+            // Restart in order: policy then appender
             st.start();
+            rfa.setFile(newFile);
+            rfa.start();
           }
-          rfa.setFile(newFile);
-          rfa.start();
           break; // updated first rolling file appender
         }
       }
@@ -509,7 +532,7 @@ public class LoggingConfigHandler {
     // Extract numeric prefix (we ignore it for Logback granularity)
     int i = 0;
     while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
-    String unit = (i == 0) ? s : s.substring(i);
+    String unit = parseIntervalUnit(s);
     switch (unit) {
       case "MINUTE":
         return "yyyy-MM-dd_HH-mm";
@@ -526,6 +549,30 @@ public class LoggingConfigHandler {
         return "yyyy";
       default:
         return "yyyy-MM-dd_HH";
+    }
+  }
+
+  private String parseIntervalUnit(String s) {
+    String up = s.toUpperCase();
+    int i = 0;
+    while (i < up.length() && Character.isDigit(up.charAt(i))) i++;
+    String unit = (i == 0) ? up : up.substring(i);
+    // Normalize aliases
+    if (unit.equals("WEEK_OF_YEAR")) return "WEEK";
+    return unit;
+  }
+
+  private int parseIntervalMultiple(String configured) {
+    if (configured == null || configured.isEmpty()) return 1;
+    String s = configured.trim().toUpperCase();
+    if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
+    int i = 0;
+    while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
+    if (i == 0) return 1;
+    try {
+      return Math.max(1, Integer.parseInt(s.substring(0, i)));
+    } catch (NumberFormatException e) {
+      return 1;
     }
   }
 
