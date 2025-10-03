@@ -17,6 +17,7 @@ import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.LoggerHookChain;
+import network.crypta.support.Slf4jLoggerHook;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
@@ -35,6 +36,15 @@ public class LoggingConfigHandler {
       LoggerHookChain chain = Logger.getChain();
       try {
         chain.setThreshold(val);
+        // Keep SLF4J hook aligned when present
+        if (slf4jHookRef != null && slf4jHookRef.get() != null) {
+          try {
+            slf4jHookRef.get().setThreshold(val);
+          } catch (LoggerHook.InvalidThresholdException e) {
+            // Fall through to consistent error handling below
+            throw e;
+          }
+        }
       } catch (LoggerHook.InvalidThresholdException e) {
         throw new OptionFormatException(e.getMessage());
       }
@@ -53,6 +63,10 @@ public class LoggingConfigHandler {
   protected static final String LOG_PREFIX = "freenet";
   private final SubConfig config;
   private FileLoggerHook fileLoggerHook;
+  private Slf4jLoggerHook slf4jHook;
+  // Weak reference to allow static callbacks to update the hook without leaks
+  private static java.lang.ref.WeakReference<Slf4jLoggerHook> slf4jHookRef =
+      new java.lang.ref.WeakReference<>(null);
   private File logDir;
   private long maxZippedLogsSize;
   private String logRotateInterval;
@@ -77,7 +91,8 @@ public class LoggingConfigHandler {
         new BooleanCallback() {
           @Override
           public Boolean get() {
-            return fileLoggerHook != null;
+            // Consider logging enabled when any sink is active
+            return fileLoggerHook != null || slf4jHook != null;
           }
 
           @Override
@@ -121,10 +136,14 @@ public class LoggingConfigHandler {
               logDir = f;
               new Deleter(logDir).start();
             }
+            // Keep SLF4J rolling appender in the same directory
+            System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
           }
         });
 
     logDir = new File(config.getString("dirname"));
+    // Initialize SLF4J rolling file location to mirror FileLoggerHook directory
+    System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
     if (loggingEnabled) {
       preSetLogDir(logDir);
     }
@@ -196,6 +215,9 @@ public class LoggingConfigHandler {
             LoggerHookChain chain = Logger.getChain();
             try {
               chain.setDetailedThresholds(val);
+              if (slf4jHookRef != null && slf4jHookRef.get() != null) {
+                slf4jHookRef.get().setDetailedThresholds(val);
+              }
             } catch (InvalidThresholdException e) {
               throw new InvalidConfigValueException(e.getMessage());
             }
@@ -347,6 +369,39 @@ public class LoggingConfigHandler {
             "impossible NodeNeedRestartException for logger.priority in config file: "
                 + config.getString("priority"));
       }
+      // Add SLF4J sink first and align its thresholds with the chain / config
+      slf4jHook = new Slf4jLoggerHook(LogLevel.DEBUG /* initial; will be overridden below */);
+      Logger.globalAddHook(slf4jHook);
+      // Align to current chain thresholds and per-section details
+      try {
+        LoggerHookChain chain = Logger.getChain();
+        slf4jHook.setThreshold(chain.getThresholdNew());
+        slf4jHook.setDetailedThresholds(chain.getDetailedThresholds());
+      } catch (LoggerHook.InvalidThresholdException e) {
+        System.err.println("SLF4J hook threshold sync failed: " + e.getMessage());
+      }
+      // Optional: capture System.out/err to SLF4J when requested
+      if (Boolean.getBoolean("crypta.captureStdStreams")) {
+        try {
+          String enc = java.nio.charset.StandardCharsets.UTF_8.name();
+          System.setOut(
+              new java.io.PrintStream(
+                  new network.crypta.support.OutputStreamLogger(LogLevel.NORMAL, "Stdout: ", enc),
+                  false,
+                  enc));
+          System.setErr(
+              new java.io.PrintStream(
+                  new network.crypta.support.OutputStreamLogger(LogLevel.ERROR, "Stderr: ", enc),
+                  false,
+                  enc));
+        } catch (Exception ignored) {
+          // Best-effort; do not fail if we cannot capture
+        }
+      }
+
+      // Publish weak ref for callbacks to update on future config changes
+      slf4jHookRef = new java.lang.ref.WeakReference<>(slf4jHook);
+
       FileLoggerHook hook;
       try {
         hook =
@@ -403,9 +458,15 @@ public class LoggingConfigHandler {
       Logger.globalRemoveHook(hook);
       hook.close();
       fileLoggerHook = null;
+      if (slf4jHook != null) {
+        Logger.globalRemoveHook(slf4jHook);
+        slf4jHook = null;
+      }
       Logger.destroyChainIfEmpty();
     }
   }
+
+  // no helper needed; the weak ref is replaced directly when enabling logger
 
   protected void preSetLogDir(File f) throws InvalidConfigValueException {
     boolean exists = f.exists();

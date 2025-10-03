@@ -46,6 +46,8 @@ dependencies {
   testImplementation(libs.objenesis)
 
   runtimeOnly(files("libs/db4o-7.4.58.jar"))
+  // SLF4J binding (Logback) for the new Slf4jLoggerHook
+  runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
 }
 
 // Utility task to print the project version

@@ -68,7 +68,10 @@
          </trusted-key>
          <trusted-key id="4AC55A85D30C3499A3219500B7E2662A7640A051" group="com.formdev" name="flatlaf" version="3.6.1"/>
          <trusted-key id="4DB1A49729B053CAF015CEE9A6ADFC93EF34893E" group="org.hamcrest"/>
-         <trusted-key id="60200AC4AE761F1614D6C46766D68DAA073BE985" group="org.slf4j"/>
+         <trusted-key id="60200AC4AE761F1614D6C46766D68DAA073BE985">
+            <trusting group="ch.qos.logback"/>
+            <trusting group="org.slf4j"/>
+         </trusted-key>
          <trusted-key id="635EE627345F3C1DD422B2E207D3516820BCF6B1" group="com.github.ben-manes.caffeine" name="caffeine" version="2.9.3"/>
          <trusted-key id="648190996EC0930A6D7D49A978178478013521D0" group="com.facebook"/>
          <trusted-key id="6658DD7F76FCDF7812114F85DC032628E927D006" group="com.android.tools.external.lombok" name="lombok-ast" version="0.2.2"/>

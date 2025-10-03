@@ -530,11 +530,10 @@ public class WelcomeToadlet extends Toadlet {
     if (ctx.isAllowedFullAccess()) {
 
       if (request.isParameterSet("latestlog")) {
-        final File logs =
-            new File(
-                node.getConfig().get("logger").getString("dirname")
-                    + File.separator
-                    + "freenet-latest.log");
+        final File logDir = new File(node.getConfig().get("logger").getString("dirname"));
+        final File crypta = new File(logDir, "crypta-latest.log");
+        final File freenet = new File(logDir, "freenet-latest.log");
+        final File logs = crypta.exists() ? crypta : freenet;
         String text = readLogTail(logs, 100000);
         this.writeTextReply(ctx, 200, "OK", text);
         return;
