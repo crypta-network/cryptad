@@ -69,12 +69,13 @@ abstract class Logger {
     @JvmStatic
     @Throws(InvalidThresholdException::class)
     fun setupStdoutLogging(level: LogLevel, detail: String?) {
-      // Initialize the chain and thresholds, and add an SLF4J sink so output
-      // goes to configured appenders (console/file) during tests/tools.
+      // Initialize the chain thresholds, and add an SLF4J sink honoring the same thresholds.
       setupChain()
       logger.setThreshold(level)
       logger.setDetailedThresholds(detail)
-      (logger as LoggerHookChain).addHook(Slf4jLoggerHook(LogLevel.DEBUG))
+      val hook = Slf4jLoggerHook(level)
+      detail?.let { hook.setDetailedThresholds(it) }
+      (logger as LoggerHookChain).addHook(hook)
     }
 
     @Deprecated("use other overload")
