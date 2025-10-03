@@ -162,12 +162,15 @@ public class LoggingConfigHandler {
           public void set(Long val) throws InvalidConfigValueException {
             if (val < 0) val = 0L;
             maxZippedLogsSize = val;
-            // No-op: Logback totalSizeCap governs disk usage
+            // Apply to Logback rolling policy immediately
+            updateLogbackTotalSizeCap(maxZippedLogsSize);
           }
         },
         true);
 
     maxZippedLogsSize = config.getLong("maxZippedLogsSize");
+    // Ensure Logback picks up the configured cap at startup
+    updateLogbackTotalSizeCap(maxZippedLogsSize);
 
     // These two are forced below so we don't need to check them now
 
@@ -428,6 +431,8 @@ public class LoggingConfigHandler {
                         rp;
             st.stop();
             st.setFileNamePattern(newPattern);
+            // Keep total size cap aligned with configured maxZippedLogsSize
+            st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(maxZippedLogsSize));
             st.start();
           }
           rfa.setFile(newFile);
@@ -437,6 +442,47 @@ public class LoggingConfigHandler {
       }
     } catch (Throwable t) {
       System.err.println("Failed to reconfigure Logback file directory: " + t);
+    }
+  }
+
+  /** Apply configured total size cap to Logback rolling policy (if present). */
+  private void updateLogbackTotalSizeCap(long bytes) {
+    try {
+      org.slf4j.ILoggerFactory lf = org.slf4j.LoggerFactory.getILoggerFactory();
+      if (!(lf instanceof ch.qos.logback.classic.LoggerContext)) return;
+      ch.qos.logback.classic.LoggerContext ctx = (ch.qos.logback.classic.LoggerContext) lf;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      ch.qos.logback.core.Appender<?> async = root.getAppender("ASYNC_FILE");
+      if (!(async instanceof ch.qos.logback.classic.AsyncAppender)) return;
+      ch.qos.logback.classic.AsyncAppender aa = (ch.qos.logback.classic.AsyncAppender) async;
+      for (java.util.Iterator<
+                  ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent>>
+              it = aa.iteratorForAppenders();
+          it.hasNext(); ) {
+        ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent> child = it.next();
+        if (child instanceof ch.qos.logback.core.rolling.RollingFileAppender) {
+          ch.qos.logback.core.rolling.RollingFileAppender<ch.qos.logback.classic.spi.ILoggingEvent>
+              rfa =
+                  (ch.qos.logback.core.rolling.RollingFileAppender<
+                          ch.qos.logback.classic.spi.ILoggingEvent>)
+                      child;
+          ch.qos.logback.core.rolling.RollingPolicy rp = rfa.getRollingPolicy();
+          if (rp instanceof ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy) {
+            ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
+                    ch.qos.logback.classic.spi.ILoggingEvent>
+                st =
+                    (ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
+                            ch.qos.logback.classic.spi.ILoggingEvent>)
+                        rp;
+            st.stop();
+            st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(bytes));
+            st.start();
+          }
+          break;
+        }
+      }
+    } catch (Throwable t) {
+      System.err.println("Failed to update Logback totalSizeCap: " + t);
     }
   }
 
