@@ -236,10 +236,14 @@ public class LoggingConfigHandler {
           @Override
           public void set(String val) throws InvalidConfigValueException {
             logRotateInterval = val;
+            // Apply new interval to Logback rolling pattern immediately
+            reconfigureLogbackFileDirectory(logDir);
           }
         });
 
     logRotateInterval = config.getString("interval");
+    // Apply current interval to Logback pattern at startup
+    reconfigureLogbackFileDirectory(logDir);
 
     // max cached bytes in RAM
     config.register(
@@ -416,8 +420,9 @@ public class LoggingConfigHandler {
                           ch.qos.logback.classic.spi.ILoggingEvent>)
                       child;
           String newFile = new File(newDir, "crypta-latest.log").getAbsolutePath();
+          String datePat = datePatternForInterval(logRotateInterval);
           String newPattern =
-              new File(newDir, "crypta-%d{yyyy-MM-dd_HH}.%i.log.gz").getAbsolutePath();
+              new File(newDir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
 
           // Stop, update, and restart the rolling policy and appender
           rfa.stop();
@@ -476,6 +481,13 @@ public class LoggingConfigHandler {
                         rp;
             st.stop();
             st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(bytes));
+            // Ensure file pattern reflects current interval as well
+            String datePat = datePatternForInterval(logRotateInterval);
+            String dir =
+                System.getProperty("crypta.log.dir", new java.io.File(".").getAbsolutePath());
+            String pat =
+                new java.io.File(dir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+            st.setFileNamePattern(pat);
             st.start();
           }
           break;
@@ -483,6 +495,37 @@ public class LoggingConfigHandler {
       }
     } catch (Throwable t) {
       System.err.println("Failed to update Logback totalSizeCap: " + t);
+    }
+  }
+
+  /**
+   * Map logger.interval to a Logback date pattern. Multipliers (>1) are rounded down to base unit.
+   */
+  private String datePatternForInterval(String configured) {
+    if (configured == null || configured.isEmpty()) return "yyyy-MM-dd_HH"; // default hourly
+    String s = configured.trim().toUpperCase();
+    // Strip optional trailing 'S'
+    if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
+    // Extract numeric prefix (we ignore it for Logback granularity)
+    int i = 0;
+    while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
+    String unit = (i == 0) ? s : s.substring(i);
+    switch (unit) {
+      case "MINUTE":
+        return "yyyy-MM-dd_HH-mm";
+      case "HOUR":
+        return "yyyy-MM-dd_HH";
+      case "DAY":
+        return "yyyy-MM-dd";
+      case "WEEK_OF_YEAR":
+      case "WEEK":
+        return "YYYY-ww"; // ISO week-based year
+      case "MONTH":
+        return "yyyy-MM";
+      case "YEAR":
+        return "yyyy";
+      default:
+        return "yyyy-MM-dd_HH";
     }
   }
 
