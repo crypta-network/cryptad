@@ -1,21 +1,10 @@
 package network.crypta.support
 
-import java.util.ArrayList
-
 /** A logger that distributes log events to a set of LoggerHook instances. */
 class LoggerHookChain : LoggerHook {
   private var hooks: Array<LoggerHook>
 
   constructor() : super(LogLevel.NORMAL) {
-    hooks = emptyArray()
-  }
-
-  constructor(threshold: LogLevel) : super(threshold) {
-    hooks = emptyArray()
-  }
-
-  @Throws(InvalidThresholdException::class)
-  constructor(threshold: String) : super(threshold) {
     hooks = emptyArray()
   }
 
@@ -34,7 +23,7 @@ class LoggerHookChain : LoggerHook {
 
   @Synchronized
   fun addHook(lh: LoggerHook) {
-    hooks = hooks + lh
+    hooks += lh
   }
 
   @Synchronized
