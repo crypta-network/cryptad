@@ -375,14 +375,19 @@ public class LoggingConfigHandler {
       if (Boolean.getBoolean("crypta.captureStdStreams")) {
         try {
           String enc = java.nio.charset.StandardCharsets.UTF_8.name();
+          // Preserve existing console streams so ConsoleAppender can still emit to the terminal.
+          java.io.PrintStream origOut = System.out;
+          java.io.PrintStream origErr = System.err;
           System.setOut(
               new java.io.PrintStream(
-                  new network.crypta.support.OutputStreamLogger(LogLevel.NORMAL, "Stdout: ", enc),
+                  new network.crypta.support.TeeOutputStreamLogger(
+                      origOut, LogLevel.NORMAL, "Stdout: ", enc),
                   false,
                   enc));
           System.setErr(
               new java.io.PrintStream(
-                  new network.crypta.support.OutputStreamLogger(LogLevel.ERROR, "Stderr: ", enc),
+                  new network.crypta.support.TeeOutputStreamLogger(
+                      origErr, LogLevel.ERROR, "Stderr: ", enc),
                   false,
                   enc));
         } catch (Exception ignored) {
@@ -442,26 +447,37 @@ public class LoggingConfigHandler {
             st.setFileNamePattern(newPattern);
             // Keep total size cap aligned with configured maxZippedLogsSize
             st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(maxZippedLogsSize));
-            // Install a modulo triggering policy when a multiplier is present
+            // Choose appropriate triggering policy for the current interval
             int multiple = parseIntervalMultiple(logRotateInterval);
             String unit = parseIntervalUnit(logRotateInterval);
-            network.crypta.support.ModuloTimeTriggeringPolicy<
+            ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy<
                     ch.qos.logback.classic.spi.ILoggingEvent>
-                mod = new network.crypta.support.ModuloTimeTriggeringPolicy<>();
-            if ("MINUTE".equals(unit)) {
-              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.MINUTE);
-            } else if ("HOUR".equals(unit)) {
-              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.HOUR);
-            } else if ("DAY".equals(unit)) {
-              mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.DAY);
-            } else {
-              mod = null; // unsupported units fall back to default
-            }
-            if (mod != null && multiple > 1) {
+                policy;
+            if (multiple > 1
+                && ("MINUTE".equals(unit) || "HOUR".equals(unit) || "DAY".equals(unit))) {
+              network.crypta.support.ModuloTimeTriggeringPolicy<
+                      ch.qos.logback.classic.spi.ILoggingEvent>
+                  mod = new network.crypta.support.ModuloTimeTriggeringPolicy<>();
+              if ("MINUTE".equals(unit)) {
+                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.MINUTE);
+              } else if ("HOUR".equals(unit)) {
+                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.HOUR);
+              } else {
+                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.DAY);
+              }
               mod.setMultiple(multiple);
               mod.setContext(ctx);
-              st.setTimeBasedFileNamingAndTriggeringPolicy(mod);
+              policy = mod;
+            } else {
+              ch.qos.logback.core.rolling.DefaultTimeBasedFileNamingAndTriggeringPolicy<
+                      ch.qos.logback.classic.spi.ILoggingEvent>
+                  def =
+                      new ch.qos.logback.core.rolling
+                          .DefaultTimeBasedFileNamingAndTriggeringPolicy<>();
+              def.setContext(ctx);
+              policy = def;
             }
+            st.setTimeBasedFileNamingAndTriggeringPolicy(policy);
             // Restart in order: policy then appender
             st.start();
             rfa.setFile(newFile);
