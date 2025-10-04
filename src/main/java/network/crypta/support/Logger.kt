@@ -1,12 +1,11 @@
 package network.crypta.support
 
+import network.crypta.support.LoggerHook.InvalidThresholdException
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import network.crypta.support.LoggerHook.InvalidThresholdException
 
 abstract class Logger {
-  // Removed legacy OSThread helpers which were no-ops and unused.
 
   enum class LogLevel {
     MINIMAL,
@@ -39,8 +38,6 @@ abstract class Logger {
       detail?.let { hook.setDetailedThresholds(it) }
       (logger as LoggerHookChain).addHook(hook)
     }
-
-    // Removed deprecated Int-based setup overload.
 
     @Synchronized
     @JvmStatic
@@ -180,17 +177,11 @@ abstract class Logger {
       logger.log(o, s, e, prio)
     }
 
-    // Removed deprecated Int-based logStatic overload.
-
     @JvmStatic
     fun shouldLog(priority: LogLevel, c: Class<*>?): Boolean = logger.instanceShouldLog(priority, c)
 
-    // Removed deprecated Int-based shouldLog overload.
-
     @JvmStatic
     fun shouldLog(priority: LogLevel, o: Any?): Boolean = shouldLog(priority, o?.javaClass)
-
-    // Removed deprecated Int-based shouldLog overload.
 
     @JvmStatic
     fun registerLogThresholdCallback(ltc: LogThresholdCallback) {
@@ -238,7 +229,7 @@ abstract class Logger {
             } catch (_: Exception) {
               // Intentionally ignore: class may not declare optional log fields
             }
-            if (!done) error(this, "No log level field for " + c)
+            if (!done) error(this, "No log level field for $c")
           }
         }
       registerLogThresholdCallback(ltc)
@@ -257,11 +248,7 @@ abstract class Logger {
       logger.setThreshold(i)
     }
 
-    // Removed deprecated Int-based globalSetThreshold overload.
-
     @Synchronized @JvmStatic fun globalGetThresholdNew(): LogLevel = logger.getThresholdNew()
-
-    // Removed deprecated Int-based globalGetThreshold overload.
 
     @Synchronized
     @JvmStatic
