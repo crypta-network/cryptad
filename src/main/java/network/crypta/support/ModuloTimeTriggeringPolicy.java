@@ -2,8 +2,10 @@ package network.crypta.support;
 
 import ch.qos.logback.core.rolling.DefaultTimeBasedFileNamingAndTriggeringPolicy;
 import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * A Logback TimeBased triggering policy that only triggers at multiples of a base time unit.
@@ -45,15 +47,18 @@ public class ModuloTimeTriggeringPolicy<E>
 
     long nowMillis = getCurrentTime();
     ZonedDateTime now =
-        ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), ZoneId.systemDefault());
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMillis), ZoneId.systemDefault());
     switch (unit) {
       case MINUTE:
-        return now.getMinute() % multiple == 0;
+        long minutes = ChronoUnit.MINUTES.between(Instant.EPOCH, now.toInstant());
+        return minutes % multiple == 0;
       case HOUR:
-        return now.getHour() % multiple == 0;
+        long hours = ChronoUnit.HOURS.between(Instant.EPOCH, now.toInstant());
+        return hours % multiple == 0;
       case DAY:
       default:
-        return now.getDayOfMonth() % multiple == 0;
+        long days = ChronoUnit.DAYS.between(Instant.EPOCH, now.toInstant());
+        return days % multiple == 0;
     }
   }
 
