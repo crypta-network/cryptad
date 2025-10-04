@@ -274,18 +274,24 @@ abstract class Logger {
               val field: Field = c.getDeclaredField("logMINOR")
               if (Modifier.isStatic(field.modifiers)) {
                 field.isAccessible = true
-                field.set(null, shouldLog(LogLevel.MINOR, c))
+                // Sonar: prefer indexed accessor over direct set() call
+                field[null] = shouldLog(LogLevel.MINOR, c)
               }
               done = true
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+              // Intentionally ignore: class may not declare optional log fields
+            }
             try {
               val field: Field = c.getDeclaredField("logDEBUG")
               if (Modifier.isStatic(field.modifiers)) {
                 field.isAccessible = true
-                field.set(null, shouldLog(LogLevel.DEBUG, c))
+                // Sonar: prefer indexed accessor over direct set() call
+                field[null] = shouldLog(LogLevel.DEBUG, c)
               }
               done = true
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+              // Intentionally ignore: class may not declare optional log fields
+            }
             if (!done) error(this, "No log level field for " + c)
           }
         }
@@ -346,10 +352,8 @@ abstract class Logger {
       } else {
         val oldLogger = logger
         if (oldLogger !is VoidLogger) {
-          if (oldLogger !is LoggerHook) {
-            throw IllegalStateException(
-              "The old logger is not a VoidLogger and is not a LoggerHook either!"
-            )
+          check(oldLogger is LoggerHook) {
+            "The old logger is not a VoidLogger and is not a LoggerHook either!"
           }
         }
         setupChain()
