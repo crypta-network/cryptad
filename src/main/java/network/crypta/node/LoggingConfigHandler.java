@@ -667,9 +667,8 @@ public class LoggingConfigHandler {
     if (exists && !f.isDirectory())
       throw new InvalidConfigValueException("Cannot overwrite a file with a log directory");
     if (!exists) {
-      f.mkdir();
-      exists = f.exists();
-      if (!exists || !f.isDirectory())
+      // Ensure directory creation succeeds; treat failure as invalid config
+      if (!f.mkdir() && !f.isDirectory())
         throw new InvalidConfigValueException("Cannot create log directory");
     }
   }
