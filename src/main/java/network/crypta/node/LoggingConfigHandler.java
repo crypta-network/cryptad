@@ -590,7 +590,8 @@ public class LoggingConfigHandler {
   }
 
   /**
-   * Map logger.interval to a Logback date pattern. Multipliers (>1) are rounded down to base unit.
+   * Map "logger.interval" to a Logback date pattern. Multipliers (>1) are rounded down to base
+   * unit.
    */
   private String datePatternForInterval(String configured) {
     if (configured == null || configured.isEmpty()) return PATTERN_HOURLY; // default hourly
@@ -666,10 +667,9 @@ public class LoggingConfigHandler {
     boolean exists = f.exists();
     if (exists && !f.isDirectory())
       throw new InvalidConfigValueException("Cannot overwrite a file with a log directory");
-    if (!exists) {
+    if (!exists && !f.mkdir() && !f.isDirectory()) {
       // Ensure directory creation succeeds; treat failure as invalid config
-      if (!f.mkdir() && !f.isDirectory())
-        throw new InvalidConfigValueException("Cannot create log directory");
+      throw new InvalidConfigValueException("Cannot create log directory");
     }
   }
 }
