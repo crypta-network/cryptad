@@ -6,26 +6,7 @@ import java.lang.reflect.Modifier
 import network.crypta.support.LoggerHook.InvalidThresholdException
 
 abstract class Logger {
-  @Deprecated("unused")
-  class OSThread {
-    companion object {
-      @Deprecated("always returns -1") @JvmStatic fun getPID(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun getPPID(o: Any?): Int = -1
-
-      @Deprecated("always returns null")
-      @JvmStatic
-      fun getFieldFromProcSelfStat(fieldNumber: Int, o: Any?): String? = null
-
-      @Deprecated("always returns -1") @JvmStatic fun getPIDFromProcSelfStat(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun getPPIDFromProcSelfStat(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun logPID(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun logPPID(o: Any?): Int = -1
-    }
-  }
+  // Removed legacy OSThread helpers which were no-ops and unused.
 
   enum class LogLevel {
     MINIMAL,
@@ -39,30 +20,11 @@ abstract class Logger {
     fun matchesThreshold(threshold: LogLevel) = this.ordinal >= threshold.ordinal
 
     companion object {
-      @Deprecated("use enum constant")
-      @JvmStatic
-      fun fromOrdinal(ordinal: Int): LogLevel {
-        for (level in values()) {
-          if (level.ordinal == ordinal) return level
-        }
-        throw RuntimeException("Invalid ordinal: $ordinal")
-      }
+      // No deprecated helpers retained.
     }
   }
 
   companion object {
-    @Deprecated("use LogLevel constants") @JvmField val ERROR: Int = LogLevel.ERROR.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val WARNING: Int = LogLevel.WARNING.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val NORMAL: Int = LogLevel.NORMAL.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val MINOR: Int = LogLevel.MINOR.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val DEBUG: Int = LogLevel.DEBUG.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val INTERNAL: Int = LogLevel.NONE.ordinal
-
     @JvmField var logger: Logger = VoidLogger()
 
     @Synchronized
@@ -78,12 +40,7 @@ abstract class Logger {
       (logger as LoggerHookChain).addHook(hook)
     }
 
-    @Deprecated("use other overload")
-    @Synchronized
-    @JvmStatic
-    @Throws(InvalidThresholdException::class)
-    fun setupStdoutLogging(level: Int, detail: String?) =
-      setupStdoutLogging(LogLevel.entries.getOrNull(level) ?: LogLevel.NORMAL, detail)
+    // Removed deprecated Int-based setup overload.
 
     @Synchronized
     @JvmStatic
@@ -223,28 +180,17 @@ abstract class Logger {
       logger.log(o, s, e, prio)
     }
 
-    @Deprecated("use LogLevel version")
-    @Synchronized
-    @JvmStatic
-    fun logStatic(o: Any, s: String, prio: Int) {
-      logStatic(o, s, LogLevel.entries.getOrNull(prio) ?: LogLevel.NORMAL)
-    }
+    // Removed deprecated Int-based logStatic overload.
 
     @JvmStatic
     fun shouldLog(priority: LogLevel, c: Class<*>?): Boolean = logger.instanceShouldLog(priority, c)
 
-    @Deprecated("use LogLevel version")
-    @JvmStatic
-    fun shouldLog(priority: Int, c: Class<*>?): Boolean =
-      shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, c)
+    // Removed deprecated Int-based shouldLog overload.
 
     @JvmStatic
     fun shouldLog(priority: LogLevel, o: Any?): Boolean = shouldLog(priority, o?.javaClass)
 
-    @Deprecated("use LogLevel version")
-    @JvmStatic
-    fun shouldLog(priority: Int, o: Any?): Boolean =
-      shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, o)
+    // Removed deprecated Int-based shouldLog overload.
 
     @JvmStatic
     fun registerLogThresholdCallback(ltc: LogThresholdCallback) {
@@ -311,19 +257,11 @@ abstract class Logger {
       logger.setThreshold(i)
     }
 
-    @Deprecated("use LogLevel version")
-    @Synchronized
-    @JvmStatic
-    fun globalSetThreshold(i: Int) {
-      logger.setThreshold(LogLevel.entries.getOrNull(i) ?: LogLevel.NORMAL)
-    }
+    // Removed deprecated Int-based globalSetThreshold overload.
 
     @Synchronized @JvmStatic fun globalGetThresholdNew(): LogLevel = logger.getThresholdNew()
 
-    @Deprecated("use LogLevel version")
-    @Synchronized
-    @JvmStatic
-    fun globalGetThreshold(): Int = globalGetThresholdNew().ordinal
+    // Removed deprecated Int-based globalGetThreshold overload.
 
     @Synchronized
     @JvmStatic
