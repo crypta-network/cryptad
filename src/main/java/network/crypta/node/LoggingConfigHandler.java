@@ -390,6 +390,7 @@ public class LoggingConfigHandler {
   private final Object enableLoggerLock = new Object();
 
   /** Turn on the logger. */
+  @SuppressWarnings("java:S106")
   private void enableLogger() {
     try {
       preSetLogDir(logDir);
@@ -459,6 +460,7 @@ public class LoggingConfigHandler {
    * Reconfigure Logback's rolling file appender to point to a new directory without restarting the
    * JVM.
    */
+  @SuppressWarnings("java:S106")
   private void reconfigureLogbackFileDirectory(File newDir) {
     try {
       LoggerContext ctx = resolveLoggerContext();
@@ -548,12 +550,14 @@ public class LoggingConfigHandler {
             || UNIT_MONTH.equals(unit)
             || UNIT_YEAR.equals(unit))) {
       ModuloTimeTriggeringPolicy<E> mod = new ModuloTimeTriggeringPolicy<>();
-      if (UNIT_MINUTE.equals(unit)) mod.setUnit(Unit.MINUTE);
-      else if (UNIT_HOUR.equals(unit)) mod.setUnit(Unit.HOUR);
-      else if (UNIT_DAY.equals(unit)) mod.setUnit(Unit.DAY);
-      else if (UNIT_WEEK.equals(unit)) mod.setUnit(Unit.WEEK);
-      else if (UNIT_MONTH.equals(unit)) mod.setUnit(Unit.MONTH);
-      else mod.setUnit(Unit.YEAR);
+      switch (unit) {
+        case UNIT_MINUTE -> mod.setUnit(Unit.MINUTE);
+        case UNIT_HOUR -> mod.setUnit(Unit.HOUR);
+        case UNIT_DAY -> mod.setUnit(Unit.DAY);
+        case UNIT_WEEK -> mod.setUnit(Unit.WEEK);
+        case UNIT_MONTH -> mod.setUnit(Unit.MONTH);
+        default -> mod.setUnit(Unit.YEAR);
+      }
       mod.setMultiple(multiple);
       mod.setContext(ctx);
       return mod;
@@ -566,6 +570,7 @@ public class LoggingConfigHandler {
   }
 
   /** Apply configured total size cap to Logback rolling policy (if present). */
+  @SuppressWarnings("java:S106")
   private void updateLogbackTotalSizeCap(long bytes) {
     try {
       ILoggerFactory lf = LoggerFactory.getILoggerFactory();
@@ -646,6 +651,7 @@ public class LoggingConfigHandler {
     }
   }
 
+  @SuppressWarnings("java:S106")
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
       if (slf4jHook == null) return;
