@@ -572,6 +572,8 @@ public class LoggingConfigHandler {
 
   private String parseIntervalUnit(String s) {
     String up = s.toUpperCase();
+    // Accept plural units (e.g. 5MINUTES) by trimming an optional trailing 'S'
+    if (up.endsWith("S")) up = up.substring(0, up.length() - 1);
     int i = 0;
     while (i < up.length() && Character.isDigit(up.charAt(i))) i++;
     String unit = (i == 0) ? up : up.substring(i);
