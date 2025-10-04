@@ -242,8 +242,8 @@ public class LoggingConfigHandler {
         5,
         true,
         false,
-        "LogConfigHandler.detaildPriorityThreshold",
-        "LogConfigHandler.detaildPriorityThresholdLong",
+        "LogConfigHandler.detailedPriorityThreshold",
+        "LogConfigHandler.detailedPriorityThresholdLong",
         new StringCallback() {
           @Override
           public String get() {
