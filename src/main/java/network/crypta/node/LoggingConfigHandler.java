@@ -81,6 +81,7 @@ public class LoggingConfigHandler {
   private static final String UNIT_WEEK = "WEEK";
   private static final String UNIT_MONTH = "MONTH";
   private static final String UNIT_YEAR = "YEAR";
+  private static final String UNIT_WEEK_OF_YEAR = "WEEK_OF_YEAR"; // alias normalized to WEEK
   private static final String PATTERN_HOURLY = "yyyy-MM-dd_HH";
   private final SubConfig config;
   // FileLoggerHook removed; SLF4J/Logback handles outputs
@@ -612,9 +613,9 @@ public class LoggingConfigHandler {
     return switch (unit) {
       case UNIT_MINUTE -> "yyyy-MM-dd_HH-mm";
       case UNIT_DAY -> "yyyy-MM-dd";
-      case "WEEK_OF_YEAR", "WEEK" -> "YYYY-ww"; // ISO week-based year
-      case "MONTH" -> "yyyy-MM";
-      case "YEAR" -> "yyyy";
+      case UNIT_WEEK -> "YYYY-ww"; // ISO week-based year
+      case UNIT_MONTH -> "yyyy-MM";
+      case UNIT_YEAR -> "yyyy";
       default -> PATTERN_HOURLY;
     };
   }
@@ -627,7 +628,7 @@ public class LoggingConfigHandler {
     while (i < up.length() && Character.isDigit(up.charAt(i))) i++;
     String unit = (i == 0) ? up : up.substring(i);
     // Normalize aliases
-    if (unit.equals("WEEK_OF_YEAR")) return "WEEK";
+    if (unit.equals(UNIT_WEEK_OF_YEAR)) return UNIT_WEEK;
     return unit;
   }
 
