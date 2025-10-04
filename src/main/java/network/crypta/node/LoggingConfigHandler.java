@@ -72,6 +72,10 @@ public class LoggingConfigHandler {
   private int maxCachedLogLines;
   private long maxBacklogNotBusy;
   private final Executor executor;
+  // When capturing stdout/err, remember the originals to restore on disable
+  private java.io.PrintStream originalStdout;
+  private java.io.PrintStream originalStderr;
+  private boolean capturedStdStreams;
 
   public LoggingConfigHandler(SubConfig loggingConfig, Executor executor)
       throws InvalidConfigValueException {
@@ -378,6 +382,8 @@ public class LoggingConfigHandler {
           // Preserve existing console streams so ConsoleAppender can still emit to the terminal.
           java.io.PrintStream origOut = System.out;
           java.io.PrintStream origErr = System.err;
+          this.originalStdout = origOut;
+          this.originalStderr = origErr;
           System.setOut(
               new java.io.PrintStream(
                   new network.crypta.support.TeeOutputStreamLogger(
@@ -390,6 +396,7 @@ public class LoggingConfigHandler {
                       origErr, LogLevel.ERROR, "Stderr: ", enc),
                   false,
                   enc));
+          this.capturedStdStreams = true;
         } catch (Exception ignored) {
           // Best-effort; do not fail if we cannot capture
         }
@@ -602,6 +609,20 @@ public class LoggingConfigHandler {
       if (slf4jHook != null) {
         Logger.globalRemoveHook(slf4jHook);
         slf4jHook = null;
+      }
+      // If we captured stdout/err earlier, restore the originals so console stays functional
+      if (capturedStdStreams) {
+        try {
+          if (originalStdout != null) System.setOut(originalStdout);
+          if (originalStderr != null) System.setErr(originalStderr);
+        } catch (Throwable t) {
+          // Non-fatal: prefer keeping the app running even if we cannot restore
+          System.err.println("Failed to restore original std streams: " + t);
+        } finally {
+          capturedStdStreams = false;
+          originalStdout = null;
+          originalStderr = null;
+        }
       }
       Logger.destroyChainIfEmpty();
     }

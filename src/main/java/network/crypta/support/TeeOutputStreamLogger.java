@@ -45,6 +45,11 @@ public class TeeOutputStreamLogger extends OutputStream {
       original.write(b);
       return;
     }
+    // If Crypta's logger chain is disabled, bypass logging and print directly to console.
+    if (Logger.logger instanceof network.crypta.support.VoidLogger) {
+      original.write(b);
+      return;
+    }
     try {
       IN_LOGGING.set(Boolean.TRUE);
       Logger.logStatic(this, prefix + (char) b, priority);
@@ -56,6 +61,10 @@ public class TeeOutputStreamLogger extends OutputStream {
   @Override
   public void write(byte[] b, int off, int len) throws IOException {
     if (Boolean.TRUE.equals(IN_LOGGING.get())) {
+      original.write(b, off, len);
+      return;
+    }
+    if (Logger.logger instanceof network.crypta.support.VoidLogger) {
       original.write(b, off, len);
       return;
     }
