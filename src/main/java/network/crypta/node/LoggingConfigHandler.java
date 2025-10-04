@@ -33,10 +33,11 @@ public class LoggingConfigHandler {
       LoggerHookChain chain = Logger.getChain();
       try {
         chain.setThreshold(val);
-        // Keep SLF4J hook aligned when present
-        if (slf4jHookRef != null && slf4jHookRef.get() != null) {
+        // Keep SLF4J hook aligned when present (guard against GC race)
+        Slf4jLoggerHook hook = (slf4jHookRef == null) ? null : slf4jHookRef.get();
+        if (hook != null) {
           try {
-            slf4jHookRef.get().setThreshold(val);
+            hook.setThreshold(val);
           } catch (LoggerHook.InvalidThresholdException e) {
             // Fall through to consistent error handling below
             throw e;
@@ -209,8 +210,9 @@ public class LoggingConfigHandler {
             LoggerHookChain chain = Logger.getChain();
             try {
               chain.setDetailedThresholds(val);
-              if (slf4jHookRef != null && slf4jHookRef.get() != null) {
-                slf4jHookRef.get().setDetailedThresholds(val);
+              Slf4jLoggerHook hook = (slf4jHookRef == null) ? null : slf4jHookRef.get();
+              if (hook != null) {
+                hook.setDetailedThresholds(val);
               }
             } catch (InvalidThresholdException e) {
               throw new InvalidConfigValueException(e.getMessage());
