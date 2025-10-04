@@ -1,24 +1,43 @@
 package network.crypta.node;
 
+import ch.qos.logback.classic.AsyncAppender;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.rolling.DefaultTimeBasedFileNamingAndTriggeringPolicy;
+import ch.qos.logback.core.rolling.RollingFileAppender;
+import ch.qos.logback.core.rolling.RollingPolicy;
+import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
+import ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy;
+import ch.qos.logback.core.util.FileSize;
 import java.io.File;
+import java.io.PrintStream;
+import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.OptionFormatException;
 import network.crypta.config.SubConfig;
-import network.crypta.support.Executor;
 import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.LoggerHookChain;
+import network.crypta.support.ModuloTimeTriggeringPolicy;
+import network.crypta.support.ModuloTimeTriggeringPolicy.Unit;
 import network.crypta.support.Slf4jLoggerHook;
+import network.crypta.support.TeeOutputStreamLogger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.ILoggerFactory;
+import org.slf4j.LoggerFactory;
 
 public class LoggingConfigHandler {
   private static class PriorityCallback extends StringCallback implements EnumerableOptionCallback {
@@ -36,12 +55,7 @@ public class LoggingConfigHandler {
         // Keep SLF4J hook aligned when present (guard against GC race)
         Slf4jLoggerHook hook = (slf4jHookRef == null) ? null : slf4jHookRef.get();
         if (hook != null) {
-          try {
-            hook.setThreshold(val);
-          } catch (LoggerHook.InvalidThresholdException e) {
-            // Fall through to consistent error handling below
-            throw e;
-          }
+          hook.setThreshold(val);
         }
       } catch (LoggerHook.InvalidThresholdException e) {
         throw new OptionFormatException(e.getMessage());
@@ -50,38 +64,66 @@ public class LoggingConfigHandler {
 
     @Override
     public String[] getPossibleValues() {
-      LogLevel[] priorities = LogLevel.values();
-      ArrayList<String> values = new ArrayList<>(priorities.length + 1);
+      List<LogLevel> priorities = LogLevel.getEntries();
+      ArrayList<String> values = new ArrayList<>(priorities.size() + 1);
       for (LogLevel p : priorities) values.add(p.name());
 
       return values.toArray(new String[0]);
     }
   }
 
-  protected static final String LOG_PREFIX = "freenet";
+  private static final String SYS_PROP_LOG_DIR = "crypta.log.dir";
+  private static final String CONF_MAX_ZIPPED_SIZE = "maxZippedLogsSize";
+  private static final String CONF_PRIORITY = "priority";
+  private static final String UNIT_MINUTE = "MINUTE";
+  private static final String UNIT_HOUR = "HOUR";
+  private static final String UNIT_DAY = "DAY";
+  private static final String PATTERN_HOURLY = "yyyy-MM-dd_HH";
   private final SubConfig config;
   // FileLoggerHook removed; SLF4J/Logback handles outputs
   private Slf4jLoggerHook slf4jHook;
   // Weak reference to allow static callbacks to update the hook without leaks
-  private static java.lang.ref.WeakReference<Slf4jLoggerHook> slf4jHookRef =
-      new java.lang.ref.WeakReference<>(null);
+  private static WeakReference<Slf4jLoggerHook> slf4jHookRef = new WeakReference<>(null);
   private File logDir;
   private long maxZippedLogsSize;
   private String logRotateInterval;
   private long maxCachedLogBytes;
   private int maxCachedLogLines;
   private long maxBacklogNotBusy;
-  private final Executor executor;
+  // No executor required; logging configuration is independent
   // When capturing stdout/err, remember the originals to restore on disable
-  private java.io.PrintStream originalStdout;
-  private java.io.PrintStream originalStderr;
+  private PrintStream originalStdout;
+  private PrintStream originalStderr;
   private boolean capturedStdStreams;
 
-  public LoggingConfigHandler(SubConfig loggingConfig, Executor executor)
-      throws InvalidConfigValueException {
+  public LoggingConfigHandler(SubConfig loggingConfig) throws InvalidConfigValueException {
     this.config = loggingConfig;
-    this.executor = executor;
 
+    registerEnabled(loggingConfig);
+    boolean loggingEnabled = loggingConfig.getBoolean("enabled");
+
+    registerDirname(loggingConfig, loggingEnabled);
+
+    registerMaxZippedLogsSize();
+
+    // priority (node may override on testnet)
+    registerPriority();
+
+    registerPriorityDetail();
+
+    registerInterval();
+
+    registerMaxCachedBytes();
+
+    registerMaxCachedLines();
+
+    registerMaxBacklogNotBusy();
+
+    if (loggingEnabled) enableLogger();
+    config.finishedInitialization();
+  }
+
+  private void registerEnabled(SubConfig loggingConfig) {
     loggingConfig.register(
         "enabled",
         true,
@@ -97,18 +139,20 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(Boolean val) throws InvalidConfigValueException {
-            if (val == (slf4jHook != null)) return;
-            if (!val) {
+          public void set(Boolean val) {
+            final boolean enable = Boolean.TRUE.equals(val);
+            if (enable == (slf4jHook != null)) return;
+            if (!enable) {
               disableLogger();
             } else {
               enableLogger();
             }
           }
         });
+  }
 
-    boolean loggingEnabled = loggingConfig.getBoolean("enabled");
-
+  private void registerDirname(SubConfig loggingConfig, boolean loggingEnabled)
+      throws InvalidConfigValueException {
     loggingConfig.register(
         "dirname",
         "logs",
@@ -131,7 +175,7 @@ public class LoggingConfigHandler {
             // Still here
             logDir = f;
             // Keep SLF4J rolling appender in the same directory
-            System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
+            System.setProperty(SYS_PROP_LOG_DIR, logDir.getAbsolutePath());
             // Reconfigure Logback file appender to the new directory immediately
             reconfigureLogbackFileDirectory(logDir);
           }
@@ -139,18 +183,19 @@ public class LoggingConfigHandler {
 
     logDir = new File(config.getString("dirname"));
     // Initialize SLF4J rolling file location to mirror FileLoggerHook directory
-    System.setProperty("crypta.log.dir", logDir.getAbsolutePath());
+    System.setProperty(SYS_PROP_LOG_DIR, logDir.getAbsolutePath());
     // Ensure Logback's file appender targets the initial directory
     reconfigureLogbackFileDirectory(logDir);
     if (loggingEnabled) {
       preSetLogDir(logDir);
     }
     // => enableLogger must run preSetLogDir
+  }
 
+  private void registerMaxZippedLogsSize() {
     // max space used by zipped logs
-
     config.register(
-        "maxZippedLogsSize",
+        CONF_MAX_ZIPPED_SIZE,
         "10M",
         3,
         true,
@@ -164,7 +209,7 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(Long val) throws InvalidConfigValueException {
+          public void set(Long val) {
             if (val < 0) val = 0L;
             maxZippedLogsSize = val;
             // Apply to Logback rolling policy immediately
@@ -173,17 +218,14 @@ public class LoggingConfigHandler {
         },
         true);
 
-    maxZippedLogsSize = config.getLong("maxZippedLogsSize");
+    maxZippedLogsSize = config.getLong(CONF_MAX_ZIPPED_SIZE);
     // Ensure Logback picks up the configured cap at startup
     updateLogbackTotalSizeCap(maxZippedLogsSize);
+  }
 
-    // These two are forced below so we don't need to check them now
-
-    // priority
-
-    // Node must override this to minor on testnet.
+  private void registerPriority() {
     config.register(
-        "priority",
+        CONF_PRIORITY,
         "warning",
         4,
         false,
@@ -191,9 +233,9 @@ public class LoggingConfigHandler {
         "LogConfigHandler.minLoggingPriority",
         "LogConfigHandler.minLoggingPriorityLong",
         new PriorityCallback());
+  }
 
-    // detailed priority
-
+  private void registerPriorityDetail() {
     config.register(
         "priorityDetail",
         "",
@@ -223,7 +265,9 @@ public class LoggingConfigHandler {
             }
           }
         });
+  }
 
+  private void registerInterval() {
     // interval (kept for compatibility; handled by Logback)
     config.register(
         "interval",
@@ -240,7 +284,7 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(String val) throws InvalidConfigValueException {
+          public void set(String val) {
             logRotateInterval = val;
             // Apply new interval to Logback rolling pattern immediately
             reconfigureLogbackFileDirectory(logDir);
@@ -250,7 +294,9 @@ public class LoggingConfigHandler {
     logRotateInterval = config.getString("interval");
     // Apply current interval to Logback pattern at startup
     reconfigureLogbackFileDirectory(logDir);
+  }
 
+  private void registerMaxCachedBytes() {
     // max cached bytes in RAM
     config.register(
         "maxCachedBytes",
@@ -267,7 +313,7 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(Long val) throws InvalidConfigValueException {
+          public void set(Long val) {
             if (val < 0) val = 0L;
             if (val == maxCachedLogBytes) return;
             maxCachedLogBytes = val;
@@ -277,7 +323,9 @@ public class LoggingConfigHandler {
         true);
 
     maxCachedLogBytes = config.getLong("maxCachedBytes");
+  }
 
+  private void registerMaxCachedLines() {
     // max cached lines in RAM
     config.register(
         "maxCachedLines",
@@ -294,8 +342,7 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(Integer val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
+          public void set(Integer val) throws NodeNeedRestartException {
             if (val < 0) val = 0;
             if (val == maxCachedLogLines) return;
             maxCachedLogLines = val;
@@ -305,7 +352,9 @@ public class LoggingConfigHandler {
         Dimension.NOT);
 
     maxCachedLogLines = config.getInt("maxCachedLines");
+  }
 
+  private void registerMaxBacklogNotBusy() {
     config.register(
         "maxBacklogNotBusy",
         "60000",
@@ -322,7 +371,7 @@ public class LoggingConfigHandler {
           }
 
           @Override
-          public void set(Long val) throws InvalidConfigValueException, NodeNeedRestartException {
+          public void set(Long val) throws InvalidConfigValueException {
             if (val < 0) throw new InvalidConfigValueException("Must be >= 0");
             if (val == maxBacklogNotBusy) return;
             maxBacklogNotBusy = val;
@@ -332,9 +381,6 @@ public class LoggingConfigHandler {
         false);
 
     maxBacklogNotBusy = config.getLong("maxBacklogNotBusy");
-
-    if (loggingEnabled) enableLogger();
-    config.finishedInitialization();
   }
 
   private final Object enableLoggerLock = new Object();
@@ -351,18 +397,18 @@ public class LoggingConfigHandler {
       if (slf4jHook != null) return;
       Logger.setupChain();
       try {
-        config.forceUpdate("priority");
+        config.forceUpdate(CONF_PRIORITY);
         config.forceUpdate("priorityDetail");
       } catch (InvalidConfigValueException e2) {
         System.err.println(
             "Invalid config value for logger.priority in config file: "
-                + config.getString("priority"));
+                + config.getString(CONF_PRIORITY));
         // Leave it at the default.
       } catch (NodeNeedRestartException e) {
         // impossible
         System.err.println(
             "impossible NodeNeedRestartException for logger.priority in config file: "
-                + config.getString("priority"));
+                + config.getString(CONF_PRIORITY));
       }
       // Add SLF4J sink first and align its thresholds with the chain / config
       slf4jHook = new Slf4jLoggerHook(LogLevel.DEBUG /* initial; will be overridden below */);
@@ -378,24 +424,20 @@ public class LoggingConfigHandler {
       // Optional: capture System.out/err to SLF4J when requested
       if (Boolean.getBoolean("crypta.captureStdStreams")) {
         try {
-          String enc = java.nio.charset.StandardCharsets.UTF_8.name();
+          String enc = StandardCharsets.UTF_8.name();
           // Preserve existing console streams so ConsoleAppender can still emit to the terminal.
-          java.io.PrintStream origOut = System.out;
-          java.io.PrintStream origErr = System.err;
+          PrintStream origOut = System.out;
+          PrintStream origErr = System.err;
           this.originalStdout = origOut;
           this.originalStderr = origErr;
           System.setOut(
-              new java.io.PrintStream(
-                  new network.crypta.support.TeeOutputStreamLogger(
-                      origOut, LogLevel.NORMAL, "Stdout: ", enc),
+              new PrintStream(
+                  new TeeOutputStreamLogger(origOut, LogLevel.NORMAL, "Stdout: ", enc),
                   false,
                   enc));
           System.setErr(
-              new java.io.PrintStream(
-                  new network.crypta.support.TeeOutputStreamLogger(
-                      origErr, LogLevel.ERROR, "Stderr: ", enc),
-                  false,
-                  enc));
+              new PrintStream(
+                  new TeeOutputStreamLogger(origErr, LogLevel.ERROR, "Stderr: ", enc), false, enc));
           this.capturedStdStreams = true;
         } catch (Exception ignored) {
           // Best-effort; do not fail if we cannot capture
@@ -403,7 +445,7 @@ public class LoggingConfigHandler {
       }
 
       // Publish weak ref for callbacks to update on future config changes
-      slf4jHookRef = new java.lang.ref.WeakReference<>(slf4jHook);
+      slf4jHookRef = new WeakReference<>(slf4jHook);
 
       // No FileLoggerHook; SLF4J/Logback handles outputs
     }
@@ -415,134 +457,134 @@ public class LoggingConfigHandler {
    */
   private void reconfigureLogbackFileDirectory(File newDir) {
     try {
-      org.slf4j.ILoggerFactory lf = org.slf4j.LoggerFactory.getILoggerFactory();
-      if (!(lf instanceof ch.qos.logback.classic.LoggerContext)) return;
-      ch.qos.logback.classic.LoggerContext ctx = (ch.qos.logback.classic.LoggerContext) lf;
-      ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-      ch.qos.logback.core.Appender<?> async = root.getAppender("ASYNC_FILE");
-      if (!(async instanceof ch.qos.logback.classic.AsyncAppender)) return;
-      ch.qos.logback.classic.AsyncAppender aa = (ch.qos.logback.classic.AsyncAppender) async;
-      for (java.util.Iterator<
-                  ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent>>
-              it = aa.iteratorForAppenders();
-          it.hasNext(); ) {
-        ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent> child = it.next();
-        if (child instanceof ch.qos.logback.core.rolling.RollingFileAppender) {
-          ch.qos.logback.core.rolling.RollingFileAppender<ch.qos.logback.classic.spi.ILoggingEvent>
-              rfa =
-                  (ch.qos.logback.core.rolling.RollingFileAppender<
-                          ch.qos.logback.classic.spi.ILoggingEvent>)
-                      child;
-          String newFile = new File(newDir, "crypta-latest.log").getAbsolutePath();
-          String datePat = datePatternForInterval(logRotateInterval);
-          String newPattern =
-              new File(newDir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+      LoggerContext ctx = resolveLoggerContext();
+      if (ctx == null) return;
+      AsyncAppender aa = resolveAsyncFileAppender(ctx);
+      if (aa == null) return;
 
-          // Stop, update, and restart the rolling policy and appender
-          rfa.stop();
-          ch.qos.logback.core.rolling.RollingPolicy rp = rfa.getRollingPolicy();
-          if (rp instanceof ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy) {
-            ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
-                    ch.qos.logback.classic.spi.ILoggingEvent>
-                st =
-                    (ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
-                            ch.qos.logback.classic.spi.ILoggingEvent>)
-                        rp;
-            // Stop appender and policy before applying changes
-            st.stop();
-            rfa.stop();
-            st.setFileNamePattern(newPattern);
-            // Keep total size cap aligned with configured maxZippedLogsSize
-            st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(maxZippedLogsSize));
-            // Choose appropriate triggering policy for the current interval
-            int multiple = parseIntervalMultiple(logRotateInterval);
-            String unit = parseIntervalUnit(logRotateInterval);
-            ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy<
-                    ch.qos.logback.classic.spi.ILoggingEvent>
-                policy;
-            if (multiple > 1
-                && ("MINUTE".equals(unit) || "HOUR".equals(unit) || "DAY".equals(unit))) {
-              network.crypta.support.ModuloTimeTriggeringPolicy<
-                      ch.qos.logback.classic.spi.ILoggingEvent>
-                  mod = new network.crypta.support.ModuloTimeTriggeringPolicy<>();
-              if ("MINUTE".equals(unit)) {
-                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.MINUTE);
-              } else if ("HOUR".equals(unit)) {
-                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.HOUR);
-              } else {
-                mod.setUnit(network.crypta.support.ModuloTimeTriggeringPolicy.Unit.DAY);
-              }
-              mod.setMultiple(multiple);
-              mod.setContext(ctx);
-              policy = mod;
-            } else {
-              ch.qos.logback.core.rolling.DefaultTimeBasedFileNamingAndTriggeringPolicy<
-                      ch.qos.logback.classic.spi.ILoggingEvent>
-                  def =
-                      new ch.qos.logback.core.rolling
-                          .DefaultTimeBasedFileNamingAndTriggeringPolicy<>();
-              def.setContext(ctx);
-              policy = def;
-            }
-            st.setTimeBasedFileNamingAndTriggeringPolicy(policy);
-            // Restart in order: policy then appender
-            st.start();
-            rfa.setFile(newFile);
-            rfa.start();
-          }
-          break; // updated first rolling file appender
-        }
-      }
-    } catch (Throwable t) {
-      System.err.println("Failed to reconfigure Logback file directory: " + t);
+      RollingFileAppender<ILoggingEvent> rfa = findRollingFileAppender(aa);
+      if (rfa == null) return;
+
+      String datePat = datePatternForInterval(logRotateInterval);
+      String newPattern =
+          new File(newDir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+      String newFile = new File(newDir, "crypta-latest.log").getAbsolutePath();
+
+      applyRollingPolicyUpdate(ctx, rfa, newFile, newPattern);
+    } catch (Exception e) {
+      System.err.println("Failed to reconfigure Logback file directory: " + e);
     }
+  }
+
+  private LoggerContext resolveLoggerContext() {
+    ILoggerFactory lf = LoggerFactory.getILoggerFactory();
+    if (lf instanceof LoggerContext loggercontext) {
+      return loggercontext;
+    }
+    return null;
+  }
+
+  private AsyncAppender resolveAsyncFileAppender(LoggerContext ctx) {
+    ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    Appender<?> async = root.getAppender("ASYNC_FILE");
+    if (async instanceof AsyncAppender asyncappender) {
+      return asyncappender;
+    }
+    return null;
+  }
+
+  private RollingFileAppender<ILoggingEvent> findRollingFileAppender(AsyncAppender aa) {
+    for (Iterator<Appender<ILoggingEvent>> it = aa.iteratorForAppenders(); it.hasNext(); ) {
+      Appender<ILoggingEvent> child = it.next();
+      if (child instanceof RollingFileAppender) {
+        return (RollingFileAppender<ILoggingEvent>) child;
+      }
+    }
+    return null;
+  }
+
+  private void applyRollingPolicyUpdate(
+      LoggerContext ctx,
+      RollingFileAppender<ILoggingEvent> rfa,
+      String newFile,
+      String newPattern) {
+    RollingPolicy rp = rfa.getRollingPolicy();
+    if (!(rp instanceof SizeAndTimeBasedRollingPolicy)) return;
+
+    SizeAndTimeBasedRollingPolicy<ILoggingEvent> st =
+        (SizeAndTimeBasedRollingPolicy<ILoggingEvent>) rp;
+
+    // Stop appender and policy before applying changes
+    st.stop();
+    rfa.stop();
+    st.setFileNamePattern(newPattern);
+    // Keep total size cap aligned with configured maxZippedLogsSize
+    st.setTotalSizeCap(new FileSize(maxZippedLogsSize));
+
+    int multiple = parseIntervalMultiple(logRotateInterval);
+    String unit = parseIntervalUnit(logRotateInterval);
+    st.setTimeBasedFileNamingAndTriggeringPolicy(buildTriggeringPolicy(ctx, multiple, unit));
+
+    // Restart in order: policy then appender
+    st.start();
+    rfa.setFile(newFile);
+    rfa.start();
+  }
+
+  private TimeBasedFileNamingAndTriggeringPolicy<ILoggingEvent> buildTriggeringPolicy(
+      LoggerContext ctx, int multiple, String unit) {
+    if (multiple > 1
+        && (UNIT_MINUTE.equals(unit) || UNIT_HOUR.equals(unit) || UNIT_DAY.equals(unit))) {
+      ModuloTimeTriggeringPolicy<ILoggingEvent> mod = new ModuloTimeTriggeringPolicy<>();
+      if (UNIT_MINUTE.equals(unit)) {
+        mod.setUnit(Unit.MINUTE);
+      } else if (UNIT_HOUR.equals(unit)) {
+        mod.setUnit(Unit.HOUR);
+      } else {
+        mod.setUnit(Unit.DAY);
+      }
+      mod.setMultiple(multiple);
+      mod.setContext(ctx);
+      return mod;
+    }
+
+    DefaultTimeBasedFileNamingAndTriggeringPolicy<ILoggingEvent> def =
+        new DefaultTimeBasedFileNamingAndTriggeringPolicy<>();
+    def.setContext(ctx);
+    return def;
   }
 
   /** Apply configured total size cap to Logback rolling policy (if present). */
   private void updateLogbackTotalSizeCap(long bytes) {
     try {
-      org.slf4j.ILoggerFactory lf = org.slf4j.LoggerFactory.getILoggerFactory();
-      if (!(lf instanceof ch.qos.logback.classic.LoggerContext)) return;
-      ch.qos.logback.classic.LoggerContext ctx = (ch.qos.logback.classic.LoggerContext) lf;
-      ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-      ch.qos.logback.core.Appender<?> async = root.getAppender("ASYNC_FILE");
-      if (!(async instanceof ch.qos.logback.classic.AsyncAppender)) return;
-      ch.qos.logback.classic.AsyncAppender aa = (ch.qos.logback.classic.AsyncAppender) async;
-      for (java.util.Iterator<
-                  ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent>>
-              it = aa.iteratorForAppenders();
+      ILoggerFactory lf = LoggerFactory.getILoggerFactory();
+      if (!(lf instanceof LoggerContext loggercontext)) return;
+      ch.qos.logback.classic.Logger root =
+          loggercontext.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+      Appender<?> async = root.getAppender("ASYNC_FILE");
+      if (!(async instanceof AsyncAppender asyncappender)) return;
+      for (Iterator<Appender<ILoggingEvent>> it = asyncappender.iteratorForAppenders();
           it.hasNext(); ) {
-        ch.qos.logback.core.Appender<ch.qos.logback.classic.spi.ILoggingEvent> child = it.next();
-        if (child instanceof ch.qos.logback.core.rolling.RollingFileAppender) {
-          ch.qos.logback.core.rolling.RollingFileAppender<ch.qos.logback.classic.spi.ILoggingEvent>
-              rfa =
-                  (ch.qos.logback.core.rolling.RollingFileAppender<
-                          ch.qos.logback.classic.spi.ILoggingEvent>)
-                      child;
-          ch.qos.logback.core.rolling.RollingPolicy rp = rfa.getRollingPolicy();
-          if (rp instanceof ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy) {
-            ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
-                    ch.qos.logback.classic.spi.ILoggingEvent>
-                st =
-                    (ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy<
-                            ch.qos.logback.classic.spi.ILoggingEvent>)
-                        rp;
+        Appender<ILoggingEvent> child = it.next();
+        if (child instanceof RollingFileAppender<ILoggingEvent> rfa) {
+          RollingPolicy rp = rfa.getRollingPolicy();
+          if (rp instanceof SizeAndTimeBasedRollingPolicy) {
+            SizeAndTimeBasedRollingPolicy<ILoggingEvent> st =
+                (SizeAndTimeBasedRollingPolicy<ILoggingEvent>) rp;
             st.stop();
-            st.setTotalSizeCap(new ch.qos.logback.core.util.FileSize(bytes));
+            st.setTotalSizeCap(new FileSize(bytes));
             // Ensure file pattern reflects current interval as well
             String datePat = datePatternForInterval(logRotateInterval);
-            String dir =
-                System.getProperty("crypta.log.dir", new java.io.File(".").getAbsolutePath());
-            String pat =
-                new java.io.File(dir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+            String dir = System.getProperty(SYS_PROP_LOG_DIR, new File(".").getAbsolutePath());
+            String pat = new File(dir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
             st.setFileNamePattern(pat);
             st.start();
           }
           break;
         }
       }
-    } catch (Throwable t) {
-      System.err.println("Failed to update Logback totalSizeCap: " + t);
+    } catch (Exception e) {
+      System.err.println("Failed to update Logback totalSizeCap: " + e);
     }
   }
 
@@ -550,7 +592,7 @@ public class LoggingConfigHandler {
    * Map logger.interval to a Logback date pattern. Multipliers (>1) are rounded down to base unit.
    */
   private String datePatternForInterval(String configured) {
-    if (configured == null || configured.isEmpty()) return "yyyy-MM-dd_HH"; // default hourly
+    if (configured == null || configured.isEmpty()) return PATTERN_HOURLY; // default hourly
     String s = configured.trim().toUpperCase();
     // Strip optional trailing 'S'
     if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
@@ -558,23 +600,14 @@ public class LoggingConfigHandler {
     int i = 0;
     while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
     String unit = parseIntervalUnit(s);
-    switch (unit) {
-      case "MINUTE":
-        return "yyyy-MM-dd_HH-mm";
-      case "HOUR":
-        return "yyyy-MM-dd_HH";
-      case "DAY":
-        return "yyyy-MM-dd";
-      case "WEEK_OF_YEAR":
-      case "WEEK":
-        return "YYYY-ww"; // ISO week-based year
-      case "MONTH":
-        return "yyyy-MM";
-      case "YEAR":
-        return "yyyy";
-      default:
-        return "yyyy-MM-dd_HH";
-    }
+    return switch (unit) {
+      case UNIT_MINUTE -> "yyyy-MM-dd_HH-mm";
+      case UNIT_DAY -> "yyyy-MM-dd";
+      case "WEEK_OF_YEAR", "WEEK" -> "YYYY-ww"; // ISO week-based year
+      case "MONTH" -> "yyyy-MM";
+      case "YEAR" -> "yyyy";
+      default -> PATTERN_HOURLY;
+    };
   }
 
   private String parseIntervalUnit(String s) {
@@ -606,16 +639,14 @@ public class LoggingConfigHandler {
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
       if (slf4jHook == null) return;
-      if (slf4jHook != null) {
-        Logger.globalRemoveHook(slf4jHook);
-        slf4jHook = null;
-      }
+      Logger.globalRemoveHook(slf4jHook);
+      slf4jHook = null;
       // If we captured stdout/err earlier, restore the originals so console stays functional
       if (capturedStdStreams) {
         try {
           if (originalStdout != null) System.setOut(originalStdout);
           if (originalStderr != null) System.setErr(originalStderr);
-        } catch (Throwable t) {
+        } catch (Exception t) {
           // Non-fatal: prefer keeping the app running even if we cannot restore
           System.err.println("Failed to restore original std streams: " + t);
         } finally {
@@ -640,20 +671,5 @@ public class LoggingConfigHandler {
       if (!exists || !f.isDirectory())
         throw new InvalidConfigValueException("Cannot create log directory");
     }
-  }
-
-  // Deleter and getFileLoggerHook removed with FileLoggerHook
-
-  public void forceEnableLogging() {
-    enableLogger();
-  }
-
-  public long getMaxZippedLogFiles() {
-    return maxZippedLogsSize;
-  }
-
-  public void setMaxZippedLogFiles(String maxSizeAsString)
-      throws InvalidConfigValueException, NodeNeedRestartException {
-    config.set("maxZippedLogsSize", maxSizeAsString);
   }
 }

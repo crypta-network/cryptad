@@ -514,7 +514,7 @@ public class NodeStarter implements WrapperListener {
     LoggingConfigHandler logConfigHandler;
     try {
       System.out.println("Creating logger...");
-      logConfigHandler = new LoggingConfigHandler(loggingConfig, executor);
+      logConfigHandler = new LoggingConfigHandler(loggingConfig);
     } catch (InvalidConfigValueException e) {
       System.err.println("Error: could not set up logging: " + e.getMessage());
       e.printStackTrace();
