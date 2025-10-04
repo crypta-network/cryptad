@@ -509,10 +509,7 @@ public class LoggingConfigHandler {
       String newFile,
       String newPattern) {
     RollingPolicy rp = rfa.getRollingPolicy();
-    if (!(rp instanceof SizeAndTimeBasedRollingPolicy)) return;
-
-    SizeAndTimeBasedRollingPolicy<ILoggingEvent> st =
-        (SizeAndTimeBasedRollingPolicy<ILoggingEvent>) rp;
+    if (!(rp instanceof SizeAndTimeBasedRollingPolicy<?> st)) return;
 
     // Stop appender and policy before applying changes
     st.stop();
@@ -523,7 +520,7 @@ public class LoggingConfigHandler {
 
     int multiple = parseIntervalMultiple(logRotateInterval);
     String unit = parseIntervalUnit(logRotateInterval);
-    st.setTimeBasedFileNamingAndTriggeringPolicy(buildTriggeringPolicy(ctx, multiple, unit));
+    assignPolicy(ctx, st, multiple, unit);
 
     // Restart in order: policy then appender
     st.start();
@@ -531,11 +528,17 @@ public class LoggingConfigHandler {
     rfa.start();
   }
 
-  private TimeBasedFileNamingAndTriggeringPolicy<ILoggingEvent> buildTriggeringPolicy(
+  private static <E> void assignPolicy(
+      LoggerContext ctx, SizeAndTimeBasedRollingPolicy<E> st, int multiple, String unit) {
+    TimeBasedFileNamingAndTriggeringPolicy<E> policy = buildTriggeringPolicy(ctx, multiple, unit);
+    st.setTimeBasedFileNamingAndTriggeringPolicy(policy);
+  }
+
+  private static <E> TimeBasedFileNamingAndTriggeringPolicy<E> buildTriggeringPolicy(
       LoggerContext ctx, int multiple, String unit) {
     if (multiple > 1
         && (UNIT_MINUTE.equals(unit) || UNIT_HOUR.equals(unit) || UNIT_DAY.equals(unit))) {
-      ModuloTimeTriggeringPolicy<ILoggingEvent> mod = new ModuloTimeTriggeringPolicy<>();
+      ModuloTimeTriggeringPolicy<E> mod = new ModuloTimeTriggeringPolicy<>();
       if (UNIT_MINUTE.equals(unit)) {
         mod.setUnit(Unit.MINUTE);
       } else if (UNIT_HOUR.equals(unit)) {
@@ -548,7 +551,7 @@ public class LoggingConfigHandler {
       return mod;
     }
 
-    DefaultTimeBasedFileNamingAndTriggeringPolicy<ILoggingEvent> def =
+    DefaultTimeBasedFileNamingAndTriggeringPolicy<E> def =
         new DefaultTimeBasedFileNamingAndTriggeringPolicy<>();
     def.setContext(ctx);
     return def;
@@ -568,9 +571,7 @@ public class LoggingConfigHandler {
         Appender<ILoggingEvent> child = it.next();
         if (child instanceof RollingFileAppender<ILoggingEvent> rfa) {
           RollingPolicy rp = rfa.getRollingPolicy();
-          if (rp instanceof SizeAndTimeBasedRollingPolicy) {
-            SizeAndTimeBasedRollingPolicy<ILoggingEvent> st =
-                (SizeAndTimeBasedRollingPolicy<ILoggingEvent>) rp;
+          if (rp instanceof SizeAndTimeBasedRollingPolicy<?> st) {
             st.stop();
             st.setTotalSizeCap(new FileSize(bytes));
             // Ensure file pattern reflects current interval as well
