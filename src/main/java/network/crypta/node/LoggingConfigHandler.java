@@ -78,6 +78,9 @@ public class LoggingConfigHandler {
   private static final String UNIT_MINUTE = "MINUTE";
   private static final String UNIT_HOUR = "HOUR";
   private static final String UNIT_DAY = "DAY";
+  private static final String UNIT_WEEK = "WEEK";
+  private static final String UNIT_MONTH = "MONTH";
+  private static final String UNIT_YEAR = "YEAR";
   private static final String PATTERN_HOURLY = "yyyy-MM-dd_HH";
   private final SubConfig config;
   // FileLoggerHook removed; SLF4J/Logback handles outputs
@@ -537,15 +540,19 @@ public class LoggingConfigHandler {
   private static <E> TimeBasedFileNamingAndTriggeringPolicy<E> buildTriggeringPolicy(
       LoggerContext ctx, int multiple, String unit) {
     if (multiple > 1
-        && (UNIT_MINUTE.equals(unit) || UNIT_HOUR.equals(unit) || UNIT_DAY.equals(unit))) {
+        && (UNIT_MINUTE.equals(unit)
+            || UNIT_HOUR.equals(unit)
+            || UNIT_DAY.equals(unit)
+            || UNIT_WEEK.equals(unit)
+            || UNIT_MONTH.equals(unit)
+            || UNIT_YEAR.equals(unit))) {
       ModuloTimeTriggeringPolicy<E> mod = new ModuloTimeTriggeringPolicy<>();
-      if (UNIT_MINUTE.equals(unit)) {
-        mod.setUnit(Unit.MINUTE);
-      } else if (UNIT_HOUR.equals(unit)) {
-        mod.setUnit(Unit.HOUR);
-      } else {
-        mod.setUnit(Unit.DAY);
-      }
+      if (UNIT_MINUTE.equals(unit)) mod.setUnit(Unit.MINUTE);
+      else if (UNIT_HOUR.equals(unit)) mod.setUnit(Unit.HOUR);
+      else if (UNIT_DAY.equals(unit)) mod.setUnit(Unit.DAY);
+      else if (UNIT_WEEK.equals(unit)) mod.setUnit(Unit.WEEK);
+      else if (UNIT_MONTH.equals(unit)) mod.setUnit(Unit.MONTH);
+      else mod.setUnit(Unit.YEAR);
       mod.setMultiple(multiple);
       mod.setContext(ctx);
       return mod;
