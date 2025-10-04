@@ -1,9 +1,9 @@
 package network.crypta.support
 
-import network.crypta.support.LoggerHook.InvalidThresholdException
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
+import network.crypta.support.LoggerHook.InvalidThresholdException
 
 abstract class Logger {
 
