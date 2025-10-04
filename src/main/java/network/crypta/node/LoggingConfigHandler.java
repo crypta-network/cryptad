@@ -400,7 +400,9 @@ public class LoggingConfigHandler {
     }
     synchronized (enableLoggerLock) {
       if (slf4jHook != null) return;
-      Logger.setupChain();
+      // Do not reset the global chain: reuse it to preserve registered callbacks.
+      // This promotes a non-chain logger to a chain only when needed and keeps existing hooks.
+      Logger.getChain();
       try {
         config.forceUpdate(CONF_PRIORITY);
         config.forceUpdate("priorityDetail");
