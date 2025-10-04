@@ -9,14 +9,14 @@ import network.crypta.support.LoggerHook.InvalidThresholdException
  * Central logging facade used across the Crypta codebase.
  *
  * Provides static convenience methods (in the companion) and an abstract instance API which
- * concrete loggers and hook chains implement. The global logger defaults to a no-op
- * [VoidLogger] until replaced by [setupChain] or [setupStdoutLogging].
+ * concrete loggers and hook chains implement. The global logger defaults to a no-op [VoidLogger]
+ * until replaced by [setupChain] or [setupStdoutLogging].
  */
 abstract class Logger {
 
   /**
-   * Log severity levels used to filter messages. Ordering matters: a level matches a threshold
-   * when its ordinal is greater than or equal to the threshold's ordinal.
+   * Log severity levels used to filter messages. Ordering matters: a level matches a threshold when
+   * its ordinal is greater than or equal to the threshold's ordinal.
    */
   enum class LogLevel {
     MINIMAL,
@@ -36,9 +36,7 @@ abstract class Logger {
   }
 
   companion object {
-    /**
-     * Singleton global logger used by the static helpers. Defaults to [VoidLogger] (no-op).
-     */
+    /** Singleton global logger used by the static helpers. Defaults to [VoidLogger] (no-op). */
     @JvmField var logger: Logger = VoidLogger()
 
     @Synchronized
@@ -249,7 +247,7 @@ abstract class Logger {
      */
     fun registerClass(clazz: Class<*>) {
       val ltc =
-        object : LogThresholdCallback() {
+        object : LogThresholdCallback {
           private val ref = WeakReference(clazz)
 
           override fun shouldUpdate() {
@@ -330,8 +328,8 @@ abstract class Logger {
     @Synchronized
     @JvmStatic
     /**
-     * Returns the global [LoggerHookChain], promoting the current logger to a chain if needed.
-     * A single existing [LoggerHook] is preserved as the first hook in the new chain.
+     * Returns the global [LoggerHookChain], promoting the current logger to a chain if needed. A
+     * single existing [LoggerHook] is preserved as the first hook in the new chain.
      */
     fun getChain(): LoggerHookChain {
       return if (logger is LoggerHookChain) {
@@ -378,6 +376,7 @@ abstract class Logger {
 
   /**
    * Sets the logging threshold from a symbolic string (e.g. "DEBUG").
+   *
    * @throws InvalidThresholdException if the value cannot be parsed.
    */
   @Throws(InvalidThresholdException::class) abstract fun setThreshold(symbolicThreshold: String)
@@ -387,6 +386,7 @@ abstract class Logger {
 
   /**
    * Applies detailed threshold overrides described by [details] (implementation-defined format).
+   *
    * @throws InvalidThresholdException if the rules are invalid.
    */
   @Throws(InvalidThresholdException::class) abstract fun setDetailedThresholds(details: String?)

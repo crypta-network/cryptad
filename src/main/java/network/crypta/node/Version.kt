@@ -123,7 +123,7 @@ private val logTag: Class<*> = VersionLogTag::class.java
 
 // Initialize logging callback - using lazy to ensure proper initialization
 private val loggerCallbackInitializer by lazy {
-    Logger.registerLogThresholdCallback(object : LogThresholdCallback() {
+    Logger.registerLogThresholdCallback(object : LogThresholdCallback {
         override fun shouldUpdate() {
             logMinor = Logger.shouldLog(LogLevel.MINOR, this)
             logDebug = Logger.shouldLog(LogLevel.DEBUG, this)
