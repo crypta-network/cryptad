@@ -519,16 +519,17 @@ public class LoggingConfigHandler {
     RollingPolicy rp = rfa.getRollingPolicy();
     if (!(rp instanceof SizeAndTimeBasedRollingPolicy<?> st)) return;
 
-    // Stop appender and policy before applying changes
+    // Compute policy parameters first to avoid leaving appender stopped on error
+    int multiple = parseIntervalMultiple(logRotateInterval);
+    String unit = safeParseIntervalUnit(logRotateInterval);
+    assignPolicy(ctx, st, multiple, unit);
+
+    // Stop appender and policy before applying structural changes
     st.stop();
     rfa.stop();
     st.setFileNamePattern(newPattern);
     // Keep total size cap aligned with configured maxZippedLogsSize
     st.setTotalSizeCap(new FileSize(maxZippedLogsSize));
-
-    int multiple = parseIntervalMultiple(logRotateInterval);
-    String unit = parseIntervalUnit(logRotateInterval);
-    assignPolicy(ctx, st, multiple, unit);
 
     // Restart in order: policy then appender
     st.start();
@@ -628,6 +629,7 @@ public class LoggingConfigHandler {
   }
 
   private String parseIntervalUnit(String s) {
+    if (s == null || s.isEmpty()) return UNIT_HOUR; // default granularity
     String up = s.toUpperCase();
     // Accept plural units (e.g. 5MINUTES) by trimming an optional trailing 'S'
     if (up.endsWith("S")) up = up.substring(0, up.length() - 1);
@@ -637,6 +639,15 @@ public class LoggingConfigHandler {
     // Normalize aliases
     if (unit.equals(UNIT_WEEK_OF_YEAR)) return UNIT_WEEK;
     return unit;
+  }
+
+  /** Null-safe wrapper for interval unit parsing with sane default. */
+  private String safeParseIntervalUnit(String s) {
+    try {
+      return parseIntervalUnit(s);
+    } catch (Exception ignored) {
+      return UNIT_HOUR;
+    }
   }
 
   private int parseIntervalMultiple(String configured) {
