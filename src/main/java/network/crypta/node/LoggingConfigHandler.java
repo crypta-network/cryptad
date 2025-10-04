@@ -73,7 +73,9 @@ public class LoggingConfigHandler {
   }
 
   private static final String SYS_PROP_LOG_DIR = "crypta.log.dir";
-  private static final String CONF_MAX_ZIPPED_SIZE = "maxZippedLogsSize";
+  // New, clearer name: total disk usage cap for rotated/archived logs
+  private static final String CONF_LOGS_TOTAL_SIZE_CAP = "logsTotalSizeCap";
+  private static final long MIN_LOGS_TOTAL_SIZE_CAP_BYTES = 50L * 1024L * 1024L; // 50 MiB
   private static final String CONF_PRIORITY = "priority";
   private static final String UNIT_MINUTE = "MINUTE";
   private static final String UNIT_HOUR = "HOUR";
@@ -89,7 +91,7 @@ public class LoggingConfigHandler {
   // Weak reference to allow static callbacks to update the hook without leaks
   private static WeakReference<Slf4jLoggerHook> slf4jHookRef = new WeakReference<>(null);
   private File logDir;
-  private long maxZippedLogsSize;
+  private long logsTotalSizeCap;
   private String logRotateInterval;
   private long maxCachedLogBytes;
   private int maxCachedLogLines;
@@ -108,7 +110,7 @@ public class LoggingConfigHandler {
 
     registerDirname(loggingConfig, loggingEnabled);
 
-    registerMaxZippedLogsSize();
+    registerLogsTotalSizeCap();
 
     // priority (node may override on testnet)
     registerPriority();
@@ -196,35 +198,40 @@ public class LoggingConfigHandler {
     // => enableLogger must run preSetLogDir
   }
 
-  private void registerMaxZippedLogsSize() {
-    // max space used by zipped logs
+  private void registerLogsTotalSizeCap() {
+    // Total disk space used by rotated/archived logs
     config.register(
-        CONF_MAX_ZIPPED_SIZE,
-        "10M",
+        CONF_LOGS_TOTAL_SIZE_CAP,
+        "200M",
         3,
         true,
         true,
-        "LogConfigHandler.maxZippedLogsSize",
-        "LogConfigHandler.maxZippedLogsSizeLong",
+        "LogConfigHandler.logsTotalSizeCap",
+        "LogConfigHandler.logsTotalSizeCapLong",
         new LongCallback() {
           @Override
           public Long get() {
-            return maxZippedLogsSize;
+            return logsTotalSizeCap;
           }
 
           @Override
           public void set(Long val) {
-            if (val < 0) val = 0L;
-            maxZippedLogsSize = val;
+            if (val == null) val = 0L;
+            // Enforce minimum of 50 MiB to keep rolling policy sane relative to maxFileSize.
+            if (val < MIN_LOGS_TOTAL_SIZE_CAP_BYTES) val = MIN_LOGS_TOTAL_SIZE_CAP_BYTES;
+            logsTotalSizeCap = val;
             // Apply to Logback rolling policy immediately
-            updateLogbackTotalSizeCap(maxZippedLogsSize);
+            updateLogbackTotalSizeCap(logsTotalSizeCap);
           }
         },
         true);
 
-    maxZippedLogsSize = config.getLong(CONF_MAX_ZIPPED_SIZE);
+    // Determine effective initial value with backward-compatibility.
+    long initial = config.getLong(CONF_LOGS_TOTAL_SIZE_CAP);
+    if (initial < MIN_LOGS_TOTAL_SIZE_CAP_BYTES) initial = MIN_LOGS_TOTAL_SIZE_CAP_BYTES;
+    logsTotalSizeCap = initial;
     // Ensure Logback picks up the configured cap at startup
-    updateLogbackTotalSizeCap(maxZippedLogsSize);
+    updateLogbackTotalSizeCap(logsTotalSizeCap);
   }
 
   private void registerPriority() {
@@ -528,8 +535,8 @@ public class LoggingConfigHandler {
     st.stop();
     rfa.stop();
     st.setFileNamePattern(newPattern);
-    // Keep total size cap aligned with configured maxZippedLogsSize
-    st.setTotalSizeCap(new FileSize(maxZippedLogsSize));
+    // Keep total size cap aligned with configured logsTotalSizeCap
+    st.setTotalSizeCap(new FileSize(logsTotalSizeCap));
 
     // Restart in order: policy then appender
     st.start();
