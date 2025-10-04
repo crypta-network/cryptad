@@ -2,15 +2,11 @@ package network.crypta.support;
 
 import ch.qos.logback.core.rolling.DefaultTimeBasedFileNamingAndTriggeringPolicy;
 import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 
 /**
  * A Logback TimeBased triggering policy that only triggers at multiples of a base time unit.
  *
- * <p>Supported units: MINUTE, HOUR, DAY. Multipliers &gt;= 1 are honored.
+ * <p>Supported units: MINUTE, HOUR, DAY, WEEK, MONTH, YEAR. Multipliers &gt;= 1 are honored.
  */
 public class ModuloTimeTriggeringPolicy<E>
     extends DefaultTimeBasedFileNamingAndTriggeringPolicy<E> {
@@ -18,11 +14,15 @@ public class ModuloTimeTriggeringPolicy<E>
   public enum Unit {
     MINUTE,
     HOUR,
-    DAY
+    DAY,
+    WEEK,
+    MONTH,
+    YEAR
   }
 
   private Unit unit = Unit.HOUR;
   private int multiple = 1;
+  private long boundaryCount;
 
   public ModuloTimeTriggeringPolicy() {}
 
@@ -43,22 +43,20 @@ public class ModuloTimeTriggeringPolicy<E>
   public boolean isTriggeringEvent(java.io.File activeFile, E event) {
     // Let default policy detect period boundaries, then allow only aligned multiples.
     if (!super.isTriggeringEvent(activeFile, event)) return false;
+    boundaryCount++;
     if (multiple <= 1) return true;
 
-    long nowMillis = getCurrentTime();
-    ZonedDateTime now =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(nowMillis), ZoneId.systemDefault());
     switch (unit) {
       case MINUTE:
-        long minutes = ChronoUnit.MINUTES.between(Instant.EPOCH, now.toInstant());
-        return minutes % multiple == 0;
       case HOUR:
-        long hours = ChronoUnit.HOURS.between(Instant.EPOCH, now.toInstant());
-        return hours % multiple == 0;
       case DAY:
+      case WEEK:
+      case MONTH:
+      case YEAR:
       default:
-        long days = ChronoUnit.DAYS.between(Instant.EPOCH, now.toInstant());
-        return days % multiple == 0;
+        // Super already aligned us to the correct period boundary for the configured pattern;
+        // we only allow every Nth boundary to honor the multiplier across all units.
+        return (boundaryCount % multiple) == 0;
     }
   }
 
