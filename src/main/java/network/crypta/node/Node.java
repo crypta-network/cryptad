@@ -133,9 +133,6 @@ import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
 import network.crypta.support.JVMVersion;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.OutputThrottle;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PrioritizedTicker;
@@ -153,12 +150,15 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
  * @author amphibian
  */
 public class Node implements TimeSkewDetectorCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(Node.class);
 
   public class MigrateOldStoreData implements Runnable {
 
@@ -261,12 +261,11 @@ public class Node implements TimeSkewDetectorCallback {
       try {
         ramstore.migrateTo(newStore, canReadClientCache);
       } catch (IOException e) {
-        Logger.error(this, "Caught migrating old store: " + e, e);
+        LOG.error("Caught migrating old store: " + e, e);
       }
       ramstore.clear();
     } else if (store instanceof SaltedHashFreenetStore) {
-      Logger.error(
-          this,
+      LOG.error(
           "Migrating from from a saltedhashstore not fully supported yet: will not keep old keys");
     }
   }
@@ -279,18 +278,7 @@ public class Node implements TimeSkewDetectorCallback {
     }
   }
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private static MeaningfulNodeNameUserAlert nodeNameUserAlert;
@@ -414,7 +402,7 @@ public class Node implements TimeSkewDetectorCallback {
           try {
             initSaltHashClientCacheFS(suffix, true, key);
           } catch (NodeInitException e) {
-            Logger.error(this, "Unable to create new store", e);
+            LOG.error("Unable to create new store", e);
             System.err.println("Unable to create new store: " + e);
             e.printStackTrace();
             // FIXME l10n both on the NodeInitException and the wrapper message
@@ -1171,8 +1159,7 @@ public class Node implements TimeSkewDetectorCallback {
         try {
           p = new Peer(udpAddr, false, true);
         } catch (HostnameSyntaxException e) {
-          Logger.error(
-              this,
+          LOG.error(
               "Invalid hostname or IP Address syntax error while parsing our darknet node"
                   + " reference: "
                   + udpAddr);
@@ -1206,7 +1193,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     String verString = fs.get("version");
     if (verString == null) {
-      Logger.error(this, "No version!");
+      LOG.error("No version!");
       System.err.println("No version!");
     } else {
       lastVersion = Version.parseBuildNumberFromVersionStr(verString, -1);
@@ -1219,7 +1206,7 @@ public class Node implements TimeSkewDetectorCallback {
       try {
         initSaltHashFS(suffix, true, null);
       } catch (NodeInitException e) {
-        Logger.error(this, "Unable to create new store", e);
+        LOG.error("Unable to create new store", e);
         System.err.println("Unable to create new store: " + e);
         e.printStackTrace();
         // FIXME l10n both on the NodeInitException and the wrapper message
@@ -1262,12 +1249,12 @@ public class Node implements TimeSkewDetectorCallback {
       fs.writeTo(fos);
       FileUtil.moveTo(backup, orig);
     } catch (IOException ioe) {
-      Logger.error(this, "IOE :" + ioe.getMessage(), ioe);
+      LOG.error("IOE :" + ioe.getMessage(), ioe);
     }
   }
 
   private void initNodeFileSettings() {
-    Logger.normal(this, "Creating new node file from scratch");
+    LOG.info("Creating new node file from scratch");
     // Don't need to set getDarknetPortNumber()
     // FIXME use a real IP!
     darknetCrypto.initCrypto();
@@ -1332,7 +1319,7 @@ public class Node implements TimeSkewDetectorCallback {
             + new network.crypta.fs.AppEnv().osNameRaw()
             + ' '
             + new network.crypta.fs.AppEnv().osVersionRaw();
-    Logger.normal(this, tmp);
+    LOG.info(tmp);
     System.out.println(tmp);
     collector = new IOStatisticCollector();
     this.executor = executor;
@@ -1440,7 +1427,7 @@ public class Node implements TimeSkewDetectorCallback {
       fproxyConfig.finishedInitialization();
       toadlets.start();
     } catch (IOException e4) {
-      Logger.error(this, "Could not start web interface: " + e4, e4);
+      LOG.error("Could not start web interface: " + e4, e4);
       System.err.println("Could not start web interface: " + e4);
       e4.printStackTrace();
       throw new NodeInitException(
@@ -1784,10 +1771,8 @@ public class Node implements TimeSkewDetectorCallback {
     try {
       trafficClass = TrafficClass.fromNameOrValue(trafficClassValue);
     } catch (IllegalArgumentException e) {
-      Logger.error(
-          this,
-          "Invalid trafficClass:" + trafficClassValue + " resetting the value to default.",
-          e);
+      LOG.error(
+          "Invalid trafficClass:" + trafficClassValue + " resetting the value to default.", e);
       trafficClass = TrafficClass.getDefault();
     }
 
@@ -2027,7 +2012,7 @@ public class Node implements TimeSkewDetectorCallback {
     ticker = new PrioritizedTicker(executor, getDarknetPortNumber());
     if (executor instanceof PooledExecutor pooledExecutor) pooledExecutor.setTicker(ticker);
 
-    Logger.normal(Node.class, "Creating node...");
+    LOG.info("Creating node...");
 
     shutdownHook.addEarlyJob(
         new Thread() {
@@ -2079,8 +2064,7 @@ public class Node implements TimeSkewDetectorCallback {
     int obwLimit = nodeConfig.getInt("outputBandwidthLimit");
     if (obwLimit < minimumBandwidth) {
       obwLimit = minimumBandwidth; // upgrade slow nodes automatically
-      Logger.normal(
-          Node.class,
+      LOG.info(
           "Output bandwidth was lower than minimum bandwidth. Increased to minimum bandwidth.");
     }
 
@@ -2144,9 +2128,7 @@ public class Node implements TimeSkewDetectorCallback {
       ibwLimit = obwLimit * 4;
     } else if (ibwLimit < minimumBandwidth) {
       ibwLimit = minimumBandwidth; // upgrade slow nodes automatically
-      Logger.normal(
-          Node.class,
-          "Input bandwidth was lower than minimum bandwidth. Increased to minimum bandwidth.");
+      LOG.info("Input bandwidth was lower than minimum bandwidth. Increased to minimum bandwidth.");
     }
     inputBandwidthLimit = ibwLimit;
     try {
@@ -2174,8 +2156,7 @@ public class Node implements TimeSkewDetectorCallback {
             synchronized (Node.this) {
               if (amountOfDataToCheckCompressionRatio < 0
                   || amountOfDataToCheckCompressionRatio > 100 * 1024 * 1024) {
-                Logger.normal(
-                    Node.class,
+                LOG.info(
                     "Amount of data to check for compression should be 100 MiB max, "
                         + amountOfDataToCheckCompressionRatio
                         + " bytes selected");
@@ -2208,8 +2189,7 @@ public class Node implements TimeSkewDetectorCallback {
           public void set(Integer minimumCompressionPercentage) {
             synchronized (Node.this) {
               if (minimumCompressionPercentage < 0 || minimumCompressionPercentage > 100) {
-                Logger.normal(
-                    Node.class,
+                LOG.info(
                     "Wrong minimum compression percentage: must be between 0 and 100, but is "
                         + minimumCompressionPercentage);
                 return;
@@ -2280,7 +2260,7 @@ Testnet mode DISABLED. You may have some level of anonymity. :)
 Note that this version of Crypta is still a very early alpha, and may well have numerous bugs and design flaws.
 In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).\
 """;
-    Logger.normal(this, s);
+    LOG.info(s);
     System.err.println(s);
 
     File nodeFile = nodeDir.file("node-" + getDarknetPortNumber());
@@ -2467,7 +2447,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     maxOpennetPeers = opennetConfig.getInt("maxOpennetPeers");
     if (maxOpennetPeers > OpennetManager.MAX_PEERS_FOR_SCALING) {
-      Logger.error(this, "maxOpennetPeers may not be over " + OpennetManager.MAX_PEERS_FOR_SCALING);
+      LOG.error("maxOpennetPeers may not be over " + OpennetManager.MAX_PEERS_FOR_SCALING);
       maxOpennetPeers = OpennetManager.MAX_PEERS_FOR_SCALING;
     }
 
@@ -2515,7 +2495,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                                 isAllowedToConnectToSeednodes);
                   } catch (NodeInitException e) {
                     opennet = null;
-                    Logger.error(this, "UNABLE TO ENABLE OPENNET: " + e, e);
+                    LOG.error("UNABLE TO ENABLE OPENNET: " + e, e);
                     clientCore
                         .getAlerts()
                         .register(
@@ -2699,7 +2679,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskDatacache.setMaxKeys(maxCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              Logger.error(this, "Caught " + e + " resizing the datastore", e);
+              LOG.error("Caught " + e + " resizing the datastore", e);
               System.err.println("Caught " + e + " resizing the datastore");
               e.printStackTrace();
             }
@@ -2898,7 +2878,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                 clientCore.getClientLayerPersister().deleteAllFiles();
               } catch (IOException e) {
                 masterKeysFile.delete();
-                Logger.error(this, "Unable to securely delete " + masterKeysFile);
+                LOG.error("Unable to securely delete " + masterKeysFile);
                 System.err.println(
                     NodeL10n.getBase()
                         .getString(
@@ -2930,10 +2910,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                 }
                 keys.changePassword(masterKeysFile, "", secureRandom);
               } catch (IOException e) {
-                Logger.error(
-                    this,
-                    "Unable to create encryption keys file: " + masterKeysFile + " : " + e,
-                    e);
+                LOG.error(
+                    "Unable to create encryption keys file: " + masterKeysFile + " : " + e, e);
                 System.err.println(
                     "Unable to create encryption keys file: " + masterKeysFile + " : " + e);
                 e.printStackTrace();
@@ -3101,7 +3079,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskClientcache.setMaxKeys(maxClientCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              Logger.error(this, "Caught " + e + " resizing the clientcache", e);
+              LOG.error("Caught " + e + " resizing the clientcache", e);
               System.err.println("Caught " + e + " resizing the clientcache");
               e.printStackTrace();
             }
@@ -3264,7 +3242,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskSlashdotcache.setMaxKeys(maxSlashdotCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              Logger.error(this, "Caught " + e + " resizing the slashdotcache", e);
+              LOG.error("Caught " + e + " resizing the slashdotcache", e);
               System.err.println("Caught " + e + " resizing the slashdotcache");
               e.printStackTrace();
             }
@@ -3475,7 +3453,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     writeNodeFile();
 
     // Initialize the plugin manager
-    Logger.normal(this, "Initializing Plugin Manager");
+    LOG.info("Initializing Plugin Manager");
     System.out.println("Initializing Plugin Manager");
     pluginManager = new PluginManager(this, lastVersion);
 
@@ -3518,16 +3496,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           @Override
           public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
             if (!fromDarknet) {
-              Logger.error(this, "Got N2NTM from non-darknet node ?!?!?!: from " + src);
+              LOG.error("Got N2NTM from non-darknet node ?!?!?!: from " + src);
               return;
             }
             DarknetPeerNode darkSource = (DarknetPeerNode) src;
-            Logger.normal(this, "Received N2NTM from '" + darkSource.getPeer() + "'");
+            LOG.info("Received N2NTM from '" + darkSource.getPeer() + "'");
             SimpleFieldSet fs = null;
             try {
               fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
             } catch (IOException e) {
-              Logger.error(this, "IOException while parsing node to node message data", e);
+              LOG.error("IOException while parsing node to node message data", e);
               return;
             }
             fs.putOverwrite("n2nType", Integer.toString(type));
@@ -3535,8 +3513,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             fs.putOverwrite("receivedAs", "nodeToNodeMessage");
             int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
             if (fileNumber == -1) {
-              Logger.error(
-                  this,
+              LOG.error(
                   "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
             }
             // Keep track of the fileNumber so we can potentially delete the extra peer data file
@@ -3555,14 +3532,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
           @Override
           public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
-            Logger.normal(
-                this,
+            LOG.info(
                 "Received differential node reference node to node message from " + src.getPeer());
             SimpleFieldSet fs = null;
             try {
               fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
             } catch (IOException e) {
-              Logger.error(this, "IOException while parsing node to node message data", e);
+              LOG.error("IOException while parsing node to node message data", e);
               return;
             }
             if (fs.get("n2nType") != null) {
@@ -3571,7 +3547,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             try {
               src.processDiffNoderef(fs);
             } catch (FSParseException e) {
-              Logger.error(this, "FSParseException while parsing node to node message data", e);
+              LOG.error("FSParseException while parsing node to node message data", e);
             }
           }
         };
@@ -3586,7 +3562,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       toadlets.removeStartupToadlet();
     }
 
-    Logger.normal(this, "Node constructor completed");
+    LOG.info("Node constructor completed");
     System.out.println("Node constructor completed");
 
     new BandwidthManager(this).start();
@@ -3931,7 +3907,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                       sskDataFS.start(ticker, true);
                       sskCacheFS.start(ticker, true);
                     } catch (IOException e) {
-                      Logger.error(this, "Failed to start datastore: " + e, e);
+                      LOG.error("Failed to start datastore: " + e, e);
                       System.err.println("Failed to start datastore: " + e);
                       e.printStackTrace();
                       return;
@@ -4034,7 +4010,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                       pubkeyDataFS.start(ticker, true);
                       sskDataFS.start(ticker, true);
                     } catch (IOException e) {
-                      Logger.error(this, "Failed to start client-cache: " + e, e);
+                      LOG.error("Failed to start client-cache: " + e, e);
                       System.err.println("Failed to start client-cache: " + e);
                       e.printStackTrace();
                       return;
@@ -4097,7 +4073,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean lateStart,
       byte[] clientCacheMasterKey)
       throws IOException {
-    Logger.normal(this, "Initializing " + type + " Data" + store);
+    LOG.info("Initializing " + type + " Data" + store);
     System.out.println("Initializing " + type + " Data" + store + " (" + maxStoreKeys + " keys)");
 
     SaltedHashFreenetStore<T> fs =
@@ -4145,21 +4121,19 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     usm.start(ticker);
 
     if (isUsingWrapper()) {
-      Logger.normal(this, "Using wrapper correctly: " + nodeStarter);
+      LOG.info("Using wrapper correctly: " + nodeStarter);
       System.out.println("Using wrapper correctly: " + nodeStarter);
     } else {
-      Logger.error(
-          this,
+      LOG.error(
           "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
               + " are current.");
       System.out.println(
           "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
               + " are current.");
     }
-    Logger.normal(this, "Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
+    LOG.info("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
     System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
-    Logger.normal(
-        this, "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
+    LOG.info("FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
     System.out.println(
         "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
     // Start services
@@ -4174,7 +4148,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // Node Updater
     try {
-      Logger.normal(this, "Starting the node updater");
+      LOG.info("Starting the node updater");
       nodeUpdater.start();
     } catch (Exception e) {
       e.printStackTrace();
@@ -4205,7 +4179,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       nodeDiagnostics.start();
     }
 
-    Logger.normal(this, "Started node");
+    LOG.info("Started node");
 
     hasStarted = true;
   }
@@ -4262,7 +4236,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     long uid = random.nextLong();
     int initialX = random.nextInt();
     Message m = DMT.createFNPRoutedPing(uid, loc2, maxHTL, initialX, pubKeyHash);
-    Logger.normal(this, "Message: " + m);
+    LOG.info("Message: " + m);
 
     dispatcher.handleRouted(m, null);
     // FIXME: might be rejected
@@ -4274,7 +4248,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       // Ignore Rejected - let it be retried on other peers
       m = usm.waitFor(mf1 /*.or(mf2)*/, null);
     } catch (DisconnectedException e) {
-      Logger.normal(this, "Disconnected in waiting for pong");
+      LOG.info("Disconnected in waiting for pong");
       return -1;
     }
     if (m == null) return -1;
@@ -4310,18 +4284,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       DSAPublicKey pubKey = sskKey.getPubKey();
       if (pubKey == null) {
         pubKey = getPubKey.getKey(sskKey.getPubKeyHash(), canReadClientCache, offersOnly, null);
-        if (logMINOR) Logger.minor(this, "Fetched pubkey: " + pubKey);
+        if (LOG.isDebugEnabled()) LOG.debug("Fetched pubkey: " + pubKey);
         try {
           sskKey.setPubKey(pubKey);
         } catch (SSKVerifyException e) {
-          Logger.error(this, "Error setting pubkey: " + e, e);
+          LOG.error("Error setting pubkey: " + e, e);
         }
       }
       if (pubKey != null) {
-        if (logMINOR) Logger.minor(this, "Got pubkey: " + pubKey);
+        if (LOG.isDebugEnabled()) LOG.debug("Got pubkey: " + pubKey);
         kb = fetch(sskKey, canReadClientCache, canWriteClientCache, canWriteDatastore, false, null);
       } else {
-        if (logMINOR) Logger.minor(this, "Not found because no pubkey: " + uid);
+        if (LOG.isDebugEnabled()) LOG.debug("Not found because no pubkey: " + uid);
       }
     } else throw new IllegalStateException("Unknown key type: " + key.getClass());
 
@@ -4366,9 +4340,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean canWriteClientCache,
       boolean realTimeFlag) {
     boolean canWriteDatastore = canWriteDatastoreRequest(htl);
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "makeRequestSender("
               + key
               + ','
@@ -4387,7 +4360,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (kb != null) return kb;
     }
     if (localOnly) return null;
-    if (logMINOR) Logger.minor(this, "Not in store locally");
+    if (LOG.isDebugEnabled()) LOG.debug("Not in store locally");
 
     // Transfer coalescing - match key only as HTL irrelevant
     RequestSender sender =
@@ -4395,7 +4368,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             ? tracker.getTransferringRequestSenderByKey(nchk, realTimeFlag)
             : null;
     if (sender != null) {
-      if (logMINOR) Logger.minor(this, "Data already being transferred: " + sender);
+      if (LOG.isDebugEnabled()) LOG.debug("Data already being transferred: " + sender);
       sender.setTransferCoalesced();
       tag.setSender(sender, true);
       return sender;
@@ -4403,7 +4376,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // HTL == 0 => Don't search further
     if (htl == 0) {
-      if (logMINOR) Logger.minor(this, "No HTL");
+      if (LOG.isDebugEnabled()) LOG.debug("No HTL");
       return null;
     }
 
@@ -4422,7 +4395,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             realTimeFlag);
     tag.setSender(sender, false);
     sender.start();
-    if (logMINOR) Logger.minor(this, "Created new sender: " + sender);
+    if (LOG.isDebugEnabled()) LOG.debug("Created new sender: " + sender);
     return sender;
   }
 
@@ -4499,11 +4472,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgClientCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestClientCacheSSKSuccess)
             nodeStats.furthestClientCacheSSKSuccess = dist;
-          if (logDEBUG) Logger.debug(this, "Found key " + key + " in client-cache");
+          if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in client-cache");
           return block;
         }
       } catch (IOException e) {
-        Logger.error(this, "Could not read from client cache: " + e, e);
+        LOG.error("Could not read from client cache: " + e, e);
       }
     }
     if (forULPR || useSlashdotCache || canReadClientCache) {
@@ -4514,16 +4487,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgSlashdotCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestSlashdotCacheSSKSuccess)
             nodeStats.furthestSlashdotCacheSSKSuccess = dist;
-          if (logDEBUG) Logger.debug(this, "Found key " + key + " in slashdot-cache");
+          if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in slashdot-cache");
           return block;
         }
       } catch (IOException e) {
-        Logger.error(this, "Could not read from slashdot/ULPR cache: " + e, e);
+        LOG.error("Could not read from slashdot/ULPR cache: " + e, e);
       }
     }
     boolean ignoreOldBlocks = !writeLocalToDatastore;
     if (canReadClientCache) ignoreOldBlocks = false;
-    if (logMINOR) dumpStoreHits();
+    if (LOG.isDebugEnabled()) dumpStoreHits();
     try {
 
       nodeStats.avgRequestLocation.report(loc);
@@ -4550,7 +4523,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgStoreSSKSuccess.report(loc);
         if (dist > nodeStats.furthestStoreSSKSuccess) nodeStats.furthestStoreSSKSuccess = dist;
-        if (logDEBUG) Logger.debug(this, "Found key " + key + " in store");
+        if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in store");
         return block;
       }
       block =
@@ -4576,11 +4549,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgCacheSSKSuccess.report(loc);
         if (dist > nodeStats.furthestCacheSSKSuccess) nodeStats.furthestCacheSSKSuccess = dist;
-        if (logDEBUG) Logger.debug(this, "Found key " + key + " in cache");
+        if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in cache");
       }
       return block;
     } catch (IOException e) {
-      Logger.error(this, "Cannot fetch data: " + e, e);
+      LOG.error("Cannot fetch data: " + e, e);
       return null;
     }
   }
@@ -4606,7 +4579,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           return block;
         }
       } catch (IOException e) {
-        Logger.error(this, "Could not read from client cache: " + e, e);
+        LOG.error("Could not read from client cache: " + e, e);
       }
     }
     if (forULPR || useSlashdotCache || canReadClientCache) {
@@ -4619,12 +4592,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           return block;
         }
       } catch (IOException e) {
-        Logger.error(this, "Could not read from slashdot/ULPR cache: " + e, e);
+        LOG.error("Could not read from slashdot/ULPR cache: " + e, e);
       }
     }
     boolean ignoreOldBlocks = !writeLocalToDatastore;
     if (canReadClientCache) ignoreOldBlocks = false;
-    if (logMINOR) dumpStoreHits();
+    if (LOG.isDebugEnabled()) dumpStoreHits();
     try {
       nodeStats.avgRequestLocation.report(loc);
       CHKBlock block =
@@ -4651,7 +4624,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       return block;
     } catch (IOException e) {
-      Logger.error(this, "Cannot fetch data: " + e, e);
+      LOG.error("Cannot fetch data: " + e, e);
       return null;
     }
   }
@@ -4749,8 +4722,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (now - timeLastDumpedHits > 5000) {
       timeLastDumpedHits = now;
     } else return;
-    Logger.minor(
-        this,
+    LOG.debug(
         "Distribution of hits and misses over stores:\n"
             + "CHK Datastore: "
             + chkDatastore.hits()
@@ -4835,11 +4807,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       if (canWriteDatastore || forULPR || useSlashdotCache) failureTable.onFound(block);
     } catch (IOException e) {
-      Logger.error(this, "Cannot store data: " + e, e);
+      LOG.error("Cannot store data: " + e, e);
     } catch (Throwable t) {
       System.err.println(t);
       t.printStackTrace();
-      Logger.error(this, "Caught " + t + " storing data", t);
+      LOG.error("Caught " + t + " storing data", t);
     }
     if (clientCore != null && clientCore.getRequestStarters() != null) {
       clientCore.getRequestStarters().chkFetchSchedulerBulk.tripPendingKey(block);
@@ -4907,13 +4879,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       if (canWriteDatastore || forULPR || useSlashdotCache) failureTable.onFound(block);
     } catch (IOException e) {
-      Logger.error(this, "Cannot store data: " + e, e);
+      LOG.error("Cannot store data: " + e, e);
     } catch (KeyCollisionException e) {
       throw e;
     } catch (Throwable t) {
       System.err.println(t);
       t.printStackTrace();
-      Logger.error(this, "Caught " + t + " storing data", t);
+      LOG.error("Caught " + t + " storing data", t);
     }
     if (clientCore != null && clientCore.getRequestStarters() != null) {
       clientCore.getRequestStarters().sskFetchSchedulerBulk.tripPendingKey(block);
@@ -4971,9 +4943,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean preferInsert,
       boolean ignoreLowBackoff,
       boolean realTimeFlag) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "makeInsertSender(" + key + ',' + htl + ',' + uid + ',' + source + ",...," + fromStore);
     CHKInsertSender is = null;
     is =
@@ -5034,9 +5005,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         canWriteDatastore,
         false,
         writeLocalToDatastore);
-    Logger.minor(
-        this,
-        "makeInsertSender(" + key + ',' + htl + ',' + uid + ',' + source + ",...," + fromStore);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "makeInsertSender(" + key + ',' + htl + ',' + uid + ',' + source + ",...," + fromStore);
     SSKInsertSender is = null;
     is =
         new SSKInsertSender(
@@ -5116,7 +5087,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             false,
             null);
     if (block == null) {
-      if (logMINOR) Logger.minor(this, "Could not find key for " + clientSSK);
+      if (LOG.isDebugEnabled()) LOG.debug("Could not find key for " + clientSSK);
       return null;
     }
     // Move the pubkey to the top of the LRU, and fix it if it
@@ -5194,7 +5165,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     } catch (Throwable t) {
       try {
         // E.g. if we haven't finished startup
-        Logger.error(this, "Failed to tell peers we are going down: " + t, t);
+        LOG.error("Failed to tell peers we are going down: " + t, t);
       } catch (Throwable t1) {
         // Ignore. We don't want to mess up the exit process!
       }
@@ -5226,7 +5197,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   public void onConnectedPeer() {
-    if (logMINOR) Logger.minor(this, "onConnectedPeer()");
+    if (LOG.isDebugEnabled()) LOG.debug("onConnectedPeer()");
     ipDetector.onConnectedPeer();
   }
 
@@ -5262,8 +5233,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
 
     if (listener == null) {
-      Logger.error(
-          this,
+      LOG.error(
           "Unknown n2nm ID: " + type + " - discarding packet length " + messageData.getLength());
       return;
     }
@@ -5278,14 +5248,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    */
   public void handleNodeToNodeTextMessageSimpleFieldSet(
       SimpleFieldSet fs, DarknetPeerNode source, int fileNumber) throws FSParseException {
-    if (logMINOR) Logger.minor(this, "Got node to node message: \n" + fs);
+    if (LOG.isDebugEnabled()) LOG.debug("Got node to node message: \n" + fs);
     int overallType = fs.getInt("n2nType");
     fs.removeValue("n2nType");
     if (overallType == Node.N2N_MESSAGE_TYPE_FPROXY) {
       handleFproxyNodeToNodeTextMessageSimpleFieldSet(fs, source, fileNumber);
     } else {
-      Logger.error(
-          this,
+      LOG.error(
           "Received unknown node to node message type '"
               + overallType
               + "' from "
@@ -5309,8 +5278,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     } else if (type == Node.N2N_TEXT_MESSAGE_TYPE_DOWNLOAD) {
       source.handleFproxyDownloadFeed(fs, fileNumber);
     } else {
-      Logger.error(
-          this,
+      LOG.error(
           "Received unknown fproxy node to node message sub-type '"
               + type
               + "' from "
@@ -5869,7 +5837,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     try {
       initSaltHashClientCacheFS(suffix, true, keys.clientCacheMasterKey);
     } catch (NodeInitException e) {
-      Logger.error(this, "Unable to activate passworded client cache", e);
+      LOG.error("Unable to activate passworded client cache", e);
       System.err.println("Unable to activate passworded client cache: " + e);
       e.printStackTrace();
       return;
@@ -5889,7 +5857,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           IOException,
           AlreadySetPasswordException {
     if (securityLevels.getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.MAXIMUM)
-      Logger.error(this, "Changing password while physical threat level is at MAXIMUM???");
+      LOG.error("Changing password while physical threat level is at MAXIMUM???");
     if (masterKeysFile.exists()) {
       keys.changePassword(masterKeysFile, newPassword, secureRandom);
       setPasswordInner(keys, inFirstTimeWizard);
@@ -5985,22 +5953,20 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     double myDist = Location.distance(myLoc, target);
 
     // First, calculate whether we would have stored it using the old formula.
-    if (logMINOR) Logger.minor(this, "Should store for " + key + " ?");
+    if (LOG.isDebugEnabled()) LOG.debug("Should store for " + key + " ?");
     // Don't sink store if any of the nodes we routed to, or our predecessor, is both high-uptime
     // and closer to the target than we are.
     if (source != null && !source.isLowUptime()) {
       if (Location.distance(source, target) < myDist) {
-        if (logMINOR)
-          Logger.minor(
-              this, "Not storing because source is closer to target for " + key + " : " + source);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Not storing because source is closer to target for " + key + " : " + source);
         return false;
       }
     }
     for (PeerNode pn : routedTo) {
       if (Location.distance(pn, target) < myDist && !pn.isLowUptime()) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Not storing because peer "
                   + pn
                   + " is closer to target for "
@@ -6013,9 +5979,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                   + target);
         return false;
       } else {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Should store maybe, peer "
                   + pn
                   + " loc = "
@@ -6028,9 +5993,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                   + pn.isLowUptime());
       }
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Should store returning true for "
               + key
               + " target="
@@ -6127,8 +6091,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   public boolean enableNewLoadManagement(boolean realTimeFlag) {
     NodeStats stats = this.nodeStats;
     if (stats == null) {
-      Logger.error(
-          this,
+      LOG.error(
           "Calling enableNewLoadManagement before Node constructor completes! FIX THIS!",
           new Exception("error"));
       return false;
