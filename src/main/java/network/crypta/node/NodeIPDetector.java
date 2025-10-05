@@ -27,33 +27,23 @@ import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 import network.crypta.pluginmanager.FredPluginIPDetector;
 import network.crypta.pluginmanager.FredPluginPortForward;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import network.crypta.support.transport.ip.IPAddressDetector;
 import network.crypta.support.transport.ip.IPUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Detect the IP address of the node. Doesn't return port numbers, doesn't have access to per-port
  * information (NodeCrypto - UdpSocketHandler etc).
  */
 public class NodeIPDetector {
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(NodeIPDetector.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /** Parent node */
@@ -92,7 +82,7 @@ public class NodeIPDetector {
     boolean report(int mtu) {
       if (mtu <= 0) return false;
       if (mtu < minimumMTU) {
-        Logger.normal(this, "Reducing the MTU to " + minimumMTU);
+        LOG.info("Reducing the MTU to " + minimumMTU);
         minimumMTU = mtu;
         return true;
       }
@@ -165,7 +155,7 @@ public class NodeIPDetector {
    */
   FreenetInetAddress[] detectPrimaryIPAddress(boolean dumpLocalAddresses) {
     boolean addedValidIP = false;
-    Logger.minor(this, "Redetecting IPs...");
+    LOG.debug("Redetecting IPs...");
     ArrayList<FreenetInetAddress> addresses = new ArrayList<>();
     if (overrideIPAddress != null) {
       // If the IP is overridden and the override is valid, the override has to be the first
@@ -192,14 +182,14 @@ public class NodeIPDetector {
       }
       if (hadValidIP != addedValidIP) {
         if (addedValidIP) {
-          if (logMINOR) Logger.minor(this, "Got valid IP");
+          if (LOG.isDebugEnabled()) LOG.debug("Got valid IP");
           onAddedValidIP();
         } else {
-          if (logMINOR) Logger.minor(this, "No valid IP");
+          if (LOG.isDebugEnabled()) LOG.debug("No valid IP");
           onNotAddedValidIP();
         }
       }
-    } else if (logMINOR) Logger.minor(this, "Client core not loaded");
+    } else if (LOG.isDebugEnabled()) LOG.debug("Client core not loaded");
     synchronized (this) {
       hasValidIP = addedValidIP;
     }
@@ -247,7 +237,7 @@ public class NodeIPDetector {
     for (InetAddress detectedAddr : detectedAddrs) {
       FreenetInetAddress addr = new FreenetInetAddress(detectedAddr);
       if (!addresses.contains(addr)) {
-        Logger.normal(this, "Detected IP address: " + addr);
+        LOG.info("Detected IP address: " + addr);
         addresses.add(addr);
         if (addr.isRealInternetAddress(false, false, false)) addedValidIP = true;
       }
@@ -259,7 +249,7 @@ public class NodeIPDetector {
         if (addr == null) continue;
         FreenetInetAddress a = new FreenetInetAddress(addr);
         if (!addresses.contains(a)) {
-          Logger.normal(this, "Plugin detected IP address: " + a);
+          LOG.info("Plugin detected IP address: " + a);
           addresses.add(a);
           if (a.isRealInternetAddress(false, false, false)) addedValidIP = true;
         }
@@ -277,27 +267,27 @@ public class NodeIPDetector {
       // FIXME use a standard mutable int object, we have one somewhere
       for (PeerNode pn : peerList) {
         if (!pn.isConnected()) {
-          if (logDEBUG) Logger.minor(this, "Not connected");
+          if (LOG.isDebugEnabled()) LOG.debug("Not connected");
           continue;
         }
         if (!pn.isRealConnection()) {
           // Only let seed server connections through.
           // We have to trust them anyway.
           if (!(pn instanceof SeedServerPeerNode)) continue;
-          if (logMINOR) Logger.minor(this, "Not a real connection and not a seed node: " + pn);
+          if (LOG.isDebugEnabled()) LOG.debug("Not a real connection and not a seed node: " + pn);
         }
-        if (logMINOR) Logger.minor(this, "Maybe a usable connection for IP: " + pn);
+        if (LOG.isDebugEnabled()) LOG.debug("Maybe a usable connection for IP: " + pn);
         Peer p = pn.getRemoteDetectedPeer();
-        if (logMINOR) Logger.minor(this, "Remote detected peer: " + p);
+        if (LOG.isDebugEnabled()) LOG.debug("Remote detected peer: " + p);
         if (p == null || p.isNull()) continue;
         FreenetInetAddress addr = p.getFreenetAddress();
-        if (logMINOR) Logger.minor(this, "Address: " + addr);
+        if (LOG.isDebugEnabled()) LOG.debug("Address: " + addr);
         if (addr == null) continue;
         if (!IPUtil.isValidAddress(addr.getAddress(false), false)) {
-          if (logMINOR) Logger.minor(this, "Address not valid");
+          if (LOG.isDebugEnabled()) LOG.debug("Address not valid");
           continue;
         }
-        if (logMINOR) Logger.minor(this, "Peer " + pn.getPeer() + " thinks we are " + addr);
+        if (LOG.isDebugEnabled()) LOG.debug("Peer " + pn.getPeer() + " thinks we are " + addr);
         if (countsByPeer.containsKey(addr)) {
           countsByPeer.put(addr, countsByPeer.get(addr) + 1);
         } else {
@@ -308,7 +298,7 @@ public class NodeIPDetector {
         Entry<FreenetInetAddress, Integer> countByPeer = countsByPeer.entrySet().iterator().next();
         FreenetInetAddress addr = countByPeer.getKey();
         confidence = countByPeer.getValue();
-        Logger.minor(this, "Everyone agrees we are " + addr);
+        LOG.debug("Everyone agrees we are " + addr);
         if (!addresses.contains(addr)) {
           if (addr.isRealInternetAddress(false, false, false)) addedValidIP = true;
           addresses.add(addr);
@@ -322,7 +312,7 @@ public class NodeIPDetector {
         for (Map.Entry<FreenetInetAddress, Integer> entry : countsByPeer.entrySet()) {
           FreenetInetAddress cur = entry.getKey();
           int curPop = entry.getValue();
-          Logger.minor(this, "Detected peer: " + cur + " popularity " + curPop);
+          LOG.debug("Detected peer: " + cur + " popularity " + curPop);
           if (curPop >= bestPopularity) {
             secondBestPopularity = bestPopularity;
             bestPopularity = curPop;
@@ -337,15 +327,14 @@ public class NodeIPDetector {
           }
           if ((bestPopularity > 1) || !hasRealDetectedAddress) {
             if (!addresses.contains(best)) {
-              Logger.minor(this, "Adding best peer " + best + " (" + bestPopularity + ')');
+              LOG.debug("Adding best peer " + best + " (" + bestPopularity + ')');
               addresses.add(best);
               if (best.isRealInternetAddress(false, false, false)) addedValidIP = true;
             }
             confidence = bestPopularity;
             if ((secondBest != null) && (secondBestPopularity > 1)) {
               if (!addresses.contains(secondBest)) {
-                Logger.minor(
-                    this, "Adding second best peer " + secondBest + " (" + secondBest + ')');
+                LOG.debug("Adding second best peer " + secondBest + " (" + secondBest + ')');
                 addresses.add(secondBest);
                 if (secondBest.isRealInternetAddress(false, false, false)) addedValidIP = true;
               }
@@ -387,7 +376,7 @@ public class NodeIPDetector {
     if (addrs == null) return false;
     for (InetAddress addr : addrs) {
       if (IPUtil.isValidAddress(addr, false)) {
-        if (logMINOR) Logger.minor(this, "Has a directly detected IP: " + addr);
+        if (LOG.isDebugEnabled()) LOG.debug("Has a directly detected IP: " + addr);
         return true;
       }
     }
@@ -506,14 +495,14 @@ public class NodeIPDetector {
                 + overrideIPAddressString
                 + " in config: "
                 + e.getMessage();
-        Logger.error(this, msg);
+        LOG.error(msg);
         System.err.println(msg + " but starting up anyway, ignoring the configured IP override");
         overrideIPAddress = null;
       } catch (UnknownHostException e) {
         // **FIXME** This never happens for this reason with current FreenetInetAddress(String,
         // boolean, boolean) code; perhaps it needs review?
         String msg = "Unknown host: " + overrideIPAddressString + " in config: " + e.getMessage();
-        Logger.error(this, msg);
+        LOG.error(msg);
         System.err.println(msg + " but starting up anyway with no IP override");
         overrideIPAddress = null;
       }
@@ -557,7 +546,7 @@ public class NodeIPDetector {
         oldIPAddress = new FreenetInetAddress(ipHintString, false);
       } catch (UnknownHostException e) {
         String msg = "Unknown host: " + ipHintString + " in config: " + e.getMessage();
-        Logger.error(this, msg);
+        LOG.error(msg);
         System.err.println(msg);
         oldIPAddress = null;
       }
@@ -645,7 +634,7 @@ public class NodeIPDetector {
   }
 
   void hasDetectedPM() {
-    if (logMINOR) Logger.minor(this, "hasDetectedPM() called", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("hasDetectedPM() called", new Exception("debug"));
     synchronized (this) {
       hasDetectedPM = true;
     }

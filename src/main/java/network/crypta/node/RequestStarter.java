@@ -7,12 +7,11 @@ import network.crypta.client.async.ChosenBlockImpl;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.Key;
 import network.crypta.node.NodeStats.RejectReason;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.RandomGrabArrayItem;
 import network.crypta.support.RandomGrabArrayItemExclusionList;
 import network.crypta.support.math.RunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Starts requests. Nobody starts a request directly, you have to go through RequestStarter. And you
@@ -20,16 +19,9 @@ import network.crypta.support.math.RunningAverage;
  * level.
  */
 public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionList {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(RequestStarter.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /*
@@ -136,12 +128,12 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
         req = sched.grabRequest();
       }
       if (req != null) {
-        if (logMINOR) Logger.minor(this, "Running " + req + " priority " + req.getPriority());
+        if (LOG.isDebugEnabled()) LOG.debug("Running " + req + " priority " + req.getPriority());
         if (!req.localRequestOnly) {
           // Wait
           long delay;
           delay = throttle.getDelay();
-          if (logMINOR) Logger.minor(this, "Delay=" + delay + " from " + throttle);
+          if (LOG.isDebugEnabled()) LOG.debug("Delay=" + delay + " from " + throttle);
           long sleepUntil = cycleTime + delay;
           long now;
           do {
@@ -149,7 +141,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
             if (now < sleepUntil)
               try {
                 Thread.sleep(sleepUntil - now);
-                if (logMINOR) Logger.minor(this, "Slept: " + (sleepUntil - now) + "ms");
+                if (LOG.isDebugEnabled()) LOG.debug("Slept: " + (sleepUntil - now) + "ms");
               } catch (InterruptedException e) {
                 // Ignore
               }
@@ -189,7 +181,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
                   req.realTimeFlag,
                   null);
           if (reason != null) {
-            if (logMINOR) Logger.minor(this, "Not sending local request: " + reason);
+            if (LOG.isDebugEnabled()) LOG.debug("Not sending local request: " + reason);
             // Wait one throttle-delay before trying again
             cycleTime = System.currentTimeMillis();
             continue; // Let local requests compete with all the others
@@ -198,7 +190,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
           stats.waitUntilNotOverloaded(isInsert);
         }
       } else {
-        if (logMINOR) Logger.minor(this, "Waiting...");
+        if (LOG.isDebugEnabled()) LOG.debug("Waiting...");
         // Always take the lock on RequestStarter first. AFAICS we don't synchronize on
         // RequestStarter anywhere else.
         // Nested locks here prevent extra latency when there is a race, and therefore allow us to
@@ -215,10 +207,10 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
         }
       }
       if (req == null) continue;
-      if (!startRequest(req, logMINOR)) {
+      if (!startRequest(req, LOG.isDebugEnabled())) {
         // Don't log if it's a cancelled transient request.
         if (!((!req.isPersistent()) && req.isCancelled()))
-          Logger.normal(this, "No requests to start on " + req);
+          LOG.info("No requests to start on " + req);
       }
       if (!req.localRequestOnly) cycleTime = System.currentTimeMillis();
       req = null;
@@ -241,7 +233,8 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
         return false;
       }
     }
-    if (logMINOR) Logger.minor(this, "Running request " + req + " priority " + req.getPriority());
+    if (LOG.isDebugEnabled())
+      LOG.debug("Running request " + req + " priority " + req.getPriority());
     core.getExecutor()
         .execute(new SenderThread(req, req.key), "RequestStarter$SenderThread for " + req);
     return true;
@@ -253,7 +246,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       try {
         realRun();
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
       }
     }
   }
@@ -274,12 +267,10 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       if (key != null) stats.reportOutgoingLocalRequestLocation(key.toNormalizedDouble());
       if (!req.send(core, sched)) {
         if (!((!req.isPersistent()) && req.isCancelled()))
-          Logger.error(this, "run() not able to send a request on " + req);
-        else
-          Logger.normal(
-              this, "run() not able to send a request on " + req + " - request was cancelled");
+          LOG.error("run() not able to send a request on " + req);
+        else LOG.info("run() not able to send a request on " + req + " - request was cancelled");
       }
-      if (logMINOR) Logger.minor(this, "Finished " + req);
+      if (LOG.isDebugEnabled()) LOG.debug("Finished " + req);
     }
   }
 
@@ -297,13 +288,12 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   @Override
   public long exclude(RandomGrabArrayItem item, ClientContext context, long now) {
     if (sched.isRunningOrQueuedPersistentRequest((SendableRequest) item)) {
-      Logger.normal(this, "Excluding already-running request: " + item, new Exception("debug"));
+      LOG.info("Excluding already-running request: " + item, new Exception("debug"));
       return Long.MAX_VALUE;
     }
     if (isInsert) return -1;
     if (!(item instanceof BaseSendableGet get)) {
-      Logger.error(
-          this, "On a request scheduler, exclude() called with " + item, new Exception("error"));
+      LOG.error("On a request scheduler, exclude() called with " + item, new Exception("error"));
       return -1;
     }
     return get.getWakeupTime(context, now);
