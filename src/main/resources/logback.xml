@@ -38,8 +38,8 @@
     <appender-ref ref="FILE"/>
   </appender>
 
-  <!-- Keep root permissive; Crypta’s chain filters levels. -->
-  <root level="TRACE">
+  <!-- Default root level is WARN; runtime changes are applied by LoggingConfigHandler. -->
+  <root level="WARN">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="ASYNC_FILE"/>
   </root>

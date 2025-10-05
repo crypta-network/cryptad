@@ -12,6 +12,7 @@ import network.crypta.support.LoggerHook.InvalidThresholdException
  * concrete loggers and hook chains implement. The global logger defaults to a no-op [VoidLogger]
  * until replaced by [setupChain] or [setupStdoutLogging].
  */
+@Deprecated("Migrate to org.slf4j.Logger; this facade will be removed after SLF4J migration.")
 abstract class Logger {
 
   /**
