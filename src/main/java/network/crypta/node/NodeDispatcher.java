@@ -22,11 +22,10 @@ import network.crypta.node.NodeStats.RejectReason;
 import network.crypta.node.probe.Probe;
 import network.crypta.store.BlockMetadata;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -49,19 +48,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
 
   private static final long STALE_CONTEXT = 20000;
   private static final long STALE_CONTEXT_CHECK = 20000;
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(NodeDispatcher.class);
 
   final Node node;
   final RequestTracker tracker;
@@ -152,12 +139,12 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       // Node has been disconnected and garbage collected already! Ouch.
       return true;
     }
-    if (logMINOR) Logger.minor(this, "Dispatching " + m + " from " + source);
+    if (LOG.isDebugEnabled()) LOG.debug("Dispatching {} from {}", m, source);
     if (callback != null) {
       try {
         callback.snoop(m, node);
       } catch (Throwable t) {
-        Logger.error(this, "Callback threw " + t, t);
+        LOG.error("Callback threw", t);
       }
     }
     MessageType spec = m.getSpec();
@@ -167,7 +154,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       try {
         source.sendAsync(reply, null, pingCounter); // nothing we can do if can't contact source
       } catch (NotConnectedException e) {
-        if (logMINOR) Logger.minor(this, "Lost connection replying to " + m);
+        if (LOG.isDebugEnabled()) LOG.debug("Lost connection replying to {}", m);
       }
       return true;
     } else if (spec == DMT.FNPDetectedIPAddress) {
@@ -215,8 +202,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     } else if (spec == DMT.FNPRoutingStatus) {
       if (source instanceof DarknetPeerNode peerNode) {
         boolean value = m.getBoolean(DMT.ROUTING_ENABLED);
-        if (logMINOR)
-          Logger.minor(this, "The peer (" + source + ") asked us to set routing=" + value);
+        if (LOG.isDebugEnabled())
+          LOG.debug("The peer ({}) asked us to set routing={}", source, value);
         peerNode.setRoutingStatus(value, false);
       }
       // We claim it in any case
@@ -234,25 +221,19 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       if ((OpennetManager.MAX_PEERS_FOR_SCALING < locs.length) && (source.isOpennet())) {
         if (locs.length > OpennetManager.PANIC_MAX_PEERS) {
           // This can't happen by accident
-          Logger.error(
-              this,
-              "We received "
-                  + locs.length
-                  + " locations from "
-                  + source
-                  + "! That should *NOT* happen! Possible attack!");
+          LOG.error(
+              "We received {} locations from {}! That should *NOT* happen! Possible attack!",
+              locs.length,
+              source);
           source.forceDisconnect();
           return true;
         } else {
           // A few extra can happen by accident. Just use the first 20.
-          Logger.normal(
-              this,
-              "Too many locations from "
-                  + source
-                  + " : "
-                  + locs.length
-                  + " could be an accident, using the first "
-                  + OpennetManager.MAX_PEERS_FOR_SCALING);
+          LOG.info(
+              "Too many locations from {} : {} could be an accident, using the first {}",
+              source,
+              Integer.valueOf(locs.length),
+              Integer.valueOf(OpennetManager.MAX_PEERS_FOR_SCALING));
           locs = Arrays.copyOf(locs, OpennetManager.MAX_PEERS_FOR_SCALING);
         }
       }
@@ -270,7 +251,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     }
 
     if (!source.isRoutable()) {
-      if (logDEBUG) Logger.debug(this, "Not routable");
+      if (LOG.isDebugEnabled()) LOG.debug("Not routable");
 
       if (spec == DMT.FNPCHKDataRequest) {
         rejectRequest(m, node.getNodeStats().chkRequestCtr);
@@ -374,8 +355,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     long uid = m.getLong(DMT.UID);
     if (!HMAC.verifyWithSHA256(
         node.getFailureTable().offerAuthenticatorKey, key.getFullKey(), authenticator)) {
-      Logger.error(
-          this, "Invalid offer request from " + source + " : authenticator did not verify");
+      LOG.error("Invalid offer request from {} : authenticator did not verify", source);
       try {
         source.sendAsync(
             DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_BAD_AUTHENTICATOR),
@@ -386,7 +366,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       }
       return true;
     }
-    if (logMINOR) Logger.minor(this, "Valid GetOfferedKey for " + key + " from " + source);
+    if (LOG.isDebugEnabled()) LOG.debug("Valid GetOfferedKey for {} from {}", key, source);
 
     // Do we want it? We can RejectOverload if we don't have the bandwidth...
     boolean isSSK = key instanceof NodeSSK;
@@ -394,17 +374,17 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     OfferReplyTag tag = new OfferReplyTag(isSSK, source, realTimeFlag, uid, node);
 
     if (!tracker.lockUID(uid, isSSK, false, true, false, realTimeFlag, tag)) {
-      if (logMINOR)
-        Logger.minor(this, "Could not lock ID " + uid + " -> rejecting (already running)");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Could not lock ID {} -> rejecting (already running)", uid);
       Message rejected = DMT.createFNPRejectedLoop(uid);
       try {
         source.sendAsync(rejected, null, node.getFailureTable().senderCounter);
       } catch (NotConnectedException e) {
-        Logger.normal(this, "Rejecting request from " + source.getPeer() + ": " + e);
+        LOG.info("Rejecting request from {}: {}", source.getPeer(), e.toString());
       }
       return true;
     } else {
-      if (logMINOR) Logger.minor(this, "Locked " + uid);
+      if (LOG.isDebugEnabled()) LOG.debug("Locked {}", uid);
     }
     boolean needPubKey;
     try {
@@ -413,15 +393,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           nodeStats.shouldRejectRequest(
               true, false, isSSK, false, true, source, false, false, realTimeFlag, tag);
       if (reject != null) {
-        Logger.normal(
-            this, "Rejecting FNPGetOfferedKey from " + source + " for " + key + " : " + reject);
+        LOG.info("Rejecting FNPGetOfferedKey from {} for {} : {}", source, key, reject);
         Message rejected = DMT.createFNPRejectedOverload(uid, true);
         if (reject.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
         try {
           source.sendAsync(rejected, null, node.getFailureTable().senderCounter);
         } catch (NotConnectedException e) {
-          Logger.normal(
-              this, "Rejecting (overload) data request from " + source.getPeer() + ": " + e);
+          LOG.info("Rejecting (overload) data request from {}: {}", source.getPeer(), e.toString());
         }
         tag.unlockHandler(reject.soft);
         return true;
@@ -504,16 +482,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
    */
   private void innerHandleDataRequest(Message m, PeerNode source, boolean isSSK) {
     if (!source.isConnected()) {
-      if (logMINOR)
-        Logger.minor(
-            this, "Handling request off thread, source disconnected: " + source + " for " + m);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Handling request off thread, source disconnected: {} for {}", source, m);
       return;
     }
     if (!source.isRoutable()) {
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Handling request off thread, source no longer routable: " + source + " for " + m);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Handling request off thread, source no longer routable: {} for {}", source, m);
       rejectRequest(
           m, isSSK ? node.getNodeStats().sskRequestCtr : node.getNodeStats().chkRequestCtr);
       return;
@@ -527,18 +502,18 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     final RequestTag tag =
         new RequestTag(isSSK, RequestTag.START.REMOTE, source, realTimeFlag, id, node);
     if (!tracker.lockUID(id, isSSK, false, false, false, realTimeFlag, tag)) {
-      if (logMINOR)
-        Logger.minor(this, "Could not lock ID " + id + " -> rejecting (already running)");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Could not lock ID {} -> rejecting (already running)", id);
       Message rejected = DMT.createFNPRejectedLoop(id);
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
-        Logger.normal(this, "Rejecting request from " + source.getPeer() + ": " + e);
+        LOG.info("Rejecting request from {}: {}", source.getPeer(), e.toString());
       }
       node.getFailureTable().onFinalFailure(key, null, htl, htl, -1, -1, source);
       return;
     } else {
-      if (logMINOR) Logger.minor(this, "Locked " + id);
+      if (LOG.isDebugEnabled()) LOG.debug("Locked {}", id);
     }
 
     // There are at least 2 threads that call this function.
@@ -556,21 +531,17 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       // can accept 1 CHK request every so often, but not with SSKs because they aren't throttled so
       // won't sort out bwlimitDelayTime, which was the whole reason for accepting them when
       // overloaded...
-      Logger.normal(
-          this,
-          "Rejecting "
-              + (isSSK ? "SSK" : "CHK")
-              + " request from "
-              + source.getPeer()
-              + " preemptively because "
-              + rejectReason);
+      LOG.info(
+          "Rejecting {} request from {} preemptively because {}",
+          (isSSK ? "SSK" : "CHK"),
+          source.getPeer(),
+          rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);
       if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
-        Logger.normal(
-            this, "Rejecting (overload) data request from " + source.getPeer() + ": " + e);
+        LOG.info("Rejecting (overload) data request from {}: {}", source.getPeer(), e.toString());
       }
       tag.setRejected();
       tag.unlockHandler(rejectReason.soft);
@@ -605,13 +576,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     boolean realTimeFlag = DMT.getRealTimeFlag(m);
     InsertTag tag = new InsertTag(isSSK, InsertTag.START.REMOTE, source, realTimeFlag, id, node);
     if (!tracker.lockUID(id, isSSK, true, false, false, realTimeFlag, tag)) {
-      if (logMINOR)
-        Logger.minor(this, "Could not lock ID " + id + " -> rejecting (already running)");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Could not lock ID {} -> rejecting (already running)", id);
       Message rejected = DMT.createFNPRejectedLoop(id);
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
-        Logger.normal(this, "Rejecting insert request from " + source.getPeer() + ": " + e);
+        LOG.info("Rejecting insert request from {}: {}", source.getPeer(), e.toString());
       }
       return;
     }
@@ -630,16 +601,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         nodeStats.shouldRejectRequest(
             !isSSK, true, isSSK, false, false, source, false, preferInsert, realTimeFlag, tag);
     if (rejectReason != null) {
-      Logger.normal(
-          this,
-          "Rejecting insert from " + source.getPeer() + " preemptively because " + rejectReason);
+      LOG.info("Rejecting insert from {} preemptively because {}", source.getPeer(), rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);
       if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
-        Logger.normal(
-            this, "Rejecting (overload) insert request from " + source.getPeer() + ": " + e);
+        LOG.info("Rejecting (overload) insert request from {}: {}", source.getPeer(), e.toString());
       }
       tag.unlockHandler(rejectReason.soft);
       return;
@@ -714,7 +682,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       node.getExecutor()
           .execute(rh, "CHKInsertHandler for " + id + " on " + node.getDarknetPortNumber());
     }
-    if (logMINOR) Logger.minor(this, "Started InsertHandler for " + id);
+    if (LOG.isDebugEnabled()) LOG.debug("Started InsertHandler for {}", id);
   }
 
   private boolean handleAnnounceRequest(Message m, PeerNode source) {
@@ -739,7 +707,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       } catch (NotConnectedException e) {
         // OK
       }
-      if (logMINOR) Logger.minor(this, "Got bogus announcement message from " + source);
+      if (LOG.isDebugEnabled()) LOG.debug("Got bogus announcement message from {}", source);
       return true;
     }
 
@@ -753,9 +721,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       } catch (NotConnectedException e) {
         // OK
       }
-      if (logMINOR)
-        Logger.minor(
-            this, "Rejected announcement (opennet or announcement disabled) from " + source);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Rejected announcement (opennet or announcement disabled) from {}", source);
       return true;
     }
     boolean success = false;
@@ -770,11 +737,11 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         Message msg = null;
         if (NodeStats.AnnouncementDecision.OVERLOAD == shouldAcceptAnnouncement) {
           msg = DMT.createFNPRejectedOverload(uid, true);
-          if (logMINOR)
-            Logger.minor(this, "Rejected announcement (overall overload) from " + source);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Rejected announcement (overall overload) from {}", source);
         } else if (NodeStats.AnnouncementDecision.LOOP == shouldAcceptAnnouncement) {
           msg = DMT.createFNPRejectedLoop(uid);
-          if (logMINOR) Logger.minor(this, "Rejected announcement (loop) from " + source);
+          if (LOG.isDebugEnabled()) LOG.debug("Rejected announcement (loop) from {}", source);
         } else {
           throw new Error("This shouldn't happen. Please report");
         }
@@ -796,7 +763,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         } catch (NotConnectedException e) {
           // OK
         }
-        if (logMINOR) Logger.minor(this, "Rejected announcement (peer limit) from " + source);
+        if (LOG.isDebugEnabled()) LOG.debug("Rejected announcement (peer limit) from {}", source);
         return true;
       }
       if (om != null && source instanceof SeedClientPeerNode peerNode) {
@@ -808,20 +775,20 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           } catch (NotConnectedException e) {
             // OK
           }
-          if (logMINOR) Logger.minor(this, "Rejected announcement (seednode limit) from " + source);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Rejected announcement (seednode limit) from {}", source);
           return true;
         }
       }
       if (source instanceof SeedClientPeerNode) {
         short maxHTL = node.maxHTL();
         if (htl < maxHTL - 1) {
-          Logger.error(
-              this, "Announcement from seed client not at max HTL: " + htl + " for " + source);
+          LOG.error("Announcement from seed client not at max HTL: {} for {}", htl, source);
           htl = maxHTL;
         }
       }
       AnnouncementCallback cb = null;
-      if (logMINOR) {
+      if (LOG.isDebugEnabled()) {
         final String origin = source + " (htl " + htl + ")";
         // Log the progress of the announcement.
         // This is similar to Announcer's logging.
@@ -841,55 +808,48 @@ public class NodeDispatcher implements Dispatcher, Runnable {
                 synchronized (this) {
                   totalAdded++;
                 }
-                Logger.minor(
-                    this,
-                    "Announcement from "
-                        + origin
-                        + " added node "
-                        + pn
-                        + (pn instanceof SeedClientPeerNode
-                            ? " (seed server added the peer directly)"
-                            : ""));
+                LOG.debug(
+                    "Announcement from {} added node {}{}",
+                    origin,
+                    pn,
+                    (pn instanceof SeedClientPeerNode
+                        ? " (seed server added the peer directly)"
+                        : ""));
               }
 
               @Override
               public void bogusNoderef(String reason) {
-                Logger.minor(
-                    this,
-                    "Announcement from " + origin + " got bogus noderef: " + reason,
+                LOG.debug(
+                    "Announcement from {} got bogus noderef: {}",
+                    origin,
+                    reason,
                     new Exception("debug"));
               }
 
               @Override
               public void completed() {
                 synchronized (this) {
-                  Logger.minor(this, "Announcement from " + origin + " completed");
+                  LOG.debug("Announcement from {} completed", origin);
                 }
                 int shallow = node.maxHTL() - (totalAdded + totalNotWanted);
                 if (acceptedSomewhere)
-                  Logger.minor(
-                      this,
-                      "Announcement from "
-                          + origin
-                          + " completed ("
-                          + totalAdded
-                          + " added, "
-                          + totalNotWanted
-                          + " not wanted, "
-                          + shallow
-                          + " shallow)");
-                else Logger.minor(this, "Announcement from " + origin + " not accepted anywhere.");
+                  LOG.debug(
+                      "Announcement from {} completed ({} added, {} not wanted, {} shallow)",
+                      origin,
+                      Integer.valueOf(totalAdded),
+                      Integer.valueOf(totalNotWanted),
+                      Integer.valueOf(shallow));
+                else LOG.debug("Announcement from {} not accepted anywhere.", origin);
               }
 
               @Override
               public void nodeFailed(PeerNode pn, String reason) {
-                Logger.minor(this, "Announcement from " + origin + " failed: " + reason);
+                LOG.debug("Announcement from {} failed: {}", origin, reason);
               }
 
               @Override
               public void noMoreNodes() {
-                Logger.minor(
-                    this, "Announcement from " + origin + " ran out of nodes (route not found)");
+                LOG.debug("Announcement from {} ran out of nodes (route not found)", origin);
               }
 
               @Override
@@ -897,36 +857,30 @@ public class NodeDispatcher implements Dispatcher, Runnable {
                 synchronized (this) {
                   totalNotWanted++;
                 }
-                Logger.minor(
-                    this,
-                    "Announcement from "
-                        + origin
-                        + " returned node not wanted for a total of "
-                        + totalNotWanted
-                        + " from this announcement)");
+                LOG.debug(
+                    "Announcement from {} returned node not wanted for a total of {} from this"
+                        + " announcement)",
+                    origin,
+                    Integer.valueOf(totalNotWanted));
               }
 
               @Override
               public void nodeNotAdded() {
-                Logger.minor(
-                    this,
-                    "Announcement from "
-                        + origin
-                        + " : node not wanted (maybe already have it, opennet just turned off,"
-                        + " etc)");
+                LOG.debug(
+                    "Announcement from {} : node not wanted (maybe already have it, opennet just"
+                        + " turned off, etc)",
+                    origin);
               }
 
               @Override
               public void relayedNoderef() {
                 synchronized (this) {
                   totalAdded++;
-                  Logger.minor(
-                      this,
-                      "Announcement from "
-                          + origin
-                          + " accepted by a downstream node, relaying noderef for a total of "
-                          + totalAdded
-                          + " from this announcement)");
+                  LOG.debug(
+                      "Announcement from {} accepted by a downstream node, relaying noderef for a"
+                          + " total of {} from this announcement)",
+                      origin,
+                      Integer.valueOf(totalAdded));
                 }
               }
             };
@@ -936,7 +890,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
               target, htl, uid, source, om, node, xferUID, noderefLength, paddedLength, cb);
       node.getExecutor().execute(sender, "Announcement sender for " + uid);
       success = true;
-      if (logMINOR) Logger.minor(this, "Accepted announcement from " + source);
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted announcement from {}", source);
       return true;
     } finally {
       if (!success) source.completedAnnounce(uid);
@@ -966,7 +920,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     RoutedContext rc = routedContexts.get(id);
     if (rc == null) {
       // Gah
-      Logger.error(this, "Unrecognized FNPRoutedRejected");
+      LOG.error("Unrecognized FNPRoutedRejected");
       return false; // locally originated??
     }
     short htl = rc.lastHtl;
@@ -982,7 +936,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
               DMT.createFNPRoutedRejected(id, (short) 0), null, nodeStats.routedMessageCtr);
         } catch (NotConnectedException e) {
           // Ouch.
-          Logger.error(this, "Unable to relay probe DNF: peer disconnected: " + rc.source);
+          LOG.error("Unable to relay probe DNF: peer disconnected: {}", rc.source);
         }
       }
     } else {
@@ -1001,7 +955,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
    */
   boolean handleRouted(Message m, PeerNode source) {
     if (!node.enableRoutedPing()) return true;
-    if (logMINOR) Logger.minor(this, "handleRouted(" + m + ')');
+    if (LOG.isDebugEnabled()) LOG.debug("handleRouted({})", m);
 
     long id = m.getLong(DMT.UID);
     short htl = m.getShort(DMT.HTL);
@@ -1013,7 +967,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       try {
         source.sendAsync(DMT.createFNPRoutedRejected(id, htl), null, nodeStats.routedMessageCtr);
       } catch (NotConnectedException e) {
-        if (logMINOR) Logger.minor(this, "Lost connection rejecting " + m);
+        if (LOG.isDebugEnabled()) LOG.debug("Lost connection rejecting {}", m);
       }
       return true;
     }
@@ -1023,11 +977,10 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     }
     // source == null => originated locally, keep full htl
     double target = m.getDouble(DMT.TARGET_LOCATION);
-    if (logMINOR)
-      Logger.minor(this, "id " + id + " from " + source + " htl " + htl + " target " + target);
+    if (LOG.isDebugEnabled()) LOG.debug("id {} from {} htl {} target {}", id, source, htl, target);
     if (Math.abs(node.getLocationManager().getLocation() - target) <= Double.MIN_VALUE) {
-      if (logMINOR)
-        Logger.minor(this, "Dispatching " + m.getSpec() + " on " + node.getDarknetPortNumber());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Dispatching {} on {}", m.getSpec(), node.getDarknetPortNumber());
       // Handle locally
       // Message type specific processing
       dispatchRoutedMessage(m, source, id);
@@ -1038,7 +991,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         try {
           source.sendAsync(reject, null, nodeStats.routedMessageCtr);
         } catch (NotConnectedException e) {
-          if (logMINOR) Logger.minor(this, "Lost connection rejecting " + m);
+          if (LOG.isDebugEnabled()) LOG.debug("Lost connection rejecting {}", m);
         }
       return true;
     } else {
@@ -1049,10 +1002,10 @@ public class NodeDispatcher implements Dispatcher, Runnable {
   boolean handleRoutedReply(Message m) {
     if (!node.enableRoutedPing()) return true;
     long id = m.getLong(DMT.UID);
-    if (logMINOR) Logger.minor(this, "Got reply: " + m);
+    if (LOG.isDebugEnabled()) LOG.debug("Got reply: {}", m);
     RoutedContext ctx = routedContexts.get(id);
     if (ctx == null) {
-      Logger.error(this, "Unrecognized routed reply: " + m);
+      LOG.error("Unrecognized routed reply: {}", m);
       return false;
     }
     PeerNode pn = ctx.source;
@@ -1060,7 +1013,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     try {
       pn.sendAsync(m.cloneAndDropSubMessages(), null, nodeStats.routedMessageCtr);
     } catch (NotConnectedException e) {
-      if (logMINOR) Logger.minor(this, "Lost connection forwarding " + m + " to " + pn);
+      if (LOG.isDebugEnabled()) LOG.debug("Lost connection forwarding {} to {}", m, pn);
     }
     return true;
   }
@@ -1073,13 +1026,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       double target,
       RoutedContext ctx,
       byte[] targetIdentity) {
-    if (logMINOR) Logger.minor(this, "Should forward");
+    if (LOG.isDebugEnabled()) LOG.debug("Should forward");
     // Forward
     m = preForward(m, htl);
     while (true) {
       PeerNode next = node.getPeers().getByPubKeyHash(targetIdentity);
       if (next != null && !next.isConnected()) {
-        Logger.error(this, "Found target but disconnected!: " + next);
+        LOG.error("Found target but disconnected!: {}", next);
         next = null;
       }
       if (next == null)
@@ -1099,11 +1052,11 @@ public class NodeDispatcher implements Dispatcher, Runnable {
                     pn == null,
                     false,
                     false);
-      if (logMINOR) Logger.minor(this, "Next: " + next + " message: " + m);
+      if (LOG.isDebugEnabled()) LOG.debug("Next: {} message: {}", next, m);
       if (next != null) {
         // next is connected, or at least has been => next.getPeer() CANNOT be null.
-        if (logMINOR)
-          Logger.minor(this, "Forwarding " + m.getSpec() + " to " + next.getPeer().getPort());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Forwarding {} to {}", m.getSpec(), next.getPeer().getPort());
         ctx.addSent(next);
         try {
           next.sendAsync(m, null, nodeStats.routedMessageCtr);
@@ -1111,16 +1064,15 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           continue;
         }
       } else {
-        if (logMINOR)
-          Logger.minor(
-              this, "Reached dead end for " + m.getSpec() + " on " + node.getDarknetPortNumber());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Reached dead end for {} on {}", m.getSpec(), node.getDarknetPortNumber());
         // Reached a dead end...
         Message reject = DMT.createFNPRoutedRejected(id, htl);
         if (pn != null)
           try {
             pn.sendAsync(reject, null, nodeStats.routedMessageCtr);
           } catch (NotConnectedException e) {
-            Logger.error(this, "Cannot send reject message back to source " + pn);
+            LOG.error("Cannot send reject message back to source {}", pn);
             return true;
           }
       }
@@ -1151,15 +1103,15 @@ public class NodeDispatcher implements Dispatcher, Runnable {
    */
   private boolean dispatchRoutedMessage(Message m, PeerNode src, long id) {
     if (m.getSpec() == DMT.FNPRoutedPing) {
-      if (logMINOR) Logger.minor(this, "RoutedPing reached other side! (" + id + ")");
+      if (LOG.isDebugEnabled()) LOG.debug("RoutedPing reached other side! ({})", id);
       int x = m.getInt(DMT.COUNTER);
       Message reply = DMT.createFNPRoutedPong(id, x);
-      if (logMINOR) Logger.minor(this, "Replying - counter = " + x + " for " + id);
+      if (LOG.isDebugEnabled()) LOG.debug("Replying - counter = {} for {}", Integer.valueOf(x), id);
       try {
         src.sendAsync(reply, null, nodeStats.routedMessageCtr);
       } catch (NotConnectedException e) {
-        if (logMINOR)
-          Logger.minor(this, "Lost connection replying to " + m + " in dispatchRoutedMessage");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Lost connection replying to {} in dispatchRoutedMessage", m);
       }
       return true;
     }
