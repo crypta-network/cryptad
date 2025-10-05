@@ -7,9 +7,11 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BandwidthManager {
+  private static final Logger LOG = LoggerFactory.getLogger(BandwidthManager.class);
 
   private static final long DELAY_HOURS = 24;
 
@@ -63,7 +65,7 @@ public class BandwidthManager {
                             lastOfferedInputBandwidth, lastOfferedOutputBandwidth, null, false));
                   }
                 } catch (Exception e) {
-                  Logger.minor(this, e.getMessage());
+                  LOG.debug(e.getMessage());
                   throw e;
                 } finally {
                   node.getTicker().queueTimedJob(this, HOURS.toMillis(DELAY_HOURS));
