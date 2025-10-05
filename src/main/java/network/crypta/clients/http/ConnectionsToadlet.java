@@ -46,17 +46,19 @@ import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.Version;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Base class for DarknetConnectionsToadlet and OpennetConnectionsToadlet */
 public abstract class ConnectionsToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(ConnectionsToadlet.class);
+
   protected class ComparatorByStatus implements Comparator<PeerNodeStatus> {
     protected final String sortBy;
     protected final boolean reversed;
@@ -859,7 +861,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         try {
           throw new RedirectException("/addfriend/");
         } catch (URISyntaxException e) {
-          Logger.error(this, "Impossible: " + e + " for /addfriend/", e);
+          LOG.error("Impossible: {} for /addfriend/", e.toString(), e);
         }
       }
     }
@@ -880,7 +882,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
 
   public void handleMethodPOST(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException, ConfigException {
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
 
     if (!acceptRefPosts()) {
       sendUnauthorizedPage(ctx);
@@ -959,8 +961,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
             FreenetURI refUri = new FreenetURI(urltext);
             ref = AddPeer.getReferenceFromFreenetURI(refUri, client);
           } catch (MalformedURLException | FetchException e) {
-            Logger.warning(
-                this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urltext);
+            LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urltext);
             URL url;
             try {
               url = URI.create(urltext).toURL();
@@ -1106,15 +1107,15 @@ public abstract class ConnectionsToadlet extends Toadlet {
     try {
       fs = parseNoderefLiberally(nodeReference);
       if (!fs.getEndMarker().endsWith("End")) {
-        Logger.error(this, "Trying to add noderef with end marker \"" + fs.getEndMarker() + "\"");
+        LOG.error("Trying to add noderef with end marker \"{}\"", fs.getEndMarker());
         return PeerAdditionReturnCodes.WRONG_ENCODING;
       }
       fs.setEndMarker("End"); // It's always End ; the regex above doesn't always grok this
     } catch (IOException e) {
-      Logger.error(this, "IOException adding reference :" + e.getMessage(), e);
+      LOG.error("IOException adding reference :{}", e.getMessage(), e);
       return PeerAdditionReturnCodes.CANT_PARSE;
     } catch (Throwable t) {
-      Logger.error(this, "Internal error adding reference :" + t.getMessage(), t);
+      LOG.error("Internal error adding reference :{}", t.getMessage(), t);
       return PeerAdditionReturnCodes.INTERNAL_ERROR;
     }
     PeerNode pn;
@@ -1130,7 +1131,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     } catch (ReferenceSignatureVerificationException e1) {
       return PeerAdditionReturnCodes.INVALID_SIGNATURE;
     } catch (Throwable t) {
-      Logger.error(this, "Internal error adding reference :" + t.getMessage(), t);
+      LOG.error("Internal error adding reference :{}", t.getMessage(), t);
       return PeerAdditionReturnCodes.INTERNAL_ERROR;
     }
     if (Arrays.equals(pn.peerECDSAPubKeyHash, node.getDarknetPubKeyHash())) {
@@ -1148,8 +1149,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     if (fs.directKeys().contains("lastGoodVersion")) {
       return fs;
     } else {
-      Logger.warning(
-          null,
+      LOG.warn(
           "Cannot parse noderef: does not contain lastGoodVersion, trying to replace all spaces"
               + " with newlines and parsing again.");
       return new SimpleFieldSet(nodeReference.replace(" ", "\n"), false, true, true);
