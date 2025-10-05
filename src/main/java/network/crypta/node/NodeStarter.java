@@ -31,8 +31,7 @@ import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.ProcessPriority;
@@ -41,6 +40,8 @@ import network.crypta.support.io.NativeThread;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
 import picocli.CommandLine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author nextgens
@@ -48,6 +49,7 @@ import picocli.CommandLine;
  *     <p>There will only ever be one instance of NodeStarter.
  */
 public class NodeStarter implements WrapperListener {
+    private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
 
   /*
   (File.separatorChar == '\\') &&
@@ -110,7 +112,7 @@ public class NodeStarter implements WrapperListener {
   public static RandomSource globalTestInit(
       File baseDirectory,
       boolean enablePlug,
-      LogLevel logThreshold,
+      network.crypta.support.Logger.LogLevel logThreshold,
       String details,
       boolean noDNS,
       RandomSource randomSource)
@@ -130,7 +132,7 @@ public class NodeStarter implements WrapperListener {
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
-    Logger.setupStdoutLogging(logThreshold, details);
+    network.crypta.support.Logger.setupStdoutLogging(logThreshold, details);
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
@@ -159,7 +161,7 @@ public class NodeStarter implements WrapperListener {
                   // Ignore
                 } catch (Throwable t) {
                   try {
-                    Logger.error(this, "Caught " + t, t);
+                    LOG.error("Caught " + t, t);
                   } catch (Throwable t1) {
                     // Ignore
                   }
@@ -545,7 +547,7 @@ public class NodeStarter implements WrapperListener {
                 // Ignore
               } catch (Throwable t) {
                 try {
-                  Logger.error(this, "Caught " + t, t);
+                  LOG.error("Caught " + t, t);
                 } catch (Throwable t1) {
                   // Ignore
                 }
@@ -592,7 +594,7 @@ public class NodeStarter implements WrapperListener {
             t.getClass().getSimpleName(), t.getMessage());
         // Log full stack trace for debugging instead of only the message
         try {
-          Logger.error(this, "Warning: failed to install seednodes.fref", t);
+          LOG.error("Warning: failed to install seednodes.fref", t);
         } catch (Throwable ignored) {
           // ignored
         }
