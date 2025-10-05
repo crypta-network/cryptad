@@ -33,10 +33,9 @@ import network.crypta.client.filter.UnknownContentTypeException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.node.RequestClient;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fetching a page for a browser.
@@ -44,6 +43,7 @@ import network.crypta.support.api.Bucket;
  * <p>LOCKING: The lock on this object is always taken last.
  */
 public class FProxyFetchInProgress implements ClientEventListener, ClientGetCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(FProxyFetchInProgress.class);
 
   /**
    * What to do when we find data which matches the request but it has already been filtered,
@@ -60,18 +60,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
   private final REFILTER_POLICY refilterPolicy;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy logMINOR removed; use LOG.isDebugEnabled() instead.
 
   /** The key we are fetching */
   public final FreenetURI uri;
@@ -242,7 +231,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       }
     } catch (PersistenceDisabledException e) {
       // Impossible
-      Logger.error(this, "Failed to start: " + e);
+      LOG.error("Failed to start: {}", e.toString());
       synchronized (this) {
         this.failed = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
         this.finished = true;
@@ -334,12 +323,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
           this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);
           return true;
         } catch (IOException e) {
-          Logger.normal(this, "Failed filtering coalesced data in fproxy");
+          LOG.info("Failed filtering coalesced data in fproxy");
           // Failed. :|
           // Let it run normally.
           return false;
         } catch (URISyntaxException e) {
-          Logger.error(this, "Impossible: " + e, e);
+          LOG.error("Impossible: {}", e.toString(), e);
           return false;
         }
       }
@@ -490,11 +479,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     if (!results.isEmpty()) return false;
     if (!listener.isEmpty()) return false;
     if (lastTouched + LIFETIME >= System.currentTimeMillis() && !requestImmediateCancel) {
-      if (logMINOR)
-        Logger.minor(this, "Not able to cancel for " + this + " : " + uri + " : " + maxSize);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Not able to cancel for {} : {} : {}", this, uri, maxSize);
+      }
       return false;
     }
-    if (logMINOR) Logger.minor(this, "Can cancel for " + this + " : " + uri + " : " + maxSize);
+    if (LOG.isDebugEnabled()) LOG.debug("Can cancel for {} : {} : {}", this, uri, maxSize);
     return true;
   }
 
@@ -503,13 +493,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * the tracker already, so it won't be reused.
    */
   public void finishCancel() {
-    if (logMINOR)
-      Logger.minor(this, "Finishing cancel for " + this + " : " + uri + " : " + maxSize);
+    if (LOG.isDebugEnabled()) LOG.debug("Finishing cancel for {} : {} : {}", this, uri, maxSize);
     try {
       getter.cancel(tracker.context);
     } catch (Throwable t) {
       // Ensure we get to the next bit
-      Logger.error(this, "Failed to cancel: " + t, t);
+      LOG.error("Failed to cancel: {}", t.toString(), t);
     }
     Bucket d;
     synchronized (this) {
@@ -521,7 +510,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
         d.free();
       } catch (Throwable t) {
         // Ensure we get to the next bit
-        Logger.error(this, "Failed to free: " + t, t);
+        LOG.error("Failed to free: {}", t.toString(), t);
       }
     }
   }
@@ -573,8 +562,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * @param listener - The listener to be added
    */
   public synchronized void addListener(FProxyFetchListener listener) {
-    if (logMINOR) {
-      Logger.minor(this, "Registered listener:" + listener);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Registered listener:{}", listener);
     }
     this.listener.add(listener);
   }
@@ -585,12 +574,12 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * @param listener - The listener to be removed
    */
   public synchronized void removeListener(FProxyFetchListener listener) {
-    if (logMINOR) {
-      Logger.minor(this, "Removed listener:" + listener);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Removed listener:{}", listener);
     }
     this.listener.remove(listener);
-    if (logMINOR) {
-      Logger.minor(this, "can cancel now?:" + canCancel());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("can cancel now?:{}", canCancel());
     }
   }
 

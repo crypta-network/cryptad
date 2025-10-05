@@ -64,8 +64,49 @@ tasks.register("printVersion") {
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the Kotlin main directly.
 // Align with actual top-level entry in Launcher.kt
-application {
-  mainClass.set("network.crypta.launcher.LauncherKt")
-}
+application { mainClass.set("network.crypta.launcher.LauncherKt") }
 
 // Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'
+
+// PR3 guard: optional check for legacy Logger usage. Does not fail by default.
+// Run: ./gradlew legacyLoggerCheck -PfailOnLegacyLogger=true to fail on matches
+tasks.register("legacyLoggerCheck") {
+  group = "verification"
+  description = "Scans sources for legacy network.crypta.support.Logger usages."
+  val fail = providers.gradleProperty("failOnLegacyLogger").orNull == "true"
+  doLast {
+    val srcDirs = listOf("src/main/java", "src/main/kotlin", "src/test/java", "src/test/kotlin")
+    val allowed =
+      setOf(
+        // Allow the legacy definitions to exist until PR4
+        "src/main/java/network/crypta/support/Logger.kt",
+        "src/main/java/network/crypta/support/LoggerHook.kt",
+        "src/main/java/network/crypta/support/LoggerHookChain.kt",
+        "src/main/java/network/crypta/support/VoidLogger.kt",
+        "src/main/java/network/crypta/support/Slf4jLoggerHook.kt",
+        "src/main/java/network/crypta/support/LogThresholdCallback.java",
+      )
+    val pattern = Regex("network\\.crypta\\.support\\.Logger")
+    val offenders = mutableListOf<String>()
+    srcDirs
+      .map { file(it) }
+      .filter { it.exists() }
+      .flatMap { it.walkTopDown().asSequence().toList() }
+      .filter { it.isFile && (it.extension == "java" || it.extension == "kt") }
+      .forEach { f ->
+        val normalized = f.path.replace('\\', '/')
+        if (normalized !in allowed) {
+          val text = f.readText()
+          if (pattern.containsMatchIn(text)) offenders += normalized
+        }
+      }
+    if (offenders.isEmpty()) {
+      println("[legacyLoggerCheck] OK: no legacy Logger usages found.")
+    } else {
+      println("[legacyLoggerCheck] Found ${offenders.size} files using legacy Logger:")
+      offenders.take(50).forEach { println(" - $it") }
+      if (offenders.size > 50) println(" (and ${offenders.size - 50} more)")
+      if (fail) throw GradleException("Legacy Logger usages detected: ${offenders.size}")
+    }
+  }
+}
