@@ -2675,9 +2675,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       }
     }
     if (LOG.isDebugEnabled())
-      LOG.debug(
-          PeerNode.class,
-          "Reference: " + HexUtil.bytesToHex(data, offset, length) + '(' + length + ')');
+      LOG.debug("Reference: " + HexUtil.bytesToHex(data, offset, length) + '(' + length + ')');
 
     // Now decode it
     ByteArrayInputStream bais = new ByteArrayInputStream(data, offset, length);

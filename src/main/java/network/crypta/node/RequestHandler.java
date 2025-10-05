@@ -24,12 +24,12 @@ import network.crypta.keys.SSKBlock;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetManager.NoderefCallback;
 import network.crypta.node.OpennetManager.WaitedTooLongForOpennetNoderefException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handle an incoming request. Does not do the actual fetching; that is separated off into
@@ -38,16 +38,10 @@ import network.crypta.support.io.NativeThread;
 public class RequestHandler
     implements PrioRunnable, HighHtlAware, ByteCounter, RequestSenderListener {
 
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(RequestHandler.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
+    // removed legacy Logger threshold callbacks
   }
 
   final Node node;
@@ -116,10 +110,10 @@ public class RequestHandler
       // The last thing that realRun() does is register as a request-sender listener, so any
       // exception here is the end.
     } catch (NotConnectedException e) {
-      Logger.normal(this, "requestor gone, could not start request handler wait");
+      LOG.info("requestor gone, could not start request handler wait");
       tag.handlerThrew(e);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       tag.handlerThrew(t);
     }
   }
@@ -127,8 +121,7 @@ public class RequestHandler
   private void applyByteCounts() {
     synchronized (this) {
       if (disconnected) {
-        Logger.normal(
-            this, "Not applying byte counts as request source disconnected during receive");
+        LOG.info("Not applying byte counts as request source disconnected during receive");
         return;
       }
       if (appliedByteCounts) {
@@ -149,9 +142,8 @@ public class RequestHandler
     sent += rs.getTotalSentBytes();
     rcvd += rs.getTotalReceivedBytes();
     if (key instanceof NodeSSK) {
-      if (logMINOR)
-        Logger.minor(
-            this, "Remote SSK fetch cost " + sent + '/' + rcvd + " bytes (" + status + ')');
+      if (LOG.isDebugEnabled())
+        LOG.debug("Remote SSK fetch cost " + sent + '/' + rcvd + " bytes (" + status + ')');
       node.getNodeStats().remoteSskFetchBytesSentAverage.report(sent);
       node.getNodeStats().remoteSskFetchBytesReceivedAverage.report(rcvd);
       if (status == RequestSender.SUCCESS) {
@@ -160,9 +152,8 @@ public class RequestHandler
         node.getNodeStats().successfulSskFetchBytesReceivedAverage.report(rcvd);
       }
     } else {
-      if (logMINOR)
-        Logger.minor(
-            this, "Remote CHK fetch cost " + sent + '/' + rcvd + " bytes (" + status + ')');
+      if (LOG.isDebugEnabled())
+        LOG.debug("Remote CHK fetch cost " + sent + '/' + rcvd + " bytes (" + status + ')');
       node.getNodeStats().remoteChkFetchBytesSentAverage.report(sent);
       node.getNodeStats().remoteChkFetchBytesReceivedAverage.report(rcvd);
       if (status == RequestSender.SUCCESS) {
@@ -174,7 +165,7 @@ public class RequestHandler
   }
 
   private void realRun() throws NotConnectedException {
-    if (logMINOR) Logger.minor(this, "Handling a request: " + uid);
+    if (LOG.isDebugEnabled()) LOG.debug("Handling a request: " + uid);
 
     Message accepted = DMT.createFNPAccepted(uid);
     source.sendAsync(accepted, null, this);
@@ -229,7 +220,7 @@ public class RequestHandler
   public void onReceivedRejectOverload() {
     try {
       if (!sentRejectedOverload) {
-        if (logMINOR) Logger.minor(this, "Propagating RejectedOverload on " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Propagating RejectedOverload on " + this);
         // Forward RejectedOverload
         // Note: This message is only discernible from the terminal messages by the IS_LOCAL flag
         // being false. (!IS_LOCAL)->!Terminal
@@ -240,7 +231,7 @@ public class RequestHandler
         sentRejectedOverload = true;
       }
     } catch (NotConnectedException e) {
-      Logger.normal(this, "requestor is gone, can't forward reject overload");
+      LOG.info("requestor is gone, can't forward reject overload");
     }
   }
 
@@ -249,12 +240,12 @@ public class RequestHandler
   @Override
   public void onCHKTransferBegins() {
     if (tag.hasSourceReallyRestarted()) {
-      Logger.normal(this, "requestor is gone, can't send terminal message");
+      LOG.info("requestor is gone, can't send terminal message");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
       return;
     }
-    if (logMINOR) Logger.minor(this, "CHK transfer start on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("CHK transfer start on " + this);
     try {
       // Is a CHK.
       Message df = DMT.createFNPCHKDataFound(uid, rs.getHeaders());
@@ -275,10 +266,8 @@ public class RequestHandler
                 public boolean onAbort() {
                   RequestSender rs = RequestHandler.this.rs;
                   if (rs != null && rs.uid != RequestHandler.this.uid) {
-                    if (logMINOR)
-                      Logger.minor(
-                          this,
-                          "Not cancelling transfer because was coalesced on "
+                    if (LOG.isDebugEnabled())
+                      LOG.debug("Not cancelling transfer because was coalesced on "
                               + RequestHandler.this);
                     // No need to reassign tag since this UID will end immediately; the
                     // RequestSender is on a different one.
@@ -286,10 +275,8 @@ public class RequestHandler
                   }
                   if (node.hasKey(key, false, false)) return true; // Don't want it
                   if (rs != null && rs.isTransferCoalesced()) {
-                    if (logMINOR)
-                      Logger.minor(
-                          this,
-                          "Not cancelling transfer because others want the data on "
+                    if (LOG.isDebugEnabled())
+                      LOG.debug("Not cancelling transfer because others want the data on "
                               + RequestHandler.this);
                     // We do need to reassign the tag because the RS has the same UID.
                     node.getTracker().reassignTagToSelf(tag);
@@ -297,9 +284,7 @@ public class RequestHandler
                   }
                   if (node.getFailureTable().peersWantKey(key, source)) {
                     // This may indicate downstream is having trouble communicating with us.
-                    Logger.error(
-                        this,
-                        "Downstream transfer successful but upstream transfer to "
+                    LOG.error("Downstream transfer successful but upstream transfer to "
                             + source.shortToString()
                             + " failed. Reassigning tag to self because want the data for peers on "
                             + RequestHandler.this);
@@ -328,9 +313,7 @@ public class RequestHandler
                      * require getting rid of turtles. See the discussion in BlockReceiver's top
                      * comments.
                      */
-                    Logger.error(
-                        this,
-                        "Downstream transfer successful but upstream transfer to "
+                    LOG.error("Downstream transfer successful but upstream transfer to "
                             + source.shortToString()
                             + " failed. Reassigning tag to self because want the data for ourselves"
                             + " on "
@@ -347,8 +330,7 @@ public class RequestHandler
                 public void blockTransferFinished(boolean success) {
                   synchronized (RequestHandler.this) {
                     if (transferCompleted) {
-                      Logger.error(
-                          this, "Transfer already completed on " + this, new Exception("debug"));
+                      LOG.error("Transfer already completed on " + this, new Exception("debug"));
                       return;
                     }
                     transferCompleted = true;
@@ -367,7 +349,7 @@ public class RequestHandler
         disconnected = true;
       }
       tag.handlerDisconnected();
-      Logger.normal(this, "requestor is gone, can't begin CHK transfer");
+      LOG.info("requestor is gone, can't begin CHK transfer");
     }
   }
 
@@ -387,7 +369,7 @@ public class RequestHandler
    * @param success Whether the block transfer succeeded.
    */
   protected void transferFinished(boolean success) {
-    if (logMINOR) Logger.minor(this, "Transfer finished (success=" + success + ")");
+    if (LOG.isDebugEnabled()) LOG.debug("Transfer finished (success=" + success + ")");
     if (success) {
       status = rs.getStatus();
       // Run off-thread because, on the onRequestSenderFinished path, RequestSender won't start to
@@ -429,12 +411,12 @@ public class RequestHandler
    */
   private synchronized boolean readyToFinishTransfer() {
     if (waitingForTransferSuccess) {
-      Logger.error(this, "waitAndFinishCHKTransferOffThread called twice on " + this);
+      LOG.error("waitAndFinishCHKTransferOffThread called twice on " + this);
       return false;
     }
     waitingForTransferSuccess = true;
     if (!transferCompleted) {
-      if (logMINOR) Logger.minor(this, "Waiting for transfer to finish on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Waiting for transfer to finish on " + this);
       return false; // Wait
     }
     return true;
@@ -443,21 +425,20 @@ public class RequestHandler
   @Override
   public void onRequestSenderFinished(int status, boolean fromOfferedKey, RequestSender rs) {
     if (tag.hasSourceReallyRestarted()) {
-      Logger.normal(this, "requestor is gone, can't send terminal message");
+      LOG.info("requestor is gone, can't send terminal message");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
       return;
     }
-    if (logMINOR) Logger.minor(this, "onRequestSenderFinished(" + status + ") on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("onRequestSenderFinished(" + status + ") on " + this);
     long now = System.currentTimeMillis();
 
     boolean tooLate;
     synchronized (this) {
       if (this.status == RequestSender.NOT_FINISHED) this.status = status;
       else {
-        if (logMINOR)
-          Logger.minor(
-              this, "Ignoring onRequestSenderFinished as status is already " + this.status);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Ignoring onRequestSenderFinished as status is already " + this.status);
         return;
       }
       tooLate = responseDeadline > 0 && now > responseDeadline;
@@ -474,14 +455,12 @@ public class RequestHandler
             fromOfferedKey);
 
     if (tooLate) {
-      if (logMINOR) Logger.minor(this, "Too late");
+      if (LOG.isDebugEnabled()) LOG.debug("Too late");
       // Offer the data if there is any.
       node.getFailureTable().onFinalFailure(key, null, htl, htl, -1, -1, source);
       PeerNode routedLast = rs == null ? null : rs.routedLast();
       // A certain number of these are normal.
-      Logger.normal(
-          this,
-          "requestsender took too long to respond to requestor ("
+      LOG.info("requestsender took too long to respond to requestor ("
               + TimeUtil.formatTime((now - searchStartTime), 2, true)
               + "/"
               + (rs == null ? "null" : rs.getStatusString())
@@ -491,7 +470,7 @@ public class RequestHandler
       // Otherwise the downstream node will assume it's our fault.
     }
 
-    if (status == RequestSender.NOT_FINISHED) Logger.error(this, "onFinished() but not finished?");
+    if (status == RequestSender.NOT_FINISHED) LOG.error("onFinished() but not finished?");
 
     try {
       switch (status) {
@@ -544,9 +523,7 @@ public class RequestHandler
             maybeCompleteTransfer();
             return;
           }
-          Logger.error(
-              this,
-              "finish(TRANSFER_FAILED) should not be called on SSK?!?!",
+          LOG.error("finish(TRANSFER_FAILED) should not be called on SSK?!?!",
               new Exception("error"));
           return;
         default:
@@ -556,7 +533,7 @@ public class RequestHandler
           throw new IllegalStateException("Unknown status code " + status);
       }
     } catch (NotConnectedException e) {
-      Logger.normal(this, "requestor is gone, can't send terminal message");
+      LOG.info("requestor is gone, can't send terminal message");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
     }
@@ -580,7 +557,7 @@ public class RequestHandler
       if (disconnected) disconn = true;
       else if (bt == null) {
         // Bug! This is impossible!
-        Logger.error(this, "Status is " + status + " but we never started a transfer on " + uid);
+        LOG.error("Status is " + status + " but we never started a transfer on " + uid);
         // Obviously this node is confused, send a terminal reject to make sure the requestor is not
         // waiting forever.
         reject = DMT.createFNPRejectedOverload(uid, true);
@@ -718,7 +695,7 @@ public class RequestHandler
                     try {
                       finishOpennetNoRelay();
                     } catch (NotConnectedException e) {
-                      Logger.normal(this, "requestor gone, could not start request handler wait");
+                      LOG.info("requestor gone, could not start request handler wait");
                       tag.handlerThrew(e);
                     }
                   } else {
@@ -756,7 +733,7 @@ public class RequestHandler
    * non-runnable/exit) and the byte counter will still be accurate.
    */
   private void sendTerminal(Message msg) {
-    if (logMINOR) Logger.minor(this, "sendTerminal(" + msg + ")", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("sendTerminal(" + msg + ")", new Exception("debug"));
     if (sendTerminalCalled)
       throw new IllegalStateException("sendTerminal should only be called once");
     else sendTerminalCalled = true;
@@ -781,33 +758,33 @@ public class RequestHandler
 
   /** Note well! These functions are not executed on the RequestHandler thread. */
   private class TerminalMessageByteCountCollector implements AsyncMessageCallback {
+    private static final Logger LOG = LoggerFactory.getLogger(TerminalMessageByteCountCollector.class);
 
     private boolean completed = false;
 
     @Override
     public void acknowledged() {
-      if (logMINOR) Logger.minor(this, "Acknowledged terminal message: " + RequestHandler.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Acknowledged terminal message: " + RequestHandler.this);
       // terminalMessage ack'd by remote peer
       complete();
     }
 
     @Override
     public void disconnected() {
-      if (logMINOR)
-        Logger.minor(
-            this, "Peer disconnected before terminal message sent for " + RequestHandler.this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Peer disconnected before terminal message sent for " + RequestHandler.this);
       complete();
     }
 
     @Override
     public void fatalError() {
-      Logger.error(this, "Error sending terminal message?! for " + RequestHandler.this);
+      LOG.error("Error sending terminal message?! for " + RequestHandler.this);
       complete();
     }
 
     @Override
     public void sent() {
-      if (logMINOR) Logger.minor(this, "Sent terminal message: " + RequestHandler.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Sent terminal message: " + RequestHandler.this);
       complete();
     }
 
@@ -816,7 +793,7 @@ public class RequestHandler
         if (completed) return;
         completed = true;
       }
-      if (logMINOR) Logger.minor(this, "Completing: " + RequestHandler.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Completing: " + RequestHandler.this);
       // For byte counting, this relies on the fact that the callback will only be excuted once.
       applyByteCounts();
       unregisterRequestHandlerWithNode();
@@ -870,7 +847,7 @@ public class RequestHandler
    *     noderef (after we have handled the incoming noderef / ack / timeout).
    */
   private void finishOpennetInner(OpennetManager om) {
-    if (logMINOR) Logger.minor(this, "Finish opennet on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Finish opennet on " + this);
     byte[] noderef;
     try {
       noderef = rs.waitForOpennetNoderef();
@@ -880,7 +857,7 @@ public class RequestHandler
       return;
     }
     if (noderef == null) {
-      if (logMINOR) Logger.minor(this, "Not relaying as no noderef on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Not relaying as no noderef on " + this);
       finishOpennetNoRelayInner(om);
       return;
     }
@@ -895,7 +872,7 @@ public class RequestHandler
       if (ref == null || om.alreadyHaveOpennetNode(ref)) {
         // Okay, let it through.
       } else {
-        if (logMINOR) Logger.minor(this, "Resetting path folding on " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Resetting path folding on " + this);
         // Reset path folding.
         // We need to tell the source of the noderef that we are not going to use it.
         // RequestSender didn't because it expected us to use the ref.
@@ -921,9 +898,8 @@ public class RequestHandler
    * happened).
    */
   private void finishOpennetNoRelayInner(final OpennetManager om) {
-    if (logMINOR)
-      Logger.minor(
-          this, "Finishing opennet: sending own reference on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Finishing opennet: sending own reference on " + this, new Exception("debug"));
     if (!om.wantPeer(null, false, false, false, ConnectionType.PATH_FOLDING)) {
       ackOpennet();
       return; // Don't want a reference
@@ -932,7 +908,7 @@ public class RequestHandler
     try {
       om.sendOpennetRef(false, uid, source, om.getCrypto().myCompressedFullRef(), this);
     } catch (NotConnectedException e) {
-      Logger.normal(this, "Can't send opennet ref because node disconnected on " + this);
+      LOG.info("Can't send opennet ref because node disconnected on " + this);
       // Oh well...
       applyByteCounts();
       unregisterRequestHandlerWithNode();
@@ -954,7 +930,7 @@ public class RequestHandler
           public void gotNoderef(byte[] noderef) {
             // We have sent a noderef. It is not appropriate for the caller to call ackOpennet():
             // in all cases he should unlock.
-            if (logMINOR) Logger.minor(this, "Got noderef on " + RequestHandler.this);
+            if (LOG.isDebugEnabled()) LOG.debug("Got noderef on " + RequestHandler.this);
             finishOpennetNoRelayInner(om, noderef);
             applyByteCounts();
             unregisterRequestHandlerWithNode();
@@ -962,18 +938,15 @@ public class RequestHandler
 
           @Override
           public void timedOut() {
-            if (logMINOR)
-              Logger.minor(
-                  this,
-                  "Timed out waiting for noderef from " + source + " on " + RequestHandler.this);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Timed out waiting for noderef from " + source + " on " + RequestHandler.this);
             gotNoderef(null);
           }
 
           @Override
           public void acked(boolean timedOutMessage) {
-            if (logMINOR)
-              Logger.minor(
-                  this, "Noderef acknowledged from " + source + " on " + RequestHandler.this);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Noderef acknowledged from " + source + " on " + RequestHandler.this);
             gotNoderef(null);
           }
         },
@@ -989,15 +962,14 @@ public class RequestHandler
 
     try {
       if (node.addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null)
-        Logger.normal(this, "Asked for opennet ref but didn't want it for " + this + " :\n" + ref);
-      else Logger.normal(this, "Added opennet noderef in " + this);
+        LOG.info("Asked for opennet ref but didn't want it for " + this + " :\n" + ref);
+      else LOG.info("Added opennet noderef in " + this);
     } catch (FSParseException e) {
-      Logger.error(this, "Could not parse opennet noderef for " + this + " from " + source, e);
+      LOG.error("Could not parse opennet noderef for " + this + " from " + source, e);
     } catch (PeerParseException e) {
-      Logger.error(this, "Could not parse opennet noderef for " + this + " from " + source, e);
+      LOG.error("Could not parse opennet noderef for " + this + " from " + source, e);
     } catch (ReferenceSignatureVerificationException e) {
-      Logger.error(
-          this, "Bad signature on opennet noderef for " + this + " from " + source + " : " + e, e);
+      LOG.error("Bad signature on opennet noderef for " + this + " from " + source + " : " + e, e);
     }
   }
 
@@ -1013,9 +985,8 @@ public class RequestHandler
    */
   private void finishOpennetRelay(byte[] noderef, final OpennetManager om) {
     final PeerNode dataSource = rs.successFrom();
-    if (logMINOR)
-      Logger.minor(
-          this, "Finishing opennet: relaying reference from " + dataSource + " on " + this);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Finishing opennet: relaying reference from " + dataSource + " on " + this);
     // Send it back to the handler, then wait for the ConnectReply
 
     try {
@@ -1054,10 +1025,8 @@ public class RequestHandler
               if (OpennetManager.validateNoderef(newNoderef, 0, newNoderef.length, source, false)
                   != null) {
                 try {
-                  if (logMINOR)
-                    Logger.minor(
-                        this,
-                        "Relaying noderef from source to data source for " + RequestHandler.this);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("Relaying noderef from source to data source for " + RequestHandler.this);
                   om.sendOpennetRef(
                       true,
                       uid,
@@ -1121,7 +1090,7 @@ public class RequestHandler
       sentBytes += x;
     }
     node.getNodeStats().requestSentBytes(key instanceof NodeSSK, x);
-    if (logMINOR) Logger.minor(this, "sentBytes(" + x + ") on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("sentBytes(" + x + ") on " + this);
   }
 
   @Override
@@ -1141,7 +1110,7 @@ public class RequestHandler
      */
     node.sentPayload(x);
     node.getNodeStats().requestSentBytes(key instanceof NodeSSK, -x);
-    if (logMINOR) Logger.minor(this, "sentPayload(" + x + ") on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("sentPayload(" + x + ") on " + this);
   }
 
   @Override
