@@ -4,14 +4,15 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import network.crypta.node.Node;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.PersistentTempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPMessage.class);
+
   /*
    * Fields used by FCP messages. These are in TitleCaps by convention.
    */
@@ -34,31 +35,21 @@ public abstract class FCPMessage {
   public static final String OUTPUT_BANDWIDTH_CLASS = "OutputBandwidthClass";
   public static final String OVERALL_BULK_OUTPUT_CAPACITY_USAGE = "OverallBulkOutputCapacityUsage";
 
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public void send(OutputStream os) throws IOException {
     SimpleFieldSet sfs = getFieldSet();
     if (sfs == null) {
-      Logger.warning(this, "Not sending message " + this);
+      LOG.warn("Not sending message " + this);
       return;
     }
     sfs.setEndMarker(getEndString());
     String msg = sfs.toString();
     os.write((getName() + '\n').getBytes(StandardCharsets.UTF_8));
     os.write(msg.getBytes(StandardCharsets.UTF_8));
-    if (logDEBUG) {
-      Logger.debug(this, "Outgoing FCP message:\n" + getName() + '\n' + sfs);
-      Logger.debug(this, "Being handled by " + this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Outgoing FCP message:\n" + getName() + '\n' + sfs);
+      LOG.debug("Being handled by " + this);
     }
   }
 

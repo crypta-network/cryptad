@@ -5,8 +5,11 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DiskDirPutFile extends DirPutFile {
+  private static final Logger LOG = LoggerFactory.getLogger(DiskDirPutFile.class);
 
   final File file;
 

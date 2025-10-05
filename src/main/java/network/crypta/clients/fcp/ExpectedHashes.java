@@ -5,10 +5,12 @@ import java.io.Serializable;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.crypt.HashResult;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ExpectedHashes extends FCPMessage implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ExpectedHashes.class);
 
   @Serial private static final long serialVersionUID = 1L;
   final HashResult[] hashes;
@@ -37,16 +39,14 @@ public class ExpectedHashes extends FCPMessage implements Serializable {
   @Override
   public SimpleFieldSet getFieldSet() {
     if (hashes == null) {
-      Logger.error(
-          this, "Hashes == null, possibly persistence issue caused prior to build 1411 on " + this);
+      LOG.error("Hashes == null, possibly persistence issue caused prior to build 1411 on " + this);
       return null;
     }
     SimpleFieldSet fs = new SimpleFieldSet(false);
     SimpleFieldSet values = new SimpleFieldSet(false);
     for (HashResult hash : hashes) {
       if (hash == null) {
-        Logger.error(
-            this, "Hash == null, possibly persistence issue caused prior to build 1411 on " + this);
+        LOG.error("Hash == null, possibly persistence issue caused prior to build 1411 on " + this);
         return null;
       }
       values.putOverwrite(hash.type.name(), hash.hashAsHex());

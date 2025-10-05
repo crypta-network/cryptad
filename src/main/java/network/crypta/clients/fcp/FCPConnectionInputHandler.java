@@ -3,28 +3,17 @@ package network.crypta.clients.fcp;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.LineReadingInputStream;
 import network.crypta.support.io.TooLongException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 public class FCPConnectionInputHandler implements Runnable {
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(FCPConnectionInputHandler.class);
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   final FCPConnectionHandler handler;
 
@@ -46,11 +35,11 @@ public class FCPConnectionInputHandler implements Runnable {
     try {
       realRun();
     } catch (TooLongException e) {
-      Logger.normal(this, "Caught " + e.getMessage(), e);
+      LOG.info("Caught " + e.getMessage(), e);
     } catch (IOException e) {
-      Logger.normal(this, "Caught " + e, e);
+      LOG.info("Caught " + e, e);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       t.printStackTrace();
     }
     handler.close();
@@ -102,7 +91,7 @@ public class FCPConnectionInputHandler implements Runnable {
 
         FCPMessage msg;
         try {
-          if (logDEBUG) Logger.debug(this, "Incoming FCP message:\n" + messageType + '\n' + fs);
+          if (LOG.isDebugEnabled()) LOG.debug("Incoming FCP message:\n" + messageType + '\n' + fs);
           msg =
               FCPMessage.create(
                   messageType,
@@ -156,7 +145,7 @@ public class FCPConnectionInputHandler implements Runnable {
           continue;
         }
         try {
-          if (logDEBUG) Logger.debug(this, "Parsed message: " + msg + " for " + handler);
+          if (LOG.isDebugEnabled()) LOG.debug("Parsed message: " + msg + " for " + handler);
           msg.run(handler, handler.getServer().getNode());
         } catch (MessageInvalidException e) {
           FCPMessage err =

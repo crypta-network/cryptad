@@ -8,8 +8,11 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PersistentPut extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentPut.class);
 
   static final String name = "PersistentPut";
 

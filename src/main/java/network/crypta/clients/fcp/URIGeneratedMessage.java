@@ -3,8 +3,11 @@ package network.crypta.clients.fcp;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class URIGeneratedMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(URIGeneratedMessage.class);
 
   private final FreenetURI uri;
   private final String identifier;

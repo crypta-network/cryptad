@@ -14,11 +14,12 @@ import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.FSParseException;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Message for testing the content filter on a file. Server will respond with a FilterResultMessage.
@@ -30,6 +31,8 @@ import network.crypta.support.io.FileBucket;
  * or DataSource=DIRECT // the data is in the message DataLength=1000 // 1000 bytes Data
  */
 public class FilterMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FilterMessage.class);
+
   public static final String NAME = "Filter";
 
   private final String identifier;
@@ -183,7 +186,7 @@ public class FilterMessage extends DataCarryingMessage {
     try {
       resultBucket = bf.makeBucket(-1);
     } catch (IOException e) {
-      Logger.error(this, "Failed to create temporary bucket", e);
+      LOG.error("Failed to create temporary bucket", e);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), identifier, false);
     }
@@ -199,7 +202,7 @@ public class FilterMessage extends DataCarryingMessage {
     } catch (UnsafeContentTypeException e) {
       unsafe = true;
     } catch (IOException e) {
-      Logger.error(this, "IO error running content filter", e);
+      LOG.error("IO error running content filter", e);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), identifier, false);
     }
@@ -215,7 +218,7 @@ public class FilterMessage extends DataCarryingMessage {
     try {
       fakeUri = new URI("http://127.0.0.1:8888/");
     } catch (URISyntaxException e) {
-      Logger.error(this, "Inexplicable URI error", e);
+      LOG.error("Inexplicable URI error", e);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), identifier, false);
     }

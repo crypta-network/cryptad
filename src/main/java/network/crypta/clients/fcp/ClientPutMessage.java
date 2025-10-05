@@ -12,13 +12,14 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ClientPut URI=CHK@ // could as easily be an insertable SSK URI Metadata.ContentType=text/html
@@ -32,6 +33,7 @@ import network.crypta.support.io.FileBucket;
  * <p>Neither IgnoreDS nor DSOnly make sense for inserts.
  */
 public class ClientPutMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutMessage.class);
 
   public static final String NAME = "ClientPut";
 
@@ -388,7 +390,7 @@ public class ClientPutMessage extends DataCarryingMessage {
   public void freeData() {
     if (bucket == null) {
       if (dataLength() <= 0) return; // Okay.
-      Logger.error(this, "bucket is null on " + this + " - freed twice?", new Exception("error"));
+      LOG.error("bucket is null on " + this + " - freed twice?", new Exception("error"));
       return;
     }
     bucket.free();

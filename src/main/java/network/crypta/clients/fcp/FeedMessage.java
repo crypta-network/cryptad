@@ -5,8 +5,11 @@ import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FeedMessage extends MultipleDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FeedMessage.class);
 
   public static final String NAME = "Feed";
   // We assume that the header and shortText doesn't contain any newlines

@@ -8,8 +8,11 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GeneratedMetadataMessage extends BaseDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(GeneratedMetadataMessage.class);
 
   GeneratedMetadataMessage(String identifier, boolean global, Bucket data) {
     this.identifier = identifier;

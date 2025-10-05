@@ -26,11 +26,13 @@ import network.crypta.node.OpennetDisabledException;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Logger;
 import network.crypta.support.MediaType;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AddPeer extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(AddPeer.class);
 
   public static final String NAME = "AddPeer";
 
@@ -135,8 +137,7 @@ public class AddPeer extends FCPMessage {
                   .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
           ref = AddPeer.getReferenceFromFreenetURI(refUri, client);
         } catch (MalformedURLException | FetchException e) {
-          Logger.warning(
-              this, "Url cannot be used as Crypta URI, trying to fetch as URL: " + urlString);
+          LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: " + urlString);
           URL url;
           try {
             url = URI.create(urlString).toURL();

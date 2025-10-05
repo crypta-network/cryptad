@@ -4,8 +4,11 @@ import java.nio.charset.StandardCharsets;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.NullBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TextFeedMessage extends N2NFeedMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TextFeedMessage.class);
 
   public static final String NAME = "TextFeed";
 

@@ -39,8 +39,6 @@ import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMes
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.Base64;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.IntCallback;
@@ -48,10 +46,13 @@ import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.NoFreeBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /** FCP server process. */
 public class FCPServer implements Runnable, DownloadCache {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPServer.class);
 
   private final PersistentRequestRoot persistentRoot;
   private static boolean logMINOR;
@@ -150,7 +151,7 @@ public class FCPServer implements Runnable, DownloadCache {
     globalRebootClient =
         new PersistentRequestClient("Global Queue", null, true, null, Persistence.REBOOT, null);
 
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
   }
 
   public void load() {
@@ -170,10 +171,8 @@ public class FCPServer implements Runnable, DownloadCache {
             NetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
       }
     } catch (IOException be) {
-      Logger.error(
-          this,
-          "Couldn't bind to FCP Port " + bindTo + ':' + port + ". FCP Server not started.",
-          be);
+      LOG.error(
+          "Couldn't bind to FCP Port " + bindTo + ':' + port + ". FCP Server not started.", be);
       System.out.println(
           "Couldn't bind to FCP Port " + bindTo + ':' + port + ". FCP Server not started.");
     }
@@ -185,7 +184,7 @@ public class FCPServer implements Runnable, DownloadCache {
     if (this.enabled) {
       maybeGetNetworkInterface();
 
-      Logger.normal(this, "Starting FCP server on " + bindTo + ':' + port + '.');
+      LOG.info("Starting FCP server on " + bindTo + ':' + port + '.');
       System.out.println("Starting FCP server on " + bindTo + ':' + port + '.');
 
       if (this.networkInterface != null) {
@@ -194,7 +193,7 @@ public class FCPServer implements Runnable, DownloadCache {
         t.start();
       }
     } else {
-      Logger.normal(this, "Not starting FCP server as it's disabled");
+      LOG.info("Not starting FCP server as it's disabled");
       System.out.println("Not starting FCP server as it's disabled");
       this.networkInterface = null;
     }
@@ -214,9 +213,9 @@ public class FCPServer implements Runnable, DownloadCache {
         networkInterface.waitBound();
         realRun();
       } catch (IOException e) {
-        if (logMINOR) Logger.minor(this, "Caught " + e, e);
+        if (LOG.isDebugEnabled()) LOG.debug("Caught " + e, e);
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
       }
       if (WrapperManager.hasShutdownHookBeenTriggered()) return;
       try {
@@ -788,7 +787,7 @@ public class FCPServer implements Runnable, DownloadCache {
                         globalForeverClient.removeByIdentifier(
                             identifier, true, FCPServer.this, core.getClientContext());
                   } catch (Throwable t) {
-                    Logger.error(this, "Caught removing identifier " + identifier + ": " + t, t);
+                    LOG.error("Caught removing identifier " + identifier + ": " + t, t);
                   } finally {
                     success.set(succeeded);
                     done.countDown();
@@ -829,7 +828,7 @@ public class FCPServer implements Runnable, DownloadCache {
                   globalForeverClient.removeAll();
                   succeeded = true;
                 } catch (Throwable t) {
-                  Logger.error(this, "Caught while processing panic: " + t, t);
+                  LOG.error("Caught while processing panic: " + t, t);
                   System.err.println("PANIC INCOMPLETE: CAUGHT " + t);
                   t.printStackTrace();
                   System.err.println("Your requests have not been deleted!");
@@ -899,7 +898,7 @@ public class FCPServer implements Runnable, DownloadCache {
                   return false;
                 } catch (Throwable t) {
                   // Unexpected and severe, might even be OOM, just log it.
-                  Logger.error(this, "Failed to make persistent request: " + t, t);
+                  LOG.error("Failed to make persistent request: " + t, t);
                   return false;
                 } finally {
                   synchronized (ow) {
@@ -1270,7 +1269,7 @@ public class FCPServer implements Runnable, DownloadCache {
         boolean success;
       }
       final OutputWrapper ow = new OutputWrapper();
-      if (logMINOR) Logger.minor(this, "Queueing restart of " + identifier);
+      if (LOG.isDebugEnabled()) LOG.debug("Queueing restart of " + identifier);
       core.getClientContext()
           .jobRunner
           .queue(
@@ -1286,7 +1285,7 @@ public class FCPServer implements Runnable, DownloadCache {
                   boolean success = false;
                   try {
                     ClientRequest req = globalForeverClient.getRequest(identifier);
-                    if (logMINOR) Logger.minor(this, "Restarting " + req + " for " + identifier);
+                    if (LOG.isDebugEnabled()) LOG.debug("Restarting " + req + " for " + identifier);
                     if (req != null) {
                       req.restart(context, disableFilterData);
                       success = true;
@@ -1415,7 +1414,7 @@ public class FCPServer implements Runnable, DownloadCache {
       else newData = core.getTempBucketFactory().makeBucket(origData.size());
       BucketTools.copy(origData, newData);
       if (origData.size() != newData.size()) {
-        Logger.normal(this, "Maybe it disappeared under us?");
+        LOG.info("Maybe it disappeared under us?");
         newData.free();
         newData = null;
         return null;
@@ -1423,7 +1422,7 @@ public class FCPServer implements Runnable, DownloadCache {
       return new CacheFetchResult(new ClientMetadata(mime), newData, filtered);
     } catch (IOException e) {
       // Maybe it was freed?
-      Logger.normal(this, "Unable to copy data: " + e, e);
+      LOG.info("Unable to copy data: " + e, e);
       return null;
     }
   }
@@ -1444,7 +1443,7 @@ public class FCPServer implements Runnable, DownloadCache {
           else newData = core.getTempBucketFactory().makeBucket(origData.size());
           BucketTools.copy(origData, newData);
         } catch (IOException e) {
-          Logger.error(this, "Unable to copy data: " + e, e);
+          LOG.error("Unable to copy data: " + e, e);
           return null;
         }
       }

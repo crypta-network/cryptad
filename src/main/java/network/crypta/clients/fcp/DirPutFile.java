@@ -2,31 +2,21 @@ package network.crypta.clients.fcp;
 
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A request to upload a file to a manifest. A ClientPutComplexDir will contain many of these. */
 abstract class DirPutFile {
+  private static final Logger LOG = LoggerFactory.getLogger(DirPutFile.class);
 
   final String name;
   ClientMetadata meta;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   protected DirPutFile(String name, String mimeType) {
     this.name = name;
@@ -86,7 +76,7 @@ abstract class DirPutFile {
     String n = name;
     int idx = n.lastIndexOf('/');
     if (idx != -1) n = n.substring(idx + 1);
-    if (logMINOR) Logger.minor(this, "Element name: " + name + " -> " + n);
+    if (LOG.isDebugEnabled()) LOG.debug("Element name: " + name + " -> " + n);
     return new ManifestElement(n, getData(), getMIMEType(), getData().size());
   }
 }

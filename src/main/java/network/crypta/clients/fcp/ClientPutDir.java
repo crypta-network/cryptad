@@ -24,14 +24,14 @@ import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClientPutDir extends ClientPutBase {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutDir.class);
 
   @Serial private static final long serialVersionUID = 1L;
   private HashMap<String, Object> manifestElements;
@@ -41,19 +41,9 @@ public class ClientPutDir extends ClientPutBase {
   private final int numberOfFiles;
   private final boolean wasDiskPut;
 
-  private static volatile boolean logMINOR;
   private final byte[] overrideSplitfileCryptoKey;
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public ClientPutDir(
       FCPConnectionHandler handler,
@@ -89,7 +79,7 @@ public class ClientPutDir extends ClientPutBase {
         message.compatibilityMode,
         message.ignoreUSKDatehints,
         server);
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // debug level captured via LOG.isDebugEnabled()
     this.wasDiskPut = wasDiskPut;
     this.overrideSplitfileCryptoKey = message.overrideSplitfileCryptoKey;
 
@@ -112,7 +102,7 @@ public class ClientPutDir extends ClientPutBase {
       numberOfFiles = -1;
       totalSize = -1;
     }
-    if (logMINOR) Logger.minor(this, "Putting dir " + identifier + " : " + priorityClass);
+    if (LOG.isDebugEnabled()) LOG.debug("Putting dir " + identifier + " : " + priorityClass);
   }
 
   /**
@@ -176,7 +166,7 @@ public class ClientPutDir extends ClientPutBase {
         core);
     wasDiskPut = true;
     this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // debug level captured via LOG.isDebugEnabled()
     this.manifestElements = makeDiskDirManifest(dir, "", allowUnreadableFiles, includeHiddenFiles);
     this.defaultName = defaultName;
     makePutter(core.getClientContext());
@@ -187,7 +177,7 @@ public class ClientPutDir extends ClientPutBase {
       numberOfFiles = -1;
       totalSize = -1;
     }
-    if (logMINOR) Logger.minor(this, "Putting dir " + identifier + " : " + priorityClass);
+    if (LOG.isDebugEnabled()) LOG.debug("Putting dir " + identifier + " : " + priorityClass);
   }
 
   public ClientPutDir(
@@ -240,7 +230,7 @@ public class ClientPutDir extends ClientPutBase {
         core);
     wasDiskPut = false;
     this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // debug level captured via LOG.isDebugEnabled()
     this.manifestElements = elements;
     this.defaultName = defaultName;
     makePutter(core.getClientContext());
@@ -251,8 +241,8 @@ public class ClientPutDir extends ClientPutBase {
       numberOfFiles = -1;
       totalSize = -1;
     }
-    if (logMINOR)
-      Logger.minor(this, "Putting data from custom buckets " + identifier + " : " + priorityClass);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Putting data from custom buckets " + identifier + " : " + priorityClass);
   }
 
   protected ClientPutDir() {
@@ -289,7 +279,7 @@ public class ClientPutDir extends ClientPutBase {
       if (f.exists() && f.canRead()) {
         if (f.isFile()) {
           FileBucket bucket = new FileBucket(f, true, false, false, false);
-          if (logMINOR) Logger.minor(this, "Add file : " + f.getAbsolutePath());
+          if (LOG.isDebugEnabled()) LOG.debug("Add file : " + f.getAbsolutePath());
 
           map.put(
               f.getName(),
@@ -300,7 +290,7 @@ public class ClientPutDir extends ClientPutBase {
                   DefaultMIMETypes.guessMIMEType(f.getName(), true),
                   f.length()));
         } else if (f.isDirectory()) {
-          if (logMINOR) Logger.minor(this, "Add dir : " + f.getAbsolutePath());
+          if (LOG.isDebugEnabled()) LOG.debug("Add dir : " + f.getAbsolutePath());
 
           map.put(
               f.getName(),
@@ -345,8 +335,8 @@ public class ClientPutDir extends ClientPutBase {
           cache.updateStarted(identifier, true);
         }
       }
-      if (logMINOR)
-        Logger.minor(this, "Started " + putter + " for " + this + " persistence=" + persistence);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Started " + putter + " for " + this + " persistence=" + persistence);
       if (persistence != Persistence.CONNECTION && !finished) {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
@@ -359,26 +349,25 @@ public class ClientPutDir extends ClientPutBase {
 
   @Override
   protected void freeData() {
-    if (logMINOR)
-      Logger.minor(this, "freeData() on " + this + " persistence type = " + persistence);
+    if (LOG.isDebugEnabled())
+      LOG.debug("freeData() on " + this + " persistence type = " + persistence);
     synchronized (this) {
       if (manifestElements == null) {
-        if (logMINOR)
-          Logger.minor(this, "manifestElements = " + manifestElements, new Exception("error"));
+        if (LOG.isDebugEnabled())
+          LOG.debug("manifestElements = " + manifestElements, new Exception("error"));
         return;
       }
     }
-    if (logMINOR)
-      Logger.minor(this, "freeData() more on " + this + " persistence type = " + persistence);
+    if (LOG.isDebugEnabled())
+      LOG.debug("freeData() more on " + this + " persistence type = " + persistence);
     // We have to commit everything, so activating everything here doesn't cost us much memory...?
     freeData(manifestElements);
     manifestElements = null;
   }
 
   private void freeData(HashMap<String, Object> manifestElements) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "freeData() inner on "
               + this
               + " persistence type = "
@@ -390,7 +379,7 @@ public class ClientPutDir extends ClientPutBase {
         freeData(Metadata.forceMap(o));
       } else {
         ManifestElement e = (ManifestElement) o;
-        if (logMINOR) Logger.minor(this, "Freeing " + e);
+        if (LOG.isDebugEnabled()) LOG.debug("Freeing " + e);
         e.freeData();
       }
     }
@@ -404,9 +393,8 @@ public class ClientPutDir extends ClientPutBase {
   @Override
   protected FCPMessage persistentTagMessage() {
     // FIXME: remove debug code
-    if (lowLevelClient == null)
-      Logger.error(this, "lowLevelClient == null", new Exception("error"));
-    if (putter == null) Logger.error(this, "putter == null", new Exception("error"));
+    if (lowLevelClient == null) LOG.error("lowLevelClient == null", new Exception("error"));
+    if (putter == null) LOG.error("putter == null", new Exception("error"));
     // FIXME end
     return new PersistentPutDir(
         identifier,
@@ -434,7 +422,7 @@ public class ClientPutDir extends ClientPutBase {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted, and also possibly failed deletions.
-      Logger.error(this, "lowLevelClient == null", new Exception("error"));
+      LOG.error("lowLevelClient == null", new Exception("error"));
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -465,11 +453,11 @@ public class ClientPutDir extends ClientPutBase {
   @Override
   public boolean canRestart() {
     if (!finished) {
-      Logger.minor(this, "Cannot restart because not finished for " + identifier);
+      LOG.debug("Cannot restart because not finished for " + identifier);
       return false;
     }
     if (succeeded) {
-      Logger.minor(this, "Cannot restart because succeeded for " + identifier);
+      LOG.debug("Cannot restart because succeeded for " + identifier);
       return false;
     }
     return true;

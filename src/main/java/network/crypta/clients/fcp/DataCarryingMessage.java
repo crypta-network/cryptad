@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -12,8 +11,11 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.NullOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(DataCarryingMessage.class);
 
   /**
    * If this is a message from the client, then the Bucket was created by createBucket() and will be
@@ -50,12 +52,12 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
     try {
       tempBucket = createBucket(bf, len, server);
     } catch (IOException e) {
-      Logger.error(this, "Bucket error: " + e, e);
+      LOG.error("Bucket error: " + e, e);
       FileUtil.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), getIdentifier(), isGlobal());
     } catch (PersistenceDisabledException e) {
-      Logger.error(this, "Bucket error: " + e, e);
+      LOG.error("Bucket error: " + e, e);
       FileUtil.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.PERSISTENCE_DISABLED, null, getIdentifier(), isGlobal());

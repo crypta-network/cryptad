@@ -26,25 +26,16 @@ import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FCPConnectionHandler implements Closeable {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(FCPConnectionHandler.class);
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   private static final class DirectoryAccess {
     final boolean canWrite;
@@ -137,18 +128,9 @@ public class FCPConnectionHandler implements Closeable {
   /** Random UUID unique for each instance of this class */
   protected final UUID connectionIdentifierUUID;
 
-  private static volatile boolean logMINOR;
   private boolean killedDupe;
 
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   // We are confident that the given client can access those
   private final HashMap<String, DirectoryAccess> checkedDirectories = new HashMap<>();
@@ -191,28 +173,26 @@ public class FCPConnectionHandler implements Closeable {
    * message will ever be sent.
    */
   public final void send(final FCPMessage message) {
-    if (logDEBUG) Logger.debug(this, "Queueing " + message, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Queueing " + message, new Exception("debug"));
     if (message == null) throw new NullPointerException();
     boolean neverDropAMessage = server.neverDropAMessage();
     int MAX_QUEUE_LENGTH = server.maxMessageQueueLength();
     synchronized (outputHandler.outQueue) {
       if (outputHandler.closedOutputQueue) {
-        Logger.error(this, "Closed already: " + this + " queueing message " + message);
+        LOG.error("Closed already: " + this + " queueing message " + message);
         // FIXME throw something???
         return;
       }
       if (outputHandler.outQueue.size() >= MAX_QUEUE_LENGTH) {
         if (neverDropAMessage) {
-          Logger.error(
-              this,
+          LOG.error(
               "FCP message queue length is "
                   + outputHandler.outQueue.size()
                   + " for "
                   + this
                   + " - not dropping message as configured...");
         } else {
-          Logger.error(
-              this,
+          LOG.error(
               "Dropping FCP message to "
                   + this
                   + " : "
@@ -328,7 +308,7 @@ public class FCPConnectionHandler implements Closeable {
         outputHandler, server.getCore().getClientContext());
     // Create foreverClient lazily. Everything that needs it (especially creating ClientGet's etc)
     // runs on a database job.
-    if (logMINOR) Logger.minor(this, "Set client name: " + name);
+    if (LOG.isDebugEnabled()) LOG.debug("Set client name: " + name);
     PersistentRequestClient client = server.getForeverClient(name, server.getCore(), this);
     if (client != null) {
       synchronized (this) {
@@ -397,7 +377,7 @@ public class FCPConnectionHandler implements Closeable {
                             getter =
                                 new ClientGet(FCPConnectionHandler.this, message, server.getCore());
                           } catch (IdentifierCollisionException e1) {
-                            Logger.normal(this, "Identifier collision on " + this);
+                            LOG.info("Identifier collision on " + this);
                             FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
                             send(msg);
                             return false;
@@ -410,7 +390,7 @@ public class FCPConnectionHandler implements Closeable {
                           try {
                             getter.register(false);
                           } catch (IdentifierCollisionException e) {
-                            Logger.normal(this, "Identifier collision on " + this);
+                            LOG.info("Identifier collision on " + this);
                             FCPMessage msg = new IdentifierCollisionMessage(id, global);
                             send(msg);
                             return false;
@@ -449,7 +429,7 @@ public class FCPConnectionHandler implements Closeable {
         success = false;
       }
     if (!success) {
-      Logger.normal(this, "Identifier collision on " + this);
+      LOG.info("Identifier collision on " + this);
       FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
       send(msg);
     } else {
@@ -458,7 +438,7 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   public void startClientPut(final ClientPutMessage message) {
-    if (logMINOR) Logger.minor(this, "Starting insert ID=\"" + message.identifier + '"');
+    if (LOG.isDebugEnabled()) LOG.debug("Starting insert ID=\"" + message.identifier + '"');
     final String id = message.identifier;
     final boolean global = message.global;
     ClientPut cp = null;
@@ -467,7 +447,7 @@ public class FCPConnectionHandler implements Closeable {
     synchronized (this) {
       boolean success;
       if (isClosed) {
-        if (logMINOR) Logger.minor(this, "Connection is closed");
+        if (LOG.isDebugEnabled()) LOG.debug("Connection is closed");
         return;
       }
       // We need to track non-persistent requests anyway, so we may as well check
@@ -512,7 +492,7 @@ public class FCPConnectionHandler implements Closeable {
                         try {
                           putter = new ClientPut(FCPConnectionHandler.this, message, server);
                         } catch (IdentifierCollisionException e) {
-                          Logger.normal(this, "Identifier collision on " + this);
+                          LOG.info("Identifier collision on " + this);
                           FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
                           send(msg);
                           return false;
@@ -539,7 +519,7 @@ public class FCPConnectionHandler implements Closeable {
                         try {
                           putter.register(false);
                         } catch (IdentifierCollisionException e) {
-                          Logger.normal(this, "Identifier collision on " + this);
+                          LOG.info("Identifier collision on " + this);
                           FCPMessage msg = new IdentifierCollisionMessage(id, global);
                           send(msg);
                           return false;
@@ -580,7 +560,7 @@ public class FCPConnectionHandler implements Closeable {
         }
       }
       if (!success) {
-        Logger.normal(this, "Identifier collision on " + this);
+        LOG.info("Identifier collision on " + this);
         failedMessage = new IdentifierCollisionMessage(id, message.global);
       }
     }
@@ -591,12 +571,12 @@ public class FCPConnectionHandler implements Closeable {
         failedMessage = new IdentifierCollisionMessage(id, message.global);
       }
     if (failedMessage != null) {
-      if (logMINOR) Logger.minor(this, "Failed: " + failedMessage);
+      if (LOG.isDebugEnabled()) LOG.debug("Failed: " + failedMessage);
       send(failedMessage);
       if (cp != null) cp.freeData();
       else message.freeData();
     } else {
-      Logger.minor(this, "Starting " + cp);
+      LOG.debug("Starting " + cp);
       cp.start(server.getCore().getClientContext());
     }
   }
@@ -605,7 +585,7 @@ public class FCPConnectionHandler implements Closeable {
       final ClientPutDirMessage message,
       final HashMap<String, Object> buckets,
       final boolean wasDiskPut) {
-    if (logMINOR) Logger.minor(this, "Start ClientPutDir");
+    if (LOG.isDebugEnabled()) LOG.debug("Start ClientPutDir");
     final String id = message.identifier;
     final boolean global = message.global;
     ClientPutDir cp = null;
@@ -655,7 +635,7 @@ public class FCPConnectionHandler implements Closeable {
                             new ClientPutDir(
                                 FCPConnectionHandler.this, message, buckets, wasDiskPut, server);
                       } catch (IdentifierCollisionException e) {
-                        Logger.normal(this, "Identifier collision on " + this);
+                        LOG.info("Identifier collision on " + this);
                         FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
                         send(msg);
                         return false;
@@ -681,7 +661,7 @@ public class FCPConnectionHandler implements Closeable {
                       try {
                         putter.register(false);
                       } catch (IdentifierCollisionException e) {
-                        Logger.normal(this, "Identifier collision on " + this);
+                        LOG.info("Identifier collision on " + this);
                         FCPMessage msg = new IdentifierCollisionMessage(id, global);
                         send(msg);
                         return false;
@@ -718,7 +698,7 @@ public class FCPConnectionHandler implements Closeable {
         }
       }
       if (!success) {
-        Logger.normal(this, "Identifier collision on " + this);
+        LOG.info("Identifier collision on " + this);
         failedMessage = new IdentifierCollisionMessage(id, message.global);
       }
     }
@@ -734,7 +714,7 @@ public class FCPConnectionHandler implements Closeable {
       send(failedMessage);
       if (cp != null) cp.cancel(server.getCore().getClientContext());
     } else {
-      if (logMINOR) Logger.minor(this, "Starting " + cp);
+      if (LOG.isDebugEnabled()) LOG.debug("Starting " + cp);
       cp.start(server.getCore().getClientContext());
     }
   }
@@ -856,7 +836,7 @@ public class FCPConnectionHandler implements Closeable {
       da = checkedDirectories.get(parentDirectory);
     }
 
-    if (logMINOR) Logger.minor(this, "Checking DDA: " + da + " for " + parentDirectory);
+    if (LOG.isDebugEnabled()) LOG.debug("Checking DDA: " + da + " for " + parentDirectory);
 
     if (writeRequest) return (da == null ? server.isDownloadDDAAlwaysAllowed() : da.canWrite);
     else return (da == null ? server.isUploadDDAAlwaysAllowed() : da.canRead);
@@ -876,7 +856,7 @@ public class FCPConnectionHandler implements Closeable {
       checkedDirectories.put(path, da);
     }
 
-    if (logMINOR) Logger.minor(this, "DDA: read=" + read + " write=" + write + " for " + path);
+    if (LOG.isDebugEnabled()) LOG.debug("DDA: read=" + read + " write=" + write + " for " + path);
   }
 
   /**
@@ -939,8 +919,7 @@ public class FCPConnectionHandler implements Closeable {
         bos.write(result.readContent.getBytes(StandardCharsets.UTF_8));
         bos.flush();
       } catch (IOException e) {
-        Logger.error(
-            this, "Got a IOE while creating the file (" + readFile + " ! " + e.getMessage());
+        LOG.error("Got a IOE while creating the file (" + readFile + " ! " + e.getMessage());
       }
     }
 

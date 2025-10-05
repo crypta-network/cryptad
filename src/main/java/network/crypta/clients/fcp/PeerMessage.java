@@ -3,8 +3,12 @@ package network.crypta.clients.fcp;
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PeerMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(PeerMessage.class);
+
   static final String name = "Peer";
 
   final PeerNode pn;

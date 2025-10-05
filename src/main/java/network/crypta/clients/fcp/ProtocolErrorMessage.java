@@ -3,8 +3,9 @@ package network.crypta.clients.fcp;
 import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ProtocolError (some problem parsing the other side's FCP messages, or other problem not related
@@ -15,6 +16,7 @@ import network.crypta.support.SimpleFieldSet;
  * EndMessage
  */
 public class ProtocolErrorMessage extends FCPMessage implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ProtocolErrorMessage.class);
 
   @Serial private static final long serialVersionUID = 1L;
   static final int CLIENT_HELLO_MUST_BE_FIRST_MESSAGE = 1;
@@ -139,7 +141,7 @@ public class ProtocolErrorMessage extends FCPMessage implements Serializable {
       case PERSISTENCE_DISABLED:
         return "Persistence disabled (e.g. encrypted queue waiting for password?)";
       default:
-        Logger.error(this, "Unknown error code: " + code, new Exception("debug"));
+        LOG.error("Unknown error code: " + code, new Exception("debug"));
         return "(Unknown)";
     }
   }
@@ -183,7 +185,7 @@ public class ProtocolErrorMessage extends FCPMessage implements Serializable {
 
   @Override
   public void run(FCPConnectionHandler handler, Node node) {
-    Logger.error(this, "Client reported protocol error");
+    LOG.error("Client reported protocol error");
   }
 
   @Override

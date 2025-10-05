@@ -23,14 +23,14 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClientPut extends ClientPutBase {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPut.class);
 
   @Serial private static final long serialVersionUID = 1L;
   ClientPutter putter;
@@ -57,17 +57,7 @@ public class ClientPut extends ClientPutBase {
   private transient boolean compressing;
   private boolean compressed;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   /**
    * Fproxy Creates a new persistent insert.
@@ -170,7 +160,7 @@ public class ClientPut extends ClientPutBase {
     RandomAccessBucket tempData = data;
     ClientMetadata cm = new ClientMetadata(mimeType);
     boolean isMetadata = false;
-    if (logMINOR) Logger.minor(this, "data = " + tempData + ", uploadFrom = " + uploadFrom);
+    if (LOG.isDebugEnabled()) LOG.debug("data = " + tempData + ", uploadFrom = " + uploadFrom);
     if (uploadFrom == UploadFrom.REDIRECT) {
       this.targetURI = redirectTarget;
       Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
@@ -293,7 +283,7 @@ public class ClientPut extends ClientPutBase {
     RandomAccessBucket tempData = message.getRandomAccessBucket();
     ClientMetadata cm = new ClientMetadata(mimeType);
     boolean isMetadata = false;
-    if (logMINOR) Logger.minor(this, "data = " + tempData + ", uploadFrom = " + uploadFrom);
+    if (LOG.isDebugEnabled()) LOG.debug("data = " + tempData + ", uploadFrom = " + uploadFrom);
     if (uploadFrom == UploadFrom.REDIRECT) {
       this.targetURI = message.redirectTarget;
       Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
@@ -302,7 +292,7 @@ public class ClientPut extends ClientPutBase {
             m.toBucket(server.getCore().getClientContext().getBucketFactory(isPersistentForever()));
       } catch (MetadataUnresolvedException e) {
         // Impossible
-        Logger.error(this, "Impossible: " + e, e);
+        LOG.error("Impossible: " + e, e);
         this.data = null;
         clientMetadata = cm;
         putter = null;
@@ -326,7 +316,7 @@ public class ClientPut extends ClientPutBase {
       try (InputStream is = data.getInputStream()) {
         SHA256.hash(is, md);
       } catch (IOException e) {
-        Logger.error(this, "Got IOE: " + e.getMessage(), e);
+        LOG.error("Got IOE: " + e.getMessage(), e);
         throw new MessageInvalidException(
             ProtocolErrorMessage.COULD_NOT_READ_FILE,
             "Unable to access file: " + e,
@@ -335,9 +325,8 @@ public class ClientPut extends ClientPutBase {
       }
       foundHash = md.digest();
 
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "FileHash result : we found "
                 + Base64.encode(foundHash)
                 + " and were given "
@@ -352,7 +341,7 @@ public class ClientPut extends ClientPutBase {
             global);
     }
 
-    if (logMINOR) Logger.minor(this, "data = " + data + ", uploadFrom = " + uploadFrom);
+    if (LOG.isDebugEnabled()) LOG.debug("data = " + data + ", uploadFrom = " + uploadFrom);
     putter =
         new ClientPutter(
             this,
@@ -391,7 +380,7 @@ public class ClientPut extends ClientPutBase {
 
   @Override
   public void start(ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Starting " + this + " : " + identifier);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting " + this + " : " + identifier);
     synchronized (this) {
       if (finished) return;
     }
@@ -442,7 +431,7 @@ public class ClientPut extends ClientPutBase {
 
   @Override
   protected FCPMessage persistentTagMessage() {
-    if (putter == null) Logger.error(this, "putter == null", new Exception("error"));
+    if (putter == null) LOG.error("putter == null", new Exception("error"));
     // FIXME end
     return new PersistentPut(
         identifier,
@@ -474,7 +463,7 @@ public class ClientPut extends ClientPutBase {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted, and also possibly failed deletions.
-      Logger.error(this, "lowLevelClient == null", new Exception("error"));
+      LOG.error("lowLevelClient == null", new Exception("error"));
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -517,11 +506,11 @@ public class ClientPut extends ClientPutBase {
   @Override
   public boolean canRestart() {
     if (!finished) {
-      Logger.minor(this, "Cannot restart because not finished for " + identifier);
+      LOG.debug("Cannot restart because not finished for " + identifier);
       return false;
     }
     if (succeeded) {
-      Logger.minor(this, "Cannot restart because succeeded for " + identifier);
+      LOG.debug("Cannot restart because succeeded for " + identifier);
       return false;
     }
     return putter.canRestart();

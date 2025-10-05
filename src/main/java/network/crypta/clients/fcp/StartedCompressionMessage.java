@@ -3,8 +3,11 @@ package network.crypta.clients.fcp;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StartedCompressionMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(StartedCompressionMessage.class);
 
   final String identifier;
   final boolean global;

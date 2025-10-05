@@ -6,10 +6,12 @@ import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ModifyPeerNote extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ModifyPeerNote.class);
 
   static final String NAME = "ModifyPeerNote";
 
@@ -83,8 +85,7 @@ public class ModifyPeerNote extends FCPMessage {
     try {
       noteText = Base64.decodeUTF8(encodedNoteText);
     } catch (IllegalBase64Exception e) {
-      Logger.error(
-          this,
+      LOG.error(
           "Bad Base64 encoding when decoding a FCP-received private darknet comment SimpleFieldSet",
           e);
       return;

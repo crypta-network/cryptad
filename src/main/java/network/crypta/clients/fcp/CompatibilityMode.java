@@ -5,8 +5,11 @@ import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompatibilityMode extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(CompatibilityMode.class);
 
   public CompatibilityMode(String identifier, boolean global, CompatibilityAnalyser compat) {
     this.identifier = identifier;

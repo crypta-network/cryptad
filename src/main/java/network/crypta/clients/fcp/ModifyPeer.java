@@ -5,8 +5,11 @@ import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.support.Fields;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ModifyPeer extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ModifyPeer.class);
 
   static final String NAME = "ModifyPeer";
 

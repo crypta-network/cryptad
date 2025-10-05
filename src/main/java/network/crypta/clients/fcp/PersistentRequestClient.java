@@ -14,16 +14,16 @@ import network.crypta.clients.fcp.ListPersistentRequestsMessage.PersistentListJo
 import network.crypta.clients.fcp.ListPersistentRequestsMessage.TransientListJob;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An FCP client. Identified by its Name which is sent on connection. Tracks persistent requests for
  * either PERSISTENCE_REBOOT or PERSISTENCE_FOREVER.
  */
 public class PersistentRequestClient {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentRequestClient.class);
 
   public PersistentRequestClient(
       String name2,
@@ -95,17 +95,7 @@ public class PersistentRequestClient {
   /** Connection mode */
   final Persistence persistence;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public synchronized FCPConnectionHandler getConnection() {
     return currentConnection;
@@ -125,7 +115,7 @@ public class PersistentRequestClient {
    * should be moved to the unacked-completed-requests set.
    */
   public void finishedClientRequest(ClientRequest get) {
-    if (logMINOR) Logger.minor(this, "Finished client request", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finished client request", new Exception("debug"));
     assert (get.persistence == persistence);
     synchronized (this) {
       if (runningPersistentRequests.remove(get)) {
@@ -237,7 +227,7 @@ public class PersistentRequestClient {
 
   public void register(ClientRequest cg) throws IdentifierCollisionException {
     assert (cg.persistence == persistence);
-    if (logMINOR) Logger.minor(this, "Registering " + cg.getIdentifier());
+    if (LOG.isDebugEnabled()) LOG.debug("Registering " + cg.getIdentifier());
     synchronized (this) {
       String ident = cg.getIdentifier();
       ClientRequest old = clientRequestsByIdentifier.get(ident);
@@ -261,7 +251,7 @@ public class PersistentRequestClient {
   public boolean removeByIdentifier(
       String identifier, boolean kill, FCPServer server, ClientContext context) {
     ClientRequest req;
-    if (logMINOR) Logger.minor(this, "removeByIdentifier(" + identifier + ',' + kill + ')');
+    if (LOG.isDebugEnabled()) LOG.debug("removeByIdentifier(" + identifier + ',' + kill + ')');
     if (statusCache != null) statusCache.removeByIdentifier(identifier);
     synchronized (this) {
       req = clientRequestsByIdentifier.get(identifier);
@@ -272,8 +262,7 @@ public class PersistentRequestClient {
           if (r.getIdentifier().equals(identifier)) {
             req = r;
             completedUnackedRequests.remove(r);
-            Logger.error(
-                this,
+            LOG.error(
                 "Found completed unacked request "
                     + r
                     + " for identifier "
@@ -287,8 +276,7 @@ public class PersistentRequestClient {
             if (r.getIdentifier().equals(identifier)) {
               req = r;
               runningPersistentRequests.remove(r);
-              Logger.error(
-                  this,
+              LOG.error(
                   "Found running request "
                       + r
                       + " for identifier "
@@ -301,8 +289,7 @@ public class PersistentRequestClient {
         if (req == null) return false;
       } else if (!((runningPersistentRequests.remove(req))
           || completedUnackedRequests.remove(req))) {
-        Logger.error(
-            this,
+        LOG.error(
             "Removing "
                 + identifier
                 + ": in clientRequestsByIdentifier but not in running/completed maps!");
@@ -312,7 +299,7 @@ public class PersistentRequestClient {
       clientRequestsByIdentifier.remove(identifier);
     }
     if (kill) {
-      if (logMINOR) Logger.minor(this, "Killing request " + req);
+      if (LOG.isDebugEnabled()) LOG.debug("Killing request " + req);
       req.cancel(context);
     }
     req.requestWasRemoved(context);
@@ -335,8 +322,7 @@ public class PersistentRequestClient {
     synchronized (this) {
       for (ClientRequest req : runningPersistentRequests) {
         if (req == null) {
-          Logger.error(
-              this,
+          LOG.error(
               "Request is null on runningPersistentRequests for "
                   + this
                   + " - database corruption??");
@@ -358,7 +344,7 @@ public class PersistentRequestClient {
         status.add(req.getStatus());
       } catch (Throwable t) {
         // Try to load the rest. :<
-        Logger.error(this, "BROKEN REQUEST LOADING PERSISTENT REQUEST STATUS: " + t, t);
+        LOG.error("BROKEN REQUEST LOADING PERSISTENT REQUEST STATUS: " + t, t);
         // FIXME tell the user in wrapper.log or even in a useralert.
       }
       // FIXME deactivate? Unconditional deactivate depends on callers. Keep-as-is would need merge
@@ -380,7 +366,7 @@ public class PersistentRequestClient {
    */
   public boolean setWatchGlobal(boolean enabled, int verbosityMask, FCPServer server) {
     if (isGlobalQueue) {
-      Logger.error(this, "Set watch global on global queue!: " + this, new Exception("debug"));
+      LOG.error("Set watch global on global queue!: " + this, new Exception("debug"));
       return false;
     }
     if (server.getGlobalForeverClient() == null) return false;
@@ -567,7 +553,7 @@ public class PersistentRequestClient {
                 + "\" as "
                 + clientRequestsByIdentifier.get(identifier));
       else {
-        Logger.error(this, "Adding the same identifier twice: " + identifier);
+        LOG.error("Adding the same identifier twice: " + identifier);
       }
     } else {
       clientRequestsByIdentifier.put(identifier, clientRequest);

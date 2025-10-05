@@ -4,8 +4,11 @@ import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FinishedCompressionMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FinishedCompressionMessage.class);
 
   final String identifier;
   final boolean global;

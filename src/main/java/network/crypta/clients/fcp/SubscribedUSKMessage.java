@@ -2,6 +2,8 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sent by the node back to the client after it receives a SubscribeUSK message.
@@ -14,6 +16,8 @@ import network.crypta.support.SimpleFieldSet;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class SubscribedUSKMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SubscribedUSKMessage.class);
+
   public static final String name = "SubscribedUSK";
 
   public final SubscribeUSKMessage message;

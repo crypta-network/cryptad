@@ -3,9 +3,12 @@ package network.crypta.clients.fcp;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** remove a plugin */
 public class RemovePlugin extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(RemovePlugin.class);
 
   static final String NAME = "RemovePlugin";
 

@@ -6,10 +6,9 @@ import java.util.concurrent.TimeUnit;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMessageHandler;
 import network.crypta.pluginmanager.PluginRespirator;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
 
 /**
  * An FCP connection between:<br>

@@ -9,8 +9,11 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class MultipleDataCarryingMessage extends BaseDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(MultipleDataCarryingMessage.class);
 
   // The iteration order matters, hence a LinkedHashMap
   protected Map<String, Bucket> buckets = new LinkedHashMap<>();

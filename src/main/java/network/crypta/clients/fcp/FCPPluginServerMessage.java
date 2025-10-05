@@ -4,6 +4,8 @@ import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class produces the network format for a FCP message which is send from a FCP server plugin
@@ -37,6 +39,7 @@ import network.crypta.support.api.Bucket;
  * @author xor (xor@freenetproject.org)
  */
 public class FCPPluginServerMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginServerMessage.class);
 
   /**
    * On-network format name of the message.
