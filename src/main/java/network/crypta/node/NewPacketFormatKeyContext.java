@@ -6,10 +6,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.NewPacketFormat.SentPacket;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SentTimeCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * NewPacketFormat's context for each SessionKey. Specifically, packet numbers are unique to a
@@ -20,6 +19,7 @@ import network.crypta.support.SentTimeCache;
  * @author toad
  */
 public class NewPacketFormatKeyContext {
+  private static final Logger LOG = LoggerFactory.getLogger(NewPacketFormatKeyContext.class);
 
   public int firstSeqNumUsed = -1;
   public int nextSeqNum;
@@ -59,18 +59,7 @@ public class NewPacketFormatKeyContext {
 
   private int maxSeenInFlight;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   NewPacketFormatKeyContext(int ourFirstSeqNum, int theirFirstSeqNum) {
@@ -94,11 +83,11 @@ public class NewPacketFormatKeyContext {
     synchronized (sequenceNumberLock) {
       if (firstSeqNumUsed == -1) {
         firstSeqNumUsed = nextSeqNum;
-        if (logMINOR)
-          Logger.minor(this, "First seqnum used for " + this + " is " + firstSeqNumUsed);
+        if (LOG.isDebugEnabled())
+          LOG.debug("First seqnum used for " + this + " is " + firstSeqNumUsed);
       } else {
         if (nextSeqNum == firstSeqNumUsed) {
-          Logger.error(this, "Blocked because we haven't rekeyed yet");
+          LOG.error("Blocked because we haven't rekeyed yet");
           pn.startRekeying();
           return -1;
         }
@@ -124,7 +113,7 @@ public class NewPacketFormatKeyContext {
     int maxSize;
     boolean validAck = false;
     long ackReceived = System.currentTimeMillis();
-    if (logDEBUG) Logger.debug(this, "Acknowledging packet " + ack + " from " + pn);
+    if (LOG.isDebugEnabled()) LOG.debug("Acknowledging packet " + ack + " from " + pn);
     SentPacket sent;
     synchronized (sentPackets) {
       sent = sentPackets.remove(ack);
@@ -134,10 +123,10 @@ public class NewPacketFormatKeyContext {
       rtt = sent.acked(key);
       validAck = true;
     } else {
-      if (logDEBUG) Logger.debug(this, "Already acked or lost " + ack);
+      if (LOG.isDebugEnabled()) LOG.debug("Already acked or lost " + ack);
       long packetSent = lostSentTimes.queryAndRemove(ack);
       if (packetSent < 0) {
-        if (logDEBUG) Logger.debug(this, "No time for " + ack + " - maybe acked twice?");
+        if (LOG.isDebugEnabled()) LOG.debug("No time for " + ack + " - maybe acked twice?");
         return;
       }
       rtt = ackReceived - packetSent;
@@ -208,9 +197,9 @@ public class NewPacketFormatKeyContext {
         Map.Entry<Integer, Long> entry = it.next();
         int ack = entry.getKey();
         // All acks must be sent within 200ms.
-        if (logDEBUG) Logger.debug(this, "Trying to ack " + ack);
+        if (LOG.isDebugEnabled()) LOG.debug("Trying to ack " + ack);
         if (!packet.addAck(ack, maxPacketSize)) {
-          if (logDEBUG) Logger.debug(this, "Can't add ack " + ack);
+          if (LOG.isDebugEnabled()) LOG.debug("Can't add ack " + ack);
           break;
         }
         if (entry.getValue() + MAX_ACK_DELAY < now) mustSend = true;
@@ -241,8 +230,8 @@ public class NewPacketFormatKeyContext {
       int inFlight = sentPackets.size();
       if (inFlight > maxSeenInFlight) {
         maxSeenInFlight = inFlight;
-        if (logDEBUG) {
-          Logger.debug(this, "Max seen in flight new record: " + maxSeenInFlight + " for " + this);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Max seen in flight new record: " + maxSeenInFlight + " for " + this);
         }
       }
     }
@@ -282,9 +271,8 @@ public class NewPacketFormatKeyContext {
         Map.Entry<Integer, SentPacket> e = it.next();
         SentPacket s = e.getValue();
         if (s.getSentTime() < threshold) {
-          if (logMINOR) {
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(
                 "Assuming packet "
                     + e.getKey()
                     + " has been lost. "
@@ -309,8 +297,8 @@ public class NewPacketFormatKeyContext {
         }
       }
     }
-    if (count > 0 && logMINOR)
-      Logger.minor(this, count + " packets in flight with threshold " + maxDelay + "ms");
+    if (count > 0 && LOG.isDebugEnabled())
+      LOG.debug(count + " packets in flight with threshold " + maxDelay + "ms");
     if (bigLostCount != 0 && pn != null) {
       PacketThrottle throttle = pn.getThrottle();
       if (throttle != null) {

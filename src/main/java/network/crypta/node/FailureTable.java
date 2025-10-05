@@ -20,11 +20,10 @@ import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.support.LRUMap;
 import network.crypta.support.ListUtils;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SerialExecutor;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // FIXME it is ESSENTIAL that we delete the ULPR data on requestors etc once we have found the key.
 // Otherwise it will be much too easy to trace a request if an attacker busts the node afterwards.
@@ -43,20 +42,11 @@ import network.crypta.support.io.NativeThread;
  * @author toad
  */
 public class FailureTable {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(FailureTable.class);
 
   // private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            // logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /** FailureTableEntry's by key. Note that we push an entry only when sentTime changes. */
@@ -134,7 +124,7 @@ public class FailureTable {
       if (ftTimeout
           > REJECT_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid for 1497,
         // too
-        Logger.error(this, "Bogus timeout " + ftTimeout, new Exception("error"));
+        LOG.error("Bogus timeout " + ftTimeout, new Exception("error"));
       }
       ftTimeout = Math.max(Math.min(REJECT_TIME, ftTimeout), 0);
     }
@@ -142,7 +132,7 @@ public class FailureTable {
       if (rfTimeout
           > RECENTLY_FAILED_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid
         // for 1497, too
-        Logger.error(this, "Bogus timeout " + rfTimeout, new Exception("error"));
+        LOG.error("Bogus timeout " + rfTimeout, new Exception("error"));
       }
       rfTimeout = Math.max(Math.min(RECENTLY_FAILED_TIME, rfTimeout), 0);
     }
@@ -179,11 +169,11 @@ public class FailureTable {
       PeerNode requestor) {
     if (ftTimeout < -1 || ftTimeout > REJECT_TIME) {
       // -1 is a valid no-op.
-      Logger.error(this, "Bogus timeout " + ftTimeout, new Exception("error"));
+      LOG.error("Bogus timeout " + ftTimeout, new Exception("error"));
       ftTimeout = Math.max(Math.min(REJECT_TIME, ftTimeout), 0);
     }
     if (rfTimeout < 0 || rfTimeout > RECENTLY_FAILED_TIME) {
-      if (rfTimeout > 0) Logger.error(this, "Bogus timeout " + rfTimeout, new Exception("error"));
+      if (rfTimeout > 0) LOG.error("Bogus timeout " + rfTimeout, new Exception("error"));
       rfTimeout = Math.max(Math.min(RECENTLY_FAILED_TIME, rfTimeout), 0);
     }
     if (!(node.isEnableULPRDataPropagation() || node.isEnablePerNodeFailureTables())) return;
@@ -242,7 +232,7 @@ public class FailureTable {
     }
 
     public void deleteOffer(BlockOffer offer) {
-      if (logMINOR) Logger.minor(this, "Deleting " + offer + " from " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Deleting " + offer + " from " + this);
       synchronized (blockOfferListByKey) {
         int idx = -1;
         final int offerLength = offers.length;
@@ -314,11 +304,10 @@ public class FailureTable {
    * deadlock. Schedule off-thread if necessary.
    */
   public void onFound(KeyBlock block) {
-    if (logMINOR) Logger.minor(this, "Found " + block.getKey());
+    if (LOG.isDebugEnabled()) LOG.debug("Found " + block.getKey());
     if (!(node.isEnableULPRDataPropagation() || node.isEnablePerNodeFailureTables())) {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Ignoring onFound because enable ULPR = "
                 + node.isEnableULPRDataPropagation()
                 + " and enable failure tables = "
@@ -334,12 +323,12 @@ public class FailureTable {
     synchronized (this) {
       entry = entriesByKey.get(key);
       if (entry == null) {
-        if (logMINOR) Logger.minor(this, "Key not found in entriesByKey");
+        if (LOG.isDebugEnabled()) LOG.debug("Key not found in entriesByKey");
         return; // Nobody cares
       }
       entriesByKey.removeKey(key);
     }
-    if (logMINOR) Logger.minor(this, "Offering key");
+    if (LOG.isDebugEnabled()) LOG.debug("Offering key");
     if (!node.isEnableULPRDataPropagation()) return;
     entry.offer();
   }
@@ -360,12 +349,12 @@ public class FailureTable {
    */
   void onOffer(final Key key, final PeerNode peer, final byte[] authenticator) {
     if (!node.isEnableULPRDataPropagation()) return;
-    if (logMINOR) Logger.minor(this, "Offered key " + key + " by peer " + peer);
+    if (LOG.isDebugEnabled()) LOG.debug("Offered key " + key + " by peer " + peer);
     FailureTableEntry entry;
     synchronized (this) {
       entry = entriesByKey.get(key);
       if (entry == null) {
-        if (logMINOR) Logger.minor(this, "We didn't ask for the key");
+        if (LOG.isDebugEnabled()) LOG.debug("We didn't ask for the key");
         return; // we haven't asked for it
       }
     }
@@ -378,9 +367,8 @@ public class FailureTable {
    * deliberately serialise it, as high latencies can otherwise result.
    */
   protected void innerOnOffer(Key key, PeerNode peer, byte[] authenticator) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Inner on offer for " + key + " from " + peer + " on " + node.getDarknetPortNumber());
     if (key.getRoutingKey() == null) throw new NullPointerException();
     // NB: node.hasKey() executes a datastore fetch
@@ -388,7 +376,7 @@ public class FailureTable {
     // If we have the key in the client cache, we might want it for other nodes,
     // although hopefully the client layer was tripped when we got it.
     if (node.hasKey(key, false, true)) {
-      Logger.minor(this, "Already have key");
+      LOG.debug("Already have key");
       return;
     }
 
@@ -398,7 +386,7 @@ public class FailureTable {
     synchronized (this) {
       entry = entriesByKey.get(key);
       if (entry == null) {
-        if (logMINOR) Logger.minor(this, "We didn't ask for the key");
+        if (LOG.isDebugEnabled()) LOG.debug("We didn't ask for the key");
         return; // we haven't asked for it
       }
     }
@@ -435,8 +423,8 @@ public class FailureTable {
     boolean weAsked = entry.askedFromPeer(peer, now);
     boolean heAsked = entry.askedByPeer(peer, now);
     if (!(weAsked || heAsked)) {
-      if (logMINOR)
-        Logger.minor(this, "Not propagating key: weAsked=" + weAsked + " heAsked=" + heAsked);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Not propagating key: weAsked=" + weAsked + " heAsked=" + heAsked);
       if (entry.isEmpty(now)) {
         synchronized (this) {
           entriesByKey.removeKey(key);
@@ -455,7 +443,7 @@ public class FailureTable {
     // Add to offers list
 
     synchronized (blockOfferListByKey) {
-      if (logMINOR) Logger.minor(this, "Valid offer");
+      if (LOG.isDebugEnabled()) LOG.debug("Valid offer");
       BlockOfferList bl = blockOfferListByKey.get(key);
       BlockOffer offer = new BlockOffer(peer, now, authenticator, peer.getBootID());
       if (bl == null) {
@@ -484,9 +472,8 @@ public class FailureTable {
         if (blockOfferListByKey.isEmpty()) return;
         BlockOfferList bl = blockOfferListByKey.peekValue();
         if (bl.isEmpty(now) || bl.expires() < now || blockOfferListByKey.size() > MAX_OFFERS) {
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Removing block offer list " + bl + " list size now " + blockOfferListByKey.size());
           blockOfferListByKey.popKey();
         } else {
@@ -527,7 +514,7 @@ public class FailureTable {
               // Too bad.
             } catch (Throwable t) {
               tag.unlockHandler();
-              Logger.error(this, "Caught " + t + " sending offered key", t);
+              LOG.error("Caught " + t + " sending offered key", t);
             }
           }
         },
@@ -672,9 +659,8 @@ public class FailureTable {
         if (!offer.isExpired(now)) recentOffers.add(offer);
         else expiredOffers.add(offer);
       }
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Offers: " + recentOffers.size() + " recent " + expiredOffers.size() + " expired");
     }
 
@@ -757,14 +743,14 @@ public class FailureTable {
       try {
         realRun();
       } catch (Throwable t) {
-        Logger.error(this, "FailureTableCleaner caught " + t, t);
+        LOG.error("FailureTableCleaner caught " + t, t);
       } finally {
         node.getTicker().queueTimedJob(this, CLEANUP_PERIOD);
       }
     }
 
     private void realRun() {
-      if (logMINOR) Logger.minor(this, "Starting FailureTable cleanup");
+      if (LOG.isDebugEnabled()) LOG.debug("Starting FailureTable cleanup");
       long startTime = System.currentTimeMillis();
       FailureTableEntry[] entries;
       synchronized (FailureTable.this) {
@@ -776,7 +762,7 @@ public class FailureTable {
           synchronized (FailureTable.this) {
             synchronized (entry) {
               if (entry.isEmpty()) {
-                if (logMINOR) Logger.minor(this, "Removing entry for " + entry.key);
+                if (LOG.isDebugEnabled()) LOG.debug("Removing entry for " + entry.key);
                 entriesByKey.removeKey(entry.key);
               }
             }
@@ -784,8 +770,8 @@ public class FailureTable {
         }
       }
       long endTime = System.currentTimeMillis();
-      if (logMINOR)
-        Logger.minor(this, "Finished FailureTable cleanup took " + (endTime - startTime) + "ms");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Finished FailureTable cleanup took " + (endTime - startTime) + "ms");
     }
   }
 
