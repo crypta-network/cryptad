@@ -6,10 +6,13 @@ import network.crypta.node.Node;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.node.updater.RevocationChecker;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
+  private static final Logger LOG = LoggerFactory.getLogger(UpdatedVersionAvailableUserAlert.class);
+
   private final NodeUpdateManager updater;
 
   public UpdatedVersionAvailableUserAlert(NodeUpdateManager updater) {
@@ -120,7 +123,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
     } else if (updater.fetchingNewMainJar()) {
       version = updater.fetchingNewMainJarVersion();
     } else {
-      Logger.minor(this, "Showing version available notification but not fetching or fetched.");
+      LOG.debug("Showing version available notification but not fetching or fetched.");
       // Fallback
       version = updater.getMainVersion();
     }
