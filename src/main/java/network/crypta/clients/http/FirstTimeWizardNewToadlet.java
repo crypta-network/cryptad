@@ -23,15 +23,17 @@ import network.crypta.node.SecurityLevels;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalValueException;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Javascript-based First-Time-Wizard. The regular wizard redirects here if both fproxy and browser
  * have Javascript enabled.
  */
 public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardNewToadlet.class);
 
   public static final String TOADLET_URL = "/wiz/";
 
@@ -299,7 +301,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
         downloadLimitDetected = Long.toString(detected.downBytes / 2 / KiB);
         uploadLimitDetected = Long.toString(detected.upBytes / 2 / KiB);
       } catch (PluginNotFoundException | IllegalValueException e) {
-        Logger.normal(this, e.getMessage(), e);
+        LOG.info(e.getMessage(), e);
       }
     }
 
@@ -369,7 +371,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
           config.get("node").set("outputBandwidthLimit", Long.toString(bandwidth.upBytes));
         }
       } catch (ConfigException e) {
-        Logger.error(this, "Should not happen, please report! " + e, e);
+        LOG.error("Should not happen, please report! {}", e.toString(), e);
       }
 
       DATASTORE_SIZE.setDatastoreSize(storageLimit + "GiB", config, this);
@@ -391,14 +393,14 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
             | MasterKeysWrongPasswordException
             | MasterKeysFileSizeException
             | IOException e) {
-          Logger.error(this, "Should not happen, please report! " + e, e);
+          LOG.error("Should not happen, please report! {}", e.toString(), e);
         }
       }
 
       try {
         config.get("fproxy").set("hasCompletedWizard", true);
       } catch (ConfigException e) {
-        Logger.error(this, "Should not happen, please report! " + e, e);
+        LOG.error("Should not happen, please report! {}", e.toString(), e);
       }
       core.storeConfig();
     }
