@@ -9,8 +9,9 @@ import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sender's representation of a seed node.
@@ -18,6 +19,7 @@ import network.crypta.support.SimpleFieldSet;
  * @author toad
  */
 public class SeedServerPeerNode extends PeerNode {
+  private static final Logger LOG = LoggerFactory.getLogger(SeedServerPeerNode.class);
 
   public SeedServerPeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal)
       throws FSParseException,
@@ -82,7 +84,7 @@ public class SeedServerPeerNode extends PeerNode {
     super.sendInitialMessages();
     final OpennetManager om = node.getOpennet();
     if (om == null) {
-      Logger.normal(this, "Opennet turned off while connecting to seednodes");
+      LOG.info("Opennet turned off while connecting to seednodes");
       node.getPeers().disconnectAndRemove(this, true, true, true);
     } else {
       // Wait 5 seconds. Another node may connect first, we don't want all the
@@ -95,7 +97,7 @@ public class SeedServerPeerNode extends PeerNode {
                   try {
                     om.getAnnouncer().maybeSendAnnouncement();
                   } catch (Throwable t) {
-                    Logger.error(this, "Caught " + t, t);
+                    LOG.error("Caught " + t, t);
                   }
                 }
               },
@@ -113,7 +115,7 @@ public class SeedServerPeerNode extends PeerNode {
       v.add(ia);
     }
     if (v.isEmpty()) {
-      Logger.error(this, "No valid addresses for seed node " + this);
+      LOG.error("No valid addresses for seed node " + this);
     }
     return v.toArray(new InetAddress[0]);
   }

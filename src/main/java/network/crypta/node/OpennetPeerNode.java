@@ -9,10 +9,12 @@ import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetManager.LinkLengthClass;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.node.updater.UpdateOverMandatoryManager;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OpennetPeerNode extends PeerNode {
+  private static final Logger LOG = LoggerFactory.getLogger(OpennetPeerNode.class);
 
   final OpennetManager opennet;
   private long timeLastSuccess;
@@ -262,7 +264,7 @@ public class OpennetPeerNode extends PeerNode {
   @Override
   public void fatalTimeout() {
     if (node.isStopping()) return;
-    Logger.error(this, "Disconnecting " + this + " because of fatal timeout");
+    LOG.error("Disconnecting " + this + " because of fatal timeout");
     // Disconnect.
     forceDisconnect();
   }
@@ -279,7 +281,7 @@ public class OpennetPeerNode extends PeerNode {
 
   public LinkLengthClass linkLengthClass() {
     if (!Location.isValid(getLocation())) {
-      Logger.error(this, "No location on " + this, new Exception("debug"));
+      LOG.error("No location on " + this, new Exception("debug"));
       return LinkLengthClass
           .SHORT; // FIXME add unknown to enum? Would need more complex error handling...
     }
