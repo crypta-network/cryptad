@@ -4,7 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author ian
@@ -12,12 +13,7 @@ import network.crypta.support.Logger;
  *     Code Generation - Code and Comments
  */
 public final class MessageFilter {
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerClass(MessageFilter.class);
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(MessageFilter.class);
 
   public static final String VERSION =
       "$Id: MessageFilter.java,v 1.7 2005/08/25 17:28:19 amphibian Exp $";
@@ -178,8 +174,7 @@ public final class MessageFilter {
               + ".");
     }
     if (or._initialTimeout != _initialTimeout) {
-      Logger.error(
-          this,
+      LOG.error(
           "Message filters being or()ed have different timeouts! This is very dangerous! This is "
               + this
               + " or is "
@@ -236,7 +231,7 @@ public final class MessageFilter {
       }
     }
     if ((!noTimeout) && reallyTimedOut(now)) {
-      if (logMINOR) Logger.minor(this, "Matched but timed out: " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Matched but timed out: " + this);
       return MATCHED.TIMED_OUT_AND_MATCHED;
     }
     return MATCHED.MATCHED;
@@ -263,10 +258,8 @@ public final class MessageFilter {
    */
   boolean timedOut(long time) {
     if (_matched) {
-      Logger.error(
-          this,
-          "Impossible: filter already matched in timedOut(): " + this,
-          new Exception("error"));
+      LOG.error(
+          "Impossible: filter already matched in timedOut(): " + this, new Exception("error"));
       return true; // Remove it.
     }
     return reallyTimedOut(time);
