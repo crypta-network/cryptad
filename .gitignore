@@ -27,6 +27,8 @@ debhelper-build-stamp
 *.changes
 *.tar.gz
 *.log
+*.log.gz
+/logs/
 *.substvars
 /debian/freenet/*
 .gradle

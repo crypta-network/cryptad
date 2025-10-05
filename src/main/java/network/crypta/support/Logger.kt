@@ -3,31 +3,21 @@ package network.crypta.support
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import network.crypta.support.FileLoggerHook.IntervalParseException
 import network.crypta.support.LoggerHook.InvalidThresholdException
 
+/**
+ * Central logging facade used across the Crypta codebase.
+ *
+ * Provides static convenience methods (in the companion) and an abstract instance API which
+ * concrete loggers and hook chains implement. The global logger defaults to a no-op [VoidLogger]
+ * until replaced by [setupChain] or [setupStdoutLogging].
+ */
 abstract class Logger {
-  @Deprecated("unused")
-  class OSThread {
-    companion object {
-      @Deprecated("always returns -1") @JvmStatic fun getPID(o: Any?): Int = -1
 
-      @Deprecated("always returns -1") @JvmStatic fun getPPID(o: Any?): Int = -1
-
-      @Deprecated("always returns null")
-      @JvmStatic
-      fun getFieldFromProcSelfStat(fieldNumber: Int, o: Any?): String? = null
-
-      @Deprecated("always returns -1") @JvmStatic fun getPIDFromProcSelfStat(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun getPPIDFromProcSelfStat(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun logPID(o: Any?): Int = -1
-
-      @Deprecated("always returns -1") @JvmStatic fun logPPID(o: Any?): Int = -1
-    }
-  }
-
+  /**
+   * Log severity levels used to filter messages. Ordering matters: a level matches a threshold when
+   * its ordinal is greater than or equal to the threshold's ordinal.
+   */
   enum class LogLevel {
     MINIMAL,
     DEBUG,
@@ -37,236 +27,227 @@ abstract class Logger {
     ERROR,
     NONE;
 
+    /** Returns true if this level is at least the given [threshold]. */
     fun matchesThreshold(threshold: LogLevel) = this.ordinal >= threshold.ordinal
 
     companion object {
-      @Deprecated("use enum constant")
-      @JvmStatic
-      fun fromOrdinal(ordinal: Int): LogLevel {
-        for (level in values()) {
-          if (level.ordinal == ordinal) return level
-        }
-        throw RuntimeException("Invalid ordinal: $ordinal")
-      }
+      // No deprecated helpers retained.
     }
   }
 
   companion object {
-    @Deprecated("use LogLevel constants") @JvmField val ERROR: Int = LogLevel.ERROR.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val WARNING: Int = LogLevel.WARNING.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val NORMAL: Int = LogLevel.NORMAL.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val MINOR: Int = LogLevel.MINOR.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val DEBUG: Int = LogLevel.DEBUG.ordinal
-
-    @Deprecated("use LogLevel constants") @JvmField val INTERNAL: Int = LogLevel.NONE.ordinal
-
+    /** Singleton global logger used by the static helpers. Defaults to [VoidLogger] (no-op). */
     @JvmField var logger: Logger = VoidLogger()
 
     @Synchronized
     @JvmStatic
     @Throws(InvalidThresholdException::class)
-    fun setupStdoutLogging(level: LogLevel, detail: String?): FileLoggerHook {
+    /**
+     * Installs a [LoggerHookChain] and an SLF4J sink with the given thresholds.
+     *
+     * @param level Global threshold applied to the chain and sink.
+     * @param detail Optional detailed thresholds string understood by hooks (e.g. per package).
+     * @throws InvalidThresholdException if [detail] contains invalid rules.
+     */
+    fun setupStdoutLogging(level: LogLevel, detail: String?) {
+      // Initialize the chain thresholds, and add an SLF4J sink honoring the same thresholds.
       setupChain()
       logger.setThreshold(level)
       logger.setDetailedThresholds(detail)
-      val fh: FileLoggerHook =
-        try {
-          FileLoggerHook(System.out, "d (c, t, p): m", "MMM dd, yyyy HH:mm:ss:SSS", level.name)
-        } catch (e: IntervalParseException) {
-          throw Error(e)
-        }
-      detail?.let { fh.setDetailedThresholds(it) }
-      (logger as LoggerHookChain).addHook(fh)
-      fh.start()
-      return fh
+      val hook = Slf4jLoggerHook(level)
+      detail?.let { hook.setDetailedThresholds(it) }
+      (logger as LoggerHookChain).addHook(hook)
     }
 
-    @Deprecated("use other overload")
     @Synchronized
     @JvmStatic
-    @Throws(InvalidThresholdException::class)
-    fun setupStdoutLogging(level: Int, detail: String?): FileLoggerHook =
-      setupStdoutLogging(LogLevel.entries.getOrNull(level) ?: LogLevel.NORMAL, detail)
-
-    @Synchronized
-    @JvmStatic
+    /** Replaces the global [logger] with a fresh [LoggerHookChain]. */
     fun setupChain() {
       logger = LoggerHookChain()
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a DEBUG message attributed to [c]. */
     fun debug(c: Class<*>, s: String) {
       logger.log(c, s, LogLevel.DEBUG)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a DEBUG message and [t] attributed to [c]. */
     fun debug(c: Class<*>, s: String, t: Throwable?) {
       logger.log(c, s, t, LogLevel.DEBUG)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a DEBUG message attributed to [o]'s class. */
     fun debug(o: Any, s: String) {
       logger.log(o, s, LogLevel.DEBUG)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a DEBUG message and [t] attributed to [o]'s class. */
     fun debug(o: Any, s: String, t: Throwable?) {
       logger.log(o, s, t, LogLevel.DEBUG)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs an ERROR message attributed to [c]. */
     fun error(c: Class<*>, s: String) {
       logger.log(c, s, LogLevel.ERROR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs an ERROR message and [t] attributed to [c]. */
     fun error(c: Class<*>, s: String, t: Throwable?) {
       logger.log(c, s, t, LogLevel.ERROR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs an ERROR message attributed to [o]'s class. */
     fun error(o: Any, s: String) {
       logger.log(o, s, LogLevel.ERROR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs an ERROR message and [e] attributed to [o]'s class. */
     fun error(o: Any, s: String, e: Throwable?) {
       logger.log(o, s, e, LogLevel.ERROR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a MINOR message attributed to [c]. */
     fun minor(c: Class<*>, s: String) {
       logger.log(c, s, LogLevel.MINOR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a MINOR message attributed to [o]'s class. */
     fun minor(o: Any, s: String) {
       logger.log(o, s, LogLevel.MINOR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a MINOR message and [t] attributed to [o]'s class. */
     fun minor(o: Any, s: String, t: Throwable?) {
       logger.log(o, s, t, LogLevel.MINOR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a MINOR message and [t] attributed to [c]. */
     fun minor(c: Class<*>, s: String, t: Throwable?) {
       logger.log(c, s, t, LogLevel.MINOR)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a NORMAL informational message attributed to [o]'s class. */
     fun normal(o: Any, s: String) {
       logger.log(o, s, LogLevel.NORMAL)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a NORMAL informational message and [t] attributed to [o]'s class. */
     fun normal(o: Any, s: String, t: Throwable?) {
       logger.log(o, s, t, LogLevel.NORMAL)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a NORMAL informational message attributed to [c]. */
     fun normal(c: Class<*>, s: String) {
       logger.log(c, s, LogLevel.NORMAL)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a NORMAL informational message and [t] attributed to [c]. */
     fun normal(c: Class<*>, s: String, t: Throwable?) {
       logger.log(c, s, t, LogLevel.NORMAL)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a WARNING message attributed to [c]. */
     fun warning(c: Class<*>, s: String) {
       logger.log(c, s, LogLevel.WARNING)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a WARNING message and [t] attributed to [c]. */
     fun warning(c: Class<*>, s: String, t: Throwable?) {
       logger.log(c, s, t, LogLevel.WARNING)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a WARNING message attributed to [o]'s class. */
     fun warning(o: Any, s: String) {
       logger.log(o, s, LogLevel.WARNING)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a WARNING message and [e] attributed to [o]'s class. */
     fun warning(o: Any, s: String, e: Throwable?) {
       logger.log(o, s, e, LogLevel.WARNING)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a message at [prio] attributed to [o]'s class. */
     fun logStatic(o: Any, s: String, prio: LogLevel) {
       logger.log(o, s, prio)
     }
 
     @Synchronized
     @JvmStatic
+    /** Logs a message and [e] at [prio] attributed to [o]'s class. */
     fun logStatic(o: Any, s: String, e: Throwable?, prio: LogLevel) {
       logger.log(o, s, e, prio)
     }
 
-    @Deprecated("use LogLevel version")
-    @Synchronized
     @JvmStatic
-    fun logStatic(o: Any, s: String, prio: Int) {
-      logStatic(o, s, LogLevel.entries.getOrNull(prio) ?: LogLevel.NORMAL)
-    }
-
-    @JvmStatic
+    /** Fast-path check: returns whether [priority] would be emitted for [c]. */
     fun shouldLog(priority: LogLevel, c: Class<*>?): Boolean = logger.instanceShouldLog(priority, c)
 
-    @Deprecated("use LogLevel version")
     @JvmStatic
-    fun shouldLog(priority: Int, c: Class<*>?): Boolean =
-      shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, c)
-
-    @JvmStatic
+    /** Convenience overload of [shouldLog] for an instance. */
     fun shouldLog(priority: LogLevel, o: Any?): Boolean = shouldLog(priority, o?.javaClass)
 
-    @Deprecated("use LogLevel version")
     @JvmStatic
-    fun shouldLog(priority: Int, o: Any?): Boolean =
-      shouldLog(LogLevel.entries.getOrNull(priority) ?: LogLevel.NORMAL, o)
-
-    @JvmStatic
+    /** Registers a callback notified when thresholds change. */
     fun registerLogThresholdCallback(ltc: LogThresholdCallback) {
       logger.instanceRegisterLogThresholdCallback(ltc)
     }
 
     @JvmStatic
+    /** Unregisters a previously registered threshold callback. */
     fun unregisterLogThresholdCallback(ltc: LogThresholdCallback) {
       logger.instanceUnregisterLogThresholdCallback(ltc)
     }
 
     @JvmStatic
+    /**
+     * Registers [clazz] so its optional static `logMINOR`/`logDEBUG` fields mirror thresholds.
+     * Missing fields are ignored.
+     */
     fun registerClass(clazz: Class<*>) {
       val ltc =
-        object : LogThresholdCallback() {
+        object : LogThresholdCallback {
           private val ref = WeakReference(clazz)
 
           override fun shouldUpdate() {
@@ -281,19 +262,25 @@ abstract class Logger {
               val field: Field = c.getDeclaredField("logMINOR")
               if (Modifier.isStatic(field.modifiers)) {
                 field.isAccessible = true
-                field.set(null, shouldLog(LogLevel.MINOR, c))
+                // Sonar: prefer indexed accessor over direct set() call
+                field[null] = shouldLog(LogLevel.MINOR, c)
               }
               done = true
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+              // Intentionally ignore: class may not declare optional log fields
+            }
             try {
               val field: Field = c.getDeclaredField("logDEBUG")
               if (Modifier.isStatic(field.modifiers)) {
                 field.isAccessible = true
-                field.set(null, shouldLog(LogLevel.DEBUG, c))
+                // Sonar: prefer indexed accessor over direct set() call
+                field[null] = shouldLog(LogLevel.DEBUG, c)
               }
               done = true
-            } catch (_: Exception) {}
-            if (!done) error(this, "No log level field for " + c)
+            } catch (_: Exception) {
+              // Intentionally ignore: class may not declare optional log fields
+            }
+            if (!done) error(this, "No log level field for $c")
           }
         }
       registerLogThresholdCallback(ltc)
@@ -301,6 +288,7 @@ abstract class Logger {
 
     @Synchronized
     @JvmStatic
+    /** Adds [logger2] to the global [LoggerHookChain], creating a chain if needed. */
     fun globalAddHook(logger2: LoggerHook) {
       if (logger is VoidLogger) setupChain()
       (logger as LoggerHookChain).addHook(logger2)
@@ -308,26 +296,17 @@ abstract class Logger {
 
     @Synchronized
     @JvmStatic
+    /** Sets the global logging threshold to [i]. */
     fun globalSetThreshold(i: LogLevel) {
       logger.setThreshold(i)
     }
 
-    @Deprecated("use LogLevel version")
-    @Synchronized
-    @JvmStatic
-    fun globalSetThreshold(i: Int) {
-      logger.setThreshold(LogLevel.entries.getOrNull(i) ?: LogLevel.NORMAL)
-    }
-
+    /** Returns the current global logging threshold. */
     @Synchronized @JvmStatic fun globalGetThresholdNew(): LogLevel = logger.getThresholdNew()
 
-    @Deprecated("use LogLevel version")
     @Synchronized
     @JvmStatic
-    fun globalGetThreshold(): Int = globalGetThresholdNew().ordinal
-
-    @Synchronized
-    @JvmStatic
+    /** Removes [hook] from the active [LoggerHookChain], if present. */
     fun globalRemoveHook(hook: LoggerHook) {
       if (logger is LoggerHookChain) {
         (logger as LoggerHookChain).removeHook(hook)
@@ -338,6 +317,7 @@ abstract class Logger {
 
     @Synchronized
     @JvmStatic
+    /** Reverts to [VoidLogger] when the active chain has no hooks. */
     fun destroyChainIfEmpty() {
       if (logger is VoidLogger) return
       if (logger is LoggerHookChain && (logger as LoggerHookChain).getHooks().isEmpty()) {
@@ -347,16 +327,18 @@ abstract class Logger {
 
     @Synchronized
     @JvmStatic
+    /**
+     * Returns the global [LoggerHookChain], promoting the current logger to a chain if needed. A
+     * single existing [LoggerHook] is preserved as the first hook in the new chain.
+     */
     fun getChain(): LoggerHookChain {
       return if (logger is LoggerHookChain) {
         logger as LoggerHookChain
       } else {
         val oldLogger = logger
         if (oldLogger !is VoidLogger) {
-          if (oldLogger !is LoggerHook) {
-            throw IllegalStateException(
-              "The old logger is not a VoidLogger and is not a LoggerHook either!"
-            )
+          check(oldLogger is LoggerHook) {
+            "The old logger is not a VoidLogger and is not a LoggerHook either!"
           }
         }
         setupChain()
@@ -368,29 +350,50 @@ abstract class Logger {
     }
   }
 
+  /** Logs [message] attributed to [source] with optional [e] at [priority]. */
   abstract fun log(o: Any?, source: Class<*>?, message: String?, e: Throwable?, priority: LogLevel)
 
+  /** Logs [message] attributed to [source] at [priority]. */
   abstract fun log(source: Any?, message: String?, priority: LogLevel)
 
+  /** Logs [message] attributed to [o] with [e] at [priority]. */
   abstract fun log(o: Any?, message: String?, e: Throwable?, priority: LogLevel)
 
+  /** Logs [message] attributed to class [c] at [priority]. */
   abstract fun log(c: Class<*>, message: String?, priority: LogLevel)
 
+  /** Logs [message] and [e] attributed to class [c] at [priority]. */
   abstract fun log(c: Class<*>, message: String?, e: Throwable?, priority: LogLevel)
 
+  /** Returns whether a message at [priority] for class [c] should be emitted. */
   abstract fun instanceShouldLog(priority: LogLevel, c: Class<*>?): Boolean
 
+  /** Convenience overload of [instanceShouldLog] for an instance [o]. */
   abstract fun instanceShouldLog(prio: LogLevel, o: Any?): Boolean
 
+  /** Sets the global logging threshold for this logger. */
   abstract fun setThreshold(thresh: LogLevel)
 
+  /**
+   * Sets the logging threshold from a symbolic string (e.g. "DEBUG").
+   *
+   * @throws InvalidThresholdException if the value cannot be parsed.
+   */
   @Throws(InvalidThresholdException::class) abstract fun setThreshold(symbolicThreshold: String)
 
+  /** Returns the current logging threshold. */
   abstract fun getThresholdNew(): LogLevel
 
+  /**
+   * Applies detailed threshold overrides described by [details] (implementation-defined format).
+   *
+   * @throws InvalidThresholdException if the rules are invalid.
+   */
   @Throws(InvalidThresholdException::class) abstract fun setDetailedThresholds(details: String?)
 
+  /** Registers a threshold change callback for this logger instance. */
   abstract fun instanceRegisterLogThresholdCallback(ltc: LogThresholdCallback)
 
+  /** Unregisters a threshold change callback for this logger instance. */
   abstract fun instanceUnregisterLogThresholdCallback(ltc: LogThresholdCallback)
 }

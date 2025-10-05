@@ -1,11 +1,10 @@
 package network.crypta.support
 
-import java.util.ArrayList
-import java.util.StringTokenizer
+import java.util.*
 import java.util.concurrent.CopyOnWriteArrayList
 
 abstract class LoggerHook : Logger {
-  protected lateinit var thresholdValue: LogLevel
+  protected var thresholdValue: LogLevel = LogLevel.MINIMAL
 
   class DetailedThreshold(val section: String, val dThreshold: LogLevel)
 
@@ -48,8 +47,6 @@ abstract class LoggerHook : Logger {
     log(null, c, message, e, priority)
   }
 
-  fun acceptPriority(prio: LogLevel) = prio.matchesThreshold(thresholdValue)
-
   override fun setThreshold(thresh: LogLevel) {
     thresholdValue = thresh
     notifyLogThresholdCallbacks()
@@ -62,7 +59,7 @@ abstract class LoggerHook : Logger {
     if (threshold == null) throw InvalidThresholdException(threshold)
     return try {
       LogLevel.valueOf(threshold.uppercase())
-    } catch (e: IllegalArgumentException) {
+    } catch (_: IllegalArgumentException) {
       throw InvalidThresholdException(threshold)
     }
   }
@@ -82,7 +79,7 @@ abstract class LoggerHook : Logger {
       if (token.isEmpty()) continue
       val x = token.indexOf(':')
       if (x < 0 || x == token.length - 1) continue
-      val section = token.substring(0, x)
+      val section = token.take(x)
       val value = token.substring(x + 1)
       stuff.add(DetailedThreshold(section, parseThreshold(value.uppercase())))
     }

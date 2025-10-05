@@ -24,6 +24,8 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
+  // Compile-time access to Logback classes for runtime reconfiguration
+  compileOnly("ch.qos.logback:logback-classic:1.5.6")
   // Coroutines (Swing Main dispatcher)
   implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)
@@ -39,6 +41,8 @@ dependencies {
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
+  // For tests asserting SLF4J integration
+  testImplementation("ch.qos.logback:logback-classic:1.5.6")
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
   testImplementation(libs.mockitoCore)
@@ -46,6 +50,8 @@ dependencies {
   testImplementation(libs.objenesis)
 
   runtimeOnly(files("libs/db4o-7.4.58.jar"))
+  // SLF4J binding (Logback) for the new Slf4jLoggerHook
+  runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
 }
 
 // Utility task to print the project version
