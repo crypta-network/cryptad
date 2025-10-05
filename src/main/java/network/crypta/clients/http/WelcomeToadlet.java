@@ -28,36 +28,25 @@ import network.crypta.node.useralerts.UpgradeConnectionSpeedUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 public class WelcomeToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(WelcomeToadlet.class);
 
   /** Suffix {@link #path()} with "#" + BOOKMARKS_ANCHOR to deep link to the bookmark list */
   public static final String BOOKMARKS_ANCHOR = "bookmarks";
 
   final Node node;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   WelcomeToadlet(HighLevelSimpleClient client, Node node) {
     super(client);
@@ -220,7 +209,7 @@ public class WelcomeToadlet extends Toadlet {
       content.addChild("p").addChild("#", l10n("updating"));
       content.addChild("p").addChild("#", l10n("thanks"));
       writeHTMLReply(ctx, 200, "OK", page.generate());
-      Logger.normal(this, "Node is updating/restarting");
+      LOG.info("Node is updating/restarting");
       node.getNodeUpdater().arm();
     } else if (!request.getPartAsStringFailsafe("update", 32).isEmpty()) {
       PageNode page = ctx.getPageMaker().getPageNode(l10n("nodeUpdateConfirmTitle"), ctx);
@@ -280,10 +269,10 @@ public class WelcomeToadlet extends Toadlet {
           // Won't be dismissed if it's not allowed anyway
           if (alert.userCanDismiss() && alert.shouldUnregisterOnDismiss()) {
             alert.onDismiss();
-            Logger.normal(this, "Unregistering the userAlert " + alert.hashCode());
+            LOG.info("Unregistering the userAlert {}", alert.hashCode());
             ctx.getAlertManager().unregister(alert);
           } else {
-            Logger.normal(this, "Disabling the userAlert " + alert.hashCode());
+            LOG.info("Disabling the userAlert {}", alert.hashCode());
             alert.isValid(false);
           }
         } else if (alert.isValid()) {
@@ -883,7 +872,7 @@ public class WelcomeToadlet extends Toadlet {
             "shutdown-progressing",
             true)
         .addChild("#", l10n("restarting"));
-    Logger.normal(WelcomeToadlet.class, "Node is restarting");
+    LOG.info("Node is restarting");
     return pageNode;
   }
 

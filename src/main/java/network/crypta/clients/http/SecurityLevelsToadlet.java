@@ -18,13 +18,12 @@ import network.crypta.node.SecurityLevels;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FileUtil.OperatingSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The security levels page.
@@ -32,22 +31,13 @@ import network.crypta.support.io.FileUtil.OperatingSystem;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class SecurityLevelsToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(SecurityLevelsToadlet.class);
 
   public static final int MAX_PASSWORD_LENGTH = 1024;
   private final NodeClientCore core;
   private final Node node;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   SecurityLevelsToadlet(HighLevelSimpleClient client, Node node, NodeClientCore core) {
     super(client);
@@ -127,8 +117,8 @@ public class SecurityLevelsToadlet extends Toadlet {
           SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
       PHYSICAL_THREAT_LEVEL oldPhysicalLevel =
           core.getNode().getSecurityLevels().getPhysicalThreatLevel();
-      if (logMINOR)
-        Logger.minor(
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             this,
             "New physical threat level: "
                 + newPhysicalLevel
@@ -385,7 +375,7 @@ public class SecurityLevelsToadlet extends Toadlet {
           node.setMasterPassword(masterPassword, false);
         } catch (AlreadySetPasswordException e) {
           System.err.println("Already set master password");
-          Logger.error(this, "Already set master password");
+          LOG.error("Already set master password");
           MultiValueTable<String, String> headers = MultiValueTable.from("Location", "/");
           ctx.sendReplyHeaders(302, "Found", headers, null, 0);
           return;

@@ -19,9 +19,6 @@ import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
 import javax.naming.SizeLimitExceededException;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.URLEncoder;
@@ -32,6 +29,8 @@ import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.LineReadingInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Used for passing all HTTP request information to the FredPlugin that handles the request. It
@@ -40,6 +39,7 @@ import network.crypta.support.io.LineReadingInputStream;
  * @author nacktschneck
  */
 public class HTTPRequestImpl implements HTTPRequest {
+  private static final Logger LOG = LoggerFactory.getLogger(HTTPRequestImpl.class);
 
   /**
    * This map is used to store all parameter values.
@@ -70,17 +70,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
   private final String method;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly for minor logs.
 
   /**
    * Create a new HTTPRequest for the given URI and parse its request parameters.
@@ -138,7 +128,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       try {
         this.parseMultiPartData();
       } catch (IOException ioe) {
-        Logger.error(this, "Temporary files error ? Could not parse: " + ioe, ioe);
+        LOG.error("Temporary files error ? Could not parse: {}", ioe.toString(), ioe);
       }
     }
   }
@@ -179,8 +169,8 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   private void parseRequestParameters(String queryString, boolean doUrlDecoding, boolean asParts) {
 
-    if (logMINOR)
-      Logger.minor(this, "queryString is " + queryString + ", doUrlDecoding=" + doUrlDecoding);
+    if (LOG.isDebugEnabled())
+      LOG.debug("queryString is {} , doUrlDecoding={}", queryString, doUrlDecoding);
 
     Map<String, List<String>> parameters = parseUriParameters(queryString, doUrlDecoding);
 
@@ -191,8 +181,8 @@ public class HTTPRequestImpl implements HTTPRequest {
         byte[] buf = value.getBytes(StandardCharsets.UTF_8);
         RandomAccessBucket b = new SimpleReadOnlyArrayBucket(buf);
         parts.put(parameterValues.getKey(), b);
-        if (logMINOR)
-          Logger.minor(this, "Added as part: name=" + parameterValues.getKey() + " value=" + value);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Added as part: name={} value={}", parameterValues.getKey(), value);
       }
     } else {
       parameterNameValuesMap.clear();
@@ -243,10 +233,8 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   public static Map<String, List<String>> parseUriParameters(
       String queryString, boolean doUrlDecoding) {
-    if (logMINOR)
-      Logger.minor(
-          HTTPRequestImpl.class,
-          "queryString is " + queryString + ", doUrlDecoding=" + doUrlDecoding);
+    if (LOG.isDebugEnabled())
+      LOG.debug("queryString is {} , doUrlDecoding={}", queryString, doUrlDecoding);
 
     /* create result map. */
     Map<String, List<String>> parameters = new HashMap<>();
@@ -261,7 +249,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     while (tokenizer.hasMoreTokens()) {
       String nameValueToken = tokenizer.nextToken();
 
-      if (logMINOR) Logger.minor(HTTPRequestImpl.class, "Token: " + nameValueToken);
+      if (LOG.isDebugEnabled()) LOG.debug("Token: {}", nameValueToken);
 
       // a token can be either a name, or a name value pair...
       String name = null;
@@ -270,26 +258,26 @@ public class HTTPRequestImpl implements HTTPRequest {
       if (indexOfEqualsChar < 0) {
         // ...it's only a name, so the value stays emptys
         name = nameValueToken;
-        if (logMINOR) Logger.minor(HTTPRequestImpl.class, "Name: " + name);
+        if (LOG.isDebugEnabled()) LOG.debug("Name: {}", name);
       } else if (indexOfEqualsChar == nameValueToken.length() - 1) {
         // ...it's a name with an empty value, so remove the '='
         // character
         name = nameValueToken.substring(0, indexOfEqualsChar);
-        if (logMINOR) Logger.minor(HTTPRequestImpl.class, "Name: " + name);
+        if (LOG.isDebugEnabled()) LOG.debug("Name: {}", name);
       } else {
         // ...it's a name value pair, split into name and value
         name = nameValueToken.substring(0, indexOfEqualsChar);
         value = nameValueToken.substring(indexOfEqualsChar + 1);
-        if (logMINOR) Logger.minor(HTTPRequestImpl.class, "Name: " + name + " Value: " + value);
+        if (LOG.isDebugEnabled()) LOG.debug("Name: {} Value: {}", name, value);
       }
 
       // url-decode the name and value
       if (doUrlDecoding) {
         name = URLDecoder.decode(name, StandardCharsets.UTF_8);
         value = URLDecoder.decode(value, StandardCharsets.UTF_8);
-        if (logMINOR) {
-          Logger.minor(HTTPRequestImpl.class, "Decoded name: " + name);
-          Logger.minor(HTTPRequestImpl.class, "Decoded value: " + value);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Decoded name: {}", name);
+          LOG.debug("Decoded value: {}", value);
         }
       }
 
@@ -445,7 +433,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     if (data == null) return;
     String ctype = this.headers.getFirst("content-type");
     if (ctype == null) return;
-    if (logMINOR) Logger.minor(this, "Uploaded content-type: " + ctype);
+    if (LOG.isDebugEnabled()) LOG.debug("Uploaded content-type: {}", ctype);
     String[] ctypeparts = ctype.split(";");
     if (ctypeparts[0].equalsIgnoreCase("application/x-www-form-urlencoded")) {
       // Completely different encoding, but easy to handle
@@ -471,7 +459,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
     boundary = "--" + boundary;
 
-    if (logMINOR) Logger.minor(this, "Boundary is: " + boundary);
+    if (LOG.isDebugEnabled()) LOG.debug("Boundary is: {}", boundary);
 
     try (InputStream is = this.data.getInputStream();
         LineReadingInputStream lis = new LineReadingInputStream(is)) {
@@ -521,7 +509,7 @@ public class HTTPRequestImpl implements HTTPRequest {
               }
             } else if (hdrname.equalsIgnoreCase("Content-Type")) {
               contentType = lineparts[1].trim();
-              if (logMINOR) Logger.minor(this, "Parsed type: " + contentType);
+              if (LOG.isDebugEnabled()) LOG.debug("Parsed type: {}", contentType);
             } else {
               // Do nothing, irrelevant header
             }
@@ -557,15 +545,13 @@ public class HTTPRequestImpl implements HTTPRequest {
           }
 
           parts.put(name, filedata);
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "Name = " + name + " length = " + filedata.size() + " filename = " + filename);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Name = {} length = {} filename = {}", name, filedata.size(), filename);
           if (filename != null)
             uploadedFiles.put(name, new HTTPUploadedFileImpl(filename, contentType, filedata));
         }
       } catch (IOException e) {
-        Logger.error(this, "Error parsing multipart data: " + e, e);
+        LOG.error("Error parsing multipart data: {}", e.toString(), e);
       }
     }
   }
@@ -646,7 +632,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       dis.readFully(buf);
       return buf;
     } catch (IOException ioe) {
-      Logger.error(this, "Caught IOE:" + ioe.getMessage());
+      LOG.error("Caught IOE:{}", ioe.getMessage());
       return new byte[0];
     }
   }
@@ -678,7 +664,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       dis.readFully(buf, 0, buf.length);
       return buf;
     } catch (IOException ioe) {
-      Logger.error(this, "Caught IOE:" + ioe.getMessage());
+      LOG.error("Caught IOE:{}", ioe.getMessage());
       return new byte[0];
     }
   }
