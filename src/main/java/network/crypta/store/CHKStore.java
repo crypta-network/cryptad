@@ -6,9 +6,11 @@ import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.keys.NodeCHK;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CHKStore extends StoreCallback<CHKBlock> {
+  private static final Logger LOG = LoggerFactory.getLogger(CHKStore.class);
 
   @Override
   public boolean collisionPossible() {
@@ -44,7 +46,7 @@ public class CHKStore extends StoreCallback<CHKBlock> {
     try {
       store.put(b, b.getRawData(), b.getRawHeaders(), false, isOldBlock);
     } catch (KeyCollisionException e) {
-      Logger.error(this, "Impossible for CHKStore: " + e, e);
+      LOG.error("Impossible for CHKStore: {}", e.toString(), e);
     }
   }
 

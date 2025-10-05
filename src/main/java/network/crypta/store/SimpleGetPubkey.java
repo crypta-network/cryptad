@@ -3,9 +3,11 @@ package network.crypta.store;
 import java.io.IOException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SimpleGetPubkey implements GetPubkey {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleGetPubkey.class);
 
   final PubkeyStore store;
 
@@ -19,7 +21,7 @@ public class SimpleGetPubkey implements GetPubkey {
     try {
       return store.fetch(hash, false, false, meta);
     } catch (IOException e) {
-      Logger.error(this, "Caught " + e + " fetching pubkey for " + HexUtil.bytesToHex(hash));
+      LOG.error("Caught {} fetching pubkey for {}", e.toString(), HexUtil.bytesToHex(hash));
       return null;
     }
   }
@@ -36,7 +38,7 @@ public class SimpleGetPubkey implements GetPubkey {
     try {
       store.put(hash, key, false);
     } catch (IOException e) {
-      Logger.error(this, "Caught " + e + " storing pubkey for " + HexUtil.bytesToHex(hash));
+      LOG.error("Caught {} storing pubkey for {}", e.toString(), HexUtil.bytesToHex(hash));
     }
   }
 }

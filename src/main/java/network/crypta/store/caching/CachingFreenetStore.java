@@ -14,9 +14,10 @@ import network.crypta.store.StorableBlock;
 import network.crypta.store.StoreCallback;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * CachingFreenetStore
@@ -24,7 +25,7 @@ import network.crypta.support.io.NativeThread;
  * @author Simon Vocella <voxsim@gmail.com>
  */
 public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetStore<T> {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(CachingFreenetStore.class);
 
   private boolean shuttingDown; /* If this flag is true, we don't accept puts anymore */
 
@@ -40,9 +41,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
   private final CachingFreenetStoreTracker tracker;
   private final int sizeBlock;
 
-  static {
-    Logger.registerClass(CachingFreenetStore.class);
-  }
+  // Legacy Logger.registerClass removed; rely on LOG.isDebugEnabled() directly.
 
   private static final class Block<T> {
     T block;
@@ -109,7 +108,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
             meta,
             null);
       } catch (KeyVerifyException e) {
-        Logger.error(this, "Error in fetching for CachingFreenetStore: " + e, e);
+        LOG.error("Error in fetching for CachingFreenetStore: {}", e.toString(), e);
       }
     }
 
@@ -223,10 +222,11 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
     try {
       backDatastore.put(block.block, block.data, block.header, block.overwrite, block.isOldBlock);
     } catch (IOException e) {
-      Logger.error(this, "Error in pushAll for CachingFreenetStore: " + e, e);
+      LOG.error("Error in pushAll for CachingFreenetStore: {}", e.toString(), e);
     } catch (KeyCollisionException e) {
-      if (logMINOR)
-        Logger.minor(this, "KeyCollisionException in pushAll for CachingFreenetStore: " + e, e);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("KeyCollisionException in pushAll for CachingFreenetStore", e);
+      }
     }
 
     configLock.writeLock().lock();
