@@ -1,8 +1,9 @@
 package network.crypta.io;
 
 import network.crypta.node.FSParseException;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks communication to/from a specific address. That address can be a specific IP:port, a
@@ -12,6 +13,7 @@ import network.crypta.support.SimpleFieldSet;
  * @author toad
  */
 public class AddressTrackerItem {
+  private static final Logger LOG = LoggerFactory.getLogger(AddressTrackerItem.class);
 
   /** The time at which the first packet was received from this address. */
   private long timeFirstReceivedPacket;
@@ -80,7 +82,7 @@ public class AddressTrackerItem {
     for (int i = 0; i < TRACK_GAPS; i++) {
       SimpleFieldSet gap = gaps.subset(Integer.toString(i));
       if (gap == null) {
-        Logger.normal(this, "No more gaps at i=" + i + " - TRACK_GAPS changed??");
+        LOG.info("No more gaps at i=" + i + " - TRACK_GAPS changed??");
         break;
       }
       gapLengths[i] = gap.getLong("Length");

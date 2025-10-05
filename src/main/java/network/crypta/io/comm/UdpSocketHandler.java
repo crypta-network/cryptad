@@ -20,11 +20,14 @@ import network.crypta.io.AddressTracker;
 import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UdpSocketHandler
     implements PrioRunnable, PacketSocketHandler, PortForwardSensitiveSocketHandler {
+
+  private static final Logger LOG = LoggerFactory.getLogger(UdpSocketHandler.class);
 
   private final ByteBuffer receiveBuffer = ByteBuffer.allocate(MAX_RECEIVE_SIZE);
   private final DatagramChannel datagramChannel;
@@ -43,8 +46,7 @@ public class UdpSocketHandler
 
   // Icky layer violation
   private final Node node;
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+
   private boolean _isDone;
   private volatile boolean _active = true;
   private final String title;
@@ -53,7 +55,6 @@ public class UdpSocketHandler
   private final IOStatisticCollector ioStatistics;
 
   static {
-    Logger.registerClass(UdpSocketHandler.class);
   }
 
   private static class socketOptions {
@@ -110,7 +111,7 @@ public class UdpSocketHandler
         fdVal.setAccessible(true);
         return fdVal.getInt(channel);
       } catch (Exception e) {
-        Logger.warning(UdpSocketHandler.class, e.getMessage(), e);
+        LOG.warn(e.getMessage(), e);
         return -1;
       }
     }
@@ -133,7 +134,7 @@ public class UdpSocketHandler
                 Native.POINTER_SIZE);
         return ret == 0;
       } catch (Exception e) {
-        Logger.normal(UdpSocketHandler.class, e.getMessage(), e);
+        LOG.info(e.getMessage(), e);
         return false;
       }
     }
@@ -160,15 +161,14 @@ public class UdpSocketHandler
     try {
       datagramChannel.setOption(StandardSocketOptions.IP_TOS, node.getTrafficClass().value);
     } catch (UnsupportedOperationException e) {
-      Logger.error(this, "Failed to set IP_TOS socket option", e);
+      LOG.error("Failed to set IP_TOS socket option", e);
     }
 
     boolean r =
         socketOptions.setAddressPreference(
             datagramChannel, socketOptions.SOCKET_ADDR_PREFERENCE.IPV6_PREFER_SRC_PUBLIC);
-    if (logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
           "Setting IPV6_PREFER_SRC_PUBLIC for port "
               + listenPort
               + " is a "
@@ -228,7 +228,7 @@ public class UdpSocketHandler
       }
     } finally {
       System.err.println("run() exiting for UdpSocketHandler on port " + localAddress.getPort());
-      Logger.error(this, "run() exiting for UdpSocketHandler on port " + localAddress.getPort());
+      LOG.error("run() exiting for UdpSocketHandler on port " + localAddress.getPort());
       synchronized (this) {
         _isDone = true;
         notifyAll();
@@ -243,7 +243,7 @@ public class UdpSocketHandler
       } catch (Throwable t) {
         System.err.println("Caught " + t);
         t.printStackTrace(System.err);
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
       }
     }
   }
@@ -258,36 +258,36 @@ public class UdpSocketHandler
       long endTime = System.currentTimeMillis();
       if (endTime - startTime > 50) {
         if (endTime - startTime > 3000) {
-          Logger.error(this, "packet creation took " + (endTime - startTime) + "ms");
+          LOG.error("packet creation took " + (endTime - startTime) + "ms");
         } else {
-          if (logMINOR) Logger.minor(this, "packet creation took " + (endTime - startTime) + "ms");
+          if (LOG.isDebugEnabled())
+            LOG.debug("packet creation took " + (endTime - startTime) + "ms");
         }
       }
 
       try {
-        if (logMINOR) {
-          Logger.minor(
-              this, "Processing packet of length " + receiveBuffer.limit() + " from " + peer);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Processing packet of length " + receiveBuffer.limit() + " from " + peer);
         }
         startTime = System.currentTimeMillis();
         lowLevelFilter.process(receiveBuffer.array(), 0, receiveBuffer.limit(), peer, now);
         endTime = System.currentTimeMillis();
         if (endTime - startTime > 50) {
           if (endTime - startTime > 3000) {
-            Logger.error(this, "processing packet took " + (endTime - startTime) + "ms");
+            LOG.error("processing packet took " + (endTime - startTime) + "ms");
           } else {
-            if (logMINOR)
-              Logger.minor(this, "processing packet took " + (endTime - startTime) + "ms");
+            if (LOG.isDebugEnabled())
+              LOG.debug("processing packet took " + (endTime - startTime) + "ms");
           }
         }
-        if (logMINOR) {
-          Logger.minor(this, "Successfully handled packet length " + receiveBuffer.limit());
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Successfully handled packet length " + receiveBuffer.limit());
         }
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t + " from " + lowLevelFilter, t);
+        LOG.error("Caught " + t + " from " + lowLevelFilter, t);
       }
     } else {
-      if (logDEBUG) Logger.debug(this, "No packet received");
+      if (LOG.isDebugEnabled()) LOG.debug("No packet received");
     }
   }
 
@@ -323,7 +323,7 @@ public class UdpSocketHandler
   public void sendPacket(byte[] blockToSend, Peer destination, boolean allowLocalAddresses)
       throws LocalAddressException {
     if (!_active) {
-      Logger.error(this, "Trying to send packet but no longer active");
+      LOG.error("Trying to send packet but no longer active");
       // It is essential that for recording accurate AddressTracker data that we don't send any more
       // packets after shutdown.
       return;
@@ -334,15 +334,13 @@ public class UdpSocketHandler
     InetAddress address;
     // there should be no DNS needed here, but go ahead if we can, but complain doing it
     if ((address = destination.getAddress(false, allowLocalAddresses)) == null) {
-      Logger.error(
-          this,
+      LOG.error(
           "Tried sending to destination without pre-looked up IP address(needs a real"
               + " Peer.getHostname()): null:"
               + destination.getPort(),
           new Exception("error"));
       if ((address = destination.getAddress(true, allowLocalAddresses)) == null) {
-        Logger.error(
-            this,
+        LOG.error(
             "Tried sending to bad destination address: null:" + destination.getPort(),
             new Exception("error"));
         return;
@@ -350,7 +348,7 @@ public class UdpSocketHandler
     }
     if (_dropProbability > 0) {
       if (dropRandom.nextInt() % _dropProbability == 0) {
-        Logger.normal(this, "DROPPED: " + localAddress.getPort() + " -> " + destination.getPort());
+        LOG.info("DROPPED: " + localAddress.getPort() + " -> " + destination.getPort());
         return;
       }
     }
@@ -359,16 +357,14 @@ public class UdpSocketHandler
       datagramChannel.send(packet, new InetSocketAddress(address, port));
       tracker.sentPacketTo(destination);
       ioStatistics.reportSentBytes(address, getHeadersLength(address) + blockToSend.length);
-      if (logMINOR) {
-        Logger.minor(
-            this, "Sent packet length " + blockToSend.length + " to " + address + ':' + port);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Sent packet length " + blockToSend.length + " to " + address + ':' + port);
       }
     } catch (IOException | UnsupportedAddressTypeException e) {
       if (address instanceof Inet6Address) {
-        Logger.normal(
-            this, "Error while sending packet to IPv6 address: " + destination + ": " + e);
+        LOG.info("Error while sending packet to IPv6 address: " + destination + ": " + e);
       } else {
-        Logger.error(this, "Error while sending packet to " + destination + ": " + e, e);
+        LOG.error("Error while sending packet to " + destination + ": " + e, e);
       }
     }
   }
@@ -432,13 +428,13 @@ public class UdpSocketHandler
   }
 
   public void close() {
-    Logger.normal(this, "Closing.", new Exception("error"));
+    LOG.info("Closing.", new Exception("error"));
     synchronized (this) {
       _active = false;
       try {
         datagramChannel.close();
       } catch (IOException e) {
-        Logger.error(this, "Error closing DatagramChannel", e);
+        LOG.error("Error closing DatagramChannel", e);
       }
 
       if (!_started) return;

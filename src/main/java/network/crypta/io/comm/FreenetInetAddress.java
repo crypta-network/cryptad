@@ -8,13 +8,12 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import network.crypta.io.AddressIdentifier;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.InetAddressIpv6FirstComparator;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import network.crypta.support.transport.ip.HostnameUtil;
 import network.crypta.support.transport.ip.IPUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Long-term InetAddress. If created with an IP address, then the IP address is primary. If created
@@ -37,19 +36,9 @@ import network.crypta.support.transport.ip.IPUtil;
  * @author amphibian
  */
 public class FreenetInetAddress {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(FreenetInetAddress.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   // hostname - only set if we were created with a hostname
@@ -62,12 +51,12 @@ public class FreenetInetAddress {
     int firstByte = dis.readUnsignedByte();
     byte[] ba;
     if (firstByte == 255) {
-      if (logMINOR) Logger.minor(this, "New format IPv6 address");
+      if (LOG.isDebugEnabled()) LOG.debug("New format IPv6 address");
       // New format IPv6 address
       ba = new byte[16];
       dis.readFully(ba);
     } else if (firstByte == 0) {
-      if (logMINOR) Logger.minor(this, "New format IPv4 address");
+      if (LOG.isDebugEnabled()) LOG.debug("New format IPv4 address");
       // New format IPv4 address
       ba = new byte[4];
       dis.readFully(ba);
@@ -88,12 +77,12 @@ public class FreenetInetAddress {
     int firstByte = dis.readUnsignedByte();
     byte[] ba;
     if (firstByte == 255) {
-      if (logMINOR) Logger.minor(this, "New format IPv6 address");
+      if (LOG.isDebugEnabled()) LOG.debug("New format IPv6 address");
       // New format IPv6 address
       ba = new byte[16];
       dis.readFully(ba);
     } else if (firstByte == 0) {
-      if (logMINOR) Logger.minor(this, "New format IPv4 address");
+      if (LOG.isDebugEnabled()) LOG.debug("New format IPv4 address");
       // New format IPv4 address
       ba = new byte[4];
       dis.readFully(ba);
@@ -132,15 +121,14 @@ public class FreenetInetAddress {
     // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
     // correctly, such as "fe80::204:1234:dead:beef"
     AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (logDEBUG)
-      Logger.debug(this, "Address type of '" + host + "' appears to be '" + addressType + '\'');
+    if (LOG.isDebugEnabled())
+      LOG.debug("Address type of '" + host + "' appears to be '" + addressType + '\'');
     if (addressType != AddressIdentifier.AddressType.OTHER) {
       // Is an IP address
       addr = InetAddress.getByName(host);
       // Don't catch UnknownHostException here, if it happens there's a bug in AddressIdentifier.
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "host is '" + host + "' and addr.getHostAddress() is '" + addr.getHostAddress() + '\'');
       if (addr != null) {
         host = null;
@@ -149,7 +137,7 @@ public class FreenetInetAddress {
       }
     }
     if (addr == null) {
-      if (logDEBUG) Logger.debug(this, '\'' + host + "' does not look like an IP address");
+      if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' does not look like an IP address");
     }
     this._address = addr;
     this.hostname = host;
@@ -168,8 +156,8 @@ public class FreenetInetAddress {
     // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
     // correctly, such as "fe80::204:1234:dead:beef"
     AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (logDEBUG)
-      Logger.debug(this, "Address type of '" + host + "' appears to be '" + addressType + '\'');
+    if (LOG.isDebugEnabled())
+      LOG.debug("Address type of '" + host + "' appears to be '" + addressType + '\'');
     if (addressType != AddressIdentifier.AddressType.OTHER) {
       try {
         addr = InetAddress.getByName(host);
@@ -177,22 +165,21 @@ public class FreenetInetAddress {
         if (!allowUnknown) throw e;
         addr = null;
       }
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "host is '"
                 + host
                 + "' and addr.getHostAddress() is '"
                 + (addr != null ? addr.getHostAddress() + '\'' : ""));
       if (addr != null && addr.getHostAddress().equals(host)) {
-        if (logDEBUG) Logger.debug(this, '\'' + host + "' looks like an IP address");
+        if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' looks like an IP address");
         host = null;
       } else {
         addr = null;
       }
     }
     if (addr == null) {
-      if (logDEBUG) Logger.debug(this, '\'' + host + "' does not look like an IP address");
+      if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' does not look like an IP address");
     }
     this._address = addr;
     this.hostname = host;
@@ -268,7 +255,7 @@ public class FreenetInetAddress {
     // No hostname, go by address.
     String reverseHostNameISee = getHostName(_address);
     String reverseHostNameTheySee = getHostName(addr._address);
-    // Logger.minor(this, "Addresses do not match: mine="+getHostName(_address)+"
+    // LOG.debug("Addresses do not match: mine="+getHostName(_address)+"
     // his="+getHostName(addr._address));
     return reverseHostNameISee != null
         && reverseHostNameISee.equalsIgnoreCase(reverseHostNameTheySee);
@@ -307,11 +294,11 @@ public class FreenetInetAddress {
   public InetAddress getHandshakeAddress() {
     // Since we're handshaking, hostname-to-IP may have changed
     if ((_address != null) && (hostname == null)) {
-      if (logMINOR) Logger.minor(this, "hostname is null, returning " + _address);
+      if (LOG.isDebugEnabled()) LOG.debug("hostname is null, returning " + _address);
       return _address;
     } else {
-      if (logMINOR)
-        Logger.minor(this, "Looking up '" + hostname + "' in DNS", new Exception("debug"));
+      if (LOG.isDebugEnabled())
+        LOG.debug("Looking up '" + hostname + "' in DNS", new Exception("debug"));
       /*
        * Peers are constructed from an address once a
        * handshake has been completed, so this lookup
@@ -324,7 +311,7 @@ public class FreenetInetAddress {
        */
       try {
         InetAddress[] addresses = InetAddress.getAllByName(hostname);
-        if (logMINOR) Logger.minor(this, "Look up got '" + addresses + '\'');
+        if (LOG.isDebugEnabled()) LOG.debug("Look up got '" + addresses + '\'');
         if (addresses.length > 1) {
           /* sort by IPv6 first */
           Arrays.sort(addresses, InetAddressIpv6FirstComparator.COMPARATOR);
@@ -335,13 +322,12 @@ public class FreenetInetAddress {
            * latest value from DNS (minus Java's caching)
            */
           this._address = InetAddress.getByAddress(addresses[0].getAddress());
-          if (logMINOR) Logger.minor(this, "Setting address to " + _address);
+          if (LOG.isDebugEnabled()) LOG.debug("Setting address to " + _address);
         }
         return addresses[0];
       } catch (UnknownHostException e) {
-        if (logMINOR)
-          Logger.minor(
-              this, "DNS said hostname '" + hostname + "' is an unknown host, returning null");
+        if (LOG.isDebugEnabled())
+          LOG.debug("DNS said hostname '" + hostname + "' is an unknown host, returning null");
         return null;
       }
     }
@@ -415,7 +401,7 @@ public class FreenetInetAddress {
    */
   public FreenetInetAddress dropHostname() {
     if (_address == null) {
-      Logger.error(this, "Can't dropHostname() if no address!");
+      LOG.error("Can't dropHostname() if no address!");
       return null;
     }
     if (hostname != null) {

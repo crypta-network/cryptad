@@ -20,9 +20,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import network.crypta.io.AddressIdentifier.AddressType;
 import network.crypta.support.Executor;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
@@ -33,17 +32,9 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * @version $Id$
  */
 public class NetworkInterface implements Closeable {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(NetworkInterface.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public static final String DEFAULT_BIND_TO = "127.0.0.1,0:0:0:0:0:0:0:1";
@@ -162,7 +153,7 @@ public class NetworkInterface implements Closeable {
         try {
           acceptor.setSoTimeout(timeout);
         } catch (SocketException e) {
-          Logger.error(this, "Unable to setSoTimeout in setBindTo() on " + addr);
+          LOG.error("Unable to setSoTimeout in setBindTo() on " + addr);
         }
         lock.lock();
         try {
@@ -178,7 +169,7 @@ public class NetworkInterface implements Closeable {
             && addr != null
             && addr.getAddress() instanceof Inet6Address) continue;
         System.err.println("Unable to bind to address " + address + " for port " + port);
-        Logger.error(this, "Unable to bind to address " + address + " for port " + port);
+        LOG.error("Unable to bind to address " + address + " for port " + port);
         if (brokenList == null) brokenList = new ArrayList<>();
         brokenList.add(address);
       }
@@ -363,7 +354,7 @@ public class NetworkInterface implements Closeable {
         try {
           Socket clientSocket = serverSocket.accept();
           InetAddress clientAddress = clientSocket.getInetAddress();
-          if (logMINOR) Logger.minor(Acceptor.class, "Connection from " + clientAddress);
+          if (LOG.isDebugEnabled()) LOG.debug("Connection from " + clientAddress);
 
           AddressType clientAddressType =
               AddressIdentifier.getAddressType(clientAddress.getHostAddress());
@@ -383,12 +374,12 @@ public class NetworkInterface implements Closeable {
               clientSocket.close();
             } catch (IOException ioe1) {
             }
-            Logger.normal(Acceptor.class, "Denied connection to " + clientAddress);
+            LOG.info("Denied connection to " + clientAddress);
           }
         } catch (SocketTimeoutException ste1) {
-          if (logMINOR) Logger.minor(this, "Timeout");
+          if (LOG.isDebugEnabled()) LOG.debug("Timeout");
         } catch (IOException ioe1) {
-          if (logMINOR) Logger.minor(this, "Caught " + ioe1);
+          if (LOG.isDebugEnabled()) LOG.debug("Caught " + ioe1);
         }
       }
       NetworkInterface.this.acceptorStopped();
@@ -413,10 +404,10 @@ public class NetworkInterface implements Closeable {
     try {
       if (!acceptors.isEmpty()) return;
       while (true) {
-        Logger.error(this, "Network interface isn't bound, waiting");
+        LOG.error("Network interface isn't bound, waiting");
         boundCondition.awaitUninterruptibly();
         if (!acceptors.isEmpty()) {
-          Logger.error(this, "Finished waiting, network interface is now bound");
+          LOG.error("Finished waiting, network interface is now bound");
           return;
         }
         if (shutdown) return;

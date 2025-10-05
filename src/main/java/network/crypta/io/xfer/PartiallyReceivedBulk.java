@@ -5,10 +5,9 @@ import java.util.Arrays;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.support.BitArray;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.RandomAccessBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Equivalent of PartiallyReceivedBlock, for large(ish) file transfers. As presently implemented, we
@@ -18,6 +17,7 @@ import network.crypta.support.api.RandomAccessBuffer;
  * @author toad
  */
 public class PartiallyReceivedBulk {
+  private static final Logger LOG = LoggerFactory.getLogger(PartiallyReceivedBulk.class);
 
   /** The size of the data being received. Does *not* have to be a multiple of blockSize. */
   final long size;
@@ -43,16 +43,7 @@ public class PartiallyReceivedBulk {
   int _abortReason;
   String _abortDescription;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -116,16 +107,16 @@ public class PartiallyReceivedBulk {
    */
   void received(int blockNum, byte[] data, int offset, int length) {
     if (blockNum > blocks) {
-      Logger.error(this, "Received block " + blockNum + " of " + blocks + " !");
+      LOG.error("Received block " + blockNum + " of " + blocks + " !");
       return;
     }
-    if (logMINOR) Logger.minor(this, "Received block " + blockNum);
+    if (LOG.isDebugEnabled()) LOG.debug("Received block " + blockNum);
     BulkTransmitter[] notifyBTs;
     long fileOffset = (long) blockNum * (long) blockSize;
     int bs = (int) Math.min(blockSize, size - fileOffset);
     if (length < bs) {
       String err = "Data too short! Should be " + bs + " actually " + length;
-      Logger.error(this, err + " for " + this);
+      LOG.error(err + " for " + this);
       abort(RetrievalException.PREMATURE_EOF, err);
       return;
     }
@@ -138,8 +129,7 @@ public class PartiallyReceivedBulk {
     try {
       raf.pwrite(fileOffset, data, offset, bs);
     } catch (Throwable t) {
-      Logger.error(
-          this, "Failed to store received block " + blockNum + " on " + this + " : " + t, t);
+      LOG.error("Failed to store received block " + blockNum + " on " + this + " : " + t, t);
       abort(RetrievalException.IO_ERROR, t.toString());
     }
     if (notifyBTs == null) return;
@@ -150,9 +140,8 @@ public class PartiallyReceivedBulk {
   }
 
   public void abort(int errCode, String why) {
-    if (logMINOR)
-      Logger.normal(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.info(
           "Aborting "
               + this
               + ": "
@@ -195,7 +184,7 @@ public class PartiallyReceivedBulk {
     try {
       raf.pread(fileOffset, data, 0, bs);
     } catch (IOException e) {
-      Logger.error(this, "Failed to read stored block " + blockNum + " on " + this + " : " + e, e);
+      LOG.error("Failed to read stored block " + blockNum + " on " + this + " : " + e, e);
       abort(RetrievalException.IO_ERROR, e.toString());
       return null;
     }

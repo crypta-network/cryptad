@@ -25,13 +25,12 @@ import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.BitArray;
 import network.crypta.support.Executor;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MedianMeanRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author ian
@@ -46,6 +45,7 @@ import network.crypta.support.math.MedianMeanRunningAverage;
  *     itself with an accurate bandwidth limit, or the packets-in-flight limit.
  */
 public class BlockTransmitter {
+  private static final Logger LOG = LoggerFactory.getLogger(BlockTransmitter.class);
 
   /**
    * Maximum of the wait time for packets 31 and 32. Empirical value by reporter. TODO: doublecheck
@@ -54,16 +54,7 @@ public class BlockTransmitter {
    */
   private static final int MAX_ARTIFICIAL_FINAL_PACKETS_DELAY = 1000;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public static final int SEND_TIMEOUT = 60000;
@@ -135,8 +126,7 @@ public class BlockTransmitter {
             } else {
               packetNo = _unsent.removeFirst();
               if (_sentPackets.bitAt(packetNo)) {
-                Logger.error(
-                    this,
+                LOG.error(
                     "Already sent packet in run(): "
                         + packetNo
                         + " for "
@@ -171,9 +161,8 @@ public class BlockTransmitter {
     void schedule() {
       state.compareAndSet(STATE_WAITING, STATE_IDLE);
       if (_failed || _receivedSendCompletion || _completed) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Not scheduling for "
                   + _uid
                   + " to "
@@ -205,7 +194,7 @@ public class BlockTransmitter {
         onDisconnect();
         return false;
       } catch (AbortedException e) {
-        Logger.normal(this, "Terminating send due to abort: " + e);
+        LOG.info("Terminating send due to abort: " + e);
         // The PRB callback will deal with this.
         return false;
       }
@@ -264,13 +253,12 @@ public class BlockTransmitter {
     try {
       _sentPackets = new BitArray(_prb.getNumPackets());
     } catch (AbortedException e) {
-      Logger.error(this, "Aborted during setup");
+      LOG.error("Aborted during setup");
       // Will throw on running
     }
     this.blockTimeCallback = blockTimes;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Starting block transmit for "
               + uid
               + " to "
@@ -285,7 +273,7 @@ public class BlockTransmitter {
     synchronized (_senderThread) {
       if (_receivedSendCompletion) return;
       if (timeoutJob != null) return;
-      if (logMINOR) Logger.minor(this, "Scheduling timeout on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Scheduling timeout on " + this);
       timeoutJob =
           new PrioRunnable() {
 
@@ -306,18 +294,17 @@ public class BlockTransmitter {
                 if (_failed) {
                   // Already failed, we were just waiting for the acknowledgement sendAborted.
                   if (!hadSendCompletion) {
-                    Logger.warning(this, "Terminating send after failure on " + this);
+                    LOG.warn("Terminating send after failure on " + this);
                     abortReason = "Already failed and no acknowledgement";
                   } else {
                     // Waiting for transfers maybe???
-                    if (logMINOR) Logger.minor(this, "Trying to terminate send after timeout");
+                    if (LOG.isDebugEnabled()) LOG.debug("Trying to terminate send after timeout");
                     abortReason = "Already failed";
                   }
                 } else {
                   timeString =
                       TimeUtil.formatTime((System.currentTimeMillis() - timeAllSent), 2, true);
-                  Logger.warning(
-                      this,
+                  LOG.warn(
                       "Terminating send "
                           + _uid
                           + " to "
@@ -352,18 +339,17 @@ public class BlockTransmitter {
   public boolean maybeAllSent() {
     if (blockSendsPending == 0 && _unsent.isEmpty() && getNumSent() == _prb._packets) {
       timeAllSent = System.currentTimeMillis();
-      if (logMINOR) Logger.minor(this, "Sent all blocks, none unsent on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Sent all blocks, none unsent on " + this);
       _senderThread.schedule();
       return true;
     }
     if (blockSendsPending == 0 && _failed) {
       timeAllSent = System.currentTimeMillis();
-      if (logMINOR) Logger.minor(this, "Sent blocks and failed on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Sent blocks and failed on " + this);
       return true;
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "maybeAllSent: block sends pending = "
               + blockSendsPending
               + " unsent = "
@@ -382,17 +368,17 @@ public class BlockTransmitter {
    */
   public boolean maybeComplete() {
     if (!_receivedSendCompletion) {
-      if (logMINOR)
-        Logger.minor(this, "maybeComplete() not completing because send not completed on " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("maybeComplete() not completing because send not completed on " + this);
       // All the block sends have completed, wait for the other side to acknowledge or timeout.
       scheduleTimeoutAfterBlockSends();
       return false;
     }
     if (_completed) {
-      if (logMINOR) Logger.minor(this, "maybeComplete() already completed on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("maybeComplete() already completed on " + this);
       return false;
     }
-    if (logMINOR) Logger.minor(this, "maybeComplete() completing on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("maybeComplete() completing on " + this);
     _completed = true;
     decRunningBlockTransmits();
     return true;
@@ -417,7 +403,7 @@ public class BlockTransmitter {
    */
   public Future maybeFail(final int reason, final String description) {
     if (_completed) {
-      if (logMINOR) Logger.minor(this, "maybeFail() already completed on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("maybeFail() already completed on " + this);
       return nullFuture;
     }
     _failed = true;
@@ -426,7 +412,7 @@ public class BlockTransmitter {
       // This is important for keeping track of how many transfers are actually running, which will
       // be important for load management later on.
       // The caller will immediately call prepareSendAbort() then innerSendAborted().
-      if (logMINOR) Logger.minor(this, "maybeFail() waiting for acknowledgement on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("maybeFail() waiting for acknowledgement on " + this);
       if (_sentSendAborted) {
         scheduleTimeoutAfterBlockSends();
         return nullFuture; // Do nothing, waiting for timeout.
@@ -444,9 +430,8 @@ public class BlockTransmitter {
       }
     }
     if (blockSendsPending != 0) {
-      if (logMINOR)
-        Logger.minor(
-            this, "maybeFail() waiting for " + blockSendsPending + " block sends on " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("maybeFail() waiting for " + blockSendsPending + " block sends on " + this);
       if (_sentSendAborted) return nullFuture; // Wait for blockSendsPending to reach 0
       else {
         _sentSendAborted = true;
@@ -461,7 +446,7 @@ public class BlockTransmitter {
         };
       }
     }
-    if (logMINOR) Logger.minor(this, "maybeFail() completing on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("maybeFail() completing on " + this);
     _completed = true;
     decRunningBlockTransmits();
     final boolean sendAborted = _sentSendAborted;
@@ -486,7 +471,7 @@ public class BlockTransmitter {
     try {
       _usm.send(_destination, DMT.createAllSent(_uid, realTime), _ctr);
     } catch (NotConnectedException e) {
-      Logger.normal(this, "disconnected for allSent()");
+      LOG.info("disconnected for allSent()");
     }
   }
 
@@ -515,13 +500,12 @@ public class BlockTransmitter {
 
         @Override
         public void onMatched(Message m) {
-          if (logMINOR) {
+          if (LOG.isDebugEnabled()) {
             long endTime = System.currentTimeMillis();
             long transferTime = (endTime - startTime);
             synchronized (avgTimeTaken) {
               avgTimeTaken.report(transferTime);
-              Logger.minor(
-                  this,
+              LOG.debug(
                   "Block send took "
                       + transferTime
                       + " : "
@@ -587,8 +571,8 @@ public class BlockTransmitter {
             _receivedSendCompletion = true;
             _receivedSendSuccess = false;
             fail = maybeFail(msg.getInt(DMT.REASON), msg.getString(DMT.DESCRIPTION));
-            if (logMINOR)
-              Logger.minor(this, "Transfer got sendAborted on " + BlockTransmitter.this);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Transfer got sendAborted on " + BlockTransmitter.this);
           }
           fail.execute();
           cancelItemsPending();
@@ -630,8 +614,7 @@ public class BlockTransmitter {
       };
 
   private void onDisconnect() {
-    Logger.normal(
-        this,
+    LOG.info(
         "Terminating send "
             + _uid
             + " to "
@@ -654,7 +637,7 @@ public class BlockTransmitter {
   }
 
   private void onAborted(int reason, String description) {
-    if (logMINOR) Logger.minor(this, "Aborting on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Aborting on " + this);
     Future fail;
     synchronized (_senderThread) {
       timeAllSent = -1;
@@ -672,7 +655,7 @@ public class BlockTransmitter {
   public void sendAsync() {
     startTime = System.currentTimeMillis();
 
-    if (logMINOR) Logger.minor(this, "Starting async send on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting async send on " + this);
     incRunningBlockTransmits();
 
     try {
@@ -685,13 +668,11 @@ public class BlockTransmitter {
                       @Override
                       public void packetReceived(int packetNo) {
                         synchronized (_senderThread) {
-                          if (logMINOR)
-                            Logger.minor(
-                                this,
+                          if (LOG.isDebugEnabled())
+                            LOG.debug(
                                 "Got packet " + packetNo + " for " + _uid + " to " + _destination);
                           if (_unsent.contains(packetNo)) {
-                            Logger.error(
-                                this,
+                            LOG.error(
                                 "Already in unsent: "
                                     + packetNo
                                     + " for "
@@ -702,8 +683,7 @@ public class BlockTransmitter {
                             return;
                           }
                           if (_sentPackets.bitAt(packetNo)) {
-                            Logger.error(
-                                this,
+                            LOG.error(
                                 "Already sent packet in packetReceived: "
                                     + packetNo
                                     + " for "
@@ -770,7 +750,7 @@ public class BlockTransmitter {
     for (MessageItem item : items) {
       if (!_destination.unqueueMessage(item)) {
         // Race condition, can happen
-        if (logMINOR) Logger.minor(this, "Message not queued ?!?!?!? on " + this + " : " + item);
+        if (LOG.isDebugEnabled()) LOG.debug("Message not queued ?!?!?!? on " + this + " : " + item);
       }
     }
   }
@@ -779,16 +759,14 @@ public class BlockTransmitter {
 
   private static synchronized void incRunningBlockTransmits() {
     runningBlockTransmits++;
-    if (logMINOR)
-      Logger.minor(
-          BlockTransmitter.class, "Started a block transmit, running: " + runningBlockTransmits);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Started a block transmit, running: " + runningBlockTransmits);
   }
 
   private static synchronized void decRunningBlockTransmits() {
     runningBlockTransmits--;
-    if (logMINOR)
-      Logger.minor(
-          BlockTransmitter.class, "Finished a block transmit, running: " + runningBlockTransmits);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Finished a block transmit, running: " + runningBlockTransmits);
   }
 
   private void cleanup() {
@@ -810,7 +788,7 @@ public class BlockTransmitter {
 
     @Override
     public void sent() {
-      if (logMINOR) Logger.minor(this, "Sent block on " + BlockTransmitter.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Sent block on " + BlockTransmitter.this);
       // Wait for acknowledged
     }
 
@@ -832,7 +810,7 @@ public class BlockTransmitter {
     }
 
     private void complete(boolean failed) {
-      if (logMINOR) Logger.minor(this, "Completed send on a block for " + BlockTransmitter.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Completed send on a block for " + BlockTransmitter.this);
       boolean success = false;
       long now = System.currentTimeMillis();
       boolean callCallback = false;
@@ -847,8 +825,7 @@ public class BlockTransmitter {
                   ? BlockReceiver.RECEIPT_TIMEOUT_REALTIME
                   : BlockReceiver.RECEIPT_TIMEOUT_BULK);
           if (delta > threshold)
-            Logger.warning(
-                this,
+            LOG.warn(
                 "Time between packets on "
                     + BlockTransmitter.this
                     + " : "
@@ -858,8 +835,7 @@ public class BlockTransmitter {
                     + "ms) realtime="
                     + realTime);
           else if (delta > threshold / 5)
-            Logger.normal(
-                this,
+            LOG.info(
                 "Time between packets on "
                     + BlockTransmitter.this
                     + " : "
@@ -868,9 +844,8 @@ public class BlockTransmitter {
                     + delta
                     + "ms) realtime="
                     + realTime);
-          else if (logMINOR)
-            Logger.minor(
-                this,
+          else if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Time between packets on "
                     + BlockTransmitter.this
                     + " : "
@@ -882,7 +857,7 @@ public class BlockTransmitter {
         }
         lastSentPacket = now;
         blockSendsPending--;
-        if (logMINOR) Logger.minor(this, "Pending: " + blockSendsPending);
+        if (LOG.isDebugEnabled()) LOG.debug("Pending: " + blockSendsPending);
         if (maybeAllSent()) {
           if (maybeComplete()) {
             callCallback = true;
