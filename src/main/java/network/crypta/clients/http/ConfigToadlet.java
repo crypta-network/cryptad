@@ -19,16 +19,18 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.FredPluginConfigurable;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Node Configuration Toadlet. Accessible from <code>http://.../config/</code>. */
 // FIXME: add logging, comments
 public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(ConfigToadlet.class);
+
   // If a setting has to be more than a meg, something is seriously wrong!
   private static final int MAX_PARAM_VALUE_SIZE = 1024 * 1024;
   private String directoryBrowserPath;
@@ -286,21 +288,21 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     StringBuilder errbuf = new StringBuilder();
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
 
     String prefix = request.getPartAsStringFailsafe("subconfig", MAX_PARAM_VALUE_SIZE);
-    if (logMINOR) {
-      Logger.minor(this, "Current config prefix is " + prefix);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Current config prefix is " + prefix);
     }
     boolean resetToDefault = request.isPartSet("reset-to-defaults");
     if (resetToDefault && logMINOR) {
-      Logger.minor(this, "Resetting to defaults");
+      LOG.debug("Resetting to defaults");
     }
 
     for (Option<?> o : config.get(prefix).getOptions()) {
       String configName = o.getName();
-      if (logMINOR) {
-        Logger.minor(this, "Checking option " + prefix + '.' + configName);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Checking option " + prefix + '.' + configName);
       }
 
       // This ignores unrecognized parameters.
@@ -318,8 +320,8 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
 
         if (!(o.getValueDisplayString().equals(value))) {
 
-          if (logMINOR) {
-            Logger.minor(this, "Changing " + prefix + '.' + configName + " to " + value);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Changing " + prefix + '.' + configName + " to " + value);
           }
 
           try {
@@ -330,10 +332,10 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
             needRestart = true;
           } catch (Exception e) {
             errbuf.append(o.getName()).append(' ').append(e).append('\n');
-            Logger.error(this, "Caught " + e, e);
+            LOG.error("Caught " + e, e);
           }
-        } else if (logMINOR) {
-          Logger.minor(this, prefix + '.' + configName + " not changed");
+        } else if (LOG.isDebugEnabled()) {
+          LOG.debug(prefix + '.' + configName + " not changed");
         }
       }
     }
@@ -343,8 +345,8 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
     if (request.isPartSet(wrapperConfigName)) {
       value = request.getPartAsStringFailsafe(wrapperConfigName, MAX_PARAM_VALUE_SIZE);
       if (!WrapperConfig.getWrapperProperty(wrapperConfigName).equals(value)) {
-        if (logMINOR) {
-          Logger.minor(this, "Setting " + wrapperConfigName + " to " + value);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Setting " + wrapperConfigName + " to " + value);
         }
         WrapperConfig.setWrapperProperty(wrapperConfigName, value);
       }
@@ -522,7 +524,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
         String value = o.getValueDisplayString();
 
         if (value == null) {
-          Logger.error(this, fullName + "has returned null from config!);");
+          LOG.error(fullName + "has returned null from config!);");
           continue;
         }
 

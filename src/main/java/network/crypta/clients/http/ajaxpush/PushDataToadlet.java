@@ -23,8 +23,6 @@ import org.slf4j.LoggerFactory;
 public class PushDataToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushDataToadlet.class);
 
-  private static volatile boolean logMINOR;
-
   public PushDataToadlet(HighLevelSimpleClient client) {
     super(client);
   }

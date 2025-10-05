@@ -72,9 +72,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
@@ -85,9 +82,12 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class QueueToadlet extends Toadlet
     implements RequestCompletionCallback, LinkEnabledCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(QueueToadlet.class);
 
   public enum QueueColumn {
     IDENTIFIER,
@@ -140,17 +140,7 @@ public class QueueToadlet extends Toadlet
   final FCPServer fcp;
   private FileInsertWizardToadlet fiw;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   void setFIW(FileInsertWizardToadlet fiw) {
     this.fiw = fiw;
@@ -200,7 +190,7 @@ public class QueueToadlet extends Toadlet
           try {
             String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
             insertURI = new FreenetURI(u);
-            if (logMINOR) Logger.minor(this, "Inserting key: " + insertURI + " (" + u + ")");
+            if (LOG.isDebugEnabled()) LOG.debug("Inserting key: " + insertURI + " (" + u + ")");
           } catch (MalformedURLException mue1) {
             writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx, false, true);
             return;
@@ -326,7 +316,7 @@ public class QueueToadlet extends Toadlet
             identifier = part.substring("identifier-".length());
             if (identifier.length() > 50) continue;
             identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-            if (logMINOR) Logger.minor(this, "Removing " + identifier);
+            if (LOG.isDebugEnabled()) LOG.debug("Removing " + identifier);
             fcp.removeGlobalRequestBlocking(identifier);
           }
         } catch (MessageInvalidException e) {
@@ -419,7 +409,7 @@ public class QueueToadlet extends Toadlet
           identifier = part.substring("identifier-".length());
           if (identifier.length() > 50) continue;
           identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-          if (logMINOR) Logger.minor(this, "Restarting " + identifier);
+          if (LOG.isDebugEnabled()) LOG.debug("Restarting " + identifier);
           try {
             fcp.restartBlocking(identifier, disableFilterData);
           } catch (PersistenceDisabledException e) {
@@ -530,8 +520,7 @@ public class QueueToadlet extends Toadlet
             success.add(fetchURI.toString(true, false));
           } catch (Exception e) {
             failure.add(currentKey);
-            Logger.error(
-                this,
+            LOG.error(
                 "An error occured while attempting to download key("
                     + i
                     + ") : "
@@ -601,7 +590,7 @@ public class QueueToadlet extends Toadlet
           try {
             String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
             insertURI = new FreenetURI(u);
-            if (logMINOR) Logger.minor(this, "Inserting key: " + insertURI + " (" + u + ")");
+            if (LOG.isDebugEnabled()) LOG.debug("Inserting key: " + insertURI + " (" + u + ")");
           } catch (MalformedURLException mue1) {
             writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx, false, true);
             return;
@@ -687,14 +676,14 @@ public class QueueToadlet extends Toadlet
                             try {
                               fcp.startBlocking(clientPut, context);
                             } catch (IdentifierCollisionException e) {
-                              Logger.error(this, "Cannot put same file twice in same millisecond");
+                              LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
                               return false;
                             }
                           writePermanentRedirect(ctx, "Done", path());
                           return true;
                         } catch (IdentifierCollisionException e) {
-                          Logger.error(this, "Cannot put same file twice in same millisecond");
+                          LOG.error("Cannot put same file twice in same millisecond");
                           writePermanentRedirect(ctx, "Done", path());
                           return false;
                         } catch (NotAllowedException e) {
@@ -722,8 +711,7 @@ public class QueueToadlet extends Toadlet
                               true);
                           return false;
                         } catch (MetadataUnresolvedException e) {
-                          Logger.error(
-                              this,
+                          LOG.error(
                               "Unresolved metadata in starting insert from data uploaded from"
                                   + " browser: "
                                   + e,
@@ -762,7 +750,7 @@ public class QueueToadlet extends Toadlet
         return;
       } else if (request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
         final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
-        if (logMINOR) Logger.minor(this, "Inserting local file: " + filename);
+        if (LOG.isDebugEnabled()) LOG.debug("Inserting local file: " + filename);
         final File file = new File(filename);
         final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
         final String contentType = DefaultMIMETypes.guessMIMEType(filename, false);
@@ -835,9 +823,8 @@ public class QueueToadlet extends Toadlet
                                   overrideSplitfileKey,
                                   false,
                                   fcp.getCore());
-                          if (logMINOR)
-                            Logger.minor(
-                                this,
+                          if (LOG.isDebugEnabled())
+                            LOG.debug(
                                 "Started global request to insert "
                                     + file
                                     + " to CHK@ as "
@@ -846,7 +833,7 @@ public class QueueToadlet extends Toadlet
                             try {
                               fcp.startBlocking(clientPut, context);
                             } catch (IdentifierCollisionException e) {
-                              Logger.error(this, "Cannot put same file twice in same millisecond");
+                              LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
                               return false;
                             } catch (PersistenceDisabledException e) {
@@ -855,7 +842,7 @@ public class QueueToadlet extends Toadlet
                           writePermanentRedirect(ctx, "Done", path());
                           return true;
                         } catch (IdentifierCollisionException e) {
-                          Logger.error(this, "Cannot put same file twice in same millisecond");
+                          LOG.error("Cannot put same file twice in same millisecond");
                           writePermanentRedirect(ctx, "Done", path());
                           return false;
                         } catch (MalformedURLException e) {
@@ -877,8 +864,7 @@ public class QueueToadlet extends Toadlet
                               ctx);
                           return false;
                         } catch (MetadataUnresolvedException e) {
-                          Logger.error(
-                              this,
+                          LOG.error(
                               "Unresolved metadata in starting insert from data from file: " + e,
                               e);
                           writePermanentRedirect(ctx, "Done", path());
@@ -912,7 +898,7 @@ public class QueueToadlet extends Toadlet
         return;
       } else if (request.isPartSet(LocalFileBrowserToadlet.selectDir)) {
         final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
-        if (logMINOR) Logger.minor(this, "Inserting local directory: " + filename);
+        if (LOG.isDebugEnabled()) LOG.debug("Inserting local directory: " + filename);
         final File file = new File(filename);
         final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
         final FreenetURI furi;
@@ -973,9 +959,8 @@ public class QueueToadlet extends Toadlet
                                   false,
                                   overrideSplitfileKey,
                                   fcp.getCore());
-                          if (logMINOR)
-                            Logger.minor(
-                                this,
+                          if (LOG.isDebugEnabled())
+                            LOG.debug(
                                 "Started global request to insert dir "
                                     + file
                                     + " to "
@@ -986,7 +971,7 @@ public class QueueToadlet extends Toadlet
                             try {
                               fcp.startBlocking(clientPutDir, context);
                             } catch (IdentifierCollisionException e) {
-                              Logger.error(this, "Cannot put same file twice in same millisecond");
+                              LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
                               return false;
                             } catch (PersistenceDisabledException e) {
@@ -997,7 +982,7 @@ public class QueueToadlet extends Toadlet
                           writePermanentRedirect(ctx, "Done", path());
                           return true;
                         } catch (IdentifierCollisionException e) {
-                          Logger.error(this, "Cannot put same directory twice in same millisecond");
+                          LOG.error("Cannot put same directory twice in same millisecond");
                           writePermanentRedirect(ctx, "Done", path());
                           return false;
                         } catch (MalformedURLException e) {
@@ -1165,7 +1150,7 @@ public class QueueToadlet extends Toadlet
       throws IOException, ToadletContextClosedException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("downloadFiles"), ctx);
     HTMLNode contentNode = page.getContentNode();
-    Logger.warning(this, e.toString());
+    LOG.warn(e.toString());
     HTMLNode alert =
         ctx.getPageMaker()
             .getInfobox(
@@ -1324,6 +1309,8 @@ public class QueueToadlet extends Toadlet
     }
 
     class OutputWrapper {
+      private static final Logger LOG = LoggerFactory.getLogger(OutputWrapper.class);
+
       boolean done;
       HTMLNode pageNode;
       String plainText;
@@ -1372,12 +1359,11 @@ public class QueueToadlet extends Toadlet
                               + core.getRequestStarters()
                                   .chkFetchSchedulerRT
                                   .countPersistentWaitingKeys();
-                      Logger.minor(this, "Total waiting CHKs: " + queued);
+                      LOG.debug("Total waiting CHKs: " + queued);
                       long reallyQueued =
                           core.getRequestStarters().chkFetchSchedulerBulk.countQueuedRequests()
                               + core.getRequestStarters().chkFetchSchedulerRT.countQueuedRequests();
-                      Logger.minor(
-                          this, "Total queued CHK requests (including transient): " + reallyQueued);
+                      LOG.debug("Total queued CHK requests (including transient): " + reallyQueued);
                       PageNode page = pageMaker.getPageNode(l10n("title"), ctx);
                       pageNode = page.getOuterNode();
                       HTMLNode contentNode = page.getContentNode();
@@ -1497,7 +1483,7 @@ public class QueueToadlet extends Toadlet
     Map<String, LinkedList<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
     Map<String, LinkedList<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
 
-    if (logMINOR) Logger.minor(this, "Request count: " + reqs.length);
+    if (LOG.isDebugEnabled()) LOG.debug("Request count: " + reqs.length);
 
     if (reqs.length < 1) {
       return sendEmptyQueuePage(ctx, pageMaker);
@@ -1521,8 +1507,7 @@ public class QueueToadlet extends Toadlet
           if (mimeType == null
               && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
                   || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
-            Logger.error(
-                this,
+            LOG.error(
                 "MIME type is null but failure code is "
                     + FetchException.getMessage(failureCode)
                     + " for "
@@ -1544,8 +1529,7 @@ public class QueueToadlet extends Toadlet
             FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
             LinkedList<DownloadRequestStatus> list;
             if (type == null) {
-              Logger.error(
-                  this,
+              LOG.error(
                   "Bad MIME failure code yet MIME is "
                       + mimeType
                       + " which does not have a handler!");
@@ -1604,8 +1588,8 @@ public class QueueToadlet extends Toadlet
     if (!added) {
       return sendEmptyQueuePage(ctx, pageMaker);
     }
-    Logger.minor(this, "Total queued downloads: " + SizeUtil.formatSize(totalQueuedDownloadSize));
-    Logger.minor(this, "Total queued uploads: " + SizeUtil.formatSize(totalQueuedUploadSize));
+    LOG.debug("Total queued downloads: " + SizeUtil.formatSize(totalQueuedDownloadSize));
+    LOG.debug("Total queued uploads: " + SizeUtil.formatSize(totalQueuedUploadSize));
 
     Comparator<RequestStatus> jobComparator =
         (firstRequest, secondRequest) -> {
@@ -3478,7 +3462,7 @@ public class QueueToadlet extends Toadlet
       // Normal
       return false;
     } catch (IOException e) {
-      Logger.error(this, "Could not read completed identifiers list from " + file);
+      LOG.error("Could not read completed identifiers list from " + file);
       return false;
     }
   }
@@ -3502,11 +3486,10 @@ public class QueueToadlet extends Toadlet
         for (String identifier : identifiers) bw.write(identifier + '\n');
       }
     } catch (FileNotFoundException e) {
-      Logger.error(
-          this, "Unable to save completed requests list (can't find node directory?!!?): " + e, e);
+      LOG.error("Unable to save completed requests list (can't find node directory?!!?): " + e, e);
       return;
     } catch (IOException e) {
-      Logger.error(this, "Unable to save completed requests list: " + e, e);
+      LOG.error("Unable to save completed requests list: " + e, e);
       return;
     }
     completedIdentifiersListNew.delete();
@@ -3514,8 +3497,7 @@ public class QueueToadlet extends Toadlet
     if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
       completedIdentifiersList.delete();
       if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
-        Logger.error(
-            this,
+        LOG.error(
             "Unable to store completed identifiers list because unable to rename "
                 + completedIdentifiersListNew
                 + " to "
@@ -3526,17 +3508,16 @@ public class QueueToadlet extends Toadlet
 
   private void registerAlert(ClientRequest req) {
     final String identifier = req.getIdentifier();
-    if (logMINOR) Logger.minor(this, "Registering alert for " + identifier);
+    if (LOG.isDebugEnabled()) LOG.debug("Registering alert for " + identifier);
     if (!req.hasFinished()) {
-      if (logMINOR)
-        Logger.minor(
-            this, "Request hasn't finished: " + req + " for " + identifier, new Exception("debug"));
+      if (LOG.isDebugEnabled())
+        LOG.debug("Request hasn't finished: " + req + " for " + identifier, new Exception("debug"));
       return;
     }
     if (req instanceof ClientGet get) {
       FreenetURI uri = get.getURI();
       if (uri == null) {
-        Logger.error(this, "No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request " + req);
         return;
       }
       long size = get.getDataSize();
@@ -3548,7 +3529,7 @@ public class QueueToadlet extends Toadlet
     } else if (req instanceof ClientPut put) {
       FreenetURI uri = put.getFinalURI();
       if (uri == null) {
-        Logger.error(this, "No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request " + req);
         return;
       }
       long size = put.getDataSize();
@@ -3560,7 +3541,7 @@ public class QueueToadlet extends Toadlet
     } else if (req instanceof ClientPutDir dir) {
       FreenetURI uri = dir.getFinalURI();
       if (uri == null) {
-        Logger.error(this, "No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request " + req);
         return;
       }
       long size = dir.getTotalDataSize();

@@ -16,13 +16,15 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DarknetConnectionsToadlet extends ConnectionsToadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(DarknetConnectionsToadlet.class);
 
   DarknetConnectionsToadlet(Node n, NodeClientCore core, HighLevelSimpleClient client) {
     super(n, core, client);
@@ -473,7 +475,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     } else if (request.isPartSet("remove")
         || (request.isPartSet("doAction")
             && request.getPartAsStringFailsafe("action", 25).equals("remove"))) {
-      if (logMINOR) Logger.minor(this, "Remove node");
+      if (LOG.isDebugEnabled()) LOG.debug("Remove node");
 
       DarknetPeerNode[] peerNodes = node.getDarknetConnections();
       for (DarknetPeerNode pn : peerNodes) {
@@ -483,11 +485,10 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
               || (pn.peerNodeStatus == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED)
               || request.isPartSet("forceit")) {
             this.node.removePeerConnection(pn);
-            if (logMINOR) Logger.minor(this, "Removed node: node_" + pn.hashCode());
+            if (LOG.isDebugEnabled()) LOG.debug("Removed node: node_" + pn.hashCode());
           } else {
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Refusing to remove : node_"
                       + pn.hashCode()
                       + " (trying to prevent network churn) : let's display the warning message.");
@@ -532,7 +533,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
             return; // FIXME: maybe it breaks multi-node removing
           }
         } else {
-          if (logMINOR) Logger.minor(this, "Part not set: node_" + pn.hashCode());
+          if (LOG.isDebugEnabled()) LOG.debug("Part not set: node_" + pn.hashCode());
         }
       }
       redirectHere(ctx);

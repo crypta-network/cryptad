@@ -119,7 +119,6 @@ public class SecurityLevelsToadlet extends Toadlet {
           core.getNode().getSecurityLevels().getPhysicalThreatLevel();
       if (LOG.isDebugEnabled())
         LOG.debug(
-            this,
             "New physical threat level: "
                 + newPhysicalLevel
                 + " old = "

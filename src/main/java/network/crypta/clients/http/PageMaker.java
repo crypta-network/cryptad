@@ -12,11 +12,13 @@ import network.crypta.node.Node;
 import network.crypta.node.SecurityLevels;
 import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Simple class to output standard heads and tail for web interface pages. */
 public final class PageMaker {
+  private static final Logger LOG = LoggerFactory.getLogger(PageMaker.class);
 
   public static final int MODE_SIMPLE = 1;
   public static final int MODE_ADVANCED = 2;
@@ -139,7 +141,7 @@ public final class PageMaker {
   public synchronized void removeNavigationCategory(String name) {
     SubMenu menu = subMenus.remove(name);
     if (menu == null) {
-      Logger.error(this, "can't remove navigation category, name=" + name);
+      LOG.error("can't remove navigation category, name=" + name);
       return;
     }
     menuList.remove(menu);
@@ -578,7 +580,7 @@ public final class PageMaker {
               if (navigationTitle != null) {
                 String newNavigationTitle = l10n.getString(navigationTitle);
                 if (newNavigationTitle == null) {
-                  Logger.error(this, "Plugin '" + l10n + "' did return null in getString(key)!");
+                  LOG.error("Plugin '" + l10n + "' did return null in getString(key)!");
                 } else {
                   navigationTitle = newNavigationTitle;
                 }
@@ -586,7 +588,7 @@ public final class PageMaker {
               if (navigationLink != null) {
                 String newNavigationLink = l10n.getString(navigationLink);
                 if (newNavigationLink == null) {
-                  Logger.error(this, "Plugin '" + l10n + "' did return null in getString(key)!");
+                  LOG.error("Plugin '" + l10n + "' did return null in getString(key)!");
                 } else {
                   navigationLink = newNavigationLink;
                 }
@@ -641,15 +643,13 @@ public final class PageMaker {
 
               String newTitle = menu.plugin.getString(menuItemTitle);
               if (newTitle == null) {
-                Logger.error(
-                    this, "Plugin '" + menu.plugin + "' did return null in getString(key)!");
+                LOG.error("Plugin '" + menu.plugin + "' did return null in getString(key)!");
               } else {
                 menuItemTitle = newTitle;
               }
               String newText = menu.plugin.getString(text);
               if (newText == null) {
-                Logger.error(
-                    this, "Plugin '" + menu.plugin + "' did return null in getString(key)!");
+                LOG.error("Plugin '" + menu.plugin + "' did return null in getString(key)!");
               } else {
                 text = newText;
               }

@@ -9,19 +9,18 @@ import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This toadlet allows the client to notify the server about page leaving. All of it's data is then
  * erased, it's elements disposed, and notifications removed. It needs the requestId parameter.
  */
 public class PushLeavingToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PushLeavingToadlet.class);
 
   static {
-    Logger.registerClass(PushLeavingToadlet.class);
   }
 
   public PushLeavingToadlet(HighLevelSimpleClient client) {
@@ -33,8 +32,8 @@ public class PushLeavingToadlet extends Toadlet {
     String requestId = req.getParam("requestId");
     boolean deleted =
         ((SimpleToadletServer) ctx.getContainer()).getPushDataManager().leaving(requestId);
-    if (logMINOR) {
-      Logger.minor(this, "Page leaving. requestid:" + requestId + " deleted:" + deleted);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Page leaving. requestid:" + requestId + " deleted:" + deleted);
     }
     writeHTMLReply(ctx, 200, "OK", UpdaterConstants.SUCCESS);
   }

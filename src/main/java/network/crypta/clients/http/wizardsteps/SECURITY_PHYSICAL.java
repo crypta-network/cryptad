@@ -11,13 +11,15 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FileUtil.OperatingSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Allows the user to set the physical security level. */
 public class SECURITY_PHYSICAL implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(SECURITY_PHYSICAL.class);
 
   private final NodeClientCore core;
 
@@ -247,8 +249,7 @@ public class SECURITY_PHYSICAL implements Step {
     SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel =
         SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
     if (FirstTimeWizardToadlet.shouldLogMinor()) {
-      Logger.minor(
-          this, "Old threat level: " + oldThreatLevel + " new threat level: " + newThreatLevel);
+      LOG.debug("Old threat level: " + oldThreatLevel + " new threat level: " + newThreatLevel);
     }
 
     /*If the user didn't select a network security level before clicking continue, the selected

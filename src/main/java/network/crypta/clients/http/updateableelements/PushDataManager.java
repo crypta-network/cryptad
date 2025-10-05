@@ -5,19 +5,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A manager class that manages all the pushing. All it's public method must be synchronized to
  * maintain consistency.
  */
 public class PushDataManager {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PushDataManager.class);
 
   static {
-    Logger.registerClass(PushDataManager.class);
   }
 
   /** What notifications are waiting for the leader */
@@ -55,14 +54,13 @@ public class PushDataManager {
    * @param id - The id of the element that changed
    */
   public synchronized void updateElement(String id) {
-    if (logMINOR) {
-      Logger.minor(this, "Element updated id:" + id);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Element updated id:" + id);
     }
     boolean needsUpdate = false;
     if (!elements.containsKey(id)) {
-      if (logMINOR) {
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "Element is updating, but not present on elements! elements:"
                 + elements
                 + " pages:"
@@ -73,9 +71,8 @@ public class PushDataManager {
     }
     if (elements.containsKey(id))
       for (String reqId : elements.get(id)) {
-        if (logMINOR) {
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
               "Element is present on page:"
                   + reqId
                   + ". Adding an UpdateEvent for all notification list.");
@@ -86,24 +83,23 @@ public class PushDataManager {
           UpdateEvent updateEvent = new UpdateEvent(reqId, id);
           if (!notificationList.contains(updateEvent)) {
             notificationList.add(updateEvent);
-            if (logMINOR) {
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(
                   "Notification("
                       + updateEvent
                       + ") added to a notification list for "
                       + entry.getKey());
             }
           } else {
-            if (logMINOR)
-              Logger.minor(this, "Not notifying " + entry.getKey() + " because already on list");
+            if (LOG.isDebugEnabled())
+              LOG.debug("Not notifying " + entry.getKey() + " because already on list");
           }
         }
         needsUpdate = true;
       }
     if (needsUpdate) {
-      if (logMINOR) {
-        Logger.minor(this, "Waking up notification polls");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Waking up notification polls");
       }
       notifyAll();
     }
@@ -116,8 +112,8 @@ public class PushDataManager {
    * @param element - The element that is rendered
    */
   public synchronized void elementRendered(String requestUniqueId, BaseUpdateableElement element) {
-    if (logMINOR) {
-      Logger.minor(this, "Element is rendered in page:" + requestUniqueId + " element:" + element);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Element is rendered in page:" + requestUniqueId + " element:" + element);
     }
     // Add to the pages
     if (!pages.containsKey(requestUniqueId)) {
@@ -138,8 +134,8 @@ public class PushDataManager {
     }
     // If the Cleaner isn't running, then we schedule it to clear this request if failing
     if (!isScheduled) {
-      if (logMINOR) {
-        Logger.minor(this, "Cleaner is queued(1) time:" + System.currentTimeMillis());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Cleaner is queued(1) time:" + System.currentTimeMillis());
       }
       cleaner.queueTimedJob(cleanerTask, "cleanerTask", getDelayInMs(), false, true);
       isScheduled = true;
@@ -153,8 +149,8 @@ public class PushDataManager {
    * @param id - The element's id
    */
   public synchronized BaseUpdateableElement getRenderedElement(String requestId, String id) {
-    if (logMINOR) {
-      Logger.minor(this, "Getting element data for element:" + id + " in page:" + requestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Getting element data for element:" + id + " in page:" + requestId);
     }
     if (pages.get(requestId) != null)
       for (BaseUpdateableElement element : pages.get(requestId)) {
@@ -163,8 +159,7 @@ public class PushDataManager {
           return element;
         }
       }
-    Logger.error(
-        this,
+    LOG.error(
         "Could not find data for the element requested. requestId:"
             + requestId
             + " id:"
@@ -185,14 +180,13 @@ public class PushDataManager {
    * @return Was the failover successful?
    */
   public synchronized boolean failover(String originalRequestId, String newRequestId) {
-    if (logMINOR) {
-      Logger.minor(this, "Failover, original:" + originalRequestId + " new:" + newRequestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Failover, original:" + originalRequestId + " new:" + newRequestId);
     }
     if (awaitingNotifications.containsKey(originalRequestId)) {
       awaitingNotifications.put(newRequestId, awaitingNotifications.remove(originalRequestId));
-      if (logMINOR) {
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "copied "
                 + awaitingNotifications.get(newRequestId).size()
                 + " notification:"
@@ -201,8 +195,8 @@ public class PushDataManager {
       notifyAll();
       return true;
     } else {
-      if (logMINOR) {
-        Logger.minor(this, "Does not contains key");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Does not contains key");
       }
       return false;
     }
@@ -225,13 +219,13 @@ public class PushDataManager {
    * @return Was it successful?
    */
   public synchronized boolean keepAliveReceived(String requestId) {
-    if (logMINOR) {
-      Logger.minor(this, "Keepalive is received for page:" + requestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Keepalive is received for page:" + requestId);
     }
     // If the request is already deleted, then fail
     if (!isKeepaliveReceived.containsKey(requestId)) {
-      if (logMINOR) {
-        Logger.minor(this, "Keepalive failed");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Keepalive failed");
       }
       return false;
     }
@@ -248,8 +242,8 @@ public class PushDataManager {
    * @return The next notification when present
    */
   public synchronized UpdateEvent getNextNotification(String requestId) {
-    if (logMINOR) {
-      Logger.minor(this, "Polling for notification:" + requestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Polling for notification:" + requestId);
     }
     while (awaitingNotifications.get(requestId) != null
             && awaitingNotifications.get(requestId).isEmpty()
@@ -267,9 +261,8 @@ public class PushDataManager {
     if (awaitingNotifications.get(requestId) == null) {
       return null;
     }
-    if (logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
           "Getting notification, notification:"
               + awaitingNotifications.get(requestId).getFirst()
               + ",remaining:"
@@ -290,12 +283,12 @@ public class PushDataManager {
    * @return Was a request deleted?
    */
   private synchronized boolean deleteRequest(String requestId) {
-    if (logMINOR) {
-      Logger.minor(this, "DeleteRequest with requestId:" + requestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("DeleteRequest with requestId:" + requestId);
     }
     if (!isKeepaliveReceived.containsKey(requestId)) {
-      if (logMINOR) {
-        Logger.minor(this, "Request already cleaned, doing nothing");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Request already cleaned, doing nothing");
       }
       return false;
     }
@@ -371,26 +364,26 @@ public class PushDataManager {
     @Override
     public void run() {
       synchronized (PushDataManager.this) {
-        if (logMINOR) {
-          Logger.minor(this, "Cleaner running:" + isKeepaliveReceived);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Cleaner running:" + isKeepaliveReceived);
         }
         isScheduled = false;
         for (Entry<String, Boolean> entry : new HashMap<>(isKeepaliveReceived).entrySet()) {
           if (entry.getValue() == false) {
-            if (logMINOR) {
-              Logger.minor(this, "Cleaner cleaned request:" + entry.getKey());
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Cleaner cleaned request:" + entry.getKey());
             }
             deleteRequest(entry.getKey());
           } else {
-            if (logMINOR) {
-              Logger.minor(this, "Cleaner reseted request:" + entry.getKey());
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Cleaner reseted request:" + entry.getKey());
             }
             isKeepaliveReceived.put(entry.getKey(), false);
           }
         }
         if (!isKeepaliveReceived.isEmpty()) {
-          if (logMINOR) {
-            Logger.minor(this, "Cleaner is queued(2) time:" + System.currentTimeMillis());
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Cleaner is queued(2) time:" + System.currentTimeMillis());
           }
           cleaner.queueTimedJob(cleanerTask, "cleanerTask", getDelayInMs(), false, true);
           isScheduled = true;

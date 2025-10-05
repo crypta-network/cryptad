@@ -45,8 +45,6 @@ public class PproxyToadlet extends Toadlet {
   /** Maximum time to wait for a threaded plugin to exit */
   private static final long MAX_THREADED_UNLOAD_WAIT_TIME = SECONDS.toMillis(60);
 
-  private static volatile boolean logMINOR;
-
   private final Node node;
 
   public PproxyToadlet(HighLevelSimpleClient client, Node node) {

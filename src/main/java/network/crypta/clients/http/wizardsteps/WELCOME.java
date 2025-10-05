@@ -5,13 +5,15 @@ import network.crypta.clients.http.FirstTimeWizardNewToadlet;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.*;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This step is the first, and provides a small welcome screen and an option to change the language.
  */
 public class WELCOME implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(WELCOME.class);
 
   /**
    * Constructs a new WELCOME GET handler.
@@ -78,7 +80,7 @@ public class WELCOME implements Step {
     try {
       config.get("node").set("l10n", desiredLanguage);
     } catch (InvalidConfigValueException e) {
-      Logger.error(this, "Failed to set language to " + desiredLanguage + ". " + e);
+      LOG.error("Failed to set language to " + desiredLanguage + ". " + e);
     } catch (NodeNeedRestartException e) {
       // Changing language doesn't require a restart, at least as of version 1385.
       // Doing so would be really annoying as the node would have to start up again

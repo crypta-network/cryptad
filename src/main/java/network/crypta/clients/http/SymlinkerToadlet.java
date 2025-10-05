@@ -10,9 +10,10 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.StringArrCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Symlinker Toadlet
@@ -20,6 +21,8 @@ import network.crypta.support.api.StringArrCallback;
  * <p>Provide alias to other toadlet URLs by throwing {@link RedirectException}.
  */
 public class SymlinkerToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(SymlinkerToadlet.class);
+
   private final HashMap<String, String> linkMap = new HashMap<>();
   private final Node node;
   SubConfig tslconfig;
@@ -73,7 +76,7 @@ public class SymlinkerToadlet extends Toadlet {
     boolean ret;
     synchronized (linkMap) {
       ret = alias.equals(linkMap.put(alias, target));
-      Logger.normal(this, "Adding link: " + alias + " => " + target);
+      LOG.info("Adding link: " + alias + " => " + target);
     }
     if (store) node.getClientCore().storeConfig();
     return ret;
@@ -85,7 +88,7 @@ public class SymlinkerToadlet extends Toadlet {
       Object o;
       ret = (o = linkMap.remove(alias)) != null;
 
-      Logger.normal(this, "Removing link: " + alias + " => " + o);
+      LOG.info("Removing link: " + alias + " => " + o);
     }
     if (store) node.getClientCore().storeConfig();
     return ret;

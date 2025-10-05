@@ -14,9 +14,12 @@ import java.util.Map;
 import network.crypta.clients.http.StaticToadlet;
 import network.crypta.node.Node;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class IPConverter {
+  private static final Logger LOG = LoggerFactory.getLogger(IPConverter.class);
+
   // Regex indicating ipranges start
   private static final String START = "##start##";
   final int MAX_ENTRIES = 100;
@@ -419,7 +422,7 @@ public class IPConverter {
           codes[i] = (short) country.ordinal();
         } catch (IllegalArgumentException e) {
           // Does not invalidate the whole file, just means the country list is out of date.
-          Logger.error(this, "Country not in list: " + code);
+          LOG.error("Country not in list: " + code);
           codes[i] = (short) -1;
         }
         ips[i] = (int) ip;
@@ -428,11 +431,11 @@ public class IPConverter {
       return new Cache(codes, ips);
     } catch (FileNotFoundException e) {
       // Not downloaded yet
-      Logger.warning(this, "Database file not found!", e);
+      LOG.warn("Database file not found!", e);
     } catch (IOException e) {
-      Logger.error(this, e.getMessage());
+      LOG.error(e.getMessage());
     } catch (IPConverterParseException e) {
-      Logger.error(this, "IP to country datbase file is corrupt: " + e, e);
+      LOG.error("IP to country datbase file is corrupt: " + e, e);
       // Don't try again until next restart.
       // FIXME add a callback to clear the flag when we download a new copy.
       dbFileCorrupt = true;

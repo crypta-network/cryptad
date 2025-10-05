@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 
 public class FProxyFetchTracker implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(FProxyFetchTracker.class);
-  private static volatile boolean logMINOR;
 
   private final MultiValueTable<FreenetURI, FProxyFetchInProgress> fetchers =
       new MultiValueTable<>();

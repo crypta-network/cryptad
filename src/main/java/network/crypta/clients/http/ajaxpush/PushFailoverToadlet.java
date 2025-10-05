@@ -9,19 +9,18 @@ import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A toadlet that the client can use for push failover. It requires the requestId and
  * originalRequestId parameter.
  */
 public class PushFailoverToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PushFailoverToadlet.class);
 
   static {
-    Logger.registerClass(PushFailoverToadlet.class);
   }
 
   public PushFailoverToadlet(HighLevelSimpleClient client) {
@@ -36,9 +35,8 @@ public class PushFailoverToadlet extends Toadlet {
         ((SimpleToadletServer) ctx.getContainer())
             .getPushDataManager()
             .failover(originalRequestId, requestId);
-    if (logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
           "Failover from:" + originalRequestId + " to:" + requestId + " with result:" + result);
     }
     writeHTMLReply(ctx, 200, "OK", result ? UpdaterConstants.SUCCESS : UpdaterConstants.FAILURE);

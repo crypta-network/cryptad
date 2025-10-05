@@ -9,12 +9,15 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.*;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Allows the user to set bandwidth limits with an emphasis on limiting to certain download and
  * upload rates.
  */
 public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(BANDWIDTH_RATE.class);
 
   private final BandwidthLimit[] limits;
 
@@ -97,7 +100,7 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
       addLimitRow(table, helper, usable, true, true);
       addedDefault = true;
     } catch (PluginNotFoundException | IllegalValueException e) {
-      Logger.normal(this, e.getMessage(), e);
+      LOG.info(e.getMessage(), e);
     }
 
     BandwidthLimit current = getCurrentBandwidthLimitsOrNull();
@@ -168,14 +171,14 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
         if (!preset.isEmpty()) {
           // Error parsing predefined limit.
           // This should not happen, as there are no units to confound the parser.
-          Logger.error(this, "Failed to parse pre-defined limit! Please report.");
+          LOG.error("Failed to parse pre-defined limit! Please report.");
           return FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH_RATE
               + "&parseError=true&parseTarget="
               + URLEncoder.encode(preset, true);
         }
       }
     } else {
-      Logger.error(this, "No bandwidth limit set!");
+      LOG.error("No bandwidth limit set!");
       return FirstTimeWizardToadlet.WIZARD_STEP.BANDWIDTH_RATE.name();
     }
 

@@ -18,15 +18,14 @@ import network.crypta.clients.http.ToadletContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A pushed image, the progress is shown with the ImageCreatorToadlet */
 public class ImageElement extends BaseUpdateableElement {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(ImageElement.class);
 
   static {
-    Logger.registerClass(ImageElement.class);
   }
 
   /** The tracker that the Fetcher can be acquired */
@@ -94,8 +93,8 @@ public class ImageElement extends BaseUpdateableElement {
     super("span", ctx);
     randomNumber = tracker.makeRandomElementID();
     long now = System.currentTimeMillis();
-    if (logMINOR) {
-      Logger.minor(this, "ImageElement creating for uri:" + key);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("ImageElement creating for uri:" + key);
     }
     this.originalImg = originalImg;
     this.tracker = tracker;
@@ -153,22 +152,21 @@ public class ImageElement extends BaseUpdateableElement {
             },
             0);
 
-    if (logMINOR) {
-      Logger.minor(
-          this, "ImageElement creating finished in:" + (System.currentTimeMillis() - now) + " ms");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("ImageElement creating finished in:" + (System.currentTimeMillis() - now) + " ms");
     }
   }
 
   @Override
   public void dispose() {
-    if (logMINOR) {
-      Logger.minor(this, "Disposing ImageElement");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Disposing ImageElement");
     }
     FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, null);
     if (progress != null) {
       progress.removeListener(fetchListener);
-      if (logMINOR) {
-        Logger.minor(this, "canCancel():" + progress.canCancel());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("canCancel():" + progress.canCancel());
       }
       progress.requestImmediateCancel();
       if (progress.canCancel()) {
@@ -194,9 +192,8 @@ public class ImageElement extends BaseUpdateableElement {
 
   @Override
   public void updateState(boolean initial) {
-    if (logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
           "Updating ImageElement for url:"
               + key
               + (origKey == key ? (" originally " + origKey) : ""));
@@ -243,18 +240,18 @@ public class ImageElement extends BaseUpdateableElement {
         } else {
 
           if (fr.isFinished() && fr.hasData()) {
-            if (logMINOR) {
-              Logger.minor(this, "ImageElement is completed");
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("ImageElement is completed");
             }
             whenJsEnabled.addChild(makeHtmlNodeForParsedTag(originalImg));
           } else if (fr.failed != null) {
-            if (logMINOR) {
-              Logger.minor(this, "ImageElement is errorous");
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("ImageElement is errorous");
             }
             whenJsEnabled.addChild(makeHtmlNodeForParsedTag(originalImg));
           } else {
-            if (logMINOR) {
-              Logger.minor(this, "ImageElement is still in progress");
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("ImageElement is still in progress");
             }
             int total = fr.requiredBlocks;
             int fetchedPercent = (int) (fr.fetchedBlocks / (double) total * 100);

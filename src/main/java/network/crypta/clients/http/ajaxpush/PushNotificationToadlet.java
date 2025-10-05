@@ -12,19 +12,18 @@ import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This toadlet provides notifications for clients. It will block until one is present. It requires
  * the requestId parameter.
  */
 public class PushNotificationToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PushNotificationToadlet.class);
 
   static {
-    Logger.registerClass(PushNotificationToadlet.class);
   }
 
   public PushNotificationToadlet(HighLevelSimpleClient client) {
@@ -50,8 +49,8 @@ public class PushNotificationToadlet extends Toadlet {
               + Base64.encodeStandard(elementRequestId.getBytes(StandardCharsets.UTF_8))
               + UpdaterConstants.SEPARATOR
               + elementId);
-      if (logMINOR) {
-        Logger.minor(this, "Notification got:" + event);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Notification got:" + event);
       }
     } else {
       writeHTMLReply(ctx, 200, "OK", UpdaterConstants.FAILURE);
