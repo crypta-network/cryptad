@@ -7,12 +7,11 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Global Config object which persists to a file.
@@ -23,6 +22,7 @@ import network.crypta.support.io.LineReadingInputStream;
  * config file back out.
  */
 public class FilePersistentConfig extends PersistentConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(FilePersistentConfig.class);
 
   final File filename;
   final File tempFilename;
@@ -30,16 +30,7 @@ public class FilePersistentConfig extends PersistentConfig {
   protected final Object storeSync = new Object();
   protected boolean writeOnFinished;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public static FilePersistentConfig constructFilePersistentConfig(File f) throws IOException {
@@ -56,12 +47,11 @@ public class FilePersistentConfig extends PersistentConfig {
     boolean filenameExists = filename.exists();
     boolean tempFilenameExists = tempFilename.exists();
     if (filenameExists && !filename.canWrite()) {
-      Logger.error(FilePersistentConfig.class, "Warning: Cannot write to config file: " + filename);
+      LOG.error("Warning: Cannot write to config file: " + filename);
       System.err.println("Warning: Cannot write to config file: " + filename);
     }
     if (tempFilenameExists && !tempFilename.canWrite()) {
-      Logger.error(
-          FilePersistentConfig.class, "Warning: Cannot write to config tempfile: " + tempFilename);
+      LOG.error("Warning: Cannot write to config tempfile: " + tempFilename);
       System.err.println("Warning: Cannot write to config tempfile: " + tempFilename);
     }
     if (filenameExists) {
@@ -151,7 +141,7 @@ public class FilePersistentConfig extends PersistentConfig {
       }
     } catch (IOException e) {
       String err = "Cannot store config: " + e;
-      Logger.error(this, err, e);
+      LOG.error(err, e);
       System.err.println(err);
       e.printStackTrace();
     }
@@ -162,7 +152,7 @@ public class FilePersistentConfig extends PersistentConfig {
     if (!finishedInit) throw new IllegalStateException("SHOULD NOT HAPPEN!!");
 
     SimpleFieldSet fs = exportFieldSet();
-    if (logMINOR) Logger.minor(this, "fs = " + fs);
+    if (LOG.isDebugEnabled()) LOG.debug("fs = " + fs);
     try (FileOutputStream fos = new FileOutputStream(tempFilename)) {
       synchronized (this) {
         fs.setHeader(header);

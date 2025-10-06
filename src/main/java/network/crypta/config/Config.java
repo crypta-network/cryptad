@@ -2,12 +2,15 @@ package network.crypta.config;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Global configuration object for a node. SubConfig's register here. Handles writing to a file etc.
  */
 public class Config {
+  private static final Logger LOG = LoggerFactory.getLogger(Config.class);
+
   public enum RequestType {
     CURRENT_SETTINGS,
     DEFAULT_SETTINGS,
@@ -51,7 +54,7 @@ public class Config {
     }
     for (SubConfig config : configs) {
       if (!config.hasFinishedInitialization())
-        Logger.error(this, "Not finished initialization: " + config.prefix);
+        LOG.error("Not finished initialization: " + config.prefix);
     }
   }
 

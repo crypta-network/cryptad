@@ -7,7 +7,7 @@ import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
-import network.crypta.support.Logger
+import org.slf4j.LoggerFactory
 
 /**
  * Shared filesystem definitions and directory resolvers for Cryptad.
@@ -35,8 +35,8 @@ const val LINUX_RUN_USER_PREFIX = "/run/user"
 const val USER_HOME = "user.home"
 
 /** Ensure a directory exists with best-effort POSIX permissions when supported. */
-// Local log source for filesystem directory creation/permission setting
-private object FSLogger
+// SLF4J logger
+private val LOG = LoggerFactory.getLogger("network.crypta.fs.Dirs")
 
 private fun ensureDir(path: Path, perms: String) {
   if (!path.exists()) path.createDirectories()
@@ -47,11 +47,7 @@ private fun ensureDir(path: Path, perms: String) {
     }
   } catch (e: Exception) {
     // Non-POSIX or failure — log at WARNING to aid debugging but do not fail
-    Logger.warning(
-      FSLogger::class.java,
-      "Failed to set POSIX permissions '$perms' on $path: ${e.message}",
-      e,
-    )
+    LOG.warn("Failed to set POSIX permissions '{}' on {}: {}", perms, path, e.message, e)
   }
 }
 

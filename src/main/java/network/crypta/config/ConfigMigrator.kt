@@ -7,11 +7,11 @@ import java.nio.file.*
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import network.crypta.fs.Resolved
-import network.crypta.support.Logger
 import network.crypta.support.SimpleFieldSet
+import org.slf4j.LoggerFactory
 
-// Local log source class for Logger API
-private object CMLogger
+// SLF4J logger for this file (file-level @JvmName("ConfigMigrator"))
+private val LOG = LoggerFactory.getLogger("network.crypta.config.ConfigMigrator")
 
 /** Best-effort migration from legacy relative paths to adaptive directories. */
 const val CONFIG_FILE = "cryptad.ini"
@@ -27,14 +27,14 @@ fun migrateIfNeeded(dirs: Resolved, executableDir: Path) {
   if (!Files.exists(cfgFile)) {
     if (Files.exists(cwdCfg)) {
       copyIfMissing(cwdCfg, cfgFile)
-      Logger.normal(CMLogger::class.java, "Migrated cryptad.ini from CWD to $cfgFile")
+      LOG.info("Migrated cryptad.ini from CWD to {}", cfgFile)
     } else if (Files.exists(exeCfg)) {
       copyIfMissing(exeCfg, cfgFile)
-      Logger.normal(CMLogger::class.java, "Migrated cryptad.ini from executable dir to $cfgFile")
+      LOG.info("Migrated cryptad.ini from executable dir to {}", cfgFile)
     } else {
       if (!cfgFile.parent.exists()) cfgFile.parent.createDirectories()
       Files.writeString(cfgFile, defaultTemplate())
-      Logger.normal(CMLogger::class.java, "Created default cryptad.ini at $cfgFile")
+      LOG.info("Created default cryptad.ini at {}", cfgFile)
     }
   }
 
@@ -54,22 +54,24 @@ private fun moveIfPresent(src: Path, dst: Path) {
   try {
     if (!Files.exists(dst.parent)) Files.createDirectories(dst.parent)
     Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE)
-    Logger.normal(CMLogger::class.java, "Moved $src -> $dst (atomic)")
+    LOG.info("Moved {} -> {} (atomic)", src, dst)
   } catch (e: AtomicMoveNotSupportedException) {
     // Fallback to non-atomic move and log
     try {
       Files.move(src, dst)
-      Logger.normal(CMLogger::class.java, "Moved $src -> $dst (non-atomic fallback)")
+      LOG.info("Moved {} -> {} (non-atomic fallback)", src, dst)
     } catch (e2: Exception) {
-      Logger.warning(
-        CMLogger::class.java,
-        "Failed to move $src -> $dst (fallback after atomic not supported): ${e2.message}",
+      LOG.warn(
+        "Failed to move {} -> {} (fallback after atomic not supported): {}",
+        src,
+        dst,
+        e2.message,
         e2,
       )
     }
   } catch (e: Exception) {
     // Log unexpected failures for debugging; continue best-effort
-    Logger.warning(CMLogger::class.java, "Failed to move $src -> $dst atomically: ${e.message}", e)
+    LOG.warn("Failed to move {} -> {} atomically: {}", src, dst, e.message, e)
   }
 }
 
@@ -93,13 +95,9 @@ private fun rewriteLegacyPaths(configFile: Path) {
     rewrite("logger.dirname", "./logs", "\${logsDir}")
 
     Files.newOutputStream(configFile).use { os -> sfs.writeToBigBuffer(os) }
-    Logger.normal(CMLogger::class.java, "Rewrote legacy paths in $configFile")
+    LOG.info("Rewrote legacy paths in {}", configFile)
   } catch (e: Exception) {
     // Tolerate parse errors; continue without rewrite, but log for visibility
-    Logger.warning(
-      CMLogger::class.java,
-      "Failed to rewrite legacy paths in $configFile: ${e.message}",
-      e,
-    )
+    LOG.warn("Failed to rewrite legacy paths in {}: {}", configFile, e.message, e)
   }
 }

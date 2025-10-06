@@ -2,11 +2,13 @@ package network.crypta.config;
 
 import java.io.File;
 import java.io.IOException;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FreenetFilePersistentConfig extends FilePersistentConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(FreenetFilePersistentConfig.class);
 
   protected static final String DEFAULT_HEADER =
       "This file is overwritten whenever Crypta shuts down, so only edit it when the node is not"
@@ -33,7 +35,7 @@ public class FreenetFilePersistentConfig extends FilePersistentConfig {
             innerStore();
           } catch (IOException e) {
             String err = "Cannot store config: " + e;
-            Logger.error(this, err, e);
+            LOG.error(err, e);
             System.err.println(err);
             e.printStackTrace();
           }
@@ -65,8 +67,7 @@ public class FreenetFilePersistentConfig extends FilePersistentConfig {
     }
     synchronized (storeSync) {
       if (isWritingConfig || ticker == null) {
-        Logger.normal(
-            this,
+        LOG.info(
             "Already writing the config file to disk or the node object hasn't been set : refusing"
                 + " to proceed");
         return;
@@ -84,7 +85,7 @@ public class FreenetFilePersistentConfig extends FilePersistentConfig {
 
   public void setHasNodeStarted() {
     synchronized (this) {
-      if (hasNodeStarted) Logger.error(this, "It has already been called! that shouldn't happen!");
+      if (hasNodeStarted) LOG.error("It has already been called! that shouldn't happen!");
       this.hasNodeStarted = true;
       notifyAll();
     }
