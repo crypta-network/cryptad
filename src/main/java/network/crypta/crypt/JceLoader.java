@@ -13,9 +13,12 @@ import java.security.Security;
 import java.security.Signature;
 import javax.crypto.KeyAgreement;
 import javax.crypto.KeyGenerator;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JceLoader {
+  private static final Logger LOG = LoggerFactory.getLogger(JceLoader.class);
+
   public static final Provider BouncyCastle;
   public static final Provider NSS; // optional, may be null
   public static final Provider SUN; // optional, may be null
@@ -33,7 +36,7 @@ public class JceLoader {
           kgen.init(256);
         } catch (GeneralSecurityException e) {
           final String msg = "Error with SunPKCS11-NSS. " + "Unlimited policy file not installed.";
-          Logger.warning(NSSLoader.class, msg, e);
+          LOG.warn(msg, e);
           System.out.println(msg);
         }
       } catch (Throwable e) {
@@ -42,7 +45,7 @@ public class JceLoader {
             "Unable to load SunPKCS11-NSScrypto provider. "
                 + "This is NOT fatal error, Crypta will work, but some performance "
                 + "degradation possible. Consider installing libnss3 package.";
-        Logger.warning(NSSLoader.class, msg, e);
+        LOG.warn(msg, e);
       }
     }
     NSS = p;
@@ -54,7 +57,7 @@ public class JceLoader {
         final String msg = "SERIOUS PROBLEM: Unable to load or use BouncyCastle provider.";
         System.err.println(msg);
         e.printStackTrace();
-        Logger.error(JceLoader.class, msg, e);
+        LOG.error(msg, e);
       }
     }
     BouncyCastle = p;
@@ -64,8 +67,7 @@ public class JceLoader {
         KeyGenerator kgen = KeyGenerator.getInstance("AES", "SunJCE");
         kgen.init(256);
       } catch (Throwable e) {
-        Logger.warning(
-            NSSLoader.class, "Error with SunJCE. Unlimited policy file not installed.", e);
+        LOG.warn("Error with SunJCE. Unlimited policy file not installed.", e);
       }
       SunJCE = Security.getProvider("SunJCE");
     } else {
@@ -103,9 +105,9 @@ public class JceLoader {
         } catch (Throwable e) {
           throw e;
         }
-        Logger.debug(BouncyCastleLoader.class, "Loaded BouncyCastle provider: " + p);
+        LOG.debug("Loaded BouncyCastle provider: " + p);
       } else {
-        Logger.debug(BouncyCastleLoader.class, "Found BouncyCastle provider: " + p);
+        LOG.debug("Found BouncyCastle provider: " + p);
       }
       try {
         // We don't want totally unusable provider
@@ -148,9 +150,9 @@ public class JceLoader {
         } else {
           Security.addProvider(nssProvider);
         }
-        Logger.debug(NSSLoader.class, "Loaded NSS provider " + nssProvider);
+        LOG.debug("Loaded NSS provider " + nssProvider);
       } else {
-        Logger.debug(NSSLoader.class, "Found NSS provider " + nssProvider);
+        LOG.debug("Found NSS provider " + nssProvider);
       }
       return nssProvider;
     }

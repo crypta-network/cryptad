@@ -13,7 +13,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import javax.crypto.SecretKey;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FilenameGenerator;
@@ -23,6 +22,8 @@ import network.crypta.support.io.StorageFormatException;
 import org.bouncycastle.crypto.SkippingStreamCipher;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * EncryptedRandomAccessBuffer is a encrypted RandomAccessBuffer implementation using a
@@ -31,6 +32,8 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  * @author unixninja92 Suggested EncryptedRandomAccessBufferType to use: ChaCha128
  */
 public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(EncryptedRandomAccessBuffer.class);
+
   @Serial private static final long serialVersionUID = 1L;
   private final ReentrantLock readLock = new ReentrantLock();
   private final ReentrantLock writeLock = new ReentrantLock();
@@ -366,10 +369,10 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     try {
       setup(context.getPersistentMasterSecret(), false);
     } catch (IOException e) {
-      Logger.error(this, "Disk I/O error resuming: " + e, e);
+      LOG.error("Disk I/O error resuming: " + e, e);
       throw new ResumeFailedException(e);
     } catch (GeneralSecurityException e) {
-      Logger.error(this, "Impossible security error resuming - maybe we lost a codec?: " + e, e);
+      LOG.error("Impossible security error resuming - maybe we lost a codec?: " + e, e);
       throw new ResumeFailedException(e);
     }
   }
@@ -395,7 +398,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     try {
       return new EncryptedRandomAccessBuffer(type, underlying, masterKey, false);
     } catch (GeneralSecurityException e) {
-      Logger.error(EncryptedRandomAccessBuffer.class, "Crypto error resuming: " + e, e);
+      LOG.error("Crypto error resuming: " + e, e);
       throw new ResumeFailedException(e);
     }
   }

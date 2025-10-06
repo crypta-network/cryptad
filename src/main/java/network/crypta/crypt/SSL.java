@@ -28,7 +28,6 @@ import javax.net.ssl.SSLContext;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeStarter;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
@@ -42,8 +41,11 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SSL {
+  private static final Logger LOG = LoggerFactory.getLogger(SSL.class);
 
   private static final String KEY_ALGORITHM = "EC";
   private static final int KEY_SIZE = 256;
@@ -113,7 +115,7 @@ public class SSL {
                 } catch (Exception e) {
                   enable = false;
                   e.printStackTrace(System.out);
-                  Logger.error(this, "SSL could not be enabled", e);
+                  LOG.error("SSL could not be enabled", e);
                   throwConfigError("SSL could not be enabled", e);
                 }
               else {
@@ -153,7 +155,7 @@ public class SSL {
               } catch (Exception e) {
                 keyStore = oldKeyStore;
                 e.printStackTrace(System.out);
-                Logger.error(this, "Keystore file could not be changed", e);
+                LOG.error("Keystore file could not be changed", e);
                 throwConfigError("Keystore file could not be changed", e);
               }
             }
@@ -185,7 +187,7 @@ public class SSL {
               } catch (Exception e) {
                 keyStorePass = oldKeyStorePass;
                 e.printStackTrace(System.out);
-                Logger.error(this, "Keystore password could not be changed", e);
+                LOG.error("Keystore password could not be changed", e);
                 throwConfigError("Keystore password could not be changed", e);
               }
             }
@@ -220,7 +222,7 @@ public class SSL {
               } catch (Exception e) {
                 keyPass = oldKeyPass;
                 e.printStackTrace(System.out);
-                Logger.error(this, "Private key password could not be changed", e);
+                LOG.error("Private key password could not be changed", e);
                 throwConfigError("Private key password could not be changed", e);
               }
             }
@@ -262,12 +264,12 @@ public class SSL {
       loadKeyStore();
       createSSLContext();
     } catch (Exception e) {
-      Logger.error(SSL.class, "Keystore cannot be loaded, SSL will be disabled", e);
+      LOG.error("Keystore cannot be loaded, SSL will be disabled", e);
     } finally {
       if (enable && !available()) {
-        Logger.error(SSL.class, "SSL cannot be enabled!");
+        LOG.error("SSL cannot be enabled!");
       } else if (enable) {
-        Logger.normal(SSL.class, "SSL is enabled.");
+        LOG.info("SSL is enabled.");
       }
       sslConfig.finishedInitialization();
     }

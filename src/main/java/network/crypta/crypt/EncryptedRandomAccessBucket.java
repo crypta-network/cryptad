@@ -10,7 +10,6 @@ import javax.crypto.SecretKey;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.EncryptedRandomAccessBuffer.kdfInput;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
@@ -22,6 +21,8 @@ import network.crypta.support.io.StorageFormatException;
 import org.bouncycastle.crypto.SkippingStreamCipher;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Bucket encrypted using the same format as an EncryptedRandomAccessBuffer, which can therefore
@@ -30,6 +31,8 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  * @author toad
  */
 public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(EncryptedRandomAccessBucket.class);
+
   @Serial private static final long serialVersionUID = 1L;
 
   private final EncryptedRandomAccessBufferType type;
@@ -244,7 +247,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     try {
       return new MyOutputStream(uos, setup(uos));
     } catch (GeneralSecurityException e) {
-      Logger.error(this, "Unable to create encrypted bucket: " + e, e);
+      LOG.error("Unable to create encrypted bucket: " + e, e);
       throw new IOException(e);
     }
   }
@@ -293,7 +296,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     try {
       return new MyInputStream(is, setup(is));
     } catch (GeneralSecurityException e) {
-      Logger.error(this, "Unable to read encrypted bucket: " + e, e);
+      LOG.error("Unable to read encrypted bucket: " + e, e);
       throw new IOException(e);
     }
   }
@@ -341,7 +344,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     try {
       return new EncryptedRandomAccessBuffer(type, r, masterKey, false);
     } catch (GeneralSecurityException e) {
-      Logger.error(this, "Unable to convert encrypted bucket: " + e, e);
+      LOG.error("Unable to convert encrypted bucket: " + e, e);
       throw new IOException(e);
     }
   }

@@ -5,7 +5,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implements the HMAC Keyed Message Authentication function, as described in the draft FIPS
@@ -13,6 +14,8 @@ import network.crypta.support.Logger;
  */
 public enum HMAC {
   SHA2_256("HmacSHA256", 32);
+
+  private static final Logger LOG = LoggerFactory.getLogger(HMAC.class);
 
   final String algo;
   final int digestSize;
@@ -35,13 +38,13 @@ public enum HMAC {
     try {
       mac = Mac.getInstance(hash.algo);
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(HMAC.class, "No such AlgorithmException", e);
+      LOG.error("No such AlgorithmException", e);
       throw new Error(e);
     }
     try {
       mac.init(signingKey);
     } catch (InvalidKeyException e) {
-      Logger.error(HMAC.class, "Impossible InvalidKeyException", e);
+      LOG.error("Impossible InvalidKeyException", e);
       throw new Error(e);
     }
     return mac.doFinal(data);

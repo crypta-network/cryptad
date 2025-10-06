@@ -5,9 +5,11 @@ import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class CryptoKey implements CryptoElement, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(CryptoKey.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -24,7 +26,7 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
       e.printStackTrace();
       if (e instanceof CryptFormatException exception) throw exception;
       if (e instanceof IOException exception) throw exception;
-      Logger.error(CryptoKey.class, "Unknown exception while reading CryptoKey", e);
+      LOG.error("Unknown exception while reading CryptoKey", e);
       return null;
     }
   }

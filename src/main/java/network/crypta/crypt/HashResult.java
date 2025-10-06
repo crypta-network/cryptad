@@ -9,9 +9,11 @@ import java.io.Serializable;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HashResult implements Comparable<HashResult>, Cloneable, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(HashResult.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -101,17 +103,14 @@ public class HashResult implements Comparable<HashResult>, Cloneable, Serializab
 
   public static boolean strictEquals(HashResult[] results, HashResult[] hashes) {
     if (results.length != hashes.length) {
-      Logger.error(
-          HashResult.class,
-          "Hashes not equal: " + results.length + " hashes vs " + hashes.length + " hashes");
+      LOG.error("Hashes not equal: " + results.length + " hashes vs " + hashes.length + " hashes");
       return false;
     }
     for (int i = 0; i < results.length; i++) {
       if (results[i].type != hashes[i].type) {
         // FIXME Db4o kludge
         if (HashType.valueOf(results[i].type.name()) != HashType.valueOf(hashes[i].type.name())) {
-          Logger.error(
-              HashResult.class,
+          LOG.error(
               "Hashes not the same type: "
                   + results[i].type.name()
                   + " vs "
@@ -120,7 +119,7 @@ public class HashResult implements Comparable<HashResult>, Cloneable, Serializab
         }
       }
       if (!Arrays.equals(results[i].result, hashes[i].result)) {
-        Logger.error(HashResult.class, "Hash " + results[i].type.name() + " not equal");
+        LOG.error("Hash " + results[i].type.name() + " not equal");
         return false;
       }
     }

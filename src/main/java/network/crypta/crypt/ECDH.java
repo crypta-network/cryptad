@@ -16,9 +16,11 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 import javax.crypto.KeyAgreement;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ECDH {
+  private static final Logger LOG = LoggerFactory.getLogger(ECDH.class);
 
   public final Curves curve;
   private final KeyPair key;
@@ -86,8 +88,7 @@ public class ECDH {
           key = selftest(kg, kf, modulusSize);
         } catch (Throwable e) {
           /* we don't care why we fail, just fallback */
-          Logger.warning(
-              this,
+          LOG.warn(
               "default KeyPairGenerator provider ("
                   + (kg != null ? kg.getProvider() : null)
                   + ") is broken, falling back to BouncyCastle",
@@ -103,8 +104,7 @@ public class ECDH {
           selftest_genSecret(key, ka);
         } catch (Throwable e) {
           /* we don't care why we fail, just fallback */
-          Logger.warning(
-              this,
+          LOG.warn(
               "default KeyAgreement provider ("
                   + (ka != null ? ka.getProvider() : null)
                   + ") is broken or incompatible with KeyPairGenerator, falling back to"
@@ -135,9 +135,9 @@ public class ECDH {
       this.kgProvider = kg.getProvider();
       this.kfProvider = kf.getProvider();
       this.kaProvider = ka.getProvider();
-      Logger.normal(this, name + ": using " + kgProvider + " for KeyPairGenerator(EC)");
-      Logger.normal(this, name + ": using " + kfProvider + " for KeyFactory(EC)");
-      Logger.normal(this, name + ": using " + kaProvider + " for KeyAgreement(ECDH)");
+      LOG.info(name + ": using " + kgProvider + " for KeyPairGenerator(EC)");
+      LOG.info(name + ": using " + kfProvider + " for KeyFactory(EC)");
+      LOG.info(name + ": using " + kaProvider + " for KeyAgreement(ECDH)");
     }
 
     private synchronized KeyPairGenerator getKeyPairGenerator() {
@@ -147,10 +147,10 @@ public class ECDH {
         kg = KeyPairGenerator.getInstance("EC", kgProvider);
         kg.initialize(spec);
       } catch (NoSuchAlgorithmException e) {
-        Logger.error(ECDH.class, "NoSuchAlgorithmException : " + e.getMessage(), e);
+        LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
         e.printStackTrace();
       } catch (InvalidAlgorithmParameterException e) {
-        Logger.error(ECDH.class, "InvalidAlgorithmParameterException : " + e.getMessage(), e);
+        LOG.error("InvalidAlgorithmParameterException : " + e.getMessage(), e);
         e.printStackTrace();
       }
       keygenCached = kg;
@@ -192,10 +192,10 @@ public class ECDH {
 
       return ka.generateSecret();
     } catch (InvalidKeyException e) {
-      Logger.error(this, "InvalidKeyException : " + e.getMessage(), e);
+      LOG.error("InvalidKeyException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(this, "NoSuchAlgorithmException : " + e.getMessage(), e);
+      LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
       e.printStackTrace();
     }
     return null;
@@ -219,10 +219,10 @@ public class ECDH {
       remotePublicKey = (ECPublicKey) kf.generatePublic(ks);
 
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(ECDH.class, "NoSuchAlgorithmException : " + e.getMessage(), e);
+      LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (InvalidKeySpecException e) {
-      Logger.error(ECDH.class, "InvalidKeySpecException : " + e.getMessage(), e);
+      LOG.error("InvalidKeySpecException : " + e.getMessage(), e);
       e.printStackTrace();
     }
 
@@ -259,8 +259,7 @@ public class ECDH {
               + " bytes but is "
               + ret.length);
     } else {
-      Logger.warning(
-          this, "Padding public key from " + ret.length + " to " + curve.modulusSize + " bytes");
+      LOG.warn("Padding public key from " + ret.length + " to " + curve.modulusSize + " bytes");
       byte[] out = new byte[curve.modulusSize];
       System.arraycopy(ret, 0, out, 0, ret.length);
       return ret;
