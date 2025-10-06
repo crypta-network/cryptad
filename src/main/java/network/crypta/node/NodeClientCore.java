@@ -74,7 +74,7 @@ import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Base64;
 import network.crypta.support.Executor;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
@@ -95,9 +95,13 @@ import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.PooledFileRandomAccessBufferFactory;
 import network.crypta.support.io.TempBucketFactory;
 import network.crypta.support.plugins.helpers1.WebInterfaceToadlet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** The connection between the node and the client layer. */
 public class NodeClientCore implements Persistable {
+    private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
+
   // max number of healing inserts. If a 320 MiB file succeeds just barely,
   // it has about 10.000 blocks eligible for healing (10_000 x 32 kiB).
   // lifetime of large files is currently 7-14 days, so at 10_000 max keys,
@@ -106,10 +110,9 @@ public class NodeClientCore implements Persistable {
   // 8k means that up to 250 MiB of memory are needed
   // when a file of 250MiB or more succeeds just barely.
   private static final int MAX_RUNNING_HEALING_INSERTS = 8192;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(NodeClientCore.class);
+
   }
 
   /**
@@ -373,9 +376,9 @@ public class NodeClientCore implements Persistable {
             node.getRunDir());
 
     SimpleFieldSet throttleFS = persister.read();
-    if (logMINOR) Logger.minor(this, "Read throttleFS:\n" + throttleFS);
+    if (LOG.isDebugEnabled()) LOG.debug("Read throttleFS:\n" + throttleFS);
 
-    if (logMINOR) Logger.minor(this, "Serializing RequestStarterGroup from:\n" + throttleFS);
+    if (LOG.isDebugEnabled()) LOG.debug("Serializing RequestStarterGroup from:\n" + throttleFS);
 
     // Temp files
 
@@ -921,7 +924,7 @@ public class NodeClientCore implements Persistable {
         });
     setUploadAllowedDirs(nodeConfig.getStringArr("uploadAllowedDirs"));
 
-    Logger.normal(this, "Initializing USK Manager");
+    LOG.info("Initializing USK Manager");
     System.out.println("Initializing USK Manager");
     uskManager.init(clientContext);
 
@@ -1124,7 +1127,7 @@ public class NodeClientCore implements Persistable {
     try {
       initStorage(databaseKey);
     } catch (MasterKeysWrongPasswordException e) {
-      Logger.error(this, "Impossible: can't load even though have key? " + (databaseKey != null));
+      LOG.error("Impossible: can't load even though have key? " + (databaseKey != null));
       return true;
     }
     // Don't actually start the database thread yet, messy concurrency issues.
@@ -1237,21 +1240,19 @@ public class NodeClientCore implements Persistable {
 
               @Override
               public void run() {
-                Logger.normal(this, "Resuming persistent requests");
+                LOG.info("Resuming persistent requests");
                 if (node.getDatabaseKey() != null) {
                   try {
                     finishInitStorage();
                   } catch (Throwable t) {
-                    Logger.error(
-                        this, "Failed to migrate and/or cleanup persistent temp buckets: " + t, t);
+                    LOG.error("Failed to migrate and/or cleanup persistent temp buckets: " + t, t);
                     System.err.println(
                         "Failed to migrate and/or cleanup persistent temp buckets: " + t);
                     t.printStackTrace();
                     // Start the rest of the node anyway ...
                   }
                 }
-                Logger.normal(
-                    this, "Completed startup: All persistent requests resumed or restarted");
+                LOG.info("Completed startup: All persistent requests resumed or restarted");
                 alerts.unregister(startingUpAlert);
               }
 
@@ -1310,9 +1311,7 @@ public class NodeClientCore implements Persistable {
     final RequestTag tag =
         new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
-      Logger.error(
-          this,
-          "Could not lock UID just randomly generated: "
+      LOG.error("Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       listener.onFailed(
@@ -1328,7 +1327,7 @@ public class NodeClientCore implements Persistable {
     // and use that for purposes of deciding whether to cache it in the store.
     if (offersOnly) {
       htl = node.getFailureTable().minOfferedHTL(key, htl);
-      if (logMINOR) Logger.minor(this, "Using old HTL for GetOfferedKey: " + htl);
+      if (LOG.isDebugEnabled()) LOG.debug("Using old HTL for GetOfferedKey: " + htl);
     }
     final long startTime = System.currentTimeMillis();
     asyncGet(
@@ -1371,9 +1370,7 @@ public class NodeClientCore implements Persistable {
             tag.unlockHandler();
 
             if (status == RequestSender.NOT_FINISHED) {
-              Logger.error(
-                  this,
-                  "Bogus status in onRequestSenderFinished for " + rs,
+              LOG.error("Bogus status in onRequestSenderFinished for " + rs,
                   new Exception("error"));
               listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
               return;
@@ -1387,10 +1384,8 @@ public class NodeClientCore implements Persistable {
             if (status != RequestSender.TIMED_OUT
                 && status != RequestSender.GENERATED_REJECTED_OVERLOAD
                 && status != RequestSender.INTERNAL_ERROR) {
-              if (logMINOR)
-                Logger.minor(
-                    this,
-                    (isSSK ? "SSK" : "CHK")
+              if (LOG.isDebugEnabled())
+                LOG.debug((isSSK ? "SSK" : "CHK")
                         + " fetch cost "
                         + rs.getTotalSentBytes()
                         + '/'
@@ -1453,7 +1448,7 @@ public class NodeClientCore implements Persistable {
                         rtt, status == RequestSender.SUCCESS, targetLocation, realTimeFlag);
               }
               if (status == RequestSender.SUCCESS) {
-                Logger.minor(this, "Successful " + (isSSK ? "SSK" : "CHK") + " fetch took " + rtt);
+                LOG.debug("Successful " + (isSSK ? "SSK" : "CHK") + " fetch took " + rtt);
               }
             }
 
@@ -1464,8 +1459,7 @@ public class NodeClientCore implements Persistable {
             else {
               switch (status) {
                 case RequestSender.NOT_FINISHED:
-                  Logger.error(
-                      this, "RS still running in get" + (isSSK ? "SSK" : "CHK") + "!: " + rs);
+                  LOG.error("RS still running in get" + (isSSK ? "SSK" : "CHK") + "!: " + rs);
                   listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
                   return;
                 case RequestSender.DATA_NOT_FOUND:
@@ -1494,9 +1488,7 @@ public class NodeClientCore implements Persistable {
                   listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
                   return;
                 default:
-                  Logger.error(
-                      this,
-                      "Unknown RequestSender code in get"
+                  LOG.error("Unknown RequestSender code in get"
                           + (isSSK ? "SSK" : "CHK")
                           + ": "
                           + status
@@ -1587,12 +1579,12 @@ public class NodeClientCore implements Persistable {
       rs.addListener(listener);
       if (rs.uid != uid) tag.unlockHandler();
       // Else it has started a request.
-      if (logMINOR) Logger.minor(this, "Started " + o + " for " + uid + " for " + key);
+      if (LOG.isDebugEnabled()) LOG.debug("Started " + o + " for " + uid + " for " + key);
     } catch (RuntimeException e) {
-      Logger.error(this, "Caught error trying to start request: " + e, e);
+      LOG.error("Caught error trying to start request: " + e, e);
       listener.onNotStarted(true);
     } catch (Error e) {
-      Logger.error(this, "Caught error trying to start request: " + e, e);
+      LOG.error("Caught error trying to start request: " + e, e);
       listener.onNotStarted(true);
     }
   }
@@ -1633,9 +1625,7 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     RequestTag tag = new RequestTag(false, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
-      Logger.error(
-          this,
-          "Could not lock UID just randomly generated: "
+      LOG.error("Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
@@ -1661,7 +1651,7 @@ public class NodeClientCore implements Persistable {
           tag.setServedFromDatastore();
           return new ClientCHKBlock(block, key);
         } catch (CHKVerifyException e) {
-          Logger.error(this, "Does not verify: " + e, e);
+          LOG.error("Does not verify: " + e, e);
           throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
         }
       if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
@@ -1683,10 +1673,8 @@ public class NodeClientCore implements Persistable {
         if (status != RequestSender.TIMED_OUT
             && status != RequestSender.GENERATED_REJECTED_OVERLOAD
             && status != RequestSender.INTERNAL_ERROR) {
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "CHK fetch cost "
+          if (LOG.isDebugEnabled())
+            LOG.debug("CHK fetch cost "
                     + rs.getTotalSentBytes()
                     + '/'
                     + rs.getTotalReceivedBytes()
@@ -1727,7 +1715,7 @@ public class NodeClientCore implements Persistable {
           node.getNodeStats()
               .reportCHKOutcome(rtt, status == RequestSender.SUCCESS, targetLocation, realTimeFlag);
           if (status == RequestSender.SUCCESS) {
-            Logger.minor(this, "Successful CHK fetch took " + rtt);
+            LOG.debug("Successful CHK fetch took " + rtt);
           }
         }
 
@@ -1735,16 +1723,16 @@ public class NodeClientCore implements Persistable {
           try {
             return new ClientCHKBlock(rs.getPRB().getBlock(), rs.getHeaders(), key, true);
           } catch (CHKVerifyException e) {
-            Logger.error(this, "Does not verify: " + e, e);
+            LOG.error("Does not verify: " + e, e);
             throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
           } catch (AbortedException e) {
-            Logger.error(this, "Impossible: " + e, e);
+            LOG.error("Impossible: " + e, e);
             throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
           }
         else {
           switch (status) {
             case RequestSender.NOT_FINISHED:
-              Logger.error(this, "RS still running in getCHK!: " + rs);
+              LOG.error("RS still running in getCHK!: " + rs);
               throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
             case RequestSender.DATA_NOT_FOUND:
               throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND);
@@ -1764,7 +1752,7 @@ public class NodeClientCore implements Persistable {
             case RequestSender.INTERNAL_ERROR:
               throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
             default:
-              Logger.error(this, "Unknown RequestSender code in getCHK: " + status + " on " + rs);
+              LOG.error("Unknown RequestSender code in getCHK: " + status + " on " + rs);
               throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
           }
         }
@@ -1785,9 +1773,7 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     RequestTag tag = new RequestTag(true, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
-      Logger.error(
-          this,
-          "Could not lock UID just randomly generated: "
+      LOG.error("Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
@@ -1814,7 +1800,7 @@ public class NodeClientCore implements Persistable {
           key.setPublicKey(block.getPubKey());
           return ClientSSKBlock.construct(block, key);
         } catch (SSKVerifyException e) {
-          Logger.error(this, "Does not verify: " + e, e);
+          LOG.error("Does not verify: " + e, e);
           throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
         }
       if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
@@ -1835,10 +1821,8 @@ public class NodeClientCore implements Persistable {
         if (status != RequestSender.TIMED_OUT
             && status != RequestSender.GENERATED_REJECTED_OVERLOAD
             && status != RequestSender.INTERNAL_ERROR) {
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "SSK fetch cost "
+          if (LOG.isDebugEnabled())
+            LOG.debug("SSK fetch cost "
                     + rs.getTotalSentBytes()
                     + '/'
                     + rs.getTotalReceivedBytes()
@@ -1883,13 +1867,13 @@ public class NodeClientCore implements Persistable {
             key.setPublicKey(block.getPubKey());
             return ClientSSKBlock.construct(block, key);
           } catch (SSKVerifyException e) {
-            Logger.error(this, "Does not verify: " + e, e);
+            LOG.error("Does not verify: " + e, e);
             throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
           }
         else
           switch (rs.getStatus()) {
             case RequestSender.NOT_FINISHED:
-              Logger.error(this, "RS still running in getCHK!: " + rs);
+              LOG.error("RS still running in getCHK!: " + rs);
               throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
             case RequestSender.DATA_NOT_FOUND:
               throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND);
@@ -1899,7 +1883,7 @@ public class NodeClientCore implements Persistable {
               throw new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND);
             case RequestSender.TRANSFER_FAILED:
             case RequestSender.GET_OFFER_TRANSFER_FAILED:
-              Logger.error(this, "WTF? Transfer failed on an SSK? on " + uid);
+              LOG.error("WTF? Transfer failed on an SSK? on " + uid);
               throw new LowLevelGetException(LowLevelGetException.TRANSFER_FAILED);
             case RequestSender.VERIFY_FAILURE:
             case RequestSender.GET_OFFER_VERIFY_FAILURE:
@@ -1909,8 +1893,7 @@ public class NodeClientCore implements Persistable {
               throw new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD);
             case RequestSender.INTERNAL_ERROR:
             default:
-              Logger.error(
-                  this, "Unknown RequestSender code in getCHK: " + rs.getStatus() + " on " + rs);
+              LOG.error("Unknown RequestSender code in getCHK: " + rs.getStatus() + " on " + rs);
               throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
           }
       }
@@ -1970,9 +1953,7 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
-      Logger.error(
-          this,
-          "Could not lock UID just randomly generated: "
+      LOG.error("Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
@@ -2029,10 +2010,8 @@ public class NodeClientCore implements Persistable {
         }
       }
 
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Completed "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Completed "
                 + uid
                 + " overload="
                 + hasReceivedRejectedOverload
@@ -2064,9 +2043,8 @@ public class NodeClientCore implements Persistable {
           && status != CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
         int sent = is.getTotalSentBytes();
         int received = is.getTotalReceivedBytes();
-        if (logMINOR)
-          Logger.minor(
-              this, "Local CHK insert cost " + sent + '/' + received + " bytes (" + status + ')');
+        if (LOG.isDebugEnabled())
+          LOG.debug("Local CHK insert cost " + sent + '/' + received + " bytes (" + status + ')');
         nodeStats.localChkInsertBytesSentAverage.report(sent);
         nodeStats.localChkInsertBytesReceivedAverage.report(received);
         if (status == CHKInsertSender.SUCCESS)
@@ -2084,18 +2062,18 @@ public class NodeClientCore implements Persistable {
       }
 
       if (status == CHKInsertSender.SUCCESS) {
-        Logger.normal(this, "Succeeded inserting " + block);
+        LOG.info("Succeeded inserting " + block);
       } else {
         String msg = "Failed inserting " + block + " : " + is.getStatusString();
         if (status == CHKInsertSender.ROUTE_NOT_FOUND)
           msg +=
               " - this is normal on small networks; the data will still be propagated, but it can't"
                   + " find the 20+ nodes needed for full success";
-        if (is.getStatus() != CHKInsertSender.ROUTE_NOT_FOUND) Logger.error(this, msg);
-        else Logger.normal(this, msg);
+        if (is.getStatus() != CHKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
+        else LOG.info(msg);
         switch (is.getStatus()) {
           case CHKInsertSender.NOT_FINISHED:
-            Logger.error(this, "IS still running in putCHK!: " + is);
+            LOG.error("IS still running in putCHK!: " + is);
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
           case CHKInsertSender.GENERATED_REJECTED_OVERLOAD:
           case CHKInsertSender.TIMED_OUT:
@@ -2107,8 +2085,7 @@ public class NodeClientCore implements Persistable {
           case CHKInsertSender.INTERNAL_ERROR:
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
           default:
-            Logger.error(
-                this, "Unknown CHKInsertSender code in putCHK: " + is.getStatus() + " on " + is);
+            LOG.error("Unknown CHKInsertSender code in putCHK: " + is.getStatus() + " on " + is);
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
         }
       }
@@ -2129,9 +2106,7 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
-      Logger.error(
-          this,
-          "Could not lock UID just randomly generated: "
+      LOG.error("Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
@@ -2187,10 +2162,8 @@ public class NodeClientCore implements Persistable {
         }
       }
 
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Completed "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Completed "
                 + uid
                 + " overload="
                 + hasReceivedRejectedOverload
@@ -2219,9 +2192,8 @@ public class NodeClientCore implements Persistable {
           && status != CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
         int sent = is.getTotalSentBytes();
         int received = is.getTotalReceivedBytes();
-        if (logMINOR)
-          Logger.minor(
-              this, "Local SSK insert cost " + sent + '/' + received + " bytes (" + status + ')');
+        if (LOG.isDebugEnabled())
+          LOG.debug("Local SSK insert cost " + sent + '/' + received + " bytes (" + status + ')');
         nodeStats.localSskInsertBytesSentAverage.report(sent);
         nodeStats.localSskInsertBytesReceivedAverage.report(received);
         if (status == SSKInsertSender.SUCCESS)
@@ -2242,7 +2214,7 @@ public class NodeClientCore implements Persistable {
         } catch (KeyCollisionException e) {
           // collision race?
           // should be impossible.
-          Logger.normal(this, "collision race? is=" + is, e);
+          LOG.info("collision race? is=" + is, e);
         }
         throw new LowLevelPutException(collided);
       } else
@@ -2253,12 +2225,12 @@ public class NodeClientCore implements Persistable {
           NodeSSK key = block.getKey();
           KeyBlock collided = node.fetch(key, true, canWriteClientCache, false, false, null);
           if (collided == null) {
-            Logger.error(this, "Collided but no key?!");
+            LOG.error("Collided but no key?!");
             // Could be a race condition.
             try {
               node.store(block, false, canWriteClientCache, false, false);
             } catch (KeyCollisionException e2) {
-              Logger.error(this, "Collided but no key and still collided!");
+              LOG.error("Collided but no key and still collided!");
               throw new LowLevelPutException(
                   LowLevelPutException.INTERNAL_ERROR,
                   "Collided, can't find block, but still collides!",
@@ -2271,18 +2243,18 @@ public class NodeClientCore implements Persistable {
         }
 
       if (status == SSKInsertSender.SUCCESS) {
-        Logger.normal(this, "Succeeded inserting " + block);
+        LOG.info("Succeeded inserting " + block);
       } else {
         String msg = "Failed inserting " + block + " : " + is.getStatusString();
         if (status == CHKInsertSender.ROUTE_NOT_FOUND)
           msg +=
               " - this is normal on small networks; the data will still be propagated, but it can't"
                   + " find the 20+ nodes needed for full success";
-        if (is.getStatus() != SSKInsertSender.ROUTE_NOT_FOUND) Logger.error(this, msg);
-        else Logger.normal(this, msg);
+        if (is.getStatus() != SSKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
+        else LOG.info(msg);
         switch (is.getStatus()) {
           case SSKInsertSender.NOT_FINISHED:
-            Logger.error(this, "IS still running in putCHK!: " + is);
+            LOG.error("IS still running in putCHK!: " + is);
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
           case SSKInsertSender.GENERATED_REJECTED_OVERLOAD:
           case SSKInsertSender.TIMED_OUT:
@@ -2294,8 +2266,7 @@ public class NodeClientCore implements Persistable {
           case SSKInsertSender.INTERNAL_ERROR:
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
           default:
-            Logger.error(
-                this, "Unknown CHKInsertSender code in putSSK: " + is.getStatus() + " on " + is);
+            LOG.error("Unknown CHKInsertSender code in putSSK: " + is.getStatus() + " on " + is);
             throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
         }
       }
@@ -2392,12 +2363,12 @@ public class NodeClientCore implements Persistable {
   public void queueRandomReinsert(KeyBlock block) {
     SimpleSendableInsert ssi =
         new SimpleSendableInsert(this, block, RequestStarter.MAXIMUM_PRIORITY_CLASS);
-    if (logMINOR) Logger.minor(this, "Queueing random reinsert for " + block + " : " + ssi);
+    if (LOG.isDebugEnabled()) LOG.debug("Queueing random reinsert for " + block + " : " + ssi);
     ssi.schedule();
   }
 
   public void storeConfig() {
-    Logger.normal(this, "Trying to write config to disk", new Exception("debug"));
+    LOG.info("Trying to write config to disk", new Exception("debug"));
     node.getConfig().store();
   }
 
@@ -2418,7 +2389,7 @@ public class NodeClientCore implements Persistable {
   }
 
   public FilterCallback createFilterCallback(URI uri, FoundURICallback cb) {
-    if (logMINOR) Logger.minor(this, "Creating filter callback: " + uri + ", " + cb);
+    if (LOG.isDebugEnabled()) LOG.debug("Creating filter callback: " + uri + ", " + cb);
     return new GenericReadFilterCallback(uri, cb, null, toadletContainer);
   }
 
@@ -2435,7 +2406,7 @@ public class NodeClientCore implements Persistable {
       for (File dir : downloadAllowedDirs) {
         if (dir == null) {
           // Debug mysterious NPE...
-          Logger.error(this, "Null in upload allowed dirs???");
+          LOG.error("Null in upload allowed dirs???");
           continue;
         }
         if (FileUtil.isParent(dir, filename)) return true;
@@ -2449,7 +2420,7 @@ public class NodeClientCore implements Persistable {
     for (File dir : uploadAllowedDirs) {
       if (dir == null) {
         // Debug mysterious NPE...
-        Logger.error(this, "Null in upload allowed dirs???");
+        LOG.error("Null in upload allowed dirs???");
         continue;
       }
       if (FileUtil.isParent(dir, filename)) return true;
