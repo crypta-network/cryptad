@@ -18,8 +18,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+
 import network.crypta.support.MediaType;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
@@ -30,12 +29,15 @@ import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fetches the revocation key. Each time it starts, it will try to fetch it until it has 3 DNFs. If
  * it ever finds it, it will be immediately fed to the NodeUpdateManager.
  */
 public class RevocationChecker implements ClientGetCallback, RequestClient {
+    private static final Logger LOG = LoggerFactory.getLogger(RevocationChecker.class);
 
   public static final int REVOCATION_DNF_MIN = 3;
 
@@ -65,7 +67,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     core = manager.getNode().getClientCore();
     this.revocationDNFCounter = 0;
     this.blobFile = blobFile;
-    this.logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    this.logMINOR = LOG.isDebugEnabled();
     ctxRevocation = core.makeClient((short) 0, true, false).getFetchContext();
     // Do not allow redirects etc.
     // If we allow redirects then it will take too long to download the revocation.
@@ -97,7 +99,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         // Allow to free if bogus.
         manager.getUpdateOverMandatory().processRevocationBlob(bucket, "disk", true);
       } catch (IOException e) {
-        Logger.error(this, "Failed to read old revocation blob: " + e, e);
+        LOG.error("Failed to read old revocation blob: " + e, e);
         System.err.println(
             "We may have downloaded an old revocation blob before restarting but it cannot be read:"
                 + " "
@@ -117,11 +119,11 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   public boolean start(boolean aggressive, boolean reset) {
 
     if (manager.isBlown()) {
-      Logger.error(this, "Not starting revocation checker: key already blown!");
+      LOG.error("Not starting revocation checker: key already blown!");
       return false;
     }
     boolean wasRunning = false;
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
     ClientGetter cg = null;
     try {
       ClientGetter toCancel = null;
@@ -129,32 +131,28 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         if (aggressive && !wasAggressive) {
           // Ignore old one.
           toCancel = revocationGetter;
-          if (logMINOR) Logger.minor(this, "Ignoring old request, because was low priority");
+          if (LOG.isDebugEnabled()) LOG.debug("Ignoring old request, because was low priority");
           revocationGetter = null;
           if (toCancel != null) wasRunning = true;
         }
         wasAggressive = aggressive;
         if (revocationGetter != null
             && !(revocationGetter.isCancelled() || revocationGetter.isFinished())) {
-          if (logMINOR)
-            Logger.minor(
-                this, "Not queueing another revocation fetcher yet, old one still running");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Not queueing another revocation fetcher yet, old one still running");
           reset = false;
           wasRunning = false;
         } else {
           if (reset) {
-            if (logMINOR)
-              Logger.minor(
-                  this, "Resetting DNF count from " + revocationDNFCounter, new Exception("debug"));
+            if (LOG.isDebugEnabled())
+              LOG.debug("Resetting DNF count from " + revocationDNFCounter, new Exception("debug"));
             revocationDNFCounter = 0;
           } else {
-            if (logMINOR) Logger.minor(this, "Revocation count " + revocationDNFCounter);
+            if (LOG.isDebugEnabled()) LOG.debug("Revocation count " + revocationDNFCounter);
           }
-          if (logMINOR) Logger.minor(this, "fetcher=" + revocationGetter);
+          if (LOG.isDebugEnabled()) LOG.debug("fetcher=" + revocationGetter);
           if (revocationGetter != null && logMINOR)
-            Logger.minor(
-                this,
-                "revocation fetcher: cancelled="
+            LOG.debug("revocation fetcher: cancelled="
                     + revocationGetter.isCancelled()
                     + ", finished="
                     + revocationGetter.isFinished());
@@ -172,22 +170,21 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
                       null,
                       new BinaryBlobWriter(new ArrayBucket()),
                       null);
-          if (logMINOR)
-            Logger.minor(
-                this, "Queued another revocation fetcher (count=" + revocationDNFCounter + ")");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Queued another revocation fetcher (count=" + revocationDNFCounter + ")");
         }
       }
       if (toCancel != null) toCancel.cancel(core.getClientContext());
       if (cg != null) {
         core.getClientContext().start(cg);
-        if (logMINOR) Logger.minor(this, "Started revocation fetcher");
+        if (LOG.isDebugEnabled()) LOG.debug("Started revocation fetcher");
       }
       return wasRunning;
     } catch (FetchException e) {
       if (e.mode == FetchExceptionMode.RECENTLY_FAILED) {
-        Logger.error(this, "Cannot start revocation fetcher because recently failed");
+        LOG.error("Cannot start revocation fetcher because recently failed");
       } else {
-        Logger.error(this, "Cannot start fetch for the auto-update revocation key: " + e, e);
+        LOG.error("Cannot start fetch for the auto-update revocation key: " + e, e);
         manager.blow("Cannot start fetch for the auto-update revocation key: " + e, true);
       }
       synchronized (this) {
@@ -234,7 +231,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     } catch (Throwable t) {
       try {
         msg = "Failed to extract result when key blown: " + t;
-        Logger.error(this, msg, t);
+        LOG.error(msg, t);
         System.err.println(msg);
         t.printStackTrace();
       } catch (Throwable t1) {
@@ -250,9 +247,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 
   private void moveBlob(Bucket tmpBlob) {
     if (tmpBlob == null) {
-      Logger.error(
-          this,
-          "No temporary binary blob file moving it: may not be able to propagate revocation,"
+      LOG.error("No temporary binary blob file moving it: may not be able to propagate revocation,"
               + " bug???");
       return;
     }
@@ -302,8 +297,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   }
 
   void onFailure(FetchException e, ClientGetter state, Bucket blob) {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    if (logMINOR) Logger.minor(this, "Revocation fetch failed: " + e);
+    logMINOR = LOG.isDebugEnabled();
+    if (LOG.isDebugEnabled()) LOG.debug("Revocation fetch failed: " + e);
     FetchExceptionMode errorCode = e.getMode();
     boolean completed = false;
     long now = System.currentTimeMillis();
@@ -351,7 +346,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     synchronized (this) {
       if (errorCode == FetchExceptionMode.DATA_NOT_FOUND) {
         revocationDNFCounter++;
-        if (logMINOR) Logger.minor(this, "Incremented DNF counter to " + revocationDNFCounter);
+        if (LOG.isDebugEnabled()) LOG.debug("Incremented DNF counter to " + revocationDNFCounter);
       }
       if (revocationDNFCounter >= 3) {
         lastSucceeded = now;
@@ -406,7 +401,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
           t.setReadOnly();
           return t;
         } catch (IOException e) {
-          Logger.error(this, "Impossible: " + e, e);
+          LOG.error("Impossible: " + e, e);
           return null;
         }
       }
@@ -416,14 +411,12 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     try {
       return new FileRandomAccessBuffer(f, true);
     } catch (FileNotFoundException e) {
-      Logger.error(
-          this,
-          "We do not have the blob file for the revocation even though we have successfully"
+      LOG.error("We do not have the blob file for the revocation even though we have successfully"
               + " downloaded it!",
           e);
       return null;
     } catch (IOException e) {
-      Logger.error(this, "Error reading downloaded revocation blob file: " + e, e);
+      LOG.error("Error reading downloaded revocation blob file: " + e, e);
       return null;
     }
   }
