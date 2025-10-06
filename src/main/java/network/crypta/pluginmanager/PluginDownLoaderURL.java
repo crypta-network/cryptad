@@ -10,9 +10,11 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import network.crypta.pluginmanager.PluginManager.PluginProgress;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PluginDownLoaderURL extends PluginDownLoader<URL> {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginDownLoaderURL.class);
 
   @Override
   public URL checkSource(String source) throws PluginNotFoundException {
@@ -35,7 +37,7 @@ public class PluginDownLoaderURL extends PluginDownLoader<URL> {
         }
       }
 
-      Logger.error(this, "could not build plugin url for " + source, e);
+      LOG.error("could not build plugin url for " + source, e);
       throw new PluginNotFoundException("could not build plugin url for " + source, e);
     }
   }

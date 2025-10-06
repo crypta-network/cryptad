@@ -18,31 +18,22 @@ import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.SHA256;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.api.RandomAccessBuffer;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Helper functions for working with Buckets. */
 public class BucketTools {
+  private static final Logger LOG = LoggerFactory.getLogger(BucketTools.class);
 
   private static final int BUFFER_SIZE = 64 * 1024;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -360,8 +351,7 @@ public class BucketTools {
       throws IOException {
     if (origData instanceof FileBucket bucket) {
       if (freeData) {
-        Logger.error(
-            BucketTools.class,
+        LOG.error(
             "Asked to free data when splitting a FileBucket ?!?!? Not freeing as this would clobber"
                 + " the split result...");
       }
@@ -373,9 +363,8 @@ public class BucketTools {
       throw new IllegalArgumentException("Way too big!: " + length + " for " + splitSize);
     int bucketCount = (int) (length / splitSize);
     if (length % splitSize > 0) bucketCount++;
-    if (logMINOR)
-      Logger.minor(
-          BucketTools.class,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Splitting bucket "
               + origData
               + " of size "

@@ -14,17 +14,15 @@ import java.util.List;
 import network.crypta.io.AddressIdentifier;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.InetAddressComparator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A class to autodetect our IP address(es) */
 public class IPAddressDetector implements Runnable {
-
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(IPAddressDetector.class);
 
   static {
-    Logger.registerClass(IPAddressDetector.class);
   }
 
   // private String preferedAddressString = null;
@@ -91,14 +89,14 @@ public class IPAddressDetector implements Runnable {
 
   /** Execute a checkpoint - detect our internet IP address and log it */
   protected synchronized boolean checkpoint() {
-    final boolean logDEBUG = IPAddressDetector.logDEBUG;
+    final boolean logDEBUG = LOG.isDebugEnabled();
     List<InetAddress> addrs = new ArrayList<>();
 
     Enumeration<NetworkInterface> interfaces = null;
     try {
       interfaces = NetworkInterface.getNetworkInterfaces();
     } catch (SocketException e) {
-      Logger.error(this, "SocketException trying to detect NetworkInterfaces: " + e, e);
+      LOG.error("SocketException trying to detect NetworkInterfaces: " + e, e);
       addrs.add(oldDetect());
       old = true;
     }
@@ -106,17 +104,16 @@ public class IPAddressDetector implements Runnable {
     if (!old) {
       while (interfaces.hasMoreElements()) {
         NetworkInterface iface = interfaces.nextElement();
-        if (logDEBUG) Logger.debug(this, "Scanning NetworkInterface " + iface.getDisplayName());
+        if (LOG.isDebugEnabled()) LOG.debug("Scanning NetworkInterface " + iface.getDisplayName());
         int ifaceMTU = 0;
         try {
           if (!iface.isLoopback()) {
             ifaceMTU = iface.getMTU(); // MTU is retrieved directly instead of using
             // a plugin
-            if (logDEBUG) Logger.debug(this, "MTU = " + ifaceMTU);
+            if (LOG.isDebugEnabled()) LOG.debug("MTU = " + ifaceMTU);
           }
         } catch (SocketException e) {
-          Logger.error(
-              this, "SocketException trying to retrieve the MTU NetworkInterfaces: " + e, e);
+          LOG.error("SocketException trying to retrieve the MTU NetworkInterfaces: " + e, e);
           ifaceMTU = 0; // code for ignoring this MTU
         }
         Enumeration<InetAddress> ee = iface.getInetAddresses();
@@ -138,12 +135,13 @@ public class IPAddressDetector implements Runnable {
             }
           }
           addrs.add(addr);
-          if (logDEBUG)
-            Logger.debug(this, "Adding address " + addr + " from " + iface.getDisplayName());
+          if (LOG.isDebugEnabled())
+            LOG.debug("Adding address " + addr + " from " + iface.getDisplayName());
         }
-        if (logDEBUG) Logger.debug(this, "Finished scanning interface " + iface.getDisplayName());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Finished scanning interface " + iface.getDisplayName());
       }
-      if (logDEBUG) Logger.debug(this, "Finished scanning interfaces");
+      if (LOG.isDebugEnabled()) LOG.debug("Finished scanning interfaces");
     }
 
     InetAddress[] oldAddressList = lastAddressList;
@@ -167,14 +165,14 @@ public class IPAddressDetector implements Runnable {
    * @return
    */
   protected InetAddress oldDetect() {
-    boolean shouldLog = Logger.shouldLog(LogLevel.DEBUG, this);
-    if (shouldLog) Logger.debug(this, "Running old style detection code");
+    boolean shouldLog = LOG.isDebugEnabled();
+    if (shouldLog) LOG.debug("Running old style detection code");
     DatagramSocket ds = null;
     try {
       try {
         ds = new DatagramSocket();
       } catch (SocketException e) {
-        Logger.error(this, "SocketException", e);
+        LOG.error("SocketException", e);
         return null;
       }
 
@@ -183,7 +181,7 @@ public class IPAddressDetector implements Runnable {
       try {
         ds.connect(InetAddress.getByName("198.41.0.4"), 53);
       } catch (UnknownHostException ex) {
-        Logger.error(this, "UnknownHostException", ex);
+        LOG.error("UnknownHostException", ex);
         return null;
       }
       return ds.getLocalAddress();
@@ -200,12 +198,12 @@ public class IPAddressDetector implements Runnable {
    * @param addrs Vector of InetAddresses
    */
   protected void onGetAddresses(List<InetAddress> addrs) {
-    final boolean logDEBUG = IPAddressDetector.logDEBUG;
+    final boolean logDEBUG = LOG.isDebugEnabled();
     List<InetAddress> output = new ArrayList<>();
-    if (logDEBUG)
-      Logger.debug(this, "onGetAddresses found " + addrs.size() + " potential addresses)");
+    if (LOG.isDebugEnabled())
+      LOG.debug("onGetAddresses found " + addrs.size() + " potential addresses)");
     if (addrs.isEmpty()) {
-      Logger.error(this, "No addresses found!");
+      LOG.error("No addresses found!");
       lastAddressList = null;
       return;
     } else {
@@ -213,7 +211,7 @@ public class IPAddressDetector implements Runnable {
       for (int x = 0; x < addrs.size(); x++) {
         if (addrs.get(x) != null) {
           InetAddress i = addrs.get(x);
-          if (logDEBUG) Logger.debug(this, "Address " + x + ": " + i);
+          if (LOG.isDebugEnabled()) LOG.debug("Address " + x + ": " + i);
           if (i.isAnyLocalAddress()) {
             // Wildcard address, 0.0.0.0, ignore.
           } else if (i.isLinkLocalAddress() || i.isLoopbackAddress() || i.isSiteLocalAddress()) {
@@ -245,7 +243,7 @@ public class IPAddressDetector implements Runnable {
           detector.redetectAddress();
         }
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
       }
     }
   }

@@ -12,11 +12,10 @@ import java.io.PipedOutputStream;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Queue;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Creates and manages decompressor threads. This class is given all decompressors which should be
@@ -26,6 +25,7 @@ import network.crypta.support.io.IOUtils;
  * @author sajack
  */
 public class DecompressorThreadManager {
+  private static final Logger LOG = LoggerFactory.getLogger(DecompressorThreadManager.class);
 
   final Queue<DecompressorThread> threads;
   PipedInputStream input;
@@ -34,16 +34,7 @@ public class DecompressorThreadManager {
   private boolean finished = false;
   private Throwable error = null;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -65,7 +56,7 @@ public class DecompressorThreadManager {
     input = inputStream;
     while (!decompressors.isEmpty()) {
       Compressor compressor = decompressors.removeLast();
-      if (logMINOR) Logger.minor(this, "Decompressing with " + compressor);
+      if (LOG.isDebugEnabled()) LOG.debug("Decompressing with " + compressor);
       DecompressorThread thread = new DecompressorThread(compressor, this, input, output, maxLen);
       threads.add(thread);
       input = new PipedInputStream(output);
@@ -93,7 +84,7 @@ public class DecompressorThreadManager {
         if (threads.isEmpty()) threadRunnable.setLast();
         Thread t = new Thread(threadRunnable, "DecompressorThread" + count);
         t.start();
-        if (logMINOR) Logger.minor(this, "Started decompressor thread " + t);
+        if (LOG.isDebugEnabled()) LOG.debug("Started decompressor thread " + t);
         count++;
       }
       output.close();
@@ -136,8 +127,7 @@ public class DecompressorThreadManager {
         wait(MINUTES.toMillis(20));
         long time = System.currentTimeMillis() - start;
         if (time > MINUTES.toMillis(20))
-          Logger.error(
-              this, "Still waiting for decompressor chain after " + TimeUtil.formatTime(time));
+          LOG.error("Still waiting for decompressor chain after " + TimeUtil.formatTime(time));
       } catch (InterruptedException e) {
         // Do nothing
       }
@@ -196,14 +186,14 @@ public class DecompressorThreadManager {
     /** Begins the decompression */
     @Override
     public void run() {
-      if (logMINOR) Logger.minor(this, "Decompressing...");
+      if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
       try (BufferedInputStream bufferedInput = new BufferedInputStream(input);
           BufferedOutputStream bufferedOutput = new BufferedOutputStream(output)) {
         if (manager.getError() == null) {
           compressor.decompress(bufferedInput, bufferedOutput, maxLen, maxLen * 4);
           if (isLast) manager.onFinish();
         }
-        if (logMINOR) Logger.minor(this, "Finished decompressing...");
+        if (LOG.isDebugEnabled()) LOG.debug("Finished decompressing...");
       } catch (Exception e) {
         manager.onFailure(e);
       }

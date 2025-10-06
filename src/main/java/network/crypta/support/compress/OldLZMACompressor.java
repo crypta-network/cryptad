@@ -7,28 +7,21 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.io.UnsupportedEncodingException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedInputStream;
 import network.crypta.support.io.CountedOutputStream;
 import org.sevenzip.compression.lzma.Decoder;
 import org.sevenzip.compression.lzma.Encoder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OldLZMACompressor implements Compressor {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(OldLZMACompressor.class);
+
   private static final String SIZE_SEP = " size ";
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   // Copied from EncoderThread. See below re licensing.
@@ -40,16 +33,14 @@ public class OldLZMACompressor implements Compressor {
   @Override
   public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
       throws IOException {
-    Logger.warning(
-        this,
+    LOG.warn(
         "OldLZMA compression is buggy and no longer supported. It only exists to allow reinserting"
             + " keys.");
     Bucket output = bf.makeBucket(maxWriteLength);
     try (InputStream is = data.getInputStream();
         OutputStream os = output.getOutputStream()) {
-      if (logMINOR)
-        Logger.minor(
-            this, "Compressing " + data + SIZE_SEP + data.size() + " to new bucket " + output);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Compressing " + data + SIZE_SEP + data.size() + " to new bucket " + output);
       compress(is, os, maxReadLength, maxWriteLength);
     }
     return output;
@@ -63,8 +54,7 @@ public class OldLZMACompressor implements Compressor {
   @Override
   public long compress(InputStream is, OutputStream os, long maxReadLength, long maxWriteLength)
       throws IOException {
-    Logger.warning(
-        this,
+    LOG.warn(
         "OldLZMA compression is buggy and no longer supported. It only exists to allow reinserting"
             + " keys.");
     CountedInputStream cis;
@@ -79,7 +69,7 @@ public class OldLZMACompressor implements Compressor {
     encoder.setDictionarySize(1 << 20);
     // Encoder properties corresponding to bytes: 5d 00 00 10 00
     encoder.code(cis, cos, null);
-    if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
+    if (LOG.isDebugEnabled()) LOG.debug("Read " + cis.count() + " written " + cos.written());
     if (cos.written() > maxWriteLength) throw new CompressionOutputSizeException();
     cos.flush();
     return cos.written();
@@ -103,14 +93,13 @@ public class OldLZMACompressor implements Compressor {
     Bucket output;
     if (preferred != null) output = preferred;
     else output = bf.makeBucket(maxLength);
-    if (logMINOR)
-      Logger.minor(
-          this, "Decompressing " + data + SIZE_SEP + data.size() + " to new bucket " + output);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Decompressing " + data + SIZE_SEP + data.size() + " to new bucket " + output);
     try (CountedInputStream is = new CountedInputStream(data.getInputStream());
         OutputStream os = output.getOutputStream()) {
       decompress(is, os, maxLength, maxCheckSizeLength);
-      if (logMINOR)
-        Logger.minor(this, "Output: " + output + SIZE_SEP + output.size() + " read " + is.count());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Output: " + output + SIZE_SEP + output.size() + " read " + is.count());
     }
     return output;
   }

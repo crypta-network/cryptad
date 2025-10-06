@@ -11,10 +11,12 @@ import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.support.JarClassLoader;
-import network.crypta.support.Logger;
 import network.crypta.support.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginInfoWrapper.class);
 
   private final String className;
   private Thread thread;
@@ -157,7 +159,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
     try {
       plug.terminate();
     } catch (Throwable t) {
-      Logger.error(this, "Error while terminating plugin.", t);
+      LOG.error("Error while terminating plugin.", t);
       System.err.println("Error while terminating plugin: " + t);
       t.printStackTrace();
     } finally {
@@ -177,8 +179,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
         try {
           thread.join(maxWaitTime);
         } catch (InterruptedException e) {
-          Logger.normal(
-              this,
+          LOG.info(
               "stopPlugin interrupted while join()ed to terminating plugin thread - maybe one"
                   + " plugin stopping another???");
         }
@@ -191,7 +192,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
                   + " to exit for "
                   + maxWaitTime
                   + "ms, and it is still alive!";
-          Logger.error(this, error);
+          LOG.error(error);
           System.err.println(error);
           success = false;
         }
