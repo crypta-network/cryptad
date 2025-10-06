@@ -8,12 +8,12 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetState;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.SimpleSingleFileFetcher;
 import network.crypta.client.async.WantsCooldownCallback;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A low-level key fetch which can be sent immediately. @see SendableRequest
@@ -22,6 +22,7 @@ import network.crypta.support.io.NativeThread;
  * restarting downloads or losing uploads. (Some children of this class are actually stored)
  */
 public abstract class SendableGet extends BaseSendableGet {
+  private static final Logger LOG = LoggerFactory.getLogger(SendableGet.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -84,7 +85,7 @@ public abstract class SendableGet extends BaseSendableGet {
   @Override
   public void internalError(
       final Throwable t, final RequestScheduler sched, ClientContext context, boolean persistent) {
-    Logger.error(this, "Internal error on " + this + " : " + t, t);
+    LOG.error("Internal error on " + this + " : " + t, t);
     sched.callFailure(
         this,
         new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR, t.getMessage(), t),
@@ -126,7 +127,7 @@ public abstract class SendableGet extends BaseSendableGet {
       case LowLevelGetException.CANCELLED:
         return new FetchException(FetchExceptionMode.CANCELLED);
       default:
-        Logger.error(SimpleSingleFileFetcher.class, "Unknown LowLevelGetException code: " + e.code);
+        LOG.error("Unknown LowLevelGetException code: " + e.code);
         return new FetchException(
             FetchExceptionMode.INTERNAL_ERROR, "Unknown error code: " + e.code);
     }

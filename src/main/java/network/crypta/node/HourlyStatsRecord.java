@@ -6,11 +6,14 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.math.TrivialRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A record of stats during a single hour */
 public class HourlyStatsRecord {
+  private static final Logger LOG = LoggerFactory.getLogger(HourlyStatsRecord.class);
+
   private static final int N_DISTANCE_GROUPS = 16;
   private final boolean completeHour;
   private boolean finishedReporting;
@@ -105,7 +108,7 @@ public class HourlyStatsRecord {
   }
 
   public void log() {
-    Logger.normal(this, toString());
+    LOG.info(toString());
   }
 
   private static final SimpleDateFormat utcDateTime;

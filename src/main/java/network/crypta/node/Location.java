@@ -1,6 +1,7 @@
 package network.crypta.node;
 
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -8,6 +9,7 @@ import network.crypta.support.Logger;
  *     1.0 (inclusive) is considered a valid location.
  */
 public class Location {
+  private static final Logger LOG = LoggerFactory.getLogger(Location.class);
 
   public static final double LOCATION_INVALID = -1.0;
 
@@ -53,7 +55,7 @@ public class Location {
   public static double distance(double a, double b) {
     if (!isValid(a) || !isValid(b)) {
       String errMsg = "Invalid Location ! a = " + a + " b = " + b + " Please report this bug!";
-      Logger.error(Location.class, errMsg, new Exception("error"));
+      LOG.error(errMsg, new Exception("error"));
       throw new IllegalArgumentException(errMsg);
     }
     return simpleDistance(a, b);

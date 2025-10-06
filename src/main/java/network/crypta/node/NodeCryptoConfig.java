@@ -6,10 +6,11 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks config parameters related to a NodeCrypto. The NodeCrypto may or may not exist. If it
@@ -21,6 +22,8 @@ import network.crypta.support.api.StringCallback;
  * @author toad
  */
 public class NodeCryptoConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeCryptoConfig.class);
+
   /** Port number. -1 = choose a random available port number at activation time. */
   private int portNumber;
 
@@ -110,7 +113,7 @@ public class NodeCryptoConfig {
       portNumber = config.getInt("listenPort");
     } catch (Exception e) {
       // FIXME is this really necessary?
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       System.err.println(e);
       e.printStackTrace();
       portNumber = -1;

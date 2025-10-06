@@ -1,7 +1,8 @@
 package network.crypta.node;
 
-import network.crypta.support.Logger;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Represents an insert.
@@ -9,6 +10,7 @@ import network.crypta.support.TimeUtil;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class InsertTag extends UIDTag {
+  private static final Logger LOG = LoggerFactory.getLogger(InsertTag.class);
 
   final boolean ssk;
 
@@ -61,8 +63,8 @@ public class InsertTag extends UIDTag {
     sb.append(" thrown=").append(handlerThrew);
     sb.append(" : ");
     sb.append(super.toString());
-    if (handlerThrew != null) Logger.error(this, sb.toString(), handlerThrew);
-    else Logger.error(this, sb.toString());
+    if (handlerThrew != null) LOG.error(sb.toString(), handlerThrew);
+    else LOG.error(sb.toString());
   }
 
   @Override

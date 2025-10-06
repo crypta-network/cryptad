@@ -6,16 +6,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class Persister implements Runnable {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(Persister.class);
 
   static {
-    Logger.registerClass(Persister.class);
   }
 
   static final long PERIOD = MINUTES.toMillis(15);
@@ -50,7 +50,7 @@ class Persister implements Runnable {
     try {
       persistThrottle();
     } catch (Throwable t) {
-      Logger.error(this, "Caught in ThrottlePersister: " + t, t);
+      LOG.error("Caught in ThrottlePersister: " + t, t);
       System.err.println("Caught in ThrottlePersister: " + t);
       t.printStackTrace();
       System.err.println("Will restart ThrottlePersister...");
@@ -59,21 +59,21 @@ class Persister implements Runnable {
   }
 
   private void persistThrottle() {
-    if (logMINOR) {
-      Logger.minor(this, "Trying to persist throttles...");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Trying to persist throttles...");
     }
     SimpleFieldSet fs = persistable.persistThrottlesToFieldSet();
     try (FileOutputStream fos = new FileOutputStream(persistTemp)) {
       fs.writeToBigBuffer(fos);
     } catch (FileNotFoundException e) {
-      Logger.error(this, "Could not store throttle data to disk: " + e, e);
+      LOG.error("Could not store throttle data to disk: " + e, e);
     } catch (IOException e) {
       persistTemp.delete();
     }
     try {
       FileUtil.moveTo(persistTemp, persistTarget);
     } catch (Exception e) {
-      Logger.error(this, "Could not move temp file to target: " + e, e);
+      LOG.error("Could not move temp file to target: " + e, e);
     }
   }
 
@@ -88,8 +88,7 @@ class Persister implements Runnable {
         // Ignore
       } catch (IOException e1) {
         if (persistTarget.length() > 0 || persistTemp.length() > 0)
-          Logger.error(
-              this,
+          LOG.error(
               "Could not read "
                   + persistTarget
                   + " ("
@@ -107,7 +106,7 @@ class Persister implements Runnable {
   public void start() {
     synchronized (this) {
       if (started) {
-        Logger.error(this, "Already started: " + this, new Exception("debug"));
+        LOG.error("Already started: " + this, new Exception("debug"));
         return;
       }
       started = true;

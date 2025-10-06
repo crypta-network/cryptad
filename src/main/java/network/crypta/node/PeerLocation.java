@@ -2,9 +2,11 @@ package network.crypta.node;
 
 import java.util.Arrays;
 import java.util.Set;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PeerLocation {
+  private static final Logger LOG = LoggerFactory.getLogger(PeerLocation.class);
 
   /** Current location in the keyspace, or -1 if it is unknown */
   private double currentLocation;
@@ -64,10 +66,8 @@ public class PeerLocation {
 
   boolean updateLocation(double newLoc, double[] newLocs) {
     if (!Location.isValid(newLoc)) {
-      Logger.error(
-          this,
-          "Invalid location update for " + this + " (" + newLoc + ')',
-          new Exception("error"));
+      LOG.error(
+          "Invalid location update for " + this + " (" + newLoc + ')', new Exception("error"));
       // Ignore it
       return false;
     }
@@ -76,8 +76,7 @@ public class PeerLocation {
     for (int i = 0; i < newLocs.length; i++) {
       final double loc = newLocs[i];
       if (!Location.isValid(loc)) {
-        Logger.error(
-            this, "Invalid location update for " + this + " (" + loc + ")", new Exception("error"));
+        LOG.error("Invalid location update for " + this + " (" + loc + ")", new Exception("error"));
         // Ignore it
         return false;
       }

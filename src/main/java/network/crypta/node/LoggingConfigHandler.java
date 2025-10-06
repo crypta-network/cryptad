@@ -34,9 +34,12 @@ import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
 import network.crypta.support.api.StringCallback;
 import org.slf4j.ILoggerFactory;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class LoggingConfigHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(LoggingConfigHandler.class);
+
   private class PriorityCallback extends StringCallback implements EnumerableOptionCallback {
     @Override
     public String get() {
