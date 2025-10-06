@@ -7,10 +7,9 @@ import java.util.Iterator;
 import java.util.Map;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.transport.ip.IPUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Combine the detected IP address with the NodeCrypto's port number and the port numbers we have on
@@ -19,6 +18,7 @@ import network.crypta.support.transport.ip.IPUtil;
  * @author toad
  */
 public class NodeIPPortDetector {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeIPPortDetector.class);
 
   /** The Node object */
   final Node node;
@@ -35,16 +35,7 @@ public class NodeIPPortDetector {
   /** Last detected IP address */
   Peer[] lastPeers;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   NodeIPPortDetector(Node node, NodeIPDetector ipDetector, NodeCrypto crypto, boolean enableARKs) {
@@ -76,12 +67,12 @@ public class NodeIPPortDetector {
    * for each connection, we're stuffed, and we tell the user).
    */
   Peer[] detectPrimaryPeers() {
-    final boolean logMINOR = NodeIPPortDetector.logMINOR;
+    final boolean logMINOR = LOG.isDebugEnabled();
     ArrayList<Peer> addresses = new ArrayList<>();
     FreenetInetAddress[] addrs = detectPrimaryIPAddress();
     for (FreenetInetAddress addr : addrs) {
       addresses.add(new Peer(addr, crypto.getPortNumber()));
-      if (logMINOR) Logger.minor(this, "Adding " + addr);
+      if (LOG.isDebugEnabled()) LOG.debug("Adding " + addr);
     }
     // Now try to get the rewritten port number from our peers.
     // Only considering those within this crypto port, this time.
@@ -96,7 +87,7 @@ public class NodeIPPortDetector {
         if ((p == null) || p.isNull()) continue;
         // DNSRequester doesn't deal with our own node
         if (!IPUtil.isValidAddress(p.getAddress(true), false)) continue;
-        if (logMINOR) Logger.minor(this, "Peer " + pn.getPeer() + " thinks we are " + p);
+        if (LOG.isDebugEnabled()) LOG.debug("Peer " + pn.getPeer() + " thinks we are " + p);
         if (countsByPeer.containsKey(p)) {
           countsByPeer.put(p, countsByPeer.get(p) + 1);
         } else {
@@ -106,7 +97,7 @@ public class NodeIPPortDetector {
       if (countsByPeer.size() == 1) {
         Iterator<Peer> it = countsByPeer.keySet().iterator();
         Peer p = (it.next());
-        Logger.minor(this, "Everyone agrees we are " + p);
+        LOG.debug("Everyone agrees we are " + p);
         if (!addresses.contains(p)) {
           addresses.add(p);
         }
@@ -119,7 +110,7 @@ public class NodeIPPortDetector {
         for (Map.Entry<Peer, Integer> entry : countsByPeer.entrySet()) {
           Peer cur = entry.getKey();
           int curPop = entry.getValue();
-          Logger.normal(this, "Detected peer: " + cur + " popularity " + curPop);
+          LOG.info("Detected peer: " + cur + " popularity " + curPop);
           if (curPop >= bestPopularity) {
             secondBestPopularity = bestPopularity;
             bestPopularity = curPop;
@@ -130,18 +121,16 @@ public class NodeIPPortDetector {
         if (best != null) {
           if ((bestPopularity > 1) || (addrs.length == 0)) {
             if (!addresses.contains(best)) {
-              Logger.normal(this, "Adding best peer " + best + " (" + bestPopularity + ')');
+              LOG.info("Adding best peer " + best + " (" + bestPopularity + ')');
               addresses.add(best);
             }
             if ((secondBest != null) && (secondBestPopularity > 1)) {
               if (!addresses.contains(secondBest)) {
-                Logger.normal(
-                    this, "Adding second best peer " + secondBest + " (" + secondBest + ')');
+                LOG.info("Adding second best peer " + secondBest + " (" + secondBest + ')');
                 addresses.add(secondBest);
               }
               if (best.getAddress().equals(secondBest.getAddress()) && bestPopularity == 1) {
-                Logger.error(
-                    this, "Hrrrm, maybe this is a symmetric NAT? Expect trouble connecting!");
+                LOG.error("Hrrrm, maybe this is a symmetric NAT? Expect trouble connecting!");
                 System.err.println(
                     "Hrrrm, maybe this is a symmetric NAT? Expect trouble connecting!");
 
@@ -156,9 +145,8 @@ public class NodeIPPortDetector {
       }
     }
     lastPeers = addresses.toArray(new Peer[0]);
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Returning for port " + crypto.getPortNumber() + " : " + Arrays.toString(lastPeers));
     return lastPeers;
   }
