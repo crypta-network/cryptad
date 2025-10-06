@@ -24,9 +24,6 @@ import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.EncryptedRandomAccessBufferType;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.Executor;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.Bucket;
@@ -34,6 +31,8 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Temporary Bucket Factory
@@ -49,6 +48,8 @@ import network.crypta.support.api.RandomAccessBucket;
  * (@see RAMBUCKET_MAX_AGE) - if their size is over RAMBUCKET_CONVERSION_FACTOR*maxRAMBucketSize
  */
 public class TempBucketFactory implements BucketFactory, LockableRandomAccessBufferFactory {
+  private static final Logger LOG = LoggerFactory.getLogger(TempBucketFactory.class);
+
   public static final long defaultIncrement = 4096;
   public static final float DEFAULT_FACTOR = 1.25F;
 
@@ -123,16 +124,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   static final boolean TRACE_BUCKET_LEAKS = false;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private interface Migratable {
@@ -185,7 +177,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       // Register cleaner for safety net (will be cleaned up when free() is called properly)
       this.cleanable = resourceCleaner.register(this, new TempBucketCleanup(this.currentBucket));
 
-      if (logMINOR) Logger.minor(TempBucket.class, "Created " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
     }
 
     private synchronized void closeInputStreams(boolean forFree) {
@@ -196,7 +188,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
           try {
             is.close();
           } catch (IOException e) {
-            Logger.error(this, "Caught " + e + " closing " + is);
+            LOG.error("Caught " + e + " closing " + is);
           }
         } else {
           try {
@@ -243,7 +235,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
         currentBucket = tempFB;
         // We need streams to be reset to point to the new bucket
       }
-      if (logMINOR) Logger.minor(this, "We have migrated " + toMigrate.hashCode());
+      if (LOG.isDebugEnabled()) LOG.debug("We have migrated " + toMigrate.hashCode());
 
       synchronized (ramBucketQueue) {
         ramBucketQueue.remove(getReference());
@@ -273,7 +265,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       // FIXME we should migrate to disk rather than throwing.
       hasWritten = true;
       OutputStream tos = new TempBucketOutputStream(++osIndex);
-      if (logMINOR) Logger.minor(this, "Got " + tos + " for " + this, new Exception());
+      if (LOG.isDebugEnabled()) LOG.debug("Got " + tos + " for " + this, new Exception());
       return tos;
     }
 
@@ -301,18 +293,15 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
           } else if ((futureSize - currentSize) + bytesInUse >= maxRamUsed) shouldMigrate = true;
 
           if (shouldMigrate) {
-            if (logMINOR) {
+            if (LOG.isDebugEnabled()) {
               if (isOversized)
-                Logger.minor(
-                    this,
+                LOG.debug(
                     "The bucket "
                         + TempBucket.this
                         + " is over "
                         + SizeUtil.formatSize(maxRAMBucketSize * RAMBUCKET_CONVERSION_FACTOR)
                         + ": we will force-migrate it to disk.");
-              else
-                Logger.minor(
-                    this, "The bucketpool is full: force-migrate before we go over the limit");
+              else LOG.debug("The bucketpool is full: force-migrate before we go over the limit");
             }
             migrateToDisk();
           }
@@ -391,7 +380,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       if (hasBeenFreed) throw new IOException("Already freed");
       TempBucketInputStream is = new TempBucketInputStream(osIndex);
       tbis.add(is);
-      if (logMINOR) Logger.minor(this, "Got " + is + " for " + this, new Exception());
+      if (LOG.isDebugEnabled()) LOG.debug("Got " + is + " for " + this, new Exception());
       return is;
     }
 
@@ -747,7 +736,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                 cleanBucketQueue(now, false);
               } catch (InsufficientDiskSpaceException e) {
                 if (!saidSo) {
-                  Logger.error(this, "Insufficient disk space to migrate in-RAM buckets to disk!");
+                  LOG.error("Insufficient disk space to migrate in-RAM buckets to disk!");
                   System.err.println("Out of disk space!");
                   saidSo = true;
                 }
@@ -770,7 +759,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                 if (!cleanBucketQueue(System.currentTimeMillis(), true)) return;
               } catch (InsufficientDiskSpaceException e) {
                 if (!saidSo) {
-                  Logger.error(this, "Insufficient disk space to migrate in-RAM buckets to disk!");
+                  LOG.error("Insufficient disk space to migrate in-RAM buckets to disk!");
                   System.err.println("Out of disk space!");
                   saidSo = true;
                 }
@@ -802,7 +791,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     boolean shouldContinue = true;
     // create a new list to avoid race-conditions
     Queue<Migratable> toMigrate = null;
-    if (logMINOR) Logger.minor(this, "Starting cleanBucketQueue");
+    if (LOG.isDebugEnabled()) LOG.debug("Starting cleanBucketQueue");
     do {
       synchronized (ramBucketQueue) {
         final WeakReference<Migratable> tmpBucketRef = ramBucketQueue.peek();
@@ -817,9 +806,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
           // Don't access the buckets inside the lock, will deadlock.
           if (tmpBucket.creationTime() + RAMBUCKET_MAX_AGE > now && !force) shouldContinue = false;
           else {
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "The bucket "
                       + tmpBucket
                       + " is "
@@ -836,16 +824,15 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
     if (toMigrate == null) return false;
     if (!toMigrate.isEmpty()) {
-      if (logMINOR)
-        Logger.minor(this, "We are going to migrate " + toMigrate.size() + " RAMBuckets");
+      if (LOG.isDebugEnabled())
+        LOG.debug("We are going to migrate " + toMigrate.size() + " RAMBuckets");
       for (Migratable tmpBucket : toMigrate) {
         try {
           tmpBucket.migrateToDisk();
         } catch (InsufficientDiskSpaceException e) {
           throw e;
         } catch (IOException e) {
-          Logger.error(
-              tmpBucket, "An IOE occured while migrating long-lived buckets:" + e.getMessage(), e);
+          LOG.error("An IOE occured while migrating long-lived buckets:" + e.getMessage(), e);
         }
       }
       return true;
@@ -953,7 +940,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     @Override
     public void free() {
       if (!super.innerFree()) return;
-      if (logMINOR) Logger.minor(this, "Freed " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Freed " + this, new Exception("debug"));
       if (original != null) {
         // Tell the TempBucket to prevent log spam. Don't call free().
         original.onFreed();
@@ -1069,7 +1056,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
         try {
           ret = new EncryptedRandomAccessBuffer(CRYPT_TYPE, ret, secret, true);
         } catch (GeneralSecurityException e) {
-          Logger.error(this, "Cannot create encrypted tempfile: " + e, e);
+          LOG.error("Cannot create encrypted tempfile: " + e, e);
         }
       }
       return ret;

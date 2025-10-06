@@ -9,11 +9,10 @@ import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.CHKBlock;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handles persistent temp files. These are used for e.g. persistent downloads. These are temporary
@@ -32,6 +31,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * recreated on every startup, and persistent Bucket's register themselves with it.
  */
 public class PersistentTempBucketFactory implements BucketFactory, PersistentFileTracker {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentTempBucketFactory.class);
 
   /**
    * Original contents of directory. This used to be used to delete any files that we can't account
@@ -65,16 +65,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
 
   static final int BLOB_SIZE = CHKBlock.DATA_LENGTH;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -111,7 +102,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
             });
     for (File f : files) {
       f = FileUtil.getCanonicalFile(f);
-      if (logMINOR) Logger.minor(this, "Found " + f);
+      if (LOG.isDebugEnabled()) LOG.debug("Found " + f);
       originalFiles.add(f);
     }
 
@@ -139,20 +130,20 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
       if (originalFiles == null)
         throw new IllegalStateException("completed Init has already been called!");
       file = FileUtil.getCanonicalFile(file);
-      if (logMINOR) Logger.minor(this, "Preserving " + file, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Preserving " + file, new Exception("debug"));
       if (!originalFiles.remove(file))
-        Logger.error(this, "Preserving " + file + " but it wasn't found!", new Exception("error"));
+        LOG.error("Preserving " + file + " but it wasn't found!", new Exception("error"));
     }
   }
 
   /** Called when boot-up is complete. Deletes any old temp files still unclaimed. */
   public synchronized void completedInit() {
     if (originalFiles == null) {
-      Logger.error(this, "Completed init called twice", new Exception("error"));
+      LOG.error("Completed init called twice", new Exception("error"));
       return;
     }
     for (File f : originalFiles) {
-      if (Logger.shouldLog(LogLevel.MINOR, this)) Logger.minor(this, "Deleting old tempfile " + f);
+      if (LOG.isDebugEnabled()) LOG.debug("Deleting old tempfile " + f);
       f.delete();
     }
     originalFiles = null;
@@ -247,8 +238,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
         try {
           if (bucket.toFree()) bucket.realFree();
         } catch (Throwable t) {
-          Logger.error(
-              this, "Caught " + t + " freeing bucket " + bucket + " after transaction commit", t);
+          LOG.error("Caught " + t + " freeing bucket " + bucket + " after transaction commit", t);
         }
       }
     }

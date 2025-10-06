@@ -9,11 +9,10 @@ import network.crypta.crypt.PCFBMode;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A proxy Bucket which adds: - Encryption with the supplied cipher, and a random, ephemeral key. -
@@ -22,6 +21,7 @@ import network.crypta.support.math.MersenneTwister;
  * <p>CRYPTO WARNING: This uses PCFB with no IV. That means it is only safe if the key is unique!
  */
 public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(PaddedEphemerallyEncryptedBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;
   private final Bucket bucket;
@@ -36,16 +36,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   private boolean readOnly;
   private transient int lastOutputStream;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -178,8 +169,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
         synchronized (PaddedEphemerallyEncryptedBucket.this) {
           if (closed) return;
           if (streamNumber != lastOutputStream) {
-            Logger.normal(
-                this, "Not padding out to length because have been superceded: " + getName());
+            LOG.info("Not padding out to length because have been superceded: " + getName());
             return;
           }
           long finalLength = paddedLength();
@@ -296,9 +286,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
       if (max < 0) throw new Error("Impossible size: " + size + " - min=" + min + ", max=" + max);
       if (size < min) throw new IllegalStateException("???");
       if ((size >= min) && (size <= max)) {
-        if (logMINOR)
-          Logger.minor(
-              PaddedEphemerallyEncryptedBucket.class, "Padded: " + max + " was: " + dataLength);
+        if (LOG.isDebugEnabled()) LOG.debug("Padded: " + max + " was: " + dataLength);
         return max;
       }
       min = max;

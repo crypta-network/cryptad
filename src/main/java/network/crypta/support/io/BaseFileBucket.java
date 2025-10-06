@@ -15,28 +15,17 @@ import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Vector;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 public abstract class BaseFileBucket implements RandomAccessBucket {
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(BaseFileBucket.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   protected long fileRestartCounter;
@@ -80,12 +69,11 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       file.deleteOnExit();
     } catch (NullPointerException e) {
       if (WrapperManager.hasShutdownHookBeenTriggered()) {
-        Logger.normal(
-            this,
+        LOG.info(
             "NullPointerException setting deleteOnExit while shutting down - buggy JVM code: " + e,
             e);
       } else {
-        Logger.error(this, "Caught " + e + " doing deleteOnExit() for " + file + " - JVM bug ????");
+        LOG.error("Caught " + e + " doing deleteOnExit() for " + file + " - JVM bug ????");
       }
     }
   }
@@ -109,8 +97,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       }
 
       if (streams != null && !streams.isEmpty())
-        Logger.error(
-            this,
+        LOG.error(
             "Streams open on " + this + " while opening an output stream!: " + streams,
             new Exception("debug"));
 
@@ -120,7 +107,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
       FileBucketOutputStream os = new FileBucketOutputStream(tempfile, streamNumber);
 
-      if (logDEBUG) Logger.debug(this, "Creating " + os, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Creating " + os, new Exception("debug"));
 
       addStream(os);
       return os;
@@ -185,10 +172,8 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     protected FileBucketOutputStream(File tempfile, long restartCount)
         throws FileNotFoundException {
       super(tempfile, false);
-      if (logMINOR)
-        Logger.minor(
-            FileBucketOutputStream.class,
-            "Writing to " + tempfile + " for " + getFile() + " : " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Writing to " + tempfile + " for " + getFile() + " : " + this);
       this.tempfile = tempfile;
       this.restartCount = restartCount;
       closed = false;
@@ -237,11 +222,11 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       }
       boolean renaming = !tempFileAlreadyExists();
       removeStream(this);
-      if (logMINOR) Logger.minor(this, "Closing " + BaseFileBucket.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Closing " + BaseFileBucket.this);
       try {
         super.close();
       } catch (IOException e) {
-        if (logMINOR) Logger.minor(this, "Failed closing " + BaseFileBucket.this + " : " + e, e);
+        if (LOG.isDebugEnabled()) LOG.debug("Failed closing " + BaseFileBucket.this + " : " + e, e);
         if (renaming) tempfile.delete();
         throw e;
       }
@@ -250,7 +235,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
         // even if createFileOnly() is true.
         if (!FileUtil.moveTo(tempfile, file)) {
           tempfile.delete();
-          if (logMINOR) Logger.minor(this, "Deleted, cannot rename file for " + this);
+          if (LOG.isDebugEnabled()) LOG.debug("Deleted, cannot rename file for " + this);
           throw new IOException("Cannot rename file");
         }
       }
@@ -290,12 +275,12 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     if (freed) throw new IOException("File already freed: " + this);
     File file = getFile();
     if (!file.exists()) {
-      Logger.normal(this, "File does not exist: " + file + " for " + this);
+      LOG.info("File does not exist: " + file + " for " + this);
       return new NullInputStream();
     } else {
       FileBucketInputStream is = new FileBucketInputStream(file);
       addStream(is);
-      if (logDEBUG) Logger.debug(this, "Creating " + is, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Creating " + is, new Exception("debug"));
       return is;
     }
   }
@@ -322,8 +307,8 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
    * must still be valid when calling it.
    */
   protected synchronized void deleteFile() {
-    if (logMINOR)
-      Logger.minor(this, "Deleting " + getFile() + " for " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Deleting " + getFile() + " for " + this, new Exception("debug"));
     getFile().delete();
   }
 
@@ -418,7 +403,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
   public void free(boolean forceFree) {
     Closeable[] toClose;
-    if (logMINOR) Logger.minor(this, "Freeing " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing " + this, new Exception("debug"));
     synchronized (this) {
       if (freed) return;
       freed = true;
@@ -427,27 +412,25 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     }
 
     if (toClose != null) {
-      Logger.error(
-          this,
+      LOG.error(
           "Streams open free()ing " + this + " : " + Arrays.toString(toClose),
           new Exception("debug"));
       for (Closeable strm : toClose) {
         try {
           strm.close();
         } catch (IOException e) {
-          Logger.error(this, "Caught closing stream in free(): " + e, e);
+          LOG.error("Caught closing stream in free(): " + e, e);
         } catch (Throwable t) {
-          Logger.error(this, "Caught closing stream in free(): " + t, t);
+          LOG.error("Caught closing stream in free(): " + t, t);
         }
       }
     }
 
     File file = getFile();
     if ((deleteOnFree() || forceFree) && file.exists()) {
-      Logger.debug(this, "Deleting bucket " + file, new Exception("debug"));
+      LOG.debug("Deleting bucket " + file, new Exception("debug"));
       deleteFile();
-      if (file.exists())
-        Logger.error(this, "Delete failed on bucket " + file, new Exception("debug"));
+      if (file.exists()) LOG.error("Delete failed on bucket " + file, new Exception("debug"));
     }
   }
 
