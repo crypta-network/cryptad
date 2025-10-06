@@ -2,8 +2,10 @@ package network.crypta.node;
 
 import java.lang.ref.WeakReference;
 import network.crypta.keys.NodeCHK;
-import network.crypta.support.Logger;
+
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tag for a request.
@@ -11,11 +13,10 @@ import network.crypta.support.TimeUtil;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class RequestTag extends UIDTag {
-
-  private static volatile boolean logMINOR;
+    private static final Logger LOG = LoggerFactory.getLogger(RequestTag.class);
 
   static {
-    Logger.registerClass(RequestTag.class);
+
   }
 
   enum START {
@@ -85,8 +86,7 @@ public class RequestTag extends UIDTag {
       handlerTransferring = false;
       senderFinished = this.senderTransferring;
       if (senderFinished) {
-        Logger.error(
-            this, "Nobody called senderTransferEnds() for " + this, new Exception("debug"));
+        LOG.error("Nobody called senderTransferEnds() for " + this, new Exception("debug"));
         k = key;
         s = sender.get();
       }
@@ -152,8 +152,8 @@ public class RequestTag extends UIDTag {
     }
     sb.append(" : ");
     sb.append(super.toString());
-    if (handlerThrew != null) Logger.error(this, sb.toString(), handlerThrew);
-    else Logger.error(this, sb.toString());
+    if (handlerThrew != null) LOG.error(sb.toString(), handlerThrew);
+    else LOG.error(sb.toString());
   }
 
   public synchronized void handlerDisconnected() {
@@ -199,9 +199,7 @@ public class RequestTag extends UIDTag {
 
   public synchronized void waitingForOpennet(PeerNode next) {
     if (waitingForOpennet != null)
-      Logger.error(
-          this,
-          "Have already waited for opennet: " + waitingForOpennet.get() + " on " + this,
+      LOG.error("Have already waited for opennet: " + waitingForOpennet.get() + " on " + this,
           new Exception("error"));
     this.waitingForOpennet = next.myRef;
   }
@@ -210,13 +208,12 @@ public class RequestTag extends UIDTag {
     boolean noRecordUnlock;
     synchronized (this) {
       if (waitingForOpennet == null) {
-        if (logMINOR) Logger.minor(this, "Not waiting for opennet!");
+        if (LOG.isDebugEnabled()) LOG.debug("Not waiting for opennet!");
         return;
       }
       PeerNode got = waitingForOpennet.get();
       if (got != next) {
-        Logger.error(
-            this, "Finished waiting for opennet on " + next + " but was waiting for " + got);
+        LOG.error("Finished waiting for opennet on " + next + " but was waiting for " + got);
       }
       waitingForOpennet = null;
       if (!mustUnlock()) return;

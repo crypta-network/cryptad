@@ -1,22 +1,15 @@
 package network.crypta.node;
 
 import network.crypta.io.comm.AsyncMessageCallback;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** If the send fails, queue the given message for the given node. Otherwise do nothing. */
 public class UnqueueMessageOnAckCallback implements AsyncMessageCallback {
-  private static volatile boolean logMINOR;
+    private static final Logger LOG = LoggerFactory.getLogger(UnqueueMessageOnAckCallback.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
+    
   }
 
   @Override
@@ -30,8 +23,8 @@ public class UnqueueMessageOnAckCallback implements AsyncMessageCallback {
   public UnqueueMessageOnAckCallback(DarknetPeerNode pn, int extraPeerDataFileNumber) {
     this.dest = pn;
     this.extraPeerDataFileNumber = extraPeerDataFileNumber;
-    if (logMINOR) {
-      Logger.minor(this, "Created " + this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Created " + this);
     }
   }
 

@@ -5,9 +5,11 @@ import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.keys.ClientKey;
-import network.crypta.support.Logger;
+
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Callback interface for a low level insert, which is immediately sendable. These should be
@@ -15,6 +17,7 @@ import network.crypta.support.io.ResumeFailedException;
  * to send, create a thread, send the request, and call the callback below.
  */
 public abstract class SendableInsert extends SendableRequest {
+    private static final Logger LOG = LoggerFactory.getLogger(SendableInsert.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -32,7 +35,7 @@ public abstract class SendableInsert extends SendableRequest {
   @Override
   public void internalError(
       Throwable t, RequestScheduler sched, ClientContext context, boolean persistent) {
-    Logger.error(this, "Internal error on " + this + " : " + t, t);
+    LOG.error("Internal error on " + this + " : " + t, t);
     sched.callFailure(
         this,
         new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR, t.getMessage(), t),

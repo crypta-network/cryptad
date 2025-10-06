@@ -2,12 +2,14 @@ package network.crypta.node;
 
 import java.util.Arrays;
 import network.crypta.io.comm.AsyncMessageCallback;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+
 import network.crypta.support.SparseBitmap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MessageWrapper {
+    private static final Logger LOG = LoggerFactory.getLogger(MessageWrapper.class);
+
   private final MessageItem item;
   private final boolean isShortMessage;
   private final int messageID;
@@ -20,18 +22,8 @@ public class MessageWrapper {
   private final SparseBitmap sent = new SparseBitmap();
   private final SparseBitmap everSent = new SparseBitmap();
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
+    
   }
 
   public MessageWrapper(MessageItem item, int messageID) {
@@ -66,10 +58,8 @@ public class MessageWrapper {
             }
           }
           alreadyAcked = true;
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "Total round trip time for message "
+          if (LOG.isDebugEnabled())
+            LOG.debug("Total round trip time for message "
                     + messageID
                     + " : "
                     + item
@@ -95,7 +85,7 @@ public class MessageWrapper {
    * @return The number of bytes lost
    */
   public int lost(int start, int end) {
-    if (logDEBUG) Logger.debug(this, "Lost from " + start + " to " + end + " on " + this.messageID);
+    if (LOG.isDebugEnabled()) LOG.debug("Lost from " + start + " to " + end + " on " + this.messageID);
     int size = end - start + 1;
     synchronized (sent) {
       synchronized (acks) {
@@ -109,9 +99,7 @@ public class MessageWrapper {
           int toAddStart = Math.max(start, range[0]);
           int toAddEnd = Math.min(end, range[1]);
           if (toAddStart == toAddEnd || toAddStart > toAddEnd) continue;
-          Logger.warning(
-              this,
-              "Lost range ("
+          LOG.warn("Lost range ("
                   + start
                   + "->"
                   + end
@@ -217,10 +205,8 @@ public class MessageWrapper {
       fragmentData = Arrays.copyOfRange(item.buf, start, start + dataLength);
 
       sent.add(start, start + dataLength - 1);
-      if (logDEBUG)
-        Logger.debug(
-            this,
-            "Using range "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Using range "
                 + start
                 + " to "
                 + (start + dataLength - 1)
