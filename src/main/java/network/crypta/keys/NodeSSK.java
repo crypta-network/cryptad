@@ -12,7 +12,8 @@ import network.crypta.store.BlockMetadata;
 import network.crypta.store.GetPubkey;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An SSK is a Signed Subspace Key. { pubkey, cryptokey, filename } -> document, basically. To
@@ -22,6 +23,7 @@ import network.crypta.support.Logger;
  * filename.
  */
 public class NodeSSK extends Key {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeSSK.class);
 
   /** Crypto algorithm */
   final byte cryptoAlgorithm;
@@ -168,7 +170,7 @@ public class NodeSSK extends Key {
         if (Arrays.equals(pubKeyHash, newPubKeyHash)) {
           if (pubKey != null) {
             // same hash, yet different keys!
-            Logger.error(this, "Found SHA-256 collision or something... WTF?");
+            LOG.error("Found SHA-256 collision or something... WTF?");
             throw new SSKVerifyException(
                 "Invalid new pubkey: " + pubKey2 + " old pubkey: " + pubKey);
           }
@@ -233,7 +235,7 @@ public class NodeSSK extends Key {
 
   public static byte[] routingKeyFromFullKey(byte[] keyBuf) {
     if (keyBuf.length != FULL_KEY_LENGTH) {
-      Logger.error(NodeSSK.class, "routingKeyFromFullKey() on buffer length " + keyBuf.length);
+      LOG.error("routingKeyFromFullKey() on buffer length " + keyBuf.length);
     }
     byte[] encryptedHashedDocname = Arrays.copyOfRange(keyBuf, 2, 2 + E_H_DOCNAME_SIZE);
     byte[] pubKeyHash =

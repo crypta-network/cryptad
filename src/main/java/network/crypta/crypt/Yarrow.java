@@ -22,9 +22,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An implementation of the Yarrow PRNG in Java.
@@ -49,18 +48,11 @@ import network.crypta.support.Logger.LogLevel;
  * @author Scott G. Miller <scgmille@indiana.edu>
  */
 public class Yarrow extends RandomSource implements PersistentRandomSource {
+  private static final Logger LOG = LoggerFactory.getLogger(Yarrow.class);
 
   @Serial private static final long serialVersionUID = -1;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /** Security parameters */
@@ -110,7 +102,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       reseed_init(digest);
       generator_init(cipher);
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(this, "Could not init pools trying to getInstance(" + digest + "): " + e, e);
+      LOG.error("Could not init pools trying to getInstance(" + digest + "): " + e, e);
       throw new RuntimeException("Cannot initialize Yarrow!: " + e, e);
     }
 
@@ -146,7 +138,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
           dis.readFully(buf);
           consumeBytes(buf);
         } catch (Throwable t) {
-          Logger.normal(this, "Can't read /dev/hwrng even though exists and is readable: " + t, t);
+          LOG.info("Can't read /dev/hwrng even though exists and is readable: " + t, t);
         }
       }
 
@@ -158,7 +150,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
         dis.readFully(buf);
         consumeBytes(buf);
       } catch (Throwable t) {
-        Logger.normal(this, "Can't read /dev/urandom: " + t, t);
+        LOG.info("Can't read /dev/urandom: " + t, t);
         // We can't read it; let's skip /dev/random and seed from SecureRandom.generateSeed()
         canBlock = true;
       }
@@ -171,7 +163,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
           dis.readFully(buf);
           consumeBytes(buf);
         } catch (Throwable t) {
-          Logger.normal(this, "Can't read /dev/random: " + t, t);
+          LOG.info("Can't read /dev/random: " + t, t);
         }
       }
     } else
@@ -235,7 +227,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     } catch (EOFException f) {
       // Okay.
     } catch (IOException e) {
-      Logger.error(this, "IOE trying to read the seedfile from disk : " + e.getMessage());
+      LOG.error("IOE trying to read the seedfile from disk : " + e.getMessage());
     }
     fast_pool_reseed();
   }
@@ -268,7 +260,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 
       dos.flush();
     } catch (IOException e) {
-      Logger.error(this, "IOE while saving the seed file! : " + e.getMessage());
+      LOG.error("IOE while saving the seed file! : " + e.getMessage());
     }
   }
 
@@ -468,7 +460,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
             for (Map.Entry<EntropySource, int[]> e : entropySeen.entrySet()) {
               EntropySource key = e.getKey();
               int[] v = e.getValue();
-              if (DEBUG) Logger.normal(this, "Key: <" + key + "> " + v);
+              if (DEBUG) LOG.info("Key: <" + key + "> " + v);
               if (v[0] > SLOW_THRESHOLD) {
                 kc++;
                 if (kc >= SLOW_K) {
@@ -489,9 +481,9 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     if (performedPoolReseed && (seedfile != null)) {
       // Dont do this while synchronized on 'this' since
       // opening a file seems to be suprisingly slow on windows
-      if (logMINOR) Logger.minor(this, "Writing seedfile");
+      if (LOG.isDebugEnabled()) LOG.debug("Writing seedfile");
       write_seed(seedfile);
-      if (logMINOR) Logger.minor(this, "Written seedfile");
+      if (LOG.isDebugEnabled()) LOG.debug("Written seedfile");
     }
 
     return actualEntropy;
@@ -576,7 +568,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     if (DEBUG) {
       long endTime = System.currentTimeMillis();
       if (endTime - startTime > 5000)
-        Logger.normal(this, "Fast pool reseed took " + (endTime - startTime) + "ms");
+        LOG.info("Fast pool reseed took " + (endTime - startTime) + "ms");
     }
   }
 

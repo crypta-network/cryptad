@@ -8,19 +8,19 @@ import network.crypta.crypt.Global;
 import network.crypta.crypt.SHA256;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
 import org.bouncycastle.crypto.params.DSAPublicKeyParameters;
 import org.bouncycastle.crypto.signers.DSASigner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * SSKBlock. Contains a full fetched key. Can do a node-level verification. Can decode original data
  * when fed a ClientSSK.
  */
 public class SSKBlock implements KeyBlock {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SSKBlock.class);
 
   static {
-    Logger.registerClass(SSKBlock.class);
   }
 
   // how much of the headers we compare in order to consider two
@@ -137,7 +137,7 @@ public class SSKBlock implements KeyBlock {
               + SIG_R_LENGTH
               + SIG_S_LENGTH);
     // Compute the hash on the data
-    if (!dontVerify || logMINOR) { // force verify on log minor
+    if (!dontVerify || LOG.isDebugEnabled()) { // force verify on debug
       byte[] bufR = new byte[SIG_R_LENGTH];
       byte[] bufS = new byte[SIG_S_LENGTH];
 
@@ -169,7 +169,7 @@ public class SSKBlock implements KeyBlock {
       // @see comments in Global before touching it
       if (!(dsa.verifySignature(Global.truncateHash(overallHash), r, s)
           || dsa.verifySignature(overallHash, r, s))) {
-        if (dontVerify) Logger.error(this, "DSA verification failed with dontVerify!!!!");
+        if (dontVerify) LOG.error("DSA verification failed with dontVerify!!!!");
         throw new SSKVerifyException("Signature verification failed for node-level SSK");
       }
     } // x isn't verified otherwise so no need to += SIG_R_LENGTH + SIG_S_LENGTH

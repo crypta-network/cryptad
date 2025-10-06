@@ -5,14 +5,16 @@ import java.util.Arrays;
 import network.crypta.crypt.PCFBMode;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClientSSKBlock implements ClientKeyBlock {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientSSKBlock.class);
 
   static final int DATA_DECRYPT_KEY_LENGTH = 32;
 
@@ -56,8 +58,7 @@ public class ClientSSKBlock implements ClientKeyBlock {
         block.headers, block.headersOffset, decryptedHeaders, 0, SSKBlock.ENCRYPTED_HEADERS_LENGTH);
     Rijndael aes;
     try {
-      Logger.minor(
-          this, "cryptoAlgorithm=" + key.cryptoAlgorithm + " for " + getClientKey().getURI());
+      LOG.debug("cryptoAlgorithm=" + key.cryptoAlgorithm + " for " + getClientKey().getURI());
       aes = new Rijndael(256, 256);
     } catch (UnsupportedCipherException e) {
       throw new Error(e);

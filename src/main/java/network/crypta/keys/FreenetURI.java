@@ -24,13 +24,12 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.support.Base64;
 import network.crypta.support.Fields;
 import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Note that the metadata pairs below are not presently supported. They are supported by the old
@@ -69,22 +68,12 @@ import network.crypta.support.io.FileUtil;
  * restarting downloads or losing uploads.
  */
 public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(FreenetURI.class);
 
   /** For Serializable. */
   @Serial private static final long serialVersionUID = 1L;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private final String keyType, docName;
@@ -181,7 +170,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       extra = uri.extra.clone();
     } else extra = null;
     this.suggestedEdition = uri.suggestedEdition;
-    if (logDEBUG) Logger.debug(this, "Copied: " + this + " from " + uri, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Copied: " + this + " from " + uri, new Exception("debug"));
   }
 
   /**
@@ -235,7 +224,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       throw new IllegalArgumentException("Bad URI: Crypto key should be 32 bytes");
     this.extra = extra2;
     this.suggestedEdition = -1;
-    if (logDEBUG) Logger.minor(this, "Created from components: " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Created from components: " + this, new Exception("debug"));
   }
 
   public FreenetURI(
@@ -258,8 +247,8 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       throw new IllegalArgumentException("Bad URI: Crypto key should be 32 bytes");
     this.extra = extra2;
     this.suggestedEdition = suggestedEdition;
-    if (logDEBUG)
-      Logger.minor(this, "Created from components (B): " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Created from components (B): " + this, new Exception("debug"));
   }
 
   // Strip http(s):// and (web+|ext+)freenet: prefix
@@ -413,8 +402,8 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     } catch (IllegalBase64Exception e) {
       throw new MalformedURLException("Invalid Base64 quantity: " + e);
     }
-    if (logDEBUG)
-      Logger.debug(this, "Created from parse: " + this + " from " + URI, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Created from parse: " + this + " from " + URI, new Exception("debug"));
   }
 
   /** USK constructor from components. */
@@ -431,8 +420,8 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     this.docName = siteName;
     this.suggestedEdition = suggestedEdition2;
     metaStr = null;
-    if (logDEBUG)
-      Logger.minor(this, "Created from components (USK): " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Created from components (USK): " + this, new Exception("debug"));
   }
 
   protected FreenetURI() {
@@ -642,8 +631,8 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
   public String toString(boolean prefix, boolean pureAscii) {
     if (keyType == null) {
       // Not activated or something...
-      if (logMINOR)
-        Logger.minor(this, "Not activated?? in toString(" + prefix + "," + pureAscii + ")");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Not activated?? in toString(" + prefix + "," + pureAscii + ")");
       return null;
     }
     StringBuilder b;
@@ -724,7 +713,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     int len = dis.readShort();
     byte[] buf = new byte[len];
     dis.readFully(buf);
-    if (logMINOR) Logger.minor(FreenetURI.class, "Read " + len + " bytes for key");
+    if (LOG.isDebugEnabled()) LOG.debug("Read " + len + " bytes for key");
     return fromFullBinaryKey(buf);
   }
 
@@ -797,7 +786,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     if (data.length > Short.MAX_VALUE)
       throw new MalformedURLException("Full key too long: " + data.length + " - " + this);
     dos.writeShort((short) data.length);
-    if (logMINOR) Logger.minor(this, "Written " + data.length + " bytes");
+    if (LOG.isDebugEnabled()) LOG.debug("Written " + data.length + " bytes");
     dos.write(data);
   }
 
@@ -858,11 +847,11 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
    * already have been through FileUtil.sanitize().
    */
   public String getPreferredFilename() {
-    if (logMINOR) Logger.minor(this, "Getting preferred filename for " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Getting preferred filename for " + this);
     ArrayList<String> names = new ArrayList<>();
     if (keyType != null
         && (keyType.equals("KSK") || keyType.equals("SSK") || keyType.equals("USK"))) {
-      if (logMINOR) Logger.minor(this, "Adding docName: " + docName);
+      if (LOG.isDebugEnabled()) LOG.debug("Adding docName: " + docName);
       if (docName != null) {
         names.add(docName);
         if (keyType.equals("USK")) names.add(Long.toString(suggestedEdition));
@@ -874,27 +863,27 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     if (metaStr != null)
       for (String s : metaStr) {
         if (s == null || s.isEmpty()) {
-          if (logMINOR) Logger.minor(this, "metaString \"" + s + "\": was null or empty");
+          if (LOG.isDebugEnabled()) LOG.debug("metaString \"" + s + "\": was null or empty");
           continue;
         }
-        if (logMINOR) Logger.minor(this, "Adding metaString \"" + s + "\"");
+        if (LOG.isDebugEnabled()) LOG.debug("Adding metaString \"" + s + "\"");
         names.add(s);
       }
     StringBuilder out = new StringBuilder();
     for (int i = 0; i < names.size(); i++) {
       String s = names.get(i);
-      if (logMINOR) Logger.minor(this, "name " + i + " = " + s);
+      if (LOG.isDebugEnabled()) LOG.debug("name " + i + " = " + s);
       s = FileUtil.sanitize(s);
-      if (logMINOR) Logger.minor(this, "Sanitized name " + i + " = " + s);
+      if (LOG.isDebugEnabled()) LOG.debug("Sanitized name " + i + " = " + s);
       if (!s.isEmpty()) {
         if (!out.isEmpty()) out.append('-');
         out.append(s);
       }
     }
-    if (logMINOR) Logger.minor(this, "out = " + out);
+    if (LOG.isDebugEnabled()) LOG.debug("out = " + out);
     if (out.isEmpty()) {
       if (routingKey != null) {
-        if (logMINOR) Logger.minor(this, "Returning base64 encoded routing key");
+        if (LOG.isDebugEnabled()) LOG.debug("Returning base64 encoded routing key");
         return Base64.encode(routingKey);
       }
       // FIXME return null in this case, localise in a wrapper.

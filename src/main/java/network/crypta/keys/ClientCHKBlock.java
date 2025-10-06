@@ -20,7 +20,6 @@ import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -28,12 +27,15 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
  *     <p>Client CHKBlock - provides functions for decoding, holds a client-key.
  */
 public class ClientCHKBlock implements ClientKeyBlock {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientCHKBlock.class);
 
   final ClientCHK key;
   private final CHKBlock block;
@@ -196,7 +198,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       SecretKeySpec dummyKey = new SecretKeySpec(new byte[Node.SYMMETRIC_KEY_LENGTH], algo);
       Mac hmac = Mac.getInstance(algo);
       hmac.init(dummyKey); // resolve provider
-      boolean logMINOR = Logger.shouldLog(Logger.LogLevel.MINOR, clazz);
+      boolean logMINOR = LOG.isDebugEnabled();
       if (sun != null) {
         // SunJCE provider is faster (in some configurations)
         try {
@@ -207,26 +209,26 @@ public class ClientCHKBlock implements ClientKeyBlock {
             long time_sun = benchmark(sun_hmac);
             System.out.println(algo + " (" + hmac.getProvider() + "): " + time_def + "ns");
             System.out.println(algo + " (" + sun_hmac.getProvider() + "): " + time_sun + "ns");
-            if (logMINOR) {
-              Logger.minor(clazz, algo + "/" + hmac.getProvider() + ": " + time_def + "ns");
-              Logger.minor(clazz, algo + "/" + sun_hmac.getProvider() + ": " + time_sun + "ns");
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(algo + "/" + hmac.getProvider() + ": " + time_def + "ns");
+              LOG.debug(algo + "/" + sun_hmac.getProvider() + ": " + time_sun + "ns");
             }
             if (time_sun < time_def) {
               hmac = sun_hmac;
             }
           }
         } catch (GeneralSecurityException e) {
-          Logger.warning(clazz, algo + "@" + sun + " benchmark failed", e);
+          LOG.warn(algo + "@" + sun + " benchmark failed", e);
           // ignore
 
         } catch (Throwable e) {
-          Logger.error(clazz, algo + "@" + sun + " benchmark failed", e);
+          LOG.error(algo + "@" + sun + " benchmark failed", e);
           // ignore
         }
       }
       hmacProvider = hmac.getProvider();
       System.out.println(algo + ": using " + hmacProvider);
-      Logger.normal(clazz, algo + ": using " + hmacProvider);
+      LOG.info(algo + ": using " + hmacProvider);
     } catch (GeneralSecurityException e) {
       // impossible
       throw new Error(e);
@@ -476,7 +478,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     else encKey = md256.digest(data);
     if (cryptoAlgorithm == 0) {
       // TODO find all such cases and fix them.
-      Logger.error(ClientCHKBlock.class, "Passed in 0 crypto algorithm", new Exception("warning"));
+      LOG.error("Passed in 0 crypto algorithm", new Exception("warning"));
       cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     }
     if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
@@ -695,7 +697,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     try {
       cipher = new Rijndael(256, 256);
     } catch (UnsupportedCipherException e) {
-      Logger.error(ClientCHKBlock.class, "Impossible: " + e, e);
+      LOG.error("Impossible: " + e, e);
       throw new Error(e);
     }
     cipher.initialize(encKey);
