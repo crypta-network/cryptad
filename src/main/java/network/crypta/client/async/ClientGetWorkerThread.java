@@ -19,9 +19,10 @@ import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.MultiHashInputStream;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.compress.CompressionOutputSizeException;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A thread which does postprocessing of decompressed data, in particular, writing it to its final
@@ -29,6 +30,7 @@ import network.crypta.support.io.FileUtil;
  * null</code> may be passed through the relevant constructor arguments.
  */
 public class ClientGetWorkerThread extends Thread {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGetWorkerThread.class);
 
   private final InputStream input;
   private final String schemeHostAndPort;
@@ -48,10 +50,7 @@ public class ClientGetWorkerThread extends Thread {
   private Throwable error = null;
   private ClientMetadata clientMetadata = null;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(ClientGetWorkerThread.class);
   }
 
   private static int counter;
@@ -130,9 +129,8 @@ public class ClientGetWorkerThread extends Thread {
     this.prefetchHook = prefetchHook;
     this.tagReplacer = tagReplacer;
     this.linkFilterExceptionProvider = linkFilterExceptionProvider;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Created worker thread for "
               + uri
               + " mime type "
@@ -145,9 +143,8 @@ public class ClientGetWorkerThread extends Thread {
 
   @Override
   public void run() {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Starting worker thread for "
               + uri
               + " mime type "
@@ -168,9 +165,8 @@ public class ClientGetWorkerThread extends Thread {
       }
       // Filter the data, if we are supposed to
       if (filterData) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Running content filter... Prefetch hook: "
                   + prefetchHook
                   + " tagReplacer: "
@@ -197,9 +193,8 @@ public class ClientGetWorkerThread extends Thread {
           clientMetadata = new ClientMetadata(detectedMIMEType);
         }
       } else {
-        if (logMINOR)
-          Logger.minor(
-              this, "Ignoring content filter. The final result has not been written. Writing now.");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Ignoring content filter. The final result has not been written. Writing now.");
         FileUtil.copy(currentInput, managedOutput, -1);
       }
       // Dump the rest.
@@ -219,8 +214,7 @@ public class ClientGetWorkerThread extends Thread {
       if (hashes != null) {
         HashResult[] results = hashStream.getResults();
         if (!HashResult.strictEquals(results, hashes)) {
-          Logger.error(
-              this,
+          LOG.error(
               "Hashes failed verification (length read is "
                   + hashStream.getReadBytes()
                   + ") "
@@ -235,8 +229,8 @@ public class ClientGetWorkerThread extends Thread {
       if (!(t instanceof FetchException
           || t instanceof UnsafeContentTypeException
           || t instanceof CompressionOutputSizeException))
-        Logger.error(this, "Exception caught while processing fetch: " + t, t);
-      else if (logMINOR) Logger.minor(this, "Exception caught while processing fetch: " + t, t);
+        LOG.error("Exception caught while processing fetch: " + t, t);
+      else if (LOG.isDebugEnabled()) LOG.debug("Exception caught while processing fetch: " + t, t);
       setError(t);
     }
   }

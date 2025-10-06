@@ -11,7 +11,8 @@ import java.util.Arrays;
 import network.crypta.keys.ClientCHK;
 import network.crypta.keys.NodeCHK;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Contains the keys for a splitfile segment, in an efficient compressed form. These are not
@@ -23,6 +24,7 @@ import network.crypta.support.Logger;
  * @author toad
  */
 public class SplitFileSegmentKeys implements Cloneable, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileSegmentKeys.class);
 
   @Serial private static final long serialVersionUID = 1L;
   public final int dataBlocks;
@@ -187,7 +189,7 @@ public class SplitFileSegmentKeys implements Cloneable, Serializable {
     try {
       return new ClientCHK(routingKey, decryptKey, extra);
     } catch (MalformedURLException e) {
-      Logger.error(this, "Impossible: " + e);
+      LOG.error("Impossible: " + e);
       throw new IllegalStateException(e);
     }
   }

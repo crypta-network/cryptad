@@ -7,10 +7,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.Key;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Helper class to write FBlobs. Threadsafe, allows multiple getters to write to the same
@@ -19,11 +20,9 @@ import network.crypta.support.io.BucketTools;
  * @author saces
  */
 public final class BinaryBlobWriter {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(BinaryBlobWriter.class);
 
   static {
-    Logger.registerClass(BinaryBlobWriter.class);
   }
 
   private final HashSet<Key> _binaryBlobKeysAddedAlready;
@@ -115,7 +114,7 @@ public final class BinaryBlobWriter {
   private void finalizeBucket(boolean mark) throws IOException, BinaryBlobAlreadyClosedException {
     if (_finalized)
       throw new BinaryBlobAlreadyClosedException("Already finalized (closing blob - 2).");
-    if (logMINOR) Logger.minor(this, "Finalizing binary blob " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finalizing binary blob " + this, new Exception("debug"));
     if (!_isSingleBucket) {
       if (!mark && (_buckets.size() == 1)) {
         return;

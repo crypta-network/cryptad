@@ -14,11 +14,10 @@ import network.crypta.keys.KeyDecodeException;
 import network.crypta.keys.TooBigException;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.SendableRequestItem;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.InsufficientDiskSpaceException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fetch a single block file. Used directly for very simple fetches, but also base class for
@@ -29,6 +28,8 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
  */
 public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
     implements ClientGetState, Serializable {
+
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleSingleFileFetcher.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -57,16 +58,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
   final GetCompletionCallback rcb;
   final long token;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   // Translate it, then call the real onFailure
@@ -78,15 +70,15 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
 
   // Real onFailure
   protected void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
-    if (logMINOR) Logger.minor(this, "onFailure( " + e + " , " + forceFatal + ")", e);
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure( " + e + " , " + forceFatal + ")", e);
     if (parent.isCancelled() || cancelled) {
-      if (logMINOR) Logger.minor(this, "Failing: cancelled");
+      if (LOG.isDebugEnabled()) LOG.debug("Failing: cancelled");
       e = new FetchException(FetchExceptionMode.CANCELLED);
       forceFatal = true;
     }
     if (!(e.isFatal() || forceFatal)) {
       if (retry(context)) {
-        if (logMINOR) Logger.minor(this, "Retrying");
+        if (LOG.isDebugEnabled()) LOG.debug("Retrying");
         return;
       }
     }
@@ -145,7 +137,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
               (int) (Math.min(ctx.maxOutputLength, Integer.MAX_VALUE)),
               false);
     } catch (KeyDecodeException e1) {
-      if (logMINOR) Logger.minor(this, "Decode failure: " + e1, e1);
+      if (LOG.isDebugEnabled()) LOG.debug("Decode failure: " + e1, e1);
       onFailure(
           new FetchException(FetchExceptionMode.BLOCK_DECODE_ERROR, e1.getMessage()),
           false,
@@ -158,7 +150,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
       return null;
     } catch (IOException e) {
-      Logger.error(this, "Could not capture data - disk full?: " + e, e);
+      LOG.error("Could not capture data - disk full?: " + e, e);
       onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), false, context);
       return null;
     }

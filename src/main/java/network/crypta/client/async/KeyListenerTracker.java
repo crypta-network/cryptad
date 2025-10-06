@@ -16,9 +16,8 @@ import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SendableGet;
 import network.crypta.support.ByteArrayWrapper;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks exactly which keys we are listening for. This is decoupled from actually requesting them
@@ -33,18 +32,9 @@ import network.crypta.support.Logger.LogLevel;
  * @author toad
  */
 class KeyListenerTracker implements KeySalter {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(KeyListenerTracker.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -139,9 +129,8 @@ class KeyListenerTracker implements KeySalter {
         keyListeners.add(listener);
       }
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Added pending keys to "
               + this
               + " : size now "
@@ -197,9 +186,8 @@ class KeyListenerTracker implements KeySalter {
       listener.onRemove();
     }
     listener.onRemove();
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Removed pending keys from "
               + this
               + " : size now "
@@ -230,12 +218,12 @@ class KeyListenerTracker implements KeySalter {
             KeyListener[] listeners = (KeyListener[]) o;
             KeyListener[] newListeners = new KeyListener[listeners.length - 1];
             int x = 0;
-            String msg = logMINOR ? "" : null;
+            String msg = LOG.isDebugEnabled() ? "" : null;
             for (KeyListener l : listeners) {
               if (l.getHasKeyListener() == hasListener) {
                 ret = true;
                 l.onRemove();
-                if (logMINOR) msg = "%s : %s".formatted(msg, l);
+                if (LOG.isDebugEnabled()) msg = "%s : %s".formatted(msg, l);
                 continue;
               }
               if (x == newListeners.length) {
@@ -253,9 +241,8 @@ class KeyListenerTracker implements KeySalter {
               } else {
                 singleKeyListeners.put(wrapper, newListeners);
               }
-              if (logMINOR)
-                Logger.minor(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "Removed pending keys from "
                         + this
                         + " : size now "
@@ -274,9 +261,8 @@ class KeyListenerTracker implements KeySalter {
           ret = true;
           i.remove();
           listener.onRemove();
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Removed pending keys from "
                     + this
                     + " : size now "
@@ -329,7 +315,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         prio = listener.definitelyWantKey(key, saltedKey, sched.clientContext);
       } catch (Throwable t) {
-        Logger.error(this, "Error in definitelyWantKey callback for %s".formatted(listener), t);
+        LOG.error("Error in definitelyWantKey callback for %s".formatted(listener), t);
         continue;
       }
       if (prio == -1) continue;
@@ -353,7 +339,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         count += listener.countKeys();
       } catch (Throwable t) {
-        Logger.error(this, "Error in countKeys callback for %s".formatted(listener), t);
+        LOG.error("Error in countKeys callback for %s".formatted(listener), t);
       }
     }
     return count;
@@ -370,7 +356,7 @@ class KeyListenerTracker implements KeySalter {
             return true;
           }
         } catch (Throwable t) {
-          Logger.error(this, "Error in definitelyWantKey callback for %s".formatted(listener), t);
+          LOG.error("Error in definitelyWantKey callback for %s".formatted(listener), t);
         }
       }
     }
@@ -398,7 +384,7 @@ class KeyListenerTracker implements KeySalter {
           return true;
         }
       } catch (Throwable t) {
-        Logger.error(this, "Error in probablyWantKey callback for %s".formatted(listener), t);
+        LOG.error("Error in probablyWantKey callback for %s".formatted(listener), t);
       }
     }
     return false;
@@ -406,8 +392,7 @@ class KeyListenerTracker implements KeySalter {
 
   public boolean tripPendingKey(Key key, KeyBlock block, ClientContext context) {
     if ((key instanceof NodeSSK) != isSSKScheduler) {
-      Logger.error(
-          this, "Key " + key + " on scheduler ssk=" + isSSKScheduler, new Exception("debug"));
+      LOG.error("Key " + key + " on scheduler ssk=" + isSSKScheduler, new Exception("debug"));
       return false;
     }
     assert (key instanceof NodeSSK == isSSKScheduler);
@@ -421,13 +406,13 @@ class KeyListenerTracker implements KeySalter {
             ret = true;
           }
         } catch (Throwable t) {
-          Logger.error(this, "Error in handleBlock callback for %s".formatted(listener), t);
+          LOG.error("Error in handleBlock callback for %s".formatted(listener), t);
         }
         if (listener.isEmpty()) {
           try {
             removePendingKeys(listener);
           } catch (Throwable t) {
-            Logger.error(this, "Error while removing %s".formatted(listener), t);
+            LOG.error("Error while removing %s".formatted(listener), t);
           }
         }
       }
@@ -446,7 +431,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         reqs = listener.getRequestsForKey(key, saltedKey, context);
       } catch (Throwable t) {
-        Logger.error(this, "Error in getRequestsForKey callback for %s".formatted(listener), t);
+        LOG.error("Error in getRequestsForKey callback for %s".formatted(listener), t);
         continue;
       }
       if (reqs == null) {
@@ -499,7 +484,7 @@ class KeyListenerTracker implements KeySalter {
             continue;
           }
         } catch (Throwable t) {
-          Logger.error(this, "Error in probablyWantKey callback for %s".formatted(listener), t);
+          LOG.error("Error in probablyWantKey callback for %s".formatted(listener), t);
           continue;
         }
         matches.add(listener);

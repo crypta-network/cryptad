@@ -14,12 +14,11 @@ import network.crypta.keys.BaseClientKey;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableUSK;
 import network.crypta.keys.USK;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Insert a USK. The algorithm is simply to do a thorough search for the latest edition, and insert
@@ -28,19 +27,11 @@ import network.crypta.support.io.ResumeFailedException;
  */
 public class USKInserter
     implements ClientPutState, USKFetcherCallback, PutCompletionCallback, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(USKInserter.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   // Stuff to be passed on to the SingleBlockInserter
@@ -103,7 +94,7 @@ public class USKInserter
    */
   private void scheduleFetcher(ClientContext context) {
     synchronized (this) {
-      if (logMINOR) Logger.minor(this, "scheduling fetcher for " + pubUSK.getURI());
+      if (LOG.isDebugEnabled()) LOG.debug("scheduling fetcher for " + pubUSK.getURI());
       if (finished) return;
       fetcher =
           context.uskManager.getFetcherForInsertDontSchedule(
@@ -114,7 +105,7 @@ public class USKInserter
               context,
               persistent,
               ctx.ignoreUSKDatehints);
-      if (logMINOR) Logger.minor(this, "scheduled: " + fetcher);
+      if (LOG.isDebugEnabled()) LOG.debug("scheduled: " + fetcher);
     }
     fetcher.schedule(context);
   }
@@ -145,7 +136,7 @@ public class USKInserter
             sbi = null;
           }
         } catch (IOException e) {
-          Logger.error(this, "Could not decode: " + e, e);
+          LOG.error("Could not decode: " + e, e);
         }
       }
       if (persistent) {
@@ -167,12 +158,12 @@ public class USKInserter
 
   private void insertSucceeded(ClientContext context, long edition) {
     if (ctx.ignoreUSKDatehints) {
-      if (logMINOR) Logger.minor(this, "Inserted to edition " + edition);
+      if (LOG.isDebugEnabled()) LOG.debug("Inserted to edition " + edition);
       cb.onSuccess(this, context);
       return;
     }
-    if (logMINOR)
-      Logger.minor(this, "Inserted to edition " + edition + " - inserting USK date hints...");
+    if (LOG.isDebugEnabled())
+      LOG.debug("Inserted to edition " + edition + " - inserting USK date hints...");
     USKDateHint hint = USKDateHint.now();
     MultiPutCompletionCallback m =
         new MultiPutCompletionCallback(cb, parent, tokenObject, persistent, true);
@@ -204,12 +195,12 @@ public class USKInserter
                 extraInserts,
                 cryptoAlgorithm,
                 forceCryptoKey);
-        Logger.normal(this, "Inserting " + uri + " with " + sb + " for insert of " + pubUSK);
+        LOG.info("Inserting " + uri + " with " + sb + " for insert of " + pubUSK);
         m.add(sb);
         sb.schedule(context);
         added = true;
       } catch (IOException e) {
-        Logger.error(this, "Unable to insert USK date hints due to disk I/O error: " + e, e);
+        LOG.error("Unable to insert USK date hints due to disk I/O error: " + e, e);
         if (!added) {
           cb.onFailure(
               new InsertException(
@@ -219,7 +210,7 @@ public class USKInserter
           return;
         } // Else try to insert the other hints.
       } catch (InsertException e) {
-        Logger.error(this, "Unable to insert USK date hints due to error: " + e, e);
+        LOG.error("Unable to insert USK date hints due to error: " + e, e);
         if (!added) {
           cb.onFailure(e, this, context);
           return;
@@ -235,7 +226,8 @@ public class USKInserter
     synchronized (this) {
       if (finished) return;
       edition = edNo;
-      if (logMINOR) Logger.minor(this, "scheduling insert for " + pubUSK.getURI() + ' ' + edition);
+      if (LOG.isDebugEnabled())
+        LOG.debug("scheduling insert for " + pubUSK.getURI() + ' ' + edition);
       sbi =
           new SingleBlockInserter(
               parent,
@@ -282,9 +274,9 @@ public class USKInserter
     FreenetURI targetURI = pubUSK.getSSK(edition).getURI();
     FreenetURI realURI = ((SingleBlockInserter) state).getURI(context);
     if (!targetURI.equals(realURI))
-      Logger.error(this, "URI should be " + targetURI + " actually is " + realURI);
+      LOG.error("URI should be " + targetURI + " actually is " + realURI);
     else {
-      if (logMINOR) Logger.minor(this, "URI should be " + targetURI + " actually is " + realURI);
+      if (LOG.isDebugEnabled()) LOG.debug("URI should be " + targetURI + " actually is " + realURI);
       context.uskManager.updateKnownGood(pubUSK, edition, context);
     }
     if (freeData) {
@@ -418,7 +410,7 @@ public class USKInserter
     }
     if (freeData) {
       if (data == null) {
-        Logger.error(this, "data == null in cancel() on " + this, new Exception("error"));
+        LOG.error("data == null in cancel() on " + this, new Exception("error"));
       } else {
         data.free();
         synchronized (this) {
@@ -431,9 +423,8 @@ public class USKInserter
 
   @Override
   public void onFailure(ClientContext context) {
-    if (logMINOR)
-      Logger.minor(
-          this, "Fetcher failed to find the given edition or any later edition on " + this);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Fetcher failed to find the given edition or any later edition on " + this);
     scheduleInsert(context);
   }
 
@@ -443,7 +434,7 @@ public class USKInserter
       fetcher = null;
       if (finished) return;
     }
-    Logger.error(this, "Unexpected onCancelled()", new Exception("error"));
+    LOG.error("Unexpected onCancelled()", new Exception("error"));
     cancel(context);
   }
 
@@ -456,13 +447,13 @@ public class USKInserter
   public void onTransition(
       ClientPutState oldState, ClientPutState newState, ClientContext context) {
     // Shouldn't happen
-    Logger.error(this, "Got onTransition(" + oldState + ',' + newState + ')');
+    LOG.error("Got onTransition(" + oldState + ',' + newState + ')');
   }
 
   @Override
   public void onMetadata(Metadata m, ClientPutState state, ClientContext context) {
     // Shouldn't happen
-    Logger.error(this, "Got onMetadata(" + m + ',' + state + ')');
+    LOG.error("Got onMetadata(" + m + ',' + state + ')');
   }
 
   @Override
@@ -492,7 +483,7 @@ public class USKInserter
 
   @Override
   public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
-    Logger.error(this, "onMetadata on " + this + " from " + state, new Exception("error"));
+    LOG.error("onMetadata on " + this + " from " + state, new Exception("error"));
     meta.free();
   }
 

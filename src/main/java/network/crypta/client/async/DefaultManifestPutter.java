@@ -8,9 +8,10 @@ import network.crypta.client.Metadata;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.ContainerSizeEstimator;
 import network.crypta.support.ContainerSizeEstimator.ContainerSize;
-import network.crypta.support.Logger;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The default manifest putter. It should be choosen if no alternative putter is given. Its also the
@@ -45,12 +46,11 @@ import network.crypta.support.io.ResumeFailedException;
  * @author saces
  */
 public class DefaultManifestPutter extends BaseManifestPutter {
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultManifestPutter.class);
 
   private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(DefaultManifestPutter.class);
   }
 
   // the 'physical' limit for container size
@@ -143,8 +143,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
       throws TooManyFilesInsertException {
     // (HashMap<String, Object> md, PluginReplySender replysender, String identifier, long maxSize,
     // boolean doInsert, String parentName) throws InsertException {
-    if (logMINOR)
-      Logger.minor(this, "STAT: handling " + ((parentName == null) ? "<root>?" : parentName));
+    if (LOG.isDebugEnabled())
+      LOG.debug("STAT: handling " + ((parentName == null) ? "<root>?" : parentName));
     // if (doInsert && (parentName == null)) throw new IllegalStateException("Parent name cant be
     // null for insert!");
     // if (doInsert) containercounter += 1;
@@ -160,17 +160,16 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     // have a look at all
     if (wholeSize.getSizeTotalNoLimit() <= maxSize) {
       // that was easy. the whole tree fits into current container (without externals!)
-      if (logMINOR)
-        Logger.minor(
-            this, "PackStat2: the whole tree (unlimited) fits into container (no externals)");
+      if (LOG.isDebugEnabled())
+        LOG.debug("PackStat2: the whole tree (unlimited) fits into container (no externals)");
       makeEveryThingUnlimitedPutHandlers(containerBuilder, manifestElements, defaultName, prefix);
       return wholeSize.getSizeTotalNoLimit();
     }
 
     if (wholeSize.getSizeTotal() <= maxSize) {
       // that was easy. the whole tree fits into current container (with externals)
-      if (logMINOR)
-        Logger.minor(this, "PackStat2: the whole tree fits into container (with externals)");
+      if (LOG.isDebugEnabled())
+        LOG.debug("PackStat2: the whole tree fits into container (with externals)");
       makeEveryThingPutHandlers(containerBuilder, manifestElements, defaultName, prefix);
       return wholeSize.getSizeTotal();
     }
@@ -183,9 +182,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     // the files in dir fits into container?
     if ((wholeSize.getSizeFiles() < maxSize) || (wholeSize.getSizeFilesNoLimit() < maxSize)) {
       // the files in dir fits into container
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "PackStat2: the files in dir fits into container with spare, so it need to grab stuff"
                 + " from sub's to fill container up");
       if (wholeSize.getSizeFilesNoLimit() < maxSize) {
@@ -270,13 +268,12 @@ public class DefaultManifestPutter extends BaseManifestPutter {
         || (wholeSize.getSizeSubTreesNoLimit() + tmpSize + minUsageForFiles < maxSize)) {
       // all subdirs fit into current container, do it
       // and add files up to limit
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "PackStat2: the sub dirs fit into container with spare, so it need to grab files to"
                 + " fill container up");
       if (wholeSize.getSizeSubTreesNoLimit() + tmpSize + minUsageForFiles < maxSize) {
-        if (logMINOR) Logger.minor(this, " (unlimited)");
+        if (LOG.isDebugEnabled()) LOG.debug(" (unlimited)");
         for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
           String name = entry.getKey();
           Object o = entry.getValue();
@@ -290,7 +287,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
         }
         tmpSize = wholeSize.getSizeSubTreesNoLimit();
       } else {
-        if (logMINOR) Logger.minor(this, " (limited)");
+        if (LOG.isDebugEnabled()) LOG.debug(" (limited)");
         for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
           String name = entry.getKey();
           Object o = entry.getValue();
@@ -306,8 +303,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
       }
     } else {
       // sub dirs does not fit into container, make each its own
-      if (logMINOR)
-        Logger.minor(this, "PackStat2: sub dirs does not fit into container, make each its own");
+      if (LOG.isDebugEnabled())
+        LOG.debug("PackStat2: sub dirs does not fit into container, make each its own");
       for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
         String name = entry.getKey();
         Object o = entry.getValue();
@@ -343,7 +340,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
     // group files left into external archives ('CHK@.../name' redirects)
     while (!itemsLeft.isEmpty()) {
-      if (logMINOR) Logger.minor(this, "ItemsLeft checker: " + itemsLeft.size());
+      if (LOG.isDebugEnabled()) LOG.debug("ItemsLeft checker: " + itemsLeft.size());
 
       if (itemsLeft.size() == 1) {
         // one item left, make it external

@@ -15,7 +15,6 @@ import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.BaseSendableGet;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
@@ -25,6 +24,8 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.io.PooledFileRandomAccessBuffer;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Splitfile fetcher based on keeping as much state as possible, and in particular the downloaded
@@ -63,11 +64,10 @@ import network.crypta.support.io.StorageFormatException;
  */
 public class SplitFileFetcher
     implements ClientGetState, SplitFileFetcherStorageCallback, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcher.class);
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(SplitFileFetcher.class);
   }
 
   /**
@@ -190,7 +190,7 @@ public class SplitFileFetcher
     } catch (InsufficientDiskSpaceException e) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (IOException e) {
-      Logger.error(this, "Failed to start splitfile fetcher because of disk I/O error?: " + e, e);
+      LOG.error("Failed to start splitfile fetcher because of disk I/O error?: " + e, e);
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     }
     long eventualLength = Math.max(storage.decompressedLength, metadata.uncompressedDataLength());
@@ -203,9 +203,8 @@ public class SplitFileFetcher
           FetchExceptionMode.TOO_BIG, eventualLength, true, clientMetadata.getMIMEType());
     getter = new SplitFileFetcherGet(this, storage);
     raf = storage.getRAF();
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Created "
               + (persistent ? "persistent" : "transient")
               + " download for "
@@ -291,10 +290,10 @@ public class SplitFileFetcher
         fail = true;
       } else {
         if (succeeded) {
-          Logger.error(this, "Called onSuccess() twice on " + this, new Exception("debug"));
+          LOG.error("Called onSuccess() twice on " + this, new Exception("debug"));
           return;
         } else {
-          if (logMINOR) Logger.minor(this, "onSuccess() on " + this, new Exception("debug"));
+          if (LOG.isDebugEnabled()) LOG.debug("onSuccess() on " + this, new Exception("debug"));
         }
         succeeded = true;
       }
@@ -352,7 +351,7 @@ public class SplitFileFetcher
       context.healingQueue.queue(dataBucket, cryptoKey, cryptoAlgorithm, context);
     } catch (IOException e) {
       // Nothing to be done, but need to log the error.
-      Logger.error(this, "I/O error, failed to queue healing block: " + e, e);
+      LOG.error("I/O error, failed to queue healing block: " + e, e);
     }
   }
 
@@ -441,7 +440,7 @@ public class SplitFileFetcher
   @Override
   public void restartedAfterDataCorruption() {
     if (hasFinished()) return;
-    Logger.error(this, "Restarting download " + this + " after data corruption");
+    LOG.error("Restarting download " + this + " after data corruption");
     // We need to fetch more blocks. Some of them may even be in the datastore.
     getter.unregister(context, getPriorityClass());
     getter.schedule(context, false);
@@ -466,7 +465,7 @@ public class SplitFileFetcher
 
   @Override
   public void onResume(ClientContext context) throws FetchException {
-    if (logMINOR) Logger.minor(this, "Restarting SplitFileFetcher from storage...");
+    if (LOG.isDebugEnabled()) LOG.debug("Restarting SplitFileFetcher from storage...");
     boolean resumed = parent instanceof ClientGetter cg && cg.resumedFetcher();
     this.context = context;
     try {
@@ -490,15 +489,15 @@ public class SplitFileFetcher
               callbackCompleteViaTruncation != null);
     } catch (ResumeFailedException e) {
       raf.free();
-      Logger.error(this, "Failed to resume storage file: " + e + " for " + raf, e);
+      LOG.error("Failed to resume storage file: " + e + " for " + raf, e);
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (IOException e) {
       raf.free();
-      Logger.error(this, "Failed to resume due to I/O error: " + e + " raf = " + raf, e);
+      LOG.error("Failed to resume due to I/O error: " + e + " raf = " + raf, e);
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (StorageFormatException e) {
       raf.free();
-      Logger.error(this, "Failed to resume due to storage error: " + e + " raf = " + raf, e);
+      LOG.error("Failed to resume due to storage error: " + e + " raf = " + raf, e);
       throw new FetchException(FetchExceptionMode.INTERNAL_ERROR, "Resume failed: " + e, e);
     } catch (FetchException e) {
       raf.free();
@@ -542,7 +541,7 @@ public class SplitFileFetcher
 
   public SplitFileFetcher(ClientGetter getter, DataInputStream dis, ClientContext context)
       throws StorageFormatException, ResumeFailedException, IOException {
-    Logger.normal(this, "Resuming splitfile download for " + this);
+    LOG.info("Resuming splitfile download for " + this);
     boolean completeViaTruncation = dis.readBoolean();
     if (completeViaTruncation) {
       fileCompleteViaTruncation = new File(dis.readUTF());
@@ -575,7 +574,7 @@ public class SplitFileFetcher
     this.blockFetchContext = getter.ctx;
     this.wantBinaryBlob = getter.collectingBinaryBlob();
     // onResume() will do the rest.
-    Logger.normal(this, "Resumed splitfile download for " + this);
+    LOG.info("Resumed splitfile download for " + this);
     lastNotifiedStoreFetch = System.currentTimeMillis();
   }
 

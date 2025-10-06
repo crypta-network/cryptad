@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Filters native FLAC data. Format details may be found at <a
@@ -19,6 +19,8 @@ import network.crypta.support.Logger.LogLevel;
  * @author sajack
  */
 public class FlacFilter implements ContentDataFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(FlacFilter.class);
+
   static final byte[] magicNumber = new byte[] {0x66, 0x4C, 0x61, 0x43};
 
   enum State {
@@ -36,7 +38,6 @@ public class FlacFilter implements ContentDataFilter {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this.getClass());
     FlacPacketFilter parser = new FlacPacketFilter();
     DataInputStream in = new DataInputStream(input);
     State currentState = State.UNINITIALIZED;
@@ -59,18 +60,17 @@ public class FlacFilter implements ContentDataFilter {
         byte[] payload = null;
         switch (currentState) {
           case UNINITIALIZED:
-            if (logMINOR) Logger.minor(this, "Reading metadata packet");
+            if (LOG.isDebugEnabled()) LOG.debug("Reading metadata packet");
             int header = in.readInt();
             payload = new byte[header & 0x00FFFFFF];
-            if (logMINOR) Logger.minor(this, "About to read " + payload.length + " bytes");
+            if (LOG.isDebugEnabled()) LOG.debug("About to read " + payload.length + " bytes");
             in.readFully(payload);
             packet = new FlacMetadataBlock(header, payload);
-            if (logMINOR)
-              Logger.minor(
-                  this, ((FlacMetadataBlock) packet).getMetadataBlockType() + " packet read");
+            if (LOG.isDebugEnabled())
+              LOG.debug(((FlacMetadataBlock) packet).getMetadataBlockType() + " packet read");
             break;
           case METADATA_FOUND:
-            if (logMINOR) Logger.minor(this, "Reading audio packet");
+            if (LOG.isDebugEnabled()) LOG.debug("Reading audio packet");
             boolean firstHalfOfSyncHeaderFound = false;
             ArrayList<Byte> buffer = new ArrayList<>();
             int data = 0;

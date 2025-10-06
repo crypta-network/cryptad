@@ -5,10 +5,11 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WebPFilter extends RIFFFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(WebPFilter.class);
 
   @Override
   protected byte[] getChunkMagicNumber() {
@@ -44,7 +45,6 @@ public class WebPFilter extends RIFFFilter {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    boolean logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this.getClass());
     WebPFilterContext ctx = (WebPFilterContext) context;
     // These constants are derived from mux_type.h in libwebp
     int ANIMATION_FLAG = 0x00000002;
@@ -54,7 +54,7 @@ public class WebPFilter extends RIFFFilter {
             l10n("invalidTitle"), l10n("invalidTitle"), "Unexpected VP8 chunk was encountered");
       }
       ctx.hasVP8 = true;
-      filterVP8Block(ID, size, input, output, logDEBUG);
+      filterVP8Block(ID, size, input, output, LOG.isDebugEnabled());
     } else if (ID[0] == 'V' && ID[1] == 'P' && ID[2] == '8' && ID[3] == 'L') {
       // VP8 Lossless format:
       // https://chromium.googlesource.com/webm/libwebp/+/refs/tags/v1.4.0/doc/webp-lossless-bitstream-spec.txt
@@ -86,7 +86,7 @@ public class WebPFilter extends RIFFFilter {
             l10n("invalidTitle"), l10n("invalidTitle"), "Unexpected ALPH chunk was encountered");
       }
       ctx.hasALPH = true;
-      filterALPHBlock(ID, size, input, output, logDEBUG);
+      filterALPHBlock(ID, size, input, output, LOG.isDebugEnabled());
     } else if (ID[0] == 'A' && ID[1] == 'N' && ID[2] == 'I' && ID[3] == 'M') {
       if ((ctx.VP8XFlags & ANIMATION_FLAG) == 0 || ctx.hasVP8 || ctx.hasVP8L || ctx.hasANIM) {
         throw new DataFilterException(
@@ -166,7 +166,7 @@ public class WebPFilter extends RIFFFilter {
           } else {
             ANMFHasVP8 = true;
           }
-          filterVP8Block(ANMFBlockID, ANMFBlockSize, input, output, logDEBUG);
+          filterVP8Block(ANMFBlockID, ANMFBlockSize, input, output, LOG.isDebugEnabled());
         } else if (ANMFBlockID[0] == 'V'
             && ANMFBlockID[1] == 'P'
             && ANMFBlockID[2] == '8'
@@ -188,12 +188,11 @@ public class WebPFilter extends RIFFFilter {
           } else {
             ANMFHasALPH = true;
           }
-          filterALPHBlock(ANMFBlockID, ANMFBlockSize, input, output, logDEBUG);
+          filterALPHBlock(ANMFBlockID, ANMFBlockSize, input, output, LOG.isDebugEnabled());
         } else {
           // Unknown block
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "WebP image has Unknown block with "
                     + ANMFBlockSize
                     + " bytes within ANMF chunk converted into JUNK chunk.");
@@ -254,27 +253,23 @@ public class WebPFilter extends RIFFFilter {
       }
     } else if (ID[0] == 'I' && ID[1] == 'C' && ID[2] == 'C' && ID[3] == 'P') {
       // ICC Color Profile
-      if (logDEBUG)
-        Logger.debug(
-            this, "WebP image has ICCP block with " + size + " bytes converted into JUNK chunk.");
+      if (LOG.isDebugEnabled())
+        LOG.debug("WebP image has ICCP block with " + size + " bytes converted into JUNK chunk.");
       writeJunkChunk(input, output, size);
     } else if (ID[0] == 'E' && ID[1] == 'X' && ID[2] == 'I' && ID[3] == 'F') {
       // EXIF metadata
-      if (logDEBUG)
-        Logger.debug(
-            this, "WebP image has EXIF block with " + size + " bytes converted into JUNK chunk.");
+      if (LOG.isDebugEnabled())
+        LOG.debug("WebP image has EXIF block with " + size + " bytes converted into JUNK chunk.");
       writeJunkChunk(input, output, size);
     } else if (ID[0] == 'X' && ID[1] == 'M' && ID[2] == 'P' && ID[3] == ' ') {
       // XMP metadata
-      if (logDEBUG)
-        Logger.debug(
-            this, "WebP image has XMP block with " + size + " bytes converted into JUNK chunk.");
+      if (LOG.isDebugEnabled())
+        LOG.debug("WebP image has XMP block with " + size + " bytes converted into JUNK chunk.");
       writeJunkChunk(input, output, size);
     } else {
       // Unknown block
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "WebP image has Unknown block with " + size + " bytes converted into JUNK chunk.");
       writeJunkChunk(input, output, size);
     }
@@ -299,7 +294,7 @@ public class WebPFilter extends RIFFFilter {
           l10n("invalidTitle"), l10n("invalidTitle"), "The VP8 chunk was too small to be valid");
     }
     output.write(ID);
-    if (logDEBUG) Logger.debug(this, "Passing through WebP VP8 block with " + size + " bytes.");
+    if (LOG.isDebugEnabled()) LOG.debug("Passing through WebP VP8 block with " + size + " bytes.");
     VP8PacketFilter VP8filter = new VP8PacketFilter(true);
     // Just read 6 bytes of the header to validate
     byte[] buf = new byte[6];
@@ -334,7 +329,7 @@ public class WebPFilter extends RIFFFilter {
           l10n("alphUnsupportedTitle"), l10n("alphUnsupportedTitle"), l10n("alphUnsupported"));
     }
     output.write(ID);
-    if (logDEBUG) Logger.debug(this, "Passing through WebP ALPH block with " + size + " bytes.");
+    if (LOG.isDebugEnabled()) LOG.debug("Passing through WebP ALPH block with " + size + " bytes.");
     writeLittleEndianInt(output, size);
     output.writeByte(flags);
     passthroughBytes(input, output, size - 1);

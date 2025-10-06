@@ -13,16 +13,16 @@ import java.util.Hashtable;
 import java.util.LinkedHashMap;
 import network.crypta.client.filter.CharsetExtractor.BOMDetection;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Freenet content filter. This doesn't actually do any filtering, it organizes everything and
  * maintains the database.
  */
 public class ContentFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(ContentFilter.class);
 
   static final Hashtable<String, FilterMIMEType> mimeTypesByName = new Hashtable<>();
 
@@ -32,16 +32,7 @@ public class ContentFilter {
         "text/html", "application/xhtml+xml", "text/xml+xhtml", "text/xhtml", "application/xhtml"
       };
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   static {
@@ -552,7 +543,7 @@ public class ContentFilter {
       String schemeHostAndPort,
       FilterCallback filterCallback)
       throws UnsafeContentTypeException, IOException {
-    if (logMINOR) Logger.minor(ContentFilter.class, "Filtering data of type" + typeName);
+    if (LOG.isDebugEnabled()) LOG.debug("Filtering data of type" + typeName);
     String type = typeName;
     String options = "";
     String charset = null;
@@ -572,8 +563,7 @@ public class ContentFilter {
       for (String raw : rawOpts) {
         idx = raw.indexOf('=');
         if (idx == -1) {
-          Logger.error(
-              ContentFilter.class, "idx = -1 for '=' on option: " + raw + " from " + typeName);
+          LOG.error("idx = -1 for '=' on option: " + raw + " from " + typeName);
           continue;
         }
         String before = raw.substring(0, idx).trim();
@@ -612,7 +602,7 @@ public class ContentFilter {
           handler.readFilter.readFilter(
               input, output, charset, otherMimeTypeParams, schemeHostAndPort, filterCallback);
         } catch (EOFException e) {
-          Logger.error(ContentFilter.class, "EOFException caught: " + e, e);
+          LOG.error("EOFException caught: " + e, e);
           throw new DataFilterException(
               l10n("EOFMessage"), l10n("EOFMessage"), l10n("EOFDescription"));
         } catch (IOException e) {
@@ -649,7 +639,7 @@ public class ContentFilter {
           // so check with the full extractor.
           try {
             if ((charset = handler.charsetExtractor.getCharset(input, length, charset)) != null) {
-              if (logMINOR) Logger.minor(ContentFilter.class, "Returning charset: " + charset);
+              if (LOG.isDebugEnabled()) LOG.debug("Returning charset: " + charset);
               return charset;
             } else if (bom.mustHaveCharset) throw new UndetectableCharsetException(bom.charset);
           } catch (DataFilterException e) {
@@ -665,7 +655,7 @@ public class ContentFilter {
         try {
           if ((charset = handler.charsetExtractor.getCharset(input, length, handler.defaultCharset))
               != null) {
-            if (logMINOR) Logger.minor(ContentFilter.class, "Returning charset: " + charset);
+            if (LOG.isDebugEnabled()) LOG.debug("Returning charset: " + charset);
             return charset;
           }
         } catch (DataFilterException e) {
@@ -695,7 +685,7 @@ public class ContentFilter {
           return charset;
       } catch (UnsupportedEncodingException e) {
         // Doesn't seem to be supported by prior to 1.6.
-        if (logMINOR) Logger.minor(ContentFilter.class, "UTF-32 not supported");
+        if (LOG.isDebugEnabled()) LOG.debug("UTF-32 not supported");
       } catch (DataFilterException e) {
         // Ignore
       }
@@ -819,13 +809,11 @@ public class ContentFilter {
     FilterMIMEType handler = getMIMEType(expectedMIME);
     if (handler == null || (handler.readFilter == null && !handler.safeToRead)) {
       if (handler == null) {
-        if (logMINOR)
-          Logger.minor(
-              ContentFilter.class, "Unable to get filter handler for MIME type " + expectedMIME);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Unable to get filter handler for MIME type " + expectedMIME);
         return new UnknownContentTypeException(expectedMIME);
       } else {
-        if (logMINOR)
-          Logger.minor(ContentFilter.class, "Unable to filter unsafe MIME type " + expectedMIME);
+        if (LOG.isDebugEnabled()) LOG.debug("Unable to filter unsafe MIME type " + expectedMIME);
         return new KnownUnsafeContentTypeException(handler);
       }
     }

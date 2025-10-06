@@ -3,9 +3,12 @@ package network.crypta.client.filter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TheoraBitstreamFilter extends OggBitstreamFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(TheoraBitstreamFilter.class);
+
   private final TheoraPacketFilter parser;
 
   protected TheoraBitstreamFilter(OggPage page) {
@@ -25,7 +28,7 @@ public class TheoraBitstreamFilter extends OggBitstreamFilter {
       try {
         parsedPackets.add(parser.parse(packet));
       } catch (DataFilterException e) { // skip packet
-        Logger.minor(this, e.getLocalizedMessage());
+        LOG.debug(e.getLocalizedMessage());
       }
     }
 

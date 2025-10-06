@@ -5,9 +5,11 @@ import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.SendableGet;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SingleKeyListener implements KeyListener {
+  private static final Logger LOG = LoggerFactory.getLogger(SingleKeyListener.class);
 
   private final Key key;
   private final BaseSingleFileFetcher fetcher;
@@ -56,7 +58,7 @@ public class SingleKeyListener implements KeyListener {
     try {
       fetcher.onGotKey(key, found, context);
     } catch (Throwable t) {
-      Logger.error(this, "Failed: " + t, t);
+      LOG.error("Failed: " + t, t);
       fetcher.onFailure(
           new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR, t), null, context);
     }

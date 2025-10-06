@@ -16,10 +16,13 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.*;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
+  private static final Logger LOG = LoggerFactory.getLogger(GenericReadFilterCallback.class);
+
   public static final HashSet<String> allowedProtocols;
   // RFC3986
   //  unreserved    = ALPHA / DIGIT / "-" / "." / "_" / "~"
@@ -36,7 +39,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   //  fragment      = *( pchar / "/" / "?" )
   static final String PLUGINS_PREFIX = "/plugins/";
   private static final Pattern anchorRegex;
-  private static volatile boolean logMINOR;
+
   private static BaseL10n l10n = NodeL10n.getBase();
 
   static {
@@ -54,13 +57,6 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   }
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   static {
@@ -144,12 +140,12 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
     URI uri;
     URI resolved;
     try {
-      if (logMINOR) {
-        Logger.minor(this, "Processing " + u);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Processing " + u);
       }
       uri = URIPreEncoder.encodeURI(u).normalize();
-      if (logMINOR) {
-        Logger.minor(this, "Processing " + uri);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Processing " + uri);
       }
       if (u.startsWith("/") || u.startsWith("%2f"))
       // Don't bother with relative URIs if it's obviously absolute.
@@ -163,12 +159,12 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       } else {
         resolved = uri;
       }
-      if (logMINOR) {
-        Logger.minor(this, "Resolved: " + resolved);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Resolved: " + resolved);
       }
     } catch (URISyntaxException e1) {
-      if (logMINOR) {
-        Logger.minor(this, "Failed to parse URI: " + e1);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Failed to parse URI: " + e1);
       }
       throw new CommentException(l10n("couldNotParseURIWithError", "error", e1.getMessage()));
     }
@@ -203,15 +199,15 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       try {
         uri = new URI(null, null, null, -1, uri.getPath(), uri.getQuery(), uri.getFragment());
       } catch (URISyntaxException e) {
-        Logger.error(this, "URI " + uri + " looked like localhost but could not parse", e);
+        LOG.error("URI " + uri + " looked like localhost but could not parse", e);
         throw new CommentException("URI looked like localhost but could not parse: " + e);
       }
       host = null;
     }
 
     String rpath = uri.getPath();
-    if (logMINOR) {
-      Logger.minor(this, "Path: \"" + path + "\" rpath: \"" + rpath + "\"");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Path: \"" + path + "\" rpath: \"" + rpath + "\"");
     }
 
     if (host == null) {
@@ -219,8 +215,8 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       boolean isAbsolute = false;
 
       if (rpath != null) {
-        if (logMINOR) {
-          Logger.minor(this, "Resolved URI (rpath absolute): \"" + rpath + "\"");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Resolved URI (rpath absolute): \"" + rpath + "\"");
         }
 
         // Valid FreenetURI?
@@ -231,14 +227,14 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
           }
           FreenetURI furi = new FreenetURI(p, true);
           isAbsolute = true;
-          if (logMINOR) {
-            Logger.minor(this, "Parsed: " + furi);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Parsed: " + furi);
           }
           return processURI(furi, uri, overrideType, true, inline);
         } catch (MalformedURLException e) {
           // Not a FreenetURI
-          if (logMINOR) {
-            Logger.minor(this, "Malformed URL (a): " + e, e);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Malformed URL (a): " + e, e);
           }
           if (e.getMessage() != null) {
             reason = l10n("malformedAbsoluteURL", "error", e.getMessage());
@@ -256,8 +252,8 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
         if (rpath == null) {
           throw new CommentException("No URI");
         }
-        if (logMINOR) {
-          Logger.minor(this, "Resolved URI (rpath relative): " + rpath);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Resolved URI (rpath relative): " + rpath);
         }
 
         // Valid FreenetURI?
@@ -267,13 +263,13 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
             p = p.substring(1);
           }
           FreenetURI furi = new FreenetURI(p, true);
-          if (logMINOR) {
-            Logger.minor(this, "Parsed: " + furi);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Parsed: " + furi);
           }
           return processURI(furi, uri, overrideType, forBaseHref, inline);
         } catch (MalformedURLException e) {
-          if (logMINOR) {
-            Logger.minor(this, "Malformed URL (b): " + e, e);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Malformed URL (b): " + e, e);
           }
           if (e.getMessage() != null) {
             reason = l10n("malformedRelativeURL", "error", e.getMessage());
@@ -309,8 +305,8 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       filtered = processURI(makeURIAbsolute(u), overrideType, true, inline);
       uri = URIPreEncoder.encodeURI(filtered).normalize();
     } catch (URISyntaxException e1) {
-      if (logMINOR) {
-        Logger.minor(this, "Failed to parse URI: " + e1);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Failed to parse URI: " + e1);
       }
       throw new CommentException(l10n("couldNotParseURIWithError", "error", e1.getMessage()));
     }
@@ -331,11 +327,11 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
     try {
       ret = processURI(baseHref, null, true, false);
     } catch (CommentException e1) {
-      Logger.error(this, "Failed to parse base href: " + baseHref + " -> " + e1.getMessage());
+      LOG.error("Failed to parse base href: " + baseHref + " -> " + e1.getMessage());
       ret = null;
     }
     if (ret == null) {
-      Logger.error(this, "onBaseHref() failed: cannot sanitize " + baseHref);
+      LOG.error("onBaseHref() failed: cannot sanitize " + baseHref);
       return null;
     } else {
       try {
@@ -434,7 +430,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       try {
         strippedBaseURI = new URI(u);
       } catch (URISyntaxException e) {
-        Logger.error(this, "Can't strip base URI: " + e + " parsing " + u);
+        LOG.error("Can't strip base URI: " + e + " parsing " + u);
         strippedBaseURI = baseURI;
       }
     } else {
@@ -532,9 +528,8 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       if (!noRelative) {
         uri = strippedBaseURI.relativize(uri);
       }
-      if (logMINOR) {
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "Returning "
                 + uri.toASCIIString()
                 + " from "
@@ -546,8 +541,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       }
       return uri.toASCIIString();
     } catch (URISyntaxException e) {
-      Logger.error(
-          this,
+      LOG.error(
           "Could not parse own URI: path="
               + path
               + ", typeOverride="

@@ -7,7 +7,8 @@ import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.KeyVerifyException;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Simple BlockSet implementation, keeps all keys in RAM.
@@ -15,6 +16,7 @@ import network.crypta.support.Logger;
  * @author toad
  */
 public class SimpleBlockSet implements BlockSet {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleBlockSet.class);
 
   private final HashMap<Key, KeyBlock> blocksByKey = new HashMap<>();
 
@@ -40,7 +42,7 @@ public class SimpleBlockSet implements BlockSet {
     try {
       return Key.createKeyBlock(key, block);
     } catch (KeyVerifyException e) {
-      Logger.error(this, "Caught decoding block with " + key + " : " + e, e);
+      LOG.error("Caught decoding block with " + key + " : " + e, e);
       return null;
     }
   }

@@ -8,9 +8,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MP3Filter implements ContentDataFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(MP3Filter.class);
 
   // Various sources on the Internet.
   // The most comprehensive one appears to be:
@@ -168,7 +170,7 @@ public class MP3Filter implements ContentDataFilter {
           if (hasCRC) {
             totalCRCs++;
             crc = in.readShort();
-            Logger.normal(this, "Found a CRC");
+            LOG.info("Found a CRC");
             // FIXME calculate the CRC. It applies to a large number of frames, dependant on the
             // format.
           }
@@ -183,8 +185,7 @@ public class MP3Filter implements ContentDataFilter {
           out.write(frame);
           totalFrames++;
           foundFrames++;
-          if (countLostSyncBytes != 0)
-            Logger.normal(this, "Lost sync for " + countLostSyncBytes + " bytes");
+          if (countLostSyncBytes != 0) LOG.info("Lost sync for " + countLostSyncBytes + " bytes");
           countLostSyncBytes = 0;
           frameHeader = in.readInt();
         } else if (!foundStream && (frameHeader & 0xffffff00) == 0x49443300) {
@@ -200,18 +201,18 @@ public class MP3Filter implements ContentDataFilter {
           size |= (encodedSize[2] & 0x7F) << 7;
           size |= (encodedSize[3] & 0x7F);
           in.skip(size);
-          Logger.normal(this, "Skipped " + size + " bytes of ID3v2 data");
+          LOG.info("Skipped " + size + " bytes of ID3v2 data");
           frameHeader = in.readInt();
           foundStream = (frameHeader & 0xffe00000) == 0xffe00000;
         } else if (!foundStream && (frameHeader & 0xffffff00) == 0x54414700) {
           // This is an ID3v1 header
           // ID3v1 is of fixed length (128 bytes), from which we have already read the first 4
           in.skip(124);
-          Logger.normal(this, "Skipped an ID3v1 TAG");
+          LOG.info("Skipped an ID3v1 TAG");
           frameHeader = in.readInt();
           foundStream = (frameHeader & 0xffe00000) == 0xffe00000;
         } else {
-          if (foundFrames != 0) Logger.normal(this, "Series of frames: " + foundFrames);
+          if (foundFrames != 0) LOG.info("Series of frames: " + foundFrames);
           if (foundFrames > maxFoundFrames) maxFoundFrames = foundFrames;
           foundFrames = 0;
           frameHeader = frameHeader << 8;
@@ -224,9 +225,8 @@ public class MP3Filter implements ContentDataFilter {
         }
       }
     } catch (EOFException e) {
-      if (foundFrames != 0) Logger.normal(this, "Series of frames: " + foundFrames);
-      if (countLostSyncBytes != 0)
-        Logger.normal(this, "Lost sync for " + countLostSyncBytes + " bytes");
+      if (foundFrames != 0) LOG.info("Series of frames: " + foundFrames);
+      if (countLostSyncBytes != 0) LOG.info("Lost sync for " + countLostSyncBytes + " bytes");
       if (totalFrames == 0 || maxFoundFrames < 10) {
         if (countFreeBitrate > 100)
           throw new DataFilterException(
@@ -241,7 +241,7 @@ public class MP3Filter implements ContentDataFilter {
       }
 
       out.flush();
-      Logger.normal(this, totalFrames + " frames, of which " + totalCRCs + " had a CRC");
+      LOG.info(totalFrames + " frames, of which " + totalCRCs + " had a CRC");
     }
   }
 

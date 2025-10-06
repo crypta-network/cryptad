@@ -9,27 +9,18 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
 import network.crypta.keys.BaseClientKey;
 import network.crypta.support.ListUtils;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MultiPutCompletionCallback
     implements PutCompletionCallback, ClientPutState, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(MultiPutCompletionCallback.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   // ArrayLists rather than HashSet's for memory reasons.
@@ -94,7 +85,7 @@ public class MultiPutCompletionCallback
     boolean complete = true;
     synchronized (this) {
       if (finished) {
-        Logger.error(this, "Already finished but got onSuccess() for " + state + " on " + this);
+        LOG.error("Already finished but got onSuccess() for " + state + " on " + this);
         return;
       }
       ListUtils.removeBySwapLast(waitingFor, state);
@@ -108,7 +99,7 @@ public class MultiPutCompletionCallback
       }
     }
     if (complete) {
-      Logger.minor(this, "Completing...");
+      LOG.debug("Completing...");
       complete(null, context);
     }
   }
@@ -123,7 +114,7 @@ public class MultiPutCompletionCallback
     boolean doCancel = false;
     synchronized (this) {
       if (finished) {
-        Logger.error(this, "Already finished but got onFailure() for " + state + " on " + this);
+        LOG.error("Already finished but got onFailure() for " + state + " on " + this);
         return;
       }
       ListUtils.removeBySwapLast(waitingFor, state);
@@ -131,8 +122,8 @@ public class MultiPutCompletionCallback
       ListUtils.removeBySwapLast(waitingForFetchable, state);
       if (!(waitingFor.isEmpty() && started)) {
         this.e = e;
-        if (logMINOR)
-          Logger.minor(this, "Still running: " + waitingFor.size() + " started = " + started);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Still running: " + waitingFor.size() + " started = " + started);
         complete = false;
       }
       if (state == generator) {
@@ -191,7 +182,7 @@ public class MultiPutCompletionCallback
   }
 
   public void arm(ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Arming " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Arming " + this);
     boolean allDone;
     boolean allGotBlocks;
     boolean doCancel;
@@ -223,8 +214,7 @@ public class MultiPutCompletionCallback
       if (encodedKey != null) {
         if (key.equals(encodedKey)) return; // Squash duplicated call to onEncode().
         else
-          Logger.error(
-              this,
+          LOG.error(
               "Encoded twice with different keys for " + this + " : " + encodedKey + " -> " + key);
       }
       encodedKey = key;
@@ -238,10 +228,10 @@ public class MultiPutCompletionCallback
     synchronized (this) {
       states = waitingFor.toArray(states);
     }
-    boolean logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+    boolean logDEBUG = LOG.isDebugEnabled();
     for (int i = 0; i < states.length; i++) {
-      if (logDEBUG)
-        Logger.minor(this, "Cancelling state " + i + " of " + states.length + " : " + states[i]);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Cancelling state " + i + " of " + states.length + " : " + states[i]);
       states[i].cancel(context);
     }
   }
@@ -273,7 +263,7 @@ public class MultiPutCompletionCallback
     if (generator == state) {
       cb.onMetadata(m, this, context);
     } else {
-      Logger.error(this, "Got metadata for " + state);
+      LOG.error("Got metadata for " + state);
     }
   }
 
@@ -283,7 +273,7 @@ public class MultiPutCompletionCallback
     if (generator == state) {
       cb.onMetadata(metadata, this, context);
     } else {
-      Logger.error(this, "Got metadata for " + state);
+      LOG.error("Got metadata for " + state);
     }
   }
 
@@ -314,7 +304,7 @@ public class MultiPutCompletionCallback
       if (!started) return;
       if (!waitingForFetchable.isEmpty()) return;
       if (calledFetchable) {
-        if (logMINOR) Logger.minor(this, "Trying to call onFetchable() twice");
+        if (LOG.isDebugEnabled()) LOG.debug("Trying to call onFetchable() twice");
         return;
       }
       calledFetchable = true;

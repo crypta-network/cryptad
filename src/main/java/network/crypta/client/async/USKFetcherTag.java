@@ -4,10 +4,9 @@ import java.io.Serial;
 import java.io.Serializable;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.USK;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Not the actual fetcher. Just a tag associating a USK with the client that should be called when
@@ -20,6 +19,7 @@ import network.crypta.support.io.NativeThread;
  * @author toad
  */
 class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(USKFetcherTag.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -75,8 +75,8 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     priority = pollingPriorityNormal;
     this.checkStoreOnly = checkStoreOnly;
     this.hashCode = super.hashCode();
-    if (logMINOR)
-      Logger.minor(this, "Created tag for " + origUSK + " and " + callback + " : " + this);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Created tag for " + origUSK + " and " + callback + " : " + this);
   }
 
   @Override
@@ -138,7 +138,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
             checkStoreOnly);
     fetcher.addCallback(this);
     fetcher.schedule(context); // non-persistent
-    if (logMINOR) Logger.minor(this, "Starting " + fetcher + " for " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting " + fetcher + " for " + this);
   }
 
   @Override
@@ -147,13 +147,13 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     if (f != null) fetcher.cancel(context);
     synchronized (this) {
       if (finished) {
-        if (logMINOR) Logger.minor(this, "Already cancelled " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Already cancelled " + this);
         return;
       }
       finished = true;
     }
     if (f != null)
-      Logger.error(this, "cancel() for " + fetcher + " did not set finished on " + this + " ???");
+      LOG.error("cancel() for " + fetcher + " did not set finished on " + this + " ???");
   }
 
   @Override
@@ -168,7 +168,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 
   @Override
   public void onCancelled(ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Cancelled on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelled on " + this);
     synchronized (this) {
       finished = true;
     }
@@ -197,10 +197,10 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
 
   @Override
   public void onFailure(ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Failed on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Failed on " + this);
     synchronized (this) {
       if (finished) {
-        Logger.error(this, "onFailure called after finish on " + this, new Exception("error"));
+        LOG.error("onFailure called after finish on " + this, new Exception("error"));
         return;
       }
       finished = true;
@@ -246,17 +246,16 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
       final byte[] data,
       final boolean newKnownGood,
       final boolean newSlotToo) {
-    if (logMINOR) Logger.minor(this, "Found edition " + l + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l + " on " + this);
     synchronized (this) {
       if (fetcher == null) {
-        Logger.error(
-            this,
+        LOG.error(
             "onFoundEdition but fetcher is null - isn't onFoundEdition() terminal for"
                 + " USKFetcherCallback's??",
             new Exception("debug"));
       }
       if (finished) {
-        Logger.error(this, "onFoundEdition called after finish on " + this, new Exception("error"));
+        LOG.error("onFoundEdition called after finish on " + this, new Exception("error"));
         return;
       }
       finished = true;
@@ -288,20 +287,9 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     return finished;
   }
 
-  private static volatile boolean logMINOR;
-
   //	private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            //				logDEBUG = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   @Override

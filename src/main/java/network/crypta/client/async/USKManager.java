@@ -22,10 +22,9 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.Executor;
 import network.crypta.support.LRUMap;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NullBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks the latest version of every known USK. Also does auto-updates.
@@ -36,24 +35,13 @@ import network.crypta.support.io.NullBucket;
  * <p>Plugin authors: Don't construct it yourself, get it from ClientContext from NodeClientCore.
  */
 public class USKManager {
-
-  private static volatile boolean logDEBUG;
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(USKManager.class);
 
   static RequestClient rcRT = new RequestClientBuilder().realTime().build();
 
   static RequestClient rcBulk = new RequestClientBuilder().build();
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /** Latest version successfully fetched by blanked-edition-number USK */
@@ -242,9 +230,8 @@ public class USKManager {
   public void hintUpdate(FreenetURI uri, ClientContext context, short priority)
       throws MalformedURLException {
     if (uri.getSuggestedEdition() < lookupLatestSlot(USK.create(uri))) {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Ignoring hint because edition is "
                 + uri.getSuggestedEdition()
                 + " but latest is "
@@ -252,7 +239,7 @@ public class USKManager {
       return;
     }
     uri = uri.sskForUSK();
-    if (logMINOR) Logger.minor(this, "Doing hint fetch for " + uri);
+    if (LOG.isDebugEnabled()) LOG.debug("Doing hint fetch for " + uri);
     final ClientGetter get =
         new ClientGetter(
             new NullClientCallback(rcBulk),
@@ -265,7 +252,7 @@ public class USKManager {
     try {
       get.start(context);
     } catch (FetchException e) {
-      if (logMINOR) Logger.minor(this, "Cannot start hint fetch for " + uri + " : " + e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot start hint fetch for " + uri + " : " + e, e);
       // Ignore
     }
   }
@@ -315,7 +302,7 @@ public class USKManager {
       throws MalformedURLException {
     final FreenetURI origURI = uri;
     if (uri.isUSK()) uri = uri.sskForUSK();
-    if (logMINOR) Logger.minor(this, "Doing hint fetch for " + uri);
+    if (LOG.isDebugEnabled()) LOG.debug("Doing hint fetch for " + uri);
     final ClientGetter get =
         new ClientGetter(
             new ClientGetCallback() {
@@ -351,7 +338,7 @@ public class USKManager {
     try {
       get.start(context);
     } catch (FetchException e) {
-      if (logMINOR) Logger.minor(this, "Cannot start hint fetch for " + uri + " : " + e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot start hint fetch for " + uri + " : " + e, e);
       if (e.isDataFound()) cb.success(origURI, token);
       else if (e.isDNF()) cb.dnf(origURI, token, e);
       else cb.failed(origURI, token, e);
@@ -398,7 +385,7 @@ public class USKManager {
         long good = lookupKnownGood(clear);
         if (slot > -1 && good != slot) fetchTime = System.currentTimeMillis();
         temporaryBackgroundFetchersPrefetch.put(clear, fetchTime);
-        if (logMINOR) Logger.minor(this, "Prefetch: set " + fetchTime + " for " + clear);
+        if (LOG.isDebugEnabled()) LOG.debug("Prefetch: set " + fetchTime + " for " + clear);
         schedulePrefetchChecker();
       }
       temporaryBackgroundFetchersLRU.push(clear, f);
@@ -409,9 +396,8 @@ public class USKManager {
           if (toCancel == null) toCancel = new ArrayList<>(2);
           toCancel.add(fetcher);
         } else {
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Allowing temporary background fetcher to continue as it has subscribers... "
                     + fetcher);
         }
@@ -449,7 +435,7 @@ public class USKManager {
 
         @Override
         public void run() {
-          if (logDEBUG) Logger.debug(this, "Running prefetch checker...");
+          if (LOG.isDebugEnabled()) LOG.debug("Running prefetch checker...");
           ArrayList<USK> toFetch = null;
           long now = System.currentTimeMillis();
           boolean empty = true;
@@ -463,18 +449,16 @@ public class USKManager {
                 if (lookupKnownGood(clear) < l) toFetch.add(clear.copy(l));
                 entry.setValue(-1L); // Reset counter until new data comes in
               } else {
-                if (logMINOR)
-                  Logger.minor(
-                      this, "Not prefetching: " + entry.getKey() + " : " + entry.getValue());
+                if (LOG.isDebugEnabled())
+                  LOG.debug("Not prefetching: " + entry.getKey() + " : " + entry.getValue());
               }
             }
           }
           if (toFetch == null) return;
           for (final USK key : toFetch) {
             final long l = key.suggestedEdition;
-            if (logMINOR)
-              Logger.minor(
-                  this, "Prefetching content for background fetch for edition " + l + " on " + key);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Prefetching content for background fetch for edition " + l + " on " + key);
             FetchContext fctx = new FetchContext(realFetchContext, FetchContext.IDENTICAL_MASK);
             final ClientGetter get =
                 new ClientGetter(
@@ -483,19 +467,19 @@ public class USKManager {
                       @Override
                       public void onFailure(FetchException e, ClientGetter state) {
                         if (e.newURI != null) {
-                          if (logMINOR)
-                            Logger.minor(this, "Prefetch succeeded with redirect for " + key);
+                          if (LOG.isDebugEnabled())
+                            LOG.debug("Prefetch succeeded with redirect for " + key);
                           updateKnownGood(key, l, context);
                         } else {
-                          if (logMINOR)
-                            Logger.minor(this, "Prefetch failed later: " + e + " for " + key, e);
+                          if (LOG.isDebugEnabled())
+                            LOG.debug("Prefetch failed later: " + e + " for " + key, e);
                           // Ignore
                         }
                       }
 
                       @Override
                       public void onSuccess(FetchResult result, ClientGetter state) {
-                        if (logMINOR) Logger.minor(this, "Prefetch succeeded for " + key);
+                        if (LOG.isDebugEnabled()) LOG.debug("Prefetch succeeded for " + key);
                         result.asBucket().free();
                         updateKnownGood(key, l, context);
                       }
@@ -519,7 +503,7 @@ public class USKManager {
             try {
               get.start(context);
             } catch (FetchException e) {
-              if (logMINOR) Logger.minor(this, "Prefetch failed: " + e, e);
+              if (LOG.isDebugEnabled()) LOG.debug("Prefetch failed: " + e, e);
               // Ignore
             }
           }
@@ -528,25 +512,26 @@ public class USKManager {
       };
 
   void updateKnownGood(final USK origUSK, final long number, final ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Updating (known good) " + origUSK.getURI() + " : " + number);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Updating (known good) " + origUSK.getURI() + " : " + number);
     USK clear = origUSK.clearCopy();
     final USKCallback[] callbacks;
     boolean newSlot = false;
     synchronized (this) {
       Long l = latestKnownGoodByClearUSK.get(clear);
-      if (logMINOR) Logger.minor(this, "Old known good: " + l);
+      if (LOG.isDebugEnabled()) LOG.debug("Old known good: " + l);
       if ((l == null) || (number > l)) {
         l = number;
         latestKnownGoodByClearUSK.put(clear, l);
-        if (logMINOR) Logger.minor(this, "Put " + number);
+        if (LOG.isDebugEnabled()) LOG.debug("Put " + number);
       } else return; // If it's in KnownGood, it will also be in Slot
 
       l = latestSlotByClearUSK.get(clear);
-      if (logMINOR) Logger.minor(this, "Old slot: " + l);
+      if (LOG.isDebugEnabled()) LOG.debug("Old slot: " + l);
       if ((l == null) || (number > l)) {
         l = number;
         latestSlotByClearUSK.put(clear, l);
-        if (logMINOR) Logger.minor(this, "Put " + number);
+        if (LOG.isDebugEnabled()) LOG.debug("Put " + number);
         newSlot = true;
       }
 
@@ -575,16 +560,16 @@ public class USKManager {
   }
 
   void updateSlot(final USK origUSK, final long number, final ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Updating (slot) " + origUSK.getURI() + " : " + number);
+    if (LOG.isDebugEnabled()) LOG.debug("Updating (slot) " + origUSK.getURI() + " : " + number);
     USK clear = origUSK.clearCopy();
     final USKCallback[] callbacks;
     synchronized (this) {
       Long l = latestSlotByClearUSK.get(clear);
-      if (logMINOR) Logger.minor(this, "Old slot: " + l);
+      if (LOG.isDebugEnabled()) LOG.debug("Old slot: " + l);
       if ((l == null) || (number > l)) {
         l = number;
         latestSlotByClearUSK.put(clear, l);
-        if (logMINOR) Logger.minor(this, "Put " + number);
+        if (LOG.isDebugEnabled()) LOG.debug("Put " + number);
       } else return;
 
       callbacks = subscribersByClearUSK.get(clear);
@@ -643,13 +628,13 @@ public class USKManager {
       boolean runBackgroundFetch,
       boolean ignoreUSKDatehints,
       RequestClient client) {
-    if (logMINOR) Logger.minor(this, "Subscribing to " + origUSK + " for " + cb);
+    if (LOG.isDebugEnabled()) LOG.debug("Subscribing to " + origUSK + " for " + cb);
     if (client.persistent())
       throw new UnsupportedOperationException("USKManager subscriptions cannot be persistent");
     USKFetcher sched = null;
     long ed = origUSK.suggestedEdition;
     if (ed < 0) {
-      Logger.error(this, "Subscribing to USK with negative edition number: " + ed);
+      LOG.error("Subscribing to USK with negative edition number: " + ed);
       ed = -ed;
     }
     long curEd;
@@ -707,7 +692,7 @@ public class USKManager {
           new Runnable() {
             @Override
             public void run() {
-              if (logMINOR) Logger.minor(this, "Starting " + fetcher);
+              if (LOG.isDebugEnabled()) LOG.debug("Starting " + fetcher);
               fetcher.schedule(context);
             }
           },
@@ -727,7 +712,7 @@ public class USKManager {
       USKCallback[] callbacks = subscribersByClearUSK.get(clear);
       if (callbacks
           == null) { // maybe we should throw something ? shall we allow multiple unsubscriptions ?
-        if (logMINOR) Logger.minor(this, "No longer subscribed");
+        if (LOG.isDebugEnabled()) LOG.debug("No longer subscribed");
         return;
       }
       int j = 0;
@@ -755,7 +740,7 @@ public class USKManager {
     if (toCancel != null) {
       toCancel.cancel(context);
     } else {
-      if (logMINOR) Logger.minor(this, "Not found unsubscribing: " + cb + " for " + origUSK);
+      if (LOG.isDebugEnabled()) LOG.debug("Not found unsubscribing: " + cb + " for " + origUSK);
     }
   }
 
@@ -782,7 +767,7 @@ public class USKManager {
       RequestClient client) {
     USKRetriever ret = new USKRetriever(fctx, prio, client, cb, origUSK);
     USKCallback toSub = ret;
-    if (logMINOR) Logger.minor(this, "Subscribing to " + origUSK + " for " + cb);
+    if (LOG.isDebugEnabled()) LOG.debug("Subscribing to " + origUSK + " for " + cb);
     if (runBackgroundFetch) {
       USKSparseProxyCallback proxy = new USKSparseProxyCallback(ret, origUSK);
       ret.setProxy(proxy);
@@ -800,7 +785,7 @@ public class USKManager {
       USK origUSK, USKRetrieverCallback cb, FetchContext fctx, short prio, RequestClient client) {
     USKRetriever ret = new USKRetriever(fctx, prio, client, cb, origUSK);
     USKCallback toSub = ret;
-    if (logMINOR) Logger.minor(this, "Subscribing to " + origUSK + " for " + cb);
+    if (LOG.isDebugEnabled()) LOG.debug("Subscribing to " + origUSK + " for " + cb);
     USKSparseProxyCallback proxy = new USKSparseProxyCallback(ret, origUSK);
     ret.setProxy(proxy);
     toSub = proxy;
@@ -858,8 +843,7 @@ public class USKManager {
         if (!ignoreError) {
           // This shouldn't happen, it's a sanity check: the only way we get cancelled is from
           // USKManager, which removes us before calling cancel().
-          Logger.error(
-              this,
+          LOG.error(
               "onCancelled for " + fetcher + " - was still registered, how did this happen??",
               new Exception("debug"));
         }
@@ -896,10 +880,10 @@ public class USKManager {
         // FIXME add a callback so if the rest of the request completes we updateKnownGood().
         context.uskManager.updateSlot(usk, uu.getSuggestedEdition(), context);
     } catch (MalformedURLException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
     } catch (Throwable t) {
       // Don't let the USK hint cause us to not succeed on the block.
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
     }
   }
 }

@@ -10,18 +10,16 @@ import network.crypta.node.SendableInsert;
 import network.crypta.node.SendableRequest;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestSender;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class ChosenBlockImpl extends ChosenBlock {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(ChosenBlockImpl.class);
 
   static {
-    Logger.registerClass(ChosenBlockImpl.class);
   }
 
   public final SendableRequest request;
@@ -53,9 +51,8 @@ public class ChosenBlockImpl extends ChosenBlock {
     this.request = req;
     this.sched = sched;
     this.persistent = persistent;
-    if (logDEBUG)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Created "
               + this
               + " for "

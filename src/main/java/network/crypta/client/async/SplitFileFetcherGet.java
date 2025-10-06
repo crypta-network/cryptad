@@ -10,7 +10,8 @@ import network.crypta.node.LowLevelGetException;
 import network.crypta.node.RequestClient;
 import network.crypta.node.SendableGet;
 import network.crypta.node.SendableRequestItem;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Actually does the splitfile fetch. Only one fetcher object for an entire splitfile.
@@ -19,11 +20,9 @@ import network.crypta.support.Logger;
  */
 @SuppressWarnings("serial")
 public class SplitFileFetcherGet extends SendableGet implements HasKeyListener {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherGet.class);
 
   static {
-    Logger.registerClass(SplitFileFetcherGet.class);
   }
 
   final SplitFileFetcher parent;
@@ -59,7 +58,7 @@ public class SplitFileFetcherGet extends SendableGet implements HasKeyListener {
       // If the error is definitely-fatal it means there is either a serious local problem
       // or the inserted data was corrupt. So we fail the entire splitfile immediately.
       // We don't track which blocks have fatally failed.
-      if (logMINOR) Logger.minor(this, "Fatal failure: " + fe + " for " + token);
+      if (LOG.isDebugEnabled()) LOG.debug("Fatal failure: " + fe + " for " + token);
       parent.fail(fe);
     } else {
       SplitFileFetcherStorage.SplitFileFetcherStorageKey key = (SplitFileFetcherStorageKey) token;

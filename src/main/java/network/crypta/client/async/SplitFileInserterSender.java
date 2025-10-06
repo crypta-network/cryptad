@@ -17,8 +17,9 @@ import network.crypta.node.SendableInsert;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestSender;
 import network.crypta.store.KeyCollisionException;
-import network.crypta.support.Logger;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Interface to the low level insertion code for inserting a splitfile.
@@ -29,6 +30,7 @@ import network.crypta.support.io.ResumeFailedException;
  */
 @SuppressWarnings("serial") // Not persisted.
 public class SplitFileInserterSender extends SendableInsert {
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterSender.class);
 
   final SplitFileInserter parent;
   final SplitFileInserterStorage storage;
@@ -176,7 +178,7 @@ public class SplitFileInserterSender extends SendableInsert {
                 });
         return true;
       } catch (Throwable t) {
-        Logger.error(this, "Failed to send insert: " + t, t);
+        LOG.error("Failed to send insert: " + t, t);
         // We still need to terminate the insert.
         request.onFailure(
             new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR, "Failed: " + t, t),

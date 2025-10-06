@@ -4,21 +4,19 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Runs PersistentJob's and periodically, or on demand, suspends all jobs and calls
  * innerCheckpoint().
  */
 public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentJobRunnerImpl.class);
 
   static {
-    Logger.registerClass(PersistentJobRunnerImpl.class);
   }
 
   final Executor executor;
@@ -80,10 +78,10 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       if (killed) throw new PersistenceDisabledException();
       if (context == null) throw new IllegalStateException();
       if (mustCheckpoint && enableCheckpointing) {
-        if (logDEBUG) Logger.debug(this, "Queueing job " + job);
+        if (LOG.isDebugEnabled()) LOG.debug("Queueing job " + job);
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
-        if (logDEBUG) Logger.debug(this, "Running job " + job);
+        if (LOG.isDebugEnabled()) LOG.debug("Running job " + job);
         executor.execute(new JobRunnable(job, threadPriority, context));
         runningJobs++;
       }
@@ -98,18 +96,17 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       if (killed) throw new PersistenceDisabledException();
       if (context == null) throw new IllegalStateException();
       if (writing) {
-        Logger.error(
-            this,
+        LOG.error(
             "Internal job must not be queued during writing! They should have finished before we"
                 + " start writing and cannot be started \"externally\"!",
             new Exception("error"));
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
         if (mustCheckpoint) {
-          if (logMINOR) Logger.minor(this, "Delaying checkpoint...");
+          if (LOG.isDebugEnabled()) LOG.debug("Delaying checkpoint...");
         }
         runningJobs++;
-        if (logDEBUG) Logger.debug(this, "Running job " + job);
+        if (LOG.isDebugEnabled()) LOG.debug("Running job " + job);
         executor.execute(new JobRunnable(job, threadPriority, context));
       }
     }
@@ -121,7 +118,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       queueInternal(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } catch (PersistenceDisabledException e) {
       // Maybe this could happen ... panic button maybe?
-      Logger.error(this, "Dropping internal job because persistence has been turned off!: " + e, e);
+      LOG.error("Dropping internal job because persistence has been turned off!: " + e, e);
     }
   }
 
@@ -149,14 +146,13 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     public void run() {
       boolean ret = false;
       try {
-        if (logDEBUG) Logger.debug(this, "Starting " + job);
+        if (LOG.isDebugEnabled()) LOG.debug("Starting " + job);
         ret = job.run(context);
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t + " running job " + job, t);
+        LOG.error("Caught " + t + " running job " + job, t);
       } finally {
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Completed "
                   + job
                   + " with mustCheckpoint="
@@ -177,17 +173,17 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         // Even if not going to checkpoint indirectly, somebody might be waiting, need to notify.
         sync.notifyAll();
       if (!enableCheckpointing) {
-        if (logMINOR) Logger.minor(this, "Not enableCheckpointing yet");
+        if (LOG.isDebugEnabled()) LOG.debug("Not enableCheckpointing yet");
         return;
       }
       if (ret) {
         mustCheckpoint = true;
-        if (logMINOR) Logger.minor(this, "Writing because asked to");
+        if (LOG.isDebugEnabled()) LOG.debug("Writing because asked to");
       }
       if (!mustCheckpoint) {
         if (System.currentTimeMillis() - lastCheckpointed > checkpointInterval) {
           mustCheckpoint = true;
-          if (logMINOR) Logger.minor(this, "Writing at interval");
+          if (LOG.isDebugEnabled()) LOG.debug("Writing at interval");
         }
       }
       if (!mustCheckpoint) {
@@ -195,7 +191,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         return;
       }
       if (runningJobs != 0) {
-        if (logDEBUG) Logger.debug(this, "Not writing yet");
+        if (LOG.isDebugEnabled()) LOG.debug("Not writing yet");
         return;
       }
       if (!killed) {
@@ -220,7 +216,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   }
 
   private void checkpoint(boolean shutdown) {
-    if (logMINOR) Logger.minor(this, "Writing checkpoint...");
+    if (LOG.isDebugEnabled()) LOG.debug("Writing checkpoint...");
     synchronized (sync) {
       if (!enableCheckpointing) {
         writing = false;
@@ -232,14 +228,14 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       try {
         innerCheckpoint(shutdown);
       } catch (Throwable t) {
-        Logger.error(this, "Unable to save: " + t, t);
+        LOG.error("Unable to save: " + t, t);
       }
     }
     synchronized (sync) {
       mustCheckpoint = false;
       writing = false;
       QueuedJob[] jobs = queuedJobs.toArray(new QueuedJob[0]);
-      if (logDEBUG) Logger.debug(this, "Starting " + jobs.length + " queued jobs");
+      if (LOG.isDebugEnabled()) LOG.debug("Starting " + jobs.length + " queued jobs");
       for (QueuedJob job : jobs) {
         runningJobs++;
         executor.execute(new JobRunnable(job.job, job.threadPriority, context));
@@ -248,7 +244,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       queuedJobs.clear();
       sync.notifyAll();
     }
-    if (logMINOR) Logger.minor(this, "Completed writing checkpoint");
+    if (LOG.isDebugEnabled()) LOG.debug("Completed writing checkpoint");
   }
 
   public void delayedCheckpoint() {
@@ -382,7 +378,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       while (runningJobs > 0) {
         if (!enableCheckpointing) return;
         if (killed) throw new PersistenceDisabledException();
-        Logger.error(this, "Waiting for " + runningJobs + " to finish before checkpoint");
+        LOG.error("Waiting for " + runningJobs + " to finish before checkpoint");
         try {
           sync.wait();
         } catch (InterruptedException e) {

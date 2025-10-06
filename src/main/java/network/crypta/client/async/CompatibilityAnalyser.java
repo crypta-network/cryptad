@@ -4,10 +4,12 @@ import java.io.*;
 import java.util.Arrays;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.support.Logger;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompatibilityAnalyser implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(CompatibilityAnalyser.class);
 
   @Serial private static final long serialVersionUID = 1L;
   CompatibilityMode min;
@@ -29,7 +31,7 @@ public class CompatibilityAnalyser implements Serializable {
       boolean dontCompress,
       boolean definitive) {
     if (this.definitive) {
-      Logger.warning(this, "merge() after definitive", new Exception("debug"));
+      LOG.warn("merge() after definitive", new Exception("debug"));
       return;
     }
     assert (min != CompatibilityMode.COMPAT_CURRENT);
@@ -42,7 +44,7 @@ public class CompatibilityAnalyser implements Serializable {
     if (this.cryptoKey == null) {
       this.cryptoKey = cryptoKey;
     } else if (cryptoKey != null && !Arrays.equals(this.cryptoKey, cryptoKey)) {
-      Logger.error(this, "Two different crypto keys!");
+      LOG.error("Two different crypto keys!");
       this.cryptoKey = null;
     }
   }

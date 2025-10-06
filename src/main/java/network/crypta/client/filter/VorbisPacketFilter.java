@@ -5,8 +5,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An Ogg bitstream parser for the Ogg Vorbis codec
@@ -14,6 +14,8 @@ import network.crypta.support.Logger.LogLevel;
  * @author sajack
  */
 public class VorbisPacketFilter implements CodecPacketFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(VorbisPacketFilter.class);
+
   enum State {
     UNINITIALIZED,
     IDENTIFICATION_FOUND,
@@ -25,7 +27,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
   State currentState = State.UNINITIALIZED;
 
   public CodecPacket parse(CodecPacket packet) throws IOException {
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
     // Assemble the Vorbis packets
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(packet.payload));
     byte[] magicHeader = null;
@@ -71,7 +73,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
           if (magicHeader[i + 1] != magicNumber[i]) return null;
         }
         long vendor_length = Integer.reverseBytes(input.readInt());
-        if (logMINOR) Logger.minor(this, "Read a vendor length of " + vendor_length);
+        if (LOG.isDebugEnabled()) LOG.debug("Read a vendor length of " + vendor_length);
         byte[] vendor_string = new byte[(int) vendor_length];
         input.readFully(vendor_string);
         long user_comment_list_length = Integer.reverseBytes(input.readInt());
@@ -89,7 +91,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
         output.writeBoolean(true);
         output.close();
         packet = new CodecPacket(data.toByteArray());
-        Logger.minor(this, "Packet size: " + packet.payload.length);
+        LOG.debug("Packet size: " + packet.payload.length);
         currentState = State.COMMENT_FOUND;
         break;
       case COMMENT_FOUND:

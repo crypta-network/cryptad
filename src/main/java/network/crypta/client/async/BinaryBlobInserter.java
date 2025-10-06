@@ -16,11 +16,12 @@ import network.crypta.node.LowLevelPutException;
 import network.crypta.node.RequestClient;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SimpleSendableInsert;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BinaryBlobInserter implements ClientPutState {
+  private static final Logger LOG = LoggerFactory.getLogger(BinaryBlobInserter.class);
 
   final ClientPutter parent;
   final RequestClient clientContext;
@@ -44,7 +45,7 @@ public class BinaryBlobInserter implements ClientPutState {
       InsertContext ctx,
       ClientContext context)
       throws IOException, BinaryBlobFormatException {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
     this.ctx = ctx;
     this.maxRetries = ctx.maxInsertRetries;
     this.consecutiveRNFsCountAsSuccess = ctx.consecutiveRNFsCountAsSuccess;
@@ -149,7 +150,7 @@ public class BinaryBlobInserter implements ClientPutState {
         fail(new InsertException(InsertExceptionMode.CANCELLED), true, context);
         return;
       }
-      logMINOR = Logger.shouldLog(LogLevel.MINOR, BinaryBlobInserter.this);
+      logMINOR = LOG.isDebugEnabled();
       switch (e.code) {
         case LowLevelPutException.COLLISION:
           fail(new InsertException(InsertExceptionMode.COLLISION), false, context);
@@ -167,22 +168,21 @@ public class BinaryBlobInserter implements ClientPutState {
           errors.inc(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
           break;
         default:
-          Logger.error(this, "Unknown LowLevelPutException code: " + e.code);
+          LOG.error("Unknown LowLevelPutException code: " + e.code);
           errors.inc(InsertExceptionMode.INTERNAL_ERROR);
       }
       if (e.code == LowLevelPutException.ROUTE_NOT_FOUND) {
         consecutiveRNFs++;
-        if (logMINOR)
-          Logger.minor(
-              this, "Consecutive RNFs: " + consecutiveRNFs + " / " + consecutiveRNFsCountAsSuccess);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Consecutive RNFs: " + consecutiveRNFs + " / " + consecutiveRNFsCountAsSuccess);
         if (consecutiveRNFs == consecutiveRNFsCountAsSuccess) {
-          if (logMINOR)
-            Logger.minor(this, "Consecutive RNFs: " + consecutiveRNFs + " - counting as success");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Consecutive RNFs: " + consecutiveRNFs + " - counting as success");
           onSuccess(keyNum, null, context);
           return;
         }
       } else consecutiveRNFs = 0;
-      if (logMINOR) Logger.minor(this, "Failed: " + e);
+      if (LOG.isDebugEnabled()) LOG.debug("Failed: " + e);
       retries++;
       if ((retries > maxRetries) && (maxRetries != -1)) {
         fail(InsertException.construct(errors), false, context);

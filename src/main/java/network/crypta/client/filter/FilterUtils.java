@@ -4,13 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.regex.Pattern;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FilterUtils {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(FilterUtils.class);
 
   static {
-    Logger.registerClass(FilterUtils.class);
   }
 
   private static final int MAX_NTH =
@@ -442,7 +442,7 @@ public class FilterUtils {
 
   public static boolean isCSSTransform(String value) {
     value = value.trim();
-    if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform(\"" + value + "\")");
+    if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform(\"" + value + "\")");
 
     if (value.indexOf("matrix(") == 0 && value.indexOf(')') == value.length() - 1) {
       String[] parts = value.substring(7, value.length() - 1).split(",");
@@ -457,7 +457,7 @@ public class FilterUtils {
         }
       }
       if (isValid) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a matrix()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a matrix()");
         return true;
       }
     }
@@ -465,7 +465,7 @@ public class FilterUtils {
     if (value.indexOf("translateX(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(11, value.length() - 1);
       if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateX()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a translateX()");
         return true;
       }
     }
@@ -473,7 +473,7 @@ public class FilterUtils {
     if (value.indexOf("translateY(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(11, value.length() - 1);
       if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translateY()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a translateY()");
         return true;
       }
     }
@@ -482,12 +482,12 @@ public class FilterUtils {
       String[] parts = value.substring(10, value.length() - 1).split(",");
       if (parts.length == 1
           && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a translate()");
         return true;
       } else if (parts.length == 2
           && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))
           && (isPercentage(parts[1].trim()) || isLength(parts[1].trim(), false))) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a translate()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a translate()");
         return true;
       }
     }
@@ -495,10 +495,10 @@ public class FilterUtils {
     if (value.indexOf("scale(") == 0 && value.indexOf(')') == value.length() - 1) {
       String[] parts = value.substring(6, value.length() - 1).split(",");
       if (parts.length == 1 && isNumber(parts[0].trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a scale()");
         return true;
       } else if (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scale()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a scale()");
         return true;
       }
     }
@@ -506,7 +506,7 @@ public class FilterUtils {
     if (value.indexOf("scaleX(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(7, value.length() - 1);
       if (isNumber(part.trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleX()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a scaleX()");
         return true;
       }
     }
@@ -514,7 +514,7 @@ public class FilterUtils {
     if (value.indexOf("scaleY(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(7, value.length() - 1);
       if (isNumber(part.trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a scaleY()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a scaleY()");
         return true;
       }
     }
@@ -522,7 +522,7 @@ public class FilterUtils {
     if (value.indexOf("rotate(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(7, value.length() - 1);
       if (isAngle(part.trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a rotate()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a rotate()");
         return true;
       }
     }
@@ -530,7 +530,7 @@ public class FilterUtils {
     if (value.indexOf("skewX(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(6, value.length() - 1);
       if (isNumber(part.trim()) || isAngle(part.trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewX()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a skewX()");
         return true;
       }
     }
@@ -538,7 +538,7 @@ public class FilterUtils {
     if (value.indexOf("skewY(") == 0 && value.indexOf(')') == value.length() - 1) {
       String part = value.substring(6, value.length() - 1);
       if (isNumber(part.trim()) || isAngle(part.trim())) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skewY()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a skewY()");
         return true;
       }
     }
@@ -546,12 +546,12 @@ public class FilterUtils {
     if (value.indexOf("skew(") == 0 && value.indexOf(')') == value.length() - 1) {
       String[] parts = value.substring(5, value.length() - 1).split(",");
       if (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a skew()");
         return true;
       } else if (parts.length == 2
           && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))
           && (isNumber(parts[1].trim()) || isAngle(parts[0].trim()))) {
-        if (logDEBUG) Logger.debug(FilterUtils.class, "isCSSTransform found a skew()");
+        if (LOG.isDebugEnabled()) LOG.debug("isCSSTransform found a skew()");
         return true;
       }
     }

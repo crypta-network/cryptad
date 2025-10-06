@@ -30,7 +30,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.DelayedFree;
@@ -40,6 +39,8 @@ import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.PrependLengthOutputStream;
 import network.crypta.support.io.StorageFormatException;
 import network.crypta.support.io.TempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Top level of persistence mechanism for ClientRequest's (persistent downloads and uploads). Note
@@ -78,6 +79,7 @@ import network.crypta.support.io.TempBucketFactory;
  * @author toad
  */
 public class ClientLayerPersister extends PersistentJobRunnerImpl {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientLayerPersister.class);
 
   static final long INTERVAL = MINUTES.toMillis(10);
   private final Node node; // Needed for bandwidth stats putter
@@ -107,10 +109,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   private static final long MAGIC = 0xd332925f3caf4aedL;
   private static final int VERSION = 1;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(ClientLayerPersister.class);
   }
 
   /**
@@ -185,8 +184,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
             context,
             requestStarters,
             random)) {
-          Logger.error(
-              this,
+          LOG.error(
               "Some requests failed to restart after serializing. Trying to recover/restart ...");
           System.err.println(
               "Some requests failed to restart after serializing. Trying to recover/restart ...");
@@ -309,7 +307,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         if (loaded.getSalt() == null) {
           salt = new byte[32];
           random.nextBytes(salt);
-          Logger.error(this, "Checksum failed for salt value");
+          LOG.error("Checksum failed for salt value");
           System.err.println(
               "Salt value corrupted, downloads will need to regenerate Bloom filters, this may"
                   + " cause some delay and disk/CPU usage...");
@@ -350,11 +348,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           if (partial.status == RequestLoadStatus.LOADED) failedSerialize = true;
           failed++;
           System.err.println("Unable to resume request " + req + " after loading it.");
-          Logger.error(this, "Unable to resume request " + req + " after loading it: " + t, t);
+          LOG.error("Unable to resume request " + req + " after loading it: " + t, t);
           try {
             req.cancel(context);
           } catch (Throwable t1) {
-            Logger.error(this, "Unable to terminate " + req + " after failure: " + t1, t1);
+            LOG.error("Unable to terminate " + req + " after failure: " + t1, t1);
           }
         }
       }
@@ -493,12 +491,12 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           noSerialize);
     } catch (IOException e) {
       // FIXME tell user more obviously.
-      Logger.error(this, "Failed to load persistent requests from " + bucket + " : " + e, e);
+      LOG.error("Failed to load persistent requests from " + bucket + " : " + e, e);
       System.err.println("Failed to load persistent requests from " + bucket + " : " + e);
       e.printStackTrace();
       loaded.setSomethingFailed();
     } catch (Throwable t) {
-      Logger.error(this, "Failed to load persistent requests from " + bucket + " : " + t, t);
+      LOG.error("Failed to load persistent requests from " + bucket + " : " + t, t);
       System.err.println("Failed to load persistent requests from " + bucket + " : " + t);
       t.printStackTrace();
       loaded.setSomethingFailed();
@@ -532,7 +530,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       checker.readAndChecksum(ois, salt, 0, salt.length);
       loaded.setSalt(salt);
     } catch (ChecksumFailedException e1) {
-      Logger.error(this, "Unable to read global salt (checksum failed)");
+      LOG.error("Unable to read global salt (checksum failed)");
     }
     requestStarters.setGlobalSalt(salt);
     int requestCount = ois.readInt();
@@ -540,7 +538,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       ClientRequest request = null;
       RequestIdentifier reqID = readRequestIdentifier(ois);
       if (reqID != null && context.persistentRoot.hasRequest(reqID)) {
-        Logger.warning(this, "Not reading request because already have it");
+        LOG.warn("Not reading request because already have it");
         skipChecksummedObject(ois, length); // Request itself
         skipChecksummedObject(ois, length); // Recovery data
         continue;
@@ -551,7 +549,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           if (request != null) {
             if (reqID != null) {
               if (!reqID.sameIdentifier(request.getRequestIdentifier())) {
-                Logger.error(this, "Request does not match request identifier, discarding");
+                LOG.error("Request does not match request identifier, discarding");
                 request = null;
               } else {
                 loaded.addPartiallyLoadedRequest(reqID, request, RequestLoadStatus.LOADED);
@@ -560,15 +558,15 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           }
         } else skipChecksummedObject(ois, length);
       } catch (ChecksumFailedException e) {
-        Logger.error(this, "Failed to load request (checksum failed)");
+        LOG.error("Failed to load request (checksum failed)");
         System.err.println("Failed to load a request (checksum failed)");
       } catch (Throwable t) {
         // Some more serious problem. Try to load the rest anyway.
-        Logger.error(this, "Failed to load request: " + t, t);
+        LOG.error("Failed to load request: " + t, t);
         System.err.println("Failed to load a request: " + t);
         t.printStackTrace();
       }
-      if (request == null || logMINOR) {
+      if (request == null || LOG.isDebugEnabled()) {
         try {
           ClientRequest restored = readRequestFromRecoveryData(ois, length, reqID);
           if (request == null && restored != null) {
@@ -583,20 +581,20 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           }
         } catch (ChecksumFailedException e) {
           if (request == null) {
-            Logger.error(this, "Failed to recover a request (checksum failed)");
+            LOG.error("Failed to recover a request (checksum failed)");
             System.err.println("Failed to recover a request (checksum failed)");
           } else {
-            Logger.error(this, "Test recovery failed: Checksum failed for " + reqID);
+            LOG.error("Test recovery failed: Checksum failed for " + reqID);
           }
           if (request == null)
             loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
         } catch (StorageFormatException e) {
           if (request == null) {
-            Logger.error(this, "Failed to recovery a request (storage format): " + e, e);
+            LOG.error("Failed to recovery a request (storage format): " + e, e);
             System.err.println("Failed to recovery a request (storage format): " + e);
             e.printStackTrace();
           } else {
-            Logger.error(this, "Test recovery failed for " + reqID + " : " + e, e);
+            LOG.error("Test recovery failed for " + reqID + " : " + e, e);
           }
           if (request == null)
             loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
@@ -611,7 +609,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         // (client.dat not client.dat.bak).
         readStatsAndBuckets(ois, length, context);
       } catch (Throwable t) {
-        Logger.error(this, "Failed to restore stats and delete old temp files: " + t, t);
+        LOG.error("Failed to restore stats and delete old temp files: " + t, t);
       }
     }
     ois.close();
@@ -628,7 +626,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       try {
         buckets[i] = (DelayedFree) readChecksummedObject(ois, length);
       } catch (ChecksumFailedException e) {
-        Logger.warning(this, "Failed to load a bucket to free");
+        LOG.warn("Failed to load a bucket to free");
       }
     }
     persistentTempFactory.finishDelayedFree(buckets);
@@ -671,7 +669,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           try {
             req.onShutdown(getClientContext());
           } catch (Throwable t) {
-            Logger.error(this, "Caught while calling shutdown callback on " + req + ": " + t, t);
+            LOG.error("Caught while calling shutdown callback on " + req + ": " + t, t);
           }
         }
       }
@@ -694,7 +692,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         oos.writeInt(buckets.length);
         for (DelayedFree bucket : buckets) writeChecksummedObject(oos, bucket, null);
       }
-      Logger.normal(this, "Saved " + requests.length + " requests to " + writeToFilename);
+      LOG.info("Saved " + requests.length + " requests to " + writeToFilename);
       persistentTempFactory.finishDelayedFree(buckets);
       return true;
     } catch (IOException e) {
@@ -712,7 +710,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       dos.close();
       oos = null;
     } catch (Throwable e) {
-      Logger.error(this, "Unable to write recovery data for " + req + " : " + e, e);
+      LOG.error("Unable to write recovery data for " + req + " : " + e, e);
       System.err.println("Unable to write recovery data for " + req + " : " + e);
       e.printStackTrace();
       oos.abort();
@@ -733,7 +731,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       tmp = null;
       return request;
     } catch (Throwable t) {
-      Logger.error(this, "Serialization failed: " + t, t);
+      LOG.error("Serialization failed: " + t, t);
       return null;
     } finally {
       if (tmp != null) tmp.close();
@@ -749,7 +747,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       innerOOS.close();
       oos = null;
     } catch (Throwable e) {
-      Logger.error(this, "Unable to write recovery data for " + name + " : " + e, e);
+      LOG.error("Unable to write recovery data for " + name + " : " + e, e);
       oos.abort();
     } finally {
       if (oos != null) oos.close();
@@ -767,7 +765,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       ois = null;
       return ret;
     } catch (Throwable t) {
-      Logger.error(this, "Serialization failed: " + t, t);
+      LOG.error("Serialization failed: " + t, t);
       return null;
     } finally {
       if (ois != null) ois.close();
@@ -795,8 +793,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try {
       checker.readAndChecksum(is, buf, 0, length);
     } catch (ChecksumFailedException e) {
-      Logger.error(
-          this,
+      LOG.error(
           "Checksum failed reading RequestIdentifier. This is not serious but means we will have to"
               + " read the next request even if we don't need it.");
       return null;
@@ -805,10 +802,8 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try {
       return new RequestIdentifier(dis);
     } catch (IOException e) {
-      Logger.error(
-          this,
-          "Failed to parse RequestIdentifier in spite of valid checksum (probably a bug): " + e,
-          e);
+      LOG.error(
+          "Failed to parse RequestIdentifier in spite of valid checksum (probably a bug): " + e, e);
       return null;
     }
   }
