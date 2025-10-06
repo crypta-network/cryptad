@@ -9,16 +9,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import network.crypta.keys.NodeCHK;
-import network.crypta.support.Logger;
+
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RequestTracker {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+    private static final Logger LOG = LoggerFactory.getLogger(RequestTracker.class);
 
   static {
-    Logger.registerClass(RequestTracker.class);
+
   }
 
   // The runningLocal* are secondary. That is, we take the lock on the
@@ -134,10 +134,8 @@ public class RequestTracker {
       boolean offerReply,
       boolean local) {
     synchronized (overallMap) {
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Locking "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Locking "
                 + uid
                 + " ssk="
                 + ssk
@@ -153,16 +151,14 @@ public class RequestTracker {
       T oldTag = overallMap.get(uid);
       if (oldTag != null) {
         if (oldTag == tag) {
-          Logger.error(this, "Tag already registered: " + tag, new Exception("debug"));
+          LOG.error("Tag already registered: " + tag, new Exception("debug"));
         } else {
           return false;
         }
       }
       overallMap.put(uid, tag);
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Locked "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Locked "
                 + uid
                 + " ssk="
                 + ssk
@@ -175,10 +171,8 @@ public class RequestTracker {
                 + " size="
                 + overallMap.size());
       if (local) {
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Locking (local) "
+        if (LOG.isDebugEnabled())
+          LOG.debug("Locking (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -194,23 +188,19 @@ public class RequestTracker {
         oldTag = localMap.get(uid);
         if (oldTag != null) {
           if (oldTag == tag) {
-            Logger.error(this, "Tag already registered (local): " + tag, new Exception("debug"));
+            LOG.error("Tag already registered (local): " + tag, new Exception("debug"));
           } else {
             // Violates the invariant that local requests are always registered on the main
             // (non-local) map too.
-            Logger.error(
-                this,
-                "Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: " + tag,
+            LOG.error("Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: " + tag,
                 new Exception("debug"));
             overallMap.remove(uid);
             return false;
           }
         }
         localMap.put(uid, tag);
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Locked (local) "
+        if (LOG.isDebugEnabled())
+          LOG.debug("Locked (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -297,10 +287,8 @@ public class RequestTracker {
       boolean local,
       boolean canFail) {
     synchronized (overallMap) {
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Unlocking "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Unlocking "
                 + uid
                 + " ssk="
                 + ssk
@@ -315,24 +303,19 @@ public class RequestTracker {
             new Exception("debug"));
       if (overallMap.get(uid) != tag) {
         if (canFail) {
-          if (logMINOR)
-            Logger.minor(
-                this,
-                "Can fail and did fail: removing "
+          if (LOG.isDebugEnabled())
+            LOG.debug("Can fail and did fail: removing "
                     + tag
                     + " got "
                     + overallMap.get(uid)
                     + " for "
                     + uid);
         } else {
-          Logger.error(
-              this, "Removing " + tag + " for " + uid + " returned " + overallMap.get(uid));
+          LOG.error("Removing " + tag + " for " + uid + " returned " + overallMap.get(uid));
         }
       } else overallMap.remove(uid);
-      if (logMINOR)
-        Logger.minor(
-            this,
-            "Unlocked "
+      if (LOG.isDebugEnabled())
+        LOG.debug("Unlocked "
                 + uid
                 + " ssk="
                 + ssk
@@ -347,24 +330,19 @@ public class RequestTracker {
       if (local) {
         if (localMap.get(uid) != tag) {
           if (canFail) {
-            if (logMINOR)
-              Logger.minor(
-                  this,
-                  "Can fail and did fail (local): removing "
+            if (LOG.isDebugEnabled())
+              LOG.debug("Can fail and did fail (local): removing "
                       + tag
                       + " got "
                       + localMap.get(uid)
                       + " for "
                       + uid);
           } else {
-            Logger.error(
-                this, "Removing " + tag + " for " + uid + " returned (local) " + localMap.get(uid));
+            LOG.error("Removing " + tag + " for " + uid + " returned (local) " + localMap.get(uid));
           }
         } else localMap.remove(uid);
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Unlocked (local) "
+        if (LOG.isDebugEnabled())
+          LOG.debug("Unlocked (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -452,9 +430,8 @@ public class RequestTracker {
           transfersOutSR += out;
           transfersInSR += in;
         }
-        if (logDEBUG)
-          Logger.debug(
-              this, "UID " + entry.getKey() + " : out " + transfersOut + " in " + transfersIn);
+        if (LOG.isDebugEnabled())
+          LOG.debug("UID " + entry.getKey() + " : out " + transfersOut + " in " + transfersIn);
       }
       counter.total += count;
       counter.expectedTransfersIn += transfersIn;
@@ -534,10 +511,8 @@ public class RequestTracker {
               transfersOutSR += out;
               transfersInSR += in;
             }
-            if (logMINOR)
-              Logger.minor(
-                  this,
-                  "Counting "
+            if (LOG.isDebugEnabled())
+              LOG.debug("Counting "
                       + tag
                       + " from "
                       + entry.getKey()
@@ -549,11 +524,10 @@ public class RequestTracker {
                       + transfersOut
                       + " in now "
                       + transfersIn);
-          } else if (logDEBUG) Logger.debug(this, "Not counting " + entry.getKey());
+          } else if (LOG.isDebugEnabled()) LOG.debug("Not counting " + entry.getKey());
         }
-        if (logMINOR)
-          Logger.minor(
-              this, "Returning count: " + count + " in: " + transfersIn + " out: " + transfersOut);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Returning count: " + count + " in: " + transfersIn + " out: " + transfersOut);
         counter.total += count;
         counter.expectedTransfersIn += transfersIn;
         counter.expectedTransfersOut += transfersOut;
@@ -573,23 +547,21 @@ public class RequestTracker {
           // So we *DO NOT* care whether it's an ordinary routed relayed request or a GetOfferedKey,
           // if we are counting outgoing requests.
           if (tag.currentlyFetchingOfferedKeyFrom(source)) {
-            if (logMINOR) Logger.minor(this, "Counting " + tag + " to " + entry.getKey());
+            if (LOG.isDebugEnabled()) LOG.debug("Counting " + tag + " to " + entry.getKey());
             transfersOut +=
                 tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, false);
             transfersIn += tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, false);
             count++;
           } else if (tag.currentlyRoutingTo(source)) {
-            if (logMINOR) Logger.minor(this, "Counting " + tag + " to " + entry.getKey());
+            if (LOG.isDebugEnabled()) LOG.debug("Counting " + tag + " to " + entry.getKey());
             transfersOut +=
                 tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, false);
             transfersIn += tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, false);
             count++;
-          } else if (logDEBUG) Logger.debug(this, "Not counting " + entry.getKey());
+          } else if (LOG.isDebugEnabled()) LOG.debug("Not counting " + entry.getKey());
         }
-        if (logMINOR)
-          Logger.minor(
-              this,
-              "Counted for "
+        if (LOG.isDebugEnabled())
+          LOG.debug("Counted for "
                   + (local ? "local" : "remote")
                   + " "
                   + (ssk ? "ssk" : "chk")
@@ -1085,7 +1057,7 @@ public class RequestTracker {
     synchronized (transferringRequestSenders) {
       //			RequestSender rs = (RequestSender) transferringRequestSenders.remove(key);
       //			if(rs != sender) {
-      //				Logger.error(this, "Removed "+rs+" should be "+sender+" for "+key+" in
+      //				LOG.error("Removed "+rs+" should be "+sender+" for "+key+" in
       // removeTransferringSender");
       //			}
 
