@@ -5,7 +5,6 @@ import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.keys.ClientKey;
-
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -17,7 +16,7 @@ import org.slf4j.LoggerFactory;
  * to send, create a thread, send the request, and call the callback below.
  */
 public abstract class SendableInsert extends SendableRequest {
-    private static final Logger LOG = LoggerFactory.getLogger(SendableInsert.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SendableInsert.class);
 
   @Serial private static final long serialVersionUID = 1L;
 

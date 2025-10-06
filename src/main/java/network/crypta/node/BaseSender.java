@@ -16,7 +16,6 @@ import network.crypta.keys.NodeSSK;
 import network.crypta.node.PeerNode.RequestLikelyAcceptedState;
 import network.crypta.node.PeerNode.SlotWaiter;
 import network.crypta.node.PeerNode.SlotWaiterFailedException;
-
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,10 +25,9 @@ import org.slf4j.LoggerFactory;
  * we get the Accepted. After that it hands over to the child class.
  */
 public abstract class BaseSender implements ByteCounter, HighHtlAware {
-    private static final Logger LOG = LoggerFactory.getLogger(BaseSender.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseSender.class);
 
   static {
-    
   }
 
   final boolean realTimeFlag;
@@ -292,7 +290,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       } else {
         if (expectedAcceptState != null) {
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Predicted accept state for "
+            LOG.debug(
+                "Predicted accept state for "
                     + this
                     + " : "
                     + expectedAcceptState
@@ -306,7 +305,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               && (expectedAcceptState == RequestLikelyAcceptedState.GUARANTEED)) {
             // We routed it, thinking it was GUARANTEED.
             // It was rejected, and as far as we know it's still GUARANTEED. :(
-            LOG.warn("Rejected overload (last time) yet expected state was "
+            LOG.warn(
+                "Rejected overload (last time) yet expected state was "
                     + lastExpectedAcceptState
                     + " is now "
                     + expectedAcceptState
@@ -362,7 +362,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
                 // We do not need to check the return value here.
                 // We will not reuse alsoWaitFor if it is disconnected etc.
                 if (LOG.isDebugEnabled()) {
-                  LOG.debug("Waiting for "
+                  LOG.debug(
+                      "Waiting for "
                           + next
                           + " and "
                           + alsoWaitFor
@@ -409,7 +410,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             // We do not need to check the return value here.
             // We will not reuse alsoWaitFor if it is disconnected etc.
             if (LOG.isDebugEnabled()) {
-              LOG.debug("Waiting for "
+              LOG.debug(
+                  "Waiting for "
                       + next
                       + " and "
                       + alsoWaitFor
@@ -454,7 +456,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             // We do not need to check the return value here.
             // We will not reuse alsoWaitFor if it is disconnected etc.
             if (LOG.isDebugEnabled()) {
-              LOG.debug("Waiting for "
+              LOG.debug(
+                  "Waiting for "
                       + next
                       + " and "
                       + alsoWaitFor
@@ -513,7 +516,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             expectedAcceptState = waiter.getAcceptedState();
             long endTime = System.currentTimeMillis();
             if (LOG.isDebugEnabled()) {
-              LOG.debug("Sending to "
+              LOG.debug(
+                  "Sending to "
                       + next
                       + " after waited for "
                       + TimeUtil.formatTime(endTime - startTime)
@@ -527,7 +531,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         lastExpectedAcceptState = expectedAcceptState;
         lastNext = next;
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Leaving new load management big block: Predicted accept state for "
+          LOG.debug(
+              "Leaving new load management big block: Predicted accept state for "
                   + this
                   + " : "
                   + expectedAcceptState
@@ -703,7 +708,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       long delta, int tryCount, boolean waitedForLoadManagement, boolean retriedForLoadManagement) {
     long longTimeout = getLongSlotWaiterTimeout();
     if ((delta > longTimeout) || tryCount > 3)
-      LOG.error("Took "
+      LOG.error(
+          "Took "
               + tryCount
               + " tries in "
               + TimeUtil.formatTime(delta, 2, true)
@@ -714,7 +720,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               + (realTimeFlag ? " (realtime)" : " (bulk)")
               + ((source == null) ? " (local)" : " (remote)"));
     else if ((delta > longTimeout / 5) || tryCount > 1)
-      LOG.warn("Took "
+      LOG.warn(
+          "Took "
               + tryCount
               + " tries in "
               + TimeUtil.formatTime(delta, 2, true)
@@ -725,7 +732,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               + (realTimeFlag ? " (realtime)" : " (bulk)")
               + ((source == null) ? " (local)" : " (remote)"));
     else if (LOG.isDebugEnabled() && (waitedForLoadManagement || retriedForLoadManagement))
-      LOG.debug("Took "
+      LOG.debug(
+          "Took "
               + tryCount
               + " tries in "
               + TimeUtil.formatTime(delta, 2, true)

@@ -9,16 +9,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import network.crypta.keys.NodeCHK;
-
 import network.crypta.support.Ticker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class RequestTracker {
-    private static final Logger LOG = LoggerFactory.getLogger(RequestTracker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RequestTracker.class);
 
   static {
-
   }
 
   // The runningLocal* are secondary. That is, we take the lock on the
@@ -135,7 +133,8 @@ public class RequestTracker {
       boolean local) {
     synchronized (overallMap) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Locking "
+        LOG.debug(
+            "Locking "
                 + uid
                 + " ssk="
                 + ssk
@@ -158,7 +157,8 @@ public class RequestTracker {
       }
       overallMap.put(uid, tag);
       if (LOG.isDebugEnabled())
-        LOG.debug("Locked "
+        LOG.debug(
+            "Locked "
                 + uid
                 + " ssk="
                 + ssk
@@ -172,7 +172,8 @@ public class RequestTracker {
                 + overallMap.size());
       if (local) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Locking (local) "
+          LOG.debug(
+              "Locking (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -192,7 +193,8 @@ public class RequestTracker {
           } else {
             // Violates the invariant that local requests are always registered on the main
             // (non-local) map too.
-            LOG.error("Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: " + tag,
+            LOG.error(
+                "Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: " + tag,
                 new Exception("debug"));
             overallMap.remove(uid);
             return false;
@@ -200,7 +202,8 @@ public class RequestTracker {
         }
         localMap.put(uid, tag);
         if (LOG.isDebugEnabled())
-          LOG.debug("Locked (local) "
+          LOG.debug(
+              "Locked (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -288,7 +291,8 @@ public class RequestTracker {
       boolean canFail) {
     synchronized (overallMap) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Unlocking "
+        LOG.debug(
+            "Unlocking "
                 + uid
                 + " ssk="
                 + ssk
@@ -304,7 +308,8 @@ public class RequestTracker {
       if (overallMap.get(uid) != tag) {
         if (canFail) {
           if (LOG.isDebugEnabled())
-            LOG.debug("Can fail and did fail: removing "
+            LOG.debug(
+                "Can fail and did fail: removing "
                     + tag
                     + " got "
                     + overallMap.get(uid)
@@ -315,7 +320,8 @@ public class RequestTracker {
         }
       } else overallMap.remove(uid);
       if (LOG.isDebugEnabled())
-        LOG.debug("Unlocked "
+        LOG.debug(
+            "Unlocked "
                 + uid
                 + " ssk="
                 + ssk
@@ -331,7 +337,8 @@ public class RequestTracker {
         if (localMap.get(uid) != tag) {
           if (canFail) {
             if (LOG.isDebugEnabled())
-              LOG.debug("Can fail and did fail (local): removing "
+              LOG.debug(
+                  "Can fail and did fail (local): removing "
                       + tag
                       + " got "
                       + localMap.get(uid)
@@ -342,7 +349,8 @@ public class RequestTracker {
           }
         } else localMap.remove(uid);
         if (LOG.isDebugEnabled())
-          LOG.debug("Unlocked (local) "
+          LOG.debug(
+              "Unlocked (local) "
                   + uid
                   + " ssk="
                   + ssk
@@ -512,7 +520,8 @@ public class RequestTracker {
               transfersInSR += in;
             }
             if (LOG.isDebugEnabled())
-              LOG.debug("Counting "
+              LOG.debug(
+                  "Counting "
                       + tag
                       + " from "
                       + entry.getKey()
@@ -561,7 +570,8 @@ public class RequestTracker {
           } else if (LOG.isDebugEnabled()) LOG.debug("Not counting " + entry.getKey());
         }
         if (LOG.isDebugEnabled())
-          LOG.debug("Counted for "
+          LOG.debug(
+              "Counted for "
                   + (local ? "local" : "remote")
                   + " "
                   + (ssk ? "ssk" : "chk")

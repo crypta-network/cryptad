@@ -23,7 +23,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
-
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,10 +33,9 @@ import org.slf4j.LoggerFactory;
  * @author toad
  */
 public class NodeCrypto {
-    private static final Logger LOG = LoggerFactory.getLogger(NodeCrypto.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NodeCrypto.class);
 
   static {
-
   }
 
   /** Length of a node identity */
@@ -514,7 +512,8 @@ public class NodeCrypto {
     obuf[offset++] = 0x01; // compressed noderef
     System.arraycopy(buf, 0, obuf, offset, buf.length);
     if (LOG.isDebugEnabled())
-      LOG.debug("myCompressedRef(" + setup + "," + heavySetup + ") returning " + obuf.length + " bytes");
+      LOG.debug(
+          "myCompressedRef(" + setup + "," + heavySetup + ") returning " + obuf.length + " bytes");
     return obuf;
   }
 
@@ -593,7 +592,8 @@ public class NodeCrypto {
       if (node.getPeers().anyConnectedPeerHasAddress(addr, pn)
           && !detector.includes(addr)
           && addr.isRealInternetAddress(false, false, false)) {
-        LOG.info("Not sending handshake packets to "
+        LOG.info(
+            "Not sending handshake packets to "
                 + addr
                 + " for "
                 + pn
@@ -629,7 +629,8 @@ public class NodeCrypto {
             // FIXME likewise, FOAFs should not boot darknet connections.
             continue;
           }
-          LOG.error("Dropping peer "
+          LOG.error(
+              "Dropping peer "
                   + pn
                   + " because don't want connection due to others on the same IP address!");
           System.out.println(

@@ -46,7 +46,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.IllegalBase64Exception;
-
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPUploadedFile;
@@ -59,7 +58,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DarknetPeerNode extends PeerNode {
-    private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
 
   /** Name of this node */
   String myName;
@@ -102,7 +101,6 @@ public class DarknetPeerNode extends PeerNode {
   private FRIEND_VISIBILITY theirVisibility;
 
   static {
-
   }
 
   public enum FRIEND_TRUST {
@@ -468,7 +466,8 @@ public class DarknetPeerNode extends PeerNode {
       return false;
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return false;
     }
     File[] extraPeerDataFiles = extraPeerDataPeerDir.listFiles();
@@ -503,11 +502,13 @@ public class DarknetPeerNode extends PeerNode {
     File extraPeerDataPeerDir =
         new File(extraPeerDataDirPath + File.separator + getIdentityString());
     if (!extraPeerDataPeerDir.exists()) {
-      LOG.error("Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
       return false;
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return false;
     }
     File extraPeerDataFile =
@@ -582,7 +583,8 @@ public class DarknetPeerNode extends PeerNode {
     try {
       extraPeerDataType = Integer.parseInt(extraPeerDataTypeString);
     } catch (NumberFormatException e) {
-      LOG.error("NumberFormatException parsing extraPeerDataType ("
+      LOG.error(
+          "NumberFormatException parsing extraPeerDataType ("
               + extraPeerDataTypeString
               + ") in file "
               + extraPeerDataFile.getPath());
@@ -597,7 +599,8 @@ public class DarknetPeerNode extends PeerNode {
       try {
         peerNoteType = Integer.parseInt(peerNoteTypeString);
       } catch (NumberFormatException e) {
-        LOG.error("NumberFormatException parsing peerNoteType ("
+        LOG.error(
+            "NumberFormatException parsing peerNoteType ("
                 + peerNoteTypeString
                 + ") in file "
                 + extraPeerDataFile.getPath());
@@ -608,15 +611,16 @@ public class DarknetPeerNode extends PeerNode {
           try {
             privateDarknetComment = Base64.decodeUTF8(fs.get("privateDarknetComment"));
           } catch (IllegalBase64Exception e) {
-            LOG.error("Bad Base64 encoding when decoding a private darknet comment SimpleFieldSet",
-                e);
+            LOG.error(
+                "Bad Base64 encoding when decoding a private darknet comment SimpleFieldSet", e);
             return false;
           }
           privateDarknetCommentFileNumber = fileNumber;
         }
         return true;
       }
-      LOG.error("Read unknown peer note type '"
+      LOG.error(
+          "Read unknown peer note type '"
               + peerNoteType
               + "' from file "
               + extraPeerDataFile.getPath());
@@ -658,7 +662,8 @@ public class DarknetPeerNode extends PeerNode {
       handleFproxyDownloadFeed(fs, fileNumber);
       return true;
     }
-    LOG.error("Read unknown extra peer data type '"
+    LOG.error(
+        "Read unknown extra peer data type '"
             + extraPeerDataType
             + "' from file "
             + extraPeerDataFile.getPath());
@@ -673,13 +678,15 @@ public class DarknetPeerNode extends PeerNode {
         new File(extraPeerDataDirPath + File.separator + getIdentityString());
     if (!extraPeerDataPeerDir.exists()) {
       if (!extraPeerDataPeerDir.mkdir()) {
-        LOG.error("Extra peer data directory for peer could not be created: "
+        LOG.error(
+            "Extra peer data directory for peer could not be created: "
                 + extraPeerDataPeerDir.getPath());
         return -1;
       }
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return -1;
     }
     Integer[] localFileNumbers;
@@ -731,11 +738,13 @@ public class DarknetPeerNode extends PeerNode {
     String extraPeerDataDirPath = node.getExtraPeerDataDir();
     File extraPeerDataPeerDir = new File(extraPeerDataDirPath, getIdentityString());
     if (!extraPeerDataPeerDir.exists()) {
-      LOG.error("Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
       return;
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return;
     }
     File extraPeerDataFile = new File(extraPeerDataPeerDir, Integer.toString(fileNumber));
@@ -748,13 +757,15 @@ public class DarknetPeerNode extends PeerNode {
     }
     if (!extraPeerDataFile.delete()) {
       if (extraPeerDataFile.exists()) {
-        LOG.error("Cannot delete file "
+        LOG.error(
+            "Cannot delete file "
                 + extraPeerDataFile
                 + " after sending message to "
                 + getPeer()
                 + " - it may be resent on resting the node");
       } else {
-        LOG.info("File does not exist when deleting: "
+        LOG.info(
+            "File does not exist when deleting: "
                 + extraPeerDataFile
                 + " after sending message to "
                 + getPeer());
@@ -767,11 +778,13 @@ public class DarknetPeerNode extends PeerNode {
     File extraPeerDataPeerDir =
         new File(extraPeerDataDirPath + File.separator + getIdentityString());
     if (!extraPeerDataPeerDir.exists()) {
-      LOG.error("Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
       return;
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return;
     }
     Integer[] localFileNumbers;
@@ -792,11 +805,13 @@ public class DarknetPeerNode extends PeerNode {
     File extraPeerDataPeerDir =
         new File(extraPeerDataDirPath + File.separator + getIdentityString());
     if (!extraPeerDataPeerDir.exists()) {
-      LOG.error("Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer does not exist: " + extraPeerDataPeerDir.getPath());
       return false;
     }
     if (!extraPeerDataPeerDir.isDirectory()) {
-      LOG.error("Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
+      LOG.error(
+          "Extra peer data directory for peer not a directory: " + extraPeerDataPeerDir.getPath());
       return false;
     }
     File extraPeerDataFile =
@@ -970,8 +985,8 @@ public class DarknetPeerNode extends PeerNode {
           s = Base64.decodeUTF8(s);
         } catch (IllegalBase64Exception e) {
           // Maybe it wasn't encoded? FIXME remove
-          LOG.error("Bad Base64 encoding when decoding a private darknet comment SimpleFieldSet",
-              e);
+          LOG.error(
+              "Bad Base64 encoding when decoding a private darknet comment SimpleFieldSet", e);
         }
       }
       comment = s;
@@ -1015,7 +1030,8 @@ public class DarknetPeerNode extends PeerNode {
                     } else {
                       data.close();
                       if (!dest.renameTo(node.getClientCore().downloadsDir().file(baseFilename))) {
-                        LOG.error("Failed to rename " + dest.getName() + " to remove .part suffix.");
+                        LOG.error(
+                            "Failed to rename " + dest.getName() + " to remove .part suffix.");
                       }
                       onReceiveSuccess();
                     }
@@ -1522,7 +1538,8 @@ public class DarknetPeerNode extends PeerNode {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.put("type", Node.N2N_TEXT_MESSAGE_TYPE_FILE_OFFER_REJECTED);
     fs.put("uid", uid);
-    if (LOG.isDebugEnabled()) LOG.debug("Sending node to node message (file offer rejected):\n" + fs);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Sending node to node message (file offer rejected):\n" + fs);
 
     sendNodeToNodeMessage(fs, Node.N2N_MESSAGE_TYPE_FPROXY, true, now, true);
     setPeerNodeStatus(System.currentTimeMillis());
@@ -1609,7 +1626,8 @@ public class DarknetPeerNode extends PeerNode {
                 newText = alertText;
                 merged.add(userAlert);
               } else if (LOG.isDebugEnabled()) {
-                LOG.debug("failed to merge N2NTMs; there will be at least one duplicate and text might be"
+                LOG.debug(
+                    "failed to merge N2NTMs; there will be at least one duplicate and text might be"
                         + " garbled:\n"
                         + newText
                         + "\n"
@@ -1737,8 +1755,8 @@ public class DarknetPeerNode extends PeerNode {
     try {
       fo.send();
     } catch (DisconnectedException e) {
-      LOG.error("Cannot send because node disconnected: " + e + " for " + uid + ":" + fo.filename,
-          e);
+      LOG.error(
+          "Cannot send because node disconnected: " + e + " for " + uid + ":" + fo.filename, e);
     }
   }
 
@@ -1903,7 +1921,8 @@ public class DarknetPeerNode extends PeerNode {
   @Override
   public void fatalTimeout() {
     if (node.isStopping()) return;
-    LOG.error("Disconnecting from darknet node " + this + " because of fatal timeout",
+    LOG.error(
+        "Disconnecting from darknet node " + this + " because of fatal timeout",
         new Exception("error"));
     System.err.println(
         "Your friend node \""
@@ -1973,7 +1992,8 @@ public class DarknetPeerNode extends PeerNode {
   public void handleVisibility(Message m) {
     FRIEND_VISIBILITY v = FRIEND_VISIBILITY.getByCode(m.getShort(DMT.FRIEND_VISIBILITY));
     if (v == null) {
-      LOG.error("Bogus visibility setting from peer "
+      LOG.error(
+          "Bogus visibility setting from peer "
               + this
               + " : code "
               + m.getShort(DMT.FRIEND_VISIBILITY));
@@ -2115,8 +2135,8 @@ public class DarknetPeerNode extends PeerNode {
                       try {
                         processNewNoderef(fs, false, false, true);
                       } catch (FSParseException e) {
-                        LOG.error("Peer " + DarknetPeerNode.this + " sent bogus full noderef: " + e,
-                            e);
+                        LOG.error(
+                            "Peer " + DarknetPeerNode.this + " sent bogus full noderef: " + e, e);
                         synchronized (DarknetPeerNode.this) {
                           receivingFullNoderef = false;
                         }

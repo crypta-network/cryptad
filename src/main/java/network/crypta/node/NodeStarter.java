@@ -31,17 +31,16 @@ import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
-
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.ProcessPriority;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperListener;
 import org.tanukisoftware.wrapper.WrapperManager;
 import picocli.CommandLine;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * @author nextgens
@@ -49,7 +48,7 @@ import org.slf4j.LoggerFactory;
  *     <p>There will only ever be one instance of NodeStarter.
  */
 public class NodeStarter implements WrapperListener {
-    private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
 
   /*
   (File.separatorChar == '\\') &&

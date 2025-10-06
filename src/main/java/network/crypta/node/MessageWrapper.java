@@ -2,13 +2,12 @@ package network.crypta.node;
 
 import java.util.Arrays;
 import network.crypta.io.comm.AsyncMessageCallback;
-
 import network.crypta.support.SparseBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class MessageWrapper {
-    private static final Logger LOG = LoggerFactory.getLogger(MessageWrapper.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MessageWrapper.class);
 
   private final MessageItem item;
   private final boolean isShortMessage;
@@ -23,7 +22,6 @@ public class MessageWrapper {
   private final SparseBitmap everSent = new SparseBitmap();
 
   static {
-    
   }
 
   public MessageWrapper(MessageItem item, int messageID) {
@@ -59,7 +57,8 @@ public class MessageWrapper {
           }
           alreadyAcked = true;
           if (LOG.isDebugEnabled())
-            LOG.debug("Total round trip time for message "
+            LOG.debug(
+                "Total round trip time for message "
                     + messageID
                     + " : "
                     + item
@@ -85,7 +84,8 @@ public class MessageWrapper {
    * @return The number of bytes lost
    */
   public int lost(int start, int end) {
-    if (LOG.isDebugEnabled()) LOG.debug("Lost from " + start + " to " + end + " on " + this.messageID);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Lost from " + start + " to " + end + " on " + this.messageID);
     int size = end - start + 1;
     synchronized (sent) {
       synchronized (acks) {
@@ -99,7 +99,8 @@ public class MessageWrapper {
           int toAddStart = Math.max(start, range[0]);
           int toAddEnd = Math.min(end, range[1]);
           if (toAddStart == toAddEnd || toAddStart > toAddEnd) continue;
-          LOG.warn("Lost range ("
+          LOG.warn(
+              "Lost range ("
                   + start
                   + "->"
                   + end
@@ -206,7 +207,8 @@ public class MessageWrapper {
 
       sent.add(start, start + dataLength - 1);
       if (LOG.isDebugEnabled())
-        LOG.debug("Using range "
+        LOG.debug(
+            "Using range "
                 + start
                 + " to "
                 + (start + dataLength - 1)

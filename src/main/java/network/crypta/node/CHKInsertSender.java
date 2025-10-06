@@ -21,7 +21,6 @@ import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
 import network.crypta.keys.NodeCHK;
-
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -187,7 +186,8 @@ public final class CHKInsertSender extends BaseSender
       synchronized (backgroundTransfers) {
         if (finishedWaiting) {
           if (!(killed || kill))
-            LOG.error("Finished waiting already yet receivedNotice("
+            LOG.error(
+                "Finished waiting already yet receivedNotice("
                     + success
                     + ","
                     + timeout
@@ -208,7 +208,8 @@ public final class CHKInsertSender extends BaseSender
           if (receivedCompletionNotice) {
             // Two stage timeout.
             if (LOG.isDebugEnabled())
-              LOG.debug("receivedNotice("
+              LOG.debug(
+                  "receivedNotice("
                       + success
                       + "), already had receivedNotice("
                       + completionSucceeded
@@ -303,8 +304,8 @@ public final class CHKInsertSender extends BaseSender
       */
       // NORMAL priority because it is normally caused by a transfer taking too long downstream, and
       // that doesn't usually indicate a bug.
-      LOG.info("Timed out waiting for a final ack from: " + pn + " on " + this,
-          new Exception("debug"));
+      LOG.info(
+          "Timed out waiting for a final ack from: " + pn + " on " + this, new Exception("debug"));
       if (receivedNotice(false, true, false)) {
         pn.localRejectedOverload("InsertTimeoutNoFinalAck", realTimeFlag);
         // First timeout. Wait for second timeout.
@@ -313,7 +314,8 @@ public final class CHKInsertSender extends BaseSender
               .addAsyncFilter(getNotificationMessageFilter(true), this, CHKInsertSender.this);
         } catch (DisconnectedException e) {
           // Normal
-          if (LOG.isDebugEnabled()) LOG.debug("Disconnected while adding filter after first timeout");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Disconnected while adding filter after first timeout");
           pn.noLongerRoutingTo(thisTag, false);
         }
       }
@@ -416,7 +418,6 @@ public final class CHKInsertSender extends BaseSender
   static boolean logDEBUG;
 
   static {
-
   }
 
   // Constants
@@ -647,7 +648,8 @@ public final class CHKInsertSender extends BaseSender
     // However it is not fatal because we can be confident now that even if the DataInsert
     // is delivered late, it will not be acted on. I.e. we are certain how many requests
     // are running, which is what fatal timeouts are designed to deal with.
-    LOG.warn("Node timed out waiting for our DataInsert ("
+    LOG.warn(
+        "Node timed out waiting for our DataInsert ("
             + msg
             + " from "
             + next
@@ -696,7 +698,8 @@ public final class CHKInsertSender extends BaseSender
     if (reason == DMT.DATA_INSERT_REJECTED_VERIFY_FAILED) {
       if (fromStore) {
         // That's odd...
-        LOG.error("Verify failed on next node "
+        LOG.error(
+            "Verify failed on next node "
                 + next
                 + " for DataInsert but we were sending from the store!");
       } else {
@@ -730,12 +733,12 @@ public final class CHKInsertSender extends BaseSender
             LOG.warn("Received all data but send failed to " + next);
           } else {
             if (prb.isAborted()) {
-              LOG.info("Send failed: aborted: "
+              LOG.info(
+                  "Send failed: aborted: "
                       + prb.getAbortReason()
                       + ": "
                       + prb.getAbortDescription());
-            } else
-              LOG.info("Send failed; have not yet received all data but not aborted: " + next);
+            } else LOG.info("Send failed; have not yet received all data but not aborted: " + next);
           }
         } catch (AbortedException e) {
           onReceiveFailed();
@@ -808,7 +811,8 @@ public final class CHKInsertSender extends BaseSender
                   } else {
                     assert (m.getSpec() == DMT.FNPAccepted);
                     if (LOG.isDebugEnabled())
-                      LOG.debug("Accepted after timeout on "
+                      LOG.debug(
+                          "Accepted after timeout on "
                               + CHKInsertSender.this
                               + " - will not send DataInsert, waiting for RejectedTimeout");
                     // We are not going to send the DataInsert.
@@ -825,14 +829,16 @@ public final class CHKInsertSender extends BaseSender
                             public void sent() {
                               // Ignore.
                               if (LOG.isDebugEnabled())
-                                LOG.debug("DataInsertRejected sent after accepted timeout on "
+                                LOG.debug(
+                                    "DataInsertRejected sent after accepted timeout on "
                                         + CHKInsertSender.this);
                             }
 
                             @Override
                             public void acknowledged() {
                               if (LOG.isDebugEnabled())
-                                LOG.debug("DataInsertRejected acknowledged after accepted timeout on "
+                                LOG.debug(
+                                    "DataInsertRejected acknowledged after accepted timeout on "
                                         + CHKInsertSender.this);
                               next.noLongerRoutingTo(tag, false);
                             }
@@ -840,7 +846,8 @@ public final class CHKInsertSender extends BaseSender
                             @Override
                             public void disconnected() {
                               if (LOG.isDebugEnabled())
-                                LOG.debug("DataInsertRejected peer disconnected after accepted timeout on"
+                                LOG.debug(
+                                    "DataInsertRejected peer disconnected after accepted timeout on"
                                         + " "
                                         + CHKInsertSender.this);
                               next.noLongerRoutingTo(tag, false);
@@ -849,7 +856,8 @@ public final class CHKInsertSender extends BaseSender
                             @Override
                             public void fatalError() {
                               if (LOG.isDebugEnabled())
-                                LOG.debug("DataInsertRejected fatal error after accepted timeout on "
+                                LOG.debug(
+                                    "DataInsertRejected fatal error after accepted timeout on "
                                         + CHKInsertSender.this);
                               next.noLongerRoutingTo(tag, false);
                             }
@@ -938,7 +946,8 @@ public final class CHKInsertSender extends BaseSender
    * @param next The node we successfully inserted to.
    */
   private void finish(int code, PeerNode next) {
-    if (LOG.isDebugEnabled()) LOG.debug("Finished: " + code + " on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug("Finished: " + code + " on " + this, new Exception("debug"));
 
     // If there is an InsertReply, it always happens before the transfer completion notice.
     // So we do NOT need to removeRoutingTo().
@@ -951,8 +960,7 @@ public final class CHKInsertSender extends BaseSender
 
       if (status != NOT_FINISHED) {
         if (status == RECEIVE_FAILED) {
-          if (code == SUCCESS)
-            LOG.error("Request succeeded despite receive failed?! on " + this);
+          if (code == SUCCESS) LOG.error("Request succeeded despite receive failed?! on " + this);
         } else if (status != TIMED_OUT)
           throw new IllegalStateException(
               "finish() called with " + code + " when was already " + status);
@@ -1099,7 +1107,8 @@ public final class CHKInsertSender extends BaseSender
       if (System.currentTimeMillis() > deadline) {
         // NORMAL priority because it is normally caused by a transfer taking too long downstream,
         // and that doesn't usually indicate a bug.
-        LOG.info("Timed out waiting for background transfers! Probably caused by async filter not"
+        LOG.info(
+            "Timed out waiting for background transfers! Probably caused by async filter not"
                 + " getting a timeout notification! DEBUG ME!");
         return false;
       }
@@ -1115,7 +1124,8 @@ public final class CHKInsertSender extends BaseSender
         for (BackgroundTransfer transfer : transfers) {
           if (!transfer.pn.isRoutable()) {
             if (LOG.isDebugEnabled())
-              LOG.debug("Ignoring transfer to " + transfer.pn + " for " + this + " as not routable");
+              LOG.debug(
+                  "Ignoring transfer to " + transfer.pn + " for " + this + " as not routable");
             continue;
           }
           noneRouteable = false;
@@ -1139,7 +1149,8 @@ public final class CHKInsertSender extends BaseSender
         if (completedTransfers && completedNotifications) return !someFailed;
 
         if (LOG.isDebugEnabled())
-          LOG.debug("Waiting: transfer completion="
+          LOG.debug(
+              "Waiting: transfer completion="
                   + completedTransfers
                   + " notification="
                   + completedNotifications);
@@ -1331,7 +1342,8 @@ public final class CHKInsertSender extends BaseSender
     try {
       next.sendSync(dataInsert, this, realTimeFlag);
     } catch (NotConnectedException e1) {
-      if (LOG.isDebugEnabled()) LOG.debug("Not connected sending DataInsert: " + next + " for " + uid);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Not connected sending DataInsert: " + next + " for " + uid);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return;
@@ -1451,7 +1463,8 @@ public final class CHKInsertSender extends BaseSender
                   try {
                     msg = node.getUSM().waitFor(mf, CHKInsertSender.this);
                   } catch (DisconnectedException e) {
-                    LOG.info("Disconnected from "
+                    LOG.info(
+                        "Disconnected from "
                             + waitingFor
                             + " while waiting for InsertReply on "
                             + CHKInsertSender.this);
@@ -1467,7 +1480,8 @@ public final class CHKInsertSender extends BaseSender
                   if (msg == null) {
                     // Second timeout.
                     // Definitely caused by the next node, fatal.
-                    LOG.error("Got second (local) timeout on "
+                    LOG.error(
+                        "Got second (local) timeout on "
                             + CHKInsertSender.this
                             + " from "
                             + waitingFor);

@@ -24,7 +24,6 @@ import network.crypta.keys.SSKBlock;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetManager.NoderefCallback;
 import network.crypta.node.OpennetManager.WaitedTooLongForOpennetNoderefException;
-
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
@@ -267,7 +266,8 @@ public class RequestHandler
                   RequestSender rs = RequestHandler.this.rs;
                   if (rs != null && rs.uid != RequestHandler.this.uid) {
                     if (LOG.isDebugEnabled())
-                      LOG.debug("Not cancelling transfer because was coalesced on "
+                      LOG.debug(
+                          "Not cancelling transfer because was coalesced on "
                               + RequestHandler.this);
                     // No need to reassign tag since this UID will end immediately; the
                     // RequestSender is on a different one.
@@ -276,7 +276,8 @@ public class RequestHandler
                   if (node.hasKey(key, false, false)) return true; // Don't want it
                   if (rs != null && rs.isTransferCoalesced()) {
                     if (LOG.isDebugEnabled())
-                      LOG.debug("Not cancelling transfer because others want the data on "
+                      LOG.debug(
+                          "Not cancelling transfer because others want the data on "
                               + RequestHandler.this);
                     // We do need to reassign the tag because the RS has the same UID.
                     node.getTracker().reassignTagToSelf(tag);
@@ -284,7 +285,8 @@ public class RequestHandler
                   }
                   if (node.getFailureTable().peersWantKey(key, source)) {
                     // This may indicate downstream is having trouble communicating with us.
-                    LOG.error("Downstream transfer successful but upstream transfer to "
+                    LOG.error(
+                        "Downstream transfer successful but upstream transfer to "
                             + source.shortToString()
                             + " failed. Reassigning tag to self because want the data for peers on "
                             + RequestHandler.this);
@@ -313,7 +315,8 @@ public class RequestHandler
                      * require getting rid of turtles. See the discussion in BlockReceiver's top
                      * comments.
                      */
-                    LOG.error("Downstream transfer successful but upstream transfer to "
+                    LOG.error(
+                        "Downstream transfer successful but upstream transfer to "
                             + source.shortToString()
                             + " failed. Reassigning tag to self because want the data for ourselves"
                             + " on "
@@ -460,7 +463,8 @@ public class RequestHandler
       node.getFailureTable().onFinalFailure(key, null, htl, htl, -1, -1, source);
       PeerNode routedLast = rs == null ? null : rs.routedLast();
       // A certain number of these are normal.
-      LOG.info("requestsender took too long to respond to requestor ("
+      LOG.info(
+          "requestsender took too long to respond to requestor ("
               + TimeUtil.formatTime((now - searchStartTime), 2, true)
               + "/"
               + (rs == null ? "null" : rs.getStatusString())
@@ -523,8 +527,8 @@ public class RequestHandler
             maybeCompleteTransfer();
             return;
           }
-          LOG.error("finish(TRANSFER_FAILED) should not be called on SSK?!?!",
-              new Exception("error"));
+          LOG.error(
+              "finish(TRANSFER_FAILED) should not be called on SSK?!?!", new Exception("error"));
           return;
         default:
           // Treat as internal error
@@ -758,7 +762,8 @@ public class RequestHandler
 
   /** Note well! These functions are not executed on the RequestHandler thread. */
   private class TerminalMessageByteCountCollector implements AsyncMessageCallback {
-    private static final Logger LOG = LoggerFactory.getLogger(TerminalMessageByteCountCollector.class);
+    private static final Logger LOG =
+        LoggerFactory.getLogger(TerminalMessageByteCountCollector.class);
 
     private boolean completed = false;
 
@@ -939,7 +944,8 @@ public class RequestHandler
           @Override
           public void timedOut() {
             if (LOG.isDebugEnabled())
-              LOG.debug("Timed out waiting for noderef from " + source + " on " + RequestHandler.this);
+              LOG.debug(
+                  "Timed out waiting for noderef from " + source + " on " + RequestHandler.this);
             gotNoderef(null);
           }
 
@@ -1026,7 +1032,8 @@ public class RequestHandler
                   != null) {
                 try {
                   if (LOG.isDebugEnabled())
-                    LOG.debug("Relaying noderef from source to data source for " + RequestHandler.this);
+                    LOG.debug(
+                        "Relaying noderef from source to data source for " + RequestHandler.this);
                   om.sendOpennetRef(
                       true,
                       uid,

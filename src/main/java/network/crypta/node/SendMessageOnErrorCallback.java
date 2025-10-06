@@ -9,10 +9,9 @@ import org.slf4j.LoggerFactory;
 
 /** If the send fails, send the given message to the given node. Otherwise do nothing. */
 public class SendMessageOnErrorCallback implements AsyncMessageCallback {
-    private static final Logger LOG = LoggerFactory.getLogger(SendMessageOnErrorCallback.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SendMessageOnErrorCallback.class);
 
   static {
-    
   }
 
   @Override

@@ -6,10 +6,9 @@ import org.slf4j.LoggerFactory;
 
 /** If the send fails, queue the given message for the given node. Otherwise do nothing. */
 public class UnqueueMessageOnAckCallback implements AsyncMessageCallback {
-    private static final Logger LOG = LoggerFactory.getLogger(UnqueueMessageOnAckCallback.class);
+  private static final Logger LOG = LoggerFactory.getLogger(UnqueueMessageOnAckCallback.class);
 
   static {
-    
   }
 
   @Override

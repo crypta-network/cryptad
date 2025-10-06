@@ -17,9 +17,9 @@ import network.crypta.keys.FreenetURI
 import network.crypta.node.RequestClient
 import network.crypta.node.RequestStarter
 import network.crypta.support.HTMLNode
-import network.crypta.support.Logger
 import network.crypta.support.SizeUtil
 import network.crypta.support.io.FileBucket
+import org.slf4j.LoggerFactory
 
 /**
  * Package‑based updater that subscribes to `USK@.../info/<N>` and offers OS installers instead of
@@ -50,6 +50,7 @@ class CoreUpdater(
   max: Int,
   blobFilenamePrefix: String,
 ) : NodeUpdater(manager, uri, current, min, max, blobFilenamePrefix) {
+  private val LOG = LoggerFactory.getLogger(CoreUpdater::class.java)
 
   /** Internal constants used for logging and filesystem defaults. */
   private companion object {
@@ -84,13 +85,13 @@ class CoreUpdater(
 
   /** Emit a minor-level log message scoped to this updater. */
   private fun logInfo(message: String) {
-    Logger.minor(this, "$LOG_TAG $message")
+    LOG.info("$LOG_TAG $message")
   }
 
   /** Emit an error-level log message, optionally including a throwable. */
   private fun logError(message: String, throwable: Throwable? = null) {
-    if (throwable != null) Logger.error(this, "$LOG_TAG $message", throwable)
-    else Logger.error(this, "$LOG_TAG $message")
+    if (throwable != null) LOG.error("$LOG_TAG $message", throwable)
+    else LOG.error("$LOG_TAG $message")
   }
 
   /**

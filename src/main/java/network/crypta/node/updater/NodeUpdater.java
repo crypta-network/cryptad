@@ -31,7 +31,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
-
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
@@ -40,7 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
-    private static final Logger LOG = LoggerFactory.getLogger(NodeUpdater.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NodeUpdater.class);
 
   private static boolean logMINOR;
   private final FetchContext ctx;
@@ -133,7 +132,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         }
         temp.delete();
       } else {
-        LOG.error("Unable to rename old blob file " + oldBlob + " to " + temp + " so can't process it.");
+        LOG.error(
+            "Unable to rename old blob file " + oldBlob + " to " + temp + " so can't process it.");
       }
     }
   }
@@ -177,7 +177,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
       if (found <= availableVersion) return;
       System.err.println("Found " + artifactName() + " update edition " + found);
-      LOG.debug("Updating availableVersion from "
+      LOG.debug(
+          "Updating availableVersion from "
               + availableVersion
               + " to "
               + found
@@ -209,7 +210,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     ClientGetter cancelled = null;
     synchronized (this) {
       if (LOG.isDebugEnabled())
-        LOG.debug("maybeUpdate: isFetching="
+        LOG.debug(
+            "maybeUpdate: isFetching="
                 + isFetching
                 + ", isRunning="
                 + isRunning
@@ -331,7 +333,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           if (blobFile.exists()
               && tempBlobFile.exists()
               && blobFile.length() == tempBlobFile.length())
-            LOG.debug("Can't rename "
+            LOG.debug(
+                "Can't rename "
                     + tempBlobFile
                     + " over "
                     + blobFile
@@ -339,7 +342,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
                     + fetchedVersion
                     + " - probably not a big deal though as the files are the same size");
           else {
-            LOG.error("Not able to rename binary blob for node updater: "
+            LOG.error(
+                "Not able to rename binary blob for node updater: "
                     + tempBlobFile
                     + " -> "
                     + blobFile
@@ -350,7 +354,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       this.fetchedVersion = fetchedVersion;
       System.out.println("Found " + artifactName() + " version " + fetchedVersion);
       if (fetchedVersion > currentVersion)
-        LOG.info("Found version "
+        LOG.info(
+            "Found version "
                 + fetchedVersion
                 + ", setting up a new UpdatedVersionAvailableUserAlert");
       maybeParseManifest(result, fetchedVersion);

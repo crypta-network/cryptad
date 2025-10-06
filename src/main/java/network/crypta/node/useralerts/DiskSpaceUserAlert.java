@@ -6,7 +6,6 @@ import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-
 import network.crypta.support.io.FilenameGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * @author toad
  */
 public class DiskSpaceUserAlert implements UserAlert {
-    private static final Logger LOG = LoggerFactory.getLogger(DiskSpaceUserAlert.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DiskSpaceUserAlert.class);
 
   final NodeClientCore core;
   private Status status;

@@ -6,10 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class LowLevelGetException extends LightweightException {
-    private static final Logger LOG = LoggerFactory.getLogger(LowLevelGetException.class);
+  private static final Logger LOG = LoggerFactory.getLogger(LowLevelGetException.class);
 
   static {
-    
   }
 
   @Serial private static final long serialVersionUID = 1L;
@@ -95,6 +94,9 @@ public class LowLevelGetException extends LightweightException {
 
   @Override
   protected boolean shouldFillInStackTrace() {
-    return LOG.isDebugEnabled() || code == INTERNAL_ERROR || code == DECODE_FAILED || code == VERIFY_FAILED;
+    return LOG.isDebugEnabled()
+        || code == INTERNAL_ERROR
+        || code == DECODE_FAILED
+        || code == VERIFY_FAILED;
   }
 }

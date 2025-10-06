@@ -26,7 +26,6 @@ import network.crypta.node.useralerts.UserEvent;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.ListUtils;
-
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.transport.ip.IPUtil;
@@ -40,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * @author toad
  */
 public class Announcer {
-    private static final Logger LOG = LoggerFactory.getLogger(Announcer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Announcer.class);
 
   private static boolean logMINOR;
   private final Node node;
@@ -192,7 +191,8 @@ public class Announcer {
         }
       }
       if (LOG.isDebugEnabled())
-        LOG.debug("count = "
+        LOG.debug(
+            "count = "
                 + count
                 + " announced = "
                 + announcedToIdentities.size()
@@ -258,8 +258,7 @@ public class Announcer {
         SeedServerPeerNode seed = new SeedServerPeerNode(fs, node, om.getCrypto(), false);
         if (node.wantAnonAuth(true)
             && Arrays.equals(node.getOpennetPubKeyHash(), seed.peerECDSAPubKeyHash)) {
-          if (LOG.isDebugEnabled())
-            LOG.debug(seed.userToString());
+          if (LOG.isDebugEnabled()) LOG.debug(seed.userToString());
           continue;
         }
         if (announcedToIdentities.contains(new ByteArrayWrapper(seed.peerECDSAPubKeyHash))) {
@@ -387,7 +386,8 @@ public class Announcer {
     int target = getAnnouncementThreshold();
     if (opennetCount >= target) {
       if (LOG.isDebugEnabled())
-        LOG.debug("We have enough opennet peers: "
+        LOG.debug(
+            "We have enough opennet peers: "
                 + opennetCount
                 + " > "
                 + target
@@ -415,7 +415,8 @@ public class Announcer {
           killedAnnouncementTooOld = true;
           killAnnouncement = true;
         }
-        LOG.error("Shutting down announcement as we are older than the current mandatory build and"
+        LOG.error(
+            "Shutting down announcement as we are older than the current mandatory build and"
                 + " auto-update is disabled or waiting for user input.");
         System.err.println(
             "Shutting down announcement as we are older than the current mandatory build and"
@@ -550,7 +551,8 @@ public class Announcer {
       // In cooling-off period?
       if (System.currentTimeMillis() < startTime) {
         if (LOG.isDebugEnabled())
-          LOG.debug("In cooling-off period for next "
+          LOG.debug(
+              "In cooling-off period for next "
                   + TimeUtil.formatTime(startTime - System.currentTimeMillis()));
         return;
       }
@@ -661,7 +663,8 @@ public class Announcer {
                   announcementAddedNodes++;
                   totalAdded++;
                 }
-                LOG.info("Announcement to "
+                LOG.info(
+                    "Announcement to "
                         + seed.userToString()
                         + " added node "
                         + pn
@@ -680,7 +683,8 @@ public class Announcer {
 
               @Override
               public void bogusNoderef(String reason) {
-                LOG.info("Announcement to " + seed.userToString() + " got bogus noderef: " + reason,
+                LOG.info(
+                    "Announcement to " + seed.userToString() + " got bogus noderef: " + reason,
                     new Exception("debug"));
               }
 
@@ -689,7 +693,8 @@ public class Announcer {
                 boolean announceNow = false;
                 synchronized (Announcer.this) {
                   runningAnnouncements--;
-                  LOG.info("Announcement to "
+                  LOG.info(
+                      "Announcement to "
                           + seed.userToString()
                           + " completed, now running "
                           + runningAnnouncements
@@ -741,7 +746,8 @@ public class Announcer {
 
               @Override
               public void noMoreNodes() {
-                LOG.info("Announcement to "
+                LOG.info(
+                    "Announcement to "
                         + seed.userToString()
                         + " ran out of nodes (route not found)");
               }
@@ -752,7 +758,8 @@ public class Announcer {
                   announcementNotWantedNodes++;
                   totalNotWanted++;
                 }
-                LOG.info("Announcement to "
+                LOG.info(
+                    "Announcement to "
                         + seed.userToString()
                         + " returned node not wanted for a total of "
                         + announcementNotWantedNodes
@@ -763,7 +770,8 @@ public class Announcer {
 
               @Override
               public void nodeNotAdded() {
-                LOG.info("Announcement to "
+                LOG.info(
+                    "Announcement to "
                         + seed.userToString()
                         + " : node not wanted (maybe already have it, opennet just turned off,"
                         + " etc)");

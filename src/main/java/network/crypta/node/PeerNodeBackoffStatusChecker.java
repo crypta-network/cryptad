@@ -5,12 +5,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class PeerNodeBackoffStatusChecker implements Runnable {
-    private static final Logger LOG = LoggerFactory.getLogger(PeerNodeBackoffStatusChecker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PeerNodeBackoffStatusChecker.class);
 
   final WeakReference<PeerNode> ref;
 
   static {
-    
   }
 
   public PeerNodeBackoffStatusChecker(WeakReference<PeerNode> ref) {
@@ -29,8 +28,7 @@ class PeerNodeBackoffStatusChecker implements Runnable {
       }
     }
     if (!pn.node.getPeers().havePeer(pn)) {
-      if (!pn.cachedRemoved())
-        LOG.error("Not in peers table but not flagged as removed: " + pn);
+      if (!pn.cachedRemoved()) LOG.error("Not in peers table but not flagged as removed: " + pn);
       return;
     }
     pn.setPeerNodeStatus(System.currentTimeMillis(), true);

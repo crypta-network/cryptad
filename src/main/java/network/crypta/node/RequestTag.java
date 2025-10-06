@@ -2,7 +2,6 @@ package network.crypta.node;
 
 import java.lang.ref.WeakReference;
 import network.crypta.keys.NodeCHK;
-
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,10 +12,9 @@ import org.slf4j.LoggerFactory;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class RequestTag extends UIDTag {
-    private static final Logger LOG = LoggerFactory.getLogger(RequestTag.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RequestTag.class);
 
   static {
-
   }
 
   enum START {
@@ -199,7 +197,8 @@ public class RequestTag extends UIDTag {
 
   public synchronized void waitingForOpennet(PeerNode next) {
     if (waitingForOpennet != null)
-      LOG.error("Have already waited for opennet: " + waitingForOpennet.get() + " on " + this,
+      LOG.error(
+          "Have already waited for opennet: " + waitingForOpennet.get() + " on " + this,
           new Exception("error"));
     this.waitingForOpennet = next.myRef;
   }

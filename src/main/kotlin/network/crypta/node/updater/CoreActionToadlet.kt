@@ -10,9 +10,9 @@ import network.crypta.fs.AppEnv
 import network.crypta.l10n.NodeL10n
 import network.crypta.node.Node
 import network.crypta.support.HTMLNode
-import network.crypta.support.Logger
 import network.crypta.support.MultiValueTable
 import network.crypta.support.api.HTTPRequest
+import org.slf4j.LoggerFactory
 
 /**
  * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
@@ -29,6 +29,7 @@ import network.crypta.support.api.HTTPRequest
  * @param node backing node instance that exposes updater state.
  */
 class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) : Toadlet(client) {
+  private val LOG = LoggerFactory.getLogger(CoreActionToadlet::class.java)
 
   /** Shared environment detector used for installer heuristics. */
   private val appEnv = AppEnv()
@@ -85,7 +86,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Emits a minor-level log line for CoreActionToadlet operations. */
   private fun logInfo(message: String) {
-    Logger.minor(this, "$LOG_TAG $message")
+    LOG.info("$LOG_TAG $message")
   }
 
   /** Exposes the HTTP mount point served by this toadlet. */

@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class OfferReplyTag extends UIDTag {
-    private static final Logger LOG = LoggerFactory.getLogger(OfferReplyTag.class);
+  private static final Logger LOG = LoggerFactory.getLogger(OfferReplyTag.class);
 
   final boolean ssk;
 

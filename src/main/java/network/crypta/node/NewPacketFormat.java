@@ -20,13 +20,12 @@ import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.NewPacketFormatKeyContext.AddedAcks;
 import network.crypta.support.Fields;
-
 import network.crypta.support.SparseBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class NewPacketFormat implements PacketFormat {
-    private static final Logger LOG = LoggerFactory.getLogger(NewPacketFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NewPacketFormat.class);
 
   private static final int HMAC_LENGTH = 10;
   // FIXME Use a more efficient structure - int[] or maybe just a big byte[].
@@ -43,7 +42,6 @@ public class NewPacketFormat implements PacketFormat {
   static boolean DO_KEEPALIVES = true;
 
   static {
-    
   }
 
   private final BasePeerNode pn;
@@ -149,7 +147,8 @@ public class NewPacketFormat implements PacketFormat {
     pn.reportIncomingBytes(length);
 
     List<byte[]> finished = handleDecryptedPacket(packet, s);
-    if (LOG.isDebugEnabled() && !finished.isEmpty()) LOG.debug("Decoded messages: " + finished.size());
+    if (LOG.isDebugEnabled() && !finished.isEmpty())
+      LOG.debug("Decoded messages: " + finished.size());
     DecodingMessageGroup group = pn.startProcessingDecryptedMessages(finished.size());
     for (byte[] buffer : finished) {
       group.processDecryptedMessage(buffer, 0, buffer.length, 0);
@@ -220,7 +219,8 @@ public class NewPacketFormat implements PacketFormat {
       PartiallyReceivedBuffer recvBuffer = receiveBuffers.get(fragment.messageID);
       SparseBitmap recvMap = receiveMaps.get(fragment.messageID);
       if (recvBuffer == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("Message id " + fragment.messageID + ": Creating buffer");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Message id " + fragment.messageID + ": Creating buffer");
 
         recvBuffer = new PartiallyReceivedBuffer(this);
         if (fragment.firstFragment) {
@@ -284,7 +284,8 @@ public class NewPacketFormat implements PacketFormat {
         synchronized (receiveBufferSizeLock) {
           receiveBufferUsed -= recvBuffer.messageLength;
           if (LOG.isDebugEnabled())
-            LOG.debug("Removed "
+            LOG.debug(
+                "Removed "
                     + recvBuffer.messageLength
                     + " from buffer. Total is now "
                     + receiveBufferUsed);
@@ -385,7 +386,8 @@ public class NewPacketFormat implements PacketFormat {
           keyContext.seqNumWatchList[index].length)) continue;
 
       int sequenceNumber = (int) (((long) keyContext.watchListOffset + i) % NUM_SEQNUMS);
-      if (LOG.isDebugEnabled()) LOG.debug("Received packet matches sequence number " + sequenceNumber);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Received packet matches sequence number " + sequenceNumber);
       NPFPacket p = decipherFromSeqnum(buf, offset, length, sessionKey, sequenceNumber);
       if (p != null) {
         if (LOG.isDebugEnabled())
@@ -546,7 +548,8 @@ public class NewPacketFormat implements PacketFormat {
                   + ")";
         }
 
-        LOG.debug("Sending packet "
+        LOG.debug(
+            "Sending packet "
                 + packet.getSequenceNumber()
                 + " ("
                 + data.length
@@ -749,7 +752,8 @@ public class NewPacketFormat implements PacketFormat {
             // and all peers.
             // We might in future split it across multiple threads but it'd be best to keep the same
             // peer on the same thread.
-            LOG.error("No availiable message ID, requeuing and sending packet (we already checked didn't"
+            LOG.error(
+                "No availiable message ID, requeuing and sending packet (we already checked didn't"
                     + " we???)");
             if (!wasGeneratedPing) {
               messageQueue.pushfrontPrioritizedMessageItem(item);
@@ -779,7 +783,8 @@ public class NewPacketFormat implements PacketFormat {
             // node on two threads in parallel. That's probably a bad idea anyway.
             sendBufferUsed += item.buf.length;
             if (LOG.isDebugEnabled())
-              LOG.debug("Added "
+              LOG.debug(
+                  "Added "
                       + item.buf.length
                       + " to remote buffer. Total is now "
                       + sendBufferUsed
@@ -876,7 +881,8 @@ public class NewPacketFormat implements PacketFormat {
       sendBufferUsed -= messageSize;
       // This is just a check for logging/debugging purposes.
       if (sendBufferUsed != 0) {
-        LOG.warn("Possible leak in transport code: Buffer size not empty after disconnecting on "
+        LOG.warn(
+            "Possible leak in transport code: Buffer size not empty after disconnecting on "
                 + this
                 + " for "
                 + pn
@@ -972,7 +978,8 @@ public class NewPacketFormat implements PacketFormat {
       int maxSendBufferSize = maxSendBufferSize();
       if ((bufferUsage + MAX_MESSAGE_SIZE) > maxSendBufferSize) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Cannot send: Would exceed remote buffer size. Remote at "
+          LOG.debug(
+              "Cannot send: Would exceed remote buffer size. Remote at "
                   + bufferUsage
                   + " max is "
                   + maxSendBufferSize
@@ -1011,7 +1018,8 @@ public class NewPacketFormat implements PacketFormat {
           // whereas messages are supposed to not be visible.
           // Arguably we should count bytes rather than packets.
           if (LOG.isDebugEnabled())
-            LOG.debug("Cannot send because "
+            LOG.debug(
+                "Cannot send because "
                     + packets.countSentPackets()
                     + " in flight of limit "
                     + maxPackets
@@ -1089,7 +1097,8 @@ public class NewPacketFormat implements PacketFormat {
         int[] range = rangeIt.next();
 
         if (LOG.isDebugEnabled())
-          LOG.debug("Acknowledging " + range[0] + " to " + range[1] + " on " + wrapper.getMessageID());
+          LOG.debug(
+              "Acknowledging " + range[0] + " to " + range[1] + " on " + wrapper.getMessageID());
 
         if (wrapper.ack(range[0], range[1], npf.pn)) {
           Map<Integer, MessageWrapper> started = npf.startedByPrio.get(wrapper.getPriority());
@@ -1100,12 +1109,14 @@ public class NewPacketFormat implements PacketFormat {
               int size = wrapper.getLength();
               npf.sendBufferUsed -= size;
               if (LOG.isDebugEnabled())
-                LOG.debug("Removed " + size + " from remote buffer. Total is now " + npf.sendBufferUsed);
+                LOG.debug(
+                    "Removed " + size + " from remote buffer. Total is now " + npf.sendBufferUsed);
             }
           }
           if (removed == null && LOG.isDebugEnabled()) {
             // ack() can return true more than once, it just only calls the callbacks once.
-            LOG.debug("Completed message "
+            LOG.debug(
+                "Completed message "
                     + wrapper.getMessageID()
                     + " but it is not in the map from "
                     + wrapper);
@@ -1194,7 +1205,8 @@ public class NewPacketFormat implements PacketFormat {
       this.messageLength = messageLength;
 
       if (buffer.length > messageLength) {
-        LOG.warn("Buffer is larger than set message length! ("
+        LOG.warn(
+            "Buffer is larger than set message length! ("
                 + buffer.length
                 + ">"
                 + messageLength
@@ -1215,7 +1227,8 @@ public class NewPacketFormat implements PacketFormat {
 
         npf.receiveBufferUsed += (length - buffer.length);
         if (LOG.isDebugEnabled())
-          LOG.debug("Added "
+          LOG.debug(
+              "Added "
                   + (length - buffer.length)
                   + " to buffer. Total is now "
                   + npf.receiveBufferUsed);

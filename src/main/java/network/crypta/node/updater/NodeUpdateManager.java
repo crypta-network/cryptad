@@ -41,7 +41,6 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
-
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.StringCallback;
@@ -71,7 +70,7 @@ import org.slf4j.LoggerFactory;
  * bug #6009 for some current UOM compatibility issues.
  */
 public class NodeUpdateManager {
-    private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -175,7 +174,6 @@ public class NodeUpdateManager {
   static final String TEMP_FILE_SUFFIX = ".updater.tmp";
 
   static {
-
   }
 
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
@@ -980,7 +978,8 @@ public class NodeUpdateManager {
         if (this.disabledNotBlown && !disabledNotBlown) {
           disabledNotBlown = true;
         }
-        LOG.error("The key has ALREADY been marked as blown! Message was "
+        LOG.error(
+            "The key has ALREADY been marked as blown! Message was "
                 + revocationMessage
                 + " new message "
                 + msg);

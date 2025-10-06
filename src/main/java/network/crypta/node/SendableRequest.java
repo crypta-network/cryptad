@@ -6,7 +6,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequestSchedulerGroup;
 import network.crypta.client.async.ClientRequester;
-
 import network.crypta.support.RandomGrabArray;
 import network.crypta.support.RandomGrabArrayItem;
 import org.slf4j.Logger;
@@ -22,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * restarting downloads or losing uploads. Not all subclasses of this class are actually persisted.
  */
 public abstract class SendableRequest implements RandomGrabArrayItem, Serializable {
-    private static final Logger LOG = LoggerFactory.getLogger(SendableRequest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SendableRequest.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -35,7 +34,6 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
   protected final boolean realTimeFlag;
 
   static {
-    
   }
 
   SendableRequest(boolean persistent, boolean realTimeFlag) {

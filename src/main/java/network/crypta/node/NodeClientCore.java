@@ -74,7 +74,6 @@ import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Base64;
 import network.crypta.support.Executor;
 import network.crypta.support.HTMLNode;
-
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
@@ -100,7 +99,7 @@ import org.slf4j.LoggerFactory;
 
 /** The connection between the node and the client layer. */
 public class NodeClientCore implements Persistable {
-    private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
 
   // max number of healing inserts. If a 320 MiB file succeeds just barely,
   // it has about 10.000 blocks eligible for healing (10_000 x 32 kiB).
@@ -112,7 +111,6 @@ public class NodeClientCore implements Persistable {
   private static final int MAX_RUNNING_HEALING_INSERTS = 8192;
 
   static {
-
   }
 
   /**
@@ -1311,7 +1309,8 @@ public class NodeClientCore implements Persistable {
     final RequestTag tag =
         new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
-      LOG.error("Could not lock UID just randomly generated: "
+      LOG.error(
+          "Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       listener.onFailed(
@@ -1370,8 +1369,8 @@ public class NodeClientCore implements Persistable {
             tag.unlockHandler();
 
             if (status == RequestSender.NOT_FINISHED) {
-              LOG.error("Bogus status in onRequestSenderFinished for " + rs,
-                  new Exception("error"));
+              LOG.error(
+                  "Bogus status in onRequestSenderFinished for " + rs, new Exception("error"));
               listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
               return;
             }
@@ -1385,7 +1384,8 @@ public class NodeClientCore implements Persistable {
                 && status != RequestSender.GENERATED_REJECTED_OVERLOAD
                 && status != RequestSender.INTERNAL_ERROR) {
               if (LOG.isDebugEnabled())
-                LOG.debug((isSSK ? "SSK" : "CHK")
+                LOG.debug(
+                    (isSSK ? "SSK" : "CHK")
                         + " fetch cost "
                         + rs.getTotalSentBytes()
                         + '/'
@@ -1488,7 +1488,8 @@ public class NodeClientCore implements Persistable {
                   listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
                   return;
                 default:
-                  LOG.error("Unknown RequestSender code in get"
+                  LOG.error(
+                      "Unknown RequestSender code in get"
                           + (isSSK ? "SSK" : "CHK")
                           + ": "
                           + status
@@ -1625,7 +1626,8 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     RequestTag tag = new RequestTag(false, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
-      LOG.error("Could not lock UID just randomly generated: "
+      LOG.error(
+          "Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
@@ -1674,7 +1676,8 @@ public class NodeClientCore implements Persistable {
             && status != RequestSender.GENERATED_REJECTED_OVERLOAD
             && status != RequestSender.INTERNAL_ERROR) {
           if (LOG.isDebugEnabled())
-            LOG.debug("CHK fetch cost "
+            LOG.debug(
+                "CHK fetch cost "
                     + rs.getTotalSentBytes()
                     + '/'
                     + rs.getTotalReceivedBytes()
@@ -1773,7 +1776,8 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     RequestTag tag = new RequestTag(true, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
-      LOG.error("Could not lock UID just randomly generated: "
+      LOG.error(
+          "Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
@@ -1822,7 +1826,8 @@ public class NodeClientCore implements Persistable {
             && status != RequestSender.GENERATED_REJECTED_OVERLOAD
             && status != RequestSender.INTERNAL_ERROR) {
           if (LOG.isDebugEnabled())
-            LOG.debug("SSK fetch cost "
+            LOG.debug(
+                "SSK fetch cost "
                     + rs.getTotalSentBytes()
                     + '/'
                     + rs.getTotalReceivedBytes()
@@ -1953,7 +1958,8 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
-      LOG.error("Could not lock UID just randomly generated: "
+      LOG.error(
+          "Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
@@ -2011,7 +2017,8 @@ public class NodeClientCore implements Persistable {
       }
 
       if (LOG.isDebugEnabled())
-        LOG.debug("Completed "
+        LOG.debug(
+            "Completed "
                 + uid
                 + " overload="
                 + hasReceivedRejectedOverload
@@ -2106,7 +2113,8 @@ public class NodeClientCore implements Persistable {
     long uid = makeUID();
     InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
     if (!tracker.lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
-      LOG.error("Could not lock UID just randomly generated: "
+      LOG.error(
+          "Could not lock UID just randomly generated: "
               + uid
               + " - probably indicates broken PRNG");
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
@@ -2163,7 +2171,8 @@ public class NodeClientCore implements Persistable {
       }
 
       if (LOG.isDebugEnabled())
-        LOG.debug("Completed "
+        LOG.debug(
+            "Completed "
                 + uid
                 + " overload="
                 + hasReceivedRejectedOverload

@@ -18,7 +18,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
-
 import network.crypta.support.MediaType;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
@@ -37,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * it ever finds it, it will be immediately fed to the NodeUpdateManager.
  */
 public class RevocationChecker implements ClientGetCallback, RequestClient {
-    private static final Logger LOG = LoggerFactory.getLogger(RevocationChecker.class);
+  private static final Logger LOG = LoggerFactory.getLogger(RevocationChecker.class);
 
   public static final int REVOCATION_DNF_MIN = 3;
 
@@ -152,7 +151,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
           }
           if (LOG.isDebugEnabled()) LOG.debug("fetcher=" + revocationGetter);
           if (revocationGetter != null && logMINOR)
-            LOG.debug("revocation fetcher: cancelled="
+            LOG.debug(
+                "revocation fetcher: cancelled="
                     + revocationGetter.isCancelled()
                     + ", finished="
                     + revocationGetter.isFinished());
@@ -247,7 +247,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 
   private void moveBlob(Bucket tmpBlob) {
     if (tmpBlob == null) {
-      LOG.error("No temporary binary blob file moving it: may not be able to propagate revocation,"
+      LOG.error(
+          "No temporary binary blob file moving it: may not be able to propagate revocation,"
               + " bug???");
       return;
     }
@@ -411,7 +412,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     try {
       return new FileRandomAccessBuffer(f, true);
     } catch (FileNotFoundException e) {
-      LOG.error("We do not have the blob file for the revocation even though we have successfully"
+      LOG.error(
+          "We do not have the blob file for the revocation even though we have successfully"
               + " downloaded it!",
           e);
       return null;
