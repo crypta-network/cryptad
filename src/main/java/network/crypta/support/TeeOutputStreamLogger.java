@@ -5,6 +5,8 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * OutputStream that mirrors bytes into Crypta's Logger while preserving the original console.
@@ -21,6 +23,7 @@ import network.crypta.support.Logger.LogLevel;
  * original stream so ConsoleAppender output reaches the terminal.
  */
 public class TeeOutputStreamLogger extends OutputStream {
+  private static final Logger LOG = LoggerFactory.getLogger(TeeOutputStreamLogger.class);
 
   private static final ThreadLocal<Boolean> IN_LOGGING =
       ThreadLocal.withInitial(() -> Boolean.FALSE);
@@ -38,6 +41,27 @@ public class TeeOutputStreamLogger extends OutputStream {
     this.charset = charset;
   }
 
+  private void logByPriority(String msg) {
+    switch (priority) {
+      case ERROR:
+        LOG.error(msg);
+        break;
+      case WARNING:
+        LOG.warn(msg);
+        break;
+      case NORMAL:
+        LOG.info(msg);
+        break;
+      case DEBUG:
+      case MINOR:
+      case MINIMAL:
+      default:
+        if (LOG.isDebugEnabled()) LOG.debug(msg);
+        else LOG.info(msg);
+        break;
+    }
+  }
+
   @Override
   public void write(int b) throws IOException {
     if (Boolean.TRUE.equals(IN_LOGGING.get())) {
@@ -45,20 +69,15 @@ public class TeeOutputStreamLogger extends OutputStream {
       original.write(b);
       return;
     }
-    // If Crypta's logger chain is disabled, bypass logging and print directly to console.
-    if (Logger.logger instanceof network.crypta.support.VoidLogger) {
-      original.write(b);
-      return;
-    }
     try {
       IN_LOGGING.set(Boolean.TRUE);
-      Logger.logStatic(this, prefix + (char) b, priority);
+      logByPriority(prefix + (char) b);
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
     // Ensure stdout (NORMAL and lower) still appears on the real console even if ConsoleAppender
     // filters WARN+ only. Avoid duplication for WARN/ERROR which ConsoleAppender already prints.
-    if (priority.ordinal() < Logger.LogLevel.WARNING.ordinal()) {
+    if (priority.ordinal() < LogLevel.WARNING.ordinal()) {
       original.write(b);
     }
   }
@@ -69,23 +88,19 @@ public class TeeOutputStreamLogger extends OutputStream {
       original.write(b, off, len);
       return;
     }
-    if (Logger.logger instanceof network.crypta.support.VoidLogger) {
-      original.write(b, off, len);
-      return;
-    }
     try {
       IN_LOGGING.set(Boolean.TRUE);
       try {
         // Use charset to avoid platform-default ambiguity
-        Logger.logStatic(this, prefix + new String(b, off, len, charset), priority);
+        logByPriority(prefix + new String(b, off, len, charset));
       } catch (UnsupportedEncodingException e) {
         // Fallback to platform default if an unexpected charset issue occurs
-        Logger.logStatic(this, prefix + new String(b, off, len), priority);
+        logByPriority(prefix + new String(b, off, len));
       }
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
-    if (priority.ordinal() < Logger.LogLevel.WARNING.ordinal()) {
+    if (priority.ordinal() < LogLevel.WARNING.ordinal()) {
       original.write(b, off, len);
     }
   }

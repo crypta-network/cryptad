@@ -5,9 +5,9 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
 import network.crypta.node.TimeSkewDetectorCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Time decaying running average.
@@ -20,6 +20,7 @@ import network.crypta.support.SimpleFieldSet;
  * taking into account the fact that reports persist and accumulate. :)
  */
 public final class TimeDecayingRunningAverage implements RunningAverage, Cloneable {
+  private static final Logger LOG = LoggerFactory.getLogger(TimeDecayingRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
   static final int MAGIC = 0x5ff4ac94;
@@ -92,8 +93,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-    if (logDEBUG) Logger.debug(this, "Created " + this, new Exception("debug"));
+    logDEBUG = LOG.isDebugEnabled();
+    if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
     this.timeSkewCallback = callback;
   }
 
@@ -121,8 +122,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-    if (logDEBUG) Logger.debug(this, "Created " + this, new Exception("debug"));
+    logDEBUG = LOG.isDebugEnabled();
+    if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
     if (fs != null) {
       started = fs.getBoolean("Started", false);
       if (started) {
@@ -173,7 +174,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     this.defaultValue = defaultValue;
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+    logDEBUG = LOG.isDebugEnabled();
     lastReportTime = -1;
     createdTime = System.currentTimeMillis() - priorExperienceTime;
     totalReports = dis.readLong();
@@ -213,29 +214,27 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       // Must synchronize first to achieve serialization.
       long now = System.currentTimeMillis();
       if (d < minReport) {
-        Logger.error(this, "Impossible: " + d + " on " + this, new Exception("error"));
+        LOG.error("Impossible: " + d + " on " + this, new Exception("error"));
         return;
       }
       if (d > maxReport) {
-        Logger.error(this, "Impossible: " + d + " on " + this, new Exception("error"));
+        LOG.error("Impossible: " + d + " on " + this, new Exception("error"));
         return;
       }
       if (Double.isInfinite(d) || Double.isNaN(d)) {
-        Logger.error(
-            this, "Reported infinity or NaN to " + this + " : " + d, new Exception("error"));
+        LOG.error("Reported infinity or NaN to " + this + " : " + d, new Exception("error"));
         return;
       }
       totalReports++;
       if (!started) {
         curValue = d;
         started = true;
-        if (logDEBUG) Logger.debug(this, "Reported " + d + " on " + this + " when just started");
+        if (LOG.isDebugEnabled()) LOG.debug("Reported " + d + " on " + this + " when just started");
       } else if (lastReportTime != -1) { // might be just serialized in
         long thisInterval = now - lastReportTime;
         long uptime = now - createdTime;
         if (thisInterval < 0) {
-          Logger.error(
-              this,
+          LOG.error(
               "Clock (reporting) went back in time, ignoring report: "
                   + now
                   + " was "
@@ -249,8 +248,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
         }
         double thisHalfLife = halfLife;
         if (uptime < 0) {
-          Logger.error(
-              this,
+          LOG.error(
               "Clock (uptime) went back in time, ignoring report: "
                   + now
                   + " was "
@@ -280,12 +278,11 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
                 + (1.0 - changeFactor) * d;
         // FIXME remove when stop getting reports of wierd output values
         if (curValue < minReport || curValue > maxReport) {
-          Logger.error(this, "curValue=" + curValue + " was " + oldCurValue + " - out of range");
+          LOG.error("curValue=" + curValue + " was " + oldCurValue + " - out of range");
           curValue = oldCurValue;
         }
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Reported "
                   + d
                   + " on "

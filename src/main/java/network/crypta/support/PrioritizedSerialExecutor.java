@@ -7,20 +7,14 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PrioritizedSerialExecutor implements Executor {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PrioritizedSerialExecutor.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private final List<ArrayDeque<Runnable>> jobs;
@@ -55,8 +49,7 @@ public class PrioritizedSerialExecutor implements Executor {
       synchronized (jobs) {
         if (current != null) {
           if (current.isAlive()) {
-            Logger.error(
-                this, "Already running a thread for " + this + " !!", new Exception("error"));
+            LOG.error("Already running a thread for " + this + " !!", new Exception("error"));
             return;
           }
         }
@@ -91,27 +84,27 @@ public class PrioritizedSerialExecutor implements Executor {
             try {
               callback.onIdle();
             } catch (Throwable t) {
-              Logger.error(this, "Idle callback failed: " + t, t);
+              LOG.error("Idle callback failed: " + t, t);
             }
             calledIdleCallback = true;
             continue;
           }
           calledIdleCallback = false;
           try {
-            if (logMINOR) Logger.minor(this, "Running job " + job);
+            if (LOG.isDebugEnabled()) LOG.debug("Running job " + job);
             long start = System.currentTimeMillis();
             job.run();
             long end = System.currentTimeMillis();
-            if (logMINOR) {
-              Logger.minor(this, "Job " + job + " took " + (end - start) + "ms");
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Job " + job + " took " + (end - start) + "ms");
             }
 
             if (statistics != null) {
               statistics.reportDatabaseJob(job.toString(), end - start);
             }
           } catch (Throwable t) {
-            Logger.error(this, "Caught " + t, t);
-            Logger.error(this, "While running " + job + " on " + this);
+            LOG.error("Caught " + t, t);
+            LOG.error("While running " + job + " on " + this);
           }
         }
       } finally {
@@ -126,14 +119,14 @@ public class PrioritizedSerialExecutor implements Executor {
       if (!invertOrder) {
         for (int i = 0; i < jobs.size(); i++) {
           if (!jobs.get(i).isEmpty()) {
-            if (logMINOR) Logger.minor(this, "Chosen job at priority " + i);
+            if (LOG.isDebugEnabled()) LOG.debug("Chosen job at priority " + i);
             return jobs.get(i).removeFirst();
           }
         }
       } else {
         for (int i = jobs.size() - 1; i >= 0; i--) {
           if (!jobs.get(i).isEmpty()) {
-            if (logMINOR) Logger.minor(this, "Chosen job at priority " + i);
+            if (LOG.isDebugEnabled()) LOG.debug("Chosen job at priority " + i);
             return jobs.get(i).removeFirst();
           }
         }
@@ -199,12 +192,12 @@ public class PrioritizedSerialExecutor implements Executor {
   private void reallyStart() {
     synchronized (jobs) {
       if (running) {
-        Logger.error(this, "Not reallyStart()ing: ALREADY RUNNING", new Exception("error"));
+        LOG.error("Not reallyStart()ing: ALREADY RUNNING", new Exception("error"));
         return;
       }
       running = true;
-      if (logMINOR)
-        Logger.minor(this, "Starting thread... " + name + " : " + runner, new Exception("debug"));
+      if (LOG.isDebugEnabled())
+        LOG.debug("Starting thread... " + name + " : " + runner, new Exception("debug"));
       realExecutor.execute(runner, name);
     }
   }
@@ -223,9 +216,8 @@ public class PrioritizedSerialExecutor implements Executor {
 
   public void execute(Runnable job, int prio, String jobName) {
     synchronized (jobs) {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Queueing "
                 + jobName
                 + " : "
@@ -247,13 +239,12 @@ public class PrioritizedSerialExecutor implements Executor {
   public void executeNoDupes(Runnable job, int prio, String jobName) {
     synchronized (jobs) {
       if (jobs.get(prio).contains(job)) {
-        if (logMINOR) Logger.minor(this, "Not queueing job: Job already queued: " + job);
+        if (LOG.isDebugEnabled()) LOG.debug("Not queueing job: Job already queued: " + job);
         return;
       }
 
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Queueing "
                 + jobName
                 + " : "

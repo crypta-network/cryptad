@@ -1,10 +1,9 @@
 package network.crypta.support.math;
 
 import java.io.Serial;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Exponential decay "running average".
@@ -21,6 +20,9 @@ import network.crypta.support.SimpleFieldSet;
  *     </ul>
  */
 public final class BootstrappingDecayingRunningAverage implements RunningAverage, Cloneable {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(BootstrappingDecayingRunningAverage.class);
+
   @Serial private static final long serialVersionUID = -1;
 
   @Override
@@ -36,16 +38,7 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   private long reports;
   private int maxReports;
 
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /**
@@ -110,12 +103,11 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   public synchronized void report(double d) {
     // Check for invalid values and return early without updating
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (logDEBUG) {
-        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
-        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d))
-          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
+      if (LOG.isDebugEnabled()) {
+        if (d < min) LOG.debug("Too low: " + d, new Exception("debug"));
+        else if (d > max) LOG.debug("Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d)) LOG.debug("Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) LOG.debug("NaN value", new Exception("debug"));
       }
       return; // Don't update the average with invalid values
     }
@@ -143,12 +135,11 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   public synchronized double valueIfReported(double d) {
     // Return current value for invalid inputs
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (logDEBUG) {
-        if (d < min) Logger.debug(this, "Too low: " + d, new Exception("debug"));
-        else if (d > max) Logger.debug(this, "Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d))
-          Logger.debug(this, "Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) Logger.debug(this, "NaN value", new Exception("debug"));
+      if (LOG.isDebugEnabled()) {
+        if (d < min) LOG.debug("Too low: " + d, new Exception("debug"));
+        else if (d > max) LOG.debug("Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d)) LOG.debug("Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) LOG.debug("NaN value", new Exception("debug"));
       }
       return currentValue; // Return unchanged value for invalid inputs
     }

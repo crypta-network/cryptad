@@ -11,7 +11,8 @@ import java.util.StringTokenizer;
 import java.util.TimeZone;
 import network.crypta.config.Dimension;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class contains static methods used for parsing boolean and unsigned long fields in Freenet
@@ -20,17 +21,9 @@ import network.crypta.support.Logger.LogLevel;
  * @author oskar
  */
 public abstract class Fields {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(Fields.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /** All possible chars for representing a number as a String. Used to optimize numberList(). */
@@ -612,7 +605,7 @@ public abstract class Fields {
     try {
       return Long.parseLong(s);
     } catch (NumberFormatException e) {
-      Logger.error(Fields.class, "Failed to parse value as long: " + s + " : " + e, e);
+      LOG.error("Failed to parse value as long: " + s + " : " + e, e);
       return defaultValue;
     }
   }
@@ -621,7 +614,7 @@ public abstract class Fields {
     try {
       return Integer.parseInt(s);
     } catch (NumberFormatException e) {
-      Logger.error(Fields.class, "Failed to parse value as int: " + s + " : " + e, e);
+      LOG.error("Failed to parse value as int: " + s + " : " + e, e);
       return defaultValue;
     }
   }
@@ -630,7 +623,7 @@ public abstract class Fields {
     try {
       return Short.parseShort(s);
     } catch (NumberFormatException e) {
-      Logger.error(Fields.class, "Failed to parse value as short: " + s + " : " + e, e);
+      LOG.error("Failed to parse value as short: " + s + " : " + e, e);
       return defaultValue;
     }
   }
@@ -750,15 +743,15 @@ public abstract class Fields {
         double m = Double.parseDouble(multiplier);
         checkLongOverflowWhenMultiply(res, m);
         res *= m;
-        if (logMINOR) {
-          Logger.minor(Fields.class, "Parsed " + multiplier + " of " + s + " as double: " + res);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Parsed " + multiplier + " of " + s + " as double: " + res);
         }
       } else {
         long m = Long.parseLong(multiplier);
         checkLongOverflowWhenMultiply(res, m);
         res *= m;
-        if (logMINOR) {
-          Logger.minor(Fields.class, "Parsed " + multiplier + " of " + s + " as long: " + res);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Parsed " + multiplier + " of " + s + " as long: " + res);
         }
       }
     } catch (ArithmeticException e) {

@@ -6,21 +6,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.TreeMap;
 import network.crypta.node.FastRunnable;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PrioritizedTicker implements Ticker, Runnable {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PrioritizedTicker.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private static final class Job {
@@ -67,19 +60,19 @@ public class PrioritizedTicker implements Ticker, Runnable {
   }
 
   public void start() {
-    Logger.normal(this, "Starting Ticker");
+    LOG.info("Starting Ticker");
     System.out.println("Starting Ticker");
     myThread.start();
   }
 
   @Override
   public void run() {
-    if (logMINOR) Logger.minor(this, "In Ticker.run()");
+    if (LOG.isDebugEnabled()) LOG.debug("In Ticker.run()");
     while (true) {
       try {
         realRun();
       } catch (Throwable t) {
-        Logger.error(this, "Caught in PacketSender: " + t, t);
+        LOG.error("Caught in PacketSender: " + t, t);
         System.err.println("Caught in PacketSender: " + t);
         t.printStackTrace();
       }
@@ -118,20 +111,20 @@ public class PrioritizedTicker implements Ticker, Runnable {
 
     if (jobsToRun != null)
       for (Job r : jobsToRun) {
-        if (logMINOR) Logger.minor(this, "Running " + r);
+        if (LOG.isDebugEnabled()) LOG.debug("Running " + r);
         if (r.job instanceof FastRunnable)
           // Run in-line
 
           try {
             r.job.run();
           } catch (Throwable t) {
-            Logger.error(this, "Caught " + t + " running " + r, t);
+            LOG.error("Caught " + t + " running " + r, t);
           }
         else
           try {
             executor.execute(r.job, r.name, true);
           } catch (Throwable t) {
-            Logger.error(this, "Caught in PacketSender: " + t, t);
+            LOG.error("Caught in PacketSender: " + t, t);
             System.err.println("Caught in PacketSender: " + t);
             t.printStackTrace();
             System.err.println("Will retry above failed operation...");
@@ -150,7 +143,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
   }
 
   protected void sleep(long sleepTime) throws InterruptedException {
-    if (logMINOR) Logger.minor(this, "Sleeping for " + sleepTime);
+    if (LOG.isDebugEnabled()) LOG.debug("Sleeping for " + sleepTime);
     synchronized (this) {
       wait(sleepTime);
     }
@@ -216,7 +209,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
       boolean noDupes) {
     if (noDupes) runOnTickerAnyway = true;
     if (offset <= 0 && !runOnTickerAnyway) {
-      if (logMINOR) Logger.minor(this, "Running directly: " + runner);
+      if (LOG.isDebugEnabled()) LOG.debug("Running directly: " + runner);
       executor.execute(runner, name);
       return;
     }
@@ -226,7 +219,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
         Long alreadyQueuedAt = timedJobsQueued.get(job);
         if (alreadyQueuedAt != null) {
           if (alreadyQueuedAt <= runJobAt) {
-            Logger.normal(this, "Not re-running as already queued: " + runner + " for " + name);
+            LOG.info("Not re-running as already queued: " + runner + " for " + name);
             return;
           } else {
             // Delete the existing job because the new job will run first.

@@ -7,8 +7,9 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Pooled Executor implementation. Create a thread when we need one, let them die after 5 minutes of
@@ -17,6 +18,7 @@ import network.crypta.support.io.NativeThread;
  * @author toad
  */
 public class PooledExecutor implements Executor {
+  private static final Logger LOG = LoggerFactory.getLogger(PooledExecutor.class);
 
   /** All threads running or waiting */
   private final int[] runningThreads = new int[NativeThread.JAVA_PRIORITY_RANGE + 1];
@@ -49,7 +51,7 @@ public class PooledExecutor implements Executor {
   static final long TIMEOUT = MINUTES.toMillis(1);
 
   public void start() {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
   }
 
   @Override
@@ -67,8 +69,8 @@ public class PooledExecutor implements Executor {
     int prio = NativeThread.PriorityLevel.NORM_PRIORITY.value;
     if (runnable instanceof PrioRunnable prioRunnable) prio = prioRunnable.getPriority();
 
-    if (logMINOR)
-      Logger.minor(this, "Executing " + runnable + " as " + jobName + " at prio " + prio);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Executing " + runnable + " as " + jobName + " at prio " + prio);
     if (prio < NativeThread.PriorityLevel.MIN_PRIORITY.value
         || prio > NativeThread.PriorityLevel.MAX_PRIORITY.value)
       throw new IllegalArgumentException("Unreconized priority level : " + prio + '!');
@@ -83,7 +85,7 @@ public class PooledExecutor implements Executor {
           ArrayList<MyThread> list = waitingThreads.get(prio - 1);
           t = list.remove(list.size() - 1);
           if (t != null) waitingThreadsCount--;
-          if (logMINOR) Logger.minor(this, "Reusing thread " + t);
+          if (LOG.isDebugEnabled()) LOG.debug("Reusing thread " + t);
         } else {
           // Must create new thread
           if (ticker != null
@@ -115,9 +117,8 @@ public class PooledExecutor implements Executor {
           runningThreads[prio - 1]++;
           jobMisses++;
 
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Jobs: " + jobMisses + " misses of " + jobCount + " starting urgently " + jobName);
         }
 
@@ -137,10 +138,9 @@ public class PooledExecutor implements Executor {
         t.notifyAll();
       }
 
-      if (logMINOR)
+      if (LOG.isDebugEnabled())
         synchronized (this) {
-          Logger.minor(
-              this,
+          LOG.debug(
               "Not starting: Jobs: "
                   + jobMisses
                   + " misses of "
@@ -257,8 +257,8 @@ public class PooledExecutor implements Executor {
 
             if (!alive) {
               runningThreads[nativePriority - 1]--;
-              if (logMINOR)
-                Logger.minor(this, "Exiting having executed " + ranJobs + " jobs : " + this);
+              if (LOG.isDebugEnabled())
+                LOG.debug("Exiting having executed " + ranJobs + " jobs : " + this);
               removed = true;
               return;
             }
@@ -270,7 +270,7 @@ public class PooledExecutor implements Executor {
           setName(job.name + "(" + threadNo + ")");
           job.runnable.run();
         } catch (Throwable t) {
-          Logger.error(this, "Caught " + t + " running job " + job, t);
+          LOG.error("Caught " + t + " running job " + job, t);
         }
         ranJobs++;
       }
