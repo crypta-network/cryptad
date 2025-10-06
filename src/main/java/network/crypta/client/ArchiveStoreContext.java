@@ -2,9 +2,8 @@ package network.crypta.client;
 
 import java.util.LinkedList;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks all files currently in the cache from a given key. Keeps the last known hash of the key
@@ -16,6 +15,7 @@ import network.crypta.support.Logger.LogLevel;
  * way around.
  */
 class ArchiveStoreContext {
+  private static final Logger LOG = LoggerFactory.getLogger(ArchiveStoreContext.class);
 
   private final FreenetURI key;
   private final ArchiveManager.ARCHIVE_TYPE archiveType;
@@ -33,16 +33,7 @@ class ArchiveStoreContext {
    */
   private final LinkedList<ArchiveStoreItem> myItems;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   ArchiveStoreContext(FreenetURI key, ArchiveManager.ARCHIVE_TYPE archiveType) {
@@ -98,8 +89,8 @@ class ArchiveStoreContext {
   void removeItem(ArchiveStoreItem item) {
     synchronized (myItems) {
       if (!myItems.remove(item)) {
-        if (logMINOR)
-          Logger.minor(this, "Not removing: " + item + " for " + this + " - already removed");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Not removing: " + item + " for " + this + " - already removed");
         return; // only removed once
       }
     }

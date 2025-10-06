@@ -27,18 +27,18 @@ import network.crypta.keys.ClientCHK;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.NullOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Metadata parser/writer class. */
 public class Metadata implements Cloneable, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(Metadata.class);
 
   @Serial private static final long serialVersionUID = 1L;
   static final long FREENET_METADATA_MAGIC = 0xf053b2842d91482bL;
@@ -228,18 +228,7 @@ public class Metadata implements Cloneable, Serializable {
   public final boolean topDontCompress;
   public final CompatibilityMode topCompatibilityMode;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   @Override
@@ -336,7 +325,7 @@ public class Metadata implements Cloneable, Serializable {
     } catch (IllegalArgumentException e) {
       throw new MetadataParseException("Unsupported document type: " + documentType);
     }
-    if (logMINOR) Logger.minor(this, "Document type: " + documentType);
+    if (LOG.isDebugEnabled()) LOG.debug("Document type: " + documentType);
 
     boolean compressed = false;
     boolean hasTopBlocks = false;
@@ -384,7 +373,7 @@ public class Metadata implements Cloneable, Serializable {
           maxCompatMode = CompatibilityMode.COMPAT_1416;
       } else {
         if (CompatibilityMode.maybeFutureCode(code)) {
-          Logger.warning(this, "Content may have been inserted with a newer version of Crypta?");
+          LOG.warn("Content may have been inserted with a newer version of Crypta?");
           topCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
         } else {
           throw new MetadataParseException("Bad compatibility mode " + code);
@@ -400,7 +389,7 @@ public class Metadata implements Cloneable, Serializable {
     }
 
     if (documentType == DocumentType.ARCHIVE_MANIFEST) {
-      if (logMINOR) Logger.minor(this, "Archive manifest");
+      if (LOG.isDebugEnabled()) LOG.debug("Archive manifest");
       archiveType = ARCHIVE_TYPE.getArchiveType(dis.readShort());
       if (archiveType == null)
         throw new MetadataParseException("Unrecognized archive type " + archiveType);
@@ -426,7 +415,7 @@ public class Metadata implements Cloneable, Serializable {
         splitfileSingleCryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
       }
 
-      if (logMINOR) Logger.minor(this, "Splitfile");
+      if (LOG.isDebugEnabled()) LOG.debug("Splitfile");
       dataLength = dis.readLong();
       if (dataLength < -1)
         throw new MetadataParseException("Invalid real content length " + dataLength);
@@ -447,10 +436,10 @@ public class Metadata implements Cloneable, Serializable {
 
     if (noMIME) {
       mimeType = null;
-      if (logMINOR) Logger.minor(this, "noMIME enabled");
+      if (LOG.isDebugEnabled()) LOG.debug("noMIME enabled");
     } else {
       if (compressedMIME) {
-        if (logMINOR) Logger.minor(this, "Compressed MIME");
+        if (LOG.isDebugEnabled()) LOG.debug("Compressed MIME");
         short x = dis.readShort();
         compressedMIMEValue = (short) (x & 32767); // chop off last bit
         hasCompressedMIMEParams = (compressedMIMEValue & 32768) == 32768;
@@ -469,11 +458,11 @@ public class Metadata implements Cloneable, Serializable {
         dis.readFully(toRead);
         // Use UTF-8 for everything, for simplicity
         mimeType = new String(toRead, StandardCharsets.UTF_8);
-        if (logMINOR) Logger.minor(this, "Raw MIME");
+        if (LOG.isDebugEnabled()) LOG.debug("Raw MIME");
         if (!DefaultMIMETypes.isPlausibleMIMEType(mimeType))
           throw new MetadataParseException("Does not look like a MIME type: \"" + mimeType + "\"");
       }
-      if (logMINOR) Logger.minor(this, "MIME = " + mimeType);
+      if (LOG.isDebugEnabled()) LOG.debug("MIME = " + mimeType);
     }
 
     if (dbr) {
@@ -488,8 +477,7 @@ public class Metadata implements Cloneable, Serializable {
         int len = (dis.readByte() & 0xff);
         byte[] buf = new byte[len];
         dis.readFully(buf);
-        Logger.normal(
-            this, "Ignoring type " + type + " extra-client-metadata field of " + len + " bytes");
+        LOG.info("Ignoring type " + type + " extra-client-metadata field of " + len + " bytes");
       }
       extraMetadata = false; // can't parse, can't write
     }
@@ -562,8 +550,7 @@ public class Metadata implements Cloneable, Serializable {
         segmentCount = 1;
         deductBlocksFromSegments = 0;
         if (splitfileCheckBlocks > 0) {
-          Logger.error(
-              this,
+          LOG.error(
               "Splitfile type is SPLITFILE_NONREDUNDANT yet "
                   + splitfileCheckBlocks
                   + " check blocks found!! : "
@@ -659,8 +646,7 @@ public class Metadata implements Cloneable, Serializable {
         if (checkBlocks == 64
             && blocksPerSegment == 128
             && splitfileCheckBlocks == splitfileBlocks - (splitfileBlocks / 128)) {
-          Logger.normal(
-              this, "Activating 1135 wrong check blocks per segment workaround for " + this);
+          LOG.info("Activating 1135 wrong check blocks per segment workaround for " + this);
           checkBlocks = 127;
         }
         checkBlocksPerSegment = checkBlocks;
@@ -736,9 +722,8 @@ public class Metadata implements Cloneable, Serializable {
                   copyCheckBlocks,
                   splitfileSingleCryptoKey,
                   splitfileSingleCryptoAlgorithm);
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "REQUESTING: Segment "
                     + i
                     + " of "
@@ -776,14 +761,14 @@ public class Metadata implements Cloneable, Serializable {
 
       // Parse the sub-Manifest.
 
-      if (logMINOR) Logger.minor(this, "Simple manifest, " + manifestEntryCount + " entries");
+      if (LOG.isDebugEnabled()) LOG.debug("Simple manifest, " + manifestEntryCount + " entries");
 
       for (int i = 0; i < manifestEntryCount; i++) {
         short nameLength = dis.readShort();
         byte[] buf = new byte[nameLength];
         dis.readFully(buf);
         String name = new String(buf, StandardCharsets.UTF_8).intern();
-        if (logMINOR) Logger.minor(this, "Entry " + i + " name " + name);
+        if (LOG.isDebugEnabled()) LOG.debug("Entry " + i + " name " + name);
         short len = dis.readShort();
         if (len < 0) throw new MetadataParseException("Invalid manifest entry size: " + len);
         if (len > length)
@@ -794,14 +779,14 @@ public class Metadata implements Cloneable, Serializable {
         Metadata m = Metadata.construct(data);
         manifestEntries.put(name, m);
       }
-      if (logMINOR) Logger.minor(this, "End of manifest"); // Make it easy to search for it!
+      if (LOG.isDebugEnabled()) LOG.debug("End of manifest"); // Make it easy to search for it!
     }
 
     if ((documentType == DocumentType.ARCHIVE_INTERNAL_REDIRECT)
         || (documentType == DocumentType.ARCHIVE_METADATA_REDIRECT)
         || (documentType == DocumentType.SYMBOLIC_SHORTLINK)) {
       int len = dis.readShort();
-      if (logMINOR) Logger.minor(this, "Reading archive internal redirect length " + len);
+      if (LOG.isDebugEnabled()) LOG.debug("Reading archive internal redirect length " + len);
       byte[] buf = new byte[len];
       dis.readFully(buf);
       targetName = new String(buf, StandardCharsets.UTF_8);
@@ -813,8 +798,8 @@ public class Metadata implements Cloneable, Serializable {
           targetName = targetName.substring(1);
         } else break;
       }
-      if (logMINOR)
-        Logger.minor(this, "Archive and/or internal redirect: " + targetName + " (" + len + ')');
+      if (LOG.isDebugEnabled())
+        LOG.debug("Archive and/or internal redirect: " + targetName + " (" + len + ')');
     }
   }
 
@@ -949,21 +934,20 @@ public class Metadata implements Cloneable, Serializable {
       Object o = entry.getValue();
       if (o instanceof Metadata data) {
         if (data == null) throw new NullPointerException();
-        if (logDEBUG) Logger.debug(this, "Putting metadata for " + key);
+        if (LOG.isDebugEnabled()) LOG.debug("Putting metadata for " + key);
         manifestEntries.put(key, data);
       } else if (o instanceof HashMap) {
         if (key.isEmpty()) {
-          Logger.error(
-              this,
+          LOG.error(
               "Creating a subdirectory called \"\" - it will not be possible to access this through"
                   + " fproxy!",
               new Exception("error"));
         }
         HashMap<String, Object> hm = Metadata.forceMap(o);
-        if (logDEBUG) Logger.debug(this, "Making metadata map for " + key);
+        if (LOG.isDebugEnabled()) LOG.debug("Making metadata map for " + key);
         Metadata subMap = mkRedirectionManifestWithMetadata(hm);
         manifestEntries.put(key, subMap);
-        if (logDEBUG) Logger.debug(this, "Putting metadata map for " + key);
+        if (LOG.isDebugEnabled()) LOG.debug("Putting metadata map for " + key);
       }
     }
   }
@@ -1039,8 +1023,7 @@ public class Metadata implements Cloneable, Serializable {
           throw new IllegalArgumentException("Invalid target name is empty: \"" + arg + "\"");
         if (targetName.charAt(0) == '/') {
           targetName = targetName.substring(1);
-          Logger.error(
-              this,
+          LOG.error(
               "Stripped initial slash from archive internal redirect on creating metadata: \""
                   + arg
                   + "\"",
@@ -1074,8 +1057,7 @@ public class Metadata implements Cloneable, Serializable {
           throw new IllegalArgumentException("Invalid target name is empty: \"" + name + "\"");
         if (targetName.charAt(0) == '/') {
           targetName = targetName.substring(1);
-          Logger.error(
-              this,
+          LOG.error(
               "Stripped initial slash from archive internal redirect on creating metadata: \""
                   + name
                   + "\"",

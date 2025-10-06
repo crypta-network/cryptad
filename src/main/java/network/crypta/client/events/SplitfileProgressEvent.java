@@ -2,22 +2,13 @@ package network.crypta.client.events;
 
 import java.util.Date;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SplitfileProgressEvent implements ClientEvent {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitfileProgressEvent.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public static final int CODE = 0x07;
@@ -63,9 +54,8 @@ public class SplitfileProgressEvent implements ClientEvent {
     this.minSuccessfulBlocks = minSuccessfulBlocks;
     this.finalizedTotal = finalizedTotal;
     this.minSuccessFetchBlocks = minSuccessFetchBlocks;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Created SplitfileProgressEvent: total="
               + totalBlocks
               + " succeed="
@@ -100,9 +90,8 @@ public class SplitfileProgressEvent implements ClientEvent {
     sb.append("Completed ");
     if ((minSuccessfulBlocks == 0) && (succeedBlocks == 0)) minSuccessfulBlocks = 1;
     if (minSuccessfulBlocks == 0) {
-      if (LogLevel.MINOR.matchesThreshold(Logger.globalGetThresholdNew()))
-        Logger.error(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.error(
             "minSuccessfulBlocks=0, succeedBlocks="
                 + succeedBlocks
                 + ", totalBlocks="
@@ -115,8 +104,7 @@ public class SplitfileProgressEvent implements ClientEvent {
                 + finalizedTotal,
             new Exception("debug"));
       else
-        Logger.error(
-            this,
+        LOG.error(
             "minSuccessfulBlocks=0, succeedBlocks="
                 + succeedBlocks
                 + ", totalBlocks="

@@ -3,11 +3,13 @@ package network.crypta.client;
 import java.util.HashMap;
 import java.util.Vector;
 import java.util.regex.Pattern;
-import network.crypta.support.Logger;
 import network.crypta.support.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Holds the default MIME types. */
 public class DefaultMIMETypes {
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultMIMETypes.class);
 
   /** Default MIME type - what to set it to if we don't know any better */
   public static final String DEFAULT_MIME_TYPE = "application/octet-stream";
@@ -68,8 +70,7 @@ public class DefaultMIMETypes {
         Short s = mimeTypesByExtension.get(ext);
         if (s != null) {
           // No big deal
-          Logger.normal(
-              DefaultMIMETypes.class,
+          LOG.info(
               "Extension "
                   + ext
                   + " assigned to "

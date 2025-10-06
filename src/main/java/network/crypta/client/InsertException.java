@@ -6,15 +6,16 @@ import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.LowLevelPutException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Thrown when a high-level insert fails. For most failures, there will not be a stack trace, or it
  * will be inaccurate.
  */
 public class InsertException extends Exception implements Cloneable {
+  private static final Logger LOG = LoggerFactory.getLogger(InsertException.class);
+
   @Serial private static final long serialVersionUID = -1106716067841151962L;
 
   /** Failure mode, see the constants below. */
@@ -37,17 +38,7 @@ public class InsertException extends Exception implements Cloneable {
     return mode;
   }
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public InsertException(InsertExceptionMode m, String msg, FreenetURI expectedURI) {
@@ -56,9 +47,9 @@ public class InsertException extends Exception implements Cloneable {
     mode = m;
     errorCodes = null;
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR)
-      Logger.minor(this, "Creating InsertException: " + getMessage(mode) + ": " + msg, this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled())
+      LOG.debug("Creating InsertException: " + getMessage(mode) + ": " + msg, this);
   }
 
   public InsertException(InsertExceptionMode m, FreenetURI expectedURI) {
@@ -67,8 +58,8 @@ public class InsertException extends Exception implements Cloneable {
     mode = m;
     errorCodes = null;
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "Creating InsertException: " + getMessage(mode), this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Creating InsertException: " + getMessage(mode), this);
   }
 
   public InsertException(InsertExceptionMode mode, Throwable e, FreenetURI expectedURI) {
@@ -78,9 +69,9 @@ public class InsertException extends Exception implements Cloneable {
     errorCodes = null;
     initCause(e);
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR)
-      Logger.minor(this, "Creating InsertException: " + getMessage(mode) + ": " + e, this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled())
+      LOG.debug("Creating InsertException: " + getMessage(mode) + ": " + e, this);
   }
 
   public InsertException(
@@ -91,9 +82,9 @@ public class InsertException extends Exception implements Cloneable {
     errorCodes = null;
     initCause(e);
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR)
-      Logger.minor(this, "Creating InsertException: " + getMessage(mode) + ": " + e, this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled())
+      LOG.debug("Creating InsertException: " + getMessage(mode) + ": " + e, this);
   }
 
   public InsertException(
@@ -103,8 +94,8 @@ public class InsertException extends Exception implements Cloneable {
     this.mode = mode;
     this.errorCodes = errorCodes;
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "Creating InsertException: " + getMessage(mode), this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Creating InsertException: " + getMessage(mode), this);
   }
 
   public InsertException(
@@ -117,8 +108,8 @@ public class InsertException extends Exception implements Cloneable {
     this.mode = mode;
     this.errorCodes = errorCodes;
     this.uri = expectedURI;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "Creating InsertException: " + getMessage(mode), this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Creating InsertException: " + getMessage(mode), this);
   }
 
   public InsertException(InsertExceptionMode mode) {
@@ -127,8 +118,8 @@ public class InsertException extends Exception implements Cloneable {
     this.mode = mode;
     this.errorCodes = null;
     this.uri = null;
-    if (mode == InsertExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "Creating InsertException: " + getMessage(mode), this);
+    if (mode == InsertExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Creating InsertException: " + getMessage(mode), this);
   }
 
   public InsertException(InsertException e) {
@@ -156,10 +147,7 @@ public class InsertException extends Exception implements Cloneable {
       case LowLevelPutException.ROUTE_REALLY_NOT_FOUND:
         return new InsertException(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
       default:
-        Logger.error(
-            InsertException.class,
-            "Unknown LowLevelPutException: " + e + " code " + e.code,
-            new Exception("error"));
+        LOG.error("Unknown LowLevelPutException: " + e + " code " + e.code, new Exception("error"));
         return new InsertException(
             InsertExceptionMode.INTERNAL_ERROR, "Unknown error " + e.code, null);
     }
@@ -261,7 +249,7 @@ public class InsertException extends Exception implements Cloneable {
       case ROUTE_REALLY_NOT_FOUND:
         return false;
       default:
-        Logger.error(InsertException.class, "Error unknown to isFatal(): " + getMessage(mode));
+        LOG.error("Error unknown to isFatal(): " + getMessage(mode));
         return false;
     }
   }

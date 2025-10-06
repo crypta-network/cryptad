@@ -17,8 +17,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.ExceptionWrapper;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MutableBoolean;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -31,6 +29,8 @@ import network.crypta.support.io.SkipShieldingInputStream;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Cache of recently decoded archives: - Keep up to N ArchiveHandler's in RAM (this can be large; we
@@ -42,6 +42,7 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
  * way around.
  */
 public class ArchiveManager {
+  private static final Logger LOG = LoggerFactory.getLogger(ArchiveManager.class);
 
   public static final String METADATA_NAME = ".metadata";
   private static boolean logMINOR;
@@ -149,19 +150,19 @@ public class ArchiveManager {
     storedData = new LRUMap<>();
     this.maxArchivedFileSize = maxArchivedFileSize;
     this.tempBucketFactory = tempBucketFactory;
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
   }
 
   /** Add an ArchiveHandler by key */
   private synchronized void putCached(FreenetURI key, ArchiveStoreContext zip) {
-    if (logMINOR) Logger.minor(this, "Put cached AH for " + key + " : " + zip);
+    if (LOG.isDebugEnabled()) LOG.debug("Put cached AH for " + key + " : " + zip);
     archiveHandlers.push(key, zip);
     while (archiveHandlers.size() > maxArchiveHandlers) archiveHandlers.popKey(); // dump it
   }
 
   /** Get an ArchiveHandler by key */
   ArchiveStoreContext getCached(FreenetURI key) {
-    if (logMINOR) Logger.minor(this, "Get cached AH for " + key);
+    if (LOG.isDebugEnabled()) LOG.debug("Get cached AH for " + key);
     ArchiveStoreContext handler = archiveHandlers.get(key);
     if (handler == null) return null;
     archiveHandlers.push(key, handler);
@@ -216,7 +217,7 @@ public class ArchiveManager {
    * @throws ArchiveFailureException
    */
   public Bucket getCached(FreenetURI key, String filename) throws ArchiveFailureException {
-    if (logMINOR) Logger.minor(this, "Fetch cached: " + key + ' ' + filename);
+    if (LOG.isDebugEnabled()) LOG.debug("Fetch cached: " + key + ' ' + filename);
     ArchiveKey k = new ArchiveKey(key, filename);
     ArchiveStoreItem asi = null;
     synchronized (this) {
@@ -225,7 +226,7 @@ public class ArchiveManager {
       // Promote to top of LRU
       storedData.push(k, asi);
     }
-    if (logMINOR) Logger.minor(this, "Found data");
+    if (LOG.isDebugEnabled()) LOG.debug("Found data");
     return asi.getReaderBucket();
   }
 
@@ -242,7 +243,7 @@ public class ArchiveManager {
     // Soft disk space limit = we go over the limit significantly when we
     // are overloaded.
     cachedData -= size;
-    if (logMINOR) Logger.minor(this, "removeCachedItem: " + item);
+    if (LOG.isDebugEnabled()) LOG.debug("removeCachedItem: " + item);
     item.close();
   }
 
@@ -272,11 +273,11 @@ public class ArchiveManager {
       ArchiveExtractCallback callback,
       ClientContext context)
       throws ArchiveFailureException, ArchiveRestartException {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    logMINOR = LOG.isDebugEnabled();
 
     MutableBoolean gotElement = element != null ? new MutableBoolean() : null;
 
-    if (logMINOR) Logger.minor(this, "Extracting " + key);
+    if (LOG.isDebugEnabled()) LOG.debug("Extracting " + key);
     ctx.removeAllCachedItems(this); // flush cache anyway
     final long expectedSize = ctx.getLastSize();
     final long archiveSize = data.size();
@@ -306,20 +307,20 @@ public class ArchiveManager {
           "Archive too big (" + archiveSize + " > " + archiveContext.maxArchiveSize + ")!");
     else if (archiveSize <= 0)
       throw new ArchiveFailureException("Archive too small! (" + archiveSize + ')');
-    else if (logMINOR)
-      Logger.minor(this, "Container size (possibly compressed): " + archiveSize + " for " + data);
+    else if (LOG.isDebugEnabled())
+      LOG.debug("Container size (possibly compressed): " + archiveSize + " for " + data);
 
     final ExceptionWrapper wrapper;
     try {
       if ((ctype == null) || (ARCHIVE_TYPE.ZIP == archiveType)) {
-        if (logMINOR) Logger.minor(this, "No compression");
+        if (LOG.isDebugEnabled()) LOG.debug("No compression");
         try (InputStream is = data.getInputStream()) {
           handleArchiveWithStream(
               archiveType, ctx, key, is, element, callback, gotElement, throwAtExit, context);
         }
         wrapper = null;
       } else if (ctype == COMPRESSOR_TYPE.BZIP2) {
-        if (logMINOR) Logger.minor(this, "dealing with BZIP2");
+        if (LOG.isDebugEnabled()) LOG.debug("dealing with BZIP2");
         try (InputStream baseIs = data.getInputStream();
             InputStream is = new BZip2CompressorInputStream(baseIs)) {
           handleArchiveWithStream(
@@ -327,7 +328,7 @@ public class ArchiveManager {
         }
         wrapper = null;
       } else if (ctype == COMPRESSOR_TYPE.GZIP) {
-        if (logMINOR) Logger.minor(this, "dealing with GZIP");
+        if (LOG.isDebugEnabled()) LOG.debug("dealing with GZIP");
         try (InputStream baseIs = data.getInputStream();
             InputStream is = new GZIPInputStream(baseIs)) {
           handleArchiveWithStream(
@@ -353,16 +354,16 @@ public class ArchiveManager {
                       Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(
                           is, os, data.size(), expectedSize);
                     } catch (CompressionOutputSizeException e) {
-                      Logger.error(this, "Failed to decompress archive: " + e, e);
+                      LOG.error("Failed to decompress archive: " + e, e);
                       wrapper.set(e);
                     } catch (IOException e) {
-                      Logger.error(this, "Failed to decompress archive: " + e, e);
+                      LOG.error("Failed to decompress archive: " + e, e);
                       wrapper.set(e);
                     } finally {
                       try {
                         os.close();
                       } catch (IOException e) {
-                        Logger.error(this, "Failed to close PipedOutputStream: " + e, e);
+                        LOG.error("Failed to close PipedOutputStream: " + e, e);
                       }
                     }
                   }
@@ -371,7 +372,7 @@ public class ArchiveManager {
         handleArchiveWithStream(
             archiveType, ctx, key, pis, element, callback, gotElement, throwAtExit, context);
       } else if (ctype == COMPRESSOR_TYPE.LZMA) {
-        if (logMINOR) Logger.minor(this, "dealing with LZMA");
+        if (LOG.isDebugEnabled()) LOG.debug("dealing with LZMA");
         try (InputStream baseIs = data.getInputStream();
             InputStream is = new LzmaInputStream(baseIs)) {
           handleArchiveWithStream(
@@ -432,7 +433,7 @@ public class ArchiveManager {
       boolean throwAtExit,
       ClientContext context)
       throws ArchiveFailureException, ArchiveRestartException {
-    if (logMINOR) Logger.minor(this, "Handling a TAR Archive");
+    if (LOG.isDebugEnabled()) LOG.debug("Handling a TAR Archive");
     try (TarArchiveInputStream tarIS = new TarArchiveInputStream(data)) {
 
       // MINOR: Assumes the first entry in the tarball is a directory.
@@ -457,7 +458,7 @@ public class ArchiveManager {
         }
         String name = stripLeadingSlashes(entry.getName());
         if (names.contains(name)) {
-          Logger.error(this, "Duplicate key " + name + " in archive " + key);
+          LOG.error("Duplicate key " + name + " in archive " + key);
           continue;
         }
         long size = entry.getSize();
@@ -548,7 +549,7 @@ public class ArchiveManager {
       boolean throwAtExit,
       ClientContext context)
       throws ArchiveFailureException, ArchiveRestartException {
-    if (logMINOR) Logger.minor(this, "Handling a ZIP Archive");
+    if (LOG.isDebugEnabled()) LOG.debug("Handling a ZIP Archive");
     try (ZipInputStream zis = new ZipInputStream(data)) {
 
       // MINOR: Assumes the first entry in the zip is a directory.
@@ -568,7 +569,7 @@ public class ArchiveManager {
         }
         String name = stripLeadingSlashes(entry.getName());
         if (names.contains(name)) {
-          Logger.error(this, "Duplicate key " + name + " in archive " + key);
+          LOG.error("Duplicate key " + name + " in archive " + key);
           continue;
         }
         long size = entry.getSize();
@@ -702,7 +703,7 @@ public class ArchiveManager {
           throw new ArchiveFailureException("Failed to create metadata: " + e1, e1);
         }
       } catch (IOException e1) {
-        Logger.error(this, "Failed to create metadata: " + e1, e1);
+        LOG.error("Failed to create metadata: " + e1, e1);
         throw new ArchiveFailureException("Failed to create metadata: " + e1, e1);
       }
     }
@@ -777,8 +778,8 @@ public class ArchiveManager {
       ArchiveStoreContext ctx, FreenetURI key, String name, String error, boolean tooBig) {
     ErrorArchiveStoreItem element = new ErrorArchiveStoreItem(ctx, key, name, error, tooBig);
     element.addToContext();
-    if (logMINOR)
-      Logger.minor(this, "Adding error element: " + element + " for " + key + ' ' + name);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Adding error element: " + element + " for " + key + ' ' + name);
     ArchiveStoreItem oldItem;
     synchronized (this) {
       oldItem = storedData.get(element.key);
@@ -786,8 +787,8 @@ public class ArchiveManager {
       if (oldItem != null) {
         oldItem.close();
         cachedData -= oldItem.spaceUsed();
-        if (logMINOR)
-          Logger.minor(this, "Dropping old store element from archive cache: " + oldItem);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Dropping old store element from archive cache: " + oldItem);
       }
     }
   }
@@ -816,9 +817,8 @@ public class ArchiveManager {
       throws ArchiveFailureException {
     RealArchiveStoreItem element = new RealArchiveStoreItem(ctx, key, name, temp);
     element.addToContext();
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Adding store element: "
               + element
               + " ( "
@@ -840,8 +840,8 @@ public class ArchiveManager {
       cachedData += element.spaceUsed();
       if (oldItem != null) {
         cachedData -= oldItem.spaceUsed();
-        if (logMINOR)
-          Logger.minor(this, "Dropping old store element from archive cache: " + oldItem);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Dropping old store element from archive cache: " + oldItem);
         oldItem.close();
       }
     }
@@ -860,8 +860,7 @@ public class ArchiveManager {
         if (cachedData <= maxCachedData && storedData.size() <= maxCachedElements) return;
         if (storedData.isEmpty()) {
           // Race condition? cachedData out of sync?
-          Logger.error(
-              this,
+          LOG.error(
               "storedData is empty but still over limit: cachedData="
                   + cachedData
                   + " / "
@@ -873,9 +872,8 @@ public class ArchiveManager {
         cachedData -= space;
         // Hard limits = delete file within lock, soft limits = delete outside of lock
         // Here we use a hard limit
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Dropping "
                   + item
                   + " : cachedData="

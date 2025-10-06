@@ -5,17 +5,17 @@ import java.io.Serializable;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class ArchiveHandlerImpl implements ArchiveHandler, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ArchiveHandlerImpl.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(ArchiveHandlerImpl.class);
   }
 
   private final FreenetURI key;
@@ -46,7 +46,7 @@ class ArchiveHandlerImpl implements ArchiveHandler, Serializable {
     Bucket data;
 
     // Fetch from cache
-    if (logMINOR) Logger.minor(this, "Checking cache: " + key + ' ' + internalName);
+    if (LOG.isDebugEnabled()) LOG.debug("Checking cache: " + key + ' ' + internalName);
     if ((data = manager.getCached(key, internalName)) != null) {
       return data;
     }
