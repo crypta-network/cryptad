@@ -11,21 +11,13 @@ import java.util.Random;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import network.crypta.crypt.Util;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class NPFPacket {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(NPFPacket.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private int sequenceNumber;
@@ -139,7 +131,7 @@ class NPFPacket {
         }
 
         if (prevFragmentID == -1) {
-          Logger.warning(NPFPacket.class, "First fragment doesn't have full message id");
+          LOG.warn("First fragment doesn't have full message id");
           packet.error = true;
           return packet;
         }
@@ -178,9 +170,7 @@ class NPFPacket {
         if (firstFragment) {
           messageLength = value;
           if (messageLength == fragmentLength) {
-            Logger.warning(
-                NPFPacket.class,
-                "Received fragmented message, but fragment contains the entire message");
+            LOG.warn("Received fragmented message, but fragment contains the entire message");
           }
         } else {
           fragmentOffset = value;
@@ -189,8 +179,7 @@ class NPFPacket {
         messageLength = fragmentLength;
       }
       if ((offset + fragmentLength) > plaintext.length) {
-        Logger.error(
-            NPFPacket.class,
+        LOG.error(
             "Fragment doesn't fit in the received packet: offset is "
                 + offset
                 + " fragment length is "
@@ -539,9 +528,8 @@ class NPFPacket {
       if (biggest < frag.messageLength) biggest = frag.messageLength;
     }
     int overhead = totalPacketLength - totalMessageData;
-    if (logDEBUG)
-      Logger.debug(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Total packet overhead: "
               + overhead
               + " for "
