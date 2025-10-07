@@ -5,9 +5,10 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
 import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Random access files with a limited number of open files, using a pool. LOCKING OPTIMISATION:
@@ -17,11 +18,9 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  * <p>FIXME does this need a shutdown hook? I don't see why it would matter ... ???
  */
 public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PooledFileRandomAccessBuffer.class);
 
   static {
-    Logger.registerClass(PooledFileRandomAccessBuffer.class);
   }
 
   @Serial private static final long serialVersionUID = 1L;
@@ -235,7 +234,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
 
   @Override
   public void close() {
-    if (logMINOR) Logger.minor(this, "Closing " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Closing " + this, new Exception("debug"));
     synchronized (fds) {
       if (lockLevel != 0) throw new IllegalStateException("Must unlock first!");
       closed = true;
@@ -309,7 +308,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
       try {
         raf.close();
       } catch (IOException e) {
-        Logger.error(this, "Error closing " + this + " : " + e, e);
+        LOG.error("Error closing " + this + " : " + e, e);
       }
       raf = null;
       fds.totalOpenFDs--;
@@ -337,7 +336,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
       try {
         FileUtil.secureDelete(file);
       } catch (IOException e) {
-        Logger.error(this, "Unable to delete " + file + " : " + e, e);
+        LOG.error("Unable to delete " + file + " : " + e, e);
         System.err.println("Unable to delete temporary file " + file);
       }
     } else {

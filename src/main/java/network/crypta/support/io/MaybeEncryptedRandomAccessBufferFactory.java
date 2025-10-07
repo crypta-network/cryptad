@@ -4,12 +4,15 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Wraps another LockableRandomAccessBufferFactory to enable encryption if currently turned on. */
 public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAccessBufferFactory {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(MaybeEncryptedRandomAccessBufferFactory.class);
 
   public MaybeEncryptedRandomAccessBufferFactory(
       LockableRandomAccessBufferFactory factory, boolean encrypt) {
@@ -21,10 +24,7 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
   private volatile boolean reallyEncrypt;
   private MasterSecret secret;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(MaybeEncryptedRandomAccessBufferFactory.class);
   }
 
   @Override
@@ -39,7 +39,7 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
         paddedSize =
             PaddedEphemerallyEncryptedBucket.paddedLength(
                 realSize, PaddedEphemerallyEncryptedBucket.MIN_PADDED_SIZE);
-        if (logMINOR) Logger.minor(this, "Encrypting and padding " + size + " to " + paddedSize);
+        if (LOG.isDebugEnabled()) LOG.debug("Encrypting and padding " + size + " to " + paddedSize);
       }
     }
     LockableRandomAccessBuffer raf = factory.makeRAF(paddedSize);
@@ -48,7 +48,7 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
       try {
         raf = new EncryptedRandomAccessBuffer(TempBucketFactory.CRYPT_TYPE, raf, secret, true);
       } catch (GeneralSecurityException e) {
-        Logger.error(this, "Cannot create encrypted tempfile: " + e, e);
+        LOG.error("Cannot create encrypted tempfile: " + e, e);
       }
     }
     return raf;

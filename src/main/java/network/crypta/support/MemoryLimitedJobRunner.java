@@ -6,6 +6,8 @@ import java.util.Deque;
 import java.util.List;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Start jobs as long as there is sufficient memory (or other limited resource) available, then
@@ -14,6 +16,7 @@ import network.crypta.support.io.NativeThread;
  * @author toad
  */
 public class MemoryLimitedJobRunner {
+  private static final Logger LOG = LoggerFactory.getLogger(MemoryLimitedJobRunner.class);
 
   public static final int THREAD_PRIORITY = NativeThread.PriorityLevel.LOW_PRIORITY.value;
   public long capacity;
@@ -32,7 +35,6 @@ public class MemoryLimitedJobRunner {
   private static boolean logMINOR;
 
   static {
-    Logger.registerClass(MemoryLimitedJobRunner.class);
   }
 
   public MemoryLimitedJobRunner(long capacity, int maxThreads, Executor executor, int priorities) {
@@ -53,7 +55,8 @@ public class MemoryLimitedJobRunner {
     if (job.initialAllocation > capacity)
       throw new IllegalArgumentException(
           "Job size " + job.initialAllocation + " > capacity " + capacity);
-    if (logMINOR) Logger.minor(this, "Queueing job " + job + " at priority " + job.getPriority());
+    if (LOG.isDebugEnabled())
+      LOG.debug("Queueing job " + job + " at priority " + job.getPriority());
     jobs.get(job.getPriority()).add(job);
     maybeStartJobs();
   }
@@ -90,7 +93,7 @@ public class MemoryLimitedJobRunner {
   private synchronized void startJob(final MemoryLimitedJob job) {
     counter += job.initialAllocation;
     runningThreads++;
-    if (logMINOR) Logger.minor(this, "Starting job " + job);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting job " + job);
     executor.execute(
         new PrioRunnable() {
 

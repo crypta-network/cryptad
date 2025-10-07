@@ -3,8 +3,9 @@ package network.crypta.support.io;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.zip.ZipFile;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Closes various resources. The resources are checked for being <code>null</code> before being
@@ -21,6 +22,8 @@ import network.crypta.support.api.Bucket;
  */
 @Deprecated
 public class Closer {
+  private static final Logger LOG = LoggerFactory.getLogger(Closer.class);
+
   /**
    * Closes the given stream.
    *
@@ -31,7 +34,7 @@ public class Closer {
       try {
         closable.close();
       } catch (IOException e) {
-        Logger.error(Closer.class, "Error during close() on " + closable, e);
+        LOG.error("Error during close() on " + closable, e);
       }
     }
   }
@@ -47,7 +50,7 @@ public class Closer {
       try {
         bucket.free();
       } catch (RuntimeException e) {
-        Logger.error(Closer.class, "Error during free().", e);
+        LOG.error("Error during free().", e);
       }
     }
   }
@@ -62,7 +65,7 @@ public class Closer {
       try {
         zipFile.close();
       } catch (IOException e) {
-        Logger.error(Closer.class, "Error during close().", e);
+        LOG.error("Error during close().", e);
       }
     }
   }
