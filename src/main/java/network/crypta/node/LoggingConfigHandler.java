@@ -741,41 +741,60 @@ public class LoggingConfigHandler {
   }
 
   private void applyPerLoggerOverrides(String detail) throws InvalidConfigValueException {
-    // Clear previously applied overrides first
     LoggerContext ctx = resolveLoggerContext();
     if (ctx == null) return;
-    for (String name : appliedLoggerNames) {
-      ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
-      logger.setLevel(null); // inherit root
-    }
-    appliedLoggerNames.clear();
-    currentOverrides.clear();
 
-    if (detail == null) {
+    // If no update provided, keep current overrides intact (legacy behavior)
+    if (detail == null) return;
+
+    String raw = detail.trim();
+    // Explicitly clearing overrides when empty
+    if (raw.isEmpty()) {
+      for (String name : appliedLoggerNames) {
+        ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+        logger.setLevel(null); // inherit root
+      }
+      appliedLoggerNames.clear();
+      currentOverrides.clear();
       priorityDetailRaw = "";
       return;
     }
-    String raw = detail.trim();
-    priorityDetailRaw = raw;
-    if (raw.isEmpty()) return;
 
+    // Parse into a temporary map first; do not mutate existing overrides until validated
+    Map<String, Level> newOverrides = new HashMap<>();
     String[] tokens = raw.split(",");
     for (String token : tokens) {
       if (token == null || token.isEmpty()) continue;
       int x = token.indexOf(':');
-      if (x < 0 || x == token.length() - 1) continue;
+      if (x < 0 || x == token.length() - 1) continue; // ignore malformed pair silently as before
       String section = token.substring(0, x);
       String val = token.substring(x + 1);
       Level lvl;
       try {
         lvl = toLogbackLevel(val);
       } catch (IllegalArgumentException e) {
+        // Do not change existing overrides on parse error
         throw new InvalidConfigValueException(e.getMessage());
       }
-      ch.qos.logback.classic.Logger lgr = ctx.getLogger(section);
-      lgr.setLevel(lvl);
-      appliedLoggerNames.add(section);
-      currentOverrides.put(section, lvl);
+      newOverrides.put(section, lvl);
     }
+
+    // Apply: remove overrides no longer present
+    for (String name : new java.util.HashSet<>(appliedLoggerNames)) {
+      if (!newOverrides.containsKey(name)) {
+        ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+        logger.setLevel(null);
+        appliedLoggerNames.remove(name);
+        currentOverrides.remove(name);
+      }
+    }
+    // Apply/refresh new overrides
+    for (Map.Entry<String, Level> e : newOverrides.entrySet()) {
+      ch.qos.logback.classic.Logger lgr = ctx.getLogger(e.getKey());
+      lgr.setLevel(e.getValue());
+      appliedLoggerNames.add(e.getKey());
+      currentOverrides.put(e.getKey(), e.getValue());
+    }
+    priorityDetailRaw = raw;
   }
 }
