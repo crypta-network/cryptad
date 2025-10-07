@@ -26,18 +26,21 @@ public final class SystemSlf4jOutputStream extends OutputStream {
   private final String prefix;
   private final String charset;
   private final boolean mirrorToOriginalForBelowWarn;
+  private final boolean logAsError;
 
   public SystemSlf4jOutputStream(
       PrintStream original,
       Logger logger,
       String prefix,
       String charset,
-      boolean mirrorToOriginalForBelowWarn) {
+      boolean mirrorToOriginalForBelowWarn,
+      boolean logAsError) {
     this.original = original;
     this.logger = logger;
     this.prefix = prefix == null ? "" : prefix;
     this.charset = charset;
     this.mirrorToOriginalForBelowWarn = mirrorToOriginalForBelowWarn;
+    this.logAsError = logAsError;
   }
 
   @Override
@@ -48,7 +51,7 @@ public final class SystemSlf4jOutputStream extends OutputStream {
     }
     try {
       IN_LOGGING.set(Boolean.TRUE);
-      logger.info(prefix + (char) b);
+      if (logAsError) logger.error(prefix + (char) b); else logger.info(prefix + (char) b);
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
@@ -66,9 +69,11 @@ public final class SystemSlf4jOutputStream extends OutputStream {
     try {
       IN_LOGGING.set(Boolean.TRUE);
       try {
-        logger.info(prefix + new String(b, off, len, charset));
+        String msg = new String(b, off, len, charset);
+        if (logAsError) logger.error(prefix + msg); else logger.info(prefix + msg);
       } catch (UnsupportedEncodingException e) {
-        logger.info(prefix + new String(b, off, len));
+        String msg = new String(b, off, len);
+        if (logAsError) logger.error(prefix + msg); else logger.info(prefix + msg);
       }
     } finally {
       IN_LOGGING.set(Boolean.FALSE);

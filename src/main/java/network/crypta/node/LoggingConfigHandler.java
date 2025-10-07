@@ -413,13 +413,18 @@ public class LoggingConfigHandler {
           System.setOut(
               new PrintStream(
                   new SystemSlf4jOutputStream(
-                      origOut, LoggerFactory.getLogger("system.out"), "Stdout: ", enc, true),
+                      origOut, LoggerFactory.getLogger("system.out"), "Stdout: ", enc, true, false),
                   false,
                   enc));
           System.setErr(
               new PrintStream(
                   new SystemSlf4jOutputStream(
-                      origErr, LoggerFactory.getLogger("system.err"), "Stderr: ", enc, false),
+                      origErr,
+                      LoggerFactory.getLogger("system.err"),
+                      "Stderr: ",
+                      enc,
+                      false,
+                      true),
                   false,
                   enc));
           this.capturedStdStreams = true;
