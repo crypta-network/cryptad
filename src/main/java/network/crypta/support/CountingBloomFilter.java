@@ -6,11 +6,15 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author sdiz
  */
 public class CountingBloomFilter extends BloomFilter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(CountingBloomFilter.class);
 
   private boolean warnOnRemoveFromEmpty;
 
@@ -80,8 +84,7 @@ public class CountingBloomFilter extends BloomFilter {
     byte v = (byte) ((b >>> offset % 4 * 2) & 3);
 
     if (v == 0 && warnOnRemoveFromEmpty)
-      Logger.error(
-          this,
+      LOG.error(
           "Unsetting bit but already unset - probable double remove, can cause false negatives, is"
               + " very bad!",
           new Exception("error"));
