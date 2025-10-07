@@ -57,8 +57,8 @@ object Logging {
     when (this) {
       "ERROR" -> Level.ERROR
       "WARN", "WARNING" -> Level.WARN
-      "INFO", "NORMAL" -> Level.INFO
-      "DEBUG", "MINOR" -> Level.DEBUG
+      "INFO", "NORMAL", "MINOR" -> Level.INFO // preserve MINOR > DEBUG cutoff
+      "DEBUG" -> Level.DEBUG
       "TRACE", "MINIMAL" -> Level.TRACE
       else -> null
     }
