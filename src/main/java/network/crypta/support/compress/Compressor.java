@@ -4,9 +4,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A data compressor. Contains methods to get all data compressors. This is for single-file
@@ -32,6 +33,8 @@ public interface Compressor {
 
     /** cached values(). Never modify or pass this array to outside code! */
     private static final COMPRESSOR_TYPE[] values = values();
+
+    private static final Logger LOG = LoggerFactory.getLogger(COMPRESSOR_TYPE.class);
 
     COMPRESSOR_TYPE(String name, Compressor c, short metadataID) {
       this.name = name;
@@ -130,8 +133,7 @@ public interface Compressor {
         result.add(ct);
         if (result.contains(COMPRESSOR_TYPE.LZMA)) {
           // OldLZMA should no longer be used. Only accept it if it is the only codec in the list.
-          Logger.warning(
-              Compressor.class,
+          LOG.warn(
               "OldLZMA compression is buggy and no longer supported. It only exists to allow"
                   + " reinserting old keys.");
           if (result.size() > 1) {
@@ -144,8 +146,7 @@ public interface Compressor {
     }
 
     private static void logLzmaOldRemovedWarning() {
-      Logger.warning(
-          Compressor.class,
+      LOG.warn(
           "Codecs to choose contained ''LZMA'' along others. It was ignored. Please replace it with"
               + " LZMA_NEW.");
     }

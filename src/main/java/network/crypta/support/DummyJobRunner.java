@@ -5,17 +5,17 @@ import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.PersistentJobRunner;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A PersistentJobRunner that isn't persistent. Convenient for transient requests, code doesn't need
  * messy if(persistent) everywhere.
  */
 public class DummyJobRunner implements PersistentJobRunner {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(DummyJobRunner.class);
 
   static {
-    Logger.registerClass(DummyJobRunner.class);
   }
 
   final Executor executor;
@@ -28,13 +28,13 @@ public class DummyJobRunner implements PersistentJobRunner {
 
   @Override
   public void queue(final PersistentJob job, final int priority) {
-    if (logMINOR) Logger.minor(this, "Running job off thread: " + job);
+    if (LOG.isDebugEnabled()) LOG.debug("Running job off thread: " + job);
     executor.execute(
         new PrioRunnable() {
 
           @Override
           public void run() {
-            if (logMINOR) Logger.minor(this, "Starting job " + job);
+            if (LOG.isDebugEnabled()) LOG.debug("Starting job " + job);
             job.run(context);
           }
 
