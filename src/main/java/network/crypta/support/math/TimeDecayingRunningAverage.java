@@ -43,7 +43,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   double defaultValue;
   double minReport;
   double maxReport;
-  boolean logDEBUG;
+
   private final TimeSkewDetectorCallback timeSkewCallback;
 
   @Override
@@ -93,7 +93,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
-    logDEBUG = LOG.isDebugEnabled();
+
     if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
     this.timeSkewCallback = callback;
   }
@@ -122,7 +122,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     totalReports = 0;
-    logDEBUG = LOG.isDebugEnabled();
+
     if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
     if (fs != null) {
       started = fs.getBoolean("Started", false);
@@ -174,7 +174,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.minReport = min;
     this.maxReport = max;
     this.defaultValue = defaultValue;
-    logDEBUG = LOG.isDebugEnabled();
+
     lastReportTime = -1;
     createdTime = System.currentTimeMillis() - priorExperienceTime;
     totalReports = dis.readLong();

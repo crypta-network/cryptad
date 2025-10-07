@@ -29,7 +29,6 @@ public class BinaryBlobInserter implements ClientPutState {
   final FailureCodeTracker errors;
   final int maxRetries;
   final int consecutiveRNFsCountAsSuccess;
-  private boolean logMINOR;
   private int completedBlocks;
   private int succeededBlocks;
   private boolean fatal;
@@ -45,7 +44,6 @@ public class BinaryBlobInserter implements ClientPutState {
       InsertContext ctx,
       ClientContext context)
       throws IOException, BinaryBlobFormatException {
-    logMINOR = LOG.isDebugEnabled();
     this.ctx = ctx;
     this.maxRetries = ctx.maxInsertRetries;
     this.consecutiveRNFsCountAsSuccess = ctx.consecutiveRNFsCountAsSuccess;
@@ -150,7 +148,6 @@ public class BinaryBlobInserter implements ClientPutState {
         fail(new InsertException(InsertExceptionMode.CANCELLED), true, context);
         return;
       }
-      logMINOR = LOG.isDebugEnabled();
       switch (e.code) {
         case LowLevelPutException.COLLISION:
           fail(new InsertException(InsertExceptionMode.COLLISION), false, context);

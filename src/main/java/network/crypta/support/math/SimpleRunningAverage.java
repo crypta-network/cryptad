@@ -21,7 +21,6 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
   double total = 0;
   int totalReports = 0;
   final double initValue;
-  private final boolean logDEBUG = LOG.isDebugEnabled();
 
   @Override
   public SimpleRunningAverage clone() {

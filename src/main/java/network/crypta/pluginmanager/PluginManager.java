@@ -72,8 +72,7 @@ public class PluginManager {
   private final LoadedPlugins loadedPlugins = new LoadedPlugins();
   final Node node;
   private final NodeClientCore core;
-  private final boolean logMINOR;
-  private final boolean logDEBUG;
+
   private final HighLevelSimpleClient client;
 
   private static PluginManager selfinstance = null;
@@ -90,8 +89,7 @@ public class PluginManager {
   private final boolean enabled;
 
   public PluginManager(Node node, int lastVersion) {
-    logMINOR = LOG.isDebugEnabled();
-    logDEBUG = LOG.isDebugEnabled();
+
     // config
 
     this.node = node;

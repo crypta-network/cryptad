@@ -234,10 +234,4 @@ final class FCPPluginConnectionTracker extends NativeThread {
       }
     }
   }
-
-  /** For {@link Logger#registerClass(Class)} */
-  private static final boolean logMINOR = false;
-
-  static {
-  }
 }
