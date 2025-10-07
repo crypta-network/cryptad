@@ -40,8 +40,6 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 
   public static final int REVOCATION_DNF_MIN = 3;
 
-  private boolean logMINOR;
-
   private final NodeUpdateManager manager;
   private final NodeClientCore core;
   private int revocationDNFCounter;
@@ -66,7 +64,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     core = manager.getNode().getClientCore();
     this.revocationDNFCounter = 0;
     this.blobFile = blobFile;
-    this.logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     ctxRevocation = core.makeClient((short) 0, true, false).getFetchContext();
     // Do not allow redirects etc.
     // If we allow redirects then it will take too long to download the revocation.
@@ -122,7 +120,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
       return false;
     }
     boolean wasRunning = false;
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     ClientGetter cg = null;
     try {
       ClientGetter toCancel = null;
@@ -150,7 +148,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
             if (LOG.isDebugEnabled()) LOG.debug("Revocation count " + revocationDNFCounter);
           }
           if (LOG.isDebugEnabled()) LOG.debug("fetcher=" + revocationGetter);
-          if (revocationGetter != null && logMINOR)
+          if (revocationGetter != null && LOG.isDebugEnabled())
             LOG.debug(
                 "revocation fetcher: cancelled="
                     + revocationGetter.isCancelled()
@@ -298,7 +296,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   }
 
   void onFailure(FetchException e, ClientGetter state, Bucket blob) {
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (LOG.isDebugEnabled()) LOG.debug("Revocation fetch failed: " + e);
     FetchExceptionMode errorCode = e.getMode();
     boolean completed = false;

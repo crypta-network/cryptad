@@ -55,7 +55,6 @@ public class FCPServer implements Runnable, DownloadCache {
   private static final Logger LOG = LoggerFactory.getLogger(FCPServer.class);
 
   private final PersistentRequestRoot persistentRoot;
-  private static boolean logMINOR;
   public static final int DEFAULT_FCP_PORT = 9481;
   NetworkInterface networkInterface;
 
@@ -151,7 +150,7 @@ public class FCPServer implements Runnable, DownloadCache {
     globalRebootClient =
         new PersistentRequestClient("Global Queue", null, true, null, Persistence.REBOOT, null);
 
-    logMINOR = LOG.isDebugEnabled();
+    // Debug flag derives from SLF4J directly when needed
   }
 
   public void load() {

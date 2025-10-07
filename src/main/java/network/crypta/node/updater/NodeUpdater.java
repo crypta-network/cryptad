@@ -41,7 +41,6 @@ import org.slf4j.LoggerFactory;
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(NodeUpdater.class);
 
-  private static boolean logMINOR;
   private final FetchContext ctx;
   private ClientGetter cg;
   private FreenetURI URI;
@@ -71,7 +70,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       int min,
       int max,
       String blobFilenamePrefix) {
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     this.manager = manager;
     this.node = manager.getNode();
     this.URI = URI.setSuggestedEdition(Version.currentBuildNumber() + 1);
@@ -153,7 +152,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       boolean newKnownGood,
       boolean newSlotToo) {
     if (newKnownGood && !newSlotToo) return;
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l);
     int found;
     synchronized (this) {
@@ -306,7 +305,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   void onSuccess(FetchResult result, ClientGetter state, File tempBlobFile, int fetchedVersion) {
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     File blobFile = null;
     synchronized (this) {
       if (fetchedVersion <= this.fetchedVersion) {
@@ -424,7 +423,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   @Override
   public void onFailure(FetchException e, ClientGetter state) {
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (!isRunning) return;
     FetchExceptionMode errorCode = e.getMode();
     tempBlobFile.delete();

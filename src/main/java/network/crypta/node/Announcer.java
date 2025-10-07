@@ -41,7 +41,6 @@ import org.slf4j.LoggerFactory;
 public class Announcer {
   private static final Logger LOG = LoggerFactory.getLogger(Announcer.class);
 
-  private static boolean logMINOR;
   private final Node node;
   private final OpennetManager om;
   private static final int STATUS_LOADING = 0;
@@ -92,7 +91,7 @@ public class Announcer {
     this.node = om.getNode();
     announcedToIdentities = new HashSet<>();
     announcedToIPs = new HashSet<>();
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
   }
 
   protected void start() {
@@ -527,7 +526,7 @@ public class Announcer {
     synchronized (this) {
       if (!started) return;
     }
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (LOG.isDebugEnabled()) LOG.debug("maybeSendAnnouncement()");
     long now = System.currentTimeMillis();
     if (!node.isOpennetEnabled()) return;

@@ -32,8 +32,6 @@ public class MemoryLimitedJobRunner {
   private int maxThreads;
   private boolean shutdown;
 
-  private static boolean logMINOR;
-
   static {
   }
 

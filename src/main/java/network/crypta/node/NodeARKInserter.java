@@ -30,7 +30,6 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   private final NodeCrypto crypto;
   private final String darknetOpennetString;
   private final NodeIPPortDetector detector;
-  private static boolean logMINOR;
   private final boolean enabled;
 
   /**
@@ -41,7 +40,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
     this.node = node;
     this.crypto = crypto;
     this.detector = detector;
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (crypto.isOpennet()) darknetOpennetString = "Opennet";
     else darknetOpennetString = "Darknet";
     this.enabled = enableARKs;
@@ -65,7 +64,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   }
 
   private void innerUpdate() {
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (LOG.isDebugEnabled()) LOG.debug("update()");
     if (!checkIPUpdated()) return;
     // We'll broadcast the new physical.udp entry to our connected peers via a differential node

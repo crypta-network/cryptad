@@ -11,12 +11,6 @@ import org.slf4j.LoggerFactory;
 public class TokenBucket {
   private static final Logger LOG = LoggerFactory.getLogger(TokenBucket.class);
 
-  private static boolean logMINOR;
-
-  static {
-    LoggerHook.registerClass(TokenBucket.class);
-  }
-
   protected long current;
   protected long max;
   protected long timeLastTick;
@@ -116,7 +110,6 @@ public class TokenBucket {
 
   public synchronized void blockingGrab(long tokens) {
     if (tokens < 0) throw new IllegalArgumentException("Can't grab negative tokens: " + tokens);
-    logMINOR = LOG.isDebugEnabled();
     if (LOG.isDebugEnabled()) LOG.debug("Blocking grab: " + tokens);
     if (tokens < max) innerBlockingGrab(tokens);
     else {

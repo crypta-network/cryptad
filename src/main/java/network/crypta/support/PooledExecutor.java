@@ -30,7 +30,6 @@ public class PooledExecutor implements Executor {
   AtomicLong[] threadCounter = new AtomicLong[runningThreads.length];
   private long jobCount;
   private long jobMisses;
-  private static boolean logMINOR;
   // Ticker thread that runs at maximum priority.
   private Ticker ticker;
 
@@ -50,9 +49,7 @@ public class PooledExecutor implements Executor {
   /** Maximum time a thread will wait for a job */
   static final long TIMEOUT = MINUTES.toMillis(1);
 
-  public void start() {
-    logMINOR = LOG.isDebugEnabled();
-  }
+  public void start() {}
 
   @Override
   public void execute(Runnable job) {

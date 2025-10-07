@@ -35,11 +35,6 @@ public class InsertableClientSSK extends ClientSSK {
 
   public final DSAPrivateKey privKey;
 
-  private static boolean logMINOR;
-
-  static {
-  }
-
   public InsertableClientSSK(
       String docName,
       byte[] pubKeyHash,
@@ -217,7 +212,7 @@ public class InsertableClientSSK extends ClientSSK {
     x += sBuf.length;
     if (x != SSKBlock.TOTAL_HEADERS_LENGTH) throw new IllegalStateException("Too long");
     try {
-      return new ClientSSKBlock(data, headers, this, !logMINOR);
+      return new ClientSSKBlock(data, headers, this, !LOG.isDebugEnabled());
     } catch (SSKVerifyException e) {
       throw (AssertionError) new AssertionError("Impossible encoding error", e);
     }

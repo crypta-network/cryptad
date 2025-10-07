@@ -122,7 +122,6 @@ public class LocationManager implements ByteCounter {
   /** Don't start swapping until our peers have had a reasonable chance to reconnect. */
   private static final long STARTUP_DELAY = MINUTES.toMillis(1);
 
-  private static boolean logMINOR;
   final RandomSource r;
   final SwapRequestSender sender;
   final Node node;
@@ -140,7 +139,7 @@ public class LocationManager implements ByteCounter {
         new BootstrappingDecayingRunningAverage(SEND_SWAP_INTERVAL, 0, Integer.MAX_VALUE, 20, null);
     timeLocSet = System.currentTimeMillis();
 
-    logMINOR = LOG.isDebugEnabled();
+    // Debug gating derives from LOG.isDebugEnabled() where needed
   }
 
   private double loc;
@@ -1657,7 +1656,7 @@ public class LocationManager implements ByteCounter {
       for (RecentlyForwardedItem item : v) removeRecentlyForwardedItem(item);
     }
     int dumped = v.size();
-    if (dumped != 0 && logMINOR)
+    if (dumped != 0 && LOG.isDebugEnabled())
       LOG.debug("lostOrRestartedNode dumping " + dumped + " swap requests for " + pn.getPeer());
     for (RecentlyForwardedItem item : v) {
       // Just reject it to avoid locking problems etc
