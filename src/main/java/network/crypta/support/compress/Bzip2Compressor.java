@@ -6,13 +6,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.HeaderStreams;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * * {@link Compressor} for BZip2 streams. * * Due to historical reasons (we used to use the
@@ -20,6 +21,7 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
  * the * standard "BZ" header.
  */
 public class Bzip2Compressor extends AbstractCompressor {
+  private static final Logger LOG = LoggerFactory.getLogger(Bzip2Compressor.class);
 
   public static final byte[] BZ_HEADER = "BZ".getBytes(StandardCharsets.ISO_8859_1);
 
@@ -98,8 +100,7 @@ public class Bzip2Compressor extends AbstractCompressor {
       // FIXME there is probably a better way to do this!
       int bytesRead = bz2is.read(buffer, 0, buffer.length);
       if (expectedBytesRead < bytesRead) {
-        Logger.normal(
-            this,
+        LOG.info(
             "expectedBytesRead="
                 + expectedBytesRead
                 + ", bytesRead="

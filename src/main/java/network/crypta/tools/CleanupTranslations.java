@@ -10,18 +10,21 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
-import network.crypta.support.Logger;
 import network.crypta.support.LoggerHook;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CleanupTranslations {
+  private static final Logger LOG = LoggerFactory.getLogger(CleanupTranslations.class);
 
   /**
    * @param args
    * @throws IOException
    */
   public static void main(String[] args) throws IOException, LoggerHook.InvalidThresholdException {
-    Logger.setupStdoutLogging(Logger.LogLevel.ERROR, "");
+    network.crypta.support.Logger.setupStdoutLogging(
+        network.crypta.support.Logger.LogLevel.ERROR, "");
     File engFile = new File("src/freenet/l10n/crypta.l10n.en.properties");
     SimpleFieldSet english = SimpleFieldSet.readFrom(engFile, false, true);
     File[] translations = new File("src/freenet/l10n").listFiles();

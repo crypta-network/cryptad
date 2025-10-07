@@ -3,9 +3,11 @@ package network.crypta.support.plugins.helpers1;
 import java.net.MalformedURLException;
 import java.util.List;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class URISanitizer {
+  private static final Logger LOG = LoggerFactory.getLogger(URISanitizer.class);
 
   public enum Options {
     NOMETASTRINGS,
@@ -62,7 +64,7 @@ public class URISanitizer {
             break;
           }
         default:
-          Logger.error(URISanitizer.class, "Illegal Option, how can this happen?");
+          LOG.error("Illegal Option, how can this happen?");
       }
     }
     return tempURI;
