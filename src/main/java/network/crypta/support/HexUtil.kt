@@ -11,10 +11,11 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.math.BigInteger
 import java.util.*
+import org.slf4j.LoggerFactory
 
-private val fileClass: Class<*> = object {}.javaClass.enclosingClass
-
-private val logDEBUG: Boolean = Logger.shouldLog(Logger.LogLevel.DEBUG, fileClass)
+private val LOG = LoggerFactory.getLogger("network.crypta.support.HexUtil")
+private val logDEBUG: Boolean
+  get() = LOG.isDebugEnabled
 
 /**
  * Converts a subsection of a byte array into a hexadecimal string.
@@ -141,11 +142,16 @@ fun bitsToBytes(ba: BitSet, size: Int): ByteArray {
     check(s <= 255) { "WTF? s = $s" }
     b[i] = s.toByte()
   }
-  if (logDEBUG)
-    Logger.debug(
-      fileClass,
-      "bytes: $bytesAlloc returned from bitsToBytes($ba,$size): ${bytesToHex(b)} for ${debugBuilder.toString()}",
+  if (logDEBUG) {
+    LOG.debug(
+      "bytes: {} returned from bitsToBytes({},{}): {} for {}",
+      bytesAlloc,
+      ba,
+      size,
+      bytesToHex(b),
+      debugBuilder.toString(),
     )
+  }
   return b
 }
 
@@ -183,7 +189,7 @@ fun countBytesForBits(size: Int): Int = (size + 7) / 8
  * @param maxSize The maximum number of bits to read from the byte array and set in the BitSet.
  */
 fun bytesToBits(b: ByteArray, ba: BitSet, maxSize: Int) {
-  if (logDEBUG) Logger.debug(fileClass, "bytesToBits(${bytesToHex(b)},ba,$maxSize)")
+  if (logDEBUG) LOG.debug("bytesToBits({},ba,{} )", bytesToHex(b), maxSize)
   var x = 0
   for (bi in b) {
     for (j in 0 until 8) {

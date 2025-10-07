@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
-import network.crypta.support.Logger.LogLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * OutputStream that mirrors bytes into Crypta's Logger while preserving the original console.
@@ -29,12 +29,12 @@ public class TeeOutputStreamLogger extends OutputStream {
       ThreadLocal.withInitial(() -> Boolean.FALSE);
 
   private final PrintStream original;
-  private final LogLevel priority;
+  private final Level priority;
   private final String prefix;
   private final String charset;
 
   public TeeOutputStreamLogger(
-      PrintStream original, LogLevel priority, String prefix, String charset) {
+      PrintStream original, Level priority, String prefix, String charset) {
     this.original = original;
     this.priority = priority;
     this.prefix = prefix;
@@ -46,15 +46,14 @@ public class TeeOutputStreamLogger extends OutputStream {
       case ERROR:
         LOG.error(msg);
         break;
-      case WARNING:
+      case WARN:
         LOG.warn(msg);
         break;
-      case NORMAL:
+      case INFO:
         LOG.info(msg);
         break;
       case DEBUG:
-      case MINOR:
-      case MINIMAL:
+      case TRACE:
       default:
         if (LOG.isDebugEnabled()) LOG.debug(msg);
         else LOG.info(msg);
@@ -77,7 +76,7 @@ public class TeeOutputStreamLogger extends OutputStream {
     }
     // Ensure stdout (NORMAL and lower) still appears on the real console even if ConsoleAppender
     // filters WARN+ only. Avoid duplication for WARN/ERROR which ConsoleAppender already prints.
-    if (priority.ordinal() < LogLevel.WARNING.ordinal()) {
+    if (priority.ordinal() < Level.WARN.ordinal()) {
       original.write(b);
     }
   }
@@ -100,7 +99,7 @@ public class TeeOutputStreamLogger extends OutputStream {
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
-    if (priority.ordinal() < LogLevel.WARNING.ordinal()) {
+    if (priority.ordinal() < Level.WARN.ordinal()) {
       original.write(b, off, len);
     }
   }

@@ -5,7 +5,6 @@ import java.util.UUID;
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
 import network.crypta.clients.fcp.FCPPluginMessage;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
 
 /**
@@ -63,8 +62,9 @@ import network.crypta.support.io.NativeThread;
  * <h1>Debugging</h1>
  *
  * <br>
- * You can configure the {@link Logger} to log "freenet.clients.fcp.FCPPluginConnection:DEBUG" to
- * cause logging of all sent and received messages.<br>
+ * You can enable detailed logging for FCP plugin connections by setting the detailed priority
+ * threshold for "network.crypta.clients.fcp.FCPPluginConnection" to DEBUG in the Logs
+ * configuration. This will log all sent and received messages.<br>
  * This is usually done on the Freenet web interface at Configuration / Logs / Detailed priority
  * thresholds.<br>
  * ATTENTION: The log entries will appear at the time when the messages were queued for sending, not
