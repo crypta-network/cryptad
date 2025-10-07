@@ -25,7 +25,6 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestScheduler;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -34,6 +33,7 @@ import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.PersistentFileTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, RequestClient, Cloneable {
   private static final Logger LOG = LoggerFactory.getLogger(HighLevelSimpleClientImpl.class);
@@ -121,7 +121,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     this.persistentFileTracker = node.getPersistentTempBucketFactory();
     random = r;
     this.eventProducer = new SimpleEventProducer();
-    eventProducer.addEventListener(new EventLogger(LogLevel.MINOR, false));
+    eventProducer.addEventListener(new EventLogger(Level.DEBUG, false));
     curMaxLength = Long.MAX_VALUE;
     curMaxTempLength = Long.MAX_VALUE;
     curMaxMetadataLength = 1024 * 1024;
