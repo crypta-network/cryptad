@@ -641,6 +641,25 @@ public class LoggingConfigHandler {
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
       if (!loggerEnabled) return;
+      // Reconfigure SLF4J/Logback so no further logs are emitted.
+      try {
+        LoggerContext ctx = resolveLoggerContext();
+        if (ctx != null) {
+          // Clear any per-logger overrides so they inherit from root again
+          for (String name : appliedLoggerNames) {
+            ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+            logger.setLevel(null);
+          }
+          appliedLoggerNames.clear();
+          currentOverrides.clear();
+          // Set root level to OFF to disable emission
+          ch.qos.logback.classic.Logger root =
+              ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+          root.setLevel(Level.OFF);
+        }
+      } catch (Exception e) {
+        System.err.println("Failed to disable logging via Logback: " + e);
+      }
       // If we captured stdout/err earlier, restore the originals so console stays functional
       if (capturedStdStreams) {
         try {
