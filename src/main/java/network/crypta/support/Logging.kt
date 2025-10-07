@@ -10,6 +10,8 @@ import org.slf4j.event.Level
  * logger levels directly on the bound SLF4J backend when possible (Logback is expected in tests).
  */
 object Logging {
+  // Track which loggers we have overridden so we can revert them on the next bootstrap call.
+  private val appliedLoggerNames = mutableSetOf<String>()
   /** Sets the root logger level and applies optional per-package overrides. */
   @JvmStatic
   fun bootstrap(level: Level, details: String?) {
@@ -33,7 +35,11 @@ object Logging {
     ctx.resetTurboFilterList()
   }
 
+  @Synchronized
   private fun applyDetails(details: String?) {
+    val ctx = resolveLogbackLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)?.first ?: return
+    // Replace semantics: clear previous overrides first
+    clearOverrides(ctx)
     if (details.isNullOrBlank()) return
     // Comma-separated "section:LEVEL" pairs
     details.split(',')
@@ -46,10 +52,12 @@ object Logging {
         val up = lvl.uppercase()
         if (up == "NONE" || up == "OFF") {
           setOff(section)
+          appliedLoggerNames.add(section)
           return@forEach
         }
         val level = up.toSlf4jLevelOrNull() ?: return@forEach
         setLevel(section, level)
+        appliedLoggerNames.add(section)
       }
   }
 
@@ -89,5 +97,14 @@ object Logging {
       val logger = ctx.getLogger(name)
       Pair(ctx, logger)
     } else null
+  }
+
+  @Synchronized
+  private fun clearOverrides(ctx: ch.qos.logback.classic.LoggerContext) {
+    for (name in appliedLoggerNames) {
+      val lgr = ctx.getLogger(name)
+      lgr.level = null // inherit root level
+    }
+    appliedLoggerNames.clear()
   }
 }
