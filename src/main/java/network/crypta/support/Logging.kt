@@ -43,7 +43,12 @@ object Logging {
         val idx = token.indexOf(':')
         val section = token.substring(0, idx)
         val lvl = token.substring(idx + 1).trim()
-        val level = lvl.uppercase().toSlf4jLevelOrNull() ?: return@forEach
+        val up = lvl.uppercase()
+        if (up == "NONE" || up == "OFF") {
+          setOff(section)
+          return@forEach
+        }
+        val level = up.toSlf4jLevelOrNull() ?: return@forEach
         setLevel(section, level)
       }
   }
@@ -66,6 +71,14 @@ object Logging {
       Level.DEBUG -> ch.qos.logback.classic.Level.DEBUG
       Level.TRACE -> ch.qos.logback.classic.Level.TRACE
     }
+
+  /** Sets a named logger to OFF when using Logback. */
+  @JvmStatic
+  fun setOff(loggerName: String) {
+    val (ctx, logger) = resolveLogbackLogger(loggerName) ?: return
+    logger.level = ch.qos.logback.classic.Level.OFF
+    ctx.resetTurboFilterList()
+  }
 
   private fun resolveLogbackLogger(
     name: String
