@@ -45,10 +45,7 @@ import org.slf4j.LoggerFactory;
 public class Probe implements ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(Probe.class);
 
-  private static volatile boolean logWARNING;
-
-  static {
-  }
+  // SLF4J-level guard used instead of legacy logWARNING flag.
 
   private static final String SOURCE_DISCONNECT =
       "Previous step in probe chain no longer connected.";
@@ -439,7 +436,7 @@ public class Probe implements ByteCounter {
     }
     byte htl = message.getByte(DMT.HTL);
     if (htl < 1) {
-      if (logWARNING) {
+      if (LOG.isWarnEnabled()) {
         LOG.warn(
             "Received out-of-bounds HTL of "
                 + htl
@@ -615,7 +612,7 @@ public class Probe implements ByteCounter {
     }
 
     // Send attempt limit reached.
-    if (logWARNING) {
+    if (LOG.isWarnEnabled()) {
       LOG.warn("Aborting probe request: send attempt limit reached.");
     }
 
