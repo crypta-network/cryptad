@@ -27,8 +27,7 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -78,7 +77,6 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       throws FSParseException,
           PeerParseException,
           CHKEncodeException,
-          InvalidThresholdException,
           NodeInitException,
           ReferenceSignatureVerificationException,
           InterruptedException {
@@ -97,7 +95,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, random);
+    NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, random);
     System.out.println("Insert/retrieve test");
     System.out.println();
     DummyRandomSource topologyRandom = new DummyRandomSource(3143);

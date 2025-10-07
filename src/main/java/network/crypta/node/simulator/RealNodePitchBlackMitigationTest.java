@@ -14,7 +14,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.PeerNode;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
@@ -90,7 +90,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     }
     wd.mkdir();
     // NOTE: globalTestInit returns in ignored random source
-    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, null);
+    NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, null);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
@@ -136,7 +136,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     }
 
     // enable warning logging to see pitch black defense lo
-    network.crypta.support.Logger.globalSetThreshold(LogLevel.WARNING);
+    network.crypta.support.Logging.setRootLevel(org.slf4j.event.Level.WARN);
 
     // set the time to yesterday to have pitch black information
     LocationManager.setClockForTesting(

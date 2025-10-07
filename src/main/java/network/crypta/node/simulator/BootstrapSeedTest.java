@@ -9,8 +9,8 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import org.slf4j.event.Level;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
@@ -29,13 +29,12 @@ public class BootstrapSeedTest {
 
   /**
    * @param args
-   * @throws InvalidThresholdException
    * @throws NodeInitException
    * @throws InterruptedException
    * @throws IOException
    */
   public static void main(String[] args)
-      throws InvalidThresholdException, NodeInitException, InterruptedException, IOException {
+      throws NodeInitException, InterruptedException, IOException {
     Node node = null;
     try {
       String ipOverride = null;
@@ -43,7 +42,7 @@ public class BootstrapSeedTest {
       final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-test");
       FileUtil.removeAll(dir);
-      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, Level.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -80,9 +79,9 @@ public class BootstrapSeedTest {
               });
       node = NodeStarter.createTestNode(params);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
-      // Logger.setupStdoutLogging(LogLevel.MINOR,
+      // Logging.bootstrap(Level.DEBUG,
       // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      network.crypta.support.Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      Logging.setRootLevel(Level.ERROR); // kill logging
       long startTime = System.currentTimeMillis();
       // Start it
       node.start(true);

@@ -22,8 +22,8 @@ import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.Logging;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
@@ -71,7 +71,7 @@ public class LongTermPushPullCHKTest extends LongTermTest {
     try {
       final File dir = new File("longterm-push-pull-test-" + uid);
       FileUtil.removeAll(dir);
-      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, Level.ERROR, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -97,7 +97,7 @@ public class LongTermPushPullCHKTest extends LongTermTest {
               true,
               true);
       node = NodeStarter.createTestNode(nodeParams);
-      Logger.getChain().setThreshold(LogLevel.ERROR);
+      Logging.setRootLevel(org.slf4j.event.Level.ERROR);
 
       // Start it
       node.start(true);

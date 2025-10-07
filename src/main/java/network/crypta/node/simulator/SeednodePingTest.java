@@ -33,9 +33,8 @@ import network.crypta.node.SeedServerPeerNode;
 import network.crypta.node.SeedServerTestPeerNode;
 import network.crypta.node.SeedServerTestPeerNode.FATE;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.Logging;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
@@ -58,14 +57,13 @@ public class SeednodePingTest extends RealNodeTest {
           PeerParseException,
           InterruptedException,
           ReferenceSignatureVerificationException,
-          NodeInitException,
-          InvalidThresholdException {
+          NodeInitException {
     Node node = null;
     try {
       if (args.length == 1) STATUS_DIR = new File(args[0]);
       File baseDir = new File("seednode-pingtest");
       RandomSource random =
-          NodeStarter.globalTestInit(baseDir, false, LogLevel.ERROR, "", false, null);
+          NodeStarter.globalTestInit(baseDir, false, Level.ERROR, "", false, null);
       // Create one node
       Executor executor = new PooledExecutor();
       TestNodeParameters params = new TestNodeParameters();
@@ -97,9 +95,9 @@ public class SeednodePingTest extends RealNodeTest {
       }
       // Start it
       node.start(true);
-      // Logger.setupStdoutLogging(LogLevel.MINOR,
+      // Logging.bootstrap(Level.DEBUG,
       // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      Logging.setRootLevel(Level.ERROR); // kill logging
       Thread.sleep(SECONDS.toMillis(2));
       if (seedNodes.size() != numberOfNodesInTheFile)
         System.out.println("ERROR ADDING SOME OF THE SEEDNODES!!");

@@ -11,7 +11,9 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import network.crypta.support.Logging;
 
 /** Simple sanity tests for the SLF4J hook level mapping. */
 public class Slf4jLoggerHookTest {
@@ -27,8 +29,8 @@ public class Slf4jLoggerHookTest {
     listAppender.start();
     root.addAppender(listAppender);
 
-    // Initialize Crypta logger chain with SLF4J sink
-    Logger.setupStdoutLogging(Logger.LogLevel.MINOR, null);
+    // Initialize SLF4J root to DEBUG for this test
+    Logging.bootstrap(org.slf4j.event.Level.DEBUG, null);
   }
 
   @AfterEach
@@ -41,7 +43,8 @@ public class Slf4jLoggerHookTest {
 
   @Test
   public void normalMapsToInfo() {
-    Logger.normal(Slf4jLoggerHookTest.class, "normal-info-test");
+    Logger log = LoggerFactory.getLogger(Slf4jLoggerHookTest.class);
+    log.info("normal-info-test");
     List<ILoggingEvent> events = listAppender.list;
     ILoggingEvent last = events.get(events.size() - 1);
     assertThat(last.getLevel(), equalTo(Level.INFO));
@@ -50,7 +53,8 @@ public class Slf4jLoggerHookTest {
 
   @Test
   public void minorMapsToDebug() {
-    Logger.minor(Slf4jLoggerHookTest.class, "minor-debug-test");
+    Logger log = LoggerFactory.getLogger(Slf4jLoggerHookTest.class);
+    log.debug("minor-debug-test");
     List<ILoggingEvent> events = listAppender.list;
     ILoggingEvent last = events.get(events.size() - 1);
     assertThat(last.getLevel(), equalTo(Level.DEBUG));

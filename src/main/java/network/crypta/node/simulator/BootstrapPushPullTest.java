@@ -12,8 +12,8 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import org.slf4j.event.Level;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.RandomAccessBucket;
@@ -38,7 +38,7 @@ public class BootstrapPushPullTest {
   public static int OPENNET_PORT2 = 5005;
 
   public static void main(String[] args)
-      throws InvalidThresholdException, IOException, NodeInitException, InterruptedException {
+      throws IOException, NodeInitException, InterruptedException {
     Node node = null;
     Node secondNode = null;
     try {
@@ -50,7 +50,7 @@ public class BootstrapPushPullTest {
       File dir = new File("bootstrap-push-pull-test");
       FileUtil.removeAll(dir);
       RandomSource random =
-          NodeStarter.globalTestInit(dir, false, LogLevel.NORMAL, "", false, null);
+          NodeStarter.globalTestInit(dir, false, Level.INFO, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -87,9 +87,8 @@ public class BootstrapPushPullTest {
               });
       node = NodeStarter.createTestNode(firstParams);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
-      // Logger.setupStdoutLogging(LogLevel.MINOR, "freenet:NORMAL,freenet.node
-      // .NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      network.crypta.support.Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      // Logging.bootstrap(Level.DEBUG, "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
+      Logging.setRootLevel(Level.ERROR); // kill logging
       // Start it
       node.start(true);
       if (!TestUtil.waitForNodes(node)) {

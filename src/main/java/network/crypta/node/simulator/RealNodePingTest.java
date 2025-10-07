@@ -15,8 +15,7 @@ import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,11 +42,10 @@ public class RealNodePingTest {
           InterruptedException,
           ReferenceSignatureVerificationException,
           NodeInitException,
-          InvalidThresholdException,
           PeerTooOldException {
     File baseDirectory = new File("pingtest");
     RandomSource random =
-        NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, null);
+        NodeStarter.globalTestInit(baseDirectory, false, Level.ERROR, "", true, null);
     // Create 2 nodes
     Executor executor = new PooledExecutor();
     TestNodeParameters node1Params =

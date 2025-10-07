@@ -3,9 +3,7 @@
 package network.crypta.node
 
 import network.crypta.support.Fields
-import network.crypta.support.LogThresholdCallback
-import network.crypta.support.Logger
-import network.crypta.support.Logger.LogLevel
+import org.slf4j.LoggerFactory
 
 /**
  * Version information and helpers for the Cryptad node.
@@ -92,11 +90,7 @@ private val buildNumber: Int by lazy {
     }
 }
 
-@Volatile
-private var logMinor: Boolean = false
-
-@Volatile
-private var logDebug: Boolean = false
+private val LOG = LoggerFactory.getLogger("network.crypta.node.Version")
 
 /** Highest peer build observed during this process lifetime. */
 @Volatile
@@ -116,25 +110,7 @@ private val cachedMinAcceptableVersionComponents: Array<String> by lazy {
     )
 }
 
-// Logger initialization
-private object VersionLogTag
-
-private val logTag: Class<*> = VersionLogTag::class.java
-
-// Initialize logging callback - using lazy to ensure proper initialization
-private val loggerCallbackInitializer by lazy {
-    Logger.registerLogThresholdCallback(object : LogThresholdCallback {
-        override fun shouldUpdate() {
-            logMinor = Logger.shouldLog(LogLevel.MINOR, this)
-            logDebug = Logger.shouldLog(LogLevel.DEBUG, this)
-        }
-    })
-}
-
-// Ensure logger callback is initialized when first accessed
-private fun ensureLoggerInitialized() {
-    loggerCallbackInitializer
-}
+// No legacy Logger threshold callbacks; use SLF4J guards directly.
 
 // Public API functions
 
@@ -215,13 +191,12 @@ fun getMinAcceptableVersionString(): String = Fields.commaList(getMinAcceptableV
  * @return true if the version is compatible, false otherwise
  */
 fun isCompatibleVersion(version: String?): Boolean {
-    ensureLoggerInitialized()
     val v = parseVersionOrNull(version) ?: return false
 
     if (rejectIfCryptadTooOld(v, version)) return false
     if (rejectIfFredTooOld(v, version)) return false
 
-    if (logDebug) Logger.minor(logTag, "Accepting: $version")
+    if (LOG.isDebugEnabled) LOG.debug("Accepting: {}", version)
     return true
 }
 
@@ -238,7 +213,6 @@ fun isCompatibleVersion(version: String?): Boolean {
  * @return true if versions are mutually compatible, false otherwise
  */
 fun isCompatibleVersionWithLastGood(versionStr: String?, lastGoodVersionStr: String?): Boolean {
-    ensureLoggerInitialized()
     val v = parseVersionOrNull(versionStr) ?: return false
     val lgv = parseVersionOrNull(lastGoodVersionStr, label = "lastGoodVersion") ?: return false
 
@@ -254,7 +228,7 @@ fun isCompatibleVersionWithLastGood(versionStr: String?, lastGoodVersionStr: Str
         return false
     }
 
-    if (logDebug) Logger.minor(logTag, "Accepting: $versionStr")
+    if (LOG.isDebugEnabled) LOG.debug("Accepting: {}", versionStr)
     return true
 }
 
@@ -271,7 +245,7 @@ fun isCompatibleVersionWithLastGood(versionStr: String?, lastGoodVersionStr: Str
 @Throws(VersionParseException::class)
 fun parseBuildNumberFromVersionStr(version: String?): Int {
     requireNotNull(version) {
-        Logger.error(logTag, "version == null!", Exception("error"))
+        LOG.error("version == null!", Exception("error"))
         "version == null"
     }
 
@@ -316,7 +290,6 @@ fun parseBuildNumberFromVersionStr(version: String?, defaultValue: Int): Int =
  * @param versionStr The version string from a peer
  */
 fun seenVersion(versionStr: String?) {
-    ensureLoggerInitialized()
     val v = Fields.commaList(versionStr) ?: return
     if (v.size < 3) return  // bad, but that will be discovered elsewhere
 
@@ -329,9 +302,7 @@ fun seenVersion(versionStr: String?) {
     }.getOrElse { return }
 
     if (version > highestSeenBuild) {
-        if (logMinor) {
-            Logger.minor(logTag, "New highest seen build: $version")
-        }
+        if (LOG.isDebugEnabled) LOG.debug("New highest seen build: {}", version)
         highestSeenBuild = version
     }
 }
@@ -391,20 +362,22 @@ private fun checkCryptadCompatibility(
     val minVersion = lgv.getOrNull(1)?.toIntOrNull()
 
     if (version == null || minVersion == null) {
-        ensureLoggerInitialized()
-        if (logMinor) Logger.minor(
-            logTag,
-            "Not accepting (NumberFormatException) from $versionStr and/or $lastGoodVersionStr"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting (NumberFormatException) from {} and/or {}",
+                versionStr,
+                lastGoodVersionStr,
+            )
         return false
     }
 
     if (version < minVersion) {
-        ensureLoggerInitialized()
-        if (logDebug) Logger.debug(
-            logTag,
-            "Not accepting unstable from version: $versionStr(lastGoodVersion=$lastGoodVersionStr)"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting unstable from version: {}(lastGoodVersion={})",
+                versionStr,
+                lastGoodVersionStr,
+            )
         return false
     }
 
@@ -428,20 +401,22 @@ private fun checkFredCompatibility(
     val minBuild = lgv.getOrNull(3)?.toIntOrNull()
 
     if (build == null || minBuild == null) {
-        ensureLoggerInitialized()
-        if (logMinor) Logger.minor(
-            logTag,
-            "Not accepting (NumberFormatException) from $versionStr and/or $lastGoodVersionStr"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting (NumberFormatException) from {} and/or {}",
+                versionStr,
+                lastGoodVersionStr,
+            )
         return false
     }
 
     if (build < minBuild) {
-        ensureLoggerInitialized()
-        if (logDebug) Logger.debug(
-            logTag,
-            "Not accepting unstable from version: $versionStr(lastGoodVersion=$lastGoodVersionStr)"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting unstable from version: {}(lastGoodVersion={})",
+                versionStr,
+                lastGoodVersionStr,
+            )
         return false
     }
 
@@ -459,7 +434,7 @@ private fun checkFredCompatibility(
  */
 private fun parseVersionOrNull(version: String?, label: String = "version"): Array<String>? {
     version ?: run {
-        Logger.error(logTag, "$label == null!", Exception("error"))
+        LOG.error("{} == null!", label, Exception("error"))
         return null
     }
 
@@ -481,17 +456,17 @@ private fun rejectIfCryptadTooOld(v: Array<String>, original: String?): Boolean 
     val req = MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER
 
     if (version == null) {
-        ensureLoggerInitialized()
-        if (logMinor) Logger.minor(logTag, "Not accepting (NumberFormatException) from $original")
+        if (LOG.isDebugEnabled) LOG.debug("Not accepting (NumberFormatException) from {}", original)
         return true
     }
 
     if (version < req) {
-        ensureLoggerInitialized()
-        if (logDebug) Logger.debug(
-            logTag,
-            "Not accepting unstable from version: $original(minAcceptableCryptadBuildNumber=$req)"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting unstable from version: {}(minAcceptableCryptadBuildNumber={})",
+                original,
+                req,
+            )
         return true
     }
 
@@ -511,16 +486,17 @@ private fun rejectIfFredTooOld(v: Array<String>, original: String?): Boolean {
 
     val build = v.getOrNull(3)?.toIntOrNull()
     if (build == null) {
-        Logger.minor(logTag, "Not accepting (NumberFormatException) from $original")
+        if (LOG.isDebugEnabled) LOG.debug("Not accepting (NumberFormatException) from {}", original)
         return true
     }
 
     if (build < LAST_GOOD_FRED_STABLE_BUILD) {
-        ensureLoggerInitialized()
-        if (logDebug) Logger.debug(
-            logTag,
-            "Not accepting stable from version $original(lastGoodStableBuild=$LAST_GOOD_FRED_STABLE_BUILD)"
-        )
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting stable from version {}(lastGoodStableBuild={})",
+                original,
+                LAST_GOOD_FRED_STABLE_BUILD,
+            )
         return true
     }
 

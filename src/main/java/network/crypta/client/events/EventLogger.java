@@ -1,7 +1,6 @@
 package network.crypta.client.events;
 
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger.LogLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -16,11 +15,6 @@ public class EventLogger implements ClientEventListener {
 
   final Level slf4jLevel;
   final boolean removeWithProducer;
-
-  public EventLogger(LogLevel prio, boolean removeWithProducer) {
-    this.slf4jLevel = mapLegacy(prio);
-    this.removeWithProducer = removeWithProducer;
-  }
 
   /** New overload that accepts SLF4J level directly (preferred). */
   public EventLogger(Level level, boolean removeWithProducer) {
@@ -56,23 +50,5 @@ public class EventLogger implements ClientEventListener {
     }
   }
 
-  private static Level mapLegacy(LogLevel prio) {
-    if (prio == null) return Level.INFO;
-    switch (prio) {
-      case ERROR:
-        return Level.ERROR;
-      case WARNING:
-        return Level.WARN;
-      case NORMAL:
-        return Level.INFO;
-      case MINOR:
-      case DEBUG:
-        return Level.DEBUG;
-      case MINIMAL:
-        return Level.TRACE;
-      case NONE:
-      default:
-        return Level.INFO;
-    }
-  }
+  // No legacy Logger.LogLevel constructor; SLF4J Level is used directly.
 }

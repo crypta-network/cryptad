@@ -29,8 +29,7 @@ import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Executor;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
@@ -61,7 +60,6 @@ public class RealNodeULPRTest extends RealNodeTest {
       throws FSParseException,
           PeerParseException,
           CHKEncodeException,
-          InvalidThresholdException,
           NodeInitException,
           ReferenceSignatureVerificationException,
           KeyCollisionException,
@@ -96,7 +94,7 @@ public class RealNodeULPRTest extends RealNodeTest {
     NodeStarter.globalTestInit(
         wd,
         false,
-        LogLevel.ERROR,
+        Level.ERROR,
         "network.crypta.node.Location:normal,network.crypta.node.simulator"
             + ".RealNodeRoutingTest:normal,network.crypta.node"
             + ".NodeDispatcher:NORMAL,network.crypta.node.FailureTable:MINOR,"

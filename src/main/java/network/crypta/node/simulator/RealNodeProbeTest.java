@@ -15,7 +15,7 @@ import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -59,7 +59,7 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
-    NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, random);
+    NodeStarter.globalTestInit(baseDirectory, false, Level.ERROR, "", true, random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();

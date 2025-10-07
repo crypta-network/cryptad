@@ -31,7 +31,7 @@ import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
 import network.crypta.support.Executor;
 import network.crypta.support.JVMVersion;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.ProcessPriority;
 import network.crypta.support.SimpleFieldSet;
@@ -111,11 +111,11 @@ public class NodeStarter implements WrapperListener {
   public static RandomSource globalTestInit(
       File baseDirectory,
       boolean enablePlug,
-      network.crypta.support.Logger.LogLevel logThreshold,
+      org.slf4j.event.Level logThreshold,
       String details,
       boolean noDNS,
       RandomSource randomSource)
-      throws InvalidThresholdException {
+      {
 
     synchronized (NodeStarter.class) {
       if (isStarted) {
@@ -131,7 +131,8 @@ public class NodeStarter implements WrapperListener {
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
-    network.crypta.support.Logger.setupStdoutLogging(logThreshold, details);
+    // Configure SLF4J logging for tests/simulator environments
+    Logging.bootstrap(logThreshold, details);
 
     // set Java's DNS cache not to cache forever, since many people
     // use dyndns hostnames
