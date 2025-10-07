@@ -80,9 +80,9 @@ public class TeeOutputStreamLogger extends OutputStream {
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
-    // Ensure stdout (NORMAL and lower) still appears on the real console even if ConsoleAppender
+    // Ensure stdout (INFO/DEBUG/TRACE) still appears on the real console even if ConsoleAppender
     // filters WARN+ only. Avoid duplication for WARN/ERROR which ConsoleAppender already prints.
-    if (priority.ordinal() < Level.WARN.ordinal()) {
+    if (priority.ordinal() >= Level.INFO.ordinal()) {
       original.write(b);
     }
   }
@@ -105,7 +105,7 @@ public class TeeOutputStreamLogger extends OutputStream {
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
-    if (priority.ordinal() < Level.WARN.ordinal()) {
+    if (priority.ordinal() >= Level.INFO.ordinal()) {
       original.write(b, off, len);
     }
   }
