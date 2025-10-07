@@ -15,9 +15,10 @@ import java.util.regex.Pattern;
 import network.crypta.clients.http.TranslationToadlet;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This is the core of all the localization stuff. This method can get localized strings from any
@@ -32,6 +33,7 @@ import network.crypta.support.io.FileUtil;
  * @author Artefact2
  */
 public class BaseL10n {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseL10n.class);
 
   /**
    * Central list of languages and the codes to identify them. When adding new ones, use ISO639-2 or
@@ -363,19 +365,18 @@ public class BaseL10n {
 
     this.lang = selectedLanguage;
 
-    Logger.normal(this.getClass(), "Changing the current language to : " + this.lang);
+    LOG.info("Changing the current language to : " + this.lang);
 
     try {
       this.loadOverrideFileOrBackup();
     } catch (IOException e) {
       this.translationOverride = null;
-      Logger.error(this, "IOError while accessing the file!" + e.getMessage(), e);
+      LOG.error("IOError while accessing the file!" + e.getMessage(), e);
     }
 
     this.currentTranslation = this.loadTranslation(lang);
     if (this.currentTranslation == null) {
-      Logger.error(
-          this,
+      LOG.error(
           "The translation file for "
               + lang
               + " is invalid. The node will load an empty template.");
@@ -391,13 +392,13 @@ public class BaseL10n {
   private void loadOverrideFileOrBackup() throws IOException {
     final File tmpFile = new File(this.getL10nOverrideFileName(this.lang));
     if (tmpFile.exists() && tmpFile.canRead() && tmpFile.length() > 0) {
-      Logger.normal(this, "Override file detected : let's try to load it");
+      LOG.info("Override file detected : let's try to load it");
       this.translationOverride = SimpleFieldSet.readFrom(tmpFile, false, false);
     } else {
       // try to restore a backup
       final File backup = new File(tmpFile.getParentFile(), tmpFile.getName() + ".bak");
       if (backup.exists() && backup.length() > 0) {
-        Logger.normal(this, "Override-backup file detected : let's try to load it");
+        LOG.info("Override-backup file detected : let's try to load it");
         this.translationOverride = SimpleFieldSet.readFrom(backup, false, false);
       } else {
         this.translationOverride = null;
@@ -488,7 +489,7 @@ public class BaseL10n {
 
       // Set the value of the override
       this.translationOverride.putOverwrite(key, value);
-      Logger.normal(this.getClass(), "Got a new translation key: set the Override!");
+      LOG.info("Got a new translation key: set the Override!");
     }
 
     // Save the file to disk
@@ -502,17 +503,16 @@ public class BaseL10n {
     try {
       // We don't set deleteOnExit on it : if the save operation fails, we want a backup
       File tempFile = File.createTempFile(finalFile.getName(), ".bak", finalFile.getParentFile());
-      Logger.minor(this.getClass(), "The temporary filename is : " + tempFile);
+      LOG.debug("The temporary filename is : " + tempFile);
 
       try (FileOutputStream fos = new FileOutputStream(tempFile)) {
         this.translationOverride.writeToBigBuffer(fos);
       }
 
       FileUtil.moveTo(tempFile, finalFile);
-      Logger.normal(this.getClass(), "Override file saved successfully!");
+      LOG.info("Override file saved successfully!");
     } catch (IOException e) {
-      Logger.error(
-          this.getClass(), "Error while saving the translation override: " + e.getMessage(), e);
+      LOG.error("Error while saving the translation override: " + e.getMessage(), e);
     }
   }
 
@@ -593,8 +593,7 @@ public class BaseL10n {
     }
 
     if (result == null) {
-      Logger.normal(
-          this.getClass(),
+      LOG.info(
           "The translation for "
               + key
               + " hasn't been found ("
@@ -657,7 +656,7 @@ public class BaseL10n {
     String result = this.fallbackTranslation.get(key);
 
     if (result == null) {
-      Logger.error(this.getClass(), "The default translation for " + key + " hasn't been found!");
+      LOG.error("The default translation for " + key + " hasn't been found!");
       System.err.println("The default translation for " + key + " hasn't been found!");
       new Exception().printStackTrace();
     }
@@ -845,7 +844,7 @@ public class BaseL10n {
       try {
         return performHTMLSubstitutions(value, patterns, values);
       } catch (L10nParseException e) {
-        Logger.error(this, "Error in l10n value \"" + value + "\" for " + key, e);
+        LOG.error("Error in l10n value \"" + value + "\" for " + key, e);
       }
     }
     // this should never happen, because the last item from getStrings() will be the key itself

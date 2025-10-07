@@ -2,9 +2,10 @@ package network.crypta.support.io;
 
 import java.io.*;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A file Bucket is an implementation of Bucket that writes to a file.
@@ -12,6 +13,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * @author oskar
  */
 public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(FileBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;
   protected final File file;
@@ -19,13 +21,11 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
   protected boolean deleteOnFree;
   protected final boolean deleteOnExit;
   protected final boolean createFileOnly;
+
   // JVM caches File.size() and there is no way to flush the cache, so we
   // need to track it ourselves
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(FileBucket.class);
   }
 
   /**

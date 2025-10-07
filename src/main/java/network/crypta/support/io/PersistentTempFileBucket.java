@@ -2,19 +2,18 @@ package network.crypta.support.io;
 
 import java.io.*;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PersistentTempFileBucket extends TempFileBucket implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentTempFileBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
   transient PersistentFileTracker tracker;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(PersistentTempFileBucket.class);
   }
 
   public PersistentTempFileBucket(
@@ -61,15 +60,14 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
     PersistentTempFileBucket ret =
         new PersistentTempFileBucket(filenameID, generator, tracker, false);
     ret.setReadOnly();
-    if (!getFile().exists())
-      Logger.error(this, "File does not exist when creating shadow: " + getFile());
+    if (!getFile().exists()) LOG.error("File does not exist when creating shadow: " + getFile());
     return ret;
   }
 
   @Override
   protected void innerResume(ClientContext context) throws ResumeFailedException {
     super.innerResume(context);
-    if (logMINOR) Logger.minor(this, "Resuming " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Resuming " + this, new Exception("debug"));
     tracker = context.persistentFileTracker;
     tracker.register(getFile());
   }

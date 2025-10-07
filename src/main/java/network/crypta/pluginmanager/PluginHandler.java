@@ -1,6 +1,7 @@
 package network.crypta.pluginmanager;
 
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Methods to handle a specific plugin (= set it up and start it)
@@ -8,6 +9,7 @@ import network.crypta.support.Logger;
  * @author cyberdo
  */
 public class PluginHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginHandler.class);
 
   /**
    * Will get all needed info from the plugin, put it into the Wrapper. Then the Pluginstarter will
@@ -58,7 +60,7 @@ public class PluginHandler {
         pm.register(pi);
         pi.getPlugin().runPlugin(pi.getPluginRespirator());
       } catch (Throwable t) {
-        Logger.normal(this, "Caught Throwable while running plugin: " + t, t);
+        LOG.info("Caught Throwable while running plugin: " + t, t);
         System.err.println("Caught Throwable while running plugin: " + t);
         t.printStackTrace();
       }
