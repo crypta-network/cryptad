@@ -15,10 +15,11 @@ import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -27,6 +28,7 @@ import network.crypta.support.PooledExecutor;
  *     packets are sent, when they are received, (by both sides), and their sequence numbers.
  */
 public class RealNodePingTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodePingTest.class);
 
   public static final int DARKNET_PORT1 = RealNodeBusyNetworkTest.DARKNET_PORT_END;
   public static final int DARKNET_PORT2 = RealNodeBusyNetworkTest.DARKNET_PORT_END + 1;
@@ -96,16 +98,16 @@ public class RealNodePingTest {
     Thread.sleep(20000);
     // node1.usm.setDropProbability(4);
     while (true) {
-      Logger.error(RealNodePingTest.class, "Sending PING " + pingID);
+      LOG.error("Sending PING " + pingID);
       boolean success;
       try {
         success = pn.ping(pingID);
       } catch (NotConnectedException e1) {
-        Logger.error(RealNodePingTest.class, "Not connected");
+        LOG.error("Not connected");
         continue;
       }
-      if (success) Logger.error(RealNodePingTest.class, "PING " + pingID + " successful");
-      else Logger.error(RealNodePingTest.class, "PING FAILED: " + pingID);
+      if (success) LOG.error("PING " + pingID + " successful");
+      else LOG.error("PING FAILED: " + pingID);
       try {
         Thread.sleep(2000);
       } catch (InterruptedException e) {

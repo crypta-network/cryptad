@@ -14,13 +14,14 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.PeerNode;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author ArneBab
@@ -54,6 +55,7 @@ import network.crypta.support.math.SimpleRunningAverage;
  *     sed 's/Routed ping //;s/FAILED from//')" using 1:(($0+1)/$1) pt 6 ps 1 lw 1 title "FAILED"
  */
 public class RealNodePitchBlackMitigationTest extends RealNodeTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodePitchBlackMitigationTest.class);
 
   static final int NUMBER_OF_NODES = 300;
   static final int DEGREE = 4;
@@ -94,7 +96,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     DummyRandomSource random = new DummyRandomSource(3142);
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodePitchBlackMitigationTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
@@ -115,14 +117,14 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
       params.enableFOAF = ENABLE_FOAF;
       params.longPingTimes = true;
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodePitchBlackMitigationTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
-    Logger.normal(RealNodePitchBlackMitigationTest.class, "Created " + NUMBER_OF_NODES + " nodes");
+    LOG.info("Created " + NUMBER_OF_NODES + " nodes");
     // Now link them up
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
 
-    Logger.normal(RealNodePitchBlackMitigationTest.class, "Added random links");
+    LOG.info("Added random links");
 
     // force a disrupted network
     if (INITIAL_PITCH_BLACK_ATTACK) {
@@ -134,7 +136,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     }
 
     // enable warning logging to see pitch black defense lo
-    Logger.globalSetThreshold(LogLevel.WARNING);
+    network.crypta.support.Logger.globalSetThreshold(LogLevel.WARNING);
 
     // set the time to yesterday to have pitch black information
     LocationManager.setClockForTesting(
@@ -293,8 +295,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
             randomNode2 = nodes[random.nextInt(nodes.length)];
           }
           double loc2 = randomNode2.getLocation();
-          Logger.normal(
-              RealNodePitchBlackMitigationTest.class,
+          LOG.info(
               "Pinging "
                   + randomNode2.getDarknetPortNumber()
                   + " @ "
@@ -349,7 +350,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
                     + ')');
           }
         } catch (Throwable t) {
-          Logger.error(RealNodePitchBlackMitigationTest.class, "Caught " + t, t);
+          LOG.error("Caught " + t, t);
         }
       }
       System.err.println(

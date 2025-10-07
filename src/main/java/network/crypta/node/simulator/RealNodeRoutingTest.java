@@ -7,13 +7,14 @@ import network.crypta.node.LocationManager;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -21,6 +22,7 @@ import network.crypta.support.math.SimpleRunningAverage;
  *     <p>Then run some node-to-node searches.
  */
 public class RealNodeRoutingTest extends RealNodeTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeRoutingTest.class);
 
   static final int NUMBER_OF_NODES = 100;
   static final int DEGREE = 10;
@@ -52,7 +54,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
     DummyRandomSource random = new DummyRandomSource(3142);
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
@@ -73,14 +75,14 @@ public class RealNodeRoutingTest extends RealNodeTest {
       params.enableFOAF = ENABLE_FOAF;
       params.longPingTimes = true;
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
-    Logger.normal(RealNodeRoutingTest.class, "Created " + NUMBER_OF_NODES + " nodes");
+    LOG.info("Created " + NUMBER_OF_NODES + " nodes");
     // Now link them up
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
 
-    Logger.normal(RealNodeRoutingTest.class, "Added random links");
+    LOG.info("Added random links");
 
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Starting node " + i);
@@ -173,8 +175,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
             randomNode2 = nodes[random.nextInt(nodes.length)];
           }
           double loc2 = randomNode2.getLocation();
-          Logger.normal(
-              RealNodeRoutingTest.class,
+          LOG.info(
               "Pinging "
                   + randomNode2.getDarknetPortNumber()
                   + " @ "
@@ -229,7 +230,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
                     + ')');
           }
         } catch (Throwable t) {
-          Logger.error(RealNodeRoutingTest.class, "Caught " + t, t);
+          LOG.error("Caught " + t, t);
         }
       }
       System.err.println(

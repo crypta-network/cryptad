@@ -9,14 +9,16 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BootstrapSeedTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BootstrapSeedTest.class);
 
   public static int EXIT_NO_SEEDNODES = 257;
   public static int EXIT_FAILED_TARGET = 258;
@@ -80,7 +82,7 @@ public class BootstrapSeedTest {
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
       // Logger.setupStdoutLogging(LogLevel.MINOR,
       // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      network.crypta.support.Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
       long startTime = System.currentTimeMillis();
       // Start it
       node.start(true);

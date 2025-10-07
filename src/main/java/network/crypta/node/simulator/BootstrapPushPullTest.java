@@ -12,15 +12,17 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
 import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BootstrapPushPullTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BootstrapPushPullTest.class);
 
   public static int TEST_SIZE = 1024 * 1024;
 
@@ -87,7 +89,7 @@ public class BootstrapPushPullTest {
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
       // Logger.setupStdoutLogging(LogLevel.MINOR, "freenet:NORMAL,freenet.node
       // .NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      network.crypta.support.Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
       // Start it
       node.start(true);
       if (!TestUtil.waitForNodes(node)) {
