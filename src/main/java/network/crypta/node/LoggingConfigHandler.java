@@ -704,8 +704,7 @@ public class LoggingConfigHandler {
     // OFF
     return switch (s) {
       case "MINIMAL" -> Level.TRACE;
-      case "MINOR" -> Level.INFO; // preserve MINOR > DEBUG cutoff
-      case "DEBUG" -> Level.DEBUG;
+      case "MINOR", "DEBUG" -> Level.DEBUG; // historical: MINOR maps to DEBUG
       case "NORMAL" -> Level.INFO;
       case "WARNING" -> Level.WARN;
       case "ERROR" -> Level.ERROR;
