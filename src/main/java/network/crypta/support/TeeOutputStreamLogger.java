@@ -53,10 +53,16 @@ public class TeeOutputStreamLogger extends OutputStream {
         LOG.info(msg);
         break;
       case DEBUG:
-      case TRACE:
-      default:
         if (LOG.isDebugEnabled()) LOG.debug(msg);
-        else LOG.info(msg);
+        // else: drop to preserve legacy gating
+        break;
+      case TRACE:
+        if (LOG.isTraceEnabled()) LOG.trace(msg);
+        // else: drop to preserve legacy gating
+        break;
+      default:
+        // Fallback: treat as INFO conservatively
+        LOG.info(msg);
         break;
     }
   }
