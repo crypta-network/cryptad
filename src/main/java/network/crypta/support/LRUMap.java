@@ -5,7 +5,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An LRU map from K to V. That is, when a mapping is added, it is pushed to the top of the queue,
@@ -17,16 +18,9 @@ import network.crypta.support.Logger.LogLevel;
  * @param <V> The value type.
  */
 public class LRUMap<K, V> {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(LRUMap.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -78,7 +72,7 @@ public class LRUMap<K, V> {
       insert.value = value;
       list.remove(insert);
     }
-    if (logMINOR) Logger.minor(this, "Pushed " + insert + " ( " + key + ' ' + value + " )");
+    if (LOG.isDebugEnabled()) LOG.debug("Pushed " + insert + " ( " + key + ' ' + value + " )");
 
     list.unshift(insert);
     return old;

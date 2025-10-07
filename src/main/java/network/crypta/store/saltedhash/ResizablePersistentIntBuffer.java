@@ -9,8 +9,9 @@ import java.util.Arrays;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A large resizable block of int's, which is persisted to disk with a specific policy, which is
@@ -23,6 +24,7 @@ import network.crypta.support.Ticker;
  * @author toad
  */
 public class ResizablePersistentIntBuffer {
+  private static final Logger LOG = LoggerFactory.getLogger(ResizablePersistentIntBuffer.class);
 
   private final File filename;
   private final RandomAccessFile raf;
@@ -118,7 +120,7 @@ public class ResizablePersistentIntBuffer {
       this.ticker = ticker;
       if (dirty) {
         int persistenceTime = getPersistenceTime();
-        Logger.normal(this, "Scheduling write of slot cache " + this + " in " + persistenceTime);
+        LOG.info("Scheduling write of slot cache " + this + " in " + persistenceTime);
         ticker.queueTimedJob(writer, persistenceTime);
         scheduled = true;
       }
@@ -152,14 +154,12 @@ public class ResizablePersistentIntBuffer {
           dirty = true;
           if (ticker != null) {
             if (!scheduled) {
-              Logger.normal(
-                  this, "Scheduling write of slot cache " + this + " in " + persistenceTime);
+              LOG.info("Scheduling write of slot cache " + this + " in " + persistenceTime);
               ticker.queueTimedJob(writer, persistenceTime);
               scheduled = true;
             }
           } else {
-            Logger.normal(
-                this,
+            LOG.info(
                 "Will scheduling write of slot cache after startup: "
                     + this
                     + " in "
@@ -180,7 +180,7 @@ public class ResizablePersistentIntBuffer {
       new Runnable() {
 
         public void run() {
-          Logger.normal(this, "Writing slot cache " + ResizablePersistentIntBuffer.this);
+          LOG.info("Writing slot cache " + ResizablePersistentIntBuffer.this);
           lock.readLock().lock(); // Protect buffer.
           try {
             synchronized (ResizablePersistentIntBuffer.this) {
@@ -195,7 +195,7 @@ public class ResizablePersistentIntBuffer {
             try {
               writeBuffer();
             } catch (IOException e) {
-              Logger.error(this, "Write failed during shutdown: " + e + " on " + filename, e);
+              LOG.error("Write failed during shutdown: " + e + " on " + filename, e);
             }
           } finally {
             synchronized (ResizablePersistentIntBuffer.this) {
@@ -204,7 +204,7 @@ public class ResizablePersistentIntBuffer {
             }
             lock.readLock().unlock();
           }
-          Logger.normal(this, "Written slot cache " + ResizablePersistentIntBuffer.this);
+          LOG.info("Written slot cache " + ResizablePersistentIntBuffer.this);
         }
       };
 
@@ -228,10 +228,10 @@ public class ResizablePersistentIntBuffer {
         writing = true;
       }
       try {
-        Logger.normal(this, "Writing slot cache on shutdown: " + this);
+        LOG.info("Writing slot cache on shutdown: " + this);
         writeBuffer();
       } catch (IOException e) {
-        Logger.error(this, "Write failed during shutdown: " + e + " on " + filename, e);
+        LOG.error("Write failed during shutdown: " + e + " on " + filename, e);
       }
       synchronized (this) {
         writing = false;
@@ -239,7 +239,7 @@ public class ResizablePersistentIntBuffer {
       try {
         raf.close();
       } catch (IOException e) {
-        Logger.error(this, "Close failed during shutdown: " + e + " on " + filename, e);
+        LOG.error("Close failed during shutdown: " + e + " on " + filename, e);
       }
     } finally {
       lock.writeLock().unlock();
@@ -256,7 +256,7 @@ public class ResizablePersistentIntBuffer {
       try {
         raf.close();
       } catch (IOException e) {
-        Logger.error(this, "Close failed during shutdown: " + e + " on " + filename, e);
+        LOG.error("Close failed during shutdown: " + e + " on " + filename, e);
       }
     } finally {
       lock.writeLock().unlock();
@@ -279,15 +279,14 @@ public class ResizablePersistentIntBuffer {
     lock.writeLock().lock();
     try {
       if (this.size == size) return;
-      Logger.normal(this, "Resizing cache from " + this.size + " slots to " + size);
+      LOG.info("Resizing cache from " + this.size + " slots to " + size);
       this.size = size;
       buffer = Arrays.copyOf(buffer, size);
       try {
         raf.setLength(size * 4L);
         writeBuffer();
       } catch (IOException e) {
-        Logger.error(
-            this, "Failed to change size or write during resize on " + filename + " : " + e, e);
+        LOG.error("Failed to change size or write during resize on " + filename + " : " + e, e);
       }
     } finally {
       lock.writeLock().unlock();
@@ -295,7 +294,7 @@ public class ResizablePersistentIntBuffer {
   }
 
   public void forceWrite() {
-    Logger.normal(this, "Force write slot cache: " + this);
+    LOG.info("Force write slot cache: " + this);
     lock.readLock().lock();
     try {
       synchronized (this) {
@@ -317,7 +316,7 @@ public class ResizablePersistentIntBuffer {
       try {
         writeBuffer();
       } catch (IOException e) {
-        Logger.error(this, "Write failed during shutdown: " + e + " on " + filename, e);
+        LOG.error("Write failed during shutdown: " + e + " on " + filename, e);
       }
     } finally {
       synchronized (this) {

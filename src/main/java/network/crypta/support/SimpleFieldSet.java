@@ -30,6 +30,8 @@ import java.util.Set;
 import network.crypta.node.FSParseException;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -46,6 +48,7 @@ import network.crypta.support.io.Readers;
  *     *read* such formats.
  */
 public class SimpleFieldSet {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleFieldSet.class);
 
   private final Map<String, String> values;
   private Map<String, SimpleFieldSet> subsets;
@@ -206,7 +209,7 @@ public class SimpleFieldSet {
       String line = br.readLine(maxLength, bufferSize, utfOrIso88591);
       if (line == null) {
         if (firstLine) throw new EOFException();
-        Logger.error(this, "No end marker");
+        LOG.error("No end marker");
         break;
       }
       if (line.isEmpty()) continue; // ignore
@@ -628,7 +631,7 @@ public class SimpleFieldSet {
     try {
       writeTo(sw);
     } catch (IOException e) {
-      Logger.error(this, "WTF?!: " + e + " in toString()!", e);
+      LOG.error("WTF?!: " + e + " in toString()!", e);
     }
     return sw.toString();
   }
@@ -638,7 +641,7 @@ public class SimpleFieldSet {
     try {
       writeToOrdered(sw);
     } catch (IOException e) {
-      Logger.error(this, "WTF?!: " + e + " in toString()!", e);
+      LOG.error("WTF?!: " + e + " in toString()!", e);
     }
     return sw.toString();
   }
@@ -648,7 +651,7 @@ public class SimpleFieldSet {
     try {
       writeToOrdered(sw, "", false, true);
     } catch (IOException e) {
-      Logger.error(this, "WTF?!: " + e + " in toString()!", e);
+      LOG.error("WTF?!: " + e + " in toString()!", e);
     }
     return sw.toString();
   }
@@ -1289,7 +1292,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Integer.parseInt(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
@@ -1304,7 +1307,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Short.parseShort(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
@@ -1319,7 +1322,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Long.parseLong(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
@@ -1334,7 +1337,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Double.parseDouble(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
@@ -1350,7 +1353,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Float.parseFloat(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
@@ -1366,7 +1369,7 @@ public class SimpleFieldSet {
       try {
         ret[i] = Boolean.parseBoolean(strings[i]);
       } catch (NumberFormatException e) {
-        Logger.error(this, "Cannot parse " + strings[i] + " : " + e, e);
+        LOG.error("Cannot parse " + strings[i] + " : " + e, e);
         return null;
       }
     }
