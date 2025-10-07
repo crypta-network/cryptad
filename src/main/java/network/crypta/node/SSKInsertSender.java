@@ -56,8 +56,6 @@ public class SSKInsertSender extends BaseSender
   private boolean hasCollided;
   private boolean hasRecentlyCollided;
   private SSKBlock block;
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
 
   static {
   }

@@ -334,12 +334,6 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     }
   }
 
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
-
-  static {
-  }
-
   private final NodeIPDetector detector;
   private final Node node;
   FredPluginIPDetector[] plugins;

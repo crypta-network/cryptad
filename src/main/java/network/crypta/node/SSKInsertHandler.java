@@ -26,8 +26,6 @@ import org.slf4j.LoggerFactory;
 public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(SSKInsertHandler.class);
 
-  private static boolean logMINOR;
-
   static final int DATA_INSERT_TIMEOUT = 30000;
 
   final Node node;
@@ -79,7 +77,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     byte[] pubKeyHash = key.getPubKeyHash();
     pubKey = node.getGetPubKey().getKey(pubKeyHash, false, false, null);
     canCommit = false;
-    logMINOR = LOG.isDebugEnabled();
+
     this.forkOnCacheable = forkOnCacheable;
     this.preferInsert = preferInsert;
     this.ignoreLowBackoff = ignoreLowBackoff;

@@ -45,7 +45,6 @@ public class ArchiveManager {
   private static final Logger LOG = LoggerFactory.getLogger(ArchiveManager.class);
 
   public static final String METADATA_NAME = ".metadata";
-  private static boolean logMINOR;
 
   public enum ARCHIVE_TYPE {
     // WARNING: This enum is persisted. Changing member names may break downloads/uploads.
@@ -150,7 +149,6 @@ public class ArchiveManager {
     storedData = new LRUMap<>();
     this.maxArchivedFileSize = maxArchivedFileSize;
     this.tempBucketFactory = tempBucketFactory;
-    logMINOR = LOG.isDebugEnabled();
   }
 
   /** Add an ArchiveHandler by key */
@@ -273,7 +271,6 @@ public class ArchiveManager {
       ArchiveExtractCallback callback,
       ClientContext context)
       throws ArchiveFailureException, ArchiveRestartException {
-    logMINOR = LOG.isDebugEnabled();
 
     MutableBoolean gotElement = element != null ? new MutableBoolean() : null;
 

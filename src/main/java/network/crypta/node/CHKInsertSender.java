@@ -414,9 +414,6 @@ public final class CHKInsertSender extends BaseSender
                 + System.currentTimeMillis());
   }
 
-  static boolean logMINOR;
-  static boolean logDEBUG;
-
   static {
   }
 

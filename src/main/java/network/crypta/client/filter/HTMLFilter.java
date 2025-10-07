@@ -49,9 +49,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   /** if true, embed m3u player. Enabled when fproxy javascript is enabled. * */
   public static boolean embedM3uPlayer = true;
 
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
-
   private static final boolean deleteWierdStuff = true;
   private static final boolean deleteErrors = true;
 
@@ -83,8 +80,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       FilterCallback cb)
       throws IOException {
     if (cb == null) cb = new NullFilterCallback();
-    logMINOR = LOG.isDebugEnabled();
-    logDEBUG = LOG.isDebugEnabled();
+
     if (LOG.isDebugEnabled()) LOG.debug("readFilter(): charset=" + charset);
     Reader r = null;
     Writer w = null;
@@ -105,7 +101,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   @Override
   public String getCharset(byte[] input, int length, String parseCharset) throws IOException {
-    logMINOR = LOG.isDebugEnabled();
+
     if (LOG.isDebugEnabled()) LOG.debug("getCharset(): default=" + parseCharset);
     if (length > getCharsetBufferSize() && LOG.isDebugEnabled()) {
       LOG.debug(
