@@ -124,7 +124,7 @@ public class FailureTable {
       if (ftTimeout
           > REJECT_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid for 1497,
         // too
-        LOG.error("Bogus timeout " + ftTimeout, new Exception("error"));
+        LOG.info("Bogus timeout ftTimeout={} ms; clamping", ftTimeout);
       }
       ftTimeout = Math.max(Math.min(REJECT_TIME, ftTimeout), 0);
     }
@@ -132,7 +132,7 @@ public class FailureTable {
       if (rfTimeout
           > RECENTLY_FAILED_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid
         // for 1497, too
-        LOG.error("Bogus timeout " + rfTimeout, new Exception("error"));
+        LOG.info("Bogus timeout rfTimeout={} ms; clamping", rfTimeout);
       }
       rfTimeout = Math.max(Math.min(RECENTLY_FAILED_TIME, rfTimeout), 0);
     }
@@ -169,11 +169,11 @@ public class FailureTable {
       PeerNode requestor) {
     if (ftTimeout < -1 || ftTimeout > REJECT_TIME) {
       // -1 is a valid no-op.
-      LOG.error("Bogus timeout " + ftTimeout, new Exception("error"));
+      LOG.info("Bogus timeout ftTimeout={} ms; clamping", ftTimeout);
       ftTimeout = Math.max(Math.min(REJECT_TIME, ftTimeout), 0);
     }
     if (rfTimeout < 0 || rfTimeout > RECENTLY_FAILED_TIME) {
-      if (rfTimeout > 0) LOG.error("Bogus timeout " + rfTimeout, new Exception("error"));
+      if (rfTimeout > 0) LOG.info("Bogus timeout rfTimeout={} ms; clamping", rfTimeout);
       rfTimeout = Math.max(Math.min(RECENTLY_FAILED_TIME, rfTimeout), 0);
     }
     if (!(node.isEnableULPRDataPropagation() || node.isEnablePerNodeFailureTables())) return;
