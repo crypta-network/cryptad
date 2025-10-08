@@ -71,7 +71,7 @@ public class ContentFilterTest {
   @Test
   public void testHTMLFilter() throws Exception {
     if (TestProperty.VERBOSE) {
-      Logging.bootstrap(Level.DEBUG, "network.crypta.client.filter.Generic:DEBUG");
+      Logging.bootstrap(Level.DEBUG, "network.crypta.client.filter.Generic:TRACE");
     }
 
     // General sanity checks
