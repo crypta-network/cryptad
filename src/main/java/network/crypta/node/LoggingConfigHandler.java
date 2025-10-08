@@ -12,8 +12,6 @@ import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
 import ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy;
 import ch.qos.logback.core.util.FileSize;
 import java.io.File;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -28,7 +26,6 @@ import network.crypta.config.OptionFormatException;
 import network.crypta.config.SubConfig;
 import network.crypta.support.ModuloTimeTriggeringPolicy;
 import network.crypta.support.ModuloTimeTriggeringPolicy.Unit;
-import network.crypta.support.SystemSlf4jOutputStream;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
@@ -121,10 +118,7 @@ public class LoggingConfigHandler {
   private int maxCachedLogLines;
   private long maxBacklogNotBusy;
   // No executor required; logging configuration is independent
-  // When capturing stdout/err, remember the originals to restore on disable
-  private PrintStream originalStdout;
-  private PrintStream originalStderr;
-  private boolean capturedStdStreams;
+  // Std stream capture removed; SLF4J/Logback handles console output directly
   private final Set<String> appliedLoggerNames = new HashSet<>();
   private String priorityDetailRaw = "";
 
@@ -433,32 +427,7 @@ public class LoggingConfigHandler {
       } catch (NodeNeedRestartException e) {
         // not expected for priority updates
       }
-      // Optional: capture System.out/err to SLF4J when requested
-      if (Boolean.getBoolean("crypta.captureStdStreams")) {
-        try {
-          String enc = StandardCharsets.UTF_8.name();
-          // Preserve existing console streams so ConsoleAppender can still emit to the terminal.
-          PrintStream origOut = System.out;
-          PrintStream origErr = System.err;
-          this.originalStdout = origOut;
-          this.originalStderr = origErr;
-          System.setOut(
-              new PrintStream(
-                  new SystemSlf4jOutputStream(
-                      origOut, LoggerFactory.getLogger("system.out"), "Stdout: ", enc, true, false),
-                  false,
-                  enc));
-          System.setErr(
-              new PrintStream(
-                  new SystemSlf4jOutputStream(
-                      origErr, LoggerFactory.getLogger("system.err"), "Stderr: ", enc, false, true),
-                  false,
-                  enc));
-          this.capturedStdStreams = true;
-        } catch (Exception ignored) {
-          // Best-effort; do not fail if we cannot capture
-        }
-      }
+      // Std stream capture has been removed; rely on configured appenders.
       loggerEnabled = true;
     }
   }
@@ -690,20 +659,7 @@ public class LoggingConfigHandler {
       } catch (Exception e) {
         System.err.println("Failed to disable logging via Logback: " + e);
       }
-      // If we captured stdout/err earlier, restore the originals so console stays functional
-      if (capturedStdStreams) {
-        try {
-          if (originalStdout != null) System.setOut(originalStdout);
-          if (originalStderr != null) System.setErr(originalStderr);
-        } catch (Exception t) {
-          // Non-fatal: prefer keeping the app running even if we cannot restore
-          System.err.println("Failed to restore original std streams: " + t);
-        } finally {
-          capturedStdStreams = false;
-          originalStdout = null;
-          originalStderr = null;
-        }
-      }
+      // No std stream capture to restore.
       loggerEnabled = false;
     }
   }
