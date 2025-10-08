@@ -146,9 +146,7 @@ public interface Compressor {
     }
 
     private static void logLzmaOldRemovedWarning() {
-      LOG.warn(
-          "Codecs to choose contained ''LZMA'' along others. It was ignored. Please replace it with"
-              + " LZMA_NEW.");
+      LOG.warn("Legacy 'LZMA' requested with other codecs; ignoring it. Use {}.", "LZMA_NEW");
     }
 
     @Override

@@ -15,6 +15,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.regex.Pattern;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
@@ -34,6 +35,10 @@ import org.slf4j.LoggerFactory;
 
 public class FCPConnectionHandler implements Closeable {
   private static final Logger LOG = LoggerFactory.getLogger(FCPConnectionHandler.class);
+
+  /** Matches 'LZMA' as a standalone codec token in a comma-separated Codecs string. */
+  private static final Pattern LEGACY_LZMA_CODECS =
+      Pattern.compile("(?i)(?:^|\\s*,\\s*)LZMA(?:\\s*,|$)");
 
   // Legacy threshold callback removed.
 
@@ -439,6 +444,20 @@ public class FCPConnectionHandler implements Closeable {
 
   public void startClientPut(final ClientPutMessage message) {
     if (LOG.isDebugEnabled()) LOG.debug("Starting insert ID=\"" + message.identifier + '"');
+    // Instrumentation: warn when client requests legacy LZMA via FCP Codecs
+    if (message.compressorDescriptor != null
+        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()) {
+      Socket s = getSocket();
+      Object remote = (s != null) ? s.getRemoteSocketAddress() : "unknown";
+      LOG.warn(
+          "FCP ClientPut uses legacy LZMA in Codecs; advise {} instead. id={}, token={}, client={},"
+              + " remote={}",
+          "LZMA_NEW",
+          message.identifier,
+          message.clientToken,
+          getClientName(),
+          remote);
+    }
     final String id = message.identifier;
     final boolean global = message.global;
     ClientPut cp = null;
@@ -586,6 +605,20 @@ public class FCPConnectionHandler implements Closeable {
       final HashMap<String, Object> buckets,
       final boolean wasDiskPut) {
     if (LOG.isDebugEnabled()) LOG.debug("Start ClientPutDir");
+    // Instrumentation: warn when client requests legacy LZMA via FCP Codecs
+    if (message.compressorDescriptor != null
+        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()) {
+      Socket s = getSocket();
+      Object remote = (s != null) ? s.getRemoteSocketAddress() : "unknown";
+      LOG.warn(
+          "FCP ClientPutDir uses legacy LZMA in Codecs; advise {} instead. id={}, token={},"
+              + " client={}, remote={}",
+          "LZMA_NEW",
+          message.identifier,
+          message.clientToken,
+          getClientName(),
+          remote);
+    }
     final String id = message.identifier;
     final boolean global = message.global;
     ClientPutDir cp = null;
