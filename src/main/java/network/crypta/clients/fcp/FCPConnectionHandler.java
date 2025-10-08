@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
@@ -39,6 +40,9 @@ public class FCPConnectionHandler implements Closeable {
   /** Matches 'LZMA' as a standalone codec token in a comma-separated Codecs string. */
   private static final Pattern LEGACY_LZMA_CODECS =
       Pattern.compile("(?i)(?:^|\\s*,\\s*)LZMA(?:\\s*,|$)");
+
+  /** Ensure we warn about legacy LZMA at most once per connection/client. */
+  private final AtomicBoolean warnedLegacyLzma = new AtomicBoolean(false);
 
   // Legacy threshold callback removed.
 
@@ -446,7 +450,8 @@ public class FCPConnectionHandler implements Closeable {
     if (LOG.isDebugEnabled()) LOG.debug("Starting insert ID=\"" + message.identifier + '"');
     // Instrumentation: warn when client requests legacy LZMA via FCP Codecs
     if (message.compressorDescriptor != null
-        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()) {
+        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()
+        && warnedLegacyLzma.compareAndSet(false, true)) {
       Socket s = getSocket();
       Object remote = (s != null) ? s.getRemoteSocketAddress() : "unknown";
       LOG.warn(
@@ -607,7 +612,8 @@ public class FCPConnectionHandler implements Closeable {
     if (LOG.isDebugEnabled()) LOG.debug("Start ClientPutDir");
     // Instrumentation: warn when client requests legacy LZMA via FCP Codecs
     if (message.compressorDescriptor != null
-        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()) {
+        && LEGACY_LZMA_CODECS.matcher(message.compressorDescriptor).find()
+        && warnedLegacyLzma.compareAndSet(false, true)) {
       Socket s = getSocket();
       Object remote = (s != null) ? s.getRemoteSocketAddress() : "unknown";
       LOG.warn(
