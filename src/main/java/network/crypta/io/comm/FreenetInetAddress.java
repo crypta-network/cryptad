@@ -400,7 +400,7 @@ public class FreenetInetAddress {
    */
   public FreenetInetAddress dropHostname() {
     if (_address == null) {
-      LOG.error("Can't dropHostname() if no address!");
+      LOG.debug("dropHostname() called without a resolved address; hostname='{}'", hostname);
       return null;
     }
     if (hostname != null) {
