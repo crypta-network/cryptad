@@ -65,8 +65,8 @@ object Logging {
     when (this) {
       "ERROR" -> Level.ERROR
       "WARN", "WARNING" -> Level.WARN
-      "INFO", "NORMAL" -> Level.INFO
-      "MINOR", "DEBUG" -> Level.DEBUG // historical: MINOR maps to DEBUG
+      "INFO", "NORMAL", "MINOR" -> Level.INFO // preserve MINOR distinct from DEBUG
+      "DEBUG" -> Level.DEBUG
       "TRACE", "MINIMAL" -> Level.TRACE
       else -> null
     }

@@ -174,7 +174,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (length > Node.SYMMETRIC_KEY_LENGTH /* iv */ + HASH_LENGTH + 2) {
       for (PeerNode pn : peers) {
         if (pn == opn) continue;
-        if (LOG.isDebugEnabled()) LOG.debug("Trying auth with " + pn);
+        if (LOG.isInfoEnabled()) LOG.info("Trying auth with " + pn);
         if (tryProcessAuth(buf, offset, length, pn, peer, false, now)) {
           return DECODED.DECODED;
         }
