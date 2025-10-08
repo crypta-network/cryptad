@@ -257,7 +257,7 @@ public class LoggingConfigHandler {
   private void registerPriority() {
     config.register(
         CONF_PRIORITY,
-        "warning",
+        LVL_WARN,
         4,
         false,
         false,
