@@ -132,7 +132,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
     this.cryptoAlgorithm = ssk.cryptoAlgorithm;
 
     if (badDocNamePattern.matcher(siteName).matches()) // not error -- just "possible" bug
-    LOG.info("POSSIBLE BUG: edition in ClientSSK " + ssk, new Exception("debug"));
+    LOG.info("POSSIBLE BUG: edition in ClientSSK {}", ssk);
 
     hashCode =
         Fields.hashCode(pubKeyHash)

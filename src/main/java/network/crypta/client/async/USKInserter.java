@@ -410,7 +410,7 @@ public class USKInserter
     }
     if (freeData) {
       if (data == null) {
-        LOG.error("data == null in cancel() on " + this, new Exception("error"));
+        LOG.error("data == null in cancel() on {}", this);
       } else {
         data.free();
         synchronized (this) {
@@ -434,7 +434,7 @@ public class USKInserter
       fetcher = null;
       if (finished) return;
     }
-    LOG.error("Unexpected onCancelled()", new Exception("error"));
+    LOG.error("Unexpected onCancelled()");
     cancel(context);
   }
 
@@ -483,7 +483,7 @@ public class USKInserter
 
   @Override
   public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
-    LOG.error("onMetadata on " + this + " from " + state, new Exception("error"));
+    LOG.error("onMetadata on {} from {}", this, state);
     meta.free();
   }
 

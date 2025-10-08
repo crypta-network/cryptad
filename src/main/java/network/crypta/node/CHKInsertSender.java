@@ -943,8 +943,7 @@ public final class CHKInsertSender extends BaseSender
    * @param next The node we successfully inserted to.
    */
   private void finish(int code, PeerNode next) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Finished: " + code + " on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finished: {} on {}", code, this);
 
     // If there is an InsertReply, it always happens before the transfer completion notice.
     // So we do NOT need to removeRoutingTo().

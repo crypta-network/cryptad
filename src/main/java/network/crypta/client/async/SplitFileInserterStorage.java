@@ -1313,7 +1313,7 @@ public class SplitFileInserterStorage {
     synchronized (this) {
       if (status == Status.ENCODED_CROSS_SEGMENTS) return; // Race condition.
       if (status != Status.STARTED) {
-        LOG.error("Wrong state " + status + " for " + this, new Exception("error"));
+        LOG.error("Wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED_CROSS_SEGMENTS;
@@ -1326,7 +1326,7 @@ public class SplitFileInserterStorage {
       if (status == Status.ENCODED) return; // Race condition.
       if (!(status == Status.ENCODED_CROSS_SEGMENTS
           || (crossSegments == null && status == Status.STARTED))) {
-        LOG.error("Wrong state " + status + " for " + this, new Exception("error"));
+        LOG.error("Wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED;

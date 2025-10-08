@@ -66,8 +66,7 @@ public class PeerLocation {
 
   boolean updateLocation(double newLoc, double[] newLocs) {
     if (!Location.isValid(newLoc)) {
-      LOG.error(
-          "Invalid location update for " + this + " (" + newLoc + ')', new Exception("error"));
+      LOG.error("Invalid location update for {} ({})", this, newLoc);
       // Ignore it
       return false;
     }
@@ -76,7 +75,7 @@ public class PeerLocation {
     for (int i = 0; i < newLocs.length; i++) {
       final double loc = newLocs[i];
       if (!Location.isValid(loc)) {
-        LOG.error("Invalid location update for " + this + " (" + loc + ")", new Exception("error"));
+        LOG.error("Invalid location update for {} ({})", this, loc);
         // Ignore it
         return false;
       }

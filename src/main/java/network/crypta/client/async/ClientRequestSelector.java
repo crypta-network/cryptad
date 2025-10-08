@@ -766,20 +766,20 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       if (clientGrabber == null) {
         // Normal as most of the schedulers aren't relevant to any given insert/request.
         if (LOG.isDebugEnabled())
-          LOG.debug("Changing priority but request not running " + request, new Exception("debug"));
+          LOG.debug("Changing priority but request not running {}", request);
         return;
       }
       // Then by RequestClient
       ClientRequestRGANode requestGrabber = clientGrabber.getGrabber(client);
       if (requestGrabber == null) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Changing priority but request not running " + request, new Exception("debug"));
+          LOG.debug("Changing priority but request not running {}", request);
         return;
       }
       RandomGrabArrayWithObject<ClientRequestSchedulerGroup> rga = requestGrabber.getGrabber(group);
       if (rga == null) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Changing priority but request not running " + request, new Exception("debug"));
+          LOG.debug("Changing priority but request not running {}", request);
         return;
       }
       requestGrabber.maybeRemove(rga, context);

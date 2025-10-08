@@ -188,7 +188,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    */
   @Override
   public InputStream getResourceAsStream(String name) {
-    if (LOG.isDebugEnabled()) LOG.debug("Requested resource: " + name, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Requested resource: {}", name);
     URL url = getResource(name);
     if (url == null) return null;
     if (LOG.isDebugEnabled()) LOG.debug("Found resource at URL: " + url);

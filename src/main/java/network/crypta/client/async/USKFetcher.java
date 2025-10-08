@@ -496,8 +496,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         c = checker;
       }
       if (c == null) {
-        if (LOG.isDebugEnabled())
-          LOG.debug("Checker == null in schedule() for " + this, new Exception("debug"));
+        if (LOG.isDebugEnabled()) LOG.debug("Checker == null in schedule() for {}", this);
       } else {
         assert (!c.persistent());
         c.schedule(context);

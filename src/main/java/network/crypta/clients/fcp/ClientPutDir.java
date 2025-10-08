@@ -353,8 +353,7 @@ public class ClientPutDir extends ClientPutBase {
       LOG.debug("freeData() on " + this + " persistence type = " + persistence);
     synchronized (this) {
       if (manifestElements == null) {
-        if (LOG.isDebugEnabled())
-          LOG.debug("manifestElements = " + manifestElements, new Exception("error"));
+        if (LOG.isDebugEnabled()) LOG.debug("manifestElements = {}", manifestElements);
         return;
       }
     }

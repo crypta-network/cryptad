@@ -177,7 +177,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       // Register cleaner for safety net (will be cleaned up when free() is called properly)
       this.cleanable = resourceCleaner.register(this, new TempBucketCleanup(this.currentBucket));
 
-      if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Created {}", this);
     }
 
     private synchronized void closeInputStreams(boolean forFree) {
@@ -265,7 +265,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       // FIXME we should migrate to disk rather than throwing.
       hasWritten = true;
       OutputStream tos = new TempBucketOutputStream(++osIndex);
-      if (LOG.isDebugEnabled()) LOG.debug("Got " + tos + " for " + this, new Exception());
+      if (LOG.isDebugEnabled()) LOG.debug("Got {} for {}", tos, this);
       return tos;
     }
 
@@ -380,7 +380,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       if (hasBeenFreed) throw new IOException("Already freed");
       TempBucketInputStream is = new TempBucketInputStream(osIndex);
       tbis.add(is);
-      if (LOG.isDebugEnabled()) LOG.debug("Got " + is + " for " + this, new Exception());
+      if (LOG.isDebugEnabled()) LOG.debug("Got {} for {}", is, this);
       return is;
     }
 
@@ -940,7 +940,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     @Override
     public void free() {
       if (!super.innerFree()) return;
-      if (LOG.isDebugEnabled()) LOG.debug("Freed " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Freed {}", this);
       if (original != null) {
         // Tell the TempBucket to prevent log spam. Don't call free().
         original.onFreed();

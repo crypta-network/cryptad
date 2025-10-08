@@ -656,8 +656,7 @@ public class PeerManager {
       boolean dumpMessagesNow,
       final boolean remove,
       long timeout) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Disconnecting " + pn.shortToString(), new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Disconnecting {}", pn.shortToString());
     synchronized (this) {
       if (!havePeer(pn)) return;
     }

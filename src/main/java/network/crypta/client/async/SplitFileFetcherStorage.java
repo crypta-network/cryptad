@@ -1526,8 +1526,7 @@ public class SplitFileFetcherStorage {
    * called on a MemoryLimitedJob thread.
    */
   void close() {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Finishing " + this + " for " + fetcher, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finishing {} for {}", this, fetcher);
     raf.close();
     raf.free();
     fetcher.onClosed();

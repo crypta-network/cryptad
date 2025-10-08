@@ -31,7 +31,7 @@ public class CompatibilityAnalyser implements Serializable {
       boolean dontCompress,
       boolean definitive) {
     if (this.definitive) {
-      LOG.warn("merge() after definitive", new Exception("debug"));
+      LOG.warn("merge() after definitive");
       return;
     }
     assert (min != CompatibilityMode.COMPAT_CURRENT);

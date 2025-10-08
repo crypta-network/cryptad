@@ -71,7 +71,7 @@ class USKChecker extends BaseSingleFileFetcher {
         canRetry = true;
         break;
       default:
-        LOG.error("Unknown low-level fetch error code: " + e.code, new Exception("error"));
+        LOG.error("Unknown low-level fetch error code: {}", e.code);
         canRetry = true;
     }
 

@@ -257,7 +257,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    */
   protected void routeRequests() {
 
-    if (LOG.isDebugEnabled()) LOG.debug("Routing requests on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Routing requests on {}", this);
 
     PeerNode next = null;
 
@@ -2141,8 +2141,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       while (true) {
         if (opennetFinished) {
           if (opennetTimedOut) throw new WaitedTooLongForOpennetNoderefException();
-          if (LOG.isDebugEnabled())
-            LOG.debug("Grabbing opennet noderef on " + this, new Exception("debug"));
+          if (LOG.isDebugEnabled()) LOG.debug("Grabbing opennet noderef on {}", this);
           // Only one RequestHandler may take the noderef
           byte[] ref = opennetNoderef;
           opennetNoderef = null;
@@ -2199,8 +2198,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     synchronized (totalBytesSync) {
       totalBytesSent += x;
     }
-    if (LOG.isDebugEnabled())
-      LOG.debug("Sent bytes: " + x + " for " + this + " isSSK=" + isSSK, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Sent bytes: {} for {} isSSK={}", x, this, isSSK);
     node.getNodeStats().requestSentBytes(isSSK, x);
   }
 

@@ -1778,6 +1778,6 @@ public class LocationManager implements ByteCounter {
 
   @Override
   public void sentPayload(int x) {
-    LOG.error("LocationManager sentPayload()?", new Exception("debug"));
+    LOG.warn("LocationManager sentPayload()?");
   }
 }

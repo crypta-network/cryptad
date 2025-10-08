@@ -213,7 +213,7 @@ public class SimpleHealingQueue extends BaseClientPutter
 
   @Override
   public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
-    LOG.error("onMetadata() in SimpleHealingQueue - impossible", new Exception("error"));
+    LOG.error("onMetadata() in SimpleHealingQueue - impossible");
     meta.free();
   }
 

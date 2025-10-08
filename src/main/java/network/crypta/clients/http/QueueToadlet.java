@@ -3510,8 +3510,7 @@ public class QueueToadlet extends Toadlet
     final String identifier = req.getIdentifier();
     if (LOG.isDebugEnabled()) LOG.debug("Registering alert for " + identifier);
     if (!req.hasFinished()) {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Request hasn't finished: " + req + " for " + identifier, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Request hasn't finished: {} for {}", req, identifier);
       return;
     }
     if (req instanceof ClientGet get) {

@@ -154,8 +154,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   private void start(ClientContext context) {
-    if (LOG.isTraceEnabled())
-      LOG.trace("Atempt to start a container inserter", new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Atempt to start a container inserter");
 
     makeMetadata(context);
 

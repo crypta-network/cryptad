@@ -235,8 +235,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   public void onGotKey(Key key, KeyBlock block, ClientContext context) {
     synchronized (this) {
       if (finished) {
-        if (LOG.isDebugEnabled())
-          LOG.debug("onGotKey() called twice on " + this, new Exception("debug"));
+        if (LOG.isDebugEnabled()) LOG.debug("onGotKey() called twice on {}", this);
         return;
       }
       finished = true;

@@ -63,7 +63,7 @@ public class FProxyFetchTracker implements Runnable {
       }
       throw e;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Created new fetcher: {}", progress, new Exception());
+    if (LOG.isDebugEnabled()) LOG.debug("Created new fetcher: {}", progress);
     return progress.getWaiter();
     // FIXME promote a fetcher when it is re-used
     // FIXME get rid of fetchers over some age

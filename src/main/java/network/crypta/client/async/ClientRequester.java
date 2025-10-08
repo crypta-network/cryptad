@@ -216,8 +216,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
       if (blockSetFinalized) return;
       blockSetFinalized = true;
     }
-    if (LOG.isDebugEnabled())
-      LOG.debug("Finalized set of blocks for " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finalized set of blocks for {}", this);
     notifyClients(context);
   }
 
@@ -230,9 +229,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     }
 
     if (wasFinalized) {
-      if (LOG.isDebugEnabled())
-        LOG.error("addBlock() but set finalized! on " + this, new Exception("error"));
-      else LOG.error("addBlock() but set finalized! on " + this);
+      LOG.error("addBlock() but set finalized! on {}", this);
     }
 
     if (LOG.isDebugEnabled())
@@ -256,9 +253,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     }
 
     if (wasFinalized) {
-      if (LOG.isDebugEnabled())
-        LOG.error("addBlocks() but set finalized! on " + this, new Exception("error"));
-      else LOG.error("addBlocks() but set finalized! on " + this);
+      LOG.error("addBlocks() but set finalized! on {}", this);
     }
 
     if (LOG.isDebugEnabled())

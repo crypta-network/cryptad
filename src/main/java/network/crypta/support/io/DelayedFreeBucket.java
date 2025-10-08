@@ -110,8 +110,7 @@ public class DelayedFreeBucket implements Bucket, Serializable, DelayedFree {
       if (migrated) return;
       freed = true;
     }
-    if (LOG.isDebugEnabled())
-      LOG.debug("Freeing " + this + " underlying=" + bucket, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing {} underlying={}", this, bucket);
     this.factory.delayedFree(this, createdCommitID);
   }
 

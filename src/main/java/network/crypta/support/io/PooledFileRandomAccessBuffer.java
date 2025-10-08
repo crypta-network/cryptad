@@ -234,7 +234,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
 
   @Override
   public void close() {
-    if (LOG.isDebugEnabled()) LOG.debug("Closing " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Closing {}", this);
     synchronized (fds) {
       if (lockLevel != 0) throw new IllegalStateException("Must unlock first!");
       closed = true;

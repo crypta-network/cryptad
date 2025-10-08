@@ -168,7 +168,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
   void onCompressed(CompressionOutput output, ClientContext context) {
     synchronized (this) {
       if (started) {
-        LOG.error("Already started, not starting again", new Exception("error"));
+        LOG.error("Already started, not starting again");
         return;
       }
       if (cancelled) {
@@ -849,7 +849,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
           metaInsertSuccess = true;
           metadataPutter = null;
         } else {
-          LOG.error("Unknown: " + state + " for " + this, new Exception("debug"));
+          LOG.warn("Unknown: {} for {}", state, this);
         }
         if (splitInsertSuccess && metaInsertSuccess) {
           if (LOG.isDebugEnabled()) LOG.debug("Both succeeded for " + this);

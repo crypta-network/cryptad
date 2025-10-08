@@ -170,7 +170,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       extra = uri.extra.clone();
     } else extra = null;
     this.suggestedEdition = uri.suggestedEdition;
-    if (LOG.isTraceEnabled()) LOG.trace("Copied: " + this + " from " + uri, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Copied: {} from {}", this, uri);
   }
 
   /**
@@ -224,7 +224,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       throw new IllegalArgumentException("Bad URI: Crypto key should be 32 bytes");
     this.extra = extra2;
     this.suggestedEdition = -1;
-    if (LOG.isDebugEnabled()) LOG.debug("Created from components: " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Created from components: {}", this);
   }
 
   public FreenetURI(
@@ -247,8 +247,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       throw new IllegalArgumentException("Bad URI: Crypto key should be 32 bytes");
     this.extra = extra2;
     this.suggestedEdition = suggestedEdition;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Created from components (B): " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Created from components (B): {}", this);
   }
 
   // Strip http(s):// and (web+|ext+)freenet: prefix
@@ -402,8 +401,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     } catch (IllegalBase64Exception e) {
       throw new MalformedURLException("Invalid Base64 quantity: " + e);
     }
-    if (LOG.isTraceEnabled())
-      LOG.trace("Created from parse: " + this + " from " + URI, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Created from parse: {} from {}", this, URI);
   }
 
   /** USK constructor from components. */
@@ -420,8 +418,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     this.docName = siteName;
     this.suggestedEdition = suggestedEdition2;
     metaStr = null;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Created from components (USK): " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Created from components (USK): {}", this);
   }
 
   protected FreenetURI() {

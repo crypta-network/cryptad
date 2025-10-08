@@ -428,7 +428,7 @@ public class UdpSocketHandler
   }
 
   public void close() {
-    LOG.info("Closing.", new Exception("error"));
+    LOG.info("Closing.");
     synchronized (this) {
       _active = false;
       try {

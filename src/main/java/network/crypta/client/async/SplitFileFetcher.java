@@ -290,10 +290,10 @@ public class SplitFileFetcher
         fail = true;
       } else {
         if (succeeded) {
-          LOG.error("Called onSuccess() twice on " + this, new Exception("debug"));
+          LOG.warn("Called onSuccess() twice on {}", this);
           return;
         } else {
-          if (LOG.isDebugEnabled()) LOG.debug("onSuccess() on " + this, new Exception("debug"));
+          if (LOG.isDebugEnabled()) LOG.debug("onSuccess() on {}", this);
         }
         succeeded = true;
       }

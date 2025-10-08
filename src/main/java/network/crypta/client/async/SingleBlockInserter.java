@@ -543,7 +543,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
               LowLevelPutException.INTERNAL_ERROR, e + ":" + e.getMessage(), e);
         }
         if (b == null) {
-          LOG.error("Asked to send empty block", new Exception("error"));
+          LOG.error("Asked to send empty block");
           return false;
         }
         key = encodedBlock.getClientKey();
@@ -733,7 +733,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
       }
       if (persistent) {
         if (sourceData == null) {
-          LOG.error("getBlockItem(): sourceData = null", new Exception("error"));
+          LOG.error("getBlockItem(): sourceData = null");
           fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR), context);
           return null;
         }

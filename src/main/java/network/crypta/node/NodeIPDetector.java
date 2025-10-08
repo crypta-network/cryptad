@@ -634,7 +634,7 @@ public class NodeIPDetector {
   }
 
   void hasDetectedPM() {
-    if (LOG.isDebugEnabled()) LOG.debug("hasDetectedPM() called", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("hasDetectedPM() called");
     synchronized (this) {
       hasDetectedPM = true;
     }

@@ -392,7 +392,7 @@ class KeyListenerTracker implements KeySalter {
 
   public boolean tripPendingKey(Key key, KeyBlock block, ClientContext context) {
     if ((key instanceof NodeSSK) != isSSKScheduler) {
-      LOG.error("Key " + key + " on scheduler ssk=" + isSSKScheduler, new Exception("debug"));
+      LOG.warn("Key {} on scheduler ssk={}", key, isSSKScheduler);
       return false;
     }
     assert (key instanceof NodeSSK == isSSKScheduler);

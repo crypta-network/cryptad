@@ -25,11 +25,11 @@ public class SingleFileStreamGenerator implements StreamGenerator {
   public void writeTo(OutputStream os, ClientContext context) throws IOException {
     try (OutputStream managedOs = os;
         AutoCloseable managedBucket = bucket) {
-      if (LOG.isDebugEnabled()) LOG.debug("Generating Stream", new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Generating Stream");
       try (InputStream data = bucket.getInputStream()) {
         FileUtil.copy(data, managedOs, -1);
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Stream completely generated", new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Stream completely generated");
     } catch (Exception e) {
       if (e instanceof IOException exception) {
         throw exception;

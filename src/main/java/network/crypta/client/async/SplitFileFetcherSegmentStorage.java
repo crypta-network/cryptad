@@ -1016,8 +1016,7 @@ public class SplitFileFetcherSegmentStorage {
     if (!parent.persistent) return;
     synchronized (this) {
       if (!(force || metadataDirty)) return;
-      if (LOG.isDebugEnabled())
-        LOG.debug("Writing metadata for " + segNo + " for " + parent, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Writing metadata for {} for {}", segNo, parent);
       OutputStream cos = parent.writeChecksummedTo(segmentStatusOffset, segmentStatusPaddedLength);
       try {
         DataOutputStream dos = new DataOutputStream(cos);

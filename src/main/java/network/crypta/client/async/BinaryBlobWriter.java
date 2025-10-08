@@ -114,7 +114,7 @@ public final class BinaryBlobWriter {
   private void finalizeBucket(boolean mark) throws IOException, BinaryBlobAlreadyClosedException {
     if (_finalized)
       throw new BinaryBlobAlreadyClosedException("Already finalized (closing blob - 2).");
-    if (LOG.isDebugEnabled()) LOG.debug("Finalizing binary blob " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finalizing binary blob {}", this);
     if (!_isSingleBucket) {
       if (!mark && (_buckets.size() == 1)) {
         return;

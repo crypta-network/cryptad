@@ -159,7 +159,7 @@ public abstract class UIDTag {
    */
   public void removeRoutingTo(PeerNode next) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("No longer routing to " + next + " on " + this, new Exception("debug"));
+      LOG.debug("No longer routing to {} on {}", next, this);
     }
     boolean noRecordUnlock;
     synchronized (this) {
@@ -168,9 +168,7 @@ public abstract class UIDTag {
       }
       if (!currentlyRoutingTo.remove(next)) {
         if (LOG.isDebugEnabled()) {
-          LOG.debug(
-              "Removing wrong node or removing twice? on " + this + " : " + next,
-              new Exception("debug"));
+          LOG.debug("Removing wrong node or removing twice? on {} : {}", this, next);
         }
       }
       if (handlingTimeouts != null) {

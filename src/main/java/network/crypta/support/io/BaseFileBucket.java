@@ -97,9 +97,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
       }
 
       if (streams != null && !streams.isEmpty())
-        LOG.error(
-            "Streams open on " + this + " while opening an output stream!: " + streams,
-            new Exception("debug"));
+        LOG.error("Streams open on {} while opening an output stream!: {}", this, streams);
 
       boolean rename = !tempFileAlreadyExists();
       File tempfile = rename ? getTempfile() : file;
@@ -107,7 +105,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
       FileBucketOutputStream os = new FileBucketOutputStream(tempfile, streamNumber);
 
-      if (LOG.isTraceEnabled()) LOG.trace("Creating " + os, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating {}", os);
 
       addStream(os);
       return os;
@@ -280,7 +278,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     } else {
       FileBucketInputStream is = new FileBucketInputStream(file);
       addStream(is);
-      if (LOG.isTraceEnabled()) LOG.trace("Creating " + is, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating {}", is);
       return is;
     }
   }
@@ -307,8 +305,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
    * must still be valid when calling it.
    */
   protected synchronized void deleteFile() {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Deleting " + getFile() + " for " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Deleting {} for {}", getFile(), this);
     getFile().delete();
   }
 
@@ -403,7 +400,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
   public void free(boolean forceFree) {
     Closeable[] toClose;
-    if (LOG.isDebugEnabled()) LOG.debug("Freeing " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing {}", this);
     synchronized (this) {
       if (freed) return;
       freed = true;
@@ -412,9 +409,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     }
 
     if (toClose != null) {
-      LOG.error(
-          "Streams open free()ing " + this + " : " + Arrays.toString(toClose),
-          new Exception("debug"));
+      LOG.error("Streams open free()ing {} : {}", this, Arrays.toString(toClose));
       for (Closeable strm : toClose) {
         try {
           strm.close();
@@ -428,9 +423,9 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
     File file = getFile();
     if ((deleteOnFree() || forceFree) && file.exists()) {
-      LOG.trace("Deleting bucket " + file, new Exception("debug"));
+      LOG.trace("Deleting bucket {}", file);
       deleteFile();
-      if (file.exists()) LOG.error("Delete failed on bucket " + file, new Exception("debug"));
+      if (file.exists()) LOG.error("Delete failed on bucket {}", file);
     }
   }
 

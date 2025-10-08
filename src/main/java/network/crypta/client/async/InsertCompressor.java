@@ -216,8 +216,7 @@ public class InsertCompressor implements CompressJob {
             shouldFreeOnFinally = false;
           }
         } catch (PersistenceDisabledException e) {
-          if (!context.jobRunner.shuttingDown())
-            LOG.error("Database disabled compressing data", new Exception("error"));
+          if (!context.jobRunner.shuttingDown()) LOG.error("Database disabled compressing data");
           shouldFreeOnFinally = true;
           if (bestCompressedData != null
               && bestCompressedData != origData
@@ -264,7 +263,7 @@ public class InsertCompressor implements CompressJob {
                 "Insert thread for " + this);
       }
     } catch (PersistenceDisabledException e) {
-      LOG.error("Database disabled compressing data", new Exception("error"));
+      LOG.error("Database disabled compressing data");
       if (bestCompressedData != null && bestCompressedData != origData) bestCompressedData.free();
     } catch (InvalidCompressionCodecException e) {
       fail(
@@ -290,7 +289,7 @@ public class InsertCompressor implements CompressJob {
                 },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
       } catch (PersistenceDisabledException e1) {
-        LOG.error("Database disabled compressing data", new Exception("error"));
+        LOG.error("Database disabled compressing data");
         if (bestCompressedData != null && bestCompressedData != origData) bestCompressedData.free();
       }
     } else {

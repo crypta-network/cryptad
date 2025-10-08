@@ -288,12 +288,12 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   @Override
   public long exclude(RandomGrabArrayItem item, ClientContext context, long now) {
     if (sched.isRunningOrQueuedPersistentRequest((SendableRequest) item)) {
-      LOG.info("Excluding already-running request: " + item, new Exception("debug"));
+      LOG.info("Excluding already-running request: {}", item);
       return Long.MAX_VALUE;
     }
     if (isInsert) return -1;
     if (!(item instanceof BaseSendableGet get)) {
-      LOG.error("On a request scheduler, exclude() called with " + item, new Exception("error"));
+      LOG.error("On a request scheduler, exclude() called with {}", item);
       return -1;
     }
     return get.getWakeupTime(context, now);

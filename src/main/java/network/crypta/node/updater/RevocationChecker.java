@@ -142,7 +142,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         } else {
           if (reset) {
             if (LOG.isDebugEnabled())
-              LOG.debug("Resetting DNF count from " + revocationDNFCounter, new Exception("debug"));
+              LOG.debug("Resetting DNF count from {}", revocationDNFCounter);
             revocationDNFCounter = 0;
           } else {
             if (LOG.isDebugEnabled()) LOG.debug("Revocation count " + revocationDNFCounter);

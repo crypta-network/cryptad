@@ -1405,8 +1405,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   public boolean disconnected(boolean dumpMessageQueue, boolean dumpTrackers) {
     assert (!((!dumpMessageQueue) && dumpTrackers)); // Invalid combination!
     final long now = System.currentTimeMillis();
-    if (isRealConnection()) LOG.info("Disconnected " + this, new Exception("debug"));
-    else if (LOG.isDebugEnabled()) LOG.debug("Disconnected " + this, new Exception("debug"));
+    if (isRealConnection()) LOG.info("Disconnected {}", this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Disconnected {}", this);
     node.getUSM().onDisconnect(this);
     if (dumpMessageQueue) node.getTracker().onRestartOrDisconnect(this);
     node.getFailureTable().onDisconnect(this);

@@ -333,7 +333,7 @@ public class RequestHandler
                 public void blockTransferFinished(boolean success) {
                   synchronized (RequestHandler.this) {
                     if (transferCompleted) {
-                      LOG.error("Transfer already completed on " + this, new Exception("debug"));
+                      LOG.warn("Transfer already completed on {}", this);
                       return;
                     }
                     transferCompleted = true;
@@ -737,7 +737,7 @@ public class RequestHandler
    * non-runnable/exit) and the byte counter will still be accurate.
    */
   private void sendTerminal(Message msg) {
-    if (LOG.isDebugEnabled()) LOG.debug("sendTerminal(" + msg + ")", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("sendTerminal({})", msg);
     if (sendTerminalCalled)
       throw new IllegalStateException("sendTerminal should only be called once");
     else sendTerminalCalled = true;
@@ -903,8 +903,7 @@ public class RequestHandler
    * happened).
    */
   private void finishOpennetNoRelayInner(final OpennetManager om) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Finishing opennet: sending own reference on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finishing opennet: sending own reference on {}", this);
     if (!om.wantPeer(null, false, false, false, ConnectionType.PATH_FOLDING)) {
       ackOpennet();
       return; // Don't want a reference

@@ -2377,7 +2377,7 @@ public class NodeClientCore implements Persistable {
   }
 
   public void storeConfig() {
-    LOG.info("Trying to write config to disk", new Exception("debug"));
+    LOG.info("Trying to write config to disk");
     node.getConfig().store();
   }
 

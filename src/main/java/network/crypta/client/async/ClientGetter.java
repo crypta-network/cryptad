@@ -732,7 +732,7 @@ public class ClientGetter extends BaseClientGetter
    */
   @Override
   public void cancel(ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Cancelling " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelling {}", this);
     ClientGetState s;
     synchronized (this) {
       if (super.cancel()) {
@@ -816,7 +816,7 @@ public class ClientGetter extends BaseClientGetter
    */
   @Override
   public void onBlockSetFinished(ClientGetState state, ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Set finished", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Set finished");
     blockSetFinalized(context);
   }
 

@@ -130,16 +130,15 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
       if (originalFiles == null)
         throw new IllegalStateException("completed Init has already been called!");
       file = FileUtil.getCanonicalFile(file);
-      if (LOG.isDebugEnabled()) LOG.debug("Preserving " + file, new Exception("debug"));
-      if (!originalFiles.remove(file))
-        LOG.error("Preserving " + file + " but it wasn't found!", new Exception("error"));
+      if (LOG.isDebugEnabled()) LOG.debug("Preserving {}", file);
+      if (!originalFiles.remove(file)) LOG.error("Preserving {} but it wasn't found!", file);
     }
   }
 
   /** Called when boot-up is complete. Deletes any old temp files still unclaimed. */
   public synchronized void completedInit() {
     if (originalFiles == null) {
-      LOG.error("Completed init called twice", new Exception("error"));
+      LOG.error("Completed init called twice");
       return;
     }
     for (File f : originalFiles) {

@@ -263,7 +263,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       // debugDecompose("ExternPutHandler.onEncode Begin");
       if (metadata != null) {
-        LOG.error("Reassigning metadata: " + metadata, new Exception("debug"));
+        LOG.warn("Reassigning metadata: {}", metadata);
         // throw new IllegalStateException("Metadata set but we got a uri?!");
       }
       // The file was too small to have its own metadata, we get this instead.
@@ -290,7 +290,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
                 + " persistent="
                 + persistent);
       if (metadata != null) {
-        LOG.error("Reassigning metadata", new Exception("debug"));
+        LOG.warn("Reassigning metadata");
         return;
       }
       metadata = m;
@@ -498,7 +498,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (runningMap != null) {
         synchronized (runningMap) {
           if (runningMap.contains(this)) {
-            LOG.error("PutHandler already in 'runningMap': " + runningMap, new Error("error"));
+            LOG.warn("PutHandler already in 'runningMap': {}", runningMap);
           } else {
             runningMap.add(this);
           }
@@ -507,7 +507,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       synchronized (putHandlerWaitingForBlockSets) {
         if (putHandlerWaitingForBlockSets.contains(this)) {
-          LOG.error("PutHandler already in 'waitingForBlockSets'!", new Error("error"));
+          LOG.warn("PutHandler already in 'waitingForBlockSets'!");
         } else {
           putHandlerWaitingForBlockSets.add(this);
         }
@@ -515,7 +515,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       synchronized (putHandlersWaitingForFetchable) {
         if (putHandlersWaitingForFetchable.contains(this)) {
-          LOG.error("PutHandler already in 'waitingForFetchable'!", new Error("error"));
+          LOG.warn("PutHandler already in 'waitingForFetchable'!");
         } else {
           putHandlersWaitingForFetchable.add(this);
         }
@@ -607,7 +607,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void cancel(ClientContext context) {
-      if (LOG.isDebugEnabled()) LOG.debug("Cancelling " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Cancelling {}", this);
       ClientPutState oldState = null;
       synchronized (this) {
         if (cancelled) return;
@@ -625,7 +625,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public boolean isFinished() {
-      if (LOG.isDebugEnabled()) LOG.debug("Finished " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Finished {}", this);
       return BaseManifestPutter.this.finished || cancelled || BaseManifestPutter.this.cancelled;
     }
 
@@ -828,7 +828,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void onFetchable(ClientPutState state) {
-      if (LOG.isDebugEnabled()) LOG.debug("onFetchable " + this, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("onFetchable {}", this);
       BaseManifestPutter.this.onFetchable(this);
     }
 
@@ -1228,7 +1228,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   private void tryComplete(ClientContext context) {
     // debugDecompose("try complete");
-    if (LOG.isTraceEnabled()) LOG.trace("try complete", new Error("trace tryComplete()"));
+    if (LOG.isTraceEnabled()) LOG.trace("try complete");
     synchronized (this) {
       if (finished || cancelled) {
         if (LOG.isDebugEnabled()) LOG.debug("Already " + (finished ? "finished" : "cancelled"));

@@ -115,7 +115,7 @@ public class PersistentRequestClient {
    * should be moved to the unacked-completed-requests set.
    */
   public void finishedClientRequest(ClientRequest get) {
-    if (LOG.isDebugEnabled()) LOG.debug("Finished client request", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finished client request");
     assert (get.persistence == persistence);
     synchronized (this) {
       if (runningPersistentRequests.remove(get)) {

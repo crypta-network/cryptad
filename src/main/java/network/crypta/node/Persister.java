@@ -106,7 +106,7 @@ class Persister implements Runnable {
   public void start() {
     synchronized (this) {
       if (started) {
-        LOG.error("Already started: " + this, new Exception("debug"));
+        LOG.warn("Already started: {}", this);
         return;
       }
       started = true;

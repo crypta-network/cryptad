@@ -146,8 +146,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
       }
     } else {
       // Should this be a higher priority?
-      if (LOG.isDebugEnabled())
-        LOG.debug("Cannot unregister " + this + " : not registered", new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot unregister {} : not registered", this);
     }
   }
 

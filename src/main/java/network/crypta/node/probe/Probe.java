@@ -606,8 +606,7 @@ public class Probe implements ByteCounter {
           if (htl == 0) return false;
         }
       } else {
-        if (LOG.isDebugEnabled())
-          LOG.debug("Peer in connectedPeers was not connected.", new Exception());
+        if (LOG.isDebugEnabled()) LOG.debug("Peer in connectedPeers was not connected.");
       }
     }
 

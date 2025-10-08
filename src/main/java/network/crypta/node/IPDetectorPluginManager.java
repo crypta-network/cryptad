@@ -513,8 +513,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   /** Do we need to run a plugin? */
   public void maybeRun() {
     if (!started) return;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Maybe running IP detection plugins", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Maybe running IP detection plugins");
     PeerNode[] peers = node.getPeerNodes();
     PeerNode[] conns = node.getConnectedPeers();
     int peerCount = node.getPeers().countValidPeers();
@@ -1078,7 +1077,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     if (node.getClientCore() == null) return;
     if (node.getClientCore().getAlerts() == null) return;
     if (proxyAlert == null) {
-      LOG.error("start() not called yet?", new Exception("debug"));
+      LOG.error("start() not called yet?");
       return;
     }
     if (proxyAlert.isValid())

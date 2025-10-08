@@ -297,8 +297,7 @@ public class FreenetInetAddress {
       if (LOG.isDebugEnabled()) LOG.debug("hostname is null, returning " + _address);
       return _address;
     } else {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Looking up '" + hostname + "' in DNS", new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Looking up '{}' in DNS", hostname);
       /*
        * Peers are constructed from an address once a
        * handshake has been completed, so this lookup

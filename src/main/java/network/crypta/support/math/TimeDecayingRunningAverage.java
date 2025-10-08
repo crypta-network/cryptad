@@ -94,7 +94,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace("Created " + this, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
     this.timeSkewCallback = callback;
   }
 
@@ -123,7 +123,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace("Created " + this, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
     if (fs != null) {
       started = fs.getBoolean("Started", false);
       if (started) {
@@ -214,15 +214,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       // Must synchronize first to achieve serialization.
       long now = System.currentTimeMillis();
       if (d < minReport) {
-        LOG.error("Impossible: " + d + " on " + this, new Exception("error"));
+        LOG.error("Impossible: {} on {}", d, this);
         return;
       }
       if (d > maxReport) {
-        LOG.error("Impossible: " + d + " on " + this, new Exception("error"));
+        LOG.error("Impossible: {} on {}", d, this);
         return;
       }
       if (Double.isInfinite(d) || Double.isNaN(d)) {
-        LOG.error("Reported infinity or NaN to " + this + " : " + d, new Exception("error"));
+        LOG.error("Reported infinity or NaN to {} : {}", this, d);
         return;
       }
       totalReports++;

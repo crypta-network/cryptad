@@ -55,7 +55,7 @@ public class Location {
   public static double distance(double a, double b) {
     if (!isValid(a) || !isValid(b)) {
       String errMsg = "Invalid Location ! a = " + a + " b = " + b + " Please report this bug!";
-      LOG.error(errMsg, new Exception("error"));
+      LOG.error(errMsg);
       throw new IllegalArgumentException(errMsg);
     }
     return simpleDistance(a, b);

@@ -270,7 +270,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
     else if (level <= UserAlert.WARNING) return "warning";
     else if (level <= UserAlert.MINOR) return "minor";
     else {
-      LOG.error("Unknown alert level: " + level, new Exception("debug"));
+      LOG.error("Unknown alert level: {}", level);
       return "error";
     }
   }

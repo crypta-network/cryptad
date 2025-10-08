@@ -521,7 +521,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         if (metadata.countDocuments() == 1
             && metadata.getDocument("") != null
             && metadata.getDocument("").isSimpleManifest()) {
-          LOG.error("Manifest is called \"\" for " + this, new Exception("error"));
+          LOG.error("Manifest is called \"\" for {}", this);
           name = "";
         } else if (metaStrings.isEmpty()) {
           FreenetURI u = uri;
@@ -1056,7 +1056,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         ClientGetState sf;
         boolean reallyFinal = isFinal;
         if (isFinal && !parent.isCurrentState(this)) {
-          LOG.error("isFinal but not the current state for " + this, new Exception("error"));
+          LOG.error("isFinal but not the current state for {}", this);
           reallyFinal = false;
         }
         sf =
@@ -1099,8 +1099,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
   }
 
   private void addDecompressor(COMPRESSOR_TYPE codec) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Adding decompressor: " + codec + " on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Adding decompressor: {} on {}", codec, this);
     decompressors.add(codec);
   }
 

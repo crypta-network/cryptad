@@ -420,7 +420,7 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
         }
         if (found != -1) {
           count++;
-          if (count > 1) LOG.error("Found " + r + " many times in " + this, new Exception("error"));
+          if (count > 1) LOG.warn("Found {} many times in {}", r, this);
           removeElement(found);
         } else {
           break;
@@ -431,8 +431,7 @@ public class SectoredRandomGrabArray<T, C extends RemoveRandomWithObject<T>>
     if (count == 0) {
       // This is not unusual, it was e.g. removed because of being empty.
       // And it has already been removeFrom()'ed.
-      if (LOG.isDebugEnabled())
-        LOG.debug("Not in parent: " + r + " for " + this, new Exception("error"));
+      if (LOG.isDebugEnabled()) LOG.debug("Not in parent: {} for {}", r, this);
     }
     if (finalSize == 0 && parent != null) {
       parent.maybeRemove(this, context);

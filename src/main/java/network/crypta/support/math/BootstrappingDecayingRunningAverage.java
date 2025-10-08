@@ -104,10 +104,10 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
     // Check for invalid values and return early without updating
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
       if (LOG.isTraceEnabled()) {
-        if (d < min) LOG.trace("Too low: " + d, new Exception("debug"));
-        else if (d > max) LOG.trace("Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d)) LOG.trace("Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) LOG.trace("NaN value", new Exception("debug"));
+        if (d < min) LOG.trace("Too low: {}", d);
+        else if (d > max) LOG.trace("Too high: {}", d);
+        else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
+        else if (Double.isNaN(d)) LOG.trace("NaN value");
       }
       return; // Don't update the average with invalid values
     }
@@ -136,10 +136,10 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
     // Return current value for invalid inputs
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
       if (LOG.isTraceEnabled()) {
-        if (d < min) LOG.trace("Too low: " + d, new Exception("debug"));
-        else if (d > max) LOG.trace("Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d)) LOG.trace("Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) LOG.trace("NaN value", new Exception("debug"));
+        if (d < min) LOG.trace("Too low: {}", d);
+        else if (d > max) LOG.trace("Too high: {}", d);
+        else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
+        else if (Double.isNaN(d)) LOG.trace("NaN value");
       }
       return currentValue; // Return unchanged value for invalid inputs
     }

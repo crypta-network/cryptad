@@ -98,7 +98,7 @@ public class FilenameGenerator {
       String filename = prefix + Long.toHexString(randomFilename);
       File ret = new File(tmpDir, filename);
       if (ret.createNewFile()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Made random filename: " + ret, new Exception("debug"));
+        if (LOG.isDebugEnabled()) LOG.debug("Made random filename: {}", ret);
         return randomFilename;
       }
     }

@@ -84,7 +84,7 @@ public class RequestTag extends UIDTag {
       handlerTransferring = false;
       senderFinished = this.senderTransferring;
       if (senderFinished) {
-        LOG.error("Nobody called senderTransferEnds() for " + this, new Exception("debug"));
+        LOG.warn("Nobody called senderTransferEnds() for {}", this);
         k = key;
         s = sender.get();
       }

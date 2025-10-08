@@ -337,8 +337,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
     // Caller has already called probablyWantKey(), so don't do it again.
     boolean found = false;
     byte[] salted = localSaltKey(key);
-    if (LOG.isDebugEnabled())
-      LOG.debug("handleBlock(" + key + ") on " + this + " for " + fetcher, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("handleBlock({}) on {} for {}", key, this, fetcher);
     for (int i = 0; i < segmentFilters.length; i++) {
       boolean match;
       synchronized (this) {

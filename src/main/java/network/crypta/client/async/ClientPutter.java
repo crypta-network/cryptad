@@ -415,7 +415,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    */
   @Override
   public void cancel(ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Cancelling " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelling {}", this);
     ClientPutState oldState = null;
     synchronized (this) {
       if (cancelled) return;
@@ -569,7 +569,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   /** Called when we know exactly how many blocks will be needed. */
   @Override
   public void onBlockSetFinished(ClientPutState state, ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Set finished", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Set finished");
     blockSetFinalized(context);
   }
 
