@@ -15,11 +15,11 @@ import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Create a mesh of nodes and let them sort out their locations.

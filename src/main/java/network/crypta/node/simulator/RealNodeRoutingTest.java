@@ -7,7 +7,6 @@ import network.crypta.node.LocationManager;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
@@ -15,6 +14,7 @@ import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author amphibian

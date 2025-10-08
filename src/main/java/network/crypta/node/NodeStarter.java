@@ -114,8 +114,7 @@ public class NodeStarter implements WrapperListener {
       org.slf4j.event.Level logThreshold,
       String details,
       boolean noDNS,
-      RandomSource randomSource)
-      {
+      RandomSource randomSource) {
 
     synchronized (NodeStarter.class) {
       if (isStarted) {

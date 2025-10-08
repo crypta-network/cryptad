@@ -29,7 +29,6 @@ import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Executor;
 import network.crypta.support.HexUtil;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
@@ -38,6 +37,7 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Create a key block with random key and contents. Create a bunch of nodes. Connect them. Request

@@ -15,10 +15,10 @@ import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author amphibian

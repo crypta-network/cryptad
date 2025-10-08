@@ -14,11 +14,11 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.*;
-import org.slf4j.event.Level;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Test a busy, bandwidth limited network. Hopefully this should reveal any serious problems with

@@ -9,13 +9,13 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 public class BootstrapSeedTest {
   private static final Logger LOG = LoggerFactory.getLogger(BootstrapSeedTest.class);

@@ -12,7 +12,6 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
@@ -20,6 +19,7 @@ import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 public class BootstrapPushPullTest {
   private static final Logger LOG = LoggerFactory.getLogger(BootstrapPushPullTest.class);
@@ -49,8 +49,7 @@ public class BootstrapPushPullTest {
       final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-push-pull-test");
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir, false, Level.INFO, "", false, null);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, Level.INFO, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -87,7 +86,8 @@ public class BootstrapPushPullTest {
               });
       node = NodeStarter.createTestNode(firstParams);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
-      // Logging.bootstrap(Level.DEBUG, "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
+      // Logging.bootstrap(Level.DEBUG,
+      // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
       Logging.setRootLevel(Level.ERROR); // kill logging
       // Start it
       node.start(true);

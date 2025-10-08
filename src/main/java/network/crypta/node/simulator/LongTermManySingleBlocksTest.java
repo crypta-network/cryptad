@@ -32,10 +32,10 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.Version;
 import network.crypta.support.Logging;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.event.Level;
 
 /**
  * Insert 32x single blocks. Pull them individually, with 0 retries, after 2^n-1 days, for n in

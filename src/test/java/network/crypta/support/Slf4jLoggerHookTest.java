@@ -13,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import network.crypta.support.Logging;
 
 /** Simple sanity tests for the SLF4J hook level mapping. */
 public class Slf4jLoggerHookTest {

@@ -27,7 +27,6 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -37,6 +36,7 @@ import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author amphibian

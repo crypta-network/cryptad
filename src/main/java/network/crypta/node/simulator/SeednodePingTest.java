@@ -34,10 +34,10 @@ import network.crypta.node.SeedServerTestPeerNode;
 import network.crypta.node.SeedServerTestPeerNode.FATE;
 import network.crypta.support.Executor;
 import network.crypta.support.Logging;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
+import org.slf4j.event.Level;
 
 /**
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;

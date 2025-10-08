@@ -51,7 +51,8 @@ public final class SystemSlf4jOutputStream extends OutputStream {
     }
     try {
       IN_LOGGING.set(Boolean.TRUE);
-      if (logAsError) logger.error(prefix + (char) b); else logger.info(prefix + (char) b);
+      if (logAsError) logger.error(prefix + (char) b);
+      else logger.info(prefix + (char) b);
     } finally {
       IN_LOGGING.set(Boolean.FALSE);
     }
@@ -70,10 +71,12 @@ public final class SystemSlf4jOutputStream extends OutputStream {
       IN_LOGGING.set(Boolean.TRUE);
       try {
         String msg = new String(b, off, len, charset);
-        if (logAsError) logger.error(prefix + msg); else logger.info(prefix + msg);
+        if (logAsError) logger.error(prefix + msg);
+        else logger.info(prefix + msg);
       } catch (UnsupportedEncodingException e) {
         String msg = new String(b, off, len);
-        if (logAsError) logger.error(prefix + msg); else logger.info(prefix + msg);
+        if (logAsError) logger.error(prefix + msg);
+        else logger.info(prefix + msg);
       }
     } finally {
       IN_LOGGING.set(Boolean.FALSE);

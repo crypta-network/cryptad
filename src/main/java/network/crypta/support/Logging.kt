@@ -6,12 +6,13 @@ import org.slf4j.event.Level
 /**
  * SLF4J logging bootstrap utilities used by tests and tooling.
  *
- * Replaces the deprecated network.crypta.support.Logger facade. This helper configures
- * logger levels directly on the bound SLF4J backend when possible (Logback is expected in tests).
+ * Replaces the deprecated network.crypta.support.Logger facade. This helper configures logger
+ * levels directly on the bound SLF4J backend when possible (Logback is expected in tests).
  */
 object Logging {
   // Track which loggers we have overridden so we can revert them on the next bootstrap call.
   private val appliedLoggerNames = mutableSetOf<String>()
+
   /** Sets the root logger level and applies optional per-package overrides. */
   @JvmStatic
   fun bootstrap(level: Level, details: String?) {
@@ -42,7 +43,8 @@ object Logging {
     clearOverrides(ctx)
     if (details.isNullOrBlank()) return
     // Comma-separated "section:LEVEL" pairs
-    details.split(',')
+    details
+      .split(',')
       .map { it.trim() }
       .filter { it.isNotEmpty() && it.contains(':') }
       .forEach { token ->
@@ -64,10 +66,14 @@ object Logging {
   private fun String.toSlf4jLevelOrNull(): Level? =
     when (this) {
       "ERROR" -> Level.ERROR
-      "WARN", "WARNING" -> Level.WARN
-      "INFO", "NORMAL" -> Level.INFO
-      "MINOR", "DEBUG" -> Level.DEBUG // historical: MINOR maps to DEBUG
-      "TRACE", "MINIMAL" -> Level.TRACE
+      "WARN",
+      "WARNING" -> Level.WARN
+      "INFO",
+      "NORMAL" -> Level.INFO
+      "MINOR",
+      "DEBUG" -> Level.DEBUG // historical: MINOR maps to DEBUG
+      "TRACE",
+      "MINIMAL" -> Level.TRACE
       else -> null
     }
 

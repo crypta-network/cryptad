@@ -32,10 +32,10 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.Version;
 import network.crypta.support.Logging;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.event.Level;
 
 /**
  * Push / Pull test over long period of time

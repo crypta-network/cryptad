@@ -419,12 +419,7 @@ public class LoggingConfigHandler {
           System.setErr(
               new PrintStream(
                   new SystemSlf4jOutputStream(
-                      origErr,
-                      LoggerFactory.getLogger("system.err"),
-                      "Stderr: ",
-                      enc,
-                      false,
-                      true),
+                      origErr, LoggerFactory.getLogger("system.err"), "Stderr: ", enc, false, true),
                   false,
                   enc));
           this.capturedStdStreams = true;
@@ -658,8 +653,7 @@ public class LoggingConfigHandler {
           appliedLoggerNames.clear();
           currentOverrides.clear();
           // Set root level to OFF to disable emission
-          ch.qos.logback.classic.Logger root =
-              ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+          ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
           root.setLevel(Level.OFF);
         }
       } catch (Exception e) {

@@ -16,13 +16,13 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 /**
  * Creates a node, inserts data to it, and fetches the data back. Note that we need one JUnit class
@@ -34,11 +34,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
   public void testFetchPullSingleNodeSsk()
-      throws 
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }
@@ -50,11 +46,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
   public void testFetchPullSingleNodeUskEditionZero()
-      throws 
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }

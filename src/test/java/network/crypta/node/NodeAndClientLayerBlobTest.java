@@ -23,7 +23,6 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import org.slf4j.event.Level;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.api.Bucket;
@@ -31,13 +30,13 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
 
   @Test
   public void testFetchPullBlobSingleNode()
-      throws 
-          NodeInitException,
+      throws NodeInitException,
           InsertException,
           FetchException,
           IOException,

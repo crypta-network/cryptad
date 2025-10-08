@@ -19,12 +19,12 @@ import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.l10n.BaseL10nTest;
 import network.crypta.support.Logging;
-import org.slf4j.event.Level;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.ArrayBucket;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 /**
  * A simple meta-test to track regressions of the content-filter
