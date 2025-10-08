@@ -703,7 +703,10 @@ public class OpennetManager {
           }
         }
       } else {
-        LOG.error("Peer does not have any IP addresses???");
+        LOG.debug(
+            "No handshake IPs for {}; skipping oneConnectionPerAddress check (type={})",
+            nodeToAddNow,
+            connectionType);
       }
       if (any && !okay) {
         LOG.info("Rejecting peer as we are already connected to a peer with the same IP address");
