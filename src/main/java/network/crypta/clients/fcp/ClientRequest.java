@@ -17,18 +17,18 @@ import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A request process carried out by the node for an FCP client. Examples: ClientGet, ClientPut,
  * MultiGet.
  */
 public abstract class ClientRequest implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientRequest.class);
 
   /**
    * ATTENTION: When incrementing this, please skip version 2. Version 2 had already temporarily
@@ -89,18 +89,7 @@ public abstract class ClientRequest implements Serializable {
     return hashCode;
   }
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public ClientRequest(
       FreenetURI uri2,
@@ -277,8 +266,8 @@ public abstract class ClientRequest implements Serializable {
   public void cancel(ClientContext context) {
     ClientRequester cr = getClientRequest();
     // It might have been finished on startup.
-    if (logMINOR)
-      Logger.minor(this, "Cancelling " + cr + " for " + this + " persistence = " + persistence);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Cancelling " + cr + " for " + this + " persistence = " + persistence);
     if (cr != null) cr.cancel(context);
     freeData();
   }

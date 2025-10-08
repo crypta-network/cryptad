@@ -7,13 +7,12 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.Node;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Insert a directory from disk as a manifest.
@@ -25,6 +24,7 @@ import network.crypta.support.io.FileBucket;
  * inserts.
  */
 public class ClientPutDiskDirMessage extends ClientPutDirMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutDiskDirMessage.class);
 
   public static final String NAME = "ClientPutDiskDir";
 
@@ -32,17 +32,7 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
   final boolean allowUnreadableFiles;
   final boolean includeHiddenFiles;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public ClientPutDiskDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
     super(fs);
@@ -82,7 +72,7 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
   private HashMap<String, Object> makeBucketsByName(File thisdir, String prefix)
       throws MessageInvalidException {
 
-    if (logMINOR) Logger.minor(this, "Listing directory: " + thisdir);
+    if (LOG.isDebugEnabled()) LOG.debug("Listing directory: " + thisdir);
 
     HashMap<String, Object> ret = new HashMap<>();
 

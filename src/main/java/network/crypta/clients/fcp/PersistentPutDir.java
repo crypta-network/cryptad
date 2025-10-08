@@ -8,7 +8,6 @@ import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.ManifestElement;
@@ -19,8 +18,11 @@ import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.PaddedEphemerallyEncryptedBucket;
 import network.crypta.support.io.PersistentTempFileBucket;
 import network.crypta.support.io.TempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PersistentPutDir extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentPutDir.class);
 
   static final String name = "PersistentPutDir";
 
@@ -128,8 +130,7 @@ public class PersistentPutDir extends FCPMessage {
         // What to do with the bucket?
         // It is either a persistent encrypted bucket or a file bucket ...
         if (data == null) {
-          Logger.error(
-              this,
+          LOG.error(
               "Bucket already freed: "
                   + e.getData()
                   + " for "

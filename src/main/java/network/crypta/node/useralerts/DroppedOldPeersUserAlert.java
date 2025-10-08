@@ -9,9 +9,11 @@ import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DroppedOldPeersUserAlert implements UserAlert {
+  private static final Logger LOG = LoggerFactory.getLogger(DroppedOldPeersUserAlert.class);
 
   private final List<String> droppedOldPeers;
   private int droppedOldPeersBuild;
@@ -41,7 +43,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
     }
     String shortError = getLogWarning(e);
     System.err.println(shortError);
-    Logger.error(this, shortError);
+    LOG.error(shortError);
   }
 
   public boolean isEmpty() {

@@ -9,7 +9,6 @@ import network.crypta.client.async.PersistentJobRunner.CheckpointLock;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientCHK;
-import network.crypta.support.Logger;
 import network.crypta.support.MemoryLimitedChunk;
 import network.crypta.support.MemoryLimitedJob;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -17,14 +16,14 @@ import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.NullOutputStream;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SplitFileInserterCrossSegmentStorage {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG =
+      LoggerFactory.getLogger(SplitFileInserterCrossSegmentStorage.class);
 
   static {
-    Logger.registerClass(SplitFileInserterCrossSegmentStorage.class);
   }
 
   final SplitFileInserterStorage parent;
@@ -82,9 +81,8 @@ public class SplitFileInserterCrossSegmentStorage {
   void addBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
     segments[counter] = seg;
     blockNumbers[counter] = blockNum;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Allocated cross-segment block "
               + counter
               + " to block "
@@ -225,7 +223,7 @@ public class SplitFileInserterCrossSegmentStorage {
       synchronized (this) {
         if (cancelled) return;
       }
-      if (logMINOR) Logger.minor(this, "Encoding " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Encoding " + this);
       byte[][] dataBlocks = readDataBlocks();
       byte[][] checkBlocks = new byte[crossCheckBlockCount][];
       for (int i = 0; i < checkBlocks.length; i++) checkBlocks[i] = new byte[CHKBlock.DATA_LENGTH];
@@ -236,7 +234,7 @@ public class SplitFileInserterCrossSegmentStorage {
       synchronized (this) {
         encoded = true;
       }
-      if (logMINOR) Logger.minor(this, "Finished encoding " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Finished encoding " + this);
       storeStatus();
     } catch (IOException e) {
       parent.failOnDiskError(e);
@@ -312,13 +310,13 @@ public class SplitFileInserterCrossSegmentStorage {
               parent.writeChecksummedTo(parent.crossSegmentStatusOffset(segNo), statusLength));
       innerStoreStatus(dos);
     } catch (IOException e) {
-      Logger.error(this, "Impossible: " + e, e);
+      LOG.error("Impossible: " + e, e);
       return;
     }
     try {
       dos.close();
     } catch (IOException e) {
-      Logger.error(this, "I/O error writing segment status?: " + e, e);
+      LOG.error("I/O error writing segment status?: " + e, e);
       parent.failOnDiskError(e);
     }
   }

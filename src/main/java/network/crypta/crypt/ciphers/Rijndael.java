@@ -9,7 +9,8 @@ import javax.crypto.spec.SecretKeySpec;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.UnsupportedCipherException;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*
  This code is part of the Java Adaptive Network Client by Ian Clarke.
@@ -19,6 +20,8 @@ import network.crypta.support.Logger;
 
 /** Interfaces with the Rijndael AES candidate to implement the Rijndael algorithm */
 public class Rijndael implements BlockCipher {
+  private static final Logger LOG = LoggerFactory.getLogger(Rijndael.class);
+
   private Object sessionKey;
   private final int keysize, blocksize;
 
@@ -86,8 +89,8 @@ public class Rijndael implements BlockCipher {
             long time_bcastle = benchmark(bcastle_cipher, k, IV);
             System.out.println(algo + " (" + provider + "): " + time_def + "ns");
             System.out.println(algo + " (" + bcastle_provider + "): " + time_bcastle + "ns");
-            Logger.minor(clazz, algo + "/" + provider + ": " + time_def + "ns");
-            Logger.minor(clazz, algo + "/" + bcastle_provider + ": " + time_bcastle + "ns");
+            LOG.debug(algo + "/" + provider + ": " + time_def + "ns");
+            LOG.debug(algo + "/" + bcastle_provider + ": " + time_bcastle + "ns");
             if (time_bcastle < time_def) {
               provider = bcastle_provider;
               c = bcastle_cipher;
@@ -95,22 +98,21 @@ public class Rijndael implements BlockCipher {
           }
         } catch (GeneralSecurityException e) {
           // ignore
-          Logger.warning(clazz, algo + "@" + bcastle + " benchmark failed", e);
+          LOG.warn(algo + "@" + bcastle + " benchmark failed", e);
 
         } catch (Throwable e) {
           // ignore
-          Logger.error(clazz, algo + "@" + bcastle + " benchmark failed", e);
+          LOG.error(algo + "@" + bcastle + " benchmark failed", e);
         }
       }
       c = Cipher.getInstance(algo, provider);
       c.init(Cipher.ENCRYPT_MODE, k, IV);
       c.doFinal(plaintext);
-      Logger.normal(Rijndael.class, "Using JCA: provider " + provider);
+      LOG.info("Using JCA: provider " + provider);
       System.out.println("Using JCA cipher provider: " + provider);
       return provider;
     } catch (GeneralSecurityException e) {
-      Logger.warning(
-          Rijndael.class,
+      LOG.warn(
           "Not using JCA as it is crippled (can't use 256-bit keys). Will use built-in encryption."
               + " ",
           e);
@@ -158,7 +160,7 @@ public class Rijndael implements BlockCipher {
       sessionKey = Rijndael_Algorithm.makeKey(nkey, blocksize / 8);
     } catch (InvalidKeyException e) {
       e.printStackTrace();
-      Logger.error(this, "Invalid key");
+      LOG.error("Invalid key");
     }
   }
 

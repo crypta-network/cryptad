@@ -5,11 +5,13 @@ import java.net.MalformedURLException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginInfoWrapper;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** load a plugin */
 public class LoadPlugin extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(LoadPlugin.class);
 
   static final String NAME = "LoadPlugin";
 
@@ -130,7 +132,7 @@ public class LoadPlugin extends FCPMessage {
                     pi = node.getPluginManager().startPluginURL(pluginURL, store);
                     break;
                   default:
-                    Logger.error(this, "This should really not happen!", new Exception("FIXME"));
+                    LOG.error("This should really not happen!");
                     handler.send(
                         new ProtocolErrorMessage(
                             ProtocolErrorMessage.INTERNAL_ERROR,

@@ -10,24 +10,13 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AnnounceSender implements PrioRunnable, ByteCounter {
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(AnnounceSender.class);
 
   // Constants
   static final int ACCEPTED_TIMEOUT = 10000;
@@ -99,7 +88,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       realRun();
       node.getNodeStats().reportAnnounceForwarded(forwardedRefs, source);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t + " announcing " + uid + " from " + source, t);
+      LOG.error("Caught {} announcing {} from {}", t.toString(), Long.valueOf(uid), source, t);
     } finally {
       if (source != null) {
         source.completedAnnounce(uid);
@@ -126,7 +115,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
     PeerNode next = null;
     while (true) {
-      if (logMINOR) Logger.minor(this, "htl=" + htl);
+      if (LOG.isDebugEnabled()) LOG.debug("htl={}", Short.valueOf(htl));
       /*
        * If we haven't routed to any node yet, decrement according to the source.
        * If we have, decrement according to the node which just failed.
@@ -180,7 +169,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         rnf(next);
         return;
       }
-      if (logMINOR) Logger.minor(this, "Routing request to " + next);
+      if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
       if (onlyNode == null)
         next.reportRoutedTo(target, source == null, false, source, nodesRoutedTo, htl);
       nodesRoutedTo.add(next);
@@ -230,42 +219,42 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
         try {
           msg = node.getUSM().waitFor(mf, this);
-          if (logMINOR) Logger.minor(this, "first part got " + msg);
+          if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
         } catch (DisconnectedException e) {
-          Logger.normal(
-              this, "Disconnected from " + next + " while waiting for Accepted on " + uid);
+          LOG.info(
+              "Disconnected from {} while waiting for Accepted on {}", next, Long.valueOf(uid));
           break;
         }
 
         if (msg == null) {
-          if (logMINOR) Logger.minor(this, "Timeout waiting for Accepted");
+          if (LOG.isDebugEnabled()) LOG.debug("Timeout waiting for Accepted");
           // Try next node
           msg = null;
           break;
         }
 
         if (msg.getSpec() == DMT.FNPRejectedLoop) {
-          if (logMINOR) Logger.minor(this, "Rejected loop");
+          if (LOG.isDebugEnabled()) LOG.debug("Rejected loop");
           // Find another node to route to
           msg = null;
           break;
         }
 
         if (msg.getSpec() == DMT.FNPRejectedOverload) {
-          if (logMINOR) Logger.minor(this, "Rejected: overload");
+          if (LOG.isDebugEnabled()) LOG.debug("Rejected: overload");
           // Give up on this one, try another
           msg = null;
           break;
         }
 
         if (msg.getSpec() == DMT.FNPOpennetDisabled) {
-          if (logMINOR) Logger.minor(this, "Opennet disabled");
+          if (LOG.isDebugEnabled()) LOG.debug("Opennet disabled");
           msg = null;
           break;
         }
 
         if (msg.getSpec() != DMT.FNPAccepted) {
-          Logger.error(this, "Unrecognized message: " + msg);
+          LOG.error("Unrecognized message: {}", msg);
           continue;
         }
 
@@ -277,7 +266,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         continue;
       }
 
-      if (logMINOR) Logger.minor(this, "Got Accepted");
+      if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
 
       if (cb != null) cb.acceptedSomewhere();
 
@@ -286,7 +275,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       try {
         sendRest(next, xferUID);
       } catch (NotConnectedException e1) {
-        if (logMINOR) Logger.minor(this, "Not connected while sending noderef on " + next);
+        if (LOG.isDebugEnabled()) LOG.debug("Not connected while sending noderef on {}", next);
         continue;
       }
 
@@ -348,11 +337,11 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         try {
           msg = node.getUSM().waitFor(mf, this);
         } catch (DisconnectedException e) {
-          Logger.normal(this, "Disconnected from " + next + " while waiting for announcement");
+          LOG.info("Disconnected from {} while waiting for announcement", next);
           break;
         }
 
-        if (logMINOR) Logger.minor(this, "second part got " + msg);
+        if (LOG.isDebugEnabled()) LOG.debug("second part got {}", msg);
 
         if (msg == null) {
           // Fatal timeout, must be terminal (IS_LOCAL==true)
@@ -362,8 +351,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
         if (msg.getSpec() == DMT.FNPOpennetNoderefRejected) {
           int reason = msg.getInt(DMT.REJECT_CODE);
-          Logger.normal(
-              this, "Announce rejected by " + next + " : " + DMT.getOpennetRejectedCode(reason));
+          LOG.info("Announce rejected by {} : {}", next, DMT.getOpennetRejectedCode(reason));
           msg = null;
           break;
         }
@@ -393,7 +381,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
                 try {
                   sendNotWanted();
                 } catch (NotConnectedException e) {
-                  Logger.warning(this, "Lost connection to source (announce completed)");
+                  LOG.warn("Lost connection to source (announce completed)");
                   return;
                 }
               }
@@ -415,7 +403,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         }
 
         if (msg.getSpec() == DMT.FNPOpennetDisabled) {
-          Logger.minor(this, "Opennet disabled");
+          LOG.debug("Opennet disabled");
           msg = null;
           break;
         }
@@ -431,14 +419,14 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
             try {
               sendNotWanted();
             } catch (NotConnectedException e) {
-              Logger.warning(this, "Lost connection to source (announce not wanted)");
+              LOG.warn("Lost connection to source (announce not wanted)");
               return;
             }
           }
           continue; // This message is propagated, they will send a Completed or RNF
         }
 
-        Logger.error(this, "Unexpected message: " + msg);
+        LOG.error("Unexpected message: {}", msg);
       }
     }
   }
@@ -504,13 +492,13 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
                     else cb.nodeNotAdded();
                   }
                 } catch (FSParseException e) {
-                  Logger.normal(this, "Failed to parse reply: " + e, e);
+                  LOG.info("Failed to parse reply: {}", e.toString(), e);
                   if (cb != null) cb.bogusNoderef("parse failed: " + e);
                 } catch (PeerParseException e) {
-                  Logger.normal(this, "Failed to parse reply: " + e, e);
+                  LOG.info("Failed to parse reply: {}", e.toString(), e);
                   if (cb != null) cb.bogusNoderef("parse failed: " + e);
                 } catch (ReferenceSignatureVerificationException e) {
-                  Logger.normal(this, "Failed to parse reply: " + e, e);
+                  LOG.info("Failed to parse reply: {}", e.toString(), e);
                   if (cb != null) cb.bogusNoderef("parse failed: " + e);
                 }
               }
@@ -541,7 +529,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     try {
       return om.startSendAnnouncementRequest(uid, next, noderefBuf, this, target, htl);
     } catch (NotConnectedException e) {
-      if (logMINOR) Logger.minor(this, "Disconnected");
+      if (LOG.isDebugEnabled()) LOG.debug("Disconnected");
       return -1;
     }
   }
@@ -628,24 +616,24 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       if (om.addNewOpennetNode(fs, ConnectionType.ANNOUNCE, true) != null) {
         sendOurRef(source, om.getCrypto().myCompressedFullRef());
       } else {
-        if (logMINOR) Logger.minor(this, "Don't need the node");
+        if (LOG.isDebugEnabled()) LOG.debug("Don't need the node");
         sendNotWanted();
         // Okay, just route it.
       }
     } catch (FSParseException e) {
-      Logger.warning(this, "Rejecting noderef: " + e, e);
+      LOG.warn("Rejecting noderef: {}", e.toString(), e);
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
     } catch (PeerParseException e) {
-      Logger.warning(this, "Rejecting noderef: " + e, e);
+      LOG.warn("Rejecting noderef: {}", e.toString(), e);
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
     } catch (ReferenceSignatureVerificationException e) {
-      Logger.warning(this, "Rejecting noderef: " + e, e);
+      LOG.warn("Rejecting noderef: {}", e.toString(), e);
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
     } catch (NotConnectedException e) {
-      Logger.normal(this, "Could not receive noderef, disconnected");
+      LOG.info("Could not receive noderef, disconnected");
       return false;
     }
     return true;

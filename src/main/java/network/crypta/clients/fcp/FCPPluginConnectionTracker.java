@@ -12,8 +12,9 @@ import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMessageHandler;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ServerSideFCPMessageHandler;
 import network.crypta.pluginmanager.PluginRespirator;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Keeps a list of all {@link FCPPluginConnectionImpl}s which are connected to server plugins
@@ -46,6 +47,7 @@ import network.crypta.support.io.NativeThread;
  * @author xor (xor@freenetproject.org)
  */
 final class FCPPluginConnectionTracker extends NativeThread {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginConnectionTracker.class);
 
   /**
    * Backend table of {@link WeakReference}s to known client connections. Monitored by a {@link
@@ -207,9 +209,8 @@ final class FCPPluginConnectionTracker extends NativeThread {
               connectionsByID.remove(closedConnection.connectionID);
 
           assert (closedConnection == removedFromTree);
-          if (logMINOR) {
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(
                 "Garbage-collecting closed connection: "
                     + "remaining connections = "
                     + connectionsByID.size()
@@ -226,18 +227,11 @@ final class FCPPluginConnectionTracker extends NativeThread {
         // nothing should try to terminate it by InterruptedException. If it does happen
         // nevertheless, we honor it by exiting the thread, because interrupt requests
         // should never be ignored, but log it as an error.
-        Logger.error(this, "Thread interruption requested even though this is a daemon thread!", e);
+        LOG.error("Thread interruption requested even though this is a daemon thread!", e);
         throw new RuntimeException(e);
       } catch (Throwable t) {
-        Logger.error(this, "Error in thread " + getName(), t);
+        LOG.error("Error in thread " + getName(), t);
       }
     }
-  }
-
-  /** For {@link Logger#registerClass(Class)} */
-  private static final boolean logMINOR = false;
-
-  static {
-    Logger.registerClass(FCPPluginConnectionTracker.class);
   }
 }

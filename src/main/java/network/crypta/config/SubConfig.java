@@ -5,9 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
@@ -15,25 +12,19 @@ import network.crypta.support.api.LongCallback;
 import network.crypta.support.api.ShortCallback;
 import network.crypta.support.api.StringArrCallback;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A specific configuration block. */
 public class SubConfig implements Comparable<SubConfig> {
+  private static final Logger LOG = LoggerFactory.getLogger(SubConfig.class);
 
   private final LinkedHashMap<String, Option<?>> map;
   public final Config config;
   final String prefix;
   private boolean hasInitialized;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /** Use {@link Config#createSubConfig(String)} instead. */
@@ -437,7 +428,7 @@ public class SubConfig implements Comparable<SubConfig> {
    */
   public void finishedInitialization() {
     hasInitialized = true;
-    if (logMINOR) Logger.minor(this, "Finished initialization on " + this + " (" + prefix + ')');
+    if (LOG.isDebugEnabled()) LOG.debug("Finished initialization on " + this + " (" + prefix + ')');
   }
 
   /** Set options from a SimpleFieldSet. Once we process an option, we must remove it. */
@@ -459,7 +450,7 @@ public class SubConfig implements Comparable<SubConfig> {
                   + val
                   + " : error: "
                   + e;
-          Logger.error(this, msg, e);
+          LOG.error(msg, e);
           System.err.println(msg); // might be about logging?
         } catch (NodeNeedRestartException e) {
           // Impossible
@@ -472,7 +463,7 @@ public class SubConfig implements Comparable<SubConfig> {
                   + val
                   + " : error: "
                   + e;
-          Logger.error(this, msg, e);
+          LOG.error(msg, e);
         }
       }
     }
@@ -493,18 +484,17 @@ public class SubConfig implements Comparable<SubConfig> {
     synchronized (this) {
       entries = new ArrayList<>(map.entrySet());
     }
-    if (logMINOR) Logger.minor(this, "Prefix=" + prefix);
+    if (LOG.isDebugEnabled()) LOG.debug("Prefix=" + prefix);
     for (Map.Entry<String, Option<?>> entry : entries) {
       String key = entry.getKey();
       Option<?> o = entry.getValue();
-      if (logMINOR)
-        Logger.minor(
-            this, "Key=" + key + " value=" + o.getValueString() + " default=" + o.isDefault());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Key=" + key + " value=" + o.getValueString() + " default=" + o.isDefault());
       if (configRequestType == Config.RequestType.CURRENT_SETTINGS
           && (!withDefaults)
           && o.isDefault()
           && (!o.forceWrite)) {
-        if (logMINOR) Logger.minor(this, "Skipping " + key + " - " + o.isDefault());
+        if (LOG.isDebugEnabled()) LOG.debug("Skipping " + key + " - " + o.isDefault());
         continue;
       }
       switch (configRequestType) {
@@ -533,11 +523,11 @@ public class SubConfig implements Comparable<SubConfig> {
           fs.putSingle(key, o.getDataTypeStr());
           break;
         default:
-          Logger.error(this, "Unknown config request type value: " + configRequestType);
+          LOG.error("Unknown config request type value: " + configRequestType);
           break;
       }
-      if (logMINOR)
-        Logger.minor(this, "Key=" + prefix + '.' + key + " value=" + o.getValueString());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Key=" + prefix + '.' + key + " value=" + o.getValueString());
     }
     return fs;
   }

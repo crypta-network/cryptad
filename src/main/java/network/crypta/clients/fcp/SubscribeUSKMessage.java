@@ -6,6 +6,8 @@ import network.crypta.keys.USK;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sent by a client to subscribe to a USK. The client will then be notified by a
@@ -19,6 +21,7 @@ import network.crypta.support.SimpleFieldSet;
  * Identifier=identifier End
  */
 public class SubscribeUSKMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SubscribeUSKMessage.class);
 
   public static final String NAME = "SubscribeUSK";
 

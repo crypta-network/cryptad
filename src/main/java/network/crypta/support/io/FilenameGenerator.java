@@ -5,10 +5,9 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import java.io.File;
 import java.io.IOException;
 import java.util.Random;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
@@ -22,22 +21,13 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * @author toad
  */
 public class FilenameGenerator {
+  private static final Logger LOG = LoggerFactory.getLogger(FilenameGenerator.class);
 
   private final transient Random random;
   private final String prefix;
   private final File tmpDir;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -108,7 +98,7 @@ public class FilenameGenerator {
       String filename = prefix + Long.toHexString(randomFilename);
       File ret = new File(tmpDir, filename);
       if (ret.createNewFile()) {
-        if (logMINOR) Logger.minor(this, "Made random filename: " + ret, new Exception("debug"));
+        if (LOG.isDebugEnabled()) LOG.debug("Made random filename: {}", ret);
         return randomFilename;
       }
     }
@@ -133,10 +123,10 @@ public class FilenameGenerator {
   public File maybeMove(File file, long id) {
     if (matches(file)) return file;
     File newFile = getFilename(id);
-    Logger.normal(this, "Moving tempfile " + file + " to " + newFile);
+    LOG.info("Moving tempfile " + file + " to " + newFile);
     if (FileUtil.moveTo(file, newFile, false)) return newFile;
     else {
-      Logger.error(this, "Unable to move old temporary file " + file + " to " + newFile);
+      LOG.error("Unable to move old temporary file " + file + " to " + newFile);
       return file;
     }
   }

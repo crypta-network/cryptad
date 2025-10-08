@@ -5,9 +5,10 @@ import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FCP message: Modify a persistent request.
@@ -17,6 +18,7 @@ import network.crypta.support.io.NativeThread;
  * MaxRetries=100 // change max retries Global=true EndMessage
  */
 public class ModifyPersistentRequest extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ModifyPersistentRequest.class);
 
   static final String NAME = "ModifyPersistentRequest";
 
@@ -89,7 +91,7 @@ public class ModifyPersistentRequest extends FCPMessage {
                   public boolean run(ClientContext context) {
                     ClientRequest req = handler.getForeverRequest(global, handler, identifier);
                     if (req == null) {
-                      Logger.error(this, "Huh ? the request is null!");
+                      LOG.error("Huh ? the request is null!");
                       ProtocolErrorMessage msg =
                           new ProtocolErrorMessage(
                               ProtocolErrorMessage.NO_SUCH_IDENTIFIER,

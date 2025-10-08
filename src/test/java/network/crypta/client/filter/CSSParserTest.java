@@ -24,7 +24,6 @@ import java.util.Set;
 import network.crypta.client.filter.CharsetExtractor.BOMDetection;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -1797,7 +1796,7 @@ public class CSSParserTest {
   FilterMIMEType cssMIMEType;
 
   @BeforeEach
-  public void setUp() throws InvalidThresholdException {
+  public void setUp() {
     new NodeL10n();
     // if (TestProperty.VERBOSE) {
     //	Logger.setupStdoutLogging(LogLevel.MINOR, "freenet.client.filter:DEBUG");

@@ -8,9 +8,12 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.NullBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Specialized DirPutFile for direct uploads. */
 public class DirectDirPutFile extends DirPutFile {
+  private static final Logger LOG = LoggerFactory.getLogger(DirectDirPutFile.class);
 
   private final RandomAccessBucket data;
   private final long length;

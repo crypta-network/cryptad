@@ -24,13 +24,13 @@ import java.security.MessageDigest;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.NodeStarter;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.StringValidityChecker;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class FileUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(FileUtil.class);
 
   public static final int BUFFER_SIZE = 32 * 1024;
   private static final Random SEED_GENERATOR =
@@ -134,16 +134,7 @@ public final class FileUtil {
     fileNameCharset = getFileEncodingCharset();
   }
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -169,9 +160,9 @@ public final class FileUtil {
       if (name.contains("unix")) return OperatingSystem.GenericUnix;
       else if (File.separatorChar == '/') return OperatingSystem.GenericUnix;
       else if (File.separatorChar == '\\') return OperatingSystem.Windows;
-      Logger.error(FileUtil.class, "Unknown operating system:" + name);
+      LOG.error("Unknown operating system:" + name);
     } catch (Throwable t) {
-      Logger.error(FileUtil.class, "Operating system detection failed", t);
+      LOG.error("Operating system detection failed", t);
     }
     return OperatingSystem.Unknown;
   }
@@ -183,7 +174,7 @@ public final class FileUtil {
       if ("amd64".equals(a)) return CPUArchitecture.X86_64;
       if ("arm64".equals(a)) return CPUArchitecture.ARM; // legacy enum has no ARM64
     } catch (Throwable t) {
-      Logger.error(FileUtil.class, "CPU architecture detection via AppEnv failed", t);
+      LOG.error("CPU architecture detection via AppEnv failed", t);
     }
     try {
       final String name = System.getProperty("os.arch").toLowerCase();
@@ -200,7 +191,7 @@ public final class FileUtil {
       if (name.equals("ppc64")) return CPUArchitecture.PPC_64;
       if (name.startsWith("ia64")) return CPUArchitecture.IA64;
     } catch (Throwable t) {
-      Logger.error(FileUtil.class, "CPU architecture detection failed", t);
+      LOG.error("CPU architecture detection failed", t);
     }
     return CPUArchitecture.Unknown;
   }
@@ -360,8 +351,8 @@ public final class FileUtil {
 
   public static boolean writeTo(InputStream input, File target) throws IOException {
     File file = File.createTempFile("temp", ".tmp", target.getParentFile());
-    if (logMINOR) {
-      Logger.minor(FileUtil.class, "Writing to " + file + " to be renamed to " + target);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Writing to " + file + " to be renamed to " + target);
     }
 
     try (FileOutputStream fos = new FileOutputStream(file)) {
@@ -417,7 +408,7 @@ public final class FileUtil {
         Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
       }
     } catch (IOException e) {
-      Logger.error(FileUtil.class, "Could not move " + orig + " to " + dest + ": " + e);
+      LOG.error("Could not move " + orig + " to " + dest + ": " + e);
       return false;
     }
     return true;
@@ -450,7 +441,7 @@ public final class FileUtil {
       case Windows:
         break;
       default:
-        Logger.error(FileUtil.class, "Unsupported operating system: " + targetOS);
+        LOG.error("Unsupported operating system: " + targetOS);
         targetOS = OperatingSystem.Unknown;
         break;
     }
@@ -598,7 +589,7 @@ public final class FileUtil {
       try {
         secureDelete(wd);
       } catch (IOException e) {
-        Logger.error(FileUtil.class, "Could not delete file: " + wd, e);
+        LOG.error("Could not delete file: " + wd, e);
         return false;
       }
     } else {
@@ -606,7 +597,7 @@ public final class FileUtil {
         if (!removeAll(subfile)) return false;
       }
       if (!wd.delete()) {
-        Logger.error(FileUtil.class, "Could not delete directory: " + wd);
+        LOG.error("Could not delete directory: " + wd);
       }
     }
     return true;
@@ -620,7 +611,7 @@ public final class FileUtil {
     if (!wd.isDirectory()) {
       System.err.println("DELETING FILE " + wd);
       if (!wd.delete() && wd.exists()) {
-        Logger.error(FileUtil.class, "Could not delete file: " + wd);
+        LOG.error("Could not delete file: " + wd);
         return false;
       }
     } else {
@@ -628,7 +619,7 @@ public final class FileUtil {
         if (!removeAll(subfile)) return false;
       }
       if (!wd.delete()) {
-        Logger.error(FileUtil.class, "Could not delete directory: " + wd);
+        LOG.error("Could not delete directory: " + wd);
       }
     }
     return true;

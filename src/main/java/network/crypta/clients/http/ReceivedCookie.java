@@ -5,7 +5,8 @@ import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Hashtable;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A cookie which the server has received from the client.
@@ -15,12 +16,9 @@ import network.crypta.support.Logger;
  * @author xor (xor@freenetproject.org)
  */
 public final class ReceivedCookie extends Cookie {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(ReceivedCookie.class);
 
   static {
-    Logger.registerClass(ReceivedCookie.class);
   }
 
   private String notValidatedName;
@@ -63,7 +61,7 @@ public final class ReceivedCookie extends Cookie {
    */
   static ArrayList<ReceivedCookie> parseHeader(String httpHeader) throws ParseException {
 
-    if (logMINOR) Logger.minor(ReceivedCookie.class, "Received HTTP cookie header:" + httpHeader);
+    if (LOG.isDebugEnabled()) LOG.debug("Received HTTP cookie header:" + httpHeader);
 
     char[] header = httpHeader.toCharArray();
 

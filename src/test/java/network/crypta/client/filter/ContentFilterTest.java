@@ -18,13 +18,13 @@ import java.util.List;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.l10n.BaseL10nTest;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.Logging;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.ArrayBucket;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 /**
  * A simple meta-test to track regressions of the content-filter
@@ -71,7 +71,7 @@ public class ContentFilterTest {
   @Test
   public void testHTMLFilter() throws Exception {
     if (TestProperty.VERBOSE) {
-      Logger.setupStdoutLogging(LogLevel.MINOR, "network.crypta.client.filter.Generic:DEBUG");
+      Logging.bootstrap(Level.DEBUG, "network.crypta.client.filter.Generic:TRACE");
     }
 
     // General sanity checks

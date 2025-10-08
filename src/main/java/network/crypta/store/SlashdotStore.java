@@ -11,12 +11,11 @@ import network.crypta.node.stats.StoreAccessStats;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.LRUMap;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.TempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Short-term cache. Used to cache all blocks retrieved in the last 30 minutes (on low security
@@ -26,18 +25,7 @@ import network.crypta.support.io.TempBucketFactory;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
-
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(SlashdotStore.class);
 
   private class DiskBlock {
     Bucket data;
@@ -147,10 +135,8 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
           blocksByRoutingKey.push(key, block);
         }
       }
-      if (logDEBUG)
-        Logger.debug(
-            this,
-            "Block was last accessed " + (System.currentTimeMillis() - timeAccessed) + "ms ago");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Block was last accessed {}ms ago", (System.currentTimeMillis() - timeAccessed));
       return ret;
     } catch (KeyVerifyException e) {
       block.data.free();

@@ -16,27 +16,18 @@ import network.crypta.keys.NodeSSK;
 import network.crypta.node.PeerNode.RequestLikelyAcceptedState;
 import network.crypta.node.PeerNode.SlotWaiter;
 import network.crypta.node.PeerNode.SlotWaiterFailedException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Base class for request and insert senders. Mostly concerned with what happens *before and up to*
  * we get the Accepted. After that it hands over to the child class.
  */
 public abstract class BaseSender implements ByteCounter, HighHtlAware {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(BaseSender.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   final boolean realTimeFlag;
@@ -146,7 +137,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       lastNode = next;
     }
 
-    if (logMINOR) Logger.minor(this, "Routing request to " + next);
+    if (LOG.isDebugEnabled()) LOG.debug("Routing request to " + next);
     nodesRoutedTo.add(next);
 
     Message req = createDataRequest();
@@ -181,12 +172,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
       node.getPeers().incrementSelectionSamples(System.currentTimeMillis(), next);
     } catch (NotConnectedException e) {
-      Logger.minor(this, "Not connected");
+      LOG.debug("Not connected");
       next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return;
     } catch (SyncSendWaitedTooLongException e) {
-      Logger.error(this, "Failed to send " + req + " to " + next + " in a reasonable time.");
+      LOG.error("Failed to send " + req + " to " + next + " in a reasonable time.");
       next.noLongerRoutingTo(origTag, false);
       // Try another node.
       routeRequests();
@@ -210,7 +201,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       }
     } // loadWaiterLoop
 
-    if (logMINOR) Logger.minor(this, "Got Accepted");
+    if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
 
     // Otherwise, must be Accepted
 
@@ -273,8 +264,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         }
       }
 
-      if (logMINOR) {
-        Logger.minor(this, "Going around loop");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Going around loop");
       }
 
       long now = System.currentTimeMillis();
@@ -293,14 +284,13 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         // No stats, old style, just go for it.
         // This can happen both when talking to an old node and when we've just connected, but
         // should not be the case for long enough to be a problem.
-        if (logMINOR) {
-          Logger.minor(this, "No load stats for " + next);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("No load stats for " + next);
         }
       } else {
         if (expectedAcceptState != null) {
-          if (logMINOR) {
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(
                 "Predicted accept state for "
                     + this
                     + " : "
@@ -315,8 +305,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               && (expectedAcceptState == RequestLikelyAcceptedState.GUARANTEED)) {
             // We routed it, thinking it was GUARANTEED.
             // It was rejected, and as far as we know it's still GUARANTEED. :(
-            Logger.warning(
-                this,
+            LOG.warn(
                 "Rejected overload (last time) yet expected state was "
                     + lastExpectedAcceptState
                     + " is now "
@@ -338,8 +327,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         int canWaitFor = 1;
 
         if (expectedAcceptState == null) {
-          if (logMINOR) {
-            Logger.minor(this, "Cannot send to " + next + " realtime=" + realTimeFlag);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Cannot send to " + next + " realtime=" + realTimeFlag);
           }
           waitedForLoadManagement = true;
           if (waiter == null) {
@@ -372,9 +361,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
                 waiter.addWaitingFor(alsoWaitFor);
                 // We do not need to check the return value here.
                 // We will not reuse alsoWaitFor if it is disconnected etc.
-                if (logMINOR) {
-                  Logger.minor(
-                      this,
+                if (LOG.isDebugEnabled()) {
+                  LOG.debug(
                       "Waiting for "
                           + next
                           + " and "
@@ -387,16 +375,16 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
                 try {
                   matched = waiter.waitForAny(0, false);
                 } catch (SlotWaiterFailedException e) {
-                  if (logMINOR) {
-                    Logger.minor(this, "Rerouting as slot waiter failed...");
+                  if (LOG.isDebugEnabled()) {
+                    LOG.debug("Rerouting as slot waiter failed...");
                   }
                   continue;
                 }
                 if (matched != null) {
                   expectedAcceptState = waiter.getAcceptedState();
                   next = matched;
-                  if (logMINOR) {
-                    Logger.minor(this, "Matched " + matched + " with " + expectedAcceptState);
+                  if (LOG.isDebugEnabled()) {
+                    LOG.debug("Matched " + matched + " with " + expectedAcceptState);
                   }
                 }
               }
@@ -421,9 +409,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             waiter.addWaitingFor(alsoWaitFor);
             // We do not need to check the return value here.
             // We will not reuse alsoWaitFor if it is disconnected etc.
-            if (logMINOR) {
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(
                   "Waiting for "
                       + next
                       + " and "
@@ -436,16 +423,16 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             try {
               matched = waiter.waitForAny(0, false);
             } catch (SlotWaiterFailedException e) {
-              if (logMINOR) {
-                Logger.minor(this, "Rerouting as slot waiter failed...");
+              if (LOG.isDebugEnabled()) {
+                LOG.debug("Rerouting as slot waiter failed...");
               }
               continue;
             }
             if (matched != null) {
               expectedAcceptState = waiter.getAcceptedState();
               next = matched;
-              if (logMINOR) {
-                Logger.minor(this, "Matched " + matched + " with " + expectedAcceptState);
+              if (LOG.isDebugEnabled()) {
+                LOG.debug("Matched " + matched + " with " + expectedAcceptState);
               }
             }
           }
@@ -468,9 +455,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             waiter.addWaitingFor(alsoWaitFor);
             // We do not need to check the return value here.
             // We will not reuse alsoWaitFor if it is disconnected etc.
-            if (logMINOR) {
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(
                   "Waiting for "
                       + next
                       + " and "
@@ -512,9 +498,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           }
           if (waited == null) {
             // Timed out, or not waiting for anything, not failed.
-            if (logMINOR) {
-              Logger.minor(
-                  this, "Timed out waiting for a peer to accept " + this + " on " + waiter);
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("Timed out waiting for a peer to accept " + this + " on " + waiter);
             }
 
             if (addedExtraNode) {
@@ -530,9 +515,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             next = waited;
             expectedAcceptState = waiter.getAcceptedState();
             long endTime = System.currentTimeMillis();
-            if (logMINOR) {
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled()) {
+              LOG.debug(
                   "Sending to "
                       + next
                       + " after waited for "
@@ -546,9 +530,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         assert (expectedAcceptState != null);
         lastExpectedAcceptState = expectedAcceptState;
         lastNext = next;
-        if (logMINOR) {
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
               "Leaving new load management big block: Predicted accept state for "
                   + this
                   + " : "
@@ -561,8 +544,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         // FIXME only report for routing accuracy purposes at this point, not in closerPeer().
         // In fact, we should report only after Accepted.
       }
-      if (logMINOR) {
-        Logger.minor(this, "Routing to " + next);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Routing to " + next);
       }
 
       if (origTag.hasSourceReallyRestarted()) {
@@ -576,8 +559,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         lastNode = next;
       }
 
-      if (logMINOR) {
-        Logger.minor(this, "Routing request to " + next + " realtime=" + realTimeFlag);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Routing request to " + next + " realtime=" + realTimeFlag);
       }
       nodesRoutedTo.add(next);
 
@@ -610,19 +593,19 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
          *
          * Don't use sendAsync().
          */
-        if (logMINOR) {
-          Logger.minor(this, "Sending " + req + " to " + next);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Sending " + req + " to " + next);
         }
         next.reportRoutedTo(
             key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
         next.sendSync(req, this, realTimeFlag);
       } catch (NotConnectedException e) {
-        Logger.minor(this, "Not connected");
+        LOG.debug("Not connected");
         next.noLongerRoutingTo(origTag, false);
         routeRequests();
         return;
       } catch (SyncSendWaitedTooLongException e) {
-        Logger.error(this, "Failed to send " + req + " to " + next + " in a reasonable time.");
+        LOG.error("Failed to send " + req + " to " + next + " in a reasonable time.");
         next.noLongerRoutingTo(origTag, false);
         // Try another node.
         continue;
@@ -632,26 +615,26 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         hasForwarded = true;
       }
 
-      if (logMINOR) {
-        Logger.minor(this, "Waiting for accepted");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Waiting for accepted");
       }
       DO action = waitForAccepted(expectedAcceptState, next, origTag);
       // Here FINISHED means accepted, WAIT means try again (soft reject).
       if (action == DO.WAIT) {
         retriedForLoadManagement = true;
-        if (logMINOR) {
-          Logger.minor(this, "Retrying");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Retrying");
         }
       } else if (action == DO.NEXT_PEER) {
-        if (logMINOR) {
-          Logger.minor(this, "Trying next peer");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Trying next peer");
         }
         routeRequests();
         return;
       } else { // FINISHED => accepted
         addedExtraNode = false;
-        if (logMINOR) {
-          Logger.minor(this, "Accepted!");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Accepted!");
         }
         break;
       }
@@ -663,7 +646,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     // So log it at error only if it's really bad.
     logDelta(delta, tryCount, waitedForLoadManagement, retriedForLoadManagement);
 
-    if (logMINOR) Logger.minor(this, "Got Accepted");
+    if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
 
     // Otherwise, must be Accepted
 
@@ -725,8 +708,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       long delta, int tryCount, boolean waitedForLoadManagement, boolean retriedForLoadManagement) {
     long longTimeout = getLongSlotWaiterTimeout();
     if ((delta > longTimeout) || tryCount > 3)
-      Logger.error(
-          this,
+      LOG.error(
           "Took "
               + tryCount
               + " tries in "
@@ -738,8 +720,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               + (realTimeFlag ? " (realtime)" : " (bulk)")
               + ((source == null) ? " (local)" : " (remote)"));
     else if ((delta > longTimeout / 5) || tryCount > 1)
-      Logger.warning(
-          this,
+      LOG.warn(
           "Took "
               + tryCount
               + " tries in "
@@ -750,9 +731,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               + retriedForLoadManagement
               + (realTimeFlag ? " (realtime)" : " (bulk)")
               + ((source == null) ? " (local)" : " (remote)"));
-    else if (logMINOR && (waitedForLoadManagement || retriedForLoadManagement))
-      Logger.minor(
-          this,
+    else if (LOG.isDebugEnabled() && (waitedForLoadManagement || retriedForLoadManagement))
+      LOG.debug(
           "Took "
               + tryCount
               + " tries in "
@@ -779,15 +759,15 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
       try {
         msg = node.getUSM().waitFor(mf, this);
-        if (logMINOR) Logger.minor(this, "first part got " + msg);
+        if (LOG.isDebugEnabled()) LOG.debug("first part got " + msg);
       } catch (DisconnectedException e) {
-        Logger.normal(this, "Disconnected from " + next + " while waiting for Accepted on " + uid);
+        LOG.info("Disconnected from " + next + " while waiting for Accepted on " + uid);
         next.noLongerRoutingTo(origTag, false);
         return DO.NEXT_PEER;
       }
 
       if (msg == null) {
-        if (logMINOR) Logger.minor(this, "Timeout waiting for Accepted for " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Timeout waiting for Accepted for " + this);
         // Timeout waiting for Accepted
         next.localRejectedOverload("AcceptedTimeout", realTimeFlag);
         forwardRejectedOverload();
@@ -802,7 +782,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       }
 
       if (msg.getSpec() == DMT.FNPRejectedLoop) {
-        if (logMINOR) Logger.minor(this, "Rejected loop");
+        if (LOG.isDebugEnabled()) LOG.debug("Rejected loop");
         next.successNotOverload(realTimeFlag);
         int t = timeSinceSent();
         node.getFailureTable().onFailed(key, next, htl, t, t);
@@ -812,21 +792,20 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       }
 
       if (msg.getSpec() == DMT.FNPRejectedOverload) {
-        if (logMINOR) Logger.minor(this, "Rejected: overload");
+        if (LOG.isDebugEnabled()) LOG.debug("Rejected: overload");
         // Non-fatal - probably still have time left
         if (msg.getBoolean(DMT.IS_LOCAL)) {
 
-          if (logMINOR) Logger.minor(this, "Is local");
+          if (LOG.isDebugEnabled()) LOG.debug("Is local");
 
           // FIXME soft rejects, only check then, but don't backoff if sane
           // FIXME recalculate with broader check, allow a few percent etc.
 
           if (msg.getSubMessage(DMT.FNPRejectIsSoft) != null && expectedAcceptState != null) {
-            if (logMINOR) Logger.minor(this, "Soft rejection, waiting to resend");
+            if (LOG.isDebugEnabled()) LOG.debug("Soft rejection, waiting to resend");
             if (expectedAcceptState == RequestLikelyAcceptedState.GUARANTEED)
               // Need to recalculate to be sure this is an error.
-              Logger.normal(
-                  this, "Rejected overload yet expected state was " + expectedAcceptState);
+              LOG.info("Rejected overload yet expected state was " + expectedAcceptState);
             nodesRoutedTo.remove(next);
             next.noLongerRoutingTo(origTag, false);
             if (softRejectCount == null) softRejectCount = new HashMap<>();
@@ -835,7 +814,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             else {
               softRejectCount.put(next, i + 1);
               if (i > 3) {
-                Logger.error(this, "Rejected repeatedly (" + i + ") by " + next + " : " + this);
+                LOG.error("Rejected repeatedly (" + i + ") by " + next + " : " + this);
                 next.outputLoadTracker(realTimeFlag).setDontSendUnlessGuaranteed();
               }
             }
@@ -846,7 +825,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           next.localRejectedOverload("ForwardRejectedOverload", realTimeFlag);
           int t = timeSinceSent();
           node.getFailureTable().onFailed(key, next, htl, t, t);
-          if (logMINOR) Logger.minor(this, "Local RejectedOverload, moving on to next peer");
+          if (LOG.isDebugEnabled()) LOG.debug("Local RejectedOverload, moving on to next peer");
           // Give up on this one, try another
           next.noLongerRoutingTo(origTag, false);
           return DO.NEXT_PEER;
@@ -859,7 +838,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       }
 
       if (!isAccepted(msg)) {
-        Logger.error(this, "Unrecognized message: " + msg);
+        LOG.error("Unrecognized message: " + msg);
         return DO.NEXT_PEER;
       }
 

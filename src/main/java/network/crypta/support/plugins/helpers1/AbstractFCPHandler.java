@@ -4,16 +4,15 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginReplySender;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class AbstractFCPHandler {
-
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(AbstractFCPHandler.class);
 
   static {
-    Logger.registerClass(AbstractFCPHandler.class);
   }
 
   public static class FCPException extends Exception {
@@ -44,8 +43,8 @@ public abstract class AbstractFCPHandler {
       PluginReplySender replysender, SimpleFieldSet params, Bucket data, int accesstype)
       throws PluginNotFoundException {
 
-    if (logDEBUG) {
-      Logger.debug(this, "Got Message: " + params.toOrderedString());
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Got Message: " + params.toOrderedString());
     }
 
     final String command = params.get("Command");

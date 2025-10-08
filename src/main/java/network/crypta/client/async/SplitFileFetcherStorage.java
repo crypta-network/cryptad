@@ -37,7 +37,6 @@ import network.crypta.keys.Key;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestItemKey;
-import network.crypta.support.Logger;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.RandomArrayIterator;
 import network.crypta.support.Ticker;
@@ -53,6 +52,8 @@ import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.StorageFormatException;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Stores the state for a SplitFileFetcher, persisted to a LockableRandomAccessBuffer (i.e. a single
@@ -118,12 +119,9 @@ import network.crypta.support.math.MersenneTwister;
  * @author toad
  */
 public class SplitFileFetcherStorage {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherStorage.class);
 
   static {
-    Logger.registerClass(SplitFileFetcherStorage.class);
   }
 
   final SplitFileFetcherStorageCallback fetcher;
@@ -352,8 +350,7 @@ public class SplitFileFetcherStorage {
     this.persistent = persistent;
     this.completeViaTruncation = (storageFile != null);
     if (decompressors.size() > 1) {
-      Logger.error(
-          this,
+      LOG.error(
           "Multiple decompressors: " + decompressors.size() + " - this is almost certainly a bug",
           new Exception("debug"));
     }
@@ -425,8 +422,7 @@ public class SplitFileFetcherStorage {
 
     if (splitfileType == SplitfileAlgorithm.NONREDUNDANT) {
       if (splitfileCheckBlocks > 0) {
-        Logger.error(
-            this,
+        LOG.error(
             "Splitfile type is SPLITFILE_NONREDUNDANT yet "
                 + splitfileCheckBlocks
                 + " check blocks found!! : "
@@ -473,9 +469,8 @@ public class SplitFileFetcherStorage {
 
     } else throw new MetadataParseException("Unknown splitfile format: " + splitfileType);
 
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Algorithm: "
               + splitfileType
               + ", blocks per segment: "
@@ -593,9 +588,8 @@ public class SplitFileFetcherStorage {
       for (int j = 0; j < (dataBlocks + crossCheckBlocks + checkBlocks); j++) {
         keyListener.addKey(keys.getKey(j, null, false).getNodeKey(false), i, salt);
       }
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Segment "
                 + i
                 + ": data blocks offset "
@@ -634,7 +628,7 @@ public class SplitFileFetcherStorage {
       int segLen = blocksPerSegment;
       int deductBlocksFromSegments = metadata.getDeductBlocksFromSegments();
       for (int i = 0; i < crossSegments.length; i++) {
-        Logger.normal(this, "Allocating blocks (on fetch) for cross segment " + i);
+        LOG.info("Allocating blocks (on fetch) for cross segment " + i);
         if (segments.length - i == deductBlocksFromSegments) {
           segLen--;
         }
@@ -713,8 +707,7 @@ public class SplitFileFetcherStorage {
       if (!storageFile.exists()) throw new IOException("Must have already created storage file");
       if (storageFile.length() > 0) throw new IOException("Storage file must be empty");
       raf = diskSpaceCheckingRAFFactory.createNewRAF(storageFile, totalLength, random);
-      Logger.normal(
-          this, "Creating splitfile storage file for complete-via-truncation: " + storageFile);
+      LOG.info("Creating splitfile storage file for complete-via-truncation: " + storageFile);
     } else {
       raf = rafFactory.makeRAF(totalLength);
     }
@@ -776,7 +769,7 @@ public class SplitFileFetcherStorage {
     } finally {
       lock.unlock();
     }
-    if (logMINOR) Logger.minor(this, "Fetching " + thisKey + " on " + this + " for " + fetcher);
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching " + thisKey + " on " + this + " for " + fetcher);
   }
 
   /**
@@ -1014,9 +1007,8 @@ public class SplitFileFetcherStorage {
                   + segments[i].segmentCrossCheckBlockDataOffset
                   + " of "
                   + rafLength);
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Segment "
                   + i
                   + ": data blocks offset "
@@ -1062,7 +1054,7 @@ public class SplitFileFetcherStorage {
           throw new FetchException(FetchExceptionMode.SPLITFILE_ERROR, errors);
         }
       } catch (ChecksumFailedException e) {
-        Logger.error(this, "Progress for segment " + segment.segNo + " on " + this + " corrupted.");
+        LOG.error("Progress for segment " + segment.segNo + " on " + this + " corrupted.");
         needsDecode = true;
       }
       if (segment.needsDecode()) needsDecode = true;
@@ -1097,12 +1089,12 @@ public class SplitFileFetcherStorage {
       errors = new FailureCodeTracker(false, dis);
       dis.close();
     } catch (ChecksumFailedException e) {
-      Logger.error(this, "Failed to read general progress: " + e);
+      LOG.error("Failed to read general progress: " + e);
       // Reset general progress
       this.hasCheckedDatastore = false;
       this.errors = new FailureCodeTracker(false);
     } catch (StorageFormatException e) {
-      Logger.error(this, "Failed to read general progress: " + e);
+      LOG.error("Failed to read general progress: " + e);
       // Reset general progress
       this.hasCheckedDatastore = false;
       this.errors = new FailureCodeTracker(false);
@@ -1173,7 +1165,7 @@ public class SplitFileFetcherStorage {
               @Override
               public boolean run(ClientContext context) {
                 System.out.println("Regenerating filters for " + SplitFileFetcherStorage.this);
-                Logger.error(this, "Regenerating filters for " + SplitFileFetcherStorage.this);
+                LOG.error("Regenerating filters for " + SplitFileFetcherStorage.this);
                 KeySalter salt = fetcher.getSalter();
                 for (int i = 0; i < segments.length; i++) {
                   SplitFileFetcherSegmentStorage segment = segments[i];
@@ -1200,8 +1192,7 @@ public class SplitFileFetcherStorage {
                   if (persistent) failOnDiskError(e);
                 }
                 fetcher.restartedAfterDataCorruption();
-                Logger.warning(
-                    this, "Finished regenerating filters for " + SplitFileFetcherStorage.this);
+                LOG.warn("Finished regenerating filters for " + SplitFileFetcherStorage.this);
                 System.out.println(
                     "Finished regenerating filters for " + SplitFileFetcherStorage.this);
                 return false;
@@ -1355,9 +1346,8 @@ public class SplitFileFetcherStorage {
    * @throws PersistenceDisabledException
    */
   public void finishedSuccess(SplitFileFetcherSegmentStorage segment) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "finishedSuccess on " + this + " from " + segment + " for " + fetcher,
           new Exception("debug"));
     if (!(completeViaTruncation || fetcher.wantBinaryBlob())) maybeComplete();
@@ -1405,7 +1395,7 @@ public class SplitFileFetcherStorage {
           }
           os.close();
         } catch (Throwable t) {
-          Logger.error(this, "Failed to write stream: " + t, t);
+          LOG.error("Failed to write stream: " + t, t);
         } finally {
           lock.unlock();
         }
@@ -1440,8 +1430,7 @@ public class SplitFileFetcherStorage {
             return false;
           } catch (IOException e) {
             if (isFinishing()) return false;
-            Logger.error(
-                this, "Failed writing metadata for " + SplitFileFetcherStorage.this + ": " + e, e);
+            LOG.error("Failed writing metadata for " + SplitFileFetcherStorage.this + ": " + e, e);
             return false;
           }
         }
@@ -1474,7 +1463,7 @@ public class SplitFileFetcherStorage {
   public void finishedFetcher() {
     synchronized (this) {
       if (finishedFetcher) {
-        if (logMINOR) Logger.minor(this, "Already finishedFetcher");
+        if (LOG.isDebugEnabled()) LOG.debug("Already finishedFetcher");
         return;
       }
       finishedFetcher = true;
@@ -1502,10 +1491,10 @@ public class SplitFileFetcherStorage {
     boolean waitingForFetcher = false;
     synchronized (this) {
       if (finishedEncoding) {
-        if (logMINOR) Logger.minor(this, "Already finishedEncoding");
+        if (LOG.isDebugEnabled()) LOG.debug("Already finishedEncoding");
         return;
       }
-      if (logMINOR) Logger.minor(this, "Finished encoding");
+      if (LOG.isDebugEnabled()) LOG.debug("Finished encoding");
       finishedEncoding = true;
       if (cancelled) {
         // Must close off-thread.
@@ -1537,8 +1526,7 @@ public class SplitFileFetcherStorage {
    * called on a MemoryLimitedJob thread.
    */
   void close() {
-    if (logMINOR)
-      Logger.minor(this, "Finishing " + this + " for " + fetcher, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finishing {} for {}", this, fetcher);
     raf.close();
     raf.free();
     fetcher.onClosed();
@@ -1550,8 +1538,8 @@ public class SplitFileFetcherStorage {
    * are in the process of failing, and can't proceed until all the encode jobs have finished.
    */
   void finishedEncoding(SplitFileFetcherSegmentStorage segment) {
-    if (logMINOR)
-      Logger.minor(this, "Successfully decoded " + segment + " for " + this + " for " + fetcher);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Successfully decoded " + segment + " for " + this + " for " + fetcher);
     if (!allFinished()) return;
     finishedEncoding();
   }
@@ -1561,8 +1549,8 @@ public class SplitFileFetcherStorage {
    * state, except if it was cancelled.
    */
   void finishedEncoding(SplitFileFetcherCrossSegmentStorage segment) {
-    if (logMINOR)
-      Logger.minor(this, "Successfully decoded " + segment + " for " + this + " for " + fetcher);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Successfully decoded " + segment + " for " + this + " for " + fetcher);
     if (!allFinished()) return;
     finishedEncoding();
   }
@@ -1589,8 +1577,8 @@ public class SplitFileFetcherStorage {
    * @param e
    */
   public void fail(final FetchException e) {
-    if (logMINOR)
-      Logger.minor(this, "Failing " + this + " with error " + e + " and codes " + errors);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Failing " + this + " with error " + e + " and codes " + errors);
     jobRunner.queueNormalOrDrop(
         context -> {
           fetcher.fail(e);
@@ -1609,7 +1597,7 @@ public class SplitFileFetcherStorage {
   }
 
   public void failOnDiskError(final IOException e) {
-    Logger.error(this, "Failing on disk error: " + e, e);
+    LOG.error("Failing on disk error: " + e, e);
     jobRunner.queueNormalOrDrop(
         context -> {
           fetcher.failOnDiskError(e);
@@ -1618,7 +1606,7 @@ public class SplitFileFetcherStorage {
   }
 
   public void failOnDiskError(final ChecksumFailedException e) {
-    Logger.error(this, "Failing on unrecoverable corrupt data: " + e, e);
+    LOG.error("Failing on unrecoverable corrupt data: " + e, e);
     jobRunner.queueNormalOrDrop(
         context -> {
           fetcher.failOnDiskError(e);
@@ -1767,9 +1755,8 @@ public class SplitFileFetcherStorage {
   }
 
   public void onFailure(SplitFileFetcherStorageKey key, FetchException fe) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Failure: " + fe.mode + " for block " + key.blockNumber + " for " + key.segmentNumber);
     synchronized (this) {
       if (cancelled || finishedFetcher) return;
@@ -1957,9 +1944,8 @@ public class SplitFileFetcherStorage {
 
   byte[] readBlock(SplitFileFetcherSegmentStorage segment, int slotNumber) throws IOException {
     long offset = segment.blockOffset(slotNumber);
-    if (logDEBUG)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Reading block "
               + slotNumber
               + " for "

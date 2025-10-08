@@ -5,7 +5,8 @@ import java.util.HashMap;
 import network.crypta.client.filter.DataFilterException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Thrown when a high-level request (fetch) fails. Indicates why, whether it is worth retrying, and
@@ -14,10 +15,9 @@ import network.crypta.support.Logger;
  * or it will be unhelpful or inaccurate.
  */
 public class FetchException extends Exception implements Cloneable {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(FetchException.class);
 
   static {
-    Logger.registerClass(FetchException.class);
   }
 
   @Serial private static final long serialVersionUID = -1106716067841151962L;
@@ -75,8 +75,8 @@ public class FetchException extends Exception implements Cloneable {
     errorCodes = null;
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(
@@ -89,8 +89,8 @@ public class FetchException extends Exception implements Cloneable {
     newURI = null;
     this.expectedSize = expectedSize;
     this.expectedMimeType = expectedMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(
@@ -107,8 +107,8 @@ public class FetchException extends Exception implements Cloneable {
     newURI = uri;
     this.expectedSize = expectedSize;
     this.expectedMimeType = expectedMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(MetadataParseException e) {
@@ -119,7 +119,7 @@ public class FetchException extends Exception implements Cloneable {
     initCause(e);
     newURI = null;
     expectedSize = -1;
-    if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(ArchiveFailureException e) {
@@ -130,7 +130,7 @@ public class FetchException extends Exception implements Cloneable {
     newURI = null;
     initCause(e);
     expectedSize = -1;
-    if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(ArchiveRestartException e) {
@@ -141,7 +141,7 @@ public class FetchException extends Exception implements Cloneable {
     initCause(e);
     newURI = null;
     expectedSize = -1;
-    if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, Throwable t) {
@@ -152,8 +152,8 @@ public class FetchException extends Exception implements Cloneable {
     initCause(t);
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, String reason, Throwable t) {
@@ -164,8 +164,8 @@ public class FetchException extends Exception implements Cloneable {
     initCause(t);
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(
@@ -182,8 +182,8 @@ public class FetchException extends Exception implements Cloneable {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(long expectedSize, DataFilterException t, String expectedMimeType) {
@@ -200,7 +200,7 @@ public class FetchException extends Exception implements Cloneable {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(
@@ -213,36 +213,36 @@ public class FetchException extends Exception implements Cloneable {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes) {
     super(getMessage(mode));
     if (errorCodes.isEmpty()) {
-      Logger.error(this, "Failing with no error codes?!", new Exception("error"));
+      LOG.error("Failing with no error codes?!");
     }
     extraMessage = null;
     this.mode = mode;
     this.errorCodes = errorCodes;
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes, String msg) {
     super(getMessage(mode) + ": " + msg);
     if (errorCodes.isEmpty()) {
-      Logger.error(this, "Failing with no error codes?!", new Exception("error"));
+      LOG.error("Failing with no error codes?!");
     }
     extraMessage = msg;
     this.mode = mode;
     this.errorCodes = errorCodes;
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, String msg) {
@@ -252,8 +252,8 @@ public class FetchException extends Exception implements Cloneable {
     this.mode = mode;
     newURI = null;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, FreenetURI newURI) {
@@ -263,8 +263,8 @@ public class FetchException extends Exception implements Cloneable {
     errorCodes = null;
     this.newURI = newURI;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchExceptionMode mode, String msg, FreenetURI uri) {
@@ -274,8 +274,8 @@ public class FetchException extends Exception implements Cloneable {
     this.mode = mode;
     newURI = uri;
     expectedSize = -1;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchException e, FetchExceptionMode newMode) {
@@ -287,8 +287,8 @@ public class FetchException extends Exception implements Cloneable {
     this.expectedSize = e.expectedSize;
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchException e, FreenetURI uri) {
@@ -301,8 +301,8 @@ public class FetchException extends Exception implements Cloneable {
     this.expectedSize = e.expectedSize;
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   public FetchException(FetchException e) {
@@ -315,8 +315,8 @@ public class FetchException extends Exception implements Cloneable {
     this.expectedSize = e.expectedSize;
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) Logger.error(this, "Internal error: " + this);
-    else if (logMINOR) Logger.minor(this, "FetchException(" + getMessage(mode) + ')', this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error("Internal error: " + this);
+    else if (LOG.isDebugEnabled()) LOG.debug("FetchException(" + getMessage(mode) + ')', this);
   }
 
   protected FetchException() {
@@ -556,8 +556,7 @@ public class FetchException extends Exception implements Cloneable {
         return true;
 
       default:
-        Logger.error(
-            FetchException.class, "Do not know if error code is fatal: " + getMessage(mode));
+        LOG.error("Do not know if error code is fatal: " + getMessage(mode));
         return false; // assume it isn't
     }
   }
@@ -627,8 +626,7 @@ public class FetchException extends Exception implements Cloneable {
         return true;
 
       default:
-        Logger.error(
-            FetchException.class, "Do not know if error code is fatal: " + getMessage(mode));
+        LOG.error("Do not know if error code is fatal: " + getMessage(mode));
         return false; // assume it isn't
     }
   }

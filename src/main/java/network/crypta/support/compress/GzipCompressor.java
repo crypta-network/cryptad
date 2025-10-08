@@ -7,13 +7,15 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.CountedOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GzipCompressor extends AbstractCompressor {
+  private static final Logger LOG = LoggerFactory.getLogger(GzipCompressor.class);
 
   @Override
   public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
@@ -94,8 +96,7 @@ public class GzipCompressor extends AbstractCompressor {
       // FIXME there is probably a better way to do this!
       int bytesRead = gis.read(buffer, 0, buffer.length);
       if (expectedBytesRead < bytesRead) {
-        Logger.normal(
-            this,
+        LOG.info(
             "expectedBytesRead="
                 + expectedBytesRead
                 + ", bytesRead="

@@ -1,21 +1,13 @@
 package network.crypta.node;
 
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ThrottleWindowManager {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(ThrottleWindowManager.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   static final float PACKET_DROP_DECREASE_MULTIPLE = 0.97f;
@@ -49,13 +41,13 @@ public class ThrottleWindowManager {
     _droppedPackets++;
     _totalPackets++;
     _simulatedWindowSize *= PACKET_DROP_DECREASE_MULTIPLE;
-    if (logMINOR) Logger.minor(this, "request rejected overload: " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("request rejected overload: " + this);
   }
 
   public synchronized void requestCompleted() {
     _totalPackets++;
     _simulatedWindowSize += (PACKET_TRANSMIT_INCREMENT / _simulatedWindowSize);
-    if (logMINOR) Logger.minor(this, "requestCompleted on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("requestCompleted on " + this);
   }
 
   @Override

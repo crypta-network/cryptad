@@ -2,22 +2,13 @@ package network.crypta.node;
 
 import java.io.Serial;
 import network.crypta.support.LightweightException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class LowLevelGetException extends LightweightException {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(LowLevelGetException.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   @Serial private static final long serialVersionUID = 1L;
@@ -103,6 +94,9 @@ public class LowLevelGetException extends LightweightException {
 
   @Override
   protected boolean shouldFillInStackTrace() {
-    return logDEBUG || code == INTERNAL_ERROR || code == DECODE_FAILED || code == VERIFY_FAILED;
+    return LOG.isDebugEnabled()
+        || code == INTERNAL_ERROR
+        || code == DECODE_FAILED
+        || code == VERIFY_FAILED;
   }
 }

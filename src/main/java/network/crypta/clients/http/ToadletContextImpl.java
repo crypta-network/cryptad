@@ -34,9 +34,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.URIPreEncoder;
@@ -48,6 +45,8 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
 import network.crypta.support.io.NoFreeBucket;
 import network.crypta.support.io.TooLongException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ToadletContext implementation, including all the icky HTTP parsing etc. An actual ToadletContext
@@ -57,6 +56,7 @@ import network.crypta.support.io.TooLongException;
  * @author root
  */
 public class ToadletContextImpl implements ToadletContext {
+  private static final Logger LOG = LoggerFactory.getLogger(ToadletContextImpl.class);
 
   private static final Class<?>[] HANDLE_PARAMETERS =
       new Class<?>[] {URI.class, HTTPRequest.class, ToadletContext.class};
@@ -87,19 +87,7 @@ public class ToadletContextImpl implements ToadletContext {
 
   private final URI uri;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled()/isTraceEnabled().
 
   /**
    * Is the context closed? If so, don't allow any more writes. This is because there may be later
@@ -127,7 +115,7 @@ public class ToadletContextImpl implements ToadletContext {
     this.uri = uri;
     sockOutputStream = sock.getOutputStream();
     remoteAddr = sock.getInetAddress();
-    if (logDEBUG) Logger.debug(this, "Connection from " + remoteAddr);
+    if (LOG.isTraceEnabled()) LOG.trace("Connection from {}", remoteAddr);
     this.bf = bf;
     this.pagemaker = pageMaker;
     this.container = container;
@@ -336,7 +324,7 @@ public class ToadletContextImpl implements ToadletContext {
       for (Cookie cookie : replyCookies) {
         final String cookieHeader = cookie.encodeToHeaderValue();
         mvt.put("set-cookie", cookieHeader);
-        if (logMINOR) Logger.minor(this, "set-cookie: " + cookieHeader);
+        if (LOG.isDebugEnabled()) LOG.debug("set-cookie: {}", cookieHeader);
       }
     }
 
@@ -409,7 +397,7 @@ public class ToadletContextImpl implements ToadletContext {
     byte[] inputBytes = pass.getBytes(StandardCharsets.UTF_8);
     byte[] compareBytes = getFormPassword().getBytes(StandardCharsets.UTF_8);
     if (!MessageDigest.isEqual(inputBytes, compareBytes)) {
-      if (logMINOR) Logger.minor(this, "Bad formPassword: " + pass);
+      if (LOG.isDebugEnabled()) LOG.debug("Bad formPassword: {}", pass);
       return false;
     } else return true;
   }
@@ -477,7 +465,7 @@ public class ToadletContextImpl implements ToadletContext {
 
         if (cookie.getName().equals(name)) return cookie;
       } catch (RuntimeException e) {
-        Logger.error(this, "Error in cookie", e);
+        LOG.error("Error in cookie", e);
       }
     }
 
@@ -638,7 +626,7 @@ public class ToadletContextImpl implements ToadletContext {
           continue;
         }
 
-        if (logMINOR) Logger.minor(ToadletContextImpl.class, "first line: " + firstLine);
+        if (LOG.isDebugEnabled()) LOG.debug("first line: {}", firstLine);
 
         String[] split = firstLine.split(" ");
 
@@ -652,23 +640,16 @@ public class ToadletContextImpl implements ToadletContext {
         URI uri;
         try {
           uri = URIPreEncoder.encodeURI(split[1]).normalize();
-          if (logMINOR)
-            Logger.minor(
-                ToadletContextImpl.class,
-                "URI: "
-                    + uri
-                    + " path "
-                    + uri.getPath()
-                    + " host "
-                    + uri.getHost()
-                    + " frag "
-                    + uri.getFragment()
-                    + " port "
-                    + uri.getPort()
-                    + " query "
-                    + uri.getQuery()
-                    + " scheme "
-                    + uri.getScheme());
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "URI: {} path {} host {} frag {} port {} query {} scheme {}",
+                uri,
+                uri.getPath(),
+                uri.getHost(),
+                uri.getFragment(),
+                uri.getPort(),
+                uri.getQuery(),
+                uri.getScheme());
         } catch (URISyntaxException e) {
           sendURIParseError(sock.getOutputStream(), true, e);
           return;
@@ -868,10 +849,9 @@ public class ToadletContextImpl implements ToadletContext {
     } catch (IOException e) {
       // ignore and return
     } catch (ToadletContextClosedException e) {
-      Logger.error(
-          ToadletContextImpl.class, "ToadletContextClosedException while handling connection!");
+      LOG.error("ToadletContextClosedException while handling connection!");
     } catch (Throwable t) {
-      Logger.error(ToadletContextImpl.class, "Caught error: " + t + " handling socket", t);
+      LOG.error("Caught error: {} handling socket", t.toString(), t);
       try {
         String msg =
             "<html><head><title>"

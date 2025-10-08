@@ -22,13 +22,13 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BookmarkManager implements RequestClient {
+  private static final Logger LOG = LoggerFactory.getLogger(BookmarkManager.class);
 
   public static final SimpleFieldSet DEFAULT_BOOKMARKS;
   private final NodeClientCore node;
@@ -51,26 +51,14 @@ public class BookmarkManager implements RequestClient {
         if (in != null) defaultBookmarks = SimpleFieldSet.readFrom(in, false, false);
       }
     } catch (Exception e) {
-      Logger.error(
-          BookmarkManager.class,
-          "Error while loading the default bookmark file from " + name + " :" + e.getMessage(),
-          e);
+      LOG.error(
+          "Error while loading the default bookmark file from " + name + " :" + e.getMessage(), e);
     } finally {
       DEFAULT_BOOKMARKS = defaultBookmarks;
     }
   }
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public BookmarkManager(NodeClientCore n, boolean publicGateway) {
     putPaths("/", MAIN_CATEGORY);
@@ -81,32 +69,29 @@ public class BookmarkManager implements RequestClient {
     try {
       // Read the backup file if necessary
       if (!bookmarksFile.exists() || bookmarksFile.length() == 0) throw new IOException();
-      Logger.normal(this, "Attempting to read the bookmark file from " + bookmarksFile);
+      LOG.info("Attempting to read the bookmark file from " + bookmarksFile);
       SimpleFieldSet sfs = SimpleFieldSet.readFrom(bookmarksFile, false, true);
       readBookmarks(MAIN_CATEGORY, sfs);
     } catch (MalformedURLException mue) {
     } catch (IOException ioe) {
-      Logger.error(
-          this, "Error reading the bookmark file (" + bookmarksFile + "):" + ioe.getMessage(), ioe);
+      LOG.error("Error reading the bookmark file (" + bookmarksFile + "):" + ioe.getMessage(), ioe);
 
       try {
         if (backupBookmarksFile.exists()
             && backupBookmarksFile.canRead()
             && backupBookmarksFile.length() > 0) {
-          Logger.normal(
-              this, "Attempting to read the backup bookmark file from " + backupBookmarksFile);
+          LOG.info("Attempting to read the backup bookmark file from " + backupBookmarksFile);
           SimpleFieldSet sfs = SimpleFieldSet.readFrom(backupBookmarksFile, false, true);
           readBookmarks(MAIN_CATEGORY, sfs);
         } else {
-          Logger.normal(
-              this,
+          LOG.info(
               "We couldn't find the backup either! - "
                   + FileUtil.getCanonicalFile(backupBookmarksFile));
           // restore the default bookmark set
           readBookmarks(MAIN_CATEGORY, DEFAULT_BOOKMARKS);
         }
       } catch (IOException e) {
-        Logger.error(this, "Error reading the backup bookmark file !" + e.getMessage(), e);
+        LOG.error("Error reading the backup bookmark file !" + e.getMessage(), e);
       }
     }
     // populate defaults for hosts without full access permissions if we're in gateway mode.
@@ -168,8 +153,8 @@ public class BookmarkManager implements RequestClient {
           USK usk = USK.create(furi);
 
           if (usk.equals(key, false)) {
-            if (logMINOR)
-              Logger.minor(this, "Updating bookmark for " + furi + " to edition " + edition);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Updating bookmark for " + furi + " to edition " + edition);
             matched = true;
             BookmarkItem item = items.get(i);
             updated |= item.setEdition(edition, node);
@@ -181,7 +166,7 @@ public class BookmarkManager implements RequestClient {
       if (updated) {
         storeBookmarksLazy();
       } else if (!matched) {
-        Logger.error(this, "No match for bookmark " + key + " edition " + edition);
+        LOG.error("No match for bookmark " + key + " edition " + edition);
       }
     }
 
@@ -227,7 +212,7 @@ public class BookmarkManager implements RequestClient {
   }
 
   public void addBookmark(String parentPath, Bookmark bookmark) {
-    if (logMINOR) Logger.minor(this, "Adding bookmark " + bookmark + " to " + parentPath);
+    if (LOG.isDebugEnabled()) LOG.debug("Adding bookmark " + bookmark + " to " + parentPath);
     BookmarkCategory parent = getCategoryByPath(parentPath);
     parent.addBookmark(bookmark);
     putPaths(
@@ -374,7 +359,7 @@ public class BookmarkManager implements RequestClient {
   }
 
   public void storeBookmarks() {
-    Logger.normal(this, "Attempting to save bookmarks to " + bookmarksFile.toString());
+    LOG.info("Attempting to save bookmarks to " + bookmarksFile.toString());
     SimpleFieldSet sfs = null;
     synchronized (bookmarks) {
       if (isSavingBookmarks) return;
@@ -387,9 +372,9 @@ public class BookmarkManager implements RequestClient {
         sfs.writeToBigBuffer(fos);
       }
       if (!FileUtil.moveTo(backupBookmarksFile, bookmarksFile))
-        Logger.error(this, "Unable to rename " + backupBookmarksFile + " to " + bookmarksFile);
+        LOG.error("Unable to rename " + backupBookmarksFile + " to " + bookmarksFile);
     } catch (IOException ioe) {
-      Logger.error(this, "An error has occured saving the bookmark file :" + ioe.getMessage(), ioe);
+      LOG.error("An error has occured saving the bookmark file :" + ioe.getMessage(), ioe);
     } finally {
       synchronized (bookmarks) {
         isSavingBookmarks = false;
@@ -450,7 +435,7 @@ public class BookmarkManager implements RequestClient {
           }
 
         } catch (FSParseException e) {
-          Logger.error(this, "Error parsing the bookmarks file!", e);
+          LOG.error("Error parsing the bookmarks file!", e);
           hasBeenParsedWithoutAnyProblem = false;
         }
       }

@@ -6,23 +6,11 @@ import network.crypta.node.FNPPacketMangler;
 import network.crypta.node.Node;
 import network.crypta.node.NodeCrypto;
 import network.crypta.node.PeerNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class IncomingPacketFilterImpl implements IncomingPacketFilter {
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, IncomingPacketFilterImpl.class);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(IncomingPacketFilterImpl.class);
 
   private final FNPPacketMangler mangler;
   private final NodeCrypto crypto;
@@ -46,7 +34,7 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
   private static final AtomicLong failedDecodePackets = new AtomicLong();
 
   public static long[] getDecodedPackets() {
-    if (!logMINOR) return null;
+    if (!LOG.isDebugEnabled()) return null;
     long decoded = successfullyDecodedPackets.get();
     long failed = failedDecodePackets.get();
     return new long[] {decoded, decoded + failed};
@@ -54,32 +42,32 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
 
   @Override
   public DECODED process(byte[] buf, int offset, int length, Peer peer, long now) {
-    if (logMINOR) Logger.minor(this, "Packet length " + length + " from " + peer);
+    if (LOG.isDebugEnabled()) LOG.debug("Packet length " + length + " from " + peer);
     node.getRandom().acceptTimerEntropy(fnpTimingSource, 0.25);
     PeerNode opn = node.getPeers().getByPeer(peer, mangler);
 
     if (opn != null) {
       if (opn.handleReceivedPacket(buf, offset, length, now, peer)) {
-        if (logMINOR) successfullyDecodedPackets.incrementAndGet();
+        if (LOG.isDebugEnabled()) successfullyDecodedPackets.incrementAndGet();
         return DECODED.DECODED;
       }
     } else {
-      Logger.normal(this, "Got packet from unknown address");
+      LOG.info("Got packet from unknown address");
     }
     DECODED decoded = mangler.process(buf, offset, length, peer, opn, now);
     if (decoded == DECODED.DECODED) {
-      if (logMINOR) successfullyDecodedPackets.incrementAndGet();
+      if (LOG.isDebugEnabled()) successfullyDecodedPackets.incrementAndGet();
     } else if (decoded == DECODED.NOT_DECODED) {
 
       for (PeerNode pn : crypto.getPeerNodes()) {
         if (pn == opn) continue;
         if (pn.handleReceivedPacket(buf, offset, length, now, peer)) {
-          if (logMINOR) successfullyDecodedPackets.incrementAndGet();
+          if (LOG.isDebugEnabled()) successfullyDecodedPackets.incrementAndGet();
           return DECODED.DECODED;
         }
       }
 
-      if (logMINOR) failedDecodePackets.incrementAndGet();
+      if (LOG.isDebugEnabled()) failedDecodePackets.incrementAndGet();
     }
     return decoded;
   }

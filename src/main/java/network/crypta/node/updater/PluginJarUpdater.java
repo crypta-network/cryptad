@@ -14,11 +14,13 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PluginJarUpdater extends NodeUpdater {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginJarUpdater.class);
 
   final String pluginName;
   final PluginManager pluginManager;
@@ -47,7 +49,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     // Deploy it!
     if (!pluginManager.isPluginLoaded(pluginName)) {
-      Logger.error(this, "Plugin is not loaded, so not deploying: " + pluginName);
+      LOG.error("Plugin is not loaded, so not deploying: " + pluginName);
       tempBlobFile.delete();
       return false;
     }
@@ -57,7 +59,7 @@ public class PluginJarUpdater extends NodeUpdater {
     try {
       writeJar();
     } catch (IOException e) {
-      Logger.error(this, "Cannot deploy: " + e, e);
+      LOG.error("Cannot deploy: " + e, e);
       System.err.println("Cannot deploy new version of " + pluginName + " : " + e);
       e.printStackTrace();
       return false; // Not much we can do ...
@@ -105,8 +107,7 @@ public class PluginJarUpdater extends NodeUpdater {
     if (requiredNodeVersion != -1) {
       System.err.println(
           "Required node version for plugin " + pluginName + ": " + requiredNodeVersion);
-      Logger.normal(
-          this, "Required node version for plugin " + pluginName + ": " + requiredNodeVersion);
+      LOG.info("Required node version for plugin " + pluginName + ": " + requiredNodeVersion);
     }
   }
 
@@ -148,7 +149,7 @@ public class PluginJarUpdater extends NodeUpdater {
     if (loaded == null) {
       if (!node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
         System.err.println("Don't want plugin: " + pluginName);
-        Logger.error(this, "Don't want plugin: " + pluginName);
+        LOG.error("Don't want plugin: " + pluginName);
         tempBlobFile.delete();
         return;
       }

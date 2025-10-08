@@ -18,15 +18,14 @@ import network.crypta.node.SendableGet;
 import network.crypta.support.BinaryBloomFilter;
 import network.crypta.support.BloomFilter;
 import network.crypta.support.CountingBloomFilter;
-import network.crypta.support.Logger;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SplitFileFetcherKeyListener implements KeyListener {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherKeyListener.class);
 
   static {
-    Logger.registerClass(SplitFileFetcherKeyListener.class);
   }
 
   final SplitFileFetcherStorage storage;
@@ -190,8 +189,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
       storage.preadChecksummed(
           storage.offsetSegmentBloomFilters, segmentsFilterBuffer, 0, segmentsFilterBuffer.length);
     } catch (ChecksumFailedException e) {
-      Logger.error(
-          this,
+      LOG.error(
           "Checksummed read for segment filters at "
               + storage.offsetSegmentBloomFilters
               + " failed for "
@@ -220,8 +218,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
         storage.preadChecksummed(
             storage.offsetMainBloomFilter, filterBuffer, 0, mainBloomFilterSizeBytes);
       } catch (ChecksumFailedException e) {
-        Logger.error(
-            this,
+        LOG.error(
             "Checksummed read for main filters at "
                 + storage.offsetMainBloomFilter
                 + " failed for "
@@ -254,7 +251,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
       segmentFilters[segNo].addKey(localSalted);
     }
     //      if(!segmentFilters[segNo].checkFilter(localSalted))
-    //          Logger.error(this, "Key added but not in filter: "+key+" on "+this);
+    //          LOG.error("Key added but not in filter: "+key+" on "+this);
   }
 
   synchronized void finishedSetup() {
@@ -340,9 +337,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
     // Caller has already called probablyWantKey(), so don't do it again.
     boolean found = false;
     byte[] salted = localSaltKey(key);
-    if (logMINOR)
-      Logger.minor(
-          this, "handleBlock(" + key + ") on " + this + " for " + fetcher, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("handleBlock({}) on {} for {}", key, this, fetcher);
     for (int i = 0; i < segmentFilters.length; i++) {
       boolean match;
       synchronized (this) {

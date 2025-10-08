@@ -13,11 +13,12 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.NoFreeBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * API similar to Servlets. Originally the reason for not using servlets was to support
@@ -31,6 +32,7 @@ import network.crypta.support.io.NoFreeBucket;
  * ToadletContext ctx ) Typically this throws IOException and ToadletContextClosedException.
  */
 public abstract class Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(Toadlet.class);
 
   public static final String HANDLE_METHOD_PREFIX = "handleMethod";
   final HighLevelSimpleClient client;
@@ -548,7 +550,7 @@ public abstract class Toadlet {
 
   protected void writeInternalError(Throwable t, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    Logger.error(this, "Caught " + t, t);
+    LOG.error("Caught {}", t.toString(), t);
     String msg =
         "<html><head><title>"
             + NodeL10n.getBase().getString("Toadlet.internalErrorTitle")

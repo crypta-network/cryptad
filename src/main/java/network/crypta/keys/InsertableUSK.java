@@ -6,7 +6,8 @@ import network.crypta.crypt.DSAGroup;
 import network.crypta.crypt.DSAPrivateKey;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.Global;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An insertable USK.
@@ -16,6 +17,7 @@ import network.crypta.support.Logger;
  * USK
  */
 public class InsertableUSK extends USK {
+  private static final Logger LOG = LoggerFactory.getLogger(InsertableUSK.class);
 
   @Serial private static final long serialVersionUID = 1L;
   public final DSAPrivateKey privKey;
@@ -69,7 +71,7 @@ public class InsertableUSK extends USK {
           cryptoKey,
           cryptoAlgorithm);
     } catch (MalformedURLException e) {
-      Logger.error(this, "Caught " + e + " should not be possible in USK.getSSK", e);
+      LOG.error("Caught " + e + " should not be possible in USK.getSSK", e);
       throw new Error(e);
     }
   }

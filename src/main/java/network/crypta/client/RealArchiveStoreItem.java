@@ -1,28 +1,19 @@
 package network.crypta.client;
 
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.MultiReaderBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class RealArchiveStoreItem extends ArchiveStoreItem {
+  private static final Logger LOG = LoggerFactory.getLogger(RealArchiveStoreItem.class);
 
   private final MultiReaderBucket mb;
   private final Bucket bucket;
   private final long spaceUsed;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -61,12 +52,12 @@ class RealArchiveStoreItem extends ArchiveStoreItem {
 
   @Override
   void innerClose() {
-    if (logMINOR) Logger.minor(this, "innerClose(): " + this + " : " + bucket);
+    if (LOG.isDebugEnabled()) LOG.debug("innerClose(): " + this + " : " + bucket);
     if (bucket == null) {
       // This still happens. It is clearly impossible as we check in the constructor and throw if it
       // is null.
       // Nonetheless there is little we can do here ...
-      Logger.error(this, "IMPOSSIBLE: BUCKET IS NULL!", new Exception("error"));
+      LOG.error("IMPOSSIBLE: BUCKET IS NULL!");
       return;
     }
     bucket.free();

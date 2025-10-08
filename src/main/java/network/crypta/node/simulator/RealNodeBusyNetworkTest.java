@@ -14,9 +14,11 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.*;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Test a busy, bandwidth limited network. Hopefully this should reveal any serious problems with
@@ -25,6 +27,7 @@ import network.crypta.support.io.FileUtil;
  * @author toad
  */
 public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeBusyNetworkTest.class);
 
   static final int NUMBER_OF_NODES = 25;
   static final int DEGREE = 5;
@@ -62,13 +65,13 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(new File(name), false, LogLevel.ERROR, "", true, null);
+    NodeStarter.globalTestInit(new File(name), false, Level.ERROR, "", true, null);
     System.out.println("Busy network test (inserts/retrieves in quantity/stress test)");
     System.out.println();
     DummyRandomSource random = new DummyRandomSource();
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
@@ -92,14 +95,14 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       params.enableFOAF = ENABLE_FOAF;
       params.longPingTimes = true;
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
 
     // Now link them up
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
 
-    Logger.normal(RealNodeRoutingTest.class, "Added random links");
+    LOG.info("Added random links");
 
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       nodes[i].start(false);
@@ -143,23 +146,19 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       byte[] encHeaders = block.getHeaders();
       ClientCHKBlock newBlock = new ClientCHKBlock(encData, encHeaders, chk, true);
       keys[i] = chk;
-      Logger.minor(
-          RealNodeRequestInsertTest.class,
-          "Decoded: " + new String(newBlock.memoryDecode(), StandardCharsets.UTF_8));
-      Logger.normal(RealNodeRequestInsertTest.class, "CHK: " + chk.getURI());
-      Logger.minor(
-          RealNodeRequestInsertTest.class, "Headers: " + HexUtil.bytesToHex(block.getHeaders()));
+      LOG.debug("Decoded: " + new String(newBlock.memoryDecode(), StandardCharsets.UTF_8));
+      LOG.info("CHK: " + chk.getURI());
+      LOG.debug("Headers: " + HexUtil.bytesToHex(block.getHeaders()));
       // Insert it.
       try {
         randomNode
             .getClientCore()
             .realPut(block, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
-        Logger.error(RealNodeRequestInsertTest.class, "Inserted to " + node1);
-        Logger.minor(
-            RealNodeRequestInsertTest.class,
+        LOG.error("Inserted to " + node1);
+        LOG.debug(
             "Data: " + Fields.hashCode(encData) + ", Headers: " + Fields.hashCode(encHeaders));
       } catch (LowLevelPutException putEx) {
-        Logger.error(RealNodeRequestInsertTest.class, "Insert failed: " + putEx);
+        LOG.error("Insert failed: " + putEx);
         System.err.println("Insert failed: " + putEx);
         System.exit(EXIT_INSERT_FAILED);
       }

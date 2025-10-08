@@ -9,13 +9,13 @@ import network.crypta.store.PubkeyStore;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.HexUtil;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NodeGetPubkey implements GetPubkey {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(NodeGetPubkey.class);
 
   static {
-    Logger.registerClass(NodeGetPubkey.class);
   }
 
   // Debugging stuff
@@ -50,15 +50,15 @@ public class NodeGetPubkey implements GetPubkey {
     boolean ignoreOldBlocks = !node.getWriteLocalToDatastore();
     if (canReadClientCache) ignoreOldBlocks = false;
     ByteArrayWrapper w = new ByteArrayWrapper(hash);
-    if (logMINOR) Logger.minor(this, "Getting pubkey: " + HexUtil.bytesToHex(hash));
+    if (LOG.isDebugEnabled()) LOG.debug("Getting pubkey: " + HexUtil.bytesToHex(hash));
 
     if (USE_RAM_PUBKEYS_CACHE) {
       synchronized (cachedPubKeys) {
         DSAPublicKey key = cachedPubKeys.get(w);
         if (key != null) {
           cachedPubKeys.push(w, key);
-          if (logMINOR)
-            Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from in-memory cache");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from in-memory cache");
           return key;
         }
       }
@@ -70,36 +70,36 @@ public class NodeGetPubkey implements GetPubkey {
       if (node.getOldPKClientCache() != null && canReadClientCache && key == null) {
         PubkeyStore pks = node.getOldPKClientCache();
         if (pks != null) key = pks.fetch(hash, false, false, meta);
-        if (key != null && logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from old client cache");
+        if (key != null && LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from old client cache");
       }
       // We can *read* from the datastore even if nearby, but we cannot promote in that case.
       if (key == null) {
         key = pubKeyDatastore.fetch(hash, false, ignoreOldBlocks, meta);
-        if (key != null && logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from store");
+        if (key != null && LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from store");
       }
       if (key == null) {
         PubkeyStore pks = node.getOldPK();
         if (pks != null) key = pks.fetch(hash, false, ignoreOldBlocks, meta);
-        if (key != null && logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from old store");
+        if (key != null && LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from old store");
       }
       if (key == null) {
         key = pubKeyDatacache.fetch(hash, false, ignoreOldBlocks, meta);
-        if (key != null && logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from cache");
+        if (key != null && LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from cache");
       }
       if (key == null) {
         PubkeyStore pks = node.getOldPKCache();
         if (pks != null) key = pks.fetch(hash, false, ignoreOldBlocks, meta);
-        if (key != null && logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from old cache");
+        if (key != null && LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from old cache");
       }
       if (key == null && pubKeySlashdotcache != null && forULPR) {
         key = pubKeySlashdotcache.fetch(hash, false, ignoreOldBlocks, meta);
-        if (logMINOR)
-          Logger.minor(this, "Got " + HexUtil.bytesToHex(hash) + " from slashdot cache");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Got " + HexUtil.bytesToHex(hash) + " from slashdot cache");
       }
       if (key != null) {
         // Just put into the in-memory cache
@@ -108,7 +108,7 @@ public class NodeGetPubkey implements GetPubkey {
       return key;
     } catch (IOException e) {
       // FIXME deal with disk full, access perms etc; tell user about it.
-      Logger.error(this, "Error accessing pubkey store: " + e, e);
+      LOG.error("Error accessing pubkey store: " + e, e);
       return null;
     }
   }
@@ -125,7 +125,7 @@ public class NodeGetPubkey implements GetPubkey {
       boolean canWriteDatastore,
       boolean forULPR,
       boolean writeLocalToDatastore) {
-    if (logMINOR) Logger.minor(this, "Cache key: " + HexUtil.bytesToHex(hash) + " : " + key);
+    if (LOG.isDebugEnabled()) LOG.debug("Cache key: " + HexUtil.bytesToHex(hash) + " : " + key);
     ByteArrayWrapper w = new ByteArrayWrapper(hash);
     synchronized (cachedPubKeys) {
       DSAPublicKey key2 = cachedPubKeys.get(w);
@@ -154,7 +154,7 @@ public class NodeGetPubkey implements GetPubkey {
       pubKeyDatacache.put(hash, key, !canWriteDatastore);
     } catch (IOException e) {
       // FIXME deal with disk full, access perms etc; tell user about it.
-      Logger.error(this, "Error accessing pubkey store: " + e, e);
+      LOG.error("Error accessing pubkey store: " + e, e);
     }
   }
 

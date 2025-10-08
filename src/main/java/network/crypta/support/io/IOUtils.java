@@ -2,7 +2,8 @@ package network.crypta.support.io;
 
 import java.io.IOException;
 import java.util.zip.ZipFile;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Utility methods for I/O operations, particularly for closing resources quietly. These methods
@@ -12,6 +13,7 @@ import network.crypta.support.Logger;
  * new code, prefer try-with-resources where possible.
  */
 public class IOUtils {
+  private static final Logger LOG = LoggerFactory.getLogger(IOUtils.class);
 
   /**
    * Closes the given AutoCloseable resource quietly, logging any exceptions. Null-safe: does
@@ -24,7 +26,7 @@ public class IOUtils {
       try {
         resource.close();
       } catch (Exception e) {
-        Logger.error(IOUtils.class, "Error during close() on " + resource, e);
+        LOG.error("Error during close() on " + resource, e);
       }
     }
   }
@@ -40,7 +42,7 @@ public class IOUtils {
       try {
         zipFile.close();
       } catch (IOException e) {
-        Logger.error(IOUtils.class, "Error during close() on ZipFile", e);
+        LOG.error("Error during close() on ZipFile", e);
       }
     }
   }

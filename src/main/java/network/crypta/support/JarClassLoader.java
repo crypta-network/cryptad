@@ -18,6 +18,8 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Class loader that loads classes from a JAR file. The JAR file gets copied to a temporary
@@ -28,10 +30,9 @@ import network.crypta.support.io.FileUtil;
  * @version $Id$
  */
 public class JarClassLoader extends ClassLoader implements Closeable {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(JarClassLoader.class);
 
   static {
-    Logger.registerClass(JarClassLoader.class);
   }
 
   /** The temporary jar file. */
@@ -187,10 +188,10 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    */
   @Override
   public InputStream getResourceAsStream(String name) {
-    if (logMINOR) Logger.minor(this, "Requested resource: " + name, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Requested resource: {}", name);
     URL url = getResource(name);
     if (url == null) return null;
-    if (logMINOR) Logger.minor(this, "Found resource at URL: " + url);
+    if (LOG.isDebugEnabled()) LOG.debug("Found resource at URL: " + url);
 
     // If the resource is not from our jar, return it as normal
     URL localUrl = findResource(name);

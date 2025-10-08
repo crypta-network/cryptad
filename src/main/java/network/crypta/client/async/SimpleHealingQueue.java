@@ -11,13 +11,13 @@ import network.crypta.keys.CHKBlock;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SimpleHealingQueue extends BaseClientPutter
     implements HealingQueue, PutCompletionCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleHealingQueue.class);
   @Serial private static final long serialVersionUID = -2884613086588264043L;
 
   final int maxRunning;
@@ -26,16 +26,7 @@ public class SimpleHealingQueue extends BaseClientPutter
   private final HealingDecisionSupplier healingDecisionSupplier;
   final Map<Bucket, SingleBlockInserter> runningInserters;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   static final RequestClient REQUEST_CLIENT = new RequestClientBuilder().build();
@@ -82,7 +73,7 @@ public class SimpleHealingQueue extends BaseClientPutter
                 cryptoAlgorithm,
                 cryptoKey);
       } catch (Throwable e) {
-        Logger.error(this, "Caught trying to insert healing block: " + e, e);
+        LOG.error("Caught trying to insert healing block: " + e, e);
         return false;
       }
       if (isHealingThisBlockSimilarToForwarding(context, sbi)) {
@@ -91,10 +82,10 @@ public class SimpleHealingQueue extends BaseClientPutter
     }
     try {
       sbi.schedule(context);
-      if (logMINOR) Logger.minor(this, "Started healing insert " + ctr + " for " + data);
+      if (LOG.isDebugEnabled()) LOG.debug("Started healing insert " + ctr + " for " + data);
       return true;
     } catch (Throwable e) {
-      Logger.error(this, "Caught trying to insert healing block: " + e, e);
+      LOG.error("Caught trying to insert healing block: " + e, e);
       return false;
     }
   }
@@ -134,9 +125,8 @@ public class SimpleHealingQueue extends BaseClientPutter
     synchronized (this) {
       runningInserters.remove(data);
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Successfully inserted healing block: "
               + sbi.getURINoEncode()
               + " for "
@@ -154,9 +144,8 @@ public class SimpleHealingQueue extends BaseClientPutter
     synchronized (this) {
       runningInserters.remove(data);
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Failed to insert healing block: "
               + sbi.getURINoEncode()
               + " : "
@@ -179,8 +168,7 @@ public class SimpleHealingQueue extends BaseClientPutter
   public void onTransition(
       ClientPutState oldState, ClientPutState newState, ClientContext context) {
     // Should never happen
-    Logger.error(
-        this,
+    LOG.error(
         "impossible: onTransition on SimpleHealingQueue from " + oldState + " to " + newState,
         new Exception("debug"));
   }
@@ -188,10 +176,8 @@ public class SimpleHealingQueue extends BaseClientPutter
   @Override
   public void onMetadata(Metadata m, ClientPutState state, ClientContext context) {
     // Should never happen
-    Logger.error(
-        this,
-        "Got metadata on SimpleHealingQueue from " + state + ": " + m,
-        new Exception("debug"));
+    LOG.error(
+        "Got metadata on SimpleHealingQueue from " + state + ": " + m, new Exception("debug"));
   }
 
   @Override
@@ -227,7 +213,7 @@ public class SimpleHealingQueue extends BaseClientPutter
 
   @Override
   public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
-    Logger.error(this, "onMetadata() in SimpleHealingQueue - impossible", new Exception("error"));
+    LOG.error("onMetadata() in SimpleHealingQueue - impossible");
     meta.free();
   }
 

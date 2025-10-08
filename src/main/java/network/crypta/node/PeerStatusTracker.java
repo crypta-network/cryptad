@@ -2,16 +2,15 @@ package network.crypta.node;
 
 import java.util.HashMap;
 import java.util.List;
-import network.crypta.support.Logger;
 import network.crypta.support.WeakHashSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Track a collection of PeerNode's for each status. */
 class PeerStatusTracker<K extends Object> {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PeerStatusTracker.class);
 
   static {
-    Logger.registerClass(PeerManager.class);
   }
 
   /**
@@ -28,8 +27,7 @@ class PeerStatusTracker<K extends Object> {
     if (statusSet != null) {
       if (statusSet.contains(peerNode)) {
         if (!noLog)
-          Logger.error(
-              this,
+          LOG.error(
               "addPeerNodeStatus(): node already in peerNodeStatuses: "
                   + peerNode
                   + " status "
@@ -39,9 +37,8 @@ class PeerStatusTracker<K extends Object> {
       }
       statuses.remove(peerNodeStatus);
     } else statusSet = new WeakHashSet<>();
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "addPeerNodeStatus(): adding PeerNode for '"
               + peerNode.getIdentityString()
               + "' with status '"
@@ -62,8 +59,7 @@ class PeerStatusTracker<K extends Object> {
     if (statusSet != null) {
       if (!statusSet.remove(peerNode)) {
         if (!noLog)
-          Logger.error(
-              this,
+          LOG.error(
               "removePeerNodeStatus(): identity '"
                   + peerNode.getIdentityString()
                   + " for "
@@ -76,9 +72,8 @@ class PeerStatusTracker<K extends Object> {
       }
       if (statusSet.isEmpty()) statuses.remove(peerNodeStatus);
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "removePeerNodeStatus(): removing PeerNode for '"
               + peerNode.getIdentityString()
               + "' with status '"
@@ -88,9 +83,8 @@ class PeerStatusTracker<K extends Object> {
 
   public synchronized void changePeerNodeStatus(
       PeerNode peerNode, K oldPeerNodeStatus, K peerNodeStatus, boolean noLog) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Peer status change: " + oldPeerNodeStatus + " -> " + peerNodeStatus + " on " + peerNode);
     removeStatus(oldPeerNodeStatus, peerNode, noLog);
     addStatus(peerNodeStatus, peerNode, noLog);

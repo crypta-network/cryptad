@@ -8,6 +8,8 @@ import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginTalker;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class parses the network format for a FCP message which is send from a FCP client to a FCP
@@ -43,6 +45,7 @@ import network.crypta.support.SimpleFieldSet;
  *     <p>EndMessage or DataLength=datasize Data <datasize> bytes of data
  */
 public class FCPPluginClientMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginClientMessage.class);
 
   /**
    * On-network format name of the message.

@@ -3,6 +3,8 @@ package network.crypta.clients.fcp;
 import network.crypta.clients.fcp.FCPConnectionHandler.DDACheckJob;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * client -> node: DDARequest { WantRead=true, WantWrite=true, Dir=/tmp/blah } node -> client:
@@ -13,6 +15,8 @@ import network.crypta.support.SimpleFieldSet;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class TestDDAReplyMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDDAReplyMessage.class);
+
   public static final String name = "TestDDAReply";
   public static final String READ_FILENAME = "ReadFilename";
   public static final String WRITE_FILENAME = "WriteFilename";

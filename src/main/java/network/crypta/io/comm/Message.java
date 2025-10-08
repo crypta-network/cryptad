@@ -11,11 +11,10 @@ import java.util.LinkedList;
 import java.util.List;
 import network.crypta.support.ByteBufferInputStream;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Serializer;
 import network.crypta.support.ShortBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Message which can be read from and written to a DatagramPacket.
@@ -31,21 +30,12 @@ import network.crypta.support.ShortBuffer;
  * @author ian
  */
 public class Message {
+  private static final Logger LOG = LoggerFactory.getLogger(Message.class);
 
   public static final String VERSION =
       "$Id: Message.java,v 1.11 2005/09/15 18:16:04 amphibian Exp $";
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private final MessageType _spec;
@@ -79,15 +69,15 @@ public class Message {
     try {
       mspec = MessageType.getSpec(bb.readInt(), veryLax);
     } catch (IOException e1) {
-      if (logMINOR) Logger.minor(Message.class, "Failed to read message type: " + e1, e1);
+      if (LOG.isDebugEnabled()) LOG.debug("Failed to read message type: " + e1, e1);
       return null;
     }
     if (mspec == null) {
-      if (logMINOR) Logger.minor(Message.class, "Bogus message type");
+      if (LOG.isDebugEnabled()) LOG.debug("Bogus message type");
       return null;
     }
     if (mspec.isInternalOnly()) {
-      if (logMINOR) Logger.minor(Message.class, "Internal only message");
+      if (LOG.isDebugEnabled()) LOG.debug("Internal only message");
       return null; // silently discard internal-only messages
     }
     Message m = new Message(mspec, peer, recvByteCount);
@@ -111,16 +101,16 @@ public class Message {
             if (bb.remaining() < size) return m;
             bb2 = bb.slice(size);
           } catch (EOFException e) {
-            if (logMINOR) Logger.minor(Message.class, "No submessages, returning: " + m);
+            if (LOG.isDebugEnabled()) LOG.debug("No submessages, returning: " + m);
             return m;
           }
           try {
             Message subMessage = decodeMessage(bb2, peer, 0, false, true, veryLax);
             if (subMessage == null) return m;
-            if (logMINOR) Logger.minor(Message.class, "Adding submessage: " + subMessage);
+            if (LOG.isDebugEnabled()) LOG.debug("Adding submessage: " + subMessage);
             m.addSubMessage(subMessage);
           } catch (Throwable t) {
-            Logger.error(Message.class, "Failed to read sub-message: " + t, t);
+            LOG.error("Failed to read sub-message: " + t, t);
           }
         }
       }
@@ -130,15 +120,14 @@ public class Message {
               + " sent a message packet that ends prematurely while deserialising "
               + mspec.getName();
       if (inSubMessage) {
-        if (logMINOR) Logger.minor(Message.class, msg + " in sub-message", e);
-      } else Logger.error(Message.class, msg, e);
+        if (LOG.isDebugEnabled()) LOG.debug(msg + " in sub-message", e);
+      } else LOG.error(msg, e);
       return null;
     } catch (IOException e) {
-      Logger.error(
-          Message.class, "Unexpected IOException: " + e + " reading from buffer stream", e);
+      LOG.error("Unexpected IOException: " + e + " reading from buffer stream", e);
       return null;
     }
-    if (logMINOR) Logger.minor(Message.class, "Returning message: " + m + " from " + m.getSource());
+    if (LOG.isDebugEnabled()) LOG.debug("Returning message: " + m + " from " + m.getSource());
     return m;
   }
 
@@ -266,8 +255,8 @@ public class Message {
 
   private byte[] encodeToPacket(boolean includeSubMessages, boolean isSubMessage) {
 
-    if (logDEBUG)
-      Logger.debug(this, "My spec code: " + _spec.getName().hashCode() + " for " + _spec.getName());
+    if (LOG.isTraceEnabled())
+      LOG.trace("My spec code: " + _spec.getName().hashCode() + " for " + _spec.getName());
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
     try {
@@ -295,7 +284,8 @@ public class Message {
     }
 
     byte[] buf = baos.toByteArray();
-    if (logDEBUG) Logger.debug(this, "Length: " + buf.length + ", hash: " + Fields.hashCode(buf));
+    if (LOG.isTraceEnabled())
+      LOG.trace("Length: " + buf.length + ", hash: " + Fields.hashCode(buf));
     return buf;
   }
 

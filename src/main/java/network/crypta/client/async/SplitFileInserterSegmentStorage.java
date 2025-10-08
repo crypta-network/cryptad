@@ -20,7 +20,6 @@ import network.crypta.keys.ClientCHKBlock;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestItemKey;
-import network.crypta.support.Logger;
 import network.crypta.support.MemoryLimitedChunk;
 import network.crypta.support.MemoryLimitedJob;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -28,15 +27,14 @@ import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
 import network.crypta.support.io.CountedOutputStream;
 import network.crypta.support.io.NullOutputStream;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A single segment within a splitfile to be inserted. */
 public class SplitFileInserterSegmentStorage {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterSegmentStorage.class);
 
   static {
-    Logger.registerClass(SplitFileInserterSegmentStorage.class);
   }
 
   final SplitFileInserterStorage parent;
@@ -264,7 +262,7 @@ public class SplitFileInserterSegmentStorage {
                   parent.writeChecksummedTo(parent.segmentStatusOffset(segNo), statusLength));
           innerStoreStatus(dos);
         } catch (IOException e) {
-          Logger.error(this, "Impossible: " + e, e);
+          LOG.error("Impossible: " + e, e);
           return;
         }
         metadataDirty = false;
@@ -272,7 +270,7 @@ public class SplitFileInserterSegmentStorage {
       // Outside the lock is safe since if we fail we will fail the whole splitfile.
       dos.close();
     } catch (IOException e) {
-      Logger.error(this, "I/O error writing segment status?: " + e, e);
+      LOG.error("I/O error writing segment status?: " + e, e);
       parent.failOnDiskError(e);
     }
   }
@@ -350,9 +348,8 @@ public class SplitFileInserterSegmentStorage {
   }
 
   void setKey(int blockNumber, ClientCHK key) throws IOException {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Setting key " + key + " for block " + blockNumber + " on " + this,
           new Exception("debug"));
     try {
@@ -417,7 +414,7 @@ public class SplitFileInserterSegmentStorage {
       parent.failOnDiskError(e);
     } catch (MissingKeyException e) {
       // Easy to recover so may as well...
-      Logger.error(this, "Missing key even though segment encoded. Recovering by re-encoding...");
+      LOG.error("Missing key even though segment encoded. Recovering by re-encoding...");
       synchronized (this) {
         encoded = false;
       }
@@ -452,9 +449,8 @@ public class SplitFileInserterSegmentStorage {
             + Math.max(
                 parent.codec.maxMemoryOverheadDecode(dataBlockCount, crossCheckBlockCount),
                 parent.codec.maxMemoryOverheadEncode(dataBlockCount, crossCheckBlockCount));
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Scheduling encode on "
               + this
               + " at priority "
@@ -509,7 +505,7 @@ public class SplitFileInserterSegmentStorage {
         if (cancelled) return;
       }
       lock = parent.lockRAF();
-      if (logMINOR) Logger.minor(this, "Encoding " + this + " for " + parent);
+      if (LOG.isDebugEnabled()) LOG.debug("Encoding " + this + " for " + parent);
       byte[][] dataBlocks = readDataAndCrossCheckBlocks();
       generateKeys(dataBlocks, 0);
       byte[][] checkBlocks = new byte[checkBlockCount][];
@@ -522,11 +518,11 @@ public class SplitFileInserterSegmentStorage {
       synchronized (this) {
         encoded = true;
       }
-      if (logMINOR) Logger.minor(this, "Encoded " + this + " for " + parent);
+      if (LOG.isDebugEnabled()) LOG.debug("Encoded " + this + " for " + parent);
     } catch (IOException e) {
       parent.failOnDiskError(e);
     } catch (Throwable t) {
-      Logger.error(this, "Failed: " + t, t);
+      LOG.error("Failed: " + t, t);
       parent.fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR, t, null));
     } finally {
       if (lock != null) lock.unlock();
@@ -581,7 +577,7 @@ public class SplitFileInserterSegmentStorage {
     }
     synchronized (this) {
       if (this.blockChooser.hasSucceeded(blockNo)) {
-        Logger.error(this, "Already inserted block " + blockNo + " for " + this + " for " + parent);
+        LOG.error("Already inserted block " + blockNo + " for " + this + " for " + parent);
         throw new IOException(
             "Already inserted block " + blockNo + " for " + this + " for " + parent);
       }
@@ -639,7 +635,7 @@ public class SplitFileInserterSegmentStorage {
     if (b != 1) throw new MissingKeyException();
     ClientCHK key = innerReadKey(dis);
     setHasKey(blockNumber);
-    if (logDEBUG) Logger.debug(this, "Returning " + key);
+    if (LOG.isTraceEnabled()) LOG.trace("Returning " + key);
     return key;
   }
 
@@ -676,7 +672,7 @@ public class SplitFileInserterSegmentStorage {
 
   /** Called by BlockChooser when all blocks have been inserted. */
   void onInsertedAllBlocks() {
-    if (logMINOR) Logger.minor(this, "Inserted all blocks in segment " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserted all blocks in segment " + this);
     synchronized (this) {
       if (!encoded) return;
     }
@@ -684,9 +680,8 @@ public class SplitFileInserterSegmentStorage {
   }
 
   public void onFailure(int blockNo, InsertException e) {
-    if (logMINOR)
-      Logger.minor(
-          this, "Failed block " + blockNo + " with " + e + " for " + this + " for " + parent);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Failed block " + blockNo + " with " + e + " for " + this + " for " + parent);
     if (parent.hasFinished()) return; // Race condition possible as this is a callback
     parent.addFailure(e);
     if (e.isFatal()) {
@@ -700,7 +695,7 @@ public class SplitFileInserterSegmentStorage {
           parent.clearCooldown();
           return;
         } catch (MissingKeyException e1) {
-          Logger.error(this, "RNF but no key on block " + blockNo + " on " + this);
+          LOG.error("RNF but no key on block " + blockNo + " on " + this);
         } catch (IOException e1) {
           if (parent.hasFinished()) return; // Race condition possible as this is a callback
           parent.failOnDiskError(e1);

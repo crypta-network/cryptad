@@ -7,7 +7,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import network.crypta.support.Base64;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -15,6 +16,7 @@ import network.crypta.support.Logger;
  *     that it is intact. Just has the routingKey.
  */
 public class NodeCHK extends Key {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeCHK.class);
 
   /** 32 bytes for hash, 2 bytes for type */
   public static final short FULL_KEY_LENGTH = 34;
@@ -102,7 +104,7 @@ public class NodeCHK extends Key {
   public static byte[] routingKeyFromFullKey(byte[] keyBuf) {
     if (keyBuf.length == KEY_LENGTH) return keyBuf;
     if (keyBuf.length != FULL_KEY_LENGTH) {
-      Logger.error(NodeCHK.class, "routingKeyFromFullKey() on " + keyBuf.length + " bytes");
+      LOG.error("routingKeyFromFullKey() on " + keyBuf.length + " bytes");
       return null;
     }
     if (keyBuf[0] != 1
@@ -110,11 +112,10 @@ public class NodeCHK extends Key {
             && keyBuf[1] != Key.ALGO_AES_CTR_256_SHA256)) {
       if (keyBuf[keyBuf.length - 1] == 0 && keyBuf[keyBuf.length - 2] == 0) {
         // We are certain it's a routing-key
-        Logger.minor(
-            NodeCHK.class, "Recovering routing-key stored wrong as full-key (two nulls at end)");
+        LOG.debug("Recovering routing-key stored wrong as full-key (two nulls at end)");
       } else {
         // It might be a routing-key or it might be random data
-        Logger.error(NodeCHK.class, "Maybe recovering routing-key stored wrong as full-key");
+        LOG.error("Maybe recovering routing-key stored wrong as full-key");
       }
       return Arrays.copyOf(keyBuf, KEY_LENGTH);
     }

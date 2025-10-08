@@ -2,10 +2,12 @@ package network.crypta.support.io;
 
 import java.io.*;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(FileRandomAccessBuffer.class);
 
   @Serial private static final long serialVersionUID = 1L;
   transient RandomAccessFile raf;
@@ -89,7 +91,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     try {
       raf.close();
     } catch (IOException e) {
-      Logger.error(this, "Could not close " + raf + " : " + e + " for " + this, e);
+      LOG.error("Could not close " + raf + " : " + e + " for " + this, e);
     }
   }
 
@@ -111,7 +113,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
       try {
         FileUtil.secureDelete(file);
       } catch (IOException e) {
-        Logger.error(this, "Unable to delete " + file + " : " + e, e);
+        LOG.error("Unable to delete " + file + " : " + e, e);
         System.err.println("Unable to delete temporary file " + file);
       }
     } else {

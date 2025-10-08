@@ -16,9 +16,10 @@ import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
-import network.crypta.support.Logger;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * SSKs require separate logic for inserts and requests, for various reasons: - SSKs can collide. -
@@ -27,6 +28,8 @@ import network.crypta.support.io.NativeThread;
  */
 public class SSKInsertSender extends BaseSender
     implements PrioRunnable, AnyInsertSender, ByteCounter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(SSKInsertSender.class);
 
   // Constants
   static final long ACCEPTED_TIMEOUT = SECONDS.toMillis(10);
@@ -53,11 +56,8 @@ public class SSKInsertSender extends BaseSender
   private boolean hasCollided;
   private boolean hasRecentlyCollided;
   private SSKBlock block;
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
 
   static {
-    Logger.registerClass(SSKInsertSender.class);
   }
 
   private final boolean forkOnCacheable;
@@ -140,10 +140,10 @@ public class SSKInsertSender extends BaseSender
     try {
       routeRequests();
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       if (status == NOT_FINISHED) finish(INTERNAL_ERROR, null);
     } finally {
-      if (logMINOR) Logger.minor(this, "Finishing " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Finishing " + this);
       if (status == NOT_FINISHED) finish(INTERNAL_ERROR, null);
       origTag.finishedSender();
       if (forkedRequestTag != null) forkedRequestTag.finishedSender();
@@ -176,15 +176,15 @@ public class SSKInsertSender extends BaseSender
         // because we would end up caching data too close to the originator.
         // So allow 5 failures and then RNF.
         if (highHTLFailureCount++ >= MAX_HIGH_HTL_FAILURES) {
-          if (logMINOR) Logger.minor(this, "Too many failures at non-cacheable HTL");
+          if (LOG.isDebugEnabled()) LOG.debug("Too many failures at non-cacheable HTL");
           finish(ROUTE_NOT_FOUND, null);
           return;
         }
-        if (logMINOR)
-          Logger.minor(this, "Allowing failure " + highHTLFailureCount + " htl is still " + htl);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Allowing failure " + highHTLFailureCount + " htl is still " + htl);
       } else {
         htl = node.decrementHTL(hasForwarded ? next : source, htl);
-        if (logMINOR) Logger.minor(this, "Decremented HTL to " + htl);
+        if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to " + htl);
       }
       starting = false;
       if (htl <= 0) {
@@ -222,7 +222,7 @@ public class SSKInsertSender extends BaseSender
         forkedRequestTag.startedSender();
         forkedRequestTag.unlockHandler();
         forkedRequestTag.setAccepted();
-        Logger.normal(this, "FORKING SSK INSERT " + origUID + " to " + uid);
+        LOG.info("FORKING SSK INSERT " + origUID + " to " + uid);
         nodesRoutedTo.clear();
         node.getTracker().lockUID(forkedRequestTag);
       }
@@ -265,7 +265,7 @@ public class SSKInsertSender extends BaseSender
     // The problem is the peer has now got everything it needs to run the insert!
 
     // Try to propagate back to source
-    Logger.error(this, "Timeout waiting for FNPSSKPubKeyAccepted on " + next);
+    LOG.error("Timeout waiting for FNPSSKPubKeyAccepted on " + next);
     next.localRejectedOverload("Timeout2", realTimeFlag);
     // This is a local timeout, they should send it immediately.
     forwardRejectedOverload();
@@ -337,7 +337,7 @@ public class SSKInsertSender extends BaseSender
     }
 
     if (msg.getSpec() != DMT.FNPInsertReply) {
-      Logger.error(this, "Unknown reply: " + msg);
+      LOG.error("Unknown reply: " + msg);
       finish(INTERNAL_ERROR, next);
       return DO.FINISHED;
     }
@@ -362,7 +362,7 @@ public class SSKInsertSender extends BaseSender
     // This is a WARNING not an ERROR because it's possible that the problem is we simply haven't
     // been able to send the message yet, because we don't use sendSync().
     // FIXME use a callback to rule this out and log an ERROR.
-    Logger.warning(this, "Timeout awaiting Accepted/Rejected " + this + " to " + next);
+    LOG.warn("Timeout awaiting Accepted/Rejected " + this + " to " + next);
     // Use the right UID here, in case we fork.
     final long uid = tag.uid;
     tag.handlingTimeout(next);
@@ -385,15 +385,13 @@ public class SSKInsertSender extends BaseSender
                     next.noLongerRoutingTo(tag, false);
                   } else {
                     assert (m.getSpec() == DMT.FNPSSKAccepted);
-                    if (logMINOR)
-                      Logger.minor(
-                          this,
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
                           "Accepted after timeout on "
                               + SSKInsertSender.this
                               + " - will not send DataInsert, waiting for RejectedTimeout");
-                    if (logMINOR)
-                      Logger.minor(
-                          this,
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
                           "Forked timed out insert but not going to send DataInsert on "
                               + SSKInsertSender.this
                               + " to "
@@ -411,18 +409,16 @@ public class SSKInsertSender extends BaseSender
                             @Override
                             public void sent() {
                               // Ignore.
-                              if (logDEBUG)
-                                Logger.debug(
-                                    this,
+                              if (LOG.isDebugEnabled())
+                                LOG.debug(
                                     "DataInsertRejected sent after accepted timeout on "
                                         + SSKInsertSender.this);
                             }
 
                             @Override
                             public void acknowledged() {
-                              if (logDEBUG)
-                                Logger.debug(
-                                    this,
+                              if (LOG.isDebugEnabled())
+                                LOG.debug(
                                     "DataInsertRejected acknowledged after accepted timeout on "
                                         + SSKInsertSender.this);
                               next.noLongerRoutingTo(tag, false);
@@ -430,9 +426,8 @@ public class SSKInsertSender extends BaseSender
 
                             @Override
                             public void disconnected() {
-                              if (logDEBUG)
-                                Logger.debug(
-                                    this,
+                              if (LOG.isDebugEnabled())
+                                LOG.debug(
                                     "DataInsertRejected peer disconnected after accepted timeout on"
                                         + " "
                                         + SSKInsertSender.this);
@@ -441,9 +436,8 @@ public class SSKInsertSender extends BaseSender
 
                             @Override
                             public void fatalError() {
-                              if (logDEBUG)
-                                Logger.debug(
-                                    this,
+                              if (LOG.isDebugEnabled())
+                                LOG.debug(
                                     "DataInsertRejected fatal error after accepted timeout on "
                                         + SSKInsertSender.this);
                               next.noLongerRoutingTo(tag, false);
@@ -463,7 +457,7 @@ public class SSKInsertSender extends BaseSender
 
                 @Override
                 public void onTimeout() {
-                  Logger.error(this, "Fatal: No Accepted/Rejected for " + SSKInsertSender.this);
+                  LOG.error("Fatal: No Accepted/Rejected for " + SSKInsertSender.this);
                   next.fatalTimeout(tag, false);
                 }
 
@@ -496,7 +490,7 @@ public class SSKInsertSender extends BaseSender
     // Probably non-fatal, if so, we have time left, can try next one
     if (msg.getBoolean(DMT.IS_LOCAL)) {
       next.localRejectedOverload("ForwardRejectedOverload4", realTimeFlag);
-      if (logMINOR) Logger.minor(this, "Local RejectedOverload, moving on to next peer");
+      if (LOG.isDebugEnabled()) LOG.debug("Local RejectedOverload, moving on to next peer");
       // Give up on this one, try another
       next.noLongerRoutingTo(thisTag, false);
       return true;
@@ -507,7 +501,7 @@ public class SSKInsertSender extends BaseSender
   }
 
   private void handleRouteNotFound(Message msg, PeerNode next, InsertTag thisTag) {
-    if (logMINOR) Logger.minor(this, "Rejected: RNF");
+    if (LOG.isDebugEnabled()) LOG.debug("Rejected: RNF");
     short newHtl = msg.getShort(DMT.HTL);
     if (newHtl < 0) newHtl = 0;
     if (htl > newHtl) htl = newHtl;
@@ -518,18 +512,17 @@ public class SSKInsertSender extends BaseSender
   private void handleDataInsertRejected(Message msg, PeerNode next, InsertTag thisTag) {
     next.successNotOverload(realTimeFlag);
     short reason = msg.getShort(DMT.DATA_INSERT_REJECTED_REASON);
-    if (logMINOR) Logger.minor(this, "DataInsertRejected: " + reason);
+    if (LOG.isDebugEnabled()) LOG.debug("DataInsertRejected: " + reason);
     if (reason == DMT.DATA_INSERT_REJECTED_VERIFY_FAILED) {
       if (fromStore) {
         // That's odd...
-        Logger.error(
-            this,
+        LOG.error(
             "Verify failed on next node "
                 + next
                 + " for DataInsert but we were sending from the store!");
       }
     }
-    Logger.error(this, "SSK insert rejected! Reason=" + DMT.getDataInsertRejectedReason(reason));
+    LOG.error("SSK insert rejected! Reason=" + DMT.getDataInsertRejectedReason(reason));
     next.noLongerRoutingTo(thisTag, false);
   }
 
@@ -554,8 +547,7 @@ public class SSKInsertSender extends BaseSender
      *
      * <p>For now, accept the "old" i.e. preexisting data.
      */
-    Logger.normal(
-        this, "Got collision on " + myKey + " (" + uid + ") sending to " + next.getPeer());
+    LOG.info("Got collision on " + myKey + " (" + uid + ") sending to " + next.getPeer());
 
     headers = ((ShortBuffer) msg.getObject(DMT.BLOCK_HEADERS)).getData();
     // Wait for the data
@@ -569,12 +561,13 @@ public class SSKInsertSender extends BaseSender
     try {
       dataMessage = node.getUSM().waitFor(mfData, this);
     } catch (DisconnectedException e) {
-      if (logMINOR) Logger.minor(this, "Disconnected: " + next + " getting datareply for " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Disconnected: " + next + " getting datareply for " + this);
       next.noLongerRoutingTo(thisTag, false);
       return DO.NEXT_PEER;
     }
     if (dataMessage == null) {
-      Logger.error(this, "Got headers but not data for datareply for insert from " + this);
+      LOG.error("Got headers but not data for datareply for insert from " + this);
       next.noLongerRoutingTo(thisTag, false);
       return DO.NEXT_PEER;
     }
@@ -592,7 +585,7 @@ public class SSKInsertSender extends BaseSender
       // The node will now propagate the new data. There is no need to move to the next node yet.
       return DO.WAIT;
     } catch (SSKVerifyException e) {
-      Logger.error(this, "Invalid SSK from remote on collusion: " + this + ":" + block);
+      LOG.error("Invalid SSK from remote on collusion: " + this + ":" + block);
       finish(INTERNAL_ERROR, next);
       return DO.FINISHED;
     }
@@ -648,9 +641,8 @@ public class SSKInsertSender extends BaseSender
   }
 
   private void finish(int code, PeerNode next) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Finished: "
               + getStatusString(code)
               + " on "
@@ -679,7 +671,7 @@ public class SSKInsertSender extends BaseSender
 
     if (code == SUCCESS && next != null) next.onSuccess(true, true);
 
-    if (logMINOR) Logger.minor(this, "Set status code: " + getStatusString());
+    if (LOG.isDebugEnabled()) LOG.debug("Set status code: " + getStatusString());
     // Nothing to wait for, no downstream transfers, just exit.
   }
 
@@ -842,7 +834,7 @@ public class SSKInsertSender extends BaseSender
 
   @Override
   protected void onAccepted(PeerNode next) {
-    if (logMINOR) Logger.minor(this, "Got Accepted on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Got Accepted on " + this);
 
     InsertTag thisTag = forkedRequestTag;
     if (forkedRequestTag == null) thisTag = origTag;
@@ -857,12 +849,12 @@ public class SSKInsertSender extends BaseSender
       next.sendSync(dataMsg, this, realTimeFlag);
       sentPayload(data.length);
     } catch (NotConnectedException e1) {
-      if (logMINOR) Logger.minor(this, "Not connected to " + next);
+      if (LOG.isDebugEnabled()) LOG.debug("Not connected to " + next);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return;
     } catch (SyncSendWaitedTooLongException e) {
-      Logger.error(this, "Waited too long to send " + dataMsg + " to " + next + " on " + this);
+      LOG.error("Waited too long to send " + dataMsg + " to " + next + " on " + this);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return;
@@ -875,12 +867,12 @@ public class SSKInsertSender extends BaseSender
       try {
         next.sendSync(pkMsg, this, realTimeFlag);
       } catch (NotConnectedException e) {
-        if (logMINOR) Logger.minor(this, "Node disconnected while sending pubkey: " + next);
+        if (LOG.isDebugEnabled()) LOG.debug("Node disconnected while sending pubkey: " + next);
         next.noLongerRoutingTo(thisTag, false);
         routeRequests();
         return;
       } catch (SyncSendWaitedTooLongException e) {
-        Logger.warning(this, "Took too long to send pubkey to " + next + " on " + this);
+        LOG.warn("Took too long to send pubkey to " + next + " on " + this);
         next.noLongerRoutingTo(thisTag, false);
         routeRequests();
         return;
@@ -900,7 +892,7 @@ public class SSKInsertSender extends BaseSender
       try {
         newAck = node.getUSM().waitFor(mf1, this);
       } catch (DisconnectedException e) {
-        if (logMINOR) Logger.minor(this, "Disconnected from " + next);
+        if (LOG.isDebugEnabled()) LOG.debug("Disconnected from " + next);
         next.noLongerRoutingTo(thisTag, false);
         routeRequests();
         return;
@@ -924,8 +916,7 @@ public class SSKInsertSender extends BaseSender
       try {
         msg = node.getUSM().waitFor(mf, this);
       } catch (DisconnectedException e) {
-        Logger.normal(
-            this, "Disconnected from " + next + " while waiting for InsertReply on " + this);
+        LOG.info("Disconnected from " + next + " while waiting for InsertReply on " + this);
         next.noLongerRoutingTo(thisTag, false);
         break;
       }
@@ -933,8 +924,7 @@ public class SSKInsertSender extends BaseSender
       if (msg == null) {
 
         // First timeout.
-        Logger.warning(
-            this, "Timeout waiting for reply after Accepted in " + this + " from " + next);
+        LOG.warn("Timeout waiting for reply after Accepted in " + this + " from " + next);
         next.localRejectedOverload("AfterInsertAcceptedTimeout", realTimeFlag);
         forwardRejectedOverload();
         finish(TIMED_OUT, next);
@@ -945,16 +935,14 @@ public class SSKInsertSender extends BaseSender
           try {
             msg = node.getUSM().waitFor(mf, this);
           } catch (DisconnectedException e) {
-            Logger.normal(
-                this, "Disconnected from " + next + " while waiting for InsertReply on " + this);
+            LOG.info("Disconnected from " + next + " while waiting for InsertReply on " + this);
             next.noLongerRoutingTo(thisTag, false);
             return;
           }
 
           if (msg == null) {
             // Second timeout.
-            Logger.error(
-                this,
+            LOG.error(
                 "Fatal timeout waiting for reply after Accepted on " + this + " from " + next);
             next.fatalTimeout(thisTag, false);
             return;

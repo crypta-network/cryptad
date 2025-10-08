@@ -30,12 +30,15 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 /** Collection of UserAlert's. */
 public class UserAlertManager implements Comparator<UserAlert> {
+  private static final Logger LOG = LoggerFactory.getLogger(UserAlertManager.class);
+
   // No point keeping them sorted as some alerts can change priority.
   private final Set<UserAlert> alerts;
   private final NodeClientCore core;
@@ -198,7 +201,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
         try {
           alertsNode.addChild(renderAlert(alert));
         } catch (Throwable t) {
-          Logger.error(this, "FAILED TO RENDER ALERT: " + alert + " : " + t, t);
+          LOG.error("FAILED TO RENDER ALERT: " + alert + " : " + t, t);
         }
       } else {
         // Alerts toadlet itself can error, that's OK.
@@ -267,7 +270,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
     else if (level <= UserAlert.WARNING) return "warning";
     else if (level <= UserAlert.MINOR) return "minor";
     else {
-      Logger.error(this, "Unknown alert level: " + level, new Exception("debug"));
+      LOG.error("Unknown alert level: {}", level);
       return "error";
     }
   }

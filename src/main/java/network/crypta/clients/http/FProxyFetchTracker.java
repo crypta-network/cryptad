@@ -7,25 +7,12 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FProxyFetchTracker implements Runnable {
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(FProxyFetchTracker.class);
 
   private final MultiValueTable<FreenetURI, FProxyFetchInProgress> fetchers =
       new MultiValueTable<>();
@@ -76,7 +63,7 @@ public class FProxyFetchTracker implements Runnable {
       }
       throw e;
     }
-    if (logMINOR) Logger.minor(this, "Created new fetcher: " + progress, new Exception());
+    if (LOG.isDebugEnabled()) LOG.debug("Created new fetcher: {}", progress);
     return progress.getWaiter();
     // FIXME promote a fetcher when it is re-used
     // FIXME get rid of fetchers over some age
@@ -112,30 +99,22 @@ public class FProxyFetchTracker implements Runnable {
     synchronized (fetchers) {
       for (FProxyFetchInProgress fetch : fetchers.getAllAsList(key)) {
         if ((fetch.maxSize == maxSize && fetch.notFinishedOrFatallyFinished()) || fetch.hasData()) {
-          if (logMINOR) {
-            Logger.minor(this, "Found " + fetch);
-          }
+          if (LOG.isDebugEnabled()) LOG.debug("Found {}", fetch);
           if (fctx != null && !fetch.fetchContextEquivalent(fctx)) {
-            if (logMINOR) {
-              Logger.minor(this, "Fetch context does not match. Skipping " + fetch);
-            }
+            if (LOG.isDebugEnabled()) LOG.debug("Fetch context does not match. Skipping {}", fetch);
             continue;
           }
-          if (logMINOR) {
-            Logger.minor(this, "Using " + fetch);
-          }
+          if (LOG.isDebugEnabled()) LOG.debug("Using {}", fetch);
           return fetch;
         }
-        if (logMINOR) {
-          Logger.minor(this, "Skipping " + fetch);
-        }
+        if (LOG.isDebugEnabled()) LOG.debug("Skipping {}", fetch);
       }
     }
     return null;
   }
 
   public void queueCancel(FProxyFetchInProgress progress) {
-    if (logMINOR) Logger.minor(this, "Queueing removal of old FProxyFetchInProgress's");
+    if (LOG.isDebugEnabled()) LOG.debug("Queueing removal of old FProxyFetchInProgress's");
     synchronized (this) {
       if (queuedJob) {
         requeue = true;
@@ -148,9 +127,7 @@ public class FProxyFetchTracker implements Runnable {
 
   @Override
   public void run() {
-    if (logMINOR) {
-      Logger.minor(this, "Removing old FProxyFetchInProgress's");
-    }
+    if (LOG.isDebugEnabled()) LOG.debug("Removing old FProxyFetchInProgress's");
     List<FProxyFetchInProgress> toRemove;
     boolean needRequeue = false;
     synchronized (fetchers) {
@@ -168,16 +145,12 @@ public class FProxyFetchTracker implements Runnable {
               .toList();
 
       for (FProxyFetchInProgress r : toRemove) {
-        if (logMINOR) {
-          Logger.minor(this, "Removed fetchinprogress:" + r);
-        }
+        if (LOG.isDebugEnabled()) LOG.debug("Removed fetchinprogress:{}", r);
         fetchers.removeElement(r.uri, r);
       }
     }
     for (FProxyFetchInProgress r : toRemove) {
-      if (logMINOR) {
-        Logger.minor(this, "Cancelling for " + r);
-      }
+      if (LOG.isDebugEnabled()) LOG.debug("Cancelling for {}", r);
       r.finishCancel();
     }
     if (needRequeue) {

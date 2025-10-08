@@ -5,30 +5,18 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FCPConnectionOutputHandler implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPConnectionOutputHandler.class);
 
   final FCPConnectionHandler handler;
   final Deque<FCPMessage> outQueue;
   // Synced on outQueue
   boolean closedOutputQueue;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public FCPConnectionOutputHandler(FCPConnectionHandler handler) {
     this.handler = handler;
@@ -54,9 +42,9 @@ public class FCPConnectionOutputHandler implements Runnable {
     try {
       realRun();
     } catch (IOException e) {
-      if (logMINOR) Logger.minor(this, "Caught " + e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Caught " + e, e);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
     } finally {
       // Set the closed flag so that onClosed(), both on this thread and the input thread, doesn't
       // wait forever.
@@ -101,7 +89,7 @@ public class FCPConnectionOutputHandler implements Runnable {
           }
         }
         if (shouldFlush) {
-          if (logMINOR) Logger.minor(this, "Flushing");
+          if (LOG.isDebugEnabled()) LOG.debug("Flushing");
           os.flush();
           flushed = true;
         } else {
@@ -115,7 +103,7 @@ public class FCPConnectionOutputHandler implements Runnable {
           return;
         }
       } else {
-        if (logMINOR) Logger.minor(this, "Sending " + msg);
+        if (LOG.isDebugEnabled()) LOG.debug("Sending " + msg);
         msg.send(os);
         flushed = false;
       }

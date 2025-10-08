@@ -35,9 +35,6 @@ import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.Executor;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.BucketFactory;
@@ -46,6 +43,8 @@ import network.crypta.support.api.LongCallback;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
@@ -55,6 +54,8 @@ import org.tanukisoftware.wrapper.WrapperManager;
  */
 public final class SimpleToadletServer
     implements ToadletContainer, Runnable, LinkFilterExceptionProvider {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleToadletServer.class);
+
   /** List of urlPrefix / Toadlet */
   private final LinkedList<ToadletElement> toadlets;
 
@@ -134,17 +135,7 @@ public final class SimpleToadletServer
   /** The IntervalPusherManager handles interval pushing */
   public IntervalPusherManager intervalPushManager;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy logMINOR removed; use LOG.isDebugEnabled() directly.
 
   // Config Callbacks
   private class FProxySSLCallback extends BooleanCallback {
@@ -438,7 +429,7 @@ public final class SimpleToadletServer
     try {
       FProxyToadlet.maybeCreateFProxyEtc(core, node, node.getConfig(), this);
     } catch (IOException e) {
-      Logger.error(this, "Could not start fproxy: " + e, e);
+      LOG.error("Could not start fproxy: {}", e.toString(), e);
       System.err.println("Could not start fproxy:");
       e.printStackTrace();
     }
@@ -1071,7 +1062,7 @@ public final class SimpleToadletServer
     this.allowedHosts = fproxyConfig.getString("allowedHosts");
 
     if (!enabled) {
-      Logger.normal(SimpleToadletServer.this, "Not starting FProxy as it's disabled");
+      LOG.info("Not starting FProxy as it's disabled");
       System.out.println("Not starting FProxy as it's disabled");
     } else {
       maybeGetNetworkInterface();
@@ -1127,10 +1118,10 @@ public final class SimpleToadletServer
       try {
         maybeGetNetworkInterface();
         myThread.start();
-        Logger.normal(this, "Starting FProxy on " + bindTo + ':' + port);
+        LOG.info("Starting FProxy on {}:{}", bindTo, port);
         System.out.println("Starting FProxy on " + bindTo + ':' + port);
       } catch (IOException e) {
-        Logger.error(this, "Could not bind network port for FProxy?", e);
+        LOG.error("Could not bind network port for FProxy?", e);
       }
   }
 
@@ -1298,7 +1289,7 @@ public final class SimpleToadletServer
       Socket conn = networkInterface.accept();
       if (WrapperManager.hasShutdownHookBeenTriggered()) return;
       if (conn == null) continue; // timeout
-      if (logMINOR) Logger.minor(this, "Accepted connection");
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted connection");
       SocketHandler sh = new SocketHandler(conn, finishedStartup);
       sh.start();
     }
@@ -1324,21 +1315,21 @@ public final class SimpleToadletServer
 
     @Override
     public void run() {
-      if (logMINOR) Logger.minor(this, "Handling connection");
+      if (LOG.isDebugEnabled()) LOG.debug("Handling connection");
       try {
         ToadletContextImpl.handle(
             sock, SimpleToadletServer.this, pageMaker, getUserAlertManager(), bookmarkManager);
       } catch (Throwable t) {
         System.err.println("Caught in SimpleToadletServer: " + t);
         t.printStackTrace();
-        Logger.error(this, "Caught in SimpleToadletServer: " + t, t);
+        LOG.error("Caught in SimpleToadletServer: {}", t.toString(), t);
       } finally {
         synchronized (SimpleToadletServer.this) {
           fproxyConnections--;
           SimpleToadletServer.this.notifyAll();
         }
       }
-      if (logMINOR) Logger.minor(this, "Handled connection");
+      if (LOG.isDebugEnabled()) LOG.debug("Handled connection");
     }
 
     @Override

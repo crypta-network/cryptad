@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Comprehensive CSS2.1 filter. The old jflex-based filter was very far from comprehensive.
@@ -28,17 +29,18 @@ import network.crypta.support.Logger;
  *     support it if it's not widely used... See end of 1.4.2.1.
  */
 class CSSTokenizerFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(CSSTokenizerFilter.class);
+
   private Reader r;
   Writer w = null;
   FilterCallback cb;
-  private static volatile boolean logDEBUG;
+
   private final String passedCharset;
   private String detectedCharset;
   private final boolean stopAtDetectedCharset;
   private final boolean isInline;
 
   static {
-    Logger.registerClass(CSSTokenizerFilter.class);
   }
 
   CSSTokenizerFilter() {
@@ -2616,7 +2618,7 @@ class CSSTokenizerFilter {
   private boolean verifyToken(
       String[] media, String[] elements, CSSPropertyVerifier obj, ParsedWord[] words) {
     if (words == null) return false;
-    if (logDEBUG) Logger.debug(this, "verifyToken for " + CSSPropertyVerifier.toString(words));
+    if (LOG.isTraceEnabled()) LOG.trace("verifyToken for " + CSSPropertyVerifier.toString(words));
     if (obj == null) {
       return false;
     }
@@ -2651,9 +2653,7 @@ class CSSTokenizerFilter {
    * include an element name or *, but must not contain anything else.
    */
   public static String HTMLelementVerifier(String elementString, boolean isIDSelector) {
-    if (logDEBUG)
-      Logger.debug(
-          CSSTokenizerFilter.class, "varifying element/selector: \"" + elementString + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("varifying element/selector: \"" + elementString + "\"");
     String HTMLelement = "", pseudoClass = "", className = "", id = "";
     StringBuilder fBuffer = new StringBuilder();
     ArrayList<String> attSelections = null;
@@ -2668,10 +2668,8 @@ class CSSTokenizerFilter {
       StringBuilder buf = new StringBuilder(elementString);
       buf.delete(elementString.indexOf('['), elementString.indexOf(']') + 1);
       elementString = buf.toString();
-      if (logDEBUG)
-        Logger.debug(
-            CSSTokenizerFilter.class,
-            "attSelection=" + attSelection + "  elementString=" + elementString);
+      if (LOG.isDebugEnabled())
+        LOG.debug("attSelection=" + attSelection + "  elementString=" + elementString);
       if (attSelections == null) attSelections = new ArrayList<>();
       attSelections.add(attSelection);
     }
@@ -2681,10 +2679,8 @@ class CSSTokenizerFilter {
       if (index != elementString.length() - 1) {
         pseudoClass = elementString.substring(index + 1).trim();
         HTMLelement = elementString.substring(0, index).trim();
-        if (logDEBUG)
-          Logger.debug(
-              CSSTokenizerFilter.class,
-              "pseudoclass=" + pseudoClass + " HTMLelement=" + HTMLelement);
+        if (LOG.isDebugEnabled())
+          LOG.debug("pseudoclass=" + pseudoClass + " HTMLelement=" + HTMLelement);
       } else {
         HTMLelement = elementString.trim();
       }
@@ -2696,9 +2692,7 @@ class CSSTokenizerFilter {
       if (index != HTMLelement.length() - 1) {
         className = HTMLelement.substring(index + 1).trim();
         HTMLelement = HTMLelement.substring(0, index).trim();
-        if (logDEBUG)
-          Logger.debug(
-              CSSTokenizerFilter.class, "class=" + className + " HTMLelement=" + HTMLelement);
+        if (LOG.isDebugEnabled()) LOG.debug("class=" + className + " HTMLelement=" + HTMLelement);
       }
 
     } else if (HTMLelement.indexOf('#') != -1) {
@@ -2707,8 +2701,7 @@ class CSSTokenizerFilter {
       if (index != HTMLelement.length() - 1) {
         id = HTMLelement.substring(index + 1).trim();
         HTMLelement = HTMLelement.substring(0, index).trim();
-        if (logDEBUG)
-          Logger.debug(CSSTokenizerFilter.class, "id=" + id + " element=" + HTMLelement);
+        if (LOG.isTraceEnabled()) LOG.trace("id=" + id + " element=" + HTMLelement);
       }
     }
     if (isIDSelector && id.isEmpty()) return null; // No ID
@@ -2761,10 +2754,8 @@ class CSSTokenizerFilter {
         }
 
         // Verifying whether each character is alphanumeric or _
-        if (logDEBUG)
-          Logger.debug(
-              CSSTokenizerFilter.class,
-              "HTMLelementVerifier length of attSelectionParts=" + attSelectionParts.length);
+        if (LOG.isDebugEnabled())
+          LOG.debug("HTMLelementVerifier length of attSelectionParts=" + attSelectionParts.length);
 
         if (attSelectionParts[0].isEmpty()) return null;
         else {
@@ -2780,8 +2771,7 @@ class CSSTokenizerFilter {
         if (attSelectionParts.length > 1) {
           // What about the right hand side?
           // The grammar says it's an IDENT.
-          if (logDEBUG)
-            Logger.debug(CSSTokenizerFilter.class, "RHS is \"" + attSelectionParts[1] + "\"");
+          if (LOG.isTraceEnabled()) LOG.trace("RHS is \"" + attSelectionParts[1] + "\"");
           if (!(ElementInfo.isValidIdentifier(attSelectionParts[1])
               || ElementInfo.isValidStringWithQuotes(attSelectionParts[1]))) return null;
         }
@@ -2817,7 +2807,7 @@ class CSSTokenizerFilter {
    * Returns null on failure (selector invalid), empty string on banned but otherwise valid selector.
    */
   public String recursiveSelectorVerifier(String selectorString) {
-    if (logDEBUG) Logger.debug(this, "selector: \"" + selectorString + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("selector: \"" + selectorString + "\"");
     selectorString = selectorString.trim();
 
     // Parse but don't tokenise.
@@ -2859,15 +2849,15 @@ class CSSTokenizerFilter {
         quoting = 0;
       } else if ((c == '\r' || c == '\n' || c == '\f') && !(quoting != 0 && escaping)) {
         // No newlines unless in a string *and* quoted!
-        if (logDEBUG)
-          Logger.debug(this, "no newlines unless in a string *and* quoted at index " + i);
+        if (LOG.isTraceEnabled())
+          LOG.trace("no newlines unless in a string *and* quoted at index " + i);
         return null;
       } else if (c == '\r' && escapedDigits == 0) {
         escaping = false;
       } else if (c == '\n' || c == '\f') {
         if (escapedDigits == 0) escaping = false;
         else {
-          if (logDEBUG) Logger.debug(this, "invalid newline escaping at char " + i);
+          if (LOG.isTraceEnabled()) LOG.trace("invalid newline escaping at char " + i);
           return null; // Invalid
         }
       } else if (escaping
@@ -2879,7 +2869,8 @@ class CSSTokenizerFilter {
       } else if (c == '\\' && !escaping) {
         escaping = true;
       } else if (c == '\\' && escapedDigits > 0) {
-        if (logDEBUG) Logger.debug(this, "backslash but already escaping with digits at char " + i);
+        if (LOG.isTraceEnabled())
+          LOG.trace("backslash but already escaping with digits at char " + i);
         return null; // Invalid
       } else if (c == '\\') {
         escaping = false;
@@ -2889,9 +2880,8 @@ class CSSTokenizerFilter {
       }
     }
 
-    if (logDEBUG)
-      Logger.debug(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "index="
               + index
               + " quoting="
@@ -2911,9 +2901,8 @@ class CSSTokenizerFilter {
 
     parts[0] = selectorString.substring(0, index).trim();
     parts[1] = selectorString.substring(index + 1).trim();
-    if (logDEBUG)
-      Logger.debug(
-          this, "recursiveSelectorVerifier parts[0]=" + parts[0] + " parts[1]=" + parts[1]);
+    if (LOG.isDebugEnabled())
+      LOG.debug("recursiveSelectorVerifier parts[0]=" + parts[0] + " parts[1]=" + parts[1]);
     parts[0] = HTMLelementVerifier(parts[0], false);
     parts[1] = recursiveSelectorVerifier(parts[1]);
     if (parts[0] != null && parts[1] != null) return parts[0] + selector + parts[1];
@@ -2992,7 +2981,7 @@ class CSSTokenizerFilter {
       if (x == (char) 0xFEFF) {
         if (bomPossible) {
           // BOM
-          if (logDEBUG) Logger.debug(this, "Ignoring BOM");
+          if (LOG.isTraceEnabled()) LOG.trace("Ignoring BOM");
           w.write(x);
         }
         continue;
@@ -3000,7 +2989,7 @@ class CSSTokenizerFilter {
       bomPossible = false;
       prevc = c;
       c = (char) x;
-      if (logDEBUG) Logger.debug(this, "Read: " + c + " 0x" + Integer.toHexString(c));
+      if (LOG.isTraceEnabled()) LOG.trace("Read: " + c + " 0x" + Integer.toHexString(c));
       if (prevc == '/'
           && c == '*'
           && currentState != STATE1INQUOTE
@@ -3012,7 +3001,7 @@ class CSSTokenizerFilter {
         if (buffer.charAt(buffer.length() - 1) == '/') {
           buffer.deleteCharAt(buffer.length() - 1);
         }
-        if (logDEBUG) Logger.debug(this, "Comment detected: buffer=" + buffer);
+        if (LOG.isTraceEnabled()) LOG.trace("Comment detected: buffer=" + buffer);
         prevc = 0;
       }
       if (c == 0) continue; // Strip nulls
@@ -3023,13 +3012,13 @@ class CSSTokenizerFilter {
             case ' ':
             case '\t':
               buffer.append(c);
-              if (logDEBUG) Logger.debug(this, "STATE1 CASE whitespace: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE whitespace: " + c);
               break;
 
             case '@':
               if (prevc != '\\') {
                 isState1Present = true;
-                if (logDEBUG) Logger.debug(this, "STATE1 CASE @: " + c);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE @: " + c);
               }
               buffer.append(c);
               break;
@@ -3056,7 +3045,7 @@ class CSSTokenizerFilter {
               if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
                 braceSpace += buffer.substring(0, 4);
                 if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  Logger.error(this, "<!-- not followed by whitespace!");
+                  LOG.error("<!-- not followed by whitespace!");
                   return;
                 }
                 buffer.delete(0, 4);
@@ -3078,24 +3067,22 @@ class CSSTokenizerFilter {
               buffer.setLength(i);
               String orig = buffer.toString().trim();
               ParsedWord[] parts = split(orig, false);
-              if (logDEBUG) Logger.debug(this, "Split: " + CSSPropertyVerifier.toString(parts));
+              if (LOG.isTraceEnabled()) LOG.trace("Split: " + CSSPropertyVerifier.toString(parts));
               buffer.setLength(0);
               boolean valid = false;
               if (parts != null) {
                 if (parts.length < 1) {
                   ignoreElementsS1 = true;
-                  if (logDEBUG)
-                    Logger.debug(
-                        this,
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
                         "STATE1 CASE {: Does not have one part. ignoring " + buffer.toString());
                   valid = false;
                 } else if (parts[0] instanceof SimpleParsedWord
                     && "@media".equalsIgnoreCase(parts[0].original)) {
                   if (parts.length < 2) {
                     ignoreElementsS1 = true;
-                    if (logDEBUG)
-                      Logger.debug(
-                          this,
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
                           "STATE1 CASE {: Does not have two parts. ignoring " + buffer.toString());
                     valid = false;
                   } else {
@@ -3157,9 +3144,8 @@ class CSSTokenizerFilter {
               if (!valid) {
                 ignoreElementsS1 = true;
                 // No valid media types.
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "STATE1 CASE {: Failed verification test. ignoring " + buffer.toString());
               } else {
                 w.write(filteredTokens.toString());
@@ -3181,8 +3167,8 @@ class CSSTokenizerFilter {
                 buffer.append(c);
                 break;
               }
-              if (logDEBUG)
-                Logger.debug(this, "buffer in state 1 ; : \"" + buffer.toString() + "\"");
+              if (LOG.isTraceEnabled())
+                LOG.trace("buffer in state 1 ; : \"" + buffer.toString() + "\"");
               // should be @import
 
               for (i = 0; i < buffer.length(); i++) {
@@ -3196,7 +3182,7 @@ class CSSTokenizerFilter {
               if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
                 w.write(buffer.substring(0, 4));
                 if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  Logger.error(this, "<!-- not followed by whitespace!");
+                  LOG.error("<!-- not followed by whitespace!");
                   return;
                 }
                 buffer.delete(0, 4);
@@ -3212,7 +3198,7 @@ class CSSTokenizerFilter {
               // If ignoreElementsS1, then just delete everything up to the semicolon. After that,
               // fresh start.
               if (canImport && !ignoreElementsS1 && buffer.toString().contains("@import")) {
-                if (logDEBUG) Logger.debug(this, "STATE1 CASE ;statement=" + buffer.toString());
+                if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement=" + buffer.toString());
 
                 String strbuffer = buffer.toString().trim();
                 int importIndex = strbuffer.toLowerCase().indexOf("@import");
@@ -3268,16 +3254,16 @@ class CSSTokenizerFilter {
                 String s = buffer.delete(0, "@charset ".length()).toString();
                 s = removeOuterQuotes(s);
                 detectedCharset = s;
-                if (logDEBUG) Logger.debug(this, "Detected charset: \"" + detectedCharset + "\"");
+                if (LOG.isTraceEnabled())
+                  LOG.trace("Detected charset: \"" + detectedCharset + "\"");
                 if (!Charset.isSupported(detectedCharset)) {
-                  Logger.normal(this, "Charset not supported: " + detectedCharset);
+                  LOG.info("Charset not supported: " + detectedCharset);
                   throw new UnsupportedCharsetInFilterException(
                       "Charset not supported: " + detectedCharset);
                 }
                 if (stopAtDetectedCharset) return;
                 if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
-                  Logger.normal(
-                      this,
+                  LOG.info(
                       "Detected charset \""
                           + detectedCharset
                           + "\" differs from passed in charset \""
@@ -3314,13 +3300,13 @@ class CSSTokenizerFilter {
                     || s.equals("<!-")
                     || s.equals("<!--"))) currentState = STATE2;
               }
-              if (logDEBUG) Logger.debug(this, "STATE1 default CASE: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE1 default CASE: " + c);
               break;
           }
           break;
 
         case STATE1INQUOTE:
-          if (logDEBUG) Logger.debug(this, "STATE1INQUOTE: " + c);
+          if (LOG.isTraceEnabled()) LOG.trace("STATE1INQUOTE: " + c);
           switch (c) {
             case '"':
               if (currentQuote == '"' && prevc != '\\') currentState = STATE1;
@@ -3370,16 +3356,15 @@ class CSSTokenizerFilter {
                 if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                 break;
               }
-              if (logDEBUG)
-                Logger.debug(
-                    this, "Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
+              if (LOG.isDebugEnabled())
+                LOG.debug("Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
               String ws = buffer.substring(0, i);
               buffer.delete(0, i);
 
               if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
                 ws += buffer.substring(0, 4);
                 if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  Logger.error(this, "<!-- not followed by whitespace!");
+                  LOG.error("<!-- not followed by whitespace!");
                   return;
                 }
                 buffer.delete(0, 4);
@@ -3419,7 +3404,7 @@ class CSSTokenizerFilter {
                   // meaning.
                   filteredTokens.setLength(0);
                 }
-                if (logDEBUG) Logger.debug(this, "STATE2 CASE { filtered elements" + filtered);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE { filtered elements" + filtered);
               } else {
                 // No valid selector, wipe it out as above.
                 ignoreElementsS2 = true;
@@ -3433,9 +3418,8 @@ class CSSTokenizerFilter {
               }
               currentState = STATE3;
               openBracesStartingS3 = openBraces;
-              if (logDEBUG)
-                Logger.debug(
-                    this, "STATE2 -> STATE3, openBracesStartingS3 = " + openBracesStartingS3);
+              if (LOG.isDebugEnabled())
+                LOG.debug("STATE2 -> STATE3, openBracesStartingS3 = " + openBracesStartingS3);
               buffer.setLength(0);
               break;
 
@@ -3450,9 +3434,8 @@ class CSSTokenizerFilter {
                 if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                 break;
               }
-              if (logDEBUG)
-                Logger.debug(
-                    this, "Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
+              if (LOG.isDebugEnabled())
+                LOG.debug("Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
               ws = buffer.substring(0, i);
               buffer.delete(0, i);
 
@@ -3460,7 +3443,7 @@ class CSSTokenizerFilter {
                 if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
                   filteredTokens.append(buffer, 0, 4);
                   if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                    Logger.error(this, "<!-- not followed by whitespace!");
+                    LOG.error("<!-- not followed by whitespace!");
                     return;
                   }
                   buffer.delete(0, 4);
@@ -3475,7 +3458,7 @@ class CSSTokenizerFilter {
               }
 
               String filtered = recursiveSelectorVerifier(buffer.toString().trim());
-              if (logDEBUG) Logger.debug(this, "STATE2 CASE , filtered elements" + filtered);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE , filtered elements" + filtered);
               if (filtered != null && !"".equals(filtered)) {
                 if (s2Comma) filteredTokens.append(",");
                 else s2Comma = true;
@@ -3499,7 +3482,7 @@ class CSSTokenizerFilter {
                 // ignoreElementsS2 is irrelevant here, we are not *adding to* filteredTokens.
                 if (openBraces >= 0) filteredTokens.append('}');
                 else openBraces = 0;
-                if (logDEBUG) Logger.debug(this, "Writing \"" + filteredTokens + "\"");
+                if (LOG.isTraceEnabled()) LOG.trace("Writing \"" + filteredTokens + "\"");
                 w.write(filteredTokens.toString());
               } else {
                 if (openBraces > 0) openBraces--;
@@ -3513,7 +3496,7 @@ class CSSTokenizerFilter {
               isState1Present = false;
               currentState = STATE1;
               if (isInline) return;
-              if (logDEBUG) Logger.debug(this, "STATE2 CASE }: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE }: " + c);
               break;
 
             case '"':
@@ -3530,13 +3513,13 @@ class CSSTokenizerFilter {
 
             default:
               buffer.append(c);
-              if (logDEBUG) Logger.debug(this, "STATE2 default CASE: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE2 default CASE: " + c);
               break;
           }
           break;
 
         case STATE2INQUOTE:
-          if (logDEBUG) Logger.debug(this, "STATE2INQUOTE: " + c);
+          if (LOG.isTraceEnabled()) LOG.trace("STATE2INQUOTE: " + c);
           charsetPossible = false;
           switch (c) {
             case '"':
@@ -3583,9 +3566,8 @@ class CSSTokenizerFilter {
               if (openBraces > openBracesStartingS3) {
                 // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
                 buffer.append(c);
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "openBraces now "
                           + openBraces
                           + " not moving on because openBracesStartingS3="
@@ -3599,12 +3581,13 @@ class CSSTokenizerFilter {
                 if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                 break;
               }
-              if (logDEBUG) Logger.debug(this, "Appending whitespace: " + buffer.substring(0, i));
+              if (LOG.isTraceEnabled())
+                LOG.trace("Appending whitespace: " + buffer.substring(0, i));
               whitespaceBeforeProperty = buffer.substring(0, i);
               propertyName = buffer.delete(0, i).toString().trim();
-              if (logDEBUG) Logger.debug(this, "Property name: " + propertyName);
+              if (LOG.isTraceEnabled()) LOG.trace("Property name: " + propertyName);
               buffer.setLength(0);
-              if (logDEBUG) Logger.debug(this, "STATE3 CASE :: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE :: " + c);
               break;
 
             case ';':
@@ -3616,9 +3599,8 @@ class CSSTokenizerFilter {
               if (openBraces > openBracesStartingS3) {
                 // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
                 buffer.append(c);
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "openBraces now "
                           + openBraces
                           + " not moving on because openBracesStartingS3="
@@ -3633,18 +3615,18 @@ class CSSTokenizerFilter {
                 if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                 break;
               }
-              if (logDEBUG)
-                Logger.debug(
-                    this, "Appending whitespace after colon: \"" + buffer.substring(0, i) + "\"");
+              if (LOG.isDebugEnabled())
+                LOG.debug("Appending whitespace after colon: \"" + buffer.substring(0, i) + "\"");
               whitespaceAfterColon = buffer.substring(0, i);
               propertyValue = buffer.delete(0, i).toString().trim();
-              if (logDEBUG) Logger.debug(this, "Property value: " + propertyValue);
+              if (LOG.isTraceEnabled()) LOG.trace("Property value: " + propertyValue);
               buffer.setLength(0);
 
               CSSPropertyVerifier obj = getVerifier(propertyName);
               if (obj != null) {
                 ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
-                if (logDEBUG) Logger.debug(this, "Split: " + CSSPropertyVerifier.toString(words));
+                if (LOG.isTraceEnabled())
+                  LOG.trace("Split: " + CSSPropertyVerifier.toString(words));
                 if (!ignoreElementsS2
                     && !ignoreElementsS3
                     && verifyToken(currentMedia, elements, obj, words)) {
@@ -3656,16 +3638,13 @@ class CSSTokenizerFilter {
                   filteredTokens.append(whitespaceAfterColon);
                   filteredTokens.append(propertyValue);
                   filteredTokens.append(';');
-                  if (logDEBUG)
-                    Logger.debug(
-                        this, "STATE3 CASE ;: appending " + propertyName + ":" + propertyValue);
-                  if (logDEBUG)
-                    Logger.debug(
-                        this, "filtered tokens now: \"" + filteredTokens.toString() + "\"");
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("STATE3 CASE ;: appending " + propertyName + ":" + propertyValue);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("filtered tokens now: \"" + filteredTokens.toString() + "\"");
                 } else {
-                  if (logDEBUG)
-                    Logger.debug(
-                        this,
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
                         "filtered tokens now (ignored): \""
                             + filteredTokens.toString()
                             + "\" words="
@@ -3678,7 +3657,8 @@ class CSSTokenizerFilter {
                             + ignoreElementsS3);
                 }
               } else {
-                if (logDEBUG) Logger.debug(this, "No such property name \"" + propertyName + "\"");
+                if (LOG.isTraceEnabled())
+                  LOG.trace("No such property name \"" + propertyName + "\"");
               }
               ignoreElementsS3 = false;
               propertyName = "";
@@ -3694,9 +3674,8 @@ class CSSTokenizerFilter {
               if (openBraces > openBracesStartingS3 - 1) {
                 // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
                 buffer.append(c);
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "openBraces now "
                           + openBraces
                           + " not moving on because openBracesStartingS3="
@@ -3724,24 +3703,23 @@ class CSSTokenizerFilter {
                   if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                   break;
                 }
-                if (logDEBUG)
-                  Logger.debug(
-                      this, "Appending whitespace after colon (}): " + buffer.substring(0, i));
+                if (LOG.isDebugEnabled())
+                  LOG.debug("Appending whitespace after colon (}): " + buffer.substring(0, i));
                 whitespaceAfterColon = buffer.substring(0, i);
                 buffer.delete(0, i);
 
                 propertyValue = buffer.toString().trim();
-                if (logDEBUG) Logger.debug(this, "Property value: " + propertyValue);
+                if (LOG.isTraceEnabled()) LOG.trace("Property value: " + propertyValue);
                 buffer.setLength(0);
 
                 obj = getVerifier(propertyName);
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "Found PropertyName:" + propertyName + " propertyValue:" + propertyValue);
                 if (obj != null) {
                   ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
-                  if (logDEBUG) Logger.debug(this, "Split: " + CSSPropertyVerifier.toString(words));
+                  if (LOG.isTraceEnabled())
+                    LOG.trace("Split: " + CSSPropertyVerifier.toString(words));
                   if (!ignoreElementsS2
                       && !ignoreElementsS3
                       && verifyToken(currentMedia, elements, obj, words)) {
@@ -3752,13 +3730,12 @@ class CSSTokenizerFilter {
                     filteredTokens.append(':');
                     filteredTokens.append(whitespaceAfterColon);
                     filteredTokens.append(propertyValue);
-                    if (logDEBUG)
-                      Logger.debug(
-                          this, "STATE3 CASE }: appending " + propertyName + ":" + propertyValue);
+                    if (LOG.isTraceEnabled())
+                      LOG.trace("STATE3 CASE }: appending " + propertyName + ":" + propertyValue);
                   }
                 } else {
-                  if (logDEBUG)
-                    Logger.debug(this, "No such property name \"" + propertyName + "\"");
+                  if (LOG.isTraceEnabled())
+                    LOG.trace("No such property name \"" + propertyName + "\"");
                 }
                 propertyName = "";
               } else {
@@ -3769,9 +3746,8 @@ class CSSTokenizerFilter {
                   if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                   break;
                 }
-                if (logDEBUG)
-                  Logger.debug(
-                      this, "Appending whitespace after colon (}): " + buffer.substring(0, i));
+                if (LOG.isDebugEnabled())
+                  LOG.debug("Appending whitespace after colon (}): " + buffer.substring(0, i));
                 filteredTokens.append(buffer, 0, i);
                 buffer.delete(0, i);
               }
@@ -3784,9 +3760,8 @@ class CSSTokenizerFilter {
               } else ignoreElementsS2 = false;
               if (!ignoreElementsS1) {
                 w.write(filteredTokens.toString());
-                if (logDEBUG)
-                  Logger.debug(
-                      this, "writing filtered tokens: \"" + filteredTokens.toString() + "\"");
+                if (LOG.isDebugEnabled())
+                  LOG.debug("writing filtered tokens: \"" + filteredTokens.toString() + "\"");
               }
               filteredTokens.setLength(0);
               whitespaceAfterColon = "";
@@ -3799,14 +3774,14 @@ class CSSTokenizerFilter {
               if (isInline) return;
               buffer.setLength(0);
               s2Comma = false;
-              if (logDEBUG) Logger.debug(this, "STATE3 CASE }: " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE }: " + c);
               break;
 
             case '{':
               // Correctly tokenise invalid properties including {}, see CSS2 section 4.1.6.
               openBraces++;
               buffer.append(c);
-              if (logDEBUG) Logger.debug(this, "openBraces now " + openBraces + " in S3");
+              if (LOG.isTraceEnabled()) LOG.trace("openBraces now " + openBraces + " in S3");
               break;
             case '"':
             case '\'':
@@ -3822,7 +3797,7 @@ class CSSTokenizerFilter {
 
             default:
               buffer.append(c);
-              if (logDEBUG) Logger.debug(this, "STATE3 default CASE : " + c);
+              if (LOG.isTraceEnabled()) LOG.trace("STATE3 default CASE : " + c);
               break;
           }
           break;
@@ -3830,7 +3805,7 @@ class CSSTokenizerFilter {
         case STATE3INQUOTE:
           charsetPossible = false;
           if (stopAtDetectedCharset) return;
-          if (logDEBUG) Logger.debug(this, "STATE3INQUOTE: " + c);
+          if (LOG.isTraceEnabled()) LOG.trace("STATE3INQUOTE: " + c);
           switch (c) {
             case '"':
               if (currentQuote == '"' && prevc != '\\') currentState = STATE3;
@@ -3870,18 +3845,18 @@ class CSSTokenizerFilter {
             if (prevc == '*') {
               currentState = stateBeforeComment;
               c = 0;
-              if (logDEBUG) Logger.debug(this, "Exiting the comment state " + currentState);
+              if (LOG.isTraceEnabled()) LOG.trace("Exiting the comment state " + currentState);
             }
           }
           break;
       }
     }
 
-    if (logDEBUG) Logger.debug(this, "Filtered tokens: \"" + filteredTokens + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("Filtered tokens: \"" + filteredTokens + "\"");
     w.write(filteredTokens.toString());
     for (int i = 0; i < openBraces; i++) w.write('}');
 
-    if (logDEBUG) Logger.debug(this, "Remaining buffer: \"" + buffer + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("Remaining buffer: \"" + buffer + "\"");
 
     int i = 0;
     for (i = 0; i < buffer.length(); i++) {
@@ -3920,14 +3895,14 @@ class CSSTokenizerFilter {
       if (!first) sb.append(" ");
       if (!word.changed) {
         sb.append(word.original);
-        if (logDEBUG) Logger.debug(this, "Adding word (original): \"" + word.original + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("Adding word (original): \"" + word.original + "\"");
       } else {
         sb.append(word.encode(false)); // FIXME check if charset is full unicode, if so pass true
-        if (logDEBUG) Logger.debug(this, "Adding word (new): \"" + word.encode(false) + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("Adding word (new): \"" + word.encode(false) + "\"");
       }
       first = false;
     }
-    if (logDEBUG) Logger.debug(this, "Reconstructed: \"" + sb + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("Reconstructed: \"" + sb + "\"");
     return sb.toString();
   }
 
@@ -4203,10 +4178,8 @@ class CSSTokenizerFilter {
    * @return
    */
   private static ParsedWord[] split(String input, boolean allowCommaDelimiters) {
-    if (logDEBUG)
-      Logger.debug(
-          CSSTokenizerFilter.class,
-          "Splitting \"" + input + "\" allowCommaDelimiters=" + allowCommaDelimiters);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Splitting \"" + input + "\" allowCommaDelimiters=" + allowCommaDelimiters);
     ArrayList<ParsedWord> words = new ArrayList<>();
     ParsedWord lastWord = null;
     char c = 0;
@@ -4243,15 +4216,12 @@ class CSSTokenizerFilter {
             if (c == ',') {
               if (decodedToken.isEmpty()) {
                 if (lastWord == null) {
-                  if (logDEBUG)
-                    Logger.debug(
-                        CSSTokenizerFilter.class,
-                        "Extra comma before first element in \"" + input + "\" i=" + i);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("Extra comma before first element in \"" + input + "\" i=" + i);
                   return null;
                 } else if (lastWord.postComma) {
-                  if (logDEBUG)
-                    Logger.debug(
-                        CSSTokenizerFilter.class,
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
                         "Extra comma after element " + lastWord + " in \"" + input + "\" i=" + i);
                   // Allow it, delete it.
                   lastWord.changed = true;
@@ -4261,9 +4231,8 @@ class CSSTokenizerFilter {
                 // Process the token before the comma
                 ParsedWord word =
                     parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
-                if (logDEBUG)
-                  Logger.debug(
-                      CSSTokenizerFilter.class,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "Token before comma: orig: \""
                           + origToken
                           + "\" decoded: \""
@@ -4293,9 +4262,8 @@ class CSSTokenizerFilter {
             if (!decodedToken.isEmpty()) {
               ParsedWord word =
                   parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
-              if (logDEBUG)
-                Logger.debug(
-                    CSSTokenizerFilter.class,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "Token: orig: \""
                         + origToken
                         + "\" decoded: \""
@@ -4474,9 +4442,8 @@ class CSSTokenizerFilter {
       dontLikeOrigToken = true;
     }
     if (!origToken.isEmpty()) {
-      if (logDEBUG)
-        Logger.debug(
-            CSSTokenizerFilter.class,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Token: orig: \""
                 + origToken
                 + "\" decoded: \""
@@ -4525,7 +4492,7 @@ class CSSTokenizerFilter {
       if (s.endsWith(")")) {
         decodedToken.delete(0, 4);
         decodedToken.setLength(decodedToken.length() - 1);
-        if (logDEBUG) Logger.debug(CSSTokenizerFilter.class, "stripped: " + decodedToken);
+        if (LOG.isTraceEnabled()) LOG.trace("stripped: " + decodedToken);
 
         // Trim whitespace from both ends
 
@@ -4545,10 +4512,8 @@ class CSSTokenizerFilter {
         decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
         strippedOrig = strippedOrig.substring(0, i + 1);
 
-        if (logDEBUG)
-          Logger.debug(
-              CSSTokenizerFilter.class,
-              "whitespace stripped: " + strippedOrig + " decoded " + decodedToken);
+        if (LOG.isTraceEnabled())
+          LOG.trace("whitespace stripped: " + strippedOrig + " decoded " + decodedToken);
 
         if (strippedOrig.isEmpty()) return null;
 
@@ -4560,9 +4525,8 @@ class CSSTokenizerFilter {
               // The word is a string.
               decodedToken.setLength(decodedToken.length() - 1);
               decodedToken.deleteCharAt(0);
-              if (logDEBUG)
-                Logger.debug(
-                    CSSTokenizerFilter.class,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "creating url(): orig=\"" + origToken + "\" decoded=\"" + decodedToken + "\"");
               return new ParsedURL(
                   origToken.toString(), decodedToken.toString(), dontLikeOrigToken, c);
@@ -4856,18 +4820,17 @@ class CSSTokenizerFilter {
 
     public static boolean isValidURI(ParsedURL word, FilterCallback cb) {
       String w = CSSTokenizerFilter.removeOuterQuotes(word.getDecoded());
-      // if(debug) Logger.debug(this, "CSSPropertyVerifier isVaildURI called cb="+cb);
+      // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI called cb="+cb);
       try {
-        // if(debug) Logger.debug(this, "CSSPropertyVerifier isVaildURI "+cb.processURI(URI, null));
+        // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI "+cb.processURI(URI, null));
         String s = cb.processURI(w, null);
         if (s == null || s.isEmpty()) return false;
         if (s.equals(w)) return true;
-        if (logDEBUG)
-          Logger.debug(CSSTokenizerFilter.class, "New url: \"" + s + "\" from \"" + w + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("New url: \"" + s + "\" from \"" + w + "\"");
         word.setNewURL(s);
         return true;
       } catch (CommentException e) {
-        // if(debug) Logger.debug(this, "CSSPropertyVerifier isVaildURI Exception"+e.toString());
+        // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI Exception"+e.toString());
         return false;
       }
     }
@@ -4884,7 +4847,7 @@ class CSSTokenizerFilter {
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] words, FilterCallback cb) {
 
-      if (logDEBUG) Logger.debug(this, "checkValidity for " + toString(words) + " for " + this);
+      if (LOG.isTraceEnabled()) LOG.trace("checkValidity for " + toString(words) + " for " + this);
       if (!onlyValueVerifier) {
         if (allowedMedia != null) {
           boolean allowed = false;
@@ -4894,9 +4857,8 @@ class CSSTokenizerFilter {
               break;
             }
           if (!allowed) {
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "checkValidity Media of the element is not allowed.Media="
                       + Fields.commaList(media)
                       + " allowed Media="
@@ -5092,9 +5054,8 @@ class CSSTokenizerFilter {
      */
     public boolean recursiveParserExpressionVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "1recursiveParserExpressionVerifier called: with "
                 + expression
                 + " "
@@ -5133,12 +5094,11 @@ class CSSTokenizerFilter {
             j = words.length;
           }
           for (; j <= words.length; j++) {
-            if (logDEBUG)
-              Logger.debug(this, "2Making recursiveDoubleBarVerifier to consume " + j + " words");
+            if (LOG.isTraceEnabled())
+              LOG.trace("2Making recursiveDoubleBarVerifier to consume " + j + " words");
             ParsedWord[] partToPassToDB = Arrays.copyOf(words, j);
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "3Calling recursiveDoubleBarVerifier with "
                       + firstPart
                       + " "
@@ -5147,17 +5107,15 @@ class CSSTokenizerFilter {
                 firstPart, partToPassToDB, cb)) // This function is written to verify || operator.
             {
               ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "4recursiveDoubleBarVerifier true calling itself with "
                         + secondPart
                         + CSSPropertyVerifier.toString(partToPass));
               if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) return true;
             }
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "5Back to recursiveDoubleBarVerifier "
                       + j
                       + " "
@@ -5201,9 +5159,8 @@ class CSSTokenizerFilter {
                 CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words[0], cb);
             if (result) {
               ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "8First part is true. partToPass=" + CSSPropertyVerifier.toString(partToPass));
               return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
             }
@@ -5247,9 +5204,8 @@ class CSSTokenizerFilter {
               throw new IllegalStateException(
                   "Don't know what to do with char after <>[]: " + secondPart.charAt(0));
             }
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "9in < firstPart="
                       + firstPart
                       + " secondPart="
@@ -5280,7 +5236,7 @@ class CSSTokenizerFilter {
         }
       }
       // Single verifier object
-      if (logDEBUG) Logger.debug(this, "10Single token:" + expression);
+      if (LOG.isTraceEnabled()) LOG.trace("10Single token:" + expression);
       int index = Integer.parseInt(expression);
       return CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
     }
@@ -5426,9 +5382,8 @@ class CSSTokenizerFilter {
         String secondPart,
         FilterCallback cb) {
 
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "recursiveVariableOccurranceVerifier("
                 + verifierIndex
                 + ","
@@ -5449,15 +5404,15 @@ class CSSTokenizerFilter {
       if (lowerLimit <= 0) {
         // There could be secondPart.
         if (recursiveParserExpressionVerifier(secondPart, valueParts, cb)) {
-          if (logDEBUG)
-            Logger.debug(this, "recursiveVariableOccurranceVerifier completed by " + secondPart);
+          if (LOG.isTraceEnabled())
+            LOG.trace("recursiveVariableOccurranceVerifier completed by " + secondPart);
           return true;
         }
       }
 
       // There can be no more parts.
       if (upperLimit == 0) {
-        if (logDEBUG) Logger.debug(this, "recursiveVariableOccurranceVerifier: no more parts");
+        if (LOG.isTraceEnabled()) LOG.trace("recursiveVariableOccurranceVerifier: no more parts");
         return false;
       }
 
@@ -5466,29 +5421,26 @@ class CSSTokenizerFilter {
           i++) {
         ParsedWord[] before = Arrays.copyOf(valueParts, i);
         if (CSSTokenizerFilter.auxilaryVerifiers[verifierIndex].checkValidity(before, cb)) {
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "first " + i + " tokens using " + verifierIndex + " match " + toString(before));
           if (i == valueParts.length && lowerLimit <= 1) {
             if (recursiveParserExpressionVerifier(secondPart, new ParsedWord[0], cb)) {
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "recursiveVariableOccurranceVerifier completed with no more parts by "
                         + secondPart);
               return true;
             } else {
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "recursiveVariableOccurranceVerifier: satisfied self but nothing left to match "
                         + secondPart);
               return false;
             }
           } else if (i == valueParts.length) return false;
           ParsedWord[] after = Arrays.copyOfRange(valueParts, i, valueParts.length);
-          if (logDEBUG) Logger.debug(this, "rest of tokens: " + toString(after));
+          if (LOG.isTraceEnabled()) LOG.trace("rest of tokens: " + toString(after));
           if (recursiveVariableOccuranceVerifier(
               verifierIndex,
               after,
@@ -5527,9 +5479,8 @@ class CSSTokenizerFilter {
      */
     public boolean recursiveDoubleBarVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "11in recursiveDoubleBarVerifier expression="
                 + expression
                 + " value="
@@ -5554,9 +5505,8 @@ class CSSTokenizerFilter {
           lastA = i;
           if (i == expression.length()) secondPart = "";
           else secondPart = expression.substring(i + 1);
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "12in a firstPart="
                     + firstPart
                     + " secondPart="
@@ -5575,9 +5525,8 @@ class CSSTokenizerFilter {
             result =
                 CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(
                     getSubArray(words, 0, j + 1), cb);
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "14in for loop result:"
                       + result
                       + " for "
@@ -5589,8 +5538,8 @@ class CSSTokenizerFilter {
               ParsedWord[] valueToPass = Arrays.copyOfRange(words, j + 1, words.length);
               if (valueToPass.length == 0) {
                 // We have matched everything against the subset we have considered so far.
-                if (logDEBUG)
-                  Logger.debug(this, "14opt No more words to pass, have matched everything");
+                if (LOG.isTraceEnabled())
+                  LOG.trace("14opt No more words to pass, have matched everything");
                 return true;
               }
               // Against the rest of the pattern: the part that we've tried and failed plus the part
@@ -5601,9 +5550,8 @@ class CSSTokenizerFilter {
                   ignoredParts
                       + (((ignoredParts.isEmpty()) || (secondPart.isEmpty())) ? "" : "a")
                       + secondPart;
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "14a "
                         + toString(getSubArray(words, 0, j + 1))
                         + " can be consumed by "
@@ -5615,7 +5563,8 @@ class CSSTokenizerFilter {
               if (pattern.isEmpty()) return false;
               result = recursiveDoubleBarVerifier(pattern, valueToPass, cb);
               if (result) {
-                if (logDEBUG) Logger.debug(this, "15else part is true, value consumed=" + words[j]);
+                if (LOG.isTraceEnabled())
+                  LOG.trace("15else part is true, value consumed=" + words[j]);
                 return true;
               }
             }
@@ -5626,9 +5575,8 @@ class CSSTokenizerFilter {
       if (lastA != -1) return false;
       // Single token
       int index = Integer.parseInt(expression);
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "16Single token:"
                 + expression
                 + " with value=*"
@@ -5649,8 +5597,8 @@ class CSSTokenizerFilter {
     @Override
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
-      if (logDEBUG)
-        Logger.debug(this, "ContentPropertyVerifier checkValidity called: " + toString(value));
+      if (LOG.isTraceEnabled())
+        LOG.trace("ContentPropertyVerifier checkValidity called: " + toString(value));
 
       if (value.length != 1) return false;
 
@@ -5750,7 +5698,8 @@ class CSSTokenizerFilter {
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
 
-      if (logDEBUG) Logger.debug(this, "FontPartPropertyVerifier called with " + toString(value));
+      if (LOG.isTraceEnabled())
+        LOG.trace("FontPartPropertyVerifier called with " + toString(value));
       CSSPropertyVerifier fontSize =
           new CSSPropertyVerifier(
               Arrays.asList(
@@ -5778,9 +5727,8 @@ class CSSTokenizerFilter {
             int slashIndex = orig.indexOf("/");
             String firstPart = orig.substring(0, slashIndex);
             String secondPart = orig.substring(slashIndex + 1);
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "FontPartPropertyVerifier FirstPart=" + firstPart + " secondPart=" + secondPart);
             CSSPropertyVerifier lineHeight =
                 new CSSPropertyVerifier(
@@ -5816,11 +5764,11 @@ class CSSTokenizerFilter {
     @Override
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
-      if (logDEBUG) Logger.debug(this, "font verifier: " + toString(value));
+      if (LOG.isTraceEnabled()) LOG.trace("font verifier: " + toString(value));
       if (value.length == 1) {
         if (value[0] instanceof ParsedIdentifier && "inherit".equalsIgnoreCase(value[0].original)) {
           // CSS Property has one of the explicitly defined values
-          if (logDEBUG) Logger.debug(this, "font: inherit");
+          if (LOG.isTraceEnabled()) LOG.trace("font: inherit");
           return true;
         }
       }
@@ -5832,9 +5780,8 @@ class CSSTokenizerFilter {
             break;
           }
         if (!allowed) {
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "checkValidity Media of the element is not allowed.Media="
                     + Fields.commaList(media)
                     + " allowed Media="
@@ -5852,7 +5799,7 @@ class CSSTokenizerFilter {
         String s = null;
         if (word instanceof ParsedString string) {
           String decoded = (string.getDecoded());
-          if (logDEBUG) Logger.debug(this, "decoded: \"" + decoded + "\"");
+          if (LOG.isTraceEnabled()) LOG.trace("decoded: \"" + decoded + "\"");
           // It's actually quoted, great.
           if (isSpecificFamily(decoded.toLowerCase())) {
             continue;
@@ -5869,9 +5816,8 @@ class CSSTokenizerFilter {
             continue;
           }
           if (word.postComma) {
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Word ends in comma, but is not a valid font on its own: "
                       + word
                       + " (index "
@@ -5887,11 +5833,10 @@ class CSSTokenizerFilter {
         fontWords.clear();
         assert (s != null);
         fontWords.add(s);
-        if (logDEBUG) Logger.debug(this, "first word: \"" + s + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("first word: \"" + s + "\"");
         if (i == value.length - 1) {
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "last word. font words: "
                     + getStringFromArray(fontWords.toArray(new String[0]))
                     + " valid="
@@ -5907,16 +5852,15 @@ class CSSTokenizerFilter {
           if (newWord instanceof ParsedIdentifier) {
             s1 = newWord.original;
             fontWords.add(s1);
-            if (logDEBUG) Logger.debug(this, "adding word: \"" + s1 + "\"");
+            if (LOG.isTraceEnabled()) LOG.trace("adding word: \"" + s1 + "\"");
             if (last) {
               if (newWord.postComma) {
-                if (logDEBUG) Logger.debug(this, "not valid: trailing comma at end");
+                if (LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
               }
               if (validFontWords(fontWords)) {
                 // Valid. Good.
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "font: reached last in inner loop, valid. font words: "
                           + getStringFromArray(fontWords.toArray(new String[0])));
                 return true;
@@ -5929,23 +5873,22 @@ class CSSTokenizerFilter {
                 i = j;
                 continue outer;
               } else {
-                if (logDEBUG)
-                  Logger.debug(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "comma but can't parse font words: "
                           + Fields.commaList(fontWords.toArray(new String[0])));
                 return false;
               }
             }
           } else {
-            if (logDEBUG) Logger.debug(this, "cannot parse " + newWord);
+            if (LOG.isTraceEnabled()) LOG.trace("cannot parse " + newWord);
             return false;
           }
         }
         // Still looking for another keyword...
         return validFontWords(fontWords);
       }
-      if (logDEBUG) Logger.debug(this, "font: reached end, valid");
+      if (LOG.isTraceEnabled()) LOG.trace("font: reached end, valid");
       return true;
     }
 

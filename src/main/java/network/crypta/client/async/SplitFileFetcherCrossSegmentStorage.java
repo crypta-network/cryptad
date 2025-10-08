@@ -11,11 +11,12 @@ import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHK;
 import network.crypta.keys.ClientCHKBlock;
-import network.crypta.support.Logger;
 import network.crypta.support.MemoryLimitedChunk;
 import network.crypta.support.MemoryLimitedJob;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Cross-segments are "in parallel" with the main segments, an interlaced Reed-Solomon scheme
@@ -24,11 +25,10 @@ import network.crypta.support.io.StorageFormatException;
  * blocks.
  */
 public class SplitFileFetcherCrossSegmentStorage {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG =
+      LoggerFactory.getLogger(SplitFileFetcherCrossSegmentStorage.class);
 
   static {
-    Logger.registerClass(SplitFileFetcherCrossSegmentStorage.class);
   }
 
   public final int crossSegmentNumber;
@@ -108,13 +108,12 @@ public class SplitFileFetcherCrossSegmentStorage {
       }
       if (tryDecode || succeeded || cancelled) return;
       if (!found) {
-        Logger.warning(this, "Block " + blockNo + " on " + segment + " not wanted by " + this);
+        LOG.warn("Block " + blockNo + " on " + segment + " not wanted by " + this);
         return;
       }
       if (totalFound < dataBlockCount) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Not decoding "
                   + this
                   + " : found "
@@ -155,7 +154,7 @@ public class SplitFileFetcherCrossSegmentStorage {
               lock = parent.jobRunner.lock();
               innerDecode(chunk);
             } catch (IOException e) {
-              Logger.error(this, "Failed to decode " + this + " because of disk error: " + e, e);
+              LOG.error("Failed to decode " + this + " because of disk error: " + e, e);
               parent.failOnDiskError(e);
             } catch (PersistenceDisabledException e) {
               shutdown = true;
@@ -186,7 +185,7 @@ public class SplitFileFetcherCrossSegmentStorage {
    * new decoded blocks afterwards to ensure reproducible behaviour.
    */
   private void innerDecode(MemoryLimitedChunk chunk) throws IOException {
-    if (logMINOR) Logger.minor(this, "Trying to decode " + this + " for " + parent);
+    if (LOG.isDebugEnabled()) LOG.debug("Trying to decode " + this + " for " + parent);
     boolean killed = false;
     synchronized (this) {
       if (succeeded) return;
@@ -245,21 +244,21 @@ public class SplitFileFetcherCrossSegmentStorage {
       succeeded = true;
     }
 
-    if (logMINOR)
-      Logger.minor(this, "Completed a cross-segment: decoded=" + decoded + " encoded=" + encoded);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Completed a cross-segment: decoded=" + decoded + " encoded=" + encoded);
   }
 
   private void checkDecodedBlock(int i, byte[] data) {
     ClientCHK key = getKey(i);
     if (key == null) {
-      Logger.error(this, "Key not found");
+      LOG.error("Key not found");
       failOffThread(new FetchException(FetchExceptionMode.INTERNAL_ERROR, "Key not found"));
       return;
     }
     ClientCHKBlock block = encodeBlock(key, data);
     String decoded = i >= dataBlockCount ? "Encoded" : "Decoded";
     if (block == null || !key.getNodeCHK().equals(block.getKey())) {
-      Logger.error(this, decoded + " cross-segment block " + i + " failed!");
+      LOG.error(decoded + " cross-segment block " + i + " failed!");
       failOffThread(
           new FetchException(
               FetchExceptionMode.SPLITFILE_DECODE_ERROR,
@@ -293,10 +292,10 @@ public class SplitFileFetcherCrossSegmentStorage {
                   segments[blockNo].innerOnGotKey(
                       key.getNodeCHK(), block, keys, blockNumbers[blockNo], data);
               if (success) {
-                if (logMINOR) Logger.minor(this, "Successfully decoded cross-segment block");
+                if (LOG.isDebugEnabled()) LOG.debug("Successfully decoded cross-segment block");
               } else {
                 // Not really a big deal, but potentially interesting...
-                Logger.warning(this, "Decoded cross-segment block but not wanted by segment");
+                LOG.warn("Decoded cross-segment block but not wanted by segment");
               }
             } catch (IOException e) {
               parent.failOnDiskError(e);

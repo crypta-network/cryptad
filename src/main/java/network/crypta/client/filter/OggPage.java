@@ -9,8 +9,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Represents a single page of an Ogg bitstream
@@ -18,7 +18,9 @@ import network.crypta.support.Logger.LogLevel;
  * @author sajack
  */
 public class OggPage {
-  boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+  private static final Logger LOG = LoggerFactory.getLogger(OggPage.class);
+
+  boolean logMINOR = LOG.isDebugEnabled();
   static final byte[] magicNumber = new byte[] {0x4f, 0x67, 0x67, 0x53};
   /*This CRC lookup table was taken from libogg. These values
    * are XORed with
@@ -105,9 +107,9 @@ public class OggPage {
 
   public OggPage(DataInputStream input) throws IOException {
     version = input.readByte();
-    Logger.minor(this, "Version: " + version);
+    LOG.debug("Version: " + version);
     headerType = input.readByte();
-    Logger.minor(this, "Headertype: " + headerType);
+    LOG.debug("Headertype: " + headerType);
     this.granuelPosition = new byte[8];
     this.bitStreamSerial = new byte[4];
     this.pageSequenceNumber = new byte[4];
@@ -115,8 +117,7 @@ public class OggPage {
     input.readFully(bitStreamSerial);
     input.readFully(pageSequenceNumber);
     input.readFully(checksum);
-    Logger.minor(
-        this,
+    LOG.debug(
         "Checksum: "
             + Integer.toHexString(byteToUnsigned(checksum[0]))
             + Integer.toHexString(byteToUnsigned(checksum[1]))
@@ -131,13 +132,13 @@ public class OggPage {
     }
     payload = new byte[payloadSize];
     input.readFully(payload);
-    Logger.minor(this, "Created page with " + segments + " segments");
+    LOG.debug("Created page with " + segments + " segments");
   }
 
   public OggPage(OggPage oldPage, Collection<CodecPacket> packets) throws IOException {
     this.version = oldPage.version;
     this.headerType = oldPage.headerType;
-    Logger.minor(this, "Header type: " + Integer.toBinaryString(this.headerType));
+    LOG.debug("Header type: " + Integer.toBinaryString(this.headerType));
     this.granuelPosition = oldPage.granuelPosition;
     this.bitStreamSerial = oldPage.bitStreamSerial;
     this.pageSequenceNumber = oldPage.pageSequenceNumber;
@@ -147,21 +148,19 @@ public class OggPage {
     for (CodecPacket packet : packets) {
       int wholeSegments = packet.payload.length / 255;
       int concludingPartialSegment = packet.payload.length % 255;
-      Logger.minor(
-          this, "Whole segments: " + wholeSegments + " Partial: " + concludingPartialSegment);
+      LOG.debug("Whole segments: " + wholeSegments + " Partial: " + concludingPartialSegment);
       for (int i = 0; i < wholeSegments; i++) {
         segmentSizes.add(intToUnsignedByte(255));
       }
       if (concludingPartialSegment != 0) {
         segmentSizes.add(intToUnsignedByte(concludingPartialSegment));
       }
-      Logger.minor(this, "Writing packet sized: " + packet.payload.length);
+      LOG.debug("Writing packet sized: " + packet.payload.length);
       payloadStream.write(packet.payload);
     }
     this.segments = intToUnsignedByte(segmentSizes.size());
     this.segmentTable = new byte[byteToUnsigned(segments)];
-    Logger.minor(
-        this,
+    LOG.debug(
         "SegmentSizes len: "
             + segmentSizes.size()
             + " SegmentTable size: "
@@ -174,8 +173,7 @@ public class OggPage {
 
     payloadStream.close();
     this.payload = payloadStream.toByteArray();
-    Logger.minor(
-        this, "Payload size: " + this.payload.length + "Made of " + packets.size() + " packets");
+    LOG.debug("Payload size: " + this.payload.length + "Made of " + packets.size() + " packets");
     this.checksum = calculateCRC();
   }
 
@@ -221,7 +219,7 @@ public class OggPage {
   }
 
   public boolean isPacketContinued() {
-    if (logMINOR) Logger.minor(this, "Packet continued: " + (headerType & 0x1));
+    if (LOG.isDebugEnabled()) LOG.debug("Packet continued: " + (headerType & 0x1));
     return (headerType & 0x01) == 1;
   }
 
@@ -291,9 +289,8 @@ public class OggPage {
     segments = 0;
     for (int packet : packetSizes) {
       segments += packet / 255 + (packet % 255 == 0 ? 0 : 1);
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Size of current packet: "
                 + packet
                 + " Current number of segments: "
@@ -303,19 +300,19 @@ public class OggPage {
                 + " Remaining bytes "
                 + packet % 255);
     }
-    if (logMINOR) Logger.minor(this, "Segments " + segments);
+    if (LOG.isDebugEnabled()) LOG.debug("Segments " + segments);
     segmentTable = new byte[segments];
     int segment = 0;
     for (int packet : packetSizes) {
-      if (logMINOR) Logger.minor(this, "Setting segments for packet sized " + packet);
+      if (LOG.isDebugEnabled()) LOG.debug("Setting segments for packet sized " + packet);
       for (int packetSegment = 0; packetSegment < packet / 255; packetSegment++) {
-        if (logMINOR) Logger.minor(this, "Setting segment " + segment + " to full.");
+        if (LOG.isDebugEnabled()) LOG.debug("Setting segment " + segment + " to full.");
         segmentTable[segment] = intToUnsignedByte(255);
         segment++;
       }
       int remainder = packet % 255;
       if (remainder != 0) {
-        if (logMINOR) Logger.minor(this, "Partially filling segment " + segment);
+        if (LOG.isDebugEnabled()) LOG.debug("Partially filling segment " + segment);
         segmentTable[segment] = intToUnsignedByte(remainder);
         segment++;
       }
@@ -323,7 +320,7 @@ public class OggPage {
   }
 
   public Collection<CodecPacket> asPackets() {
-    Logger.minor(this, "Creating packets for " + byteToUnsigned(segments) + " segments");
+    LOG.debug("Creating packets for " + byteToUnsigned(segments) + " segments");
     ArrayList<CodecPacket> packets = new ArrayList<>();
     int bytesParsed = 0;
     int packetSize = 0;
@@ -336,8 +333,7 @@ public class OggPage {
         try {
           System.arraycopy(payload, bytesParsed, packetPayload, 0, packetSize);
         } catch (ArrayIndexOutOfBoundsException e) {
-          Logger.error(
-              this,
+          LOG.error(
               "Error, Out of Bounds."
                   + "Page sequence number: "
                   + byteToUnsigned(this.pageSequenceNumber[0])

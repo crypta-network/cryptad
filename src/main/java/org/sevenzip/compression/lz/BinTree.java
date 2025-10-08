@@ -420,8 +420,6 @@ public class BinTree extends InWindow {
     return curMatch;
   }
 
-  // Removed unused setter to eliminate dead code and IDE warning.
-
   private static final int[] CrcTable = new int[256];
 
   static {

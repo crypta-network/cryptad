@@ -4,8 +4,11 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GenerateSSKMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(GenerateSSKMessage.class);
 
   static final String NAME = "GenerateSSK";
   final String identifier;

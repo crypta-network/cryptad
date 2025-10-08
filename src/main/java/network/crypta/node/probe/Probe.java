@@ -24,10 +24,10 @@ import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.LongCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handles starting, routing, and responding to Metropolis-Hastings corrected probes.
@@ -43,22 +43,9 @@ import network.crypta.support.api.LongCallback;
  * @see freenet.node.probe Explanation of Metropolis-Hastings correction
  */
 public class Probe implements ByteCounter {
+  private static final Logger LOG = LoggerFactory.getLogger(Probe.class);
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-  private static volatile boolean logWARNING;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logWARNING = Logger.shouldLog(Logger.LogLevel.WARNING, this);
-            logMINOR = Logger.shouldLog(Logger.LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(Logger.LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // SLF4J-level guard used instead of legacy logWARNING flag.
 
   private static final String SOURCE_DISCONNECT =
       "Previous step in probe chain no longer connected.";
@@ -389,9 +376,9 @@ public class Probe implements ByteCounter {
         node.getConfig().store();
       }
     } catch (InvalidConfigValueException e) {
-      Logger.error(Probe.class, "node.identifier set() unexpectedly threw.", e);
+      LOG.error("node.identifier set() unexpectedly threw.", e);
     } catch (NodeNeedRestartException e) {
-      Logger.error(Probe.class, "node.identifier set() unexpectedly threw.", e);
+      LOG.error("node.identifier set() unexpectedly threw.", e);
     }
   }
 
@@ -441,17 +428,16 @@ public class Probe implements ByteCounter {
     final Type type;
     if (Type.isValid(typeCode)) {
       type = Type.valueOf(typeCode);
-      if (logDEBUG) Logger.debug(Probe.class, "Probe type is " + type.name() + ".");
+      if (LOG.isTraceEnabled()) LOG.trace("Probe type is " + type.name() + ".");
     } else {
-      if (logMINOR) Logger.minor(Probe.class, "Invalid probe type " + typeCode + ".");
+      if (LOG.isDebugEnabled()) LOG.debug("Invalid probe type " + typeCode + ".");
       listener.onError(Error.UNRECOGNIZED_TYPE, typeCode, true);
       return;
     }
     byte htl = message.getByte(DMT.HTL);
     if (htl < 1) {
-      if (logWARNING) {
-        Logger.warning(
-            Probe.class,
+      if (LOG.isWarnEnabled()) {
+        LOG.warn(
             "Received out-of-bounds HTL of "
                 + htl
                 + " from "
@@ -462,9 +448,8 @@ public class Probe implements ByteCounter {
       }
       return;
     } else if (htl > MAX_HTL) {
-      if (logMINOR) {
-        Logger.minor(
-            Probe.class,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "Received out-of-bounds HTL of "
                 + htl
                 + " from "
@@ -515,8 +500,8 @@ public class Probe implements ByteCounter {
     }
     if (!availableSlot) {
       // Send an overload error back to the source.
-      if (logDEBUG)
-        Logger.debug(Probe.class, "Already accepted maximum number of probes; rejecting incoming.");
+      if (LOG.isTraceEnabled())
+        LOG.trace("Already accepted maximum number of probes; rejecting incoming.");
       listener.onError(Error.OVERLOAD, null, true);
       return;
     }
@@ -567,8 +552,8 @@ public class Probe implements ByteCounter {
       degree = peers.length;
       // Can't handle a probe request if not connected to peers.
       if (degree == 0) {
-        if (logMINOR) {
-          Logger.minor(Probe.class, "Aborting probe request: no connections.");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Aborting probe request: no connections.");
         }
 
         /*
@@ -591,26 +576,24 @@ public class Probe implements ByteCounter {
         if (candidateDegree == 0) acceptProbability = 1.0f;
         else acceptProbability = (float) degree / candidateDegree;
 
-        if (logDEBUG) Logger.debug(Probe.class, "acceptProbability is " + acceptProbability);
+        if (LOG.isTraceEnabled()) LOG.trace("acceptProbability is " + acceptProbability);
         if (node.getRandom().nextFloat() < acceptProbability) {
-          if (logDEBUG) Logger.debug(Probe.class, "Accepted candidate.");
+          if (LOG.isTraceEnabled()) LOG.trace("Accepted candidate.");
           // Filter for response to this probe with requested result type.
           final MessageFilter filter = createResponseFilter(type, candidate, uid, htl);
           message.set(DMT.HTL, htl);
           try {
             node.getUSM().addAsyncFilter(filter, new ResultListener(listener), this);
-            if (logDEBUG) Logger.debug(Probe.class, "Sending.");
+            if (LOG.isTraceEnabled()) LOG.trace("Sending.");
             candidate.sendAsync(message, null, this);
             return true;
           } catch (NotConnectedException e) {
-            if (logMINOR)
-              Logger.minor(
-                  Probe.class, "Peer became disconnected between check and send attempt.", e);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Peer became disconnected between check and send attempt.", e);
             // Peer no longer connected - sending was not successful. Try again.
           } catch (DisconnectedException e) {
-            if (logMINOR)
-              Logger.minor(
-                  Probe.class, "Peer became disconnected while attempting to add filter.", e);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Peer became disconnected while attempting to add filter.", e);
             // Peer no longer connected - cannot send. Try again.
           }
         } else {
@@ -623,14 +606,13 @@ public class Probe implements ByteCounter {
           if (htl == 0) return false;
         }
       } else {
-        if (logMINOR)
-          Logger.minor(Probe.class, "Peer in connectedPeers was not connected.", new Exception());
+        if (LOG.isDebugEnabled()) LOG.debug("Peer in connectedPeers was not connected.");
       }
     }
 
     // Send attempt limit reached.
-    if (logWARNING) {
-      Logger.warning(Probe.class, "Aborting probe request: send attempt limit reached.");
+    if (LOG.isWarnEnabled()) {
+      LOG.warn("Aborting probe request: send attempt limit reached.");
     }
 
     listener.onError(Error.CANNOT_FORWARD, null, true);
@@ -872,7 +854,7 @@ public class Probe implements ByteCounter {
 
     @Override
     public void onDisconnect(PeerContext context) {
-      if (logDEBUG) Logger.debug(Probe.class, "Next node in chain disconnected.");
+      if (LOG.isTraceEnabled()) LOG.trace("Next node in chain disconnected.");
       listener.onError(Error.DISCONNECTED, null, true);
     }
 
@@ -883,7 +865,7 @@ public class Probe implements ByteCounter {
      */
     @Override
     public void onMatched(Message message) {
-      if (logDEBUG) Logger.debug(Probe.class, "Matched " + message.getSpec().getName());
+      if (LOG.isTraceEnabled()) LOG.trace("Matched " + message.getSpec().getName());
       if (message.getSpec().equals(DMT.ProbeBandwidth)) {
         listener.onOutputBandwidth(message.getFloat(DMT.OUTPUT_BANDWIDTH_UPPER_LIMIT));
       } else if (message.getSpec().equals(DMT.ProbeBuild)) {
@@ -925,7 +907,7 @@ public class Probe implements ByteCounter {
 
     @Override
     public void onTimeout() {
-      if (logDEBUG) Logger.debug(Probe.class, "Timed out.");
+      if (LOG.isTraceEnabled()) LOG.trace("Timed out.");
       listener.onError(Error.TIMEOUT, null, true);
     }
 
@@ -957,17 +939,16 @@ public class Probe implements ByteCounter {
 
     private void send(Message message) {
       if (!source.isConnected()) {
-        if (logDEBUG) Logger.debug(Probe.class, SOURCE_DISCONNECT);
+        if (LOG.isDebugEnabled()) LOG.debug(SOURCE_DISCONNECT);
         return;
       }
-      if (logDEBUG)
-        Logger.debug(
-            Probe.class,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Relaying " + message.getSpec().getName() + " back" + " to " + source.userToString());
       try {
         source.sendAsync(message, null, Probe.this);
       } catch (NotConnectedException e) {
-        if (logDEBUG) Logger.debug(Probe.class, SOURCE_DISCONNECT, e);
+        if (LOG.isDebugEnabled()) LOG.debug(SOURCE_DISCONNECT, e);
       }
     }
 
@@ -1019,7 +1000,7 @@ public class Probe implements ByteCounter {
     @Override
     public void onRejectStats(byte[] stats) {
       if (stats.length < 4) {
-        Logger.warning(this, "Unknown length for stats: " + stats.length);
+        LOG.warn("Unknown length for stats: " + stats.length);
         onError(Error.UNKNOWN, Error.UNKNOWN.code, true);
       } else {
         if (stats.length > 4) stats = Arrays.copyOf(stats, 4);

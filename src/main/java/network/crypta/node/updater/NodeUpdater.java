@@ -31,16 +31,16 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class NodeUpdater implements ClientGetCallback, USKCallback, RequestClient {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeUpdater.class);
 
-  private static boolean logMINOR;
   private final FetchContext ctx;
   private ClientGetter cg;
   private FreenetURI URI;
@@ -70,7 +70,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       int min,
       int max,
       String blobFilenamePrefix) {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     this.manager = manager;
     this.node = manager.getNode();
     this.URI = URI.setSuggestedEdition(Version.currentBuildNumber() + 1);
@@ -101,7 +101,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       USK myUsk = USK.create(URI.setSuggestedEdition(currentVersion));
       core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
     } catch (MalformedURLException e) {
-      Logger.error(this, "The auto-update URI isn't valid and can't be used");
+      LOG.error("The auto-update URI isn't valid and can't be used");
       onError.run();
     }
   }
@@ -117,7 +117,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
                 ".fblob.tmp",
                 manager.getNode().getClientCore().getPersistentTempDir());
       } catch (IOException e) {
-        Logger.error(this, "Unable to process old blob: " + e, e);
+        LOG.error("Unable to process old blob: " + e, e);
         return;
       }
       if (oldBlob.renameTo(temp)) {
@@ -127,12 +127,11 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           manager.getUpdateOverMandatory().processMainJarBlob(temp, null, currentVersion, uri);
         } catch (Throwable t) {
           // Don't disrupt startup.
-          Logger.error(this, "Unable to process old blob, caught " + t, t);
+          LOG.error("Unable to process old blob, caught " + t, t);
         }
         temp.delete();
       } else {
-        Logger.error(
-            this,
+        LOG.error(
             "Unable to rename old blob file " + oldBlob + " to " + temp + " so can't process it.");
       }
     }
@@ -153,8 +152,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       boolean newKnownGood,
       boolean newSlotToo) {
     if (newKnownGood && !newSlotToo) return;
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    if (logMINOR) Logger.minor(this, "Found edition " + l);
+    // Debug gating derives from LOG.isDebugEnabled() where needed
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l);
     int found;
     synchronized (this) {
       if (!isRunning) return;
@@ -177,8 +176,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
       if (found <= availableVersion) return;
       System.err.println("Found " + artifactName() + " update edition " + found);
-      Logger.minor(
-          this,
+      LOG.debug(
           "Updating availableVersion from "
               + availableVersion
               + " to "
@@ -199,7 +197,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       return;
     }
     onStartFetching();
-    Logger.minor(this, "Fetching " + artifactName() + " update edition " + found);
+    LOG.debug("Fetching " + artifactName() + " update edition " + found);
   }
 
   protected abstract void onStartFetching();
@@ -210,9 +208,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     if (manager.isBlown()) return;
     ClientGetter cancelled = null;
     synchronized (this) {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "maybeUpdate: isFetching="
                 + isFetching
                 + ", isRunning="
@@ -223,26 +220,25 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       if (isFetching && availableVersion == fetchingVersion) return;
       if (availableVersion <= fetchedVersion) return;
       if (fetchingVersion < minDeployVersion || fetchingVersion == currentVersion) {
-        Logger.normal(this, "Cancelling previous fetch");
+        LOG.info("Cancelling previous fetch");
         cancelled = cg;
         cg = null;
       }
       fetchingVersion = availableVersion;
 
       if (availableVersion > currentVersion) {
-        Logger.normal(this, "Starting the update process (" + availableVersion + ')');
+        LOG.info("Starting the update process (" + availableVersion + ')');
         System.err.println(
             "Starting the update process: found the update ("
                 + availableVersion
                 + "), now fetching it.");
       }
-      if (logMINOR) Logger.minor(this, "Starting the update process (" + availableVersion + ')');
+      if (LOG.isDebugEnabled()) LOG.debug("Starting the update process (" + availableVersion + ')');
       // We fetch it
       try {
         if ((cg == null) || cg.isCancelled()) {
-          if (logMINOR)
-            Logger.minor(
-                this, "Scheduling request for " + URI.setSuggestedEdition(availableVersion));
+          if (LOG.isDebugEnabled())
+            LOG.debug("Scheduling request for " + URI.setSuggestedEdition(availableVersion));
           if (availableVersion > currentVersion)
             System.err.println("Starting " + artifactName() + " fetch for " + availableVersion);
           tempBlobFile =
@@ -273,7 +269,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         }
         isFetching = true;
       } catch (Exception e) {
-        Logger.error(this, "Error while starting the fetching: " + e, e);
+        LOG.error("Error while starting the fetching: " + e, e);
         isFetching = false;
       }
     }
@@ -281,7 +277,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       try {
         node.getClientCore().getClientContext().start(toStart);
       } catch (FetchException e) {
-        Logger.error(this, "Error while starting the fetching: " + e, e);
+        LOG.error("Error while starting the fetching: " + e, e);
         synchronized (this) {
           isFetching = false;
         }
@@ -309,7 +305,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   void onSuccess(FetchResult result, ClientGetter state, File tempBlobFile, int fetchedVersion) {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     File blobFile = null;
     synchronized (this) {
       if (fetchedVersion <= this.fetchedVersion) {
@@ -322,7 +318,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       }
       if (result == null || result.asBucket() == null || result.asBucket().size() == 0) {
         tempBlobFile.delete();
-        Logger.error(this, "Cannot update: result either null or empty for " + availableVersion);
+        LOG.error("Cannot update: result either null or empty for " + availableVersion);
         System.err.println("Cannot update: result either null or empty for " + availableVersion);
         // Try again
         if (result == null || result.asBucket() == null || availableVersion > fetchedVersion)
@@ -336,8 +332,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           if (blobFile.exists()
               && tempBlobFile.exists()
               && blobFile.length() == tempBlobFile.length())
-            Logger.minor(
-                this,
+            LOG.debug(
                 "Can't rename "
                     + tempBlobFile
                     + " over "
@@ -346,8 +341,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
                     + fetchedVersion
                     + " - probably not a big deal though as the files are the same size");
           else {
-            Logger.error(
-                this,
+            LOG.error(
                 "Not able to rename binary blob for node updater: "
                     + tempBlobFile
                     + " -> "
@@ -359,8 +353,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       this.fetchedVersion = fetchedVersion;
       System.out.println("Found " + artifactName() + " version " + fetchedVersion);
       if (fetchedVersion > currentVersion)
-        Logger.normal(
-            this,
+        LOG.info(
             "Found version "
                 + fetchedVersion
                 + ", setting up a new UpdatedVersionAvailableUserAlert");
@@ -391,12 +384,11 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         String name = ze.getName();
 
         if (name.equals("META-INF/MANIFEST.MF")) {
-          if (logMINOR) Logger.minor(this, "Found manifest");
+          if (LOG.isDebugEnabled()) LOG.debug("Found manifest");
           long size = ze.getSize();
-          if (logMINOR) Logger.minor(this, "Manifest size: " + size);
+          if (LOG.isDebugEnabled()) LOG.debug("Manifest size: " + size);
           if (size > MAX_MANIFEST_SIZE) {
-            Logger.error(
-                this, "Manifest is too big: " + size + " bytes, limit is " + MAX_MANIFEST_SIZE);
+            LOG.error("Manifest is too big: " + size + " bytes, limit is " + MAX_MANIFEST_SIZE);
             break;
           }
           byte[] buf = new byte[(int) size];
@@ -414,9 +406,9 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         }
       }
     } catch (IOException e) {
-      Logger.error(this, "IOException trying to read manifest on update");
+      LOG.error("IOException trying to read manifest on update");
     } catch (Throwable t) {
-      Logger.error(this, "Failed to parse update manifest: " + t, t);
+      LOG.error("Failed to parse update manifest: " + t, t);
     }
   }
 
@@ -431,21 +423,21 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   @Override
   public void onFailure(FetchException e, ClientGetter state) {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    // Debug gating derives from LOG.isDebugEnabled() where needed
     if (!isRunning) return;
     FetchExceptionMode errorCode = e.getMode();
     tempBlobFile.delete();
 
-    if (logMINOR) Logger.minor(this, "onFailure(" + e + ',' + state + ')');
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure(" + e + ',' + state + ')');
     synchronized (this) {
       this.cg = null;
       isFetching = false;
     }
     if (errorCode == FetchExceptionMode.CANCELLED || !e.isFatal()) {
-      Logger.normal(this, "Rescheduling new request");
+      LOG.info("Rescheduling new request");
       ticker.queueTimedJob(() -> maybeUpdate(), 0);
     } else {
-      Logger.error(this, "Canceling fetch : " + e.getMessage());
+      LOG.error("Canceling fetch : " + e.getMessage());
       System.err.println("Unexpected error fetching update: " + e.getMessage());
       if (e.isFatal()) {
         // Wait for the next version
@@ -470,7 +462,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       }
       c.cancel(core.getClientContext());
     } catch (Exception e) {
-      Logger.minor(this, "Cannot kill NodeUpdater", e);
+      LOG.debug("Cannot kill NodeUpdater", e);
     }
   }
 

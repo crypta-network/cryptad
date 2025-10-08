@@ -1,21 +1,12 @@
 package network.crypta.io.xfer;
 
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PacketThrottle {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PacketThrottle.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   protected static final double PACKET_DROP_DECREASE_MULTIPLE = 0.875;
@@ -45,7 +36,7 @@ public class PacketThrottle {
 
   public synchronized void setRoundTripTime(long rtt) {
     _roundTripTime = Math.max(rtt, 10);
-    if (logMINOR) Logger.minor(this, "Set round trip time to " + rtt + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Set round trip time to " + rtt + " on " + this);
   }
 
   public synchronized void notifyOfPacketsLost(int numPackets) {
@@ -59,8 +50,8 @@ public class PacketThrottle {
       _windowSize = 1.0F;
     }
     slowStart = false;
-    if (logMINOR) {
-      Logger.minor(this, "notifyOfPacketsLost(): " + this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("notifyOfPacketsLost(): " + this);
     }
   }
 
@@ -81,7 +72,7 @@ public class PacketThrottle {
     int windowSize = (int) getWindowSize();
 
     if (slowStart) {
-      if (logMINOR) Logger.minor(this, "Still in slow start");
+      if (LOG.isDebugEnabled()) LOG.debug("Still in slow start");
       _windowSize += _windowSize / SLOW_START_DIVISOR;
       // Avoid craziness if there is lag in detecting packet loss.
       if (_windowSize > maxWindowSize) slowStart = false;
@@ -96,7 +87,7 @@ public class PacketThrottle {
     // that has actually been in flight at one time.
     if (_windowSize > maxWindowSize) _windowSize = (float) maxWindowSize;
     if (_windowSize > (windowSize + 1)) notifyAll();
-    if (logMINOR) Logger.minor(this, "notifyOfPacketAcked(): " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("notifyOfPacketAcked(): " + this);
   }
 
   /**

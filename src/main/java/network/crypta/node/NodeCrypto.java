@@ -23,8 +23,9 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.Base64;
 import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Cryptographic and transport level node identity.
@@ -32,11 +33,10 @@ import network.crypta.support.SimpleFieldSet;
  * @author toad
  */
 public class NodeCrypto {
-  static {
-    Logger.registerClass(NodeCrypto.class);
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(NodeCrypto.class);
 
-  private static volatile boolean logMINOR;
+  static {
+  }
 
   /** Length of a node identity */
   public static final int IDENTITY_LENGTH = 32;
@@ -213,7 +213,7 @@ public class NodeCrypto {
             port = u.getPortNumber();
             break;
           } catch (Exception e) {
-            Logger.normal(this, "Could not use port: " + bindto + ':' + portNo + ": " + e, e);
+            LOG.info("Could not use port: " + bindto + ':' + portNo + ": " + e, e);
             System.err.println("Could not use port: " + bindto + ':' + portNo + ": " + e);
             e.printStackTrace();
           }
@@ -233,7 +233,7 @@ public class NodeCrypto {
                   getTitle(port),
                   node.getCollector());
         } catch (Exception e) {
-          Logger.error(this, "Caught " + e, e);
+          LOG.error("Caught " + e, e);
           System.err.println(e);
           e.printStackTrace();
           throw new NodeInitException(
@@ -243,7 +243,7 @@ public class NodeCrypto {
       }
       socket = u;
 
-      Logger.normal(this, "FNP port created on " + bindto + ':' + port);
+      LOG.info("FNP port created on " + bindto + ':' + port);
       System.out.println("FNP port created on " + bindto + ':' + port);
       portNumber = port;
       config.setPort(port);
@@ -301,13 +301,13 @@ public class NodeCrypto {
       if (ecdsaSFS != null)
         ecdsaP256 = new ECDSA(ecdsaSFS.subset(ECDSA.Curves.P256.name()), Curves.P256);
     } catch (FSParseException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       throw new IOException(e.toString());
     }
 
     if (ecdsaP256 == null) {
       // We don't have a keypair, generate one.
-      Logger.normal(this, "No ecdsa.P256 field found in noderef: let's generate a new key");
+      LOG.info("No ecdsa.P256 field found in noderef: let's generate a new key");
       ecdsaP256 = new ECDSA(Curves.P256);
     }
     ecdsaPubKeyHash = SHA256.digest(ecdsaP256.getPublicKey().getEncoded());
@@ -336,7 +336,7 @@ public class NodeCrypto {
         }
       }
     } catch (MalformedURLException e) {
-      Logger.minor(this, "Caught " + e, e);
+      LOG.debug("Caught " + e, e);
       ark = null;
     }
     if (ark == null) {
@@ -457,7 +457,7 @@ public class NodeCrypto {
       }
     }
 
-    if (logMINOR) Logger.minor(this, "My reference: " + fs.toOrderedString());
+    if (LOG.isDebugEnabled()) LOG.debug("My reference: " + fs.toOrderedString());
     return fs;
   }
 
@@ -482,13 +482,13 @@ public class NodeCrypto {
   }
 
   private String ecdsaSignRef(String mySignedReference) throws NodeInitException {
-    if (logMINOR) Logger.minor(this, "Signing reference:\n" + mySignedReference);
+    if (LOG.isDebugEnabled()) LOG.debug("Signing reference:\n" + mySignedReference);
 
     byte[] ref = mySignedReference.getBytes(StandardCharsets.UTF_8);
 
     // We don't need a padded signature here
     byte[] sig = ecdsaP256.sign(ref);
-    if (logMINOR && !ECDSA.verify(Curves.P256, getECDSAP256Pubkey(), sig, ref))
+    if (LOG.isDebugEnabled() && !ECDSA.verify(Curves.P256, getECDSAP256Pubkey(), sig, ref))
       throw new NodeInitException(NodeInitException.EXIT_EXCEPTION_TO_DEBUG, mySignedReference);
     return Base64.encode(sig);
   }
@@ -500,7 +500,7 @@ public class NodeCrypto {
     try (DeflaterOutputStream gis = new DeflaterOutputStream(baos)) {
       fs.writeTo(gis);
     } catch (IOException e) {
-      Logger.error(this, "IOE :" + e.getMessage(), e);
+      LOG.error("IOE :" + e.getMessage(), e);
     }
 
     byte[] buf = baos.toByteArray();
@@ -511,9 +511,8 @@ public class NodeCrypto {
     int offset = 0;
     obuf[offset++] = 0x01; // compressed noderef
     System.arraycopy(buf, 0, obuf, offset, buf.length);
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "myCompressedRef(" + setup + "," + heavySetup + ") returning " + obuf.length + " bytes");
     return obuf;
   }
@@ -593,8 +592,7 @@ public class NodeCrypto {
       if (node.getPeers().anyConnectedPeerHasAddress(addr, pn)
           && !detector.includes(addr)
           && addr.isRealInternetAddress(false, false, false)) {
-        Logger.normal(
-            this,
+        LOG.info(
             "Not sending handshake packets to "
                 + addr
                 + " for "
@@ -631,8 +629,7 @@ public class NodeCrypto {
             // FIXME likewise, FOAFs should not boot darknet connections.
             continue;
           }
-          Logger.error(
-              this,
+          LOG.error(
               "Dropping peer "
                   + pn
                   + " because don't want connection due to others on the same IP address!");

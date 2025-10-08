@@ -1,7 +1,8 @@
 package network.crypta.client.async;
 
 import network.crypta.keys.USK;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Proxy class to only pass through latest-slot updates after an onRoundFinished(). Note that it
@@ -10,6 +11,7 @@ import network.crypta.support.Logger;
  * @author toad
  */
 public class USKSparseProxyCallback implements USKProgressCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(USKSparseProxyCallback.class);
 
   final USKCallback target;
   final USK key;
@@ -22,10 +24,7 @@ public class USKSparseProxyCallback implements USKProgressCallback {
   private boolean lastWasKnownGoodToo;
   private boolean roundFinished;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(USKSparseProxyCallback.class);
   }
 
   public USKSparseProxyCallback(USKCallback cb, USK key) {
@@ -33,8 +32,8 @@ public class USKSparseProxyCallback implements USKProgressCallback {
     lastEdition = -1; // So we see the first one even if it's 0
     lastSent = -1;
     this.key = key;
-    if (logMINOR)
-      Logger.minor(this, "Creating sparse proxy callback " + this + " for " + cb + " for " + key);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Creating sparse proxy callback " + this + " for " + cb + " for " + key);
   }
 
   @Override

@@ -14,10 +14,9 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.BitArray;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Bulk data transfer (not block). Bulk transfer is designed for files which may be much bigger than
@@ -28,6 +27,7 @@ import network.crypta.support.io.NativeThread;
  * @author toad
  */
 public class BulkTransmitter {
+  private static final Logger LOG = LoggerFactory.getLogger(BulkTransmitter.class);
 
   public interface AllSentCallback {
 
@@ -79,16 +79,7 @@ public class BulkTransmitter {
   private static long transfersCompleted;
   private static long transfersSucceeded;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public BulkTransmitter(
@@ -254,7 +245,7 @@ public class BulkTransmitter {
   }
 
   public void cancel(String reason) {
-    if (logMINOR) Logger.minor(this, "Cancelling " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelling " + this);
     sendAbortedMessage();
     synchronized (this) {
       if (cancelled || finished) return;
@@ -287,7 +278,7 @@ public class BulkTransmitter {
       transfersCompleted++;
       transfersSucceeded++;
     }
-    if (logMINOR) Logger.minor(this, "Completed transfer successfully " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Completed transfer successfully " + this);
   }
 
   /**
@@ -308,7 +299,7 @@ public class BulkTransmitter {
       if (max < 1) max = 1;
 
       if (prb.isAborted()) {
-        if (logMINOR) Logger.minor(this, "Aborted " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Aborted " + this);
         return false;
       }
       int blockNo;
@@ -318,7 +309,7 @@ public class BulkTransmitter {
           notifyAll();
         }
         prb.remove(BulkTransmitter.this);
-        if (logMINOR) Logger.minor(this, "Failed to send " + uid + ": peer restarted: " + peer);
+        if (LOG.isDebugEnabled()) LOG.debug("Failed to send " + uid + ": peer restarted: " + peer);
         throw new DisconnectedException();
       }
       synchronized (this) {
@@ -339,7 +330,8 @@ public class BulkTransmitter {
               cancel("Packet send failed");
               return false;
             }
-            if (logMINOR) Logger.minor(this, "Waiting for packets: remaining: " + inFlightPackets);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Waiting for packets: remaining: " + inFlightPackets);
             if (inFlightPackets == 0) break;
             try {
               wait();
@@ -364,7 +356,7 @@ public class BulkTransmitter {
         }
         long end = System.currentTimeMillis();
         if (end - lastSentPacket > TIMEOUT) {
-          Logger.error(this, "Send timed out on " + this);
+          LOG.error("Send timed out on " + this);
           cancel("Timeout awaiting BulkReceivedAll");
           return false;
         }
@@ -373,16 +365,15 @@ public class BulkTransmitter {
       // Send a packet
       byte[] buf = prb.getBlockData(blockNo);
       if (buf == null) {
-        if (logMINOR)
-          Logger.minor(
-              this, "Block " + blockNo + " is null, presumably the send is cancelled: " + this);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Block " + blockNo + " is null, presumably the send is cancelled: " + this);
         // Already cancelled, quit
         return false;
       }
 
       // Congestion control and bandwidth limiting
       try {
-        if (logMINOR) Logger.minor(this, "Sending packet " + blockNo);
+        if (LOG.isDebugEnabled()) LOG.debug("Sending packet " + blockNo);
         Message msg = DMT.createFNPBulkPacketSend(uid, blockNo, buf, realTime);
         UnsentPacketTag tag = new UnsentPacketTag();
         peer.sendAsync(msg, tag, ctr);
@@ -400,7 +391,7 @@ public class BulkTransmitter {
         lastSentPacket = System.currentTimeMillis();
       } catch (NotConnectedException e) {
         cancel("Disconnected");
-        if (logMINOR) Logger.minor(this, "Cancelled: not connected " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Cancelled: not connected " + this);
         throw new DisconnectedException();
       }
     }
@@ -413,12 +404,12 @@ public class BulkTransmitter {
       synchronized (this) {
         allQueued = true;
         if (unsentPackets == 0 && !calledAllSent) {
-          if (logMINOR) Logger.minor(this, "Calling all sent callback on " + this);
+          if (LOG.isDebugEnabled()) LOG.debug("Calling all sent callback on " + this);
           callAllSent = true;
           calledAllSent = true;
           anyFailed = failedPacket;
         } else if (!calledAllSent) {
-          if (logMINOR) Logger.minor(this, "Still waiting for " + unsentPackets);
+          if (LOG.isDebugEnabled()) LOG.debug("Still waiting for " + unsentPackets);
         }
       }
       if (callAllSent) {
@@ -479,13 +470,12 @@ public class BulkTransmitter {
         if (failed) {
           failedPacket = true;
           BulkTransmitter.this.notifyAll();
-          if (logMINOR) Logger.minor(this, "Packet failed for " + BulkTransmitter.this);
+          if (LOG.isDebugEnabled()) LOG.debug("Packet failed for " + BulkTransmitter.this);
         } else {
           inFlightPackets--;
           BulkTransmitter.this.notifyAll();
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Packet sent " + BulkTransmitter.this + " remaining in flight: " + inFlightPackets);
         }
       }
@@ -524,7 +514,7 @@ public class BulkTransmitter {
         calledAllSent = true;
         anyFailed = failedPacket;
       }
-      if (logMINOR) Logger.minor(this, "Calling all sent callback on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Calling all sent callback on " + this);
       callAllSentCallbackInner(anyFailed);
     }
   }

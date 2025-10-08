@@ -2,11 +2,10 @@ package network.crypta.support.io;
 
 import java.io.*;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*
  *  This code is part of FProxy, an HTTP proxy server for Freenet.
@@ -19,6 +18,8 @@ import network.crypta.support.api.RandomAccessBucket;
  * @author giannij
  */
 public class TempFileBucket extends BaseFileBucket implements Bucket, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(TempFileBucket.class);
+
   // Should not be serialized but we need Serializable to save the parent state for
   // PersistentTempFileBucket.
   @Serial private static final long serialVersionUID = 1L;
@@ -29,19 +30,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   private File file;
   private transient boolean resumed;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   public TempFileBucket(long id, FilenameGenerator generator) {
@@ -67,8 +56,8 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
     this.deleteOnFree = deleteOnFree;
     this.file = generator.getFilename(id);
 
-    if (logDEBUG) {
-      Logger.debug(this, "Initializing TempFileBucket(" + getFile());
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Initializing TempFileBucket(" + getFile());
     }
   }
 
@@ -115,8 +104,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   public RandomAccessBucket createShadow() {
     TempFileBucket ret = new TempFileBucket(filenameID, generator, false);
     ret.setReadOnly();
-    if (!getFile().exists())
-      Logger.error(this, "File does not exist when creating shadow: " + getFile());
+    if (!getFile().exists()) LOG.error("File does not exist when creating shadow: {}", getFile());
     return ret;
   }
 

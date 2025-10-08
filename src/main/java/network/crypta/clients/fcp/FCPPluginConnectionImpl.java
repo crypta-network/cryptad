@@ -21,11 +21,11 @@ import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * <b>Please first read the JavaDoc of the interface {@link FCPPluginConnection} which specifies
@@ -115,6 +115,7 @@ import network.crypta.support.io.NativeThread;
  * This mechanism also works for networked FCP.<br>
  */
 final class FCPPluginConnectionImpl implements FCPPluginConnection {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginConnectionImpl.class);
 
   /**
    * Automatically set to true by {@link Logger} if the log level is set to {@link LogLevel#DEBUG}
@@ -132,7 +133,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   static {
     // Necessary for automatic setting of logDEBUG and logMINOR
-    Logger.registerClass(FCPPluginConnectionImpl.class);
+
   }
 
   /**
@@ -559,8 +560,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
             message.errorMessage);
 
     // Now that the message is completely initialized, we can dump it to the logfile.
-    if (logDEBUG) {
-      Logger.debug(this, "send(): direction = " + direction + "; " + "message = " + message);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("send(): direction = " + direction + "; " + "message = " + message);
     }
 
     // True if the target server or client message handler is running in this VM.
@@ -782,7 +783,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                       + "; message = "
                       + message;
 
-              Logger.error(messageHandler, errorMessage, e);
+              LOG.error(errorMessage, e);
 
               if (!message.isReplyMessage()) {
                 // If the original message was not a reply already, we are allowed to send a
@@ -803,7 +804,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
             if (reply != null) {
               // TODO: Performance: The below checks might be converted to assert() or
-              // be prefixed with if(logMINOR).
+              // be prefixed with if (LOG.isDebugEnabled()).
               // Not doing this now since the CryptadPluginFCPMessageHandler API which specifies
               // those requirements is new and thus quite a few client applications might be
               // converted to it soon, and do those beginners mistakes.
@@ -814,8 +815,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
               // Replying to replies is disallowed to prevent infinite bouncing.
               if (message.isReplyMessage()) {
-                Logger.error(
-                    messageHandler,
+                LOG.error(
                     "CryptadPluginFCPMessageHandler tried to send a"
                         + " reply to a reply. Discarding it. See JavaDoc of its member"
                         + " interfaces for how to do this properly."
@@ -830,8 +830,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
                 reply = null;
               } else if (!reply.isReplyMessage()) {
-                Logger.error(
-                    messageHandler,
+                LOG.error(
                     "CryptadPluginFCPMessageHandler tried to send a"
                         + " non-reply message as reply. See JavaDoc of its member interfaces"
                         + " for how to do this properly."
@@ -846,8 +845,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
                 reply = null;
               } else if (!reply.identifier.equals(message.identifier)) {
-                Logger.error(
-                    messageHandler,
+                LOG.error(
                     "CryptadPluginFCPMessageHandler tried to send a"
                         + " reply with with different identifier than original message."
                         + " See JavaDoc of its member interfaces for how to do this properly."
@@ -868,8 +866,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
                 // been allowed to because the original message was not a reply.
                 // This shouldn't be done: Not sending a success reply at least will cause
                 // sendSynchronous() threads to keep waiting for the reply until timeout.
-                Logger.warning(
-                    messageHandler,
+                LOG.warn(
                     "Cryptad did not receive a reply from the message "
                         + "handler even though it was allowed to reply. "
                         + "This would cause sendSynchronous() to timeout! "
@@ -904,8 +901,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
               // from a class contained in it. So there is a chance that the developer
               // has logging enabled for that class, and thus we log it marked as from that.
 
-              Logger.warning(
-                  messageHandler,
+              LOG.warn(
                   "Sending reply from CryptadPluginFCPMessageHandler"
                       + " failed, the connection was closed already."
                       + " connection = "
@@ -928,7 +924,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
               try {
                 priority = handler.getPriority(message);
               } catch (Throwable t) {
-                Logger.error(messageHandler, "Message handler's getPriority() threw!", t);
+                LOG.error("Message handler's getPriority() threw!", t);
               }
             }
 
@@ -988,9 +984,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
       synchronousSends.put(message.identifier, synchronousSend);
 
-      if (logMINOR) {
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "sendSynchronous(): Started for identifier "
                 + message.identifier
                 + "; synchronousSends table size: "
@@ -1048,9 +1043,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       // otherwise it will leak memory eternally.
       synchronousSends.remove(message.identifier);
 
-      if (logMINOR) {
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
             "sendSynchronous(): Done for identifier "
                 + message.identifier
                 + "; synchronousSends table size: "

@@ -2,6 +2,8 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Status message sent when the whole of a request is waiting for a cooldown. Not when it's all
@@ -10,6 +12,7 @@ import network.crypta.support.SimpleFieldSet;
  * @author toad
  */
 public class EnterFiniteCooldown extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(EnterFiniteCooldown.class);
 
   final String identifier;
   final boolean global;

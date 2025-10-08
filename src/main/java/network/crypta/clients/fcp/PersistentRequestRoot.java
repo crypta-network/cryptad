@@ -5,9 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks persistent requests by PersistentRequestClient. Not persistent itself. Populated on
@@ -16,23 +15,14 @@ import network.crypta.support.Logger.LogLevel;
  * @author toad
  */
 public class PersistentRequestRoot {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentRequestRoot.class);
 
   private static final long serialVersionUID = 1L;
 
   final PersistentRequestClient globalForeverClient;
   private final Map<String, PersistentRequestClient> clients;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public PersistentRequestRoot() {
     globalForeverClient =
@@ -42,7 +32,7 @@ public class PersistentRequestRoot {
 
   public PersistentRequestClient registerForeverClient(
       final String name, FCPConnectionHandler handler) {
-    if (logMINOR) Logger.minor(this, "Registering forever-client for " + name);
+    if (LOG.isDebugEnabled()) LOG.debug("Registering forever-client for " + name);
     PersistentRequestClient client;
     synchronized (this) {
       client = clients.get(name);

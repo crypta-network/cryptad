@@ -3,12 +3,15 @@ package network.crypta.clients.fcp;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * All the data, all in one big chunk. Obviously we must already have all the data to send it. We do
  * not want to have to block on a request, especially as there may be errors.
  */
 public class AllDataMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(AllDataMessage.class);
 
   private static final long serialVersionUID = 1L;
   final long dataLength;

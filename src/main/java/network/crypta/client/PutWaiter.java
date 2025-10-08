@@ -6,16 +6,16 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Provides a blocking wrapper for an insert. Used for simple blocking APIs such as
  * HighLevelSimpleClient.
  */
 public class PutWaiter implements ClientPutCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(PutWaiter.class);
 
   private boolean finished;
   private boolean succeeded;
@@ -23,16 +23,7 @@ public class PutWaiter implements ClientPutCallback {
   private InsertException error;
   final RequestClient client;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public PutWaiter(RequestClient client) {
@@ -55,11 +46,10 @@ public class PutWaiter implements ClientPutCallback {
 
   @Override
   public synchronized void onGeneratedURI(FreenetURI uri, BaseClientPutter state) {
-    if (logMINOR) Logger.minor(this, "URI: " + uri);
+    if (LOG.isDebugEnabled()) LOG.debug("URI: " + uri);
     if (this.uri == null) this.uri = uri;
     if (uri.equals(this.uri)) return;
-    Logger.error(
-        this, "URI already set: " + this.uri + " but new URI: " + uri, new Exception("error"));
+    LOG.warn("URI already set: {} but new URI: {}", this.uri, uri);
   }
 
   /** Waits for the insert to finish, returns the URI generated, throws if it failed. */
@@ -76,7 +66,7 @@ public class PutWaiter implements ClientPutCallback {
       throw error;
     }
     if (succeeded) return uri;
-    Logger.error(this, "Did not succeed but no error");
+    LOG.error("Did not succeed but no error");
     throw new InsertException(
         InsertExceptionMode.INTERNAL_ERROR, "Did not succeed but no error", uri);
   }
@@ -88,7 +78,7 @@ public class PutWaiter implements ClientPutCallback {
 
   @Override
   public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
-    Logger.error(this, "onGeneratedMetadata() on PutWaiter from " + state, new Exception("error"));
+    LOG.warn("onGeneratedMetadata() on PutWaiter from {}", state);
     metadata.free();
   }
 

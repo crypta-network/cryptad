@@ -6,8 +6,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Lock Manager
@@ -17,14 +17,12 @@ import network.crypta.support.Logger.LogLevel;
  * @author sdiz
  */
 public class LockManager {
-  private static boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(LockManager.class);
   private volatile boolean shutdown;
   private final Lock entryLock = new ReentrantLock();
   private final Map<Long, Condition> lockMap = new HashMap<>();
 
-  LockManager() {
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-  }
+  LockManager() {}
 
   /**
    * Lock the entry
@@ -33,7 +31,7 @@ public class LockManager {
    * then one lock at a time (or deadlock may occur).
    */
   Condition lockEntry(long offset) {
-    if (logDEBUG) Logger.debug(this, "try locking " + offset, new Exception());
+    if (LOG.isTraceEnabled()) LOG.trace("try locking {}", offset);
 
     Condition condition;
     try {
@@ -52,17 +50,17 @@ public class LockManager {
         entryLock.unlock();
       }
     } catch (InterruptedException e) {
-      Logger.error(this, "lock interrupted", e);
+      LOG.error("lock interrupted", e);
       return null;
     }
 
-    if (logDEBUG) Logger.debug(this, "locked " + offset, new Exception());
+    if (LOG.isTraceEnabled()) LOG.trace("locked {}", offset);
     return condition;
   }
 
   /** Unlock the entry */
   void unlockEntry(long offset, Condition condition) {
-    if (logDEBUG) Logger.debug(this, "unlocking " + offset, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("unlocking {}", offset);
 
     entryLock.lock();
     try {

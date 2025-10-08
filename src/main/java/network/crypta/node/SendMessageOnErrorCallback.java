@@ -4,22 +4,14 @@ import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** If the send fails, send the given message to the given node. Otherwise do nothing. */
 public class SendMessageOnErrorCallback implements AsyncMessageCallback {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SendMessageOnErrorCallback.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   @Override
@@ -35,7 +27,7 @@ public class SendMessageOnErrorCallback implements AsyncMessageCallback {
     this.msg = message;
     this.dest = pn;
     this.ctr = ctr;
-    if (logMINOR) Logger.minor(this, "Created " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Created " + this);
   }
 
   @Override
@@ -50,12 +42,12 @@ public class SendMessageOnErrorCallback implements AsyncMessageCallback {
 
   @Override
   public void disconnected() {
-    if (logMINOR) Logger.minor(this, "Disconnect trigger: " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Disconnect trigger: " + this);
     try {
       dest.sendAsync(msg, null, ctr);
     } catch (NotConnectedException e) {
-      if (logMINOR)
-        Logger.minor(this, "Both source and destination disconnected: " + msg + " for " + this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Both source and destination disconnected: " + msg + " for " + this);
     }
   }
 

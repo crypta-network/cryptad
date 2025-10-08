@@ -6,9 +6,12 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Sent by the node to a client when it asks for a list of current requests. PersistentGet End */
 public class PersistentGet extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentGet.class);
 
   static final String name = "PersistentGet";
 

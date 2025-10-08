@@ -5,11 +5,14 @@ import java.nio.charset.StandardCharsets;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // FIXME proper support for sending large files.
 // FIXME with confirmation on the other side like darknet transfers.
 // FIXME Generalise the darknet file transfer API in DarknetPeerNode.
 public class SendTextMessage extends SendPeerMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SendTextMessage.class);
 
   public static final String NAME = "SendText";
 

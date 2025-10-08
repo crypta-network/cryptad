@@ -7,7 +7,8 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Provides access to operating system-specific {@code fallocate} and {@code posix_fallocate}
@@ -15,6 +16,7 @@ import network.crypta.support.Logger;
  * https://stackoverflow.com/questions/18031841/pre-allocating-drive-space-for-file-storage
  */
 public final class Fallocate {
+  private static final Logger LOG = LoggerFactory.getLogger(Fallocate.class);
 
   private static final boolean IS_LINUX = Platform.isLinux();
   private static final boolean IS_WINDOWS = Platform.isWindows();
@@ -87,7 +89,7 @@ public final class Fallocate {
     if (isUnsupported || errno != 0) {
       if (errno != 0) {
         // OS supports fallocate() but it failed. Do not log if the OS does not support fallocate().
-        Logger.normal(this, "fallocate() failed; using legacy method; errno=" + errno);
+        LOG.info("fallocate() failed; using legacy method; errno=" + errno);
       }
       legacyFill(channel, final_filesize, offset);
     }

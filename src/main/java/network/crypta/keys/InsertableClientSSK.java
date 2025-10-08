@@ -17,7 +17,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.math.MersenneTwister;
@@ -25,19 +24,16 @@ import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.crypto.params.DSAPrivateKeyParameters;
 import org.bouncycastle.crypto.signers.DSASigner;
 import org.bouncycastle.crypto.signers.HMacDSAKCalculator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A ClientSSK that has a private key and therefore can be inserted. */
 public class InsertableClientSSK extends ClientSSK {
+  private static final Logger LOG = LoggerFactory.getLogger(InsertableClientSSK.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
   public final DSAPrivateKey privKey;
-
-  private static boolean logMINOR;
-
-  static {
-    Logger.registerClass(InsertableClientSSK.class);
-  }
 
   public InsertableClientSSK(
       String docName,
@@ -93,7 +89,7 @@ public class InsertableClientSSK extends ClientSSK {
       privKey = new DSAPrivateKey(new BigInteger(1, uri.getRoutingKey()), g);
     } catch (IllegalArgumentException e) {
       // DSAPrivateKey is invalid
-      Logger.error(InsertableClientSSK.class, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       throw new MalformedURLException("SSK private key (routing key) is invalid: " + e);
     }
     DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
@@ -216,7 +212,7 @@ public class InsertableClientSSK extends ClientSSK {
     x += sBuf.length;
     if (x != SSKBlock.TOTAL_HEADERS_LENGTH) throw new IllegalStateException("Too long");
     try {
-      return new ClientSSKBlock(data, headers, this, !logMINOR);
+      return new ClientSSKBlock(data, headers, this, !LOG.isDebugEnabled());
     } catch (SSKVerifyException e) {
       throw (AssertionError) new AssertionError("Impossible encoding error", e);
     }

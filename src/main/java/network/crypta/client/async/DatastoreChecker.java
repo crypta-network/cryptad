@@ -15,16 +15,16 @@ import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SendableGet;
 import network.crypta.support.Executor;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class DatastoreChecker implements PrioRunnable {
+  private static final Logger LOG = LoggerFactory.getLogger(DatastoreChecker.class);
 
   /** True to start the DatastoreChecker thread lazily (mostly for simulations). */
   private final boolean lazy;
@@ -41,17 +41,7 @@ public class DatastoreChecker implements PrioRunnable {
   static final int KILL_BLOCKS = 0;
   static final int RESET_COUNTER = 100;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private static class QueueItem {
@@ -111,9 +101,8 @@ public class DatastoreChecker implements PrioRunnable {
   public void queueRequest(SendableGet getter, BlockSet blocks) {
     Key[] checkKeys = getter.listKeys();
     short prio = getter.getPriorityClass();
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Queueing transient request "
               + getter
               + " priority "
@@ -125,8 +114,8 @@ public class DatastoreChecker implements PrioRunnable {
     synchronized (this) {
       Collections.addAll(finalKeysToCheck, checkKeys);
       QueueItem queueItem = new QueueItem(finalKeysToCheck.toArray(new Key[0]), getter, blocks);
-      if (logMINOR && queue.get(prio).contains(queueItem)) {
-        Logger.error(this, "Transient request " + getter + " is already queued!");
+      if (LOG.isDebugEnabled() && queue.get(prio).contains(queueItem)) {
+        LOG.error("Transient request " + getter + " is already queued!");
         return;
       }
       queue.get(prio).add(queueItem);
@@ -140,7 +129,7 @@ public class DatastoreChecker implements PrioRunnable {
       try {
         if (realRun()) return; // Lazy termination.
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t + " in datastore checker thread", t);
+        LOG.error("Caught " + t + " in datastore checker thread", t);
       }
     }
   }
@@ -168,9 +157,8 @@ public class DatastoreChecker implements PrioRunnable {
             getter = trans.getter;
             // sched assigned out of loop
             blocks = trans.blockSet;
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Checking transient request "
                       + getter
                       + " prio "
@@ -181,7 +169,7 @@ public class DatastoreChecker implements PrioRunnable {
           }
         }
         if (keys != null) break;
-        if (logMINOR) Logger.minor(this, "Waiting for more transient requests");
+        if (LOG.isDebugEnabled()) LOG.debug("Waiting for more transient requests");
         if (lazy) {
           running = false;
           return true;
@@ -208,7 +196,7 @@ public class DatastoreChecker implements PrioRunnable {
       if (blocks != null) block = blocks.get(key);
       else block = node.fetch(key, true, true, false, false, null);
       if (block != null) {
-        if (logMINOR) Logger.minor(this, "Found key");
+        if (LOG.isDebugEnabled()) LOG.debug("Found key");
         if (key instanceof NodeSSK) sched.tripPendingKey(block);
         else // CHK
         sched.tripPendingKey(block);
@@ -219,7 +207,7 @@ public class DatastoreChecker implements PrioRunnable {
       //				keysToCheck[priority].remove(key);
       //			}
     }
-    if (logMINOR) Logger.minor(this, "Checked " + keys.length + " keys");
+    if (LOG.isDebugEnabled()) LOG.debug("Checked " + keys.length + " keys");
     if (getter.persistent()) {
       final SendableGet get = getter;
       final ClientRequestScheduler scheduler = sched;
@@ -233,7 +221,7 @@ public class DatastoreChecker implements PrioRunnable {
                 try {
                   scheduler.finishRegister(new SendableGet[] {get}, true, valid);
                 } catch (Throwable t) {
-                  Logger.error(this, "Failed to register " + get + ": " + t, t);
+                  LOG.error("Failed to register " + get + ": " + t, t);
                   try {
                     get.onFailure(
                         new LowLevelGetException(
@@ -241,7 +229,7 @@ public class DatastoreChecker implements PrioRunnable {
                         null,
                         context);
                   } catch (Throwable t1) {
-                    Logger.error(this, "Failed to fail: " + t, t);
+                    LOG.error("Failed to fail: " + t, t);
                   }
                 }
                 return false;
@@ -295,11 +283,12 @@ public class DatastoreChecker implements PrioRunnable {
 
   public void removeRequest(
       SendableGet request, boolean persistent, ClientContext context, short prio) {
-    if (logMINOR) Logger.minor(this, "Removing request prio=" + prio + " persistent=" + persistent);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Removing request prio=" + prio + " persistent=" + persistent);
     QueueItem requestMatcher = new QueueItem(null, request, null);
     synchronized (this) {
       if (!queue.get(prio).remove(requestMatcher)) return;
     }
-    if (logMINOR) Logger.minor(this, "Removed transient request");
+    if (LOG.isDebugEnabled()) LOG.debug("Removed transient request");
   }
 }

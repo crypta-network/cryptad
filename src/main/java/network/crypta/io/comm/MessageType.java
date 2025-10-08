@@ -3,11 +3,13 @@ package network.crypta.io.comm;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import network.crypta.support.Logger;
 import network.crypta.support.Serializer;
 import network.crypta.support.ShortBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MessageType {
+  private static final Logger LOG = LoggerFactory.getLogger(MessageType.class);
 
   public static final String VERSION =
       "$Id: MessageType.java,v 1.6 2005/08/25 17:28:19 amphibian Exp $";
@@ -98,12 +100,17 @@ public class MessageType {
     return _name.hashCode();
   }
 
+  /**
+   * Resolve a message spec by its hashed ID.
+   *
+   * <p>If the ID is unknown we log at INFO level (unless {@code dontLog} is true). Unknown message
+   * types can legitimately occur due to version skew or malformed traffic and are not necessarily
+   * fatal errors.
+   */
   public static MessageType getSpec(Integer specID, boolean dontLog) {
     MessageType id = _specs.get(specID);
-    if (id == null) {
-      if (!dontLog)
-        Logger.error(MessageType.class, "Unrecognised message type received (" + specID + ')');
-    }
+    if (id == null && !dontLog) LOG.info("Unrecognised message type received ({})", specID);
+
     return id;
   }
 

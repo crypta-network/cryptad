@@ -6,6 +6,8 @@ import com.sun.jna.platform.win32.WinDef.DWORD;
 import com.sun.jna.platform.win32.WinNT.HANDLE;
 import com.sun.jna.win32.*;
 import network.crypta.fs.AppEnv;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A class to control the global priority of the current process. Microsoft suggests flagging
@@ -17,6 +19,7 @@ import network.crypta.fs.AppEnv;
  * have the appropriate permissions, the above call is simply a no-op.
  */
 public class ProcessPriority {
+  private static final Logger LOG = LoggerFactory.getLogger(ProcessPriority.class);
   private static volatile boolean background = false;
 
   /// Windows interface (kernel32.dll) ///
@@ -67,8 +70,7 @@ public class ProcessPriority {
       // Suppress native renicing in sandboxed Linux environments where lowering nice is blocked
       AppEnv env = new AppEnv();
       if (env.isLinux() && (env.isSnap() || env.isFlatpak() || env.isDocker())) {
-        Logger.normal(
-            ProcessPriority.class,
+        LOG.info(
             "Skipping process setpriority due to sandbox constraints (Snap/Flatpak/Docker). Using"
                 + " JVM default priority.");
         System.out.println(

@@ -4,12 +4,12 @@
   <property name="LOG_DIR" value="${crypta.log.dir:-${user.dir}/logs}"/>
 
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <immediateFlush>true</immediateFlush>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
       <level>WARN</level>
     </filter>
     <encoder>
       <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger - %msg%n</pattern>
-      <immediateFlush>true</immediateFlush>
     </encoder>
   </appender>
 
@@ -38,8 +38,8 @@
     <appender-ref ref="FILE"/>
   </appender>
 
-  <!-- Keep root permissive; Crypta’s chain filters levels. -->
-  <root level="TRACE">
+  <!-- Default root level is WARN; runtime changes are applied by LoggingConfigHandler. -->
+  <root level="WARN">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="ASYNC_FILE"/>
   </root>

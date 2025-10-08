@@ -8,8 +8,9 @@ import network.crypta.node.stats.StoreAccessStats;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * LRU in memory store.
@@ -17,6 +18,7 @@ import network.crypta.support.Ticker;
  * <p>For debugging / simulation only
  */
 public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
+  private static final Logger LOG = LoggerFactory.getLogger(RAMFreenetStore.class);
 
   private static final class Block {
     byte[] header;
@@ -59,7 +61,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       return null;
     }
     if (ignoreOldBlocks && block.oldBlock) {
-      Logger.normal(this, "Ignoring old block");
+      LOG.info("Ignoring old block");
       return null;
     }
     try {
@@ -199,7 +201,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
                 null,
                 null);
       } catch (KeyVerifyException e) {
-        Logger.error(this, "Caught while migrating: " + e, e);
+        LOG.error("Caught while migrating: {}", e.toString(), e);
         continue;
       }
       try {

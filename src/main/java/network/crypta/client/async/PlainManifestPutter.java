@@ -6,9 +6,10 @@ import java.util.Map;
 import network.crypta.client.InsertContext;
 import network.crypta.client.Metadata;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * plain/dumb manifest putter: every file item is a redirect (no containers at all)
@@ -18,12 +19,11 @@ import network.crypta.support.io.ResumeFailedException;
  * each item &lt;defaultName&gt; is the default doc in the corresponding dir.
  */
 public class PlainManifestPutter extends BaseManifestPutter {
+  private static final Logger LOG = LoggerFactory.getLogger(PlainManifestPutter.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerClass(PlainManifestPutter.class);
   }
 
   public PlainManifestPutter(
@@ -53,7 +53,7 @@ public class PlainManifestPutter extends BaseManifestPutter {
 
   @Override
   protected void makePutHandlers(HashMap<String, Object> manifestElements, String defaultName) {
-    if (logDEBUG) Logger.debug(this, "Root map : " + manifestElements.size() + " elements");
+    if (LOG.isTraceEnabled()) LOG.trace("Root map : " + manifestElements.size() + " elements");
     makePutHandlers(getRootBuilder(), manifestElements, defaultName);
   }
 
@@ -68,8 +68,8 @@ public class PlainManifestPutter extends BaseManifestPutter {
         builder.makeSubDirCD(name);
         makePutHandlers(builder, subMap, defaultName);
         builder.popCurrentDir();
-        if (logDEBUG)
-          Logger.debug(this, "Sub map for " + name + " : " + subMap.size() + " elements");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Sub map for " + name + " : " + subMap.size() + " elements");
       } else {
         ManifestElement element = (ManifestElement) o;
         builder.addElement(name, element, name.equals(defaultName));

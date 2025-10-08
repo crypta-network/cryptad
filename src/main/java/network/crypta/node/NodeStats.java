@@ -33,9 +33,6 @@ import network.crypta.node.stats.StoreLocationStats;
 import network.crypta.store.StoreCallback;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.Histogram2;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.StringCounter;
 import network.crypta.support.TimeUtil;
@@ -47,12 +44,15 @@ import network.crypta.support.math.DecayingKeyspaceAverage;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.TimeDecayingRunningAverage;
 import network.crypta.support.math.TrivialRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Node (as opposed to NodeClientCore) level statistics. Includes shouldRejectRequest(), but not
  * limited to stuff required to implement that.
  */
 public class NodeStats implements Persistable, BlockTimeCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeStats.class);
 
   public enum RequestType {
     CHK_REQUEST,
@@ -142,18 +142,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
   final RandomSource hardRandom;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /** first time bwlimitDelay was over PeerManagerUserAlert threshold */
@@ -396,33 +385,28 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     int defaultThreadLimit;
     long memoryLimit = NodeStarter.getMemoryLimitMB();
 
-    Logger.minor(this, "Memory is " + memoryLimit + "MB");
+    LOG.debug("Memory is " + memoryLimit + "MB");
     if (memoryLimit > 0 && memoryLimit < 100) {
       defaultThreadLimit = 200;
-      Logger.minor(
-          this, "Severe memory pressure, setting 200 thread limit. Crypta may not work well!");
+      LOG.debug("Severe memory pressure, setting 200 thread limit. Crypta may not work well!");
     } else if (memoryLimit > 0 && memoryLimit < 128) {
       defaultThreadLimit = 300;
-      Logger.minor(
-          this,
+      LOG.debug(
           "Moderate memory pressure, setting 300 thread limit. Increase your memory limit in"
               + " wrapper.conf if possible.");
     } else if (memoryLimit > 0 && memoryLimit < 192) {
       defaultThreadLimit = 400;
-      Logger.minor(
-          this,
+      LOG.debug(
           "Setting 400 thread limit due to <=192MB memory limit. This should be enough but more"
               + " memory is better.");
     } else if (memoryLimit > 0 && memoryLimit < 512) {
       defaultThreadLimit = 500;
-      Logger.minor(
-          this,
+      LOG.debug(
           "Setting 500 thread limit due to <=512MB memory limit. This should be enough but more"
               + " memory is better.");
     } else {
       defaultThreadLimit = 1000;
-      Logger.minor(
-          this, "Setting standard 1000 thread limit. This should be enough for most nodes.");
+      LOG.debug("Setting standard 1000 thread limit. This should be enough for most nodes.");
     }
     statsConfig.register(
         "threadLimit",
@@ -561,7 +545,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
             node.getRunDir());
 
     SimpleFieldSet throttleFS = persister.read();
-    if (logMINOR) Logger.minor(this, "Read throttleFS:\n" + throttleFS);
+    if (LOG.isDebugEnabled()) LOG.debug("Read throttleFS:\n" + throttleFS);
 
     // Guesstimates. Hopefully well over the reality.
     localChkFetchBytesSentAverage =
@@ -1540,8 +1524,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       if (expectedTransfersInCHK < 0
           || expectedTransfersOutCHK < 0
           || expectedTransfersInSSK < 0
-          || expectedTransfersOutSSK < 0) Logger.error(this, message);
-      else if (logMINOR) Logger.minor(this, message);
+          || expectedTransfersOutSSK < 0) LOG.error(message);
+      else if (LOG.isDebugEnabled()) LOG.debug(message);
     }
 
     public double calculate(boolean ignoreLocalVsRemoteBandwidthLiability, boolean input) {
@@ -1664,7 +1648,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // It's not always called on the same thread, and things could be problematic if they interfere
     // with each other.
     synchronized (serializeShouldRejectRequest) {
-      if (logMINOR) dumpByteCostAverages();
+      if (LOG.isDebugEnabled()) dumpByteCostAverages();
 
       if (source != null) {
         if (source.isDisconnecting()) return new RejectReason("disconnecting", false);
@@ -1687,9 +1671,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         // Round trip time
         if (pingTime > maxPingTime) {
           if ((now - lastAcceptedRequest > MAX_INTERREQUEST_TIME) && canAcceptAnyway) {
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Accepting request anyway (take one every 10 secs to keep bwlimitDelayTime"
                       + " updated)");
           } else {
@@ -1730,7 +1713,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
       // Don't need to decrement because it won't be counted until setAccepted() below.
 
-      if (logMINOR) requestsSnapshot.log();
+      if (LOG.isDebugEnabled()) requestsSnapshot.log();
 
       long limit = getLimitSeconds(realTimeFlag);
 
@@ -1738,9 +1721,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // This should improve performance.
       if (hasInStore) {
         limit += 10;
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Maybe accepting extra request due to it being in datastore (limit now "
                   + limit
                   + "s)...");
@@ -1771,7 +1753,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
               ignoreLocalVsRemoteBandwidthLiability,
               transfersPerInsert,
               realTimeFlag);
-      if (logMINOR) peerRequestsSnapshot.log(source);
+      if (LOG.isDebugEnabled()) peerRequestsSnapshot.log(source);
 
       int maxTransfersOutUpperLimit = getMaxTransfersUpperLimit(realTimeFlag, nonOverheadFraction);
       int maxTransfersOutLowerLimit =
@@ -1858,7 +1840,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       }
 
       synchronized (this) {
-        if (logMINOR) Logger.minor(this, "Accepting request? (isSSK=" + isSSK + ")");
+        if (LOG.isDebugEnabled()) LOG.debug("Accepting request? (isSSK=" + isSSK + ")");
         lastAcceptedRequest = now;
       }
 
@@ -1924,13 +1906,15 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       long time = now - timeFirstAnyConnections;
       if (time < DEFAULT_ONLY_PERIOD) {
         nonOverheadFraction = DEFAULT_OVERHEAD;
-        if (logMINOR) Logger.minor(this, "Adjusted non-overhead fraction: " + nonOverheadFraction);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Adjusted non-overhead fraction: " + nonOverheadFraction);
       } else if (time < DEFAULT_ONLY_PERIOD + DEFAULT_TRANSITION_PERIOD) {
         time -= DEFAULT_ONLY_PERIOD;
         nonOverheadFraction =
             (time * nonOverheadFraction + (DEFAULT_TRANSITION_PERIOD - time) * DEFAULT_OVERHEAD)
                 / DEFAULT_TRANSITION_PERIOD;
-        if (logMINOR) Logger.minor(this, "Adjusted non-overhead fraction: " + nonOverheadFraction);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Adjusted non-overhead fraction: " + nonOverheadFraction);
       }
     }
     if (nonOverheadFraction < MIN_NON_OVERHEAD) {
@@ -1941,15 +1925,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // So impose a minimum of 20% of the bandwidth limit.
       // This will ensure we don't get stuck in any situation where all our bandwidth is overhead,
       // and we don't accept any requests because of that, so it remains that way...
-      Logger.warning(
-          this,
+      LOG.warn(
           "Non-overhead fraction is "
               + nonOverheadFraction
               + " - assuming this is self-inflicted and using default");
       nonOverheadFraction = MIN_NON_OVERHEAD;
     }
     if (nonOverheadFraction > 1.0) {
-      Logger.error(this, "Non-overhead fraction is >1.0!!!");
+      LOG.error("Non-overhead fraction is >1.0!!!");
       return 1.0;
     }
     return nonOverheadFraction;
@@ -2023,8 +2006,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Except when we do that, we have to offer it via ULPRs afterwards ...
     // Yes but the GetOfferedKey's are subject to load management, so no problem.
     if (bandwidthLiabilityOutput > bandwidthAvailableOutputUpperLimit) {
-      Logger.warning(
-          this,
+      LOG.warn(
           "Above upper limit. Not rejecting as this can occasionally happen due to reassigns: upper"
               + " limit "
               + bandwidthAvailableOutputUpperLimit
@@ -2037,9 +2019,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // Bandwidth is scarce (we are over the lower limit i.e. more than half our capacity is used).
       // Share available bandwidth fairly between peers.
 
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Allocation ("
                 + name
                 + ") for "
@@ -2079,9 +2060,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // Plenty of bandwidth available, allow one peer to use up to the lower limit (about half the
       // total).
 
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Total usage is "
                 + bandwidthLiabilityOutput
                 + " below lower limit "
@@ -2104,9 +2084,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       boolean isInsert,
       boolean isSSK,
       boolean isOfferReply) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Max transfers: congestion control limit "
               + maxOutputTransfers
               + " upper "
@@ -2172,9 +2151,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       }
     }
 
-    if (logMINOR && sourceRestarted != 0)
-      Logger.minor(
-          this, "Allocation is " + thisAllocation + " source restarted is " + sourceRestarted);
+    if (LOG.isDebugEnabled() && sourceRestarted != 0)
+      LOG.debug("Allocation is " + thisAllocation + " source restarted is " + sourceRestarted);
     return thisAllocation - sourceRestarted;
   }
 
@@ -2216,9 +2194,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       boolean isOfferReply,
       boolean isRealTime) {
     reason += " " + (isRealTime ? " (rt)" : " (bulk)");
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Rejecting (local="
               + isLocal
               + ") isSSK="
@@ -2269,8 +2246,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   private void dumpByteCostAverages() {
-    Logger.minor(
-        this,
+    LOG.debug(
         "Byte cost averages: REMOTE:"
             + " CHK insert "
             + remoteChkInsertBytesSentAverage.currentValue()
@@ -2288,8 +2264,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
             + remoteSskFetchBytesSentAverage.currentValue()
             + '/'
             + remoteSskFetchBytesReceivedAverage.currentValue());
-    Logger.minor(
-        this,
+    LOG.debug(
         "Byte cost averages: LOCAL:"
             + " CHK insert "
             + localChkInsertBytesSentAverage.currentValue()
@@ -2307,8 +2282,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
             + localSskFetchBytesSentAverage.currentValue()
             + '/'
             + localSskFetchBytesReceivedAverage.currentValue());
-    Logger.minor(
-        this,
+    LOG.debug(
         "Byte cost averages: SUCCESSFUL:"
             + " CHK insert "
             + successfulChkInsertBytesSentAverage.currentValue()
@@ -2429,9 +2403,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
           (firstNodeAveragePingTimeThresholdBreak != 0)
               && ((now - firstNodeAveragePingTimeThresholdBreak)
                   >= MAX_NODE_AVERAGE_PING_TIME_ALERT_DELAY);
-      if (logDEBUG)
-        Logger.debug(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "mUPMUAS: "
                 + now
                 + ": "
@@ -2572,7 +2545,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         outdiff = last_output_stat - previous_output_stat;
         indiff = last_input_stat - previous_input_stat;
       }
-      if (logMINOR) Logger.minor(this, "Last 2 seconds: input: " + indiff + " output: " + outdiff);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Last 2 seconds: input: " + indiff + " output: " + outdiff);
       nextNodeIOStatsUpdateTime = now + nodeIOStatsUpdateInterval;
     }
   }
@@ -3070,7 +3044,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   public synchronized void insertSentBytes(boolean ssk, int x) {
-    if (logDEBUG) Logger.debug(this, "insertSentBytes(" + ssk + ", " + x + ")");
+    if (LOG.isTraceEnabled()) LOG.trace("insertSentBytes(" + ssk + ", " + x + ")");
     if (ssk) sskInsertSentBytes += x;
     else chkInsertSentBytes += x;
   }
@@ -3196,7 +3170,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
         @Override
         public void sentPayload(int x) {
-          Logger.error(this, "Payload sent in resendByteCounter????", new Exception("error"));
+          LOG.warn("Payload sent in resendByteCounter????");
         }
       };
 
@@ -3259,8 +3233,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         @Override
         public void receivedBytes(int x) {
           // Impossible?
-          Logger.error(
-              this, "Routing status sender received bytes: " + x + " - isn't that impossible?");
+          LOG.error("Routing status sender received bytes: " + x + " - isn't that impossible?");
         }
 
         @Override
@@ -3671,9 +3644,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         realTimeFlag ? blockTransferPSuccessRT : blockTransferPSuccessBulk;
     blockTransferPSuccess.report(1.0);
     if (isLocal) blockTransferPSuccessLocal.report(1.0);
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Successful receives: "
               + blockTransferPSuccess.currentValue()
               + " count="
@@ -3691,9 +3663,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         realTimeFlag ? blockTransferPSuccessRT : blockTransferPSuccessBulk;
     blockTransferPSuccess.report(0.0);
     if (isLocal) blockTransferPSuccessLocal.report(0.0);
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Successful receives: "
               + blockTransferPSuccess.currentValue()
               + " count="
@@ -3813,9 +3784,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       double location,
       boolean realTime,
       boolean fromOfferedKey) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Remote request: sucess="
               + success
               + " htl="
@@ -4213,9 +4183,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     synchronized (this) {
       totalAnnouncements++;
       totalAnnounceForwards += forwardedRefs;
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Announcements: "
                 + totalAnnouncements
                 + " average "
@@ -4256,7 +4225,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       int transfersPerAnnouncement = getTransfersPerAnnounce();
       int running = runningAnnouncements.size();
       if (running >= MAX_ANNOUNCEMENTS) {
-        if (logMINOR) Logger.minor(this, "Too many announcements running: " + running);
+        if (LOG.isDebugEnabled()) LOG.debug("Too many announcements running: " + running);
         return AnnouncementDecision.OVERLOAD;
       }
       // Liability-style limiting as well.
@@ -4264,13 +4233,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // Must all complete in 30 seconds. That is the timeout for one block.
       int bandwidthIn30Secs = limit * 30;
       if (perTransfer * transfersPerAnnouncement * running > bandwidthIn30Secs) {
-        if (logMINOR) Logger.minor(this, "Can't complete " + running + " announcements in 30 secs");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Can't complete " + running + " announcements in 30 secs");
         return AnnouncementDecision.OVERLOAD;
       }
       boolean ret = runningAnnouncements.add(uid);
-      if (logMINOR) {
-        if (ret) Logger.minor(this, "Accepting announcement " + uid);
-        else Logger.minor(this, "Rejecting (loop) announcement " + uid);
+      if (LOG.isDebugEnabled()) {
+        if (ret) LOG.debug("Accepting announcement " + uid);
+        else LOG.debug("Rejecting (loop) announcement " + uid);
       }
       return (ret ? AnnouncementDecision.ACCEPT : AnnouncementDecision.LOOP);
     }
@@ -4305,9 +4275,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       if (local) nlmDelayBulkLocal.report(waitTime);
       else nlmDelayBulkRemote.report(waitTime);
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Delay times: realtime: local="
               + nlmDelayRTLocal.currentValue()
               + " remote = "

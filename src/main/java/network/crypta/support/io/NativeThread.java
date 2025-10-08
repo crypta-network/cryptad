@@ -3,7 +3,8 @@ package network.crypta.support.io;
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
 import network.crypta.fs.AppEnv;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Do *NOT* forget to call super.run() if you extend it!
@@ -13,6 +14,8 @@ import network.crypta.support.Logger;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class NativeThread extends Thread {
+  private static final Logger LOG = LoggerFactory.getLogger(NativeThread.class);
+
   public static final boolean _loadNative;
   private static boolean _disabled;
   public static final int JAVA_PRIORITY_RANGE = Thread.MAX_PRIORITY - Thread.MIN_PRIORITY;
@@ -65,10 +68,10 @@ public class NativeThread extends Thread {
   @Deprecated public static final int MAX_PRIORITY = PriorityLevel.MAX_PRIORITY.value;
 
   static {
-    Logger.minor(NativeThread.class, "Running init()");
+    LOG.debug("Running init()");
     // Loading the NativeThread library isn't useful on macOS
     boolean maybeLoadNative = Platform.isLinux();
-    Logger.debug(NativeThread.class, "Run init(): should loadNative=" + maybeLoadNative);
+    LOG.trace("Run init(): should loadNative=" + maybeLoadNative);
     // Detect sandboxed/containerized environments where decreasing nice is blocked.
     AppEnv envDet = new AppEnv();
     boolean inSnap = envDet.isSnap();
@@ -100,7 +103,7 @@ public class NativeThread extends Thread {
       HAS_PLENTY_NICE_LEVELS = true;
       _loadNative = false;
     }
-    Logger.minor(NativeThread.class, "Run init(): _loadNative = " + _loadNative);
+    LOG.debug("Run init(): _loadNative = " + _loadNative);
     if (SANDBOX_DISABLE_RENICE) {
       StringBuilder sb = new StringBuilder("Sandbox detected: disabling native thread renice (");
       boolean first = true;
@@ -118,7 +121,7 @@ public class NativeThread extends Thread {
         sb.append("Docker");
       }
       sb.append(") due to sandbox constraints.");
-      Logger.normal(NativeThread.class, sb.toString());
+      LOG.info(sb.toString());
       System.out.println(sb.toString());
     }
   }
@@ -190,25 +193,24 @@ public class NativeThread extends Thread {
 
   /** Rescale java priority and set linux priority. */
   private boolean setNativePriority(int prio) {
-    Logger.minor(this, "setNativePriority(" + prio + ")");
+    LOG.debug("setNativePriority(" + prio + ")");
     setPriority(prio);
     if (SANDBOX_DISABLE_RENICE) {
       if (!sandboxLogOnce) {
         sandboxLogOnce = true;
-        Logger.normal(
-            this,
+        LOG.info(
             "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); using JVM priority"
                 + " only.");
       }
       return true; // treat as success to avoid noisy warnings
     }
     if (!_loadNative) {
-      Logger.minor(this, "_loadNative is false");
+      LOG.debug("_loadNative is false");
       return true;
     }
     int realPrio = LinuxNativeThread.getpriority(0, 0);
     if (_disabled) {
-      Logger.normal(this, "Not setting native priority as disabled due to renicing");
+      LOG.info("Not setting native priority as disabled due to renicing");
       return false;
     }
     if (NATIVE_PRIORITY_BASE != realPrio && !dontCheckRenice) {
@@ -218,8 +220,7 @@ public class NativeThread extends Thread {
        * Let's disable the renicing as we can't rely on it anymore.
        */
       _disabled = true;
-      Logger.error(
-          this,
+      LOG.error(
           "Crypta has detected it has been reniced : THAT'S BAD, DON'T DO IT! Nice level detected"
               + " statically: "
               + NATIVE_PRIORITY_BASE
@@ -258,8 +259,7 @@ public class NativeThread extends Thread {
               + ':'
               + NATIVE_PRIORITY_BASE
               + ") SHOULD NOT HAPPEN, please report!");
-    Logger.minor(
-        this,
+    LOG.debug(
         "Setting native priority to "
             + linuxPriority
             + " (base="

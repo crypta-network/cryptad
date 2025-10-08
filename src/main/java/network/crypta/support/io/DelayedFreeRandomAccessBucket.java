@@ -3,15 +3,16 @@ package network.crypta.support.io;
 import java.io.*;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DelayedFreeRandomAccessBucket
     implements Bucket, Serializable, RandomAccessBucket, DelayedFree {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DelayedFreeRandomAccessBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;
   // Only set on construction and on onResume() on startup. So shouldn't need locking.
@@ -20,16 +21,7 @@ public class DelayedFreeRandomAccessBucket
   private boolean freed;
   private transient long createdCommitID;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   @Override
@@ -107,8 +99,7 @@ public class DelayedFreeRandomAccessBucket
       if (freed) return;
       freed = true;
     }
-    if (logMINOR)
-      Logger.minor(this, "Freeing " + this + " underlying=" + bucket, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing {} underlying={}", this, bucket);
     this.factory.delayedFree(this, createdCommitID);
   }
 

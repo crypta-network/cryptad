@@ -2,28 +2,18 @@ package network.crypta.clients.fcp;
 
 import java.net.MalformedURLException;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RedirectDirPutFile extends DirPutFile {
+  private static final Logger LOG = LoggerFactory.getLogger(RedirectDirPutFile.class);
 
   final FreenetURI targetURI;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public static RedirectDirPutFile create(
       String name,
@@ -46,7 +36,7 @@ public class RedirectDirPutFile extends DirPutFile {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD, "Invalid TargetURI: " + e, identifier, global);
     }
-    if (logMINOR) Logger.minor(RedirectDirPutFile.class, "targetURI = " + targetURI);
+    if (LOG.isDebugEnabled()) LOG.debug("targetURI = " + targetURI);
     String mimeType;
     if (contentTypeOverride != null) mimeType = contentTypeOverride;
     else mimeType = guessMIME(name);

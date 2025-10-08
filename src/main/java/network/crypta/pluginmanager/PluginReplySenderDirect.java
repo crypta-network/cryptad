@@ -2,9 +2,10 @@ package network.crypta.pluginmanager;
 
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author saces
@@ -13,6 +14,7 @@ import network.crypta.support.api.Bucket;
  */
 @Deprecated
 public class PluginReplySenderDirect extends PluginReplySender {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginReplySenderDirect.class);
 
   private final Node node;
   private final FredPluginTalker target;
@@ -44,8 +46,7 @@ public class PluginReplySenderDirect extends PluginReplySender {
                 try {
                   target.onReply(pluginname, clientSideIdentifier, params, bucket);
                 } catch (Throwable t) {
-                  Logger.error(
-                      this, "Cought error while handling plugin reply: " + t.getMessage(), t);
+                  LOG.error("Cought error while handling plugin reply: " + t.getMessage(), t);
                 }
               }
             },

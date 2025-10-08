@@ -16,13 +16,12 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.URLEncoder;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * BookmarkEditor Toadlet
@@ -30,6 +29,7 @@ import network.crypta.support.api.HTTPRequest;
  * <p>Accessible from http://.../bookmarkEditor/
  */
 public class BookmarkEditorToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(BookmarkEditorToadlet.class);
   private static final int MAX_ACTION_LENGTH = 20;
 
   /** Max. bookmark name length */
@@ -46,17 +46,7 @@ public class BookmarkEditorToadlet extends Toadlet {
   private final NodeClientCore core;
   private String cutedPath;
 
-  private static volatile boolean logDEBUG;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   BookmarkEditorToadlet(HighLevelSimpleClient client, NodeClientCore core) {
     super(client);
@@ -568,7 +558,7 @@ public class BookmarkEditorToadlet extends Toadlet {
           NodeL10n.getBase().getString("BookmarkEditorToadlet.addDefaultBookmarks")
         });
 
-    if (logDEBUG) Logger.debug(this, "Returning:\n" + page.generate());
+    if (LOG.isTraceEnabled()) LOG.trace("Returning:\n{}", page.generate());
 
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }

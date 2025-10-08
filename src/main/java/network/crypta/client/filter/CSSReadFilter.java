@@ -13,25 +13,14 @@ import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.util.Map;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NullWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
-
-  private static volatile boolean logDEBUG;
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(CSSReadFilter.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   @Override
@@ -43,7 +32,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    if (logDEBUG) Logger.debug(this, "running " + this + "with charset" + charset);
+    if (LOG.isTraceEnabled()) LOG.trace("running " + this + "with charset" + charset);
     Reader r = null;
     Writer w = null;
     try {
@@ -65,10 +54,9 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
 
   @Override
   public String getCharset(byte[] input, int length, String charset) throws IOException {
-    if (logDEBUG) Logger.debug(this, "Fetching charset for CSS with initial charset " + charset);
-    if (input.length > getCharsetBufferSize() && logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isTraceEnabled()) LOG.trace("Fetching charset for CSS with initial charset " + charset);
+    if (input.length > getCharsetBufferSize() && LOG.isDebugEnabled()) {
+      LOG.debug(
           "More data than was strictly needed was passed to the charset extractor for extraction");
     }
     try (InputStream strm = new ByteArrayInputStream(input, 0, length);

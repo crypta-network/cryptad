@@ -5,9 +5,10 @@ import java.util.UUID;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author saces, xor
@@ -15,6 +16,7 @@ import network.crypta.support.api.Bucket;
  */
 @Deprecated
 public class PluginTalker {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginTalker.class);
 
   protected Node node;
   protected PluginReplySender replysender;
@@ -69,13 +71,13 @@ public class PluginTalker {
 
   protected WeakReference<FredPluginFCP> findPlugin(String pluginname2)
       throws PluginNotFoundException {
-    Logger.normal(this, "Searching fcp plugin: " + pluginname2);
+    LOG.info("Searching fcp plugin: " + pluginname2);
     FredPluginFCP plug = node.getPluginManager().getFCPPlugin(pluginname2);
     if (plug == null) {
-      Logger.error(this, "Could not find fcp plugin: " + pluginname2);
+      LOG.error("Could not find fcp plugin: " + pluginname2);
       throw new PluginNotFoundException();
     }
-    Logger.normal(this, "Found fcp plugin: " + pluginname2);
+    LOG.info("Found fcp plugin: " + pluginname2);
     return new WeakReference<>(plug);
   }
 
@@ -93,16 +95,14 @@ public class PluginTalker {
       if (plug == null) {
         // FIXME How to get this out to surrounding send(..)?
         // throw new PluginNotFoundException(How to get this out to surrounding send(..)?);
-        Logger.error(
-            this, "Connection to plugin '" + pluginName + "' lost.", new Exception("FIXME"));
+        LOG.warn("Connection to plugin '{}' lost.", pluginName);
         return;
       }
       plug.handle(replysender, plugparams, data2, access);
     } catch (VirtualMachineError vme) {
       throw vme; // OOM is included here
     } catch (Throwable t) {
-      Logger.error(
-          this,
+      LOG.error(
           "Cought error while execute fcp plugin handler for '"
               + pluginName
               + "', report it to the plugin author: "

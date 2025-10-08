@@ -1,7 +1,8 @@
 package network.crypta.crypt.ciphers;
 
 import java.security.InvalidKeyException;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // ...........................................................................
 /**
@@ -24,15 +25,15 @@ import network.crypta.support.Logger;
  */
 final class Rijndael_Algorithm // implicit no-argument constructor
  {
+  private static final Logger LOG = LoggerFactory.getLogger(Rijndael_Algorithm.class);
+
   //	Debugging methods and variables
   //	...........................................................................
 
   static {
-    Logger.registerClass(Rijndael_Algorithm.class);
   }
 
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
+  // Legacy debug flags replaced by SLF4J level checks
 
   static final String ALGORITHM = "Rijndael";
   static final double VERSION = 0.1;
@@ -51,12 +52,11 @@ final class Rijndael_Algorithm // implicit no-argument constructor
   private static final boolean TRACE = false;
 
   private static void debug(String s) {
-    if (logDEBUG) Logger.debug(Rijndael_Algorithm.class, ">>> " + NAME + ": " + s);
+    if (LOG.isTraceEnabled()) LOG.trace(">>> " + NAME + ": " + s);
   }
 
   private static void trace(boolean in, String s) {
-    if (TRACE && logDEBUG)
-      Logger.debug(Rijndael_Algorithm.class, (in ? "==> " : "<== ") + NAME + '.' + s);
+    if (TRACE && LOG.isTraceEnabled()) LOG.trace((in ? "==> " : "<== ") + NAME + '.' + s);
   }
 
   //	Constants and variables
@@ -100,7 +100,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
   static {
     long time = System.currentTimeMillis();
 
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("Algorithm Name: " + FULL_NAME);
       System.out.println("Electronic Codebook (ECB) Mode");
       System.out.println();
@@ -137,7 +137,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
 
     time = System.currentTimeMillis() - time;
 
-    if (RDEBUG && (logDEBUG)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("==========");
       System.out.println();
       System.out.println("Static Data");
@@ -437,7 +437,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       t1 = a1;
       t2 = a2;
       t3 = a3;
-      if (RDEBUG && (logMINOR))
+      if (RDEBUG && LOG.isDebugEnabled())
         System.out.println(
             "CT" + r + '=' + intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
     }
@@ -464,7 +464,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
     result[13] = (byte) (S[(t0 >>> 16) & 0xFF] ^ (tt >>> 16));
     result[14] = (byte) (S[(t1 >>> 8) & 0xFF] ^ (tt >>> 8));
     result[15] = (byte) (S[t2 & 0xFF] ^ tt);
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("CT=" + toString(result));
       System.out.println();
     }
@@ -578,7 +578,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       t5 = a5;
       t6 = a6;
       t7 = a7;
-      if (RDEBUG && (logMINOR))
+      if (RDEBUG && LOG.isDebugEnabled())
         System.out.println(
             "CT" + r + '=' + intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
     }
@@ -625,7 +625,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
     result[29] = (byte) (S[(t0 >>> 16) & 0xFF] ^ (tt >>> 16));
     result[30] = (byte) (S[(t2 >>> 8) & 0xFF] ^ (tt >>> 8));
     result[31] = (byte) (S[t3 & 0xFF] ^ tt);
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("CT=" + toString(result));
       System.out.println();
     }
@@ -692,7 +692,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       t1 = a1;
       t2 = a2;
       t3 = a3;
-      if (RDEBUG && (logMINOR))
+      if (RDEBUG && LOG.isDebugEnabled())
         System.out.println(
             "PT" + r + '=' + intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
     }
@@ -719,7 +719,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
     result[13] = (byte) (Si[(t2 >>> 16) & 0xFF] ^ (tt >>> 16));
     result[14] = (byte) (Si[(t1 >>> 8) & 0xFF] ^ (tt >>> 8));
     result[15] = (byte) (Si[t0 & 0xFF] ^ tt);
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("PT=" + toString(result));
       System.out.println();
     }
@@ -833,7 +833,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       t5 = a5;
       t6 = a6;
       t7 = a7;
-      if (RDEBUG && (logMINOR))
+      if (RDEBUG && LOG.isDebugEnabled())
         System.out.println(
             "PT" + r + '=' + intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
     }
@@ -880,7 +880,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
     result[29] = (byte) (Si[(t6 >>> 16) & 0xFF] ^ (tt >>> 16));
     result[30] = (byte) (Si[(t4 >>> 8) & 0xFF] ^ (tt >>> 8));
     result[31] = (byte) (Si[t3 & 0xFF] ^ tt);
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("PT=" + toString(result));
       System.out.println();
     }
@@ -1050,7 +1050,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
                     ^ T4[t[(i + s3) % BC] & 0xFF])
                 ^ Ke[r][i];
       System.arraycopy(a, 0, t, 0, BC);
-      if (RDEBUG && (logMINOR)) System.out.println("CT" + r + '=' + toString(t));
+      if (RDEBUG && LOG.isDebugEnabled()) System.out.println("CT" + r + '=' + toString(t));
     }
     for (i = 0; i < BC; i++) { // last round is special
       tt = Ke[ROUNDS][i];
@@ -1059,7 +1059,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       result[j++] = (byte) (S[(t[(i + s2) % BC] >>> 8) & 0xFF] ^ (tt >>> 8));
       result[j++] = (byte) (S[t[(i + s3) % BC] & 0xFF] ^ tt);
     }
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("CT=" + toString(result));
       System.out.println();
     }
@@ -1119,7 +1119,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
                     ^ T8[t[(i + s3) % BC] & 0xFF])
                 ^ Kd[r][i];
       System.arraycopy(a, 0, t, 0, BC);
-      if (RDEBUG && (logMINOR)) System.out.println("PT" + r + '=' + toString(t));
+      if (RDEBUG && LOG.isDebugEnabled()) System.out.println("PT" + r + '=' + toString(t));
     }
     for (i = 0; i < BC; i++) { // last round is special
       tt = Kd[ROUNDS][i];
@@ -1128,7 +1128,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       result[j++] = (byte) (Si[(t[(i + s2) % BC] >>> 8) & 0xFF] ^ (tt >>> 8));
       result[j++] = (byte) (Si[t[(i + s3) % BC] & 0xFF] ^ tt);
     }
-    if (RDEBUG && (logMINOR)) {
+    if (RDEBUG && LOG.isDebugEnabled()) {
       System.out.println("PT=" + toString(result));
       System.out.println();
     }
@@ -1147,7 +1147,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       for (i = 0; i < keysize; i++) kb[i] = (byte) i;
       for (i = 0; i < BLOCK_SIZE; i++) pt[i] = (byte) i;
 
-      if (RDEBUG && (logMINOR)) {
+      if (RDEBUG && LOG.isDebugEnabled()) {
         System.out.println("==========");
         System.out.println();
         System.out.println("KEYSIZE=" + (8 * keysize));
@@ -1156,7 +1156,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       }
       Object key = makeKey(kb, BLOCK_SIZE);
 
-      if (RDEBUG && (logMINOR)) {
+      if (RDEBUG && LOG.isDebugEnabled()) {
         System.out.println("Intermediate Ciphertext Values (Encryption)");
         System.out.println();
         System.out.println("PT=" + toString(pt));
@@ -1164,7 +1164,7 @@ final class Rijndael_Algorithm // implicit no-argument constructor
       byte[] ct = new byte[BLOCK_SIZE];
       blockEncrypt(pt, ct, 0, key, BLOCK_SIZE);
 
-      if (RDEBUG && (logMINOR)) {
+      if (RDEBUG && LOG.isDebugEnabled()) {
         System.out.println("Intermediate Plaintext Values (Decryption)");
         System.out.println();
         System.out.println("CT=" + toString(ct));

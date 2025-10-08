@@ -16,14 +16,13 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 /**
  * Creates a node, inserts data to it, and fetches the data back. Note that we need one JUnit class
@@ -35,11 +34,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
   public void testFetchPullSingleNodeSsk()
-      throws InvalidThresholdException,
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }
@@ -51,11 +46,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
   public void testFetchPullSingleNodeUskEditionZero()
-      throws InvalidThresholdException,
-          NodeInitException,
-          InsertException,
-          FetchException,
-          IOException {
+      throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
     }
@@ -71,11 +62,11 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
   }
 
   private static FetchResult insertAndRetrieveBlock(DummyRandomSource random, InsertBlock block)
-      throws InvalidThresholdException, NodeInitException, InsertException, FetchException {
+      throws NodeInitException, InsertException, FetchException {
     final Executor executor = new PooledExecutor();
     FileUtil.removeAll(dir);
     dir.mkdir();
-    NodeStarter.globalTestInit(dir, false, Logger.LogLevel.ERROR, "", true, random);
+    NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
     params.random = new DummyRandomSource(253121);
     params.ramStore = true;

@@ -18,6 +18,8 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.TempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A thread which periodically wakes up and iterates to start fetches and/or inserts.
@@ -38,6 +40,7 @@ import network.crypta.support.io.TempBucketFactory;
  */
 @Deprecated
 public abstract class TransferThread implements PrioRunnable, ClientGetCallback, ClientPutCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(TransferThread.class);
 
   private final String mName;
   protected final Node mNode;
@@ -66,7 +69,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
    * classes.
    */
   public void start() {
-    Logger.debug(this, "Starting...");
+    LOG.trace("Starting...");
     mTicker.queueTimedJob(this, mName, getStartupDelay(), false, true);
   }
 
@@ -80,14 +83,13 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   public void run() {
     long sleepTime = SECONDS.toMillis(1);
     try {
-      Logger.debug(this, "Loop running...");
+      LOG.trace("Loop running...");
       iterate();
       sleepTime = getSleepTime();
     } catch (Exception e) {
-      Logger.error(this, "Error in iterate() or getSleepTime() probably", e);
+      LOG.error("Error in iterate() or getSleepTime() probably", e);
     } finally {
-      Logger.debug(
-          this,
+      LOG.debug(
           "Loop finished. Sleeping for " + MINUTES.convert(sleepTime, MILLISECONDS) + " minutes.");
       mTicker.queueTimedJob(this, mName, sleepTime, false, true);
     }
@@ -99,14 +101,14 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   }
 
   protected void abortAllTransfers() {
-    Logger.debug(this, "Trying to stop all fetches & inserts...");
+    LOG.trace("Trying to stop all fetches & inserts...");
 
     abortFetches();
     abortInserts();
   }
 
   protected void abortFetches() {
-    Logger.debug(this, "Trying to stop all fetches...");
+    LOG.trace("Trying to stop all fetches...");
     if (mFetches != null)
       synchronized (mFetches) {
         ClientGetter[] fetches = mFetches.toArray(new ClientGetter[0]);
@@ -117,12 +119,12 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
           ++fcounter;
         }
 
-        Logger.debug(this, "Stopped " + fcounter + " current fetches.");
+        LOG.trace("Stopped " + fcounter + " current fetches.");
       }
   }
 
   protected void abortInserts() {
-    Logger.debug(this, "Trying to stop all inserts...");
+    LOG.trace("Trying to stop all inserts...");
     if (mInserts != null)
       synchronized (mInserts) {
         BaseClientPutter[] inserts = mInserts.toArray(new BaseClientPutter[0]);
@@ -132,7 +134,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
           insert.cancel(mNode.getClientCore().getClientContext());
           ++icounter;
         }
-        Logger.debug(this, "Stopped " + icounter + " current inserts.");
+        LOG.trace("Stopped " + icounter + " current inserts.");
       }
   }
 
@@ -146,7 +148,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     synchronized (mFetches) {
       mFetches.remove(g);
     }
-    Logger.debug(this, "Removed request for " + g.getURI());
+    LOG.trace("Removed request for " + g.getURI());
   }
 
   protected void addInsert(BaseClientPutter p) {
@@ -159,7 +161,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     synchronized (mInserts) {
       mInserts.remove(p);
     }
-    Logger.debug(this, "Removed insert for " + p.getURI());
+    LOG.trace("Removed insert for " + p.getURI());
   }
 
   protected int fetchCount() {
@@ -175,14 +177,14 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   }
 
   public void terminate() {
-    Logger.debug(this, "Terminating...");
+    LOG.trace("Terminating...");
     mTicker.shutdown();
     try {
       abortAllTransfers();
     } catch (RuntimeException e) {
-      Logger.error(this, "Aborting all transfers failed", e);
+      LOG.error("Aborting all transfers failed", e);
     }
-    Logger.debug(this, "Terminated.");
+    LOG.trace("Terminated.");
   }
 
   protected abstract Collection<ClientGetter> createFetchStorage();

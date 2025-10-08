@@ -8,11 +8,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** RIFF file format filter for several formats, such as AVI, WAV, MID, and WebP */
 public abstract class RIFFFilter implements ContentDataFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(RIFFFilter.class);
 
   private static final byte[] magicNumber = new byte[] {'R', 'I', 'F', 'F'};
 
@@ -146,8 +147,8 @@ public abstract class RIFFFilter implements ContentDataFilter {
   protected void passthroughBytes(DataInputStream in, DataOutputStream out, int size)
       throws DataFilterException, IOException {
     if (size < 0) {
-      if (Logger.shouldLog(LogLevel.WARNING, this.getClass())) {
-        Logger.warning(this, "RIFF block size " + size + " is less than 0");
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("RIFF block size " + size + " is less than 0");
       }
       throw new DataFilterException(l10n("invalidTitle"), l10n("invalidTitle"), l10n("dataTooBig"));
     } else {
@@ -182,8 +183,8 @@ public abstract class RIFFFilter implements ContentDataFilter {
       throw new EOFException();
     }
     if (size < 0) {
-      if (Logger.shouldLog(LogLevel.WARNING, this.getClass())) {
-        Logger.warning(this, "RIFF block size " + size + " is less than 0");
+      if (LOG.isWarnEnabled()) {
+        LOG.warn("RIFF block size " + size + " is less than 0");
       }
       throw new DataFilterException(l10n("invalidTitle"), l10n("invalidTitle"), l10n("dataTooBig"));
     } else {

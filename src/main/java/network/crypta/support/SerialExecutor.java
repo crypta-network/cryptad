@@ -5,21 +5,14 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SerialExecutor implements Executor {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SerialExecutor.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private final LinkedBlockingQueue<Runnable> jobs;
@@ -73,8 +66,8 @@ public class SerialExecutor implements Executor {
               try {
                 job.run();
               } catch (Throwable t) {
-                Logger.error(this, "Caught " + t, t);
-                Logger.error(this, "While running " + job + " on " + this);
+                LOG.error("Caught " + t, t);
+                LOG.error("While running " + job + " on " + this);
               }
             }
           } finally {
@@ -109,7 +102,7 @@ public class SerialExecutor implements Executor {
     synchronized (syncLock) {
       threadStarted = true;
     }
-    if (logMINOR) Logger.minor(this, "Starting thread... " + name + " : " + runner);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting thread... " + name + " : " + runner);
     realExecutor.execute(runner, name);
   }
 
@@ -120,9 +113,8 @@ public class SerialExecutor implements Executor {
 
   @Override
   public void execute(Runnable job, String jobName) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Running "
               + jobName
               + " : "

@@ -13,11 +13,12 @@ import network.crypta.client.async.SplitFileInserterSegmentStorage.MissingKeyExc
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.crypt.HashResult;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Top level class for a splitfile insert. Note that Storage is not persistent, it will be recreated
@@ -28,11 +29,9 @@ import network.crypta.support.io.StorageFormatException;
 public class SplitFileInserter
     implements ClientPutState, Serializable, SplitFileInserterStorageCallback {
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserter.class);
 
   static {
-    Logger.registerClass(SplitFileInserter.class);
   }
 
   @Serial private static final long serialVersionUID = 1L;
@@ -208,21 +207,21 @@ public class SplitFileInserter
       this.sender = new SplitFileInserterSender(this, storage);
       schedule(context);
     } catch (IOException e) {
-      Logger.error(this, "Resume failed: " + e, e);
+      LOG.error("Resume failed: " + e, e);
       raf.close();
       raf.free();
       originalData.close();
       if (freeData) originalData.free();
       throw new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null);
     } catch (StorageFormatException e) {
-      Logger.error(this, "Resume failed: " + e, e);
+      LOG.error("Resume failed: " + e, e);
       raf.close();
       raf.free();
       originalData.close();
       if (freeData) originalData.free();
       throw new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null);
     } catch (ChecksumFailedException e) {
-      Logger.error(this, "Resume failed: " + e, e);
+      LOG.error("Resume failed: " + e, e);
       raf.close();
       raf.free();
       originalData.close();
@@ -283,7 +282,7 @@ public class SplitFileInserter
 
               @Override
               public boolean run(ClientContext context) {
-                if (logMINOR) Logger.minor(this, "Succeeding on " + SplitFileInserter.this);
+                if (LOG.isDebugEnabled()) LOG.debug("Succeeding on " + SplitFileInserter.this);
                 unregisterSender();
                 if (!(ctx.earlyEncode || ctx.getCHKOnly)) {
                   reportMetadata(metadata);

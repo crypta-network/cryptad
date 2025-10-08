@@ -17,13 +17,12 @@ import network.crypta.node.PeerNode;
 import network.crypta.node.SyncSendWaitedTooLongException;
 import network.crypta.support.BitArray;
 import network.crypta.support.Buffer;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MedianMeanRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * IMPORTANT: The receiver can cancel the incoming transfer. This may or may not, depending on the
@@ -52,17 +51,9 @@ import network.crypta.support.math.MedianMeanRunningAverage;
  * @author ian
  */
 public class BlockReceiver implements AsyncMessageFilterCallback {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(BlockReceiver.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public interface BlockReceiverTimeoutHandler {
@@ -216,7 +207,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
         @Override
         public void onMatched(Message m1) {
-          if (logMINOR) Logger.minor(this, "Received " + m1);
+          if (LOG.isDebugEnabled()) LOG.debug("Received " + m1);
           if ((m1 != null) && m1.getSpec().equals(DMT.sendAborted)) {
             String desc = m1.getString(DMT.DESCRIPTION);
             if (!desc.contains("Upstream")) desc = "Upstream transmit error: " + desc;
@@ -240,8 +231,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
               }
               if (CHECK_DUPES && _prb.isReceived(packetNo)) {
                 // Transmitter sent the same packet twice?!?!?
-                Logger.error(
-                    this,
+                LOG.error(
                     "Already received the packet - DoS??? on "
                         + this
                         + " uid "
@@ -252,11 +242,10 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                 truncateTimeout = true;
               } else {
                 _prb.addPacket(packetNo, data);
-                if (logMINOR) {
+                if (LOG.isDebugEnabled()) {
                   synchronized (BlockReceiver.this) {
                     long interval = System.currentTimeMillis() - timeStartedWaiting;
-                    Logger.minor(
-                        this,
+                    LOG.debug(
                         "Packet interval: "
                             + interval
                             + " = "
@@ -271,15 +260,14 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                     missing++;
                   }
                 }
-                if (logMINOR && missing != 0)
-                  Logger.minor(
-                      this,
+                if (LOG.isDebugEnabled() && missing != 0)
+                  LOG.debug(
                       "Packets which the sender says it has sent but we have not received: "
                           + missing);
               }
             } catch (AbortedException e) {
               // We didn't cause it?!
-              Logger.error(this, "Caught in receive - probably a bug as receive sets it: " + e, e);
+              LOG.error("Caught in receive - probably a bug as receive sets it: " + e, e);
               complete(RetrievalException.UNKNOWN, "Aborted?");
               return;
             }
@@ -312,18 +300,16 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                 maybeResetDiscardFilter();
               } catch (NotConnectedException e1) {
                 // Ignore, we've got it.
-                if (logMINOR)
-                  Logger.minor(
-                      this,
+                if (LOG.isDebugEnabled())
+                  LOG.debug(
                       "Got data but can't send allReceived to " + _sender + " as is disconnected");
               }
               long endTime = System.currentTimeMillis();
               long transferTime = (endTime - startTime);
-              if (logMINOR) {
+              if (LOG.isDebugEnabled()) {
                 synchronized (avgTimeTaken) {
                   avgTimeTaken.report(transferTime);
-                  Logger.minor(
-                      this,
+                  LOG.debug(
                       "Block transfer took " + transferTime + "ms - average is " + avgTimeTaken);
                 }
               }
@@ -332,7 +318,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             }
           } catch (AbortedException e1) {
             // We didn't cause it?!
-            Logger.error(this, "Caught in receive - probably a bug as receive sets it: " + e1, e1);
+            LOG.error("Caught in receive - probably a bug as receive sets it: " + e1, e1);
             complete(RetrievalException.UNKNOWN, "Aborted?");
             return;
           }
@@ -382,7 +368,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                     @Override
                     public void onMatched(Message m) {
                       // Ok.
-                      if (logMINOR) Logger.minor(this, "Transfer cancel acknowledged");
+                      if (LOG.isDebugEnabled()) LOG.debug("Transfer cancel acknowledged");
                     }
 
                     @Override
@@ -392,8 +378,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
                     @Override
                     public void onTimeout() {
-                      Logger.error(
-                          this,
+                      LOG.error(
                           "Other side did not acknowlege transfer failure on "
                               + BlockReceiver.this);
                       _timeoutHandler.onFatalTimeout(_sender);
@@ -421,7 +406,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
           } catch (AbortedException e) {
             // We didn't cause it?!
-            Logger.error(this, "Caught in receive - probably a bug as receive sets it: " + e, e);
+            LOG.error("Caught in receive - probably a bug as receive sets it: " + e, e);
             complete(RetrievalException.UNKNOWN, "Aborted?");
           }
         }
@@ -451,14 +436,13 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   private void complete(int reason, String description) {
     synchronized (this) {
       if (completed) {
-        if (logMINOR) Logger.minor(this, "Already completed");
+        if (LOG.isDebugEnabled()) LOG.debug("Already completed");
         return;
       }
       completed = true;
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Transfer failed: ("
               + (_realTime ? "realtime" : "bulk")
               + ") "
@@ -485,8 +469,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
       }
       callback.blockReceiveFailed(new RetrievalException(reason, description));
     } else {
-      Logger.error(
-          this,
+      LOG.error(
           "Succeeded in complete(" + reason + "," + description + ") on " + this,
           new Exception("error"));
       callback.blockReceived(block);
@@ -497,7 +480,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   private void complete(byte[] ret) {
     synchronized (this) {
       if (completed) {
-        if (logMINOR) Logger.minor(this, "Already completed");
+        if (LOG.isDebugEnabled()) LOG.debug("Already completed");
         return;
       }
       completed = true;
@@ -617,7 +600,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
    */
   @Override
   public void onMatched(Message m) {
-    if (logMINOR) Logger.minor(this, "discarding message post-receive: " + m);
+    if (LOG.isDebugEnabled()) LOG.debug("discarding message post-receive: " + m);
     maybeResetDiscardFilter();
   }
 
@@ -648,22 +631,20 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   static int runningBlockReceives = 0;
 
   private void incRunningBlockReceives() {
-    if (logMINOR) Logger.minor(this, "Starting block receive " + _uid);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting block receive " + _uid);
     synchronized (BlockReceiver.class) {
       runningBlockReceives++;
-      if (logMINOR)
-        Logger.minor(
-            BlockTransmitter.class, "Started a block receive, running: " + runningBlockReceives);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Started a block receive, running: " + runningBlockReceives);
     }
   }
 
   private void decRunningBlockReceives() {
-    if (logMINOR) Logger.minor(this, "Stopping block receive " + _uid);
+    if (LOG.isDebugEnabled()) LOG.debug("Stopping block receive " + _uid);
     synchronized (BlockReceiver.class) {
       runningBlockReceives--;
-      if (logMINOR)
-        Logger.minor(
-            BlockTransmitter.class, "Finished a block receive, running: " + runningBlockReceives);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Finished a block receive, running: " + runningBlockReceives);
     }
   }
 

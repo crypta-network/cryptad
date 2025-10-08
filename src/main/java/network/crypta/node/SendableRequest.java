@@ -6,11 +6,10 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequestSchedulerGroup;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.RandomGrabArray;
 import network.crypta.support.RandomGrabArrayItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A low-level request which can be sent immediately. These are registered on the
@@ -22,6 +21,7 @@ import network.crypta.support.RandomGrabArrayItem;
  * restarting downloads or losing uploads. Not all subclasses of this class are actually persisted.
  */
 public abstract class SendableRequest implements RandomGrabArrayItem, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(SendableRequest.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -33,16 +33,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
 
   protected final boolean realTimeFlag;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   SendableRequest(boolean persistent, boolean realTimeFlag) {
@@ -155,9 +146,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
       }
     } else {
       // Should this be a higher priority?
-      if (logMINOR)
-        Logger.minor(
-            this, "Cannot unregister " + this + " : not registered", new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot unregister {} : not registered", this);
     }
   }
 

@@ -27,9 +27,6 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -37,11 +34,15 @@ import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author amphibian
  */
 public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeRequestInsertTest.class);
 
   static final int NUMBER_OF_NODES = 100;
   static final int DEGREE = 10;
@@ -76,7 +77,6 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       throws FSParseException,
           PeerParseException,
           CHKEncodeException,
-          InvalidThresholdException,
           NodeInitException,
           ReferenceSignatureVerificationException,
           InterruptedException {
@@ -95,13 +95,13 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
     // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
     // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(wd, false, LogLevel.ERROR, "", true, random);
+    NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, random);
     System.out.println("Insert/retrieve test");
     System.out.println();
     DummyRandomSource topologyRandom = new DummyRandomSource(3143);
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       final int port = DARKNET_PORT_BASE + i;
@@ -133,14 +133,14 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
                 p.enableFCP = false;
               });
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
 
     // Now link them up
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, topologyRandom);
 
-    Logger.normal(RealNodeRoutingTest.class, "Added random links");
+    LOG.info("Added random links");
 
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       nodes[i].start(false);
@@ -167,7 +167,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
         if (status == -1) continue;
         System.exit(status);
       } catch (Throwable t) {
-        Logger.error(RealNodeRequestInsertTest.class, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
       }
     }
   }
@@ -213,7 +213,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // Pick random node to insert to
     int node1 = random.nextInt(NUMBER_OF_NODES);
     Node randomNode = nodes[node1];
-    // Logger.error(RealNodeRequestInsertTest.class,"Inserting: \""+dataString+"\" to "+node1);
+    // LOG.error("Inserting: \""+dataString+"\" to "+node1);
 
     // boolean isSSK = requestNumber % 2 == 1;
     boolean isSSK = true;
@@ -258,19 +258,17 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     System.err.println();
 
     byte[] data = dataString.getBytes(StandardCharsets.UTF_8);
-    Logger.minor(
-        RealNodeRequestInsertTest.class,
-        "Decoded: " + new String(block.memoryDecode(), StandardCharsets.UTF_8));
-    Logger.normal(RealNodeRequestInsertTest.class, "Insert Key: " + insertKey.getURI());
-    Logger.normal(RealNodeRequestInsertTest.class, "Fetch Key: " + fetchKey.getURI());
+    LOG.debug("Decoded: " + new String(block.memoryDecode(), StandardCharsets.UTF_8));
+    LOG.info("Insert Key: " + insertKey.getURI());
+    LOG.info("Fetch Key: " + fetchKey.getURI());
     try {
       insertAttempts++;
       randomNode
           .getClientCore()
           .realPut(block.getBlock(), false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
-      Logger.error(RealNodeRequestInsertTest.class, "Inserted to " + node1);
+      LOG.error("Inserted to " + node1);
     } catch (LowLevelPutException putEx) {
-      Logger.error(RealNodeRequestInsertTest.class, "Insert failed: " + putEx);
+      LOG.error("Insert failed: " + putEx);
       System.err.println("Insert failed: " + putEx);
       return EXIT_INSERT_FAILED;
     }
@@ -287,9 +285,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     }
     if (block == null) {
       int percentSuccess = 100 * fetchSuccesses / insertAttempts;
-      Logger.error(
-          RealNodeRequestInsertTest.class,
-          "Fetch #" + requestNumber + " FAILED (" + percentSuccess + "%); from " + node2);
+      LOG.error("Fetch #" + requestNumber + " FAILED (" + percentSuccess + "%); from " + node2);
       System.err.println(
           "Fetch #" + requestNumber + " FAILED (" + percentSuccess + "%); from " + node2);
       requestsAvg.report(0.0);
@@ -299,8 +295,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       if (Arrays.equals(results, data)) {
         fetchSuccesses++;
         int percentSuccess = 100 * fetchSuccesses / insertAttempts;
-        Logger.error(
-            RealNodeRequestInsertTest.class,
+        LOG.error(
             "Fetch #"
                 + requestNumber
                 + " from node "
@@ -322,8 +317,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
           return 0;
         }
       } else {
-        Logger.error(
-            RealNodeRequestInsertTest.class, "Returned invalid data!: " + new String(results));
+        LOG.error("Returned invalid data!: " + new String(results));
         System.err.println("Returned invalid data!: " + new String(results));
         return EXIT_BAD_DATA;
       }

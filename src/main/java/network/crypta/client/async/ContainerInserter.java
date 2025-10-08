@@ -23,7 +23,6 @@ import network.crypta.client.Metadata.SimpleManifestComposer;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.BaseManifestPutter.PutHandler;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.api.RandomAccessBucket;
@@ -31,6 +30,8 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ResumeFailedException;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Insert a bunch of files as single Archive with .metadata pack the container/archive, then hand it
@@ -41,13 +42,11 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
  * @author saces
  */
 public class ContainerInserter implements ClientPutState, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ContainerInserter.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerClass(ContainerInserter.class);
   }
 
   private static class ContainerElement {
@@ -155,8 +154,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   private void start(ClientContext context) {
-    if (logDEBUG)
-      Logger.debug(this, "Atempt to start a container inserter", new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Atempt to start a container inserter");
 
     makeMetadata(context);
 
@@ -172,9 +170,9 @@ public class ContainerInserter implements ClientPutState, Serializable {
         mimeType = (archiveType == ARCHIVE_TYPE.TAR ? createTarBucket(os) : createZipBucket(os));
         // create*Bucket closes os through try-with-resources
       }
-      if (logMINOR) Logger.minor(this, "Archive size is " + outputBucket.size());
+      if (LOG.isDebugEnabled()) LOG.debug("Archive size is " + outputBucket.size());
 
-      if (logMINOR) Logger.minor(this, "We are using " + archiveType);
+      if (LOG.isDebugEnabled()) LOG.debug("We are using " + archiveType);
 
       // Now we have to insert the Archive we have generated.
 
@@ -215,7 +213,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
             cryptoAlgorithm,
             forceCryptoKey,
             -1);
-    if (logMINOR) Logger.minor(this, "Inserting container: " + sfi + " for " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserting container: " + sfi + " for " + this);
     cb.onTransition(this, sfi, context);
     try {
       sfi.schedule(context);
@@ -288,7 +286,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
   /** * OutputStream os will be close()d if this method returns successfully. */
   private String createTarBucket(OutputStream os) throws IOException {
-    if (logMINOR) Logger.minor(this, "Create a TAR Bucket");
+    if (LOG.isDebugEnabled()) LOG.debug("Create a TAR Bucket");
 
     TarArchiveOutputStream tarOS = new TarArchiveOutputStream(os);
     try {
@@ -296,9 +294,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
       TarArchiveEntry ze;
 
       for (ContainerElement ph : containerItems) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Putting into tar: "
                   + ph
                   + " data length "
@@ -321,7 +318,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   private String createZipBucket(OutputStream os) throws IOException {
-    if (logMINOR) Logger.minor(this, "Create a ZIP Bucket");
+    if (LOG.isDebugEnabled()) LOG.debug("Create a ZIP Bucket");
 
     ZipOutputStream zos = new ZipOutputStream(os);
     try {
@@ -350,7 +347,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
         HashMap<String, Object> hm = Metadata.forceMap(o);
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
-        if (logDEBUG) Logger.debug(this, "Sub map for " + name + " : " + hm.size() + " elements");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Sub map for " + name + " : " + hm.size() + " elements");
       } else if (o instanceof Metadata metadata) {
         // already Metadata, take it as is
         // System.out.println("Decompose: "+name+" (Metadata)");

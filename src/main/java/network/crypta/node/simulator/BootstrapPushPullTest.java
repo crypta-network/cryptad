@@ -12,15 +12,17 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 public class BootstrapPushPullTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BootstrapPushPullTest.class);
 
   public static int TEST_SIZE = 1024 * 1024;
 
@@ -36,7 +38,7 @@ public class BootstrapPushPullTest {
   public static int OPENNET_PORT2 = 5005;
 
   public static void main(String[] args)
-      throws InvalidThresholdException, IOException, NodeInitException, InterruptedException {
+      throws IOException, NodeInitException, InterruptedException {
     Node node = null;
     Node secondNode = null;
     try {
@@ -47,8 +49,7 @@ public class BootstrapPushPullTest {
       final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-push-pull-test");
       FileUtil.removeAll(dir);
-      RandomSource random =
-          NodeStarter.globalTestInit(dir, false, LogLevel.NORMAL, "", false, null);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, Level.INFO, "", false, null);
       File seednodes = new File("seednodes.fref");
       if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
         System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -85,9 +86,9 @@ public class BootstrapPushPullTest {
               });
       node = NodeStarter.createTestNode(firstParams);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
-      // Logger.setupStdoutLogging(LogLevel.MINOR, "freenet:NORMAL,freenet.node
-      // .NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
-      Logger.getChain().setThreshold(LogLevel.ERROR); // kill logging
+      // Logging.bootstrap(Level.DEBUG,
+      // "freenet:NORMAL,freenet.node.NodeDispatcher:MINOR,freenet.node.FNPPacketMangler:MINOR");
+      Logging.setRootLevel(Level.ERROR); // kill logging
       // Start it
       node.start(true);
       if (!TestUtil.waitForNodes(node)) {

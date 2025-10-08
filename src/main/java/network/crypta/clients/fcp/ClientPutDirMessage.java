@@ -11,6 +11,8 @@ import network.crypta.support.HexUtil;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Put a directory, rather than a file. Base class.
@@ -23,6 +25,8 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
  * Persistence=<Persistence as ClientPut> Global=<Global as ClientPut>
  */
 public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutDirMessage.class);
+
   // Some subtypes of this (ClientPutComplexDirMessage) may carry a payload.
 
   final String identifier;

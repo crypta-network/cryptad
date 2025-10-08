@@ -51,8 +51,6 @@ import network.crypta.pluginmanager.PluginManager.PluginProgress.ProgressState;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
 import network.crypta.support.JarClassLoader;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SerialExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BooleanCallback;
@@ -60,9 +58,12 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.StringArrCallback;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread.PriorityLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 public class PluginManager {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginManager.class);
 
   private final HashMap<String, FredPlugin> toadletList = new HashMap<>();
 
@@ -71,8 +72,7 @@ public class PluginManager {
   private final LoadedPlugins loadedPlugins = new LoadedPlugins();
   final Node node;
   private final NodeClientCore core;
-  private final boolean logMINOR;
-  private final boolean logDEBUG;
+
   private final HighLevelSimpleClient client;
 
   private static PluginManager selfinstance = null;
@@ -89,16 +89,15 @@ public class PluginManager {
   private final boolean enabled;
 
   public PluginManager(Node node, int lastVersion) {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+
     // config
 
     this.node = node;
     this.core = node.getClientCore();
 
-    if (logMINOR) Logger.minor(this, "Starting Plugin Manager");
+    if (LOG.isTraceEnabled()) LOG.debug("Starting Plugin Manager");
 
-    if (logDEBUG) Logger.debug(this, "Initialize Plugin Manager config");
+    if (LOG.isTraceEnabled()) LOG.trace("Initialize Plugin Manager config");
 
     client = core.makeClient(PRIO, true, false);
 
@@ -245,11 +244,11 @@ public class PluginManager {
         String list = "";
         try {
           list = pluginList(loadedPlugins.getLoadedPlugins());
-          Logger.error(this, "Plugins still shutting down at timeout:\n" + list);
+          LOG.error("Plugins still shutting down at timeout:\n" + list);
           System.err.println("Plugins still shutting down at timeout:\n" + list);
         } catch (ConcurrentModificationException e) {
-          Logger.error(this, "Error during shutdown: " + e);
-          Logger.error(this, "Plugins still shutting down at timeout:\n" + list);
+          LOG.error("Error during shutdown: " + e);
+          LOG.error("Plugins still shutting down at timeout:\n" + list);
         }
       } else {
         for (PluginInfoWrapper pluginInfoWrapper : loadedPlugins.getLoadedPlugins()) {
@@ -260,12 +259,12 @@ public class PluginManager {
           }
         }
         if (!loadedPlugins.hasLoadedPlugins()) {
-          Logger.normal(this, "All plugins unloaded");
+          LOG.info("All plugins unloaded");
           System.out.println("All plugins unloaded");
           return;
         }
         String list = pluginList(loadedPlugins.getLoadedPlugins());
-        Logger.error(this, "Plugins still shutting down:\n" + list);
+        LOG.error("Plugins still shutting down:\n" + list);
         System.err.println("Plugins still shutting down:\n" + list);
       }
     }
@@ -391,7 +390,7 @@ public class PluginManager {
     if (filename.trim().isEmpty()) return null;
     final PluginProgress pluginProgress = new PluginProgress(filename, pdl);
     loadedPlugins.addStartingPlugin(pluginProgress);
-    Logger.normal(this, "Loading plugin: " + filename);
+    LOG.info("Loading plugin: " + filename);
     FredPlugin plug;
     PluginInfoWrapper pi = null;
     try {
@@ -401,11 +400,11 @@ public class PluginManager {
       PluginHandler.startPlugin(PluginManager.this, pi);
       loadedPlugins.addLoadedPlugin(pi);
       loadedPlugins.removeFailedPlugin(filename);
-      Logger.normal(this, "Plugin loaded: " + filename);
+      LOG.info("Plugin loaded: " + filename);
     } catch (PluginAlreadyLoaded e) {
       return null;
     } catch (PluginNotFoundException e) {
-      Logger.normal(this, "Loading plugin failed (" + filename + ')', e);
+      LOG.info("Loading plugin failed (" + filename + ')', e);
       boolean stillTrying = false;
       if (pdl.isLoadingFromFreenet()) {
         PluginDownLoaderFreenet downloader = (PluginDownLoaderFreenet) pdl;
@@ -424,11 +423,11 @@ public class PluginManager {
       core.getAlerts().register(newAlert);
       core.getAlerts().unregister(oldAlert);
     } catch (UnsupportedClassVersionError e) {
-      Logger.error(this, "Could not load plugin " + filename + " : " + e, e);
+      LOG.error("Could not load plugin " + filename + " : " + e, e);
       System.err.println("Could not load plugin " + filename + " : " + e);
       e.printStackTrace();
       System.err.println("Plugin " + filename + " appears to require a later JVM");
-      Logger.error(this, "Plugin " + filename + " appears to require a later JVM");
+      LOG.error("Plugin " + filename + " appears to require a later JVM");
       PluginLoadFailedUserAlert newAlert =
           new PluginLoadFailedUserAlert(
               filename,
@@ -439,13 +438,12 @@ public class PluginManager {
       core.getAlerts().register(newAlert);
       core.getAlerts().unregister(oldAlert);
     } catch (Throwable e) {
-      Logger.error(this, "Could not load plugin " + filename + " : " + e, e);
+      LOG.error("Could not load plugin " + filename + " : " + e, e);
       System.err.println("Could not load plugin " + filename + " : " + e);
       e.printStackTrace();
       System.err.println(
           "Plugin " + filename + " is broken, but we want to retry after next startup");
-      Logger.error(
-          this, "Plugin " + filename + " is broken, but we want to retry after next startup");
+      LOG.error("Plugin " + filename + " is broken, but we want to retry after next startup");
       PluginLoadFailedUserAlert newAlert =
           new PluginLoadFailedUserAlert(filename, pdl.isOfficialPluginLoader(), false, e);
       PluginLoadFailedUserAlert oldAlert = loadedPlugins.replaceUserAlert(filename, newAlert);
@@ -642,8 +640,7 @@ public class PluginManager {
         }
       }
       if (pluginIsTryingToHijackNodeConfig) {
-        Logger.warning(
-            this,
+        LOG.warn(
             "The plugin loaded from "
                 + pi.getFilename()
                 + " is attempting to hijack a node configuration page; refusing to register its"
@@ -673,7 +670,7 @@ public class PluginManager {
   }
 
   public void cancelRunningLoads(String filename, PluginProgress exceptFor) {
-    Logger.normal(this, "Cancelling loads for plugin " + filename);
+    LOG.info("Cancelling loads for plugin " + filename);
     for (PluginProgress progress : loadedPlugins.getStartingPlugins()) {
       if ((progress != exceptFor) && filename.equals(progress.name)) {
         progress.kill();
@@ -714,7 +711,7 @@ public class PluginManager {
     synchronized (toadletList) {
       toadletList.put(pl.getClass().getName(), pl);
     }
-    Logger.normal(this, "Added HTTP handler for /plugins/" + pl.getClass().getName() + '/');
+    LOG.info("Added HTTP handler for /plugins/" + pl.getClass().getName() + '/');
   }
 
   /** Remove a plugin from the plugin list. */
@@ -737,7 +734,7 @@ public class PluginManager {
     if (pluginSpecification == null) {
       // Will be null if the file for a given plugin can't be found, eg. if it has already been
       // removed. Ignore it since the file isn't there anyway
-      Logger.warning(this, "Can't remove null from cache. Ignoring");
+      LOG.warn("Can't remove null from cache. Ignoring");
       return;
     }
 
@@ -752,14 +749,14 @@ public class PluginManager {
       if (pluginSpecification.toLowerCase().endsWith(".jar")) pluginFilename = pluginSpecification;
       else pluginFilename = pluginSpecification + ".jar";
     } else pluginFilename = pluginSpecification.substring(lastSlash + 1);
-    if (logDEBUG)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Delete plugin - plugname: " + pluginSpecification + " filename: " + pluginFilename,
           new Exception("debug"));
     List<File> cachedFiles = getPreviousInstances(pluginDirectory, pluginFilename);
     for (File cachedFile : cachedFiles) {
-      if (!cachedFile.delete()) if (logMINOR) Logger.minor(this, "Can't delete file " + cachedFile);
+      if (!cachedFile.delete())
+        if (LOG.isDebugEnabled()) LOG.debug("Can't delete file " + cachedFile);
     }
   }
 
@@ -767,12 +764,11 @@ public class PluginManager {
     synchronized (toadletList) {
       try {
         toadletList.remove(pi.getPluginClassName());
-        Logger.normal(
-            this,
+        LOG.info(
             "Removed HTTP handler for /plugins/" + pi.getPluginClassName() + '/',
             new Exception("debug"));
       } catch (Throwable ex) {
-        Logger.error(this, "removing Plugin", ex);
+        LOG.error("removing Plugin", ex);
       }
     }
   }
@@ -789,12 +785,11 @@ public class PluginManager {
 
         for (String target : targets) {
           toadletList.remove(target);
-          Logger.normal(
-              this,
+          LOG.info(
               "Removed HTTP symlink: " + target + " => /plugins/" + pi.getPluginClassName() + '/');
         }
       } catch (Throwable ex) {
-        Logger.error(this, "removing Toadlet-link", ex);
+        LOG.error("removing Toadlet-link", ex);
       }
     }
   }
@@ -814,12 +809,11 @@ public class PluginManager {
           rm = target;
           toadletList.remove(target);
           pi.removePluginToadletSymlink(target);
-          Logger.normal(
-              this,
+          LOG.info(
               "Removed HTTP symlink: " + target + " => /plugins/" + pi.getPluginClassName() + '/');
         }
       } catch (Throwable ex) {
-        Logger.error(this, "removing Toadlet-link: " + rm, ex);
+        LOG.error("removing Toadlet-link: " + rm, ex);
       }
     }
   }
@@ -1132,9 +1126,8 @@ public class PluginManager {
 
     boolean downloadWasAttempted = false;
     /* check if file needs to be downloaded. */
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "plugin file "
               + pluginFile.getAbsolutePath()
               + " exists: "
@@ -1154,12 +1147,12 @@ public class PluginManager {
             downloadPluginFile(pdl, pluginDirectory, pluginFile, progress);
             verifyDigest(pdl, pluginFile);
           } catch (IOException ioe1) {
-            Logger.error(this, "could not load plugin", ioe1);
+            LOG.error("could not load plugin", ioe1);
             throw new PluginNotFoundException("could not load plugin: " + ioe1.getMessage(), ioe1);
           }
         } catch (PluginNotFoundException e) {
           if (i < RETRIES - 1) {
-            Logger.normal(this, "Failed to load plugin: " + e, e);
+            LOG.info("Failed to load plugin: " + e, e);
             continue;
           } else {
             throw e;
@@ -1181,7 +1174,7 @@ public class PluginManager {
             return object;
           }
         } catch (PluginNotFoundException e) {
-          Logger.error(this, e.getMessage());
+          LOG.error(e.getMessage());
           pluginFile.delete();
           if (!downloadWasAttempted) {
             continue;
@@ -1197,7 +1190,7 @@ public class PluginManager {
     File pluginDirectory = node.getPluginDir();
     if ((pluginDirectory.exists() && !pluginDirectory.isDirectory())
         || (!pluginDirectory.exists() && !pluginDirectory.mkdirs())) {
-      Logger.error(this, "could not create plugin directory");
+      LOG.error("could not create plugin directory");
       throw new PluginNotFoundException("could not create plugin directory");
     }
     return pluginDirectory;
@@ -1248,7 +1241,7 @@ public class PluginManager {
       throw new PluginNotFoundException("downloaded zero length file");
     }
     if (!FileUtil.moveTo(tempPluginFile, pluginFile)) {
-      Logger.error(this, "could not rename temp file to plugin file");
+      LOG.error("could not rename temp file to plugin file");
       throw new PluginNotFoundException("could not rename temp file to plugin file");
     }
   }
@@ -1261,8 +1254,7 @@ public class PluginManager {
     }
     String testsum = getFileDigest(pluginFile);
     if (!(digest.equalsIgnoreCase(testsum))) {
-      Logger.error(
-          this, "Checksum verification failed, should be " + digest + " but was " + testsum);
+      LOG.error("Checksum verification failed, should be " + digest + " but was " + testsum);
       throw new PluginNotFoundException(
           "Checksum verification failed, should be " + digest + " but was " + testsum);
     }
@@ -1285,7 +1277,7 @@ public class PluginManager {
             "manifest does not contain a Plugin-Main-Class attribute");
       }
       if (isPluginLoaded(pluginMainClassName)) {
-        Logger.error(this, "Plugin already loaded: " + pluginFile.getName());
+        LOG.error("Plugin already loaded: " + pluginFile.getName());
         throw new PluginAlreadyLoaded();
       }
       return pluginMainClassName;
@@ -1364,8 +1356,7 @@ public class PluginManager {
               + minVer
               + " but is "
               + ver);
-      Logger.error(
-          this,
+      LOG.error(
           "Failed to load plugin "
               + name
               + " : TOO OLD: need at least version "
@@ -1385,7 +1376,7 @@ public class PluginManager {
       try {
         jarClassLoader.close();
       } catch (Throwable t) {
-        Logger.error(this, "Failed to close jar classloader for plugin: " + t, t);
+        LOG.error("Failed to close jar classloader for plugin: " + t, t);
       }
       throw new PluginTooOldException(
           "plugin too old: need at least version " + minVer + " but is " + ver);
@@ -1634,7 +1625,7 @@ public class PluginManager {
                 try {
                   plug.setTheme(cssName);
                 } catch (Throwable t) {
-                  Logger.error(this, "Caught Throwable in Callback", t);
+                  LOG.error("Caught Throwable in Callback", t);
                 }
               }
             },
@@ -1659,7 +1650,7 @@ public class PluginManager {
                 try {
                   plug.setLanguage(lang);
                 } catch (Throwable t) {
-                  Logger.error(this, "Caught Throwable in Callback", t);
+                  LOG.error("Caught Throwable in Callback", t);
                 }
               }
             },
@@ -1673,7 +1664,7 @@ public class PluginManager {
                 try {
                   plug.setLanguage(lang);
                 } catch (Throwable t) {
-                  Logger.error(this, "Caught Throwable in Callback", t);
+                  LOG.error("Caught Throwable in Callback", t);
                 }
               }
             },

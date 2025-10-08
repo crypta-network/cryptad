@@ -7,13 +7,13 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GetFailedMessage extends FCPMessage implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(GetFailedMessage.class);
 
   @Serial private static final long serialVersionUID = 1L;
   final FetchExceptionMode code;
@@ -27,20 +27,10 @@ public class GetFailedMessage extends FCPMessage implements Serializable {
   final boolean finalizedExpected;
   final FreenetURI redirectURI;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public GetFailedMessage(FetchException e, String identifier, boolean global) {
-    if (logMINOR) Logger.minor(this, "Creating get failed from " + e + " for " + identifier, e);
+    if (LOG.isDebugEnabled()) LOG.debug("Creating get failed from " + e + " for " + identifier, e);
     this.tracker = e.errorCodes;
     this.code = e.mode;
     this.extraDescription = e.extraMessage;

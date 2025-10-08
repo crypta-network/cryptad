@@ -5,11 +5,13 @@ import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Allows the user to choose a node name for Darknet. */
 public class NAME_SELECTION implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(NAME_SELECTION.class);
 
   private final Config config;
 
@@ -50,9 +52,9 @@ public class NAME_SELECTION implements Step {
 
     try {
       config.get("node").set("name", selectedNName);
-      Logger.normal(this, "The node name has been set to " + selectedNName);
+      LOG.info("The node name has been set to " + selectedNName);
     } catch (ConfigException e) {
-      Logger.error(this, "Should not happen, please report!" + e, e);
+      LOG.error("Should not happen, please report!" + e, e);
     }
     return FirstTimeWizardToadlet.WIZARD_STEP.DATASTORE_SIZE.name();
   }

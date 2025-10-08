@@ -12,9 +12,8 @@ import java.util.Map;
 import java.util.zip.CRC32;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Content filter for PNG's. Only allows valid chunks (valid CRC, known chunk type).
@@ -24,6 +23,7 @@ import network.crypta.support.Logger.LogLevel;
  * <p>FIXME: validate chunk contents where possible.
  */
 public class PNGFilter implements ContentDataFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(PNGFilter.class);
 
   private final boolean deleteText;
   private final boolean deleteTimestamp;
@@ -60,18 +60,7 @@ public class PNGFilter implements ContentDataFilter {
     // http://fresh.t-systems-sfr.com/unix/privat/pngcheck-2.3.0.tar.gz:a/pngcheck-2.3.0/pngcheck.c
   };
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   PNGFilter(boolean deleteText, boolean deleteTimestamp, boolean checkCRCs) {
@@ -127,7 +116,7 @@ public class PNGFilter implements ContentDataFilter {
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
       DataOutputStream dos = new DataOutputStream(baos);
       output.write(pngHeader);
-      if (logMINOR) Logger.minor(this, "Writing the PNG header to the output bucket");
+      if (LOG.isDebugEnabled()) LOG.debug("Writing the PNG header to the output bucket");
 
       // Check the chunks :
       // @see http://www.libpng.org/pub/png/spec/1.2/PNG-Chunks.html#C.Summary-of-standard-chunks
@@ -155,8 +144,8 @@ public class PNGFilter implements ContentDataFilter {
                 + ((lengthBytes[1] & 0xff) << 16)
                 + ((lengthBytes[2] & 0xff) << 8)
                 + (lengthBytes[3] & 0xff);
-        if (logMINOR)
-          Logger.minor(this, "length " + length + "(offset=0x" + Long.toHexString(offset) + ") ");
+        if (LOG.isDebugEnabled())
+          LOG.debug("length " + length + "(offset=0x" + Long.toHexString(offset) + ") ");
         if (dos != null) dos.write(lengthBytes);
 
         // Type of the chunk : Should match [a-zA-Z]{4}
@@ -175,7 +164,7 @@ public class PNGFilter implements ContentDataFilter {
           }
         }
         chunkTypeString = sb.toString();
-        if (logMINOR) Logger.minor(this, "name " + chunkTypeString);
+        if (LOG.isDebugEnabled()) LOG.debug("name " + chunkTypeString);
         if (dos != null) dos.write(chunkTypeBytes);
 
         // Content of the chunk
@@ -183,15 +172,14 @@ public class PNGFilter implements ContentDataFilter {
         if (length > 0) {
           dis.readFully(chunkData, 0, length);
           offset += length;
-          if (logMINOR)
-            if (logDEBUG)
-              Logger.minor(
-                  this,
+          if (LOG.isDebugEnabled())
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "data (offset=0x"
                       + Long.toHexString(offset)
                       + ") "
                       + (chunkData.length == 0 ? "null" : HexUtil.bytesToHex(chunkData)));
-            else Logger.minor(this, "data " + chunkData.length);
+            else LOG.debug("data " + chunkData.length);
           if (dos != null) dos.write(chunkData);
         }
 
@@ -199,7 +187,7 @@ public class PNGFilter implements ContentDataFilter {
         byte[] crcLengthBytes = new byte[4];
         dis.readFully(crcLengthBytes);
         offset += 4;
-        if (logMINOR) Logger.minor(this, "CRC offset=0x" + Long.toHexString(offset));
+        if (LOG.isDebugEnabled()) LOG.debug("CRC offset=0x" + Long.toHexString(offset));
         if (dos != null) dos.write(crcLengthBytes);
 
         if (checkCRCs) {
@@ -216,9 +204,8 @@ public class PNGFilter implements ContentDataFilter {
 
           if (readCRC != computedCRC) {
             skip = true;
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "CRC of the chunk "
                       + chunkTypeString
                       + " doesn't match ("
@@ -260,9 +247,8 @@ public class PNGFilter implements ContentDataFilter {
           if (interlaceMethod < 0 || interlaceMethod > 1)
             throwError("Invalid InterlaceMethod", "Invalid InterlaceMethod! " + interlaceMethod);
 
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Info from IHDR: width="
                     + width
                     + "px height="
@@ -362,12 +348,11 @@ public class PNGFilter implements ContentDataFilter {
         }
 
         if (!validChunkType) {
-          if (logMINOR) Logger.minor(this, "Skipping unknown chunk type " + chunkTypeString);
+          if (LOG.isDebugEnabled()) LOG.debug("Skipping unknown chunk type " + chunkTypeString);
           skip = true;
         } else if (!skip && output != null) {
-          if (logMINOR)
-            Logger.minor(
-                this, "Writing " + chunkTypeString + " (" + baos.size() + ") to the output bucket");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Writing " + chunkTypeString + " (" + baos.size() + ") to the output bucket");
           baos.writeTo(output);
           baos.flush();
         }
@@ -430,7 +415,7 @@ public class PNGFilter implements ContentDataFilter {
     if (reason != null) message += ' ' + reason;
     if (shortReason != null) message += " - " + shortReason;
     DataFilterException e = new DataFilterException(shortReason, shortReason, message);
-    Logger.normal(this, "Throwing " + e.getMessage(), e);
+    LOG.info("Throwing " + e.getMessage(), e);
     throw e;
   }
 }

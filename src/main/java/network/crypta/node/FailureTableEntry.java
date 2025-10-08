@@ -6,9 +6,8 @@ import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.HashSet;
 import network.crypta.keys.Key;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks recent requests for a specific key. If we have recently routed to a specific node, and
@@ -27,6 +26,7 @@ import network.crypta.support.Logger.LogLevel;
  * @author toad
  */
 class FailureTableEntry implements TimedOutNodesList {
+  private static final Logger LOG = LoggerFactory.getLogger(FailureTableEntry.class);
 
   /** The key */
   final Key key; // FIXME should this be stored compressed somehow e.g. just the routing key?
@@ -84,16 +84,7 @@ class FailureTableEntry implements TimedOutNodesList {
 
   short[] requestedTimeoutHTLs;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /**
@@ -146,9 +137,8 @@ class FailureTableEntry implements TimedOutNodesList {
    */
   public synchronized void failedTo(
       PeerNodeUnlocked routedTo, long rfTimeout, long ftTimeout, long now, short htl) {
-    if (logMINOR) {
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
           "Failed sending request to "
               + routedTo.shortToString()
               + " : timeout "
@@ -182,7 +172,7 @@ class FailureTableEntry implements TimedOutNodesList {
   // Note also this will generate some churn...
 
   synchronized int addRequestor(PeerNodeUnlocked requestor, long now, short origHTL) {
-    if (logMINOR) Logger.minor(this, "Adding requestors: " + requestor + " at " + now);
+    if (LOG.isDebugEnabled()) LOG.debug("Adding requestors: " + requestor + " at " + now);
     receivedTime = now;
     boolean includedAlready = false;
     int nulls = 0;
@@ -274,7 +264,7 @@ class FailureTableEntry implements TimedOutNodesList {
    * @return The index of the new or old entry.
    */
   private synchronized int addRequestedFrom(PeerNodeUnlocked requestedFrom, short htl, long now) {
-    if (logMINOR) Logger.minor(this, "Adding requested from: " + requestedFrom + " at " + now);
+    if (LOG.isDebugEnabled()) LOG.debug("Adding requested from: " + requestedFrom + " at " + now);
     sentTime = now;
     boolean includedAlready = false;
     int nulls = 0;
@@ -381,10 +371,9 @@ class FailureTableEntry implements TimedOutNodesList {
    */
   public void offer() {
     HashSet<PeerNodeUnlocked> set = new HashSet<>();
-    final boolean logMINOR = FailureTableEntry.logMINOR;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    final boolean logMINOR = LOG.isDebugEnabled();
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Sending offers to nodes which requested the key from us: ("
               + requestorNodes.length
               + ") for "
@@ -397,12 +386,11 @@ class FailureTableEntry implements TimedOutNodesList {
         if (pn == null) continue;
         if (pn.getBootID() != requestorBootIDs[i]) continue;
         if (!set.add(pn)) {
-          Logger.error(this, "Node is in requestorNodes twice: " + pn);
+          LOG.error("Node is in requestorNodes twice: " + pn);
         }
       }
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Sending offers to nodes which we sent the key to: ("
                 + requestedNodes.length
                 + ") for "
@@ -419,7 +407,7 @@ class FailureTableEntry implements TimedOutNodesList {
     // Do the offers outside the lock.
     // We do not need to hold it, offer() doesn't do anything that affects us.
     for (PeerNodeUnlocked pn : set) {
-      if (logMINOR) Logger.minor(this, "Offering to " + pn);
+      if (LOG.isDebugEnabled()) LOG.debug("Offering to " + pn);
       pn.offer(key);
     }
   }

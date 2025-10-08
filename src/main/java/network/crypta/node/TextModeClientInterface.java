@@ -51,15 +51,14 @@ import network.crypta.keys.InsertableClientSSK;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -67,6 +66,7 @@ import network.crypta.support.io.FileBucket;
  *     <p>Execute them.
  */
 public class TextModeClientInterface implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(TextModeClientInterface.class);
 
   final RandomSource r;
   final Node n;
@@ -77,17 +77,7 @@ public class TextModeClientInterface implements Runnable {
   final Writer w;
   private static final Charset ENCODING = StandardCharsets.UTF_8;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public TextModeClientInterface(
@@ -126,9 +116,9 @@ public class TextModeClientInterface implements Runnable {
     try {
       realRun();
     } catch (IOException e) {
-      if (logMINOR) Logger.minor(this, "Caught " + e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Caught " + e, e);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
     }
   }
 
@@ -145,17 +135,17 @@ public class TextModeClientInterface implements Runnable {
           return;
         }
       } catch (SocketException e) {
-        Logger.error(this, "Socket error: " + e, e);
+        LOG.error("Socket error: " + e, e);
         return;
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
         System.out.println("Caught: " + t);
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         try {
           w.write(sw.toString());
         } catch (IOException e) {
-          Logger.error(this, "Socket error: " + e, e);
+          LOG.error("Socket error: " + e, e);
           return;
         }
       }
@@ -303,15 +293,15 @@ public class TextModeClientInterface implements Runnable {
     boolean getCHKOnly = false;
     if (line == null) return true;
     String uline = line.toUpperCase();
-    if (logMINOR) Logger.minor(this, "Command: " + line);
+    if (LOG.isDebugEnabled()) LOG.debug("Command: " + line);
     if (uline.startsWith("GET:")) {
       // Should have a key next
       String key = line.substring("GET:".length()).trim();
-      Logger.normal(this, "Key: " + key);
+      LOG.info("Key: " + key);
       FreenetURI uri;
       try {
         uri = new FreenetURI(key);
-        Logger.normal(this, "Key: " + uri);
+        LOG.info("Key: " + uri);
       } catch (MalformedURLException e2) {
         outsb.append("Malformed URI: ").append(key).append(" : ").append(e2);
         outsb.append("\r\n");
@@ -368,11 +358,11 @@ public class TextModeClientInterface implements Runnable {
     } else if (uline.startsWith("DUMP:")) {
       // Should have a key next
       String key = line.substring("DUMP:".length()).trim();
-      Logger.normal(this, "Key: " + key);
+      LOG.info("Key: " + key);
       FreenetURI uri;
       try {
         uri = new FreenetURI(key);
-        Logger.normal(this, "Key: " + uri);
+        LOG.info("Key: " + uri);
       } catch (MalformedURLException e2) {
         outsb.append("Malformed URI: ").append(key).append(" : ").append(e2);
         outsb.append("\r\n");
@@ -436,7 +426,7 @@ public class TextModeClientInterface implements Runnable {
     } else if (uline.startsWith("GETFILE:")) {
       // Should have a key next
       String key = line.substring("GETFILE:".length()).trim();
-      Logger.normal(this, "Key: " + key);
+      LOG.info("Key: " + key);
       FreenetURI uri;
       try {
         uri = new FreenetURI(key);
@@ -521,10 +511,10 @@ public class TextModeClientInterface implements Runnable {
         }
       } catch (IOException e) {
         outsb.append("Bucket error?: ").append(e.getMessage());
-        Logger.error(this, "Bucket error?: " + e, e);
+        LOG.error("Bucket error?: " + e, e);
       } catch (URISyntaxException e) {
         outsb.append("Internal error: ").append(e.getMessage());
-        Logger.error(this, "Internal error: " + e, e);
+        LOG.error("Internal error: " + e, e);
       } finally {
         input.free();
         output.free();
@@ -719,7 +709,7 @@ public class TextModeClientInterface implements Runnable {
           outsb.append("Splitfile errors breakdown:");
           outsb.append(e.errorCodes.toVerboseString());
         }
-        Logger.error(this, "Caught " + e, e);
+        LOG.error("Caught " + e, e);
       }
 
     } else if (uline.startsWith("PUTFILE:") || (getCHKOnly = uline.startsWith("GETCHKFILE:"))) {
@@ -828,7 +818,7 @@ public class TextModeClientInterface implements Runnable {
         outsb.append("Successfully inserted to fetch URI: ").append(result);
       } catch (InsertException e) {
         outsb.append("Finished insert but: ").append(e.getMessage());
-        Logger.normal(this, "Error: " + e, e);
+        LOG.info("Error: " + e, e);
         if (e.uri != null) {
           outsb.append("URI would have been: ").append(e.uri);
         }
@@ -885,9 +875,9 @@ public class TextModeClientInterface implements Runnable {
 
       try {
         n.setName(key);
-        if (logMINOR) Logger.minor(this, "Setting node.name to " + key);
+        if (LOG.isDebugEnabled()) LOG.debug("Setting node.name to " + key);
       } catch (Exception e) {
-        Logger.error(this, "Error setting node's name", e);
+        LOG.error("Error setting node's name", e);
       }
       core.storeConfig();
     } else if (uline.startsWith("DISABLEPEER:")) {
@@ -1240,19 +1230,19 @@ public class TextModeClientInterface implements Runnable {
       pn = n.createNewDarknetNode(fs, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
     } catch (FSParseException e1) {
       System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
+      LOG.error("Did not parse: " + e1, e1);
       return;
     } catch (PeerParseException e1) {
       System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
+      LOG.error("Did not parse: " + e1, e1);
       return;
     } catch (ReferenceSignatureVerificationException e1) {
       System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
+      LOG.error("Did not parse: " + e1, e1);
       return;
     } catch (PeerTooOldException e1) {
       System.err.println("Did not parse: " + e1);
-      Logger.error(this, "Did not parse: " + e1, e1);
+      LOG.error("Did not parse: " + e1, e1);
       return;
     }
     if (n.getPeers().addPeer(pn)) System.out.println("Added peer: " + pn);

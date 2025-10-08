@@ -1,21 +1,13 @@
 package network.crypta.support.transport.ip;
 
 import network.crypta.io.AddressIdentifier;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HostnameUtil {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(HostnameUtil.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   /**
@@ -28,8 +20,8 @@ public class HostnameUtil {
       // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
       // correctly, such as "fe80::204:1234:dead:beef"
       AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
-      if (logDEBUG)
-        Logger.debug(null, "Address type of '" + hn + "' appears to be '" + addressType + '\'');
+      if (LOG.isTraceEnabled())
+        LOG.trace("Address type of '" + hn + "' appears to be '" + addressType + '\'');
       if (!addressType.toString().equals("Other")) {
         // the address typer thinks it's either an IPv4 or IPv6 IP address
         return true;

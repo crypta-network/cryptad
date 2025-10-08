@@ -14,9 +14,10 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Logger;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Fetches the old freenet-ext.jar and freenet-stable-latest.jar. In other words it fetches the
@@ -25,6 +26,7 @@ import network.crypta.support.io.FileUtil;
  * @author toad
  */
 class LegacyJarFetcher implements ClientGetCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(LegacyJarFetcher.class);
 
   final FreenetURI uri;
   final File tempFile;
@@ -73,8 +75,7 @@ class LegacyJarFetcher implements ClientGetCallback {
         tmp.deleteOnExit(); // To be used sparingly, as it leaks, but safe enough here as it should
         // only happen twice during a normal run.
       } catch (IOException e) {
-        Logger.error(
-            this,
+        LOG.error(
             "Cannot create temp file so cannot fetch legacy jar "
                 + uri
                 + " : UOM from old versions will not work!");
@@ -123,7 +124,7 @@ class LegacyJarFetcher implements ClientGetCallback {
 
   public long getBlobSize() {
     if (failed || !fetched) {
-      Logger.error(this, "Asking for blob size but failed=" + failed + " fetched=" + fetched);
+      LOG.error("Asking for blob size but failed=" + failed + " fetched=" + fetched);
       return -1;
     }
     return blobBucket.size();
@@ -131,7 +132,7 @@ class LegacyJarFetcher implements ClientGetCallback {
 
   public File getBlobFile() {
     if (failed || !fetched) {
-      Logger.error(this, "Asking for blob but failed=" + failed + " fetched=" + fetched);
+      LOG.error("Asking for blob but failed=" + failed + " fetched=" + fetched);
       return null;
     }
     return saveTo;
@@ -154,8 +155,7 @@ class LegacyJarFetcher implements ClientGetCallback {
   public void onSuccess(FetchResult result, ClientGetter state) {
     result.asBucket().free();
     if (!FileUtil.moveTo(tempFile, saveTo)) {
-      Logger.error(
-          this,
+      LOG.error(
           "Fetched file but unable to rename temp file "
               + tempFile
               + " to "

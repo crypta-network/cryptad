@@ -15,10 +15,11 @@ import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
 import network.crypta.support.Executor;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Create a mesh of nodes and let them sort out their locations.
@@ -26,6 +27,7 @@ import network.crypta.support.io.FileUtil;
  * <p>Then present a user interface to run different types of probes from random nodes.
  */
 public class RealNodeProbeTest extends RealNodeRoutingTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeProbeTest.class);
 
   static final int NUMBER_OF_NODES = 100;
   static final int DEGREE = 10;
@@ -57,9 +59,9 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
     DummyRandomSource random = new DummyRandomSource(3142);
-    NodeStarter.globalTestInit(baseDirectory, false, LogLevel.ERROR, "", true, random);
+    NodeStarter.globalTestInit(baseDirectory, false, Level.ERROR, "", true, random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodeProbeTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
@@ -93,14 +95,14 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
                 p.enableFCP = enableFcp;
               });
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodeProbeTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
-    Logger.normal(RealNodeProbeTest.class, "Created " + NUMBER_OF_NODES + " nodes");
+    LOG.info("Created " + NUMBER_OF_NODES + " nodes");
     // Now link them up
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
 
-    Logger.normal(RealNodeProbeTest.class, "Added random links");
+    LOG.info("Added random links");
 
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Starting node " + i);
@@ -127,7 +129,7 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
           System.out.println("Insert test completed with status " + status);
           break;
         } catch (Throwable t) {
-          Logger.error(RealNodeRequestInsertTest.class, "Caught " + t, t);
+          LOG.error("Caught " + t, t);
         }
       }
     }

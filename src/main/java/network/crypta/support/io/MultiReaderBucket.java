@@ -5,10 +5,9 @@ import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.ListUtils;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A wrapper for a read-only bucket providing for multiple readers. The data is only freed when all
@@ -17,6 +16,7 @@ import network.crypta.support.api.Bucket;
  * @author toad
  */
 public class MultiReaderBucket implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(MultiReaderBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -55,17 +55,8 @@ public class MultiReaderBucket implements Serializable {
   private ArrayList<Bucket> readers;
 
   private boolean closed;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public MultiReaderBucket(Bucket underlying) {
@@ -84,8 +75,8 @@ public class MultiReaderBucket implements Serializable {
       Bucket d = new ReaderBucket();
       if (readers == null) readers = new ArrayList<>(1);
       readers.add(d);
-      if (logMINOR)
-        Logger.minor(this, "getReaderBucket() returning " + d + " for " + this + " for " + bucket);
+      if (LOG.isDebugEnabled())
+        LOG.debug("getReaderBucket() returning " + d + " for " + this + " for " + bucket);
       return d;
     }
   }
@@ -105,9 +96,8 @@ public class MultiReaderBucket implements Serializable {
 
     @Override
     public void free() {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "ReaderBucket " + this + " for " + MultiReaderBucket.this + " free()ing for " + bucket);
       synchronized (MultiReaderBucket.this) {
         if (freed) return;

@@ -4,11 +4,12 @@ import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ModifyConfig extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ModifyConfig.class);
 
   static final String NAME = "ModifyConfig";
 
@@ -42,25 +43,26 @@ public class ModifyConfig extends FCPMessage {
     }
     Config config = node.getConfig();
 
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
 
     for (SubConfig sc : config.getConfigs()) {
       String prefix = sc.getPrefix();
       for (Option<?> o : sc.getOptions()) {
         String configName = o.getName();
-        if (logMINOR) Logger.minor(this, "Setting " + prefix + '.' + configName);
+        if (LOG.isDebugEnabled()) LOG.debug("Setting " + prefix + '.' + configName);
 
         // we ignore unreconized parameters
         String s = fs.get(prefix + '.' + configName);
         if (s != null) {
           if (!(o.getValueString().equals(s))) {
-            if (logMINOR) Logger.minor(this, "Setting " + prefix + '.' + configName + " to " + s);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Setting " + prefix + '.' + configName + " to " + s);
             try {
               o.setValue(s);
             } catch (Exception e) {
               // Bad values silently fail from an FCP perspective, but the FCP client can tell if a
               // change took by comparing ConfigData messages before and after
-              Logger.error(this, "Caught " + e, e);
+              LOG.error("Caught " + e, e);
             }
           }
         }

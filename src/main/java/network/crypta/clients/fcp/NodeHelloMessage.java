@@ -5,6 +5,8 @@ import network.crypta.node.Node;
 import network.crypta.node.Version;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * NodeHello
@@ -12,6 +14,8 @@ import network.crypta.support.compress.Compressor;
  * <p>NodeHello FCPVersion=<protocol version> Node=Fred Version=0.7.0,401 EndMessage
  */
 public class NodeHelloMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeHelloMessage.class);
+
   public static final String NAME = "NodeHello";
 
   private final String id;

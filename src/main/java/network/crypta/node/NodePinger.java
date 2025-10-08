@@ -4,23 +4,14 @@ import static java.util.concurrent.TimeUnit.DAYS;
 
 import java.util.Arrays;
 import network.crypta.node.NodeStats.PeerLoadStats;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Track average round-trip time for each peer node, get a geometric mean. */
 public class NodePinger implements Runnable {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(NodePinger.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private final Node node;
@@ -61,7 +52,7 @@ public class NodePinger implements Runnable {
   private void recalculateMean(PeerNode[] peers) {
     if (peers.length == 0) return;
     meanPing = calculateMedianPing(peers);
-    if (logMINOR) Logger.minor(this, "Median ping: " + meanPing);
+    if (LOG.isDebugEnabled()) LOG.debug("Median ping: " + meanPing);
   }
 
   private double calculateMedianPing(PeerNode[] peers) {
@@ -117,9 +108,8 @@ public class NodePinger implements Runnable {
         firstQuartile = allPeers[x / 4];
         lastQuartile = allPeers[(x * 3) / 4];
         max = allPeers[x - 1];
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Quartiles for peer capacities: "
                   + (isInput ? "input " : "output ")
                   + (isRealtime ? "realtime: " : "bulk: ")

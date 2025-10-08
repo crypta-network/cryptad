@@ -11,7 +11,8 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Client-level SSK, i.e. a low level SSK with the decryption key needed to decrypt the data once it
@@ -19,6 +20,7 @@ import network.crypta.support.Logger;
  * only has the public key and not the private key, @see InsertableClientSSK.
  */
 public class ClientSSK extends ClientKey {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientSSK.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -186,7 +188,7 @@ public class ClientSSK extends ClientKey {
       }
       return cloneKey ? nodeKey.cloneKey() : nodeKey;
     } catch (SSKVerifyException e) {
-      Logger.error(this, "Have already verified and yet it fails!: " + e);
+      LOG.error("Have already verified and yet it fails!: " + e);
       throw (AssertionError) new AssertionError("Have already verified and yet it fails!", e);
     }
   }

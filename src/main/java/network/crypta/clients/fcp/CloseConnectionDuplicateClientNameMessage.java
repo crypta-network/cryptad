@@ -2,12 +2,16 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Error sent when the connection is closed because another connection with the same client Name has
  * been opened. Usually the client will not see this, because it is being sent to a dead connection.
  */
 public class CloseConnectionDuplicateClientNameMessage extends FCPMessage {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(CloseConnectionDuplicateClientNameMessage.class);
 
   @Override
   public SimpleFieldSet getFieldSet() {

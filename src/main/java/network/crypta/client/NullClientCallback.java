@@ -7,15 +7,15 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** */
 public class NullClientCallback implements ClientGetCallback, ClientPutCallback {
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(NullClientCallback.class);
 
   static {
-    Logger.registerClass(NullClientCallback.class);
   }
 
   private final RequestClient cb;
@@ -26,40 +26,42 @@ public class NullClientCallback implements ClientGetCallback, ClientPutCallback 
 
   @Override
   public void onFailure(FetchException e, ClientGetter state) {
-    if (logDEBUG) Logger.debug(this, "NullClientCallback#onFailure e=" + e + ", state=" + state, e);
+    if (LOG.isTraceEnabled())
+      LOG.trace("NullClientCallback#onFailure e=" + e + ", state=" + state, e);
   }
 
   @Override
   public void onFailure(InsertException e, BaseClientPutter state) {
-    if (logDEBUG) Logger.debug(this, "NullClientCallback#onFailure e=" + e + ", state=" + state, e);
+    if (LOG.isTraceEnabled())
+      LOG.trace("NullClientCallback#onFailure e=" + e + ", state=" + state, e);
   }
 
   @Override
   public void onFetchable(BaseClientPutter state) {
-    if (logDEBUG) Logger.debug(this, "NullClientCallback#onFetchable state=" + state);
+    if (LOG.isTraceEnabled()) LOG.trace("NullClientCallback#onFetchable state=" + state);
   }
 
   @Override
   public void onGeneratedURI(FreenetURI uri, BaseClientPutter state) {
-    if (logDEBUG)
-      Logger.debug(this, "NullClientCallback#onGeneratedURI uri=" + uri + ", state=" + state);
+    if (LOG.isTraceEnabled())
+      LOG.trace("NullClientCallback#onGeneratedURI uri=" + uri + ", state=" + state);
   }
 
   @Override
   public void onSuccess(FetchResult result, ClientGetter state) {
-    if (logDEBUG)
-      Logger.debug(this, "NullClientCallback#onSuccess result=" + result + ", state=" + state);
+    if (LOG.isTraceEnabled())
+      LOG.trace("NullClientCallback#onSuccess result=" + result + ", state=" + state);
     result.data.free();
   }
 
   @Override
   public void onSuccess(BaseClientPutter state) {
-    if (logDEBUG) Logger.debug(this, "NullClientCallback#onSuccess state=" + state);
+    if (LOG.isTraceEnabled()) LOG.trace("NullClientCallback#onSuccess state=" + state);
   }
 
   @Override
   public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
-    if (logDEBUG) Logger.debug(this, "NullClientCallback#onGeneratedMetadata state=" + state);
+    if (LOG.isTraceEnabled()) LOG.trace("NullClientCallback#onGeneratedMetadata state=" + state);
     metadata.free();
   }
 

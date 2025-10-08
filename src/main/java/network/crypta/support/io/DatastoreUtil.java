@@ -11,9 +11,11 @@ import network.crypta.fs.ServiceDirs;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DatastoreUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(DatastoreUtil.class);
 
   public static final long oneMiB = 1024 * 1024;
   public static final long oneGiB = 1024 * 1024 * 1024;
@@ -61,7 +63,7 @@ public class DatastoreUtil {
       // probably limit 256GB see comments of the autodetectDatastoreSize method
       return Math.min(unallocatedSpace, maxDatastoreSize);
     } catch (IOException e) {
-      Logger.error(DatastoreUtil.class, "Error querying space", e);
+      LOG.error("Error querying space", e);
     }
 
     return maxDatastoreSize;

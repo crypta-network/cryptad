@@ -4,8 +4,11 @@ import java.util.Date;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SimpleProgressMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleProgressMessage.class);
 
   private final String ident;
   private final boolean global;

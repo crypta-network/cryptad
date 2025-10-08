@@ -13,9 +13,6 @@ import network.crypta.crypt.SHA256;
 import network.crypta.crypt.Util;
 import network.crypta.io.WritableToDataOutputStream;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -25,6 +22,8 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
@@ -33,6 +32,7 @@ import network.crypta.support.io.BucketTools;
  *     restarting downloads or losing uploads.
  */
 public abstract class Key implements WritableToDataOutputStream, Comparable<Key> {
+  private static final Logger LOG = LoggerFactory.getLogger(Key.class);
 
   final int hash;
   double cachedNormalizedDouble;
@@ -45,17 +45,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
 
   public static final byte ALGO_AES_CTR_256_SHA256 = 3;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   protected Key(byte[] routingKey) {
@@ -173,9 +163,8 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     if (input.length < inputLength)
       throw new IndexOutOfBoundsException(input.length + "<" + inputLength);
     if (isCompressed) {
-      if (logMINOR)
-        Logger.minor(
-            Key.class,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Decompressing " + inputLength + " bytes in decode with codec " + compressionAlgorithm);
       final int inputOffset = (shortLength ? 2 : 4);
       if (inputLength < inputOffset + 1) throw new CHKDecodeException("No bytes to decompress");

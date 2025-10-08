@@ -5,9 +5,11 @@ import network.crypta.crypt.CryptFormatException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.keys.PubkeyVerifyException;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PubkeyStore extends StoreCallback<DSAPublicKey> {
+  private static final Logger LOG = LoggerFactory.getLogger(PubkeyStore.class);
 
   @Override
   public boolean collisionPossible() {
@@ -45,7 +47,7 @@ public class PubkeyStore extends StoreCallback<DSAPublicKey> {
     try {
       store.put(key, key.asPaddedBytes(), empty, false, isOldBlock);
     } catch (KeyCollisionException e) {
-      Logger.error(this, "Impossible for PubkeyStore: " + e, e);
+      LOG.error("Impossible for PubkeyStore: {}", e.toString(), e);
     }
   }
 

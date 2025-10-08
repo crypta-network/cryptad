@@ -4,23 +4,13 @@ import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SendableGetRequestSender implements SendableRequestSender {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(SendableGetRequestSender.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public boolean sendIsBlocking() {
@@ -42,12 +32,12 @@ public class SendableGetRequestSender implements SendableRequestSender {
     Object keyNum = req.token;
     final ClientKey key = req.ckey;
     if (key == null) {
-      Logger.error(SendableGet.class, "Key is null in send(): keyNum = " + keyNum + " for " + req);
+      LOG.error("Key is null in send(): keyNum = " + keyNum + " for " + req);
       return false;
     }
-    if (logMINOR) Logger.minor(SendableGet.class, "Sending get for key " + keyNum + " : " + key);
+    if (LOG.isDebugEnabled()) LOG.debug("Sending get for key " + keyNum + " : " + key);
     if (req.isCancelled()) {
-      if (logMINOR) Logger.minor(SendableGet.class, "Cancelled: " + req);
+      if (LOG.isDebugEnabled()) LOG.debug("Cancelled: " + req);
       req.onFailure(new LowLevelGetException(LowLevelGetException.CANCELLED), context);
       return false;
     }
@@ -75,12 +65,12 @@ public class SendableGetRequestSender implements SendableRequestSender {
             req.localRequestOnly,
             req.ignoreStore);
       } catch (Throwable t) {
-        Logger.error(this, "Caught " + t, t);
+        LOG.error("Caught " + t, t);
         req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
         return true;
       }
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
       return true;
     }

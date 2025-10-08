@@ -5,15 +5,15 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Set;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author amphibian
  *     <p>Thread that does DNS queries for unconnected peers
  */
 public class DNSRequester implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(DNSRequester.class);
 
   final Node node;
   private long lastLogTime;
@@ -22,17 +22,7 @@ public class DNSRequester implements Runnable {
   // Only set when doing simulations.
   static boolean DISABLE = false;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   DNSRequester(Node node) {
@@ -40,7 +30,7 @@ public class DNSRequester implements Runnable {
   }
 
   void start() {
-    Logger.normal(this, "Starting DNSRequester");
+    LOG.info("Starting DNSRequester");
     System.out.println("Starting DNSRequester");
     node.getExecutor().execute(this, "DNSRequester thread for " + node.getDarknetPortNumber());
   }
@@ -51,7 +41,7 @@ public class DNSRequester implements Runnable {
       try {
         realRun();
       } catch (Throwable t) {
-        Logger.error(this, "Caught in DNSRequester: " + t, t);
+        LOG.error("Caught in DNSRequester: " + t, t);
       }
     }
   }
@@ -69,10 +59,10 @@ public class DNSRequester implements Runnable {
             .filter(peerNode -> !recentNodeIdentitySet.contains(peerNode.getLocation()))
             .toArray(PeerNode[]::new);
 
-    if (logMINOR) {
+    if (LOG.isDebugEnabled()) {
       long now = System.currentTimeMillis();
       if ((now - lastLogTime) > 100) {
-        Logger.minor(this, "Processing DNS Requests (log rate-limited)");
+        LOG.debug("Processing DNS Requests (log rate-limited)");
       }
       lastLogTime = now;
     }

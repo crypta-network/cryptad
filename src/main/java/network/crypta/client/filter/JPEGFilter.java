@@ -10,10 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.CountedInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Content filter for JPEG's. Just check the header.
@@ -27,6 +26,7 @@ import network.crypta.support.io.CountedInputStream;
  * probably not worth doing the others, they're way too detailed.
  */
 public class JPEGFilter implements ContentDataFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(JPEGFilter.class);
 
   private final boolean deleteComments;
   private final boolean deleteExif;
@@ -36,16 +36,7 @@ public class JPEGFilter implements ContentDataFilter {
   private static final int MARKER_RST0 = 0xD0; // First reset marker
   private static final int MARKER_RST7 = 0xD7; // Last reset marker
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   JPEGFilter(boolean deleteComments, boolean deleteExif) {
@@ -107,7 +98,7 @@ public class JPEGFilter implements ContentDataFilter {
           // No more chunks to scan.
           break;
         } else if (finished) {
-          if (logMINOR) Logger.minor(this, "More data after EOI, copying to truncate");
+          if (LOG.isDebugEnabled()) LOG.debug("More data after EOI, copying to truncate");
           return;
         }
         if (markerStart != 0xFF) {
@@ -121,7 +112,7 @@ public class JPEGFilter implements ContentDataFilter {
         markerType = dis.readUnsignedByte();
         if (baos != null) baos.write(markerType);
       }
-      if (logMINOR) Logger.minor(this, "Marker type: " + Integer.toHexString(markerType));
+      if (LOG.isDebugEnabled()) LOG.debug("Marker type: " + Integer.toHexString(markerType));
       long countAtStart = cis.count(); // After marker but before type
       int blockLength;
       if (markerType == MARKER_EOI || markerType >= MARKER_RST0 && markerType <= MARKER_RST7)
@@ -141,7 +132,7 @@ public class JPEGFilter implements ContentDataFilter {
         byte[] buf = new byte[blockLength - 2];
         dis.readFully(buf);
         dos.write(buf);
-        Logger.minor(this, "Copied start-of-frame marker length " + (blockLength - 2));
+        LOG.debug("Copied start-of-frame marker length " + (blockLength - 2));
 
         if (baos != null) baos.writeTo(output); // will continue; at end
 
@@ -162,9 +153,8 @@ public class JPEGFilter implements ContentDataFilter {
               && !(x >= MARKER_RST0 && x <= MARKER_RST7)) { // reset markers can occur in the scan
 
             forceMarkerType = x;
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Moved scan at "
                       + cis.count()
                       + ", found a marker type "
@@ -178,12 +168,12 @@ public class JPEGFilter implements ContentDataFilter {
         continue; // Avoid writing the header twice
 
       } else if (markerType == 0xE0) { // APP0
-        if (logMINOR) Logger.minor(this, "APP0");
+        if (LOG.isDebugEnabled()) LOG.debug("APP0");
         String type = readNullTerminatedAsciiString(dis);
         if (baos != null) writeNullTerminatedString(baos, type);
-        if (logMINOR) Logger.minor(this, "Type: " + type + " length " + type.length());
+        if (LOG.isDebugEnabled()) LOG.debug("Type: " + type + " length " + type.length());
         if (type.equals("JFIF")) {
-          Logger.minor(this, "JFIF Header");
+          LOG.debug("JFIF Header");
           // File header
           int majorVersion = dis.readUnsignedByte();
           if (majorVersion != 1)
@@ -213,21 +203,21 @@ public class JPEGFilter implements ContentDataFilter {
             // Alternate thumbnail, perfectly valid
             dos.write(extensionCode);
             skipRest(blockLength, countAtStart, cis, dis, dos, "thumbnail frame");
-            Logger.minor(this, "Thumbnail frame");
+            LOG.debug("Thumbnail frame");
           } else
             throwError(
                 "Unknown JFXX extension " + extensionCode,
                 "The file contains an unknown JFXX extension.");
         } else {
-          if (logMINOR)
-            Logger.minor(this, "Dropping application-specific APP0 chunk named " + type);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Dropping application-specific APP0 chunk named " + type);
           // Application-specific extension
           skipRest(blockLength, countAtStart, cis, dis, dos, "application-specific frame");
           continue; // Don't write the frame.
         }
       } else if (markerType == 0xE1) { // EXIF
         if (deleteExif) {
-          if (logMINOR) Logger.minor(this, "Dropping EXIF data");
+          if (LOG.isDebugEnabled()) LOG.debug("Dropping EXIF data");
           skipBytes(dis, blockLength - 2);
           continue; // Don't write the frame
         }
@@ -236,14 +226,14 @@ public class JPEGFilter implements ContentDataFilter {
         // Comment
         if (deleteComments) {
           skipBytes(dis, blockLength - 2);
-          if (logMINOR) Logger.minor(this, "Dropping comment length " + (blockLength - 2) + '.');
+          if (LOG.isDebugEnabled()) LOG.debug("Dropping comment length " + (blockLength - 2) + '.');
           continue; // Don't write the frame
         }
         skipRest(blockLength, countAtStart, cis, dis, dos, "comment");
       } else if (markerType == 0xD9) {
         // End of image
         finished = true;
-        if (logMINOR) Logger.minor(this, "End of image");
+        if (LOG.isDebugEnabled()) LOG.debug("End of image");
       } else {
         // We used to support only DB C4 C0, because some website said they were
         // sufficient for decoding a JPEG. Unfortunately they are not, JPEG is a
@@ -304,8 +294,7 @@ public class JPEGFilter implements ContentDataFilter {
           byte[] buf = new byte[blockLength - 2];
           dis.readFully(buf);
           dos.write(buf);
-          Logger.minor(
-              this,
+          LOG.debug(
               "Essential frame type "
                   + Integer.toHexString(markerType)
                   + " length "
@@ -315,17 +304,15 @@ public class JPEGFilter implements ContentDataFilter {
         } else {
           if (markerType >= 0xE0 && markerType <= 0xEF) {
             // APP marker. Can be safely deleted.
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Dropping application marker type "
                       + Integer.toHexString(markerType)
                       + " length "
                       + blockLength);
           } else {
-            if (logMINOR)
-              Logger.minor(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Dropping unknown frame type "
                       + Integer.toHexString(markerType)
                       + " blockLength");
@@ -423,7 +410,7 @@ public class JPEGFilter implements ContentDataFilter {
     if (reason != null) message += ' ' + reason;
     if (shortReason != null) message += " - " + shortReason;
     DataFilterException e = new DataFilterException(shortReason, shortReason, message);
-    if (logMINOR) Logger.normal(this, "Throwing " + e.getMessage(), e);
+    if (LOG.isDebugEnabled()) LOG.info("Throwing " + e.getMessage(), e);
     throw e;
   }
 }

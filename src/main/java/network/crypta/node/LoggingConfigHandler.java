@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import ch.qos.logback.classic.AsyncAppender;
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
@@ -11,64 +12,86 @@ import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
 import ch.qos.logback.core.rolling.TimeBasedFileNamingAndTriggeringPolicy;
 import ch.qos.logback.core.util.FileSize;
 import java.io.File;
-import java.io.PrintStream;
-import java.lang.ref.WeakReference;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.OptionFormatException;
 import network.crypta.config.SubConfig;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
-import network.crypta.support.LoggerHookChain;
 import network.crypta.support.ModuloTimeTriggeringPolicy;
 import network.crypta.support.ModuloTimeTriggeringPolicy.Unit;
-import network.crypta.support.Slf4jLoggerHook;
-import network.crypta.support.TeeOutputStreamLogger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
 import network.crypta.support.api.StringCallback;
 import org.slf4j.ILoggerFactory;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class LoggingConfigHandler {
-  private static class PriorityCallback extends StringCallback implements EnumerableOptionCallback {
+  // No class-level logger needed; we log via System.err in guarded spots.
+
+  // String literals used at least 3 times (java:S1192)
+  private static final String LVL_TRACE = "TRACE";
+  private static final String LVL_DEBUG = "DEBUG";
+  private static final String LVL_ERROR = "ERROR";
+  private static final String LVL_INFO = "INFO";
+  private static final String LVL_WARN = "WARN";
+  private static final String LVL_OFF = "OFF";
+
+  private class PriorityCallback extends StringCallback implements EnumerableOptionCallback {
     @Override
     public String get() {
-      LoggerHookChain chain = Logger.getChain();
-      return chain.getThresholdNew().name();
+      Level lvl = getRootLevel();
+      return fromLogbackLevel(lvl);
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
-      LoggerHookChain chain = Logger.getChain();
       try {
-        chain.setThreshold(val);
-        // Keep SLF4J hook aligned when present (guard against GC race)
-        Slf4jLoggerHook hook = (slf4jHookRef == null) ? null : slf4jHookRef.get();
-        if (hook != null) {
-          hook.setThreshold(val);
-        }
-      } catch (LoggerHook.InvalidThresholdException e) {
+        Level target = toLogbackLevel(val);
+        setRootLevel(target);
+      } catch (IllegalArgumentException e) {
         throw new OptionFormatException(e.getMessage());
       }
     }
 
+    private String fromLogbackLevel(Level lvl) {
+      if (lvl == null) return LVL_WARN; // default
+      return switch (lvl.levelInt) {
+        case Level.TRACE_INT -> LVL_TRACE;
+        case Level.DEBUG_INT -> LVL_DEBUG;
+        case Level.INFO_INT -> LVL_INFO;
+        case Level.ERROR_INT -> LVL_ERROR;
+        case Level.OFF_INT -> LVL_OFF;
+        default -> LVL_WARN;
+      };
+    }
+
+    private void setRootLevel(Level level) {
+      LoggerContext ctx = resolveLoggerContext();
+      if (ctx == null) return;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(Logger.ROOT_LOGGER_NAME);
+      root.setLevel(level);
+    }
+
+    private Level getRootLevel() {
+      LoggerContext ctx = resolveLoggerContext();
+      if (ctx == null) return Level.WARN;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(Logger.ROOT_LOGGER_NAME);
+      return root.getLevel();
+    }
+
     @Override
     public String[] getPossibleValues() {
-      List<LogLevel> priorities = LogLevel.getEntries();
-      ArrayList<String> values = new ArrayList<>(priorities.size() + 1);
-      for (LogLevel p : priorities) values.add(p.name());
-
-      return values.toArray(new String[0]);
+      // Present standard SLF4J/Logback levels in UI (synonyms still accepted on input)
+      return new String[] {LVL_TRACE, LVL_DEBUG, LVL_INFO, LVL_WARN, LVL_ERROR, LVL_OFF};
     }
   }
 
@@ -86,10 +109,8 @@ public class LoggingConfigHandler {
   private static final String UNIT_WEEK_OF_YEAR = "WEEK_OF_YEAR"; // alias normalized to WEEK
   private static final String PATTERN_HOURLY = "yyyy-MM-dd_HH";
   private final SubConfig config;
-  // FileLoggerHook removed; SLF4J/Logback handles outputs
-  private Slf4jLoggerHook slf4jHook;
-  // Weak reference to allow static callbacks to update the hook without leaks
-  private static WeakReference<Slf4jLoggerHook> slf4jHookRef = new WeakReference<>(null);
+  // Pure SLF4J/Logback path; no LoggerHook chain
+  private boolean loggerEnabled;
   private File logDir;
   private long logsTotalSizeCap;
   private String logRotateInterval;
@@ -97,10 +118,9 @@ public class LoggingConfigHandler {
   private int maxCachedLogLines;
   private long maxBacklogNotBusy;
   // No executor required; logging configuration is independent
-  // When capturing stdout/err, remember the originals to restore on disable
-  private PrintStream originalStdout;
-  private PrintStream originalStderr;
-  private boolean capturedStdStreams;
+  // Std stream capture removed; SLF4J/Logback handles console output directly
+  private final Set<String> appliedLoggerNames = new HashSet<>();
+  private String priorityDetailRaw = "";
 
   public LoggingConfigHandler(SubConfig loggingConfig) throws InvalidConfigValueException {
     this.config = loggingConfig;
@@ -125,7 +145,12 @@ public class LoggingConfigHandler {
 
     registerMaxBacklogNotBusy();
 
-    if (loggingEnabled) enableLogger();
+    if (loggingEnabled) {
+      enableLogger();
+    } else {
+      // Ensure SLF4J/Logback does not emit logs when disabled at startup
+      disableLogger();
+    }
     config.finishedInitialization();
   }
 
@@ -141,13 +166,13 @@ public class LoggingConfigHandler {
         new BooleanCallback() {
           @Override
           public Boolean get() {
-            return slf4jHook != null;
+            return loggerEnabled;
           }
 
           @Override
           public void set(Boolean val) {
             final boolean enable = Boolean.TRUE.equals(val);
-            if (enable == (slf4jHook != null)) return;
+            if (enable == loggerEnabled) return;
             if (!enable) {
               disableLogger();
             } else {
@@ -237,7 +262,7 @@ public class LoggingConfigHandler {
   private void registerPriority() {
     config.register(
         CONF_PRIORITY,
-        "warning",
+        LVL_WARN,
         4,
         false,
         false,
@@ -258,22 +283,12 @@ public class LoggingConfigHandler {
         new StringCallback() {
           @Override
           public String get() {
-            LoggerHookChain chain = Logger.getChain();
-            return chain.getDetailedThresholds();
+            return priorityDetailRaw == null ? "" : priorityDetailRaw;
           }
 
           @Override
           public void set(String val) throws InvalidConfigValueException {
-            LoggerHookChain chain = Logger.getChain();
-            try {
-              chain.setDetailedThresholds(val);
-              Slf4jLoggerHook hook = (slf4jHookRef == null) ? null : slf4jHookRef.get();
-              if (hook != null) {
-                hook.setDetailedThresholds(val);
-              }
-            } catch (InvalidThresholdException e) {
-              throw new InvalidConfigValueException(e.getMessage());
-            }
+            applyPerLoggerOverrides(val);
           }
         });
   }
@@ -397,7 +412,7 @@ public class LoggingConfigHandler {
   private final Object enableLoggerLock = new Object();
 
   /** Turn on the logger. */
-  @SuppressWarnings("java:S106")
+  @SuppressWarnings({"java:S106", "java:S4507", "CallToPrintStackTrace"})
   private void enableLogger() {
     try {
       preSetLogDir(logDir);
@@ -406,10 +421,7 @@ public class LoggingConfigHandler {
       e3.printStackTrace();
     }
     synchronized (enableLoggerLock) {
-      if (slf4jHook != null) return;
-      // Do not reset the global chain: reuse it to preserve registered callbacks.
-      // This promotes a non-chain logger to a chain only when needed and keeps existing hooks.
-      Logger.getChain();
+      if (loggerEnabled) return;
       try {
         config.forceUpdate(CONF_PRIORITY);
         config.forceUpdate("priorityDetail");
@@ -417,51 +429,11 @@ public class LoggingConfigHandler {
         System.err.println(
             "Invalid config value for logger.priority in config file: "
                 + config.getString(CONF_PRIORITY));
-        // Leave it at the default.
       } catch (NodeNeedRestartException e) {
-        // impossible
-        System.err.println(
-            "impossible NodeNeedRestartException for logger.priority in config file: "
-                + config.getString(CONF_PRIORITY));
-      }
-      // Add SLF4J sink first and align its thresholds with the chain / config
-      slf4jHook = new Slf4jLoggerHook(LogLevel.DEBUG /* initial; will be overridden below */);
-      Logger.globalAddHook(slf4jHook);
-      // Align to current chain thresholds and per-section details
-      try {
-        LoggerHookChain chain = Logger.getChain();
-        slf4jHook.setThreshold(chain.getThresholdNew());
-        slf4jHook.setDetailedThresholds(chain.getDetailedThresholds());
-      } catch (LoggerHook.InvalidThresholdException e) {
-        System.err.println("SLF4J hook threshold sync failed: " + e.getMessage());
-      }
-      // Optional: capture System.out/err to SLF4J when requested
-      if (Boolean.getBoolean("crypta.captureStdStreams")) {
-        try {
-          String enc = StandardCharsets.UTF_8.name();
-          // Preserve existing console streams so ConsoleAppender can still emit to the terminal.
-          PrintStream origOut = System.out;
-          PrintStream origErr = System.err;
-          this.originalStdout = origOut;
-          this.originalStderr = origErr;
-          System.setOut(
-              new PrintStream(
-                  new TeeOutputStreamLogger(origOut, LogLevel.NORMAL, "Stdout: ", enc),
-                  false,
-                  enc));
-          System.setErr(
-              new PrintStream(
-                  new TeeOutputStreamLogger(origErr, LogLevel.ERROR, "Stderr: ", enc), false, enc));
-          this.capturedStdStreams = true;
-        } catch (Exception ignored) {
-          // Best-effort; do not fail if we cannot capture
-        }
+        // not expected for priority updates
       }
 
-      // Publish weak ref for callbacks to update on future config changes
-      slf4jHookRef = new WeakReference<>(slf4jHook);
-
-      // No FileLoggerHook; SLF4J/Logback handles outputs
+      loggerEnabled = true;
     }
   }
 
@@ -674,24 +646,25 @@ public class LoggingConfigHandler {
   @SuppressWarnings("java:S106")
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
-      if (slf4jHook == null) return;
-      Logger.globalRemoveHook(slf4jHook);
-      slf4jHook = null;
-      // If we captured stdout/err earlier, restore the originals so console stays functional
-      if (capturedStdStreams) {
-        try {
-          if (originalStdout != null) System.setOut(originalStdout);
-          if (originalStderr != null) System.setErr(originalStderr);
-        } catch (Exception t) {
-          // Non-fatal: prefer keeping the app running even if we cannot restore
-          System.err.println("Failed to restore original std streams: " + t);
-        } finally {
-          capturedStdStreams = false;
-          originalStdout = null;
-          originalStderr = null;
+      // Reconfigure SLF4J/Logback so no further logs are emitted.
+      try {
+        LoggerContext ctx = resolveLoggerContext();
+        if (ctx != null) {
+          // Clear any per-logger overrides so they inherit from root again
+          for (String name : appliedLoggerNames) {
+            ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+            logger.setLevel(null);
+          }
+          appliedLoggerNames.clear();
+          // Set root level to OFF to disable emission
+          ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+          root.setLevel(Level.OFF);
         }
+      } catch (Exception e) {
+        System.err.println("Failed to disable logging via Logback: " + e);
       }
-      Logger.destroyChainIfEmpty();
+      // Mark as disabled even if we were already disabled
+      loggerEnabled = false;
     }
   }
 
@@ -704,6 +677,98 @@ public class LoggingConfigHandler {
     if (!exists && !f.mkdir() && !f.isDirectory()) {
       // Ensure directory creation succeeds; treat failure as invalid config
       throw new InvalidConfigValueException("Cannot create log directory");
+    }
+  }
+
+  // ===== SLF4J/Logback helpers =====
+
+  private Level toLogbackLevel(String val) {
+    if (val == null) throw new IllegalArgumentException("priority cannot be null");
+    String s = val.trim().toUpperCase(Locale.ROOT);
+    // Accept standard names and historical synonyms for backward compatibility
+    return switch (s) {
+      // Standard
+      case LVL_TRACE -> Level.TRACE;
+      case LVL_DEBUG, "MINOR" -> Level.DEBUG;
+      case LVL_INFO, "NORMAL" -> Level.INFO;
+      case LVL_WARN, "WARNING" -> Level.WARN;
+      case LVL_ERROR -> Level.ERROR;
+      case LVL_OFF, "NONE" -> Level.OFF;
+      // Synonyms
+      case "MINIMAL" -> Level.TRACE;
+      default -> throw new IllegalArgumentException("Unknown priority: " + val);
+    };
+  }
+
+  private void applyPerLoggerOverrides(String detail) throws InvalidConfigValueException {
+    LoggerContext ctx = resolveLoggerContext();
+    if (ctx == null) return;
+
+    // If no update provided, keep current overrides intact (legacy behavior)
+    if (detail == null) return;
+
+    String raw = detail.trim();
+    // Explicitly clearing overrides when empty
+    if (raw.isEmpty()) {
+      clearAllOverrides(ctx);
+      priorityDetailRaw = "";
+      return;
+    }
+
+    // Parse into a temporary map first; do not mutate existing overrides until validated
+    Map<String, Level> newOverrides = parseOverrides(raw);
+
+    // Apply updates
+    removeObsoleteOverrides(ctx, newOverrides);
+    applyOverrides(ctx, newOverrides);
+    priorityDetailRaw = raw;
+  }
+
+  private void clearAllOverrides(LoggerContext ctx) {
+    for (String name : appliedLoggerNames) {
+      ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+      logger.setLevel(null); // inherit root
+    }
+    appliedLoggerNames.clear();
+  }
+
+  private Map<String, Level> parseOverrides(String raw) throws InvalidConfigValueException {
+    Map<String, Level> result = new HashMap<>();
+    String[] tokens = raw.split(",");
+    for (String token : tokens) {
+      if (token != null && !token.isEmpty()) {
+        int x = token.indexOf(':');
+        if (x >= 0 && x != token.length() - 1) { // ignore malformed pair silently as before
+          String section = token.substring(0, x);
+          String val = token.substring(x + 1);
+          Level lvl;
+          try {
+            lvl = toLogbackLevel(val);
+          } catch (IllegalArgumentException e) {
+            throw new InvalidConfigValueException(e.getMessage());
+          }
+          result.put(section, lvl);
+        }
+      }
+    }
+    return result;
+  }
+
+  private void removeObsoleteOverrides(LoggerContext ctx, Map<String, Level> newOverrides) {
+    for (String name : new java.util.HashSet<>(appliedLoggerNames)) {
+      if (!newOverrides.containsKey(name)) {
+        ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+        logger.setLevel(null);
+        appliedLoggerNames.remove(name);
+      }
+    }
+  }
+
+  private void applyOverrides(LoggerContext ctx, Map<String, Level> newOverrides) {
+    for (Map.Entry<String, Level> e : newOverrides.entrySet()) {
+      ch.qos.logback.classic.Logger lgr = ctx.getLogger(e.getKey());
+      lgr.setLevel(e.getValue());
+      appliedLoggerNames.add(e.getKey());
     }
   }
 }

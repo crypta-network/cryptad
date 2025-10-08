@@ -12,8 +12,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A class to estimate the node's average uptime. Every 5 minutes (with a fixed offset), we write an
@@ -23,6 +24,7 @@ import network.crypta.support.Ticker;
  * @author toad
  */
 public class UptimeEstimator implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(UptimeEstimator.class);
 
   /** Five minutes in milliseconds. */
   static final long PERIOD = MINUTES.toMillis(5);
@@ -90,8 +92,7 @@ public class UptimeEstimator implements Runnable {
         if (slotNo == wasOnlineWeek.length)
           break; // Reached the end, restarted within the same timeslot.
         if (slotNo > wasOnlineWeek.length || slotNo < 0) {
-          Logger.error(
-              this,
+          LOG.error(
               "Corrupt data read from uptime file "
                   + file
                   + ": 5-minutes-from-epoch is now "
@@ -105,8 +106,7 @@ public class UptimeEstimator implements Runnable {
     } catch (EOFException e) {
       // Finished
     } catch (IOException e) {
-      Logger.error(
-          this,
+      LOG.error(
           "Unable to read old uptime file: "
               + file
               + " - we will assume we weren't online during that period");
@@ -130,9 +130,9 @@ public class UptimeEstimator implements Runnable {
         DataOutputStream dos = new DataOutputStream(fos)) {
       dos.writeInt(fiveMinutesSinceEpoch);
     } catch (FileNotFoundException e) {
-      Logger.error(this, "Unable to create or access " + logFile + " : " + e, e);
+      LOG.error("Unable to create or access " + logFile + " : " + e, e);
     } catch (IOException e) {
-      Logger.error(this, "Unable to write to uptime estimator log file: " + logFile);
+      LOG.error("Unable to write to uptime estimator log file: " + logFile);
     } finally {
       // Schedule next time
       schedule(now);

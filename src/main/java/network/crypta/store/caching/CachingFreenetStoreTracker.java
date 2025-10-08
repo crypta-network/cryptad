@@ -1,8 +1,9 @@
 package network.crypta.store.caching;
 
 import java.util.ArrayList;
-import network.crypta.support.Logger;
 import network.crypta.support.Ticker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks the memory used by a bunch of CachingFreenetStore's, and writes blocks to disk when full
@@ -12,7 +13,7 @@ import network.crypta.support.Ticker;
  * @author Simon Vocella <voxsim@gmail.com>
  */
 public class CachingFreenetStoreTracker {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(CachingFreenetStoreTracker.class);
 
   /**
    * Number of keys that it's pushed to the *underlying* store in the add function. FIXME make this
@@ -43,9 +44,7 @@ public class CachingFreenetStoreTracker {
 
   private long size;
 
-  static {
-    Logger.registerClass(CachingFreenetStore.class);
-  }
+  // Legacy Logger.registerClass removed; LOG handles level checks directly.
 
   public CachingFreenetStoreTracker(long maxSize, long period, Ticker ticker) {
     if (ticker == null) throw new IllegalArgumentException();
@@ -170,7 +169,7 @@ public class CachingFreenetStoreTracker {
             size -= sizeBlock;
             assert (size >= 0); // Break immediately if in unit testing.
             if (size < 0) {
-              Logger.error(this, "Cache broken: Size = " + size);
+              LOG.error("Cache broken: Size = {}", size);
               size = 0;
             }
             if (size == 0) return;

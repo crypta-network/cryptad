@@ -13,13 +13,16 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.PeerManager;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class N2NTMToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(N2NTMToadlet.class);
+
   private final Node node;
   private final LocalFileN2NMToadlet browser;
 
@@ -227,17 +230,17 @@ public class N2NTMToadlet extends Toadlet {
             sendStatusShort = l10n("delayedTitle");
             sendStatusLong = l10n("delayed");
             sendStatusClass = "n2ntm-send-delayed";
-            Logger.normal(this, "Sent N2NTM to '" + pn.getName() + "': " + message);
+            LOG.info("Sent N2NTM to '" + pn.getName() + "': " + message);
           } else if (status == PeerManager.PEER_NODE_STATUS_CONNECTED) {
             sendStatusShort = l10n("sentTitle");
             sendStatusLong = l10n("sent");
             sendStatusClass = "n2ntm-send-sent";
-            Logger.normal(this, "Sent N2NTM to '" + pn.getName() + "': " + message);
+            LOG.info("Sent N2NTM to '" + pn.getName() + "': " + message);
           } else {
             sendStatusShort = l10n("queuedTitle");
             sendStatusLong = l10n("queued");
             sendStatusClass = "n2ntm-send-queued";
-            Logger.normal(this, "Queued N2NTM to '" + pn.getName() + "': " + message);
+            LOG.info("Queued N2NTM to '" + pn.getName() + "': " + message);
           }
           HTMLNode peerRow = peerTable.addChild("tr");
           peerRow.addChild("td", "class", "peer-name").addChild("#", pn.getName());

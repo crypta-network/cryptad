@@ -4,9 +4,8 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Base class for tags representing a running request. These store enough information to detect
@@ -15,17 +14,9 @@ import network.crypta.support.Logger.LogLevel;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public abstract class UIDTag {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(UIDTag.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   final long createdTime;
@@ -71,7 +62,7 @@ public abstract class UIDTag {
     this.realTimeFlag = realTimeFlag;
     this.tracker = node.getTracker();
     this.uid = uid;
-    if (logMINOR) Logger.minor(this, "Created " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Created " + this);
     if (wasLocal) accepted = true; // FIXME remove, but it's always true at the moment.
   }
 
@@ -93,9 +84,8 @@ public abstract class UIDTag {
    *     offeredKey) the peer.
    */
   public synchronized boolean addRoutedTo(PeerNode peer, boolean offeredKey) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Routing to " + peer + " on " + this + (offeredKey ? " (offered)" : ""),
           new Exception("debug"));
     if (routedTo == null) routedTo = new HashSet<>();
@@ -150,7 +140,7 @@ public abstract class UIDTag {
       if (!mustUnlock()) return;
       noRecordUnlock = this.noRecordUnlock;
     }
-    if (logMINOR) Logger.minor(this, "Unlocking " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Unlocking " + this);
     innerUnlock(noRecordUnlock);
   }
 
@@ -168,8 +158,8 @@ public abstract class UIDTag {
    * @param next The node we are no longer routing to.
    */
   public void removeRoutingTo(PeerNode next) {
-    if (logMINOR) {
-      Logger.minor(this, "No longer routing to " + next + " on " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("No longer routing to {} on {}", next, this);
     }
     boolean noRecordUnlock;
     synchronized (this) {
@@ -177,11 +167,8 @@ public abstract class UIDTag {
         return;
       }
       if (!currentlyRoutingTo.remove(next)) {
-        if (logMINOR) {
-          Logger.minor(
-              this,
-              "Removing wrong node or removing twice? on " + this + " : " + next,
-              new Exception("debug"));
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Removing wrong node or removing twice? on {} : {}", this, next);
         }
       }
       if (handlingTimeouts != null) {
@@ -190,8 +177,8 @@ public abstract class UIDTag {
       if (!mustUnlock()) return;
       noRecordUnlock = this.noRecordUnlock;
     }
-    if (logMINOR) {
-      Logger.minor(this, "Unlocking " + this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Unlocking " + this);
     }
     innerUnlock(noRecordUnlock);
   }
@@ -291,9 +278,8 @@ public abstract class UIDTag {
           expected = true;
           for (PeerNode pn : currentlyRoutingTo) {
             if (handlingTimeouts.contains(pn)) {
-              if (logMINOR)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "Still waiting for "
                         + pn.shortToString()
                         + " but expected because handling timeout in unlockHandler - will reassign"
@@ -305,15 +291,13 @@ public abstract class UIDTag {
         }
         if (!expected) {
           if (handlingTimeouts != null)
-            Logger.normal(
-                this,
+            LOG.info(
                 "Unlocked handler but still routing to "
                     + currentlyRoutingTo
                     + " - expected because have timed out so a fork might have succeeded and we"
                     + " might be waiting for the original");
           else
-            Logger.error(
-                this,
+            LOG.error(
                 "Unlocked handler but still routing to "
                     + currentlyRoutingTo
                     + " yet not reassigned on "
@@ -330,9 +314,8 @@ public abstract class UIDTag {
           expected = true;
           for (PeerNode pn : fetchingOfferedKeyFrom) {
             if (handlingTimeouts.contains(pn)) {
-              if (logMINOR)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "Still waiting for "
                         + pn.shortToString()
                         + " but expected because handling timeout in unlockHandler - will reassign"
@@ -344,8 +327,7 @@ public abstract class UIDTag {
         }
         if (!expected)
           // Fork succeeds can't happen for fetch-offered-keys.
-          Logger.error(
-              this,
+          LOG.error(
               "Unlocked handler but still fetching offered keys from "
                   + fetchingOfferedKeyFrom
                   + " yet not reassigned on "
@@ -377,7 +359,7 @@ public abstract class UIDTag {
     }
     if (canUnlock) innerUnlock(noRecordUnlock);
     else {
-      Logger.normal(this, "Cannot unlock yet in unlockHandler, still sending requests");
+      LOG.info("Cannot unlock yet in unlockHandler, still sending requests");
     }
   }
 

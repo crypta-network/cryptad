@@ -11,9 +11,8 @@ import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.SSKBlock;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Simple SendableInsert implementation. No feedback, no retries, just insert the block. Not
@@ -21,6 +20,7 @@ import network.crypta.support.Logger.LogLevel;
  * every 200 successful requests which starts an insert.
  */
 public class SimpleSendableInsert extends SendableInsert {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleSendableInsert.class);
 
   @Serial private static final long serialVersionUID = 1L;
   public final KeyBlock block;
@@ -29,16 +29,7 @@ public class SimpleSendableInsert extends SendableInsert {
   public final RequestClient client;
   public final ClientRequestScheduler scheduler;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public SimpleSendableInsert(NodeClientCore core, KeyBlock block, short prioClass) {
@@ -65,12 +56,12 @@ public class SimpleSendableInsert extends SendableInsert {
   @Override
   public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
     // Yay!
-    if (logMINOR) Logger.minor(this, "Finished insert of " + block);
+    if (LOG.isDebugEnabled()) LOG.debug("Finished insert of " + block);
   }
 
   @Override
   public void onFailure(LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Failed insert of " + block + ": " + e);
+    if (LOG.isDebugEnabled()) LOG.debug("Failed insert of " + block + ": " + e);
   }
 
   @Override
@@ -87,7 +78,7 @@ public class SimpleSendableInsert extends SendableInsert {
           NodeClientCore core, RequestScheduler sched, ClientContext context, ChosenBlock req) {
         // Ignore keyNum, key, since this is a single block
         try {
-          if (logMINOR) Logger.minor(this, "Starting request: " + this);
+          if (LOG.isDebugEnabled()) LOG.debug("Starting request: " + this);
           // FIXME bulk flag
           core.realPut(
               block,
@@ -98,12 +89,12 @@ public class SimpleSendableInsert extends SendableInsert {
               false);
         } catch (LowLevelPutException e) {
           onFailure(e, req.token, context);
-          if (logMINOR) Logger.minor(this, "Request failed: " + this + " for " + e);
+          if (LOG.isDebugEnabled()) LOG.debug("Request failed: " + this + " for " + e);
           return true;
         } finally {
           finished = true;
         }
-        if (logMINOR) Logger.minor(this, "Request succeeded: " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Request succeeded: " + this);
         onSuccess(req.token, null, context);
         sched.removeRunningInsert(SimpleSendableInsert.this, req.token.getKey());
         return true;

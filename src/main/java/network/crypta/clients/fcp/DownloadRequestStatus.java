@@ -8,11 +8,13 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Cached status of a download of a file i.e. a ClientGet */
 public class DownloadRequestStatus extends RequestStatus {
+  private static final Logger LOG = LoggerFactory.getLogger(DownloadRequestStatus.class);
 
   private FetchExceptionMode failureCode;
   private String failureReasonShort;
@@ -43,8 +45,7 @@ public class DownloadRequestStatus extends RequestStatus {
     if (mimeType == null
         && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
             || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
-      Logger.error(
-          this,
+      LOG.error(
           "MIME type is null but failure code is "
               + FetchException.getMessage(failureCode)
               + " for "
@@ -109,8 +110,7 @@ public class DownloadRequestStatus extends RequestStatus {
     if (mime == null
         && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
             || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
-      Logger.error(
-          this,
+      LOG.error(
           "MIME type is null but failure code is "
               + FetchException.getMessage(failureCode)
               + " for "

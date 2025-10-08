@@ -28,31 +28,21 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** A first time wizard aimed to ease the configuration of the node. */
 public class FirstTimeWizardToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardToadlet.class);
   private final NodeClientCore core;
   private final EnumMap<WIZARD_STEP, Step> steps;
   private final MISC stepMISC;
   private final SECURITY_NETWORK stepSECURITY_NETWORK;
   private final SECURITY_PHYSICAL stepSECURITY_PHYSICAL;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
   public enum WIZARD_STEP {
     WELCOME,
@@ -223,7 +213,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    * @return whether wizard steps should log minor events.
    */
   public static boolean shouldLogMinor() {
-    return logMINOR;
+    return LOG.isDebugEnabled();
   }
 
   public void handleMethodPOST(URI uri, HTTPRequest request, ToadletContext ctx)
@@ -299,7 +289,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
               persistFields = new PersistFields(persistFields.preset, newRequest);
             }
           } catch (URISyntaxException e) {
-            Logger.error(this, "Unexpected invalid query string from OPENNET step! " + e, e);
+            LOG.error("Unexpected invalid query string from OPENNET step! {}", e.toString(), e);
             redirectTarget = WIZARD_STEP.WELCOME.name();
           }
         }

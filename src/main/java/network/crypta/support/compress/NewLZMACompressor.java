@@ -7,9 +7,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedInputStream;
@@ -17,8 +14,11 @@ import network.crypta.support.io.CountedOutputStream;
 import org.sevenzip.ICodeProgress;
 import org.sevenzip.compression.lzma.Decoder;
 import org.sevenzip.compression.lzma.Encoder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NewLZMACompressor extends AbstractCompressor {
+  private static final Logger LOG = LoggerFactory.getLogger(NewLZMACompressor.class);
 
   // Dictionary size 1MB, this is equivalent to lzma -4, it uses 16MB to compress and 2MB to
   // decompress.
@@ -27,16 +27,7 @@ public class NewLZMACompressor extends AbstractCompressor {
 
   private static final String SIZE_LITERAL = " size ";
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   // Copied from EncoderThread. See below re licensing.
@@ -46,9 +37,8 @@ public class NewLZMACompressor extends AbstractCompressor {
     Bucket output = bf.makeBucket(maxWriteLength);
     try (InputStream is = data.getInputStream();
         OutputStream os = output.getOutputStream()) {
-      if (logMINOR)
-        Logger.minor(
-            this, "Compressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Compressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
       compress(is, os, maxReadLength, maxWriteLength);
     }
     return output;
@@ -80,7 +70,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
       throw new CompressionOutputSizeException(cos.written());
     cos.flush();
-    if (logMINOR) Logger.minor(this, "Read " + cis.count() + " written " + cos.written());
+    if (LOG.isDebugEnabled()) LOG.debug("Read " + cis.count() + " written " + cos.written());
     return cos.written();
   }
 
@@ -100,10 +90,8 @@ public class NewLZMACompressor extends AbstractCompressor {
     int dictionarySize = 1;
     if (maxReadLength == Long.MAX_VALUE || maxReadLength < 0) {
       dictionarySize = MAX_DICTIONARY_SIZE;
-      Logger.error(
-          this,
-          "No indication of size, having to use maximum dictionary size",
-          new Exception("debug"));
+      LOG.error(
+          "No indication of size, having to use maximum dictionary size", new Exception("debug"));
     } else {
       while (dictionarySize < maxReadLength && dictionarySize < MAX_DICTIONARY_SIZE) {
         dictionarySize <<= 1;
@@ -156,7 +144,7 @@ public class NewLZMACompressor extends AbstractCompressor {
   private static final class BoundedInputStream extends CountedInputStream {
     private final long max;
 
-    // Removed unused EOF tracking flags (no external readers, dead code).
+    // This wrapper does not maintain explicit EOF flags.
 
     BoundedInputStream(InputStream in, long max) {
       super(in);
@@ -235,15 +223,13 @@ public class NewLZMACompressor extends AbstractCompressor {
     Bucket output;
     if (preferred != null) output = preferred;
     else output = bf.makeBucket(maxLength);
-    if (logMINOR)
-      Logger.minor(
-          this, "Decompressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Decompressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
     try (CountedInputStream is = new CountedInputStream(data.getInputStream());
         OutputStream os = output.getOutputStream()) {
       decompress(is, os, maxLength, maxCheckSizeLength);
-      if (logMINOR)
-        Logger.minor(
-            this, "Output: " + output + SIZE_LITERAL + output.size() + " read " + is.count());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Output: " + output + SIZE_LITERAL + output.size() + " read " + is.count());
     }
     return output;
   }

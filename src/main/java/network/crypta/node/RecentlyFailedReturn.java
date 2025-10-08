@@ -1,24 +1,22 @@
 package network.crypta.node;
 
-import network.crypta.support.Logger;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Contains information on why we can't route a request. Initially just a flag and a time. */
 public class RecentlyFailedReturn {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(RecentlyFailedReturn.class);
 
   static {
-    Logger.registerClass(RecentlyFailedReturn.class);
   }
 
   private boolean recentlyFailed;
   private long wakeup;
 
   public synchronized void fail(int countWaiting, long wakeupTime) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "RecentlyFailed until " + TimeUtil.formatTime(wakeupTime - System.currentTimeMillis()));
     this.wakeup = wakeupTime;
     this.recentlyFailed = true;

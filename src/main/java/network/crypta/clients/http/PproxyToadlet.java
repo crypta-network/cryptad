@@ -31,31 +31,19 @@ import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginManager.PluginProgress;
 import network.crypta.pluginmanager.RedirectPluginHTTPException;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PproxyToadlet extends Toadlet {
+  private static final Logger LOG = LoggerFactory.getLogger(PproxyToadlet.class);
   public static final String PATH = "/plugins/";
   private static final int MAX_PLUGIN_NAME_LENGTH = 1024;
 
   /** Maximum time to wait for a threaded plugin to exit */
   private static final long MAX_THREADED_UNLOAD_WAIT_TIME = SECONDS.toMillis(60);
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
 
   private final Node node;
 
@@ -81,7 +69,7 @@ public class PproxyToadlet extends Toadlet {
     if (path.startsWith("/")) path = path.substring(1);
     if (path.startsWith("plugins/")) path = path.substring("plugins/".length());
 
-    if (logMINOR) Logger.minor(this, "Pproxy received POST on " + path);
+    if (LOG.isDebugEnabled()) LOG.debug("Pproxy received POST on {}", path);
 
     final PluginManager pm = node.getPluginManager();
 
@@ -360,7 +348,7 @@ public class PproxyToadlet extends Toadlet {
 
     PluginManager pm = node.getPluginManager();
 
-    if (logMINOR) Logger.minor(this, "Pproxy fetching " + path);
+    if (LOG.isDebugEnabled()) LOG.debug("Pproxy fetching {}", path);
     try {
       if (path.isEmpty()) {
         if (!ctx.checkFullAccess(this)) return;
@@ -476,7 +464,7 @@ public class PproxyToadlet extends Toadlet {
       ctx.forceDisconnect();
     } catch (Throwable t) {
       ctx.forceDisconnect();
-      Logger.error(this, "Caught: " + t, t);
+      LOG.error("Caught: {}", t.toString(), t);
       writeInternalError(t, ctx);
     }
   }

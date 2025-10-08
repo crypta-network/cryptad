@@ -2,6 +2,8 @@ package network.crypta.support;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestSelector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Second level tree node. At the base we have RGA's. Then we have these, SRGAs containing RGAs.
@@ -13,11 +15,10 @@ public class SectoredRandomGrabArraySimple<MyType, ChildType>
     extends SectoredRandomGrabArrayWithObject<
         MyType, ChildType, RandomGrabArrayWithObject<ChildType>> {
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(SectoredRandomGrabArraySimple.class);
   }
+
+  private static final Logger LOG = LoggerFactory.getLogger(SectoredRandomGrabArraySimple.class);
 
   public SectoredRandomGrabArraySimple(
       MyType object, RemoveRandomParent parent, ClientRequestSelector root) {
@@ -29,18 +30,17 @@ public class SectoredRandomGrabArraySimple<MyType, ChildType>
     synchronized (root) {
       RandomGrabArrayWithObject<ChildType> rga = getGrabber(client);
       if (rga == null) {
-        if (logMINOR)
-          Logger.minor(
-              this, "Adding new RGAWithClient for " + client + " on " + this + " for " + item);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Adding new RGAWithClient for " + client + " on " + this + " for " + item);
         rga = new RandomGrabArrayWithObject<>(client, this, root);
         addElement(client, rga);
       }
-      if (logMINOR) Logger.minor(this, "Adding " + item + " to RGA " + rga + " for " + client);
+      if (LOG.isDebugEnabled()) LOG.debug("Adding " + item + " to RGA " + rga + " for " + client);
       rga.add(item, context);
       if (context != null) {
         clearWakeupTime(context);
       }
-      if (logMINOR) Logger.minor(this, "Size now " + size() + " on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Size now " + size() + " on " + this);
     }
   }
 }

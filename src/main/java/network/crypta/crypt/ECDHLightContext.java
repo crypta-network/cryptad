@@ -2,15 +2,14 @@ package network.crypta.crypt;
 
 import java.security.interfaces.ECPublicKey;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ECDHLightContext extends KeyAgreementSchemeContext {
-  static {
-    Logger.registerClass(ECDHLightContext.class);
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(ECDHLightContext.class);
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  static {
+  }
 
   public final ECDH ecdh;
 
@@ -37,14 +36,12 @@ public class ECDHLightContext extends KeyAgreementSchemeContext {
     }
     byte[] sharedKey = ecdh.getAgreedSecret(peerExponential);
 
-    if (logMINOR) {
-      Logger.minor(this, "Curve in use: " + ecdh.curve.toString());
-      if (logDEBUG) {
-        Logger.debug(
-            this, "My exponential: " + HexUtil.bytesToHex(ecdh.getPublicKey().getEncoded()));
-        Logger.debug(
-            this, "Peer's exponential: " + HexUtil.bytesToHex(peerExponential.getEncoded()));
-        Logger.debug(this, "SharedSecret = " + HexUtil.bytesToHex(sharedKey));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Curve in use: " + ecdh.curve.toString());
+      if (LOG.isTraceEnabled()) {
+        LOG.debug("My exponential: " + HexUtil.bytesToHex(ecdh.getPublicKey().getEncoded()));
+        LOG.debug("Peer's exponential: " + HexUtil.bytesToHex(peerExponential.getEncoded()));
+        LOG.trace("SharedSecret = " + HexUtil.bytesToHex(sharedKey));
       }
     }
 

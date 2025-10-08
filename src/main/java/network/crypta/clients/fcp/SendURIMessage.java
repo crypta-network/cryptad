@@ -7,8 +7,11 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.BucketTools;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SendURIMessage extends SendPeerMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SendURIMessage.class);
 
   public static final String NAME = "SendURI";
   private final FreenetURI uri;

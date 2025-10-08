@@ -5,10 +5,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
 import network.crypta.io.AddressIdentifier.AddressType;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Implementation of allowedHosts */
 public class AllowedHosts {
+  private static final Logger LOG = LoggerFactory.getLogger(AllowedHosts.class);
 
   protected final List<AddressMatcher> addressMatchers = new ArrayList<>();
 
@@ -41,7 +43,7 @@ public class AllowedHosts {
       } else if (allowedHost.equals("*")) {
         newAddressMatchers.add(new EverythingMatcher());
       } else {
-        Logger.error(NetworkInterface.class, "Ignoring invalid allowedHost: " + allowedHost);
+        LOG.error("Ignoring invalid allowedHost: " + allowedHost);
       }
     }
     synchronized (this) {

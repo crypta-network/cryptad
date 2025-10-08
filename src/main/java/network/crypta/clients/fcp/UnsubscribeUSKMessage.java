@@ -2,8 +2,11 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UnsubscribeUSKMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(UnsubscribeUSKMessage.class);
 
   public static final String NAME = "UnsubscribeUSK";
   private final String identifier;

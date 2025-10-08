@@ -41,9 +41,6 @@ import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
@@ -52,6 +49,8 @@ import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A simple client fetch. This can of course fetch arbitrarily large files, including splitfiles,
@@ -59,6 +58,7 @@ import network.crypta.support.io.StorageFormatException;
  */
 public class ClientGet extends ClientRequest
     implements ClientGetCallback, ClientEventListener, PersistentClientCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -126,17 +126,7 @@ public class ClientGet extends ClientRequest
    */
   private ExpectedHashes expectedHashes;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   private static final Map<Short, ReturnType> returnTypeByCode = new HashMap<>();
 
@@ -227,7 +217,7 @@ public class ClientGet extends ClientRequest
           // Dirty hack for migration
           // Ignore zero length file as we probably created it.
           targetFile.delete();
-          Logger.error(this, "Target file already exists but is zero length, deleting...");
+          LOG.error("Target file already exists but is zero length, deleting...");
         }
         if (targetFile.exists())
           throw new IOException("Target filename exists already: " + targetFile);
@@ -332,7 +322,7 @@ public class ClientGet extends ClientRequest
     try {
       getter = makeGetter(core, ret);
     } catch (IOException e) {
-      Logger.error(this, "Cannot create bucket for temporary storage: " + e, e);
+      LOG.error("Cannot create bucket for temporary storage: " + e, e);
       // This is *not* a FetchException since we don't register it: it's a protocol error.
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR,
@@ -433,11 +423,11 @@ public class ClientGet extends ClientRequest
 
   @Override
   public void onSuccess(FetchResult result, ClientGetter state) {
-    Logger.minor(this, "Succeeded: " + identifier);
+    LOG.debug("Succeeded: " + identifier);
     Bucket data = binaryBlob ? state.getBlobBucket() : result.asBucket();
     synchronized (this) {
       if (succeeded) {
-        Logger.error(this, "onSuccess called twice for " + this + " (" + identifier + ')');
+        LOG.error("onSuccess called twice for " + this + " (" + identifier + ')');
         return; // We might be called twice; ignore it if so.
       }
       started = true;
@@ -632,7 +622,7 @@ public class ClientGet extends ClientRequest
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted, and also possibly failed deletions.
-      Logger.error(this, "lowLevelClient == null", new Exception("error"));
+      LOG.warn("lowLevelClient == null");
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -650,7 +640,7 @@ public class ClientGet extends ClientRequest
       started = true;
       completionTime = System.currentTimeMillis();
     }
-    if (logMINOR) Logger.minor(this, "Caught " + e, e);
+    if (LOG.isDebugEnabled()) LOG.debug("Caught " + e, e);
     trySendDataFoundOrGetFailed(null, null);
     // We do not want the data to be removed on failure, because the request
     // may be restarted, and the bucket persists on the getter, even if we get rid of it here.
@@ -684,7 +674,7 @@ public class ClientGet extends ClientRequest
 
   @Override
   public void receive(ClientEvent ce, ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Receiving " + ce + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Receiving " + ce + " on " + this);
     final FCPMessage progress;
     final int verbosityMask;
     if (ce instanceof SplitfileProgressEvent event2) {
@@ -712,7 +702,7 @@ public class ClientGet extends ClientRequest
     } else if (ce instanceof ExpectedHashesEvent event) {
       synchronized (this) {
         if (expectedHashes != null) {
-          Logger.error(this, "Got a new ExpectedHashes", new Exception("debug"));
+          LOG.warn("Got a new ExpectedHashes");
           return;
         } else {
           progress = this.expectedHashes = new ExpectedHashes(event, identifier, global);
@@ -751,7 +741,7 @@ public class ClientGet extends ClientRequest
       if ((verbosity & verbosityMask) == 0) return;
       progress = new EnterFiniteCooldown(identifier, global, event.wakeupTime);
     } else {
-      Logger.error(this, "Unknown event " + ce);
+      LOG.error("Unknown event " + ce);
       return; // Don't know what to do with event
     }
     queueProgressMessageInner(progress, null, verbosityMask);
@@ -957,11 +947,11 @@ public class ClientGet extends ClientRequest
   @Override
   public boolean canRestart() {
     if (!finished) {
-      Logger.minor(this, "Cannot restart because not finished for " + identifier);
+      LOG.debug("Cannot restart because not finished for " + identifier);
       return false;
     }
     if (succeeded) {
-      Logger.minor(this, "Cannot restart because succeeded for " + identifier);
+      LOG.debug("Cannot restart because succeeded for " + identifier);
       return false;
     }
     return getter.canRestart();
@@ -1057,8 +1047,7 @@ public class ClientGet extends ClientRequest
     Bucket shadow = (finished && succeeded) ? getBucket() : null;
     if (shadow != null) {
       if (dataSize != shadow.size()) {
-        Logger.error(
-            this,
+        LOG.error(
             "Size of downloaded data has changed: "
                 + dataSize
                 + " -> "
@@ -1224,12 +1213,12 @@ public class ClientGet extends ClientRequest
       try {
         fctx = new FetchContext(innerDIS);
       } catch (IOException e) {
-        Logger.error(this, "Unable to read fetch settings, will use default settings: " + e, e);
+        LOG.error("Unable to read fetch settings, will use default settings: " + e, e);
       } finally {
         innerDIS.close();
       }
     } catch (ChecksumFailedException e) {
-      Logger.error(this, "Unable to read fetch settings, will use default settings");
+      LOG.error("Unable to read fetch settings, will use default settings");
     }
     if (fctx == null) {
       fctx = context.getDefaultPersistentFetchContext();
@@ -1266,8 +1255,7 @@ public class ClientGet extends ClientRequest
                       context.persistentFileTracker,
                       context.getPersistentMasterSecret());
             } catch (IOException e) {
-              Logger.error(
-                  this,
+              LOG.error(
                   "Failed to restore completed download-to-temp-space request, restarting instead");
               returnBucketDirect = null;
               succeeded = false;
@@ -1276,15 +1264,13 @@ public class ClientGet extends ClientRequest
               innerDIS.close();
             }
           } catch (ChecksumFailedException e) {
-            Logger.error(
-                this,
+            LOG.error(
                 "Failed to restore completed download-to-temp-space request, restarting instead");
             returnBucketDirect = null;
             succeeded = false;
             finished = false;
           } catch (StorageFormatException e) {
-            Logger.error(
-                this,
+            LOG.error(
                 "Failed to restore completed download-to-temp-space request, restarting instead");
             returnBucketDirect = null;
             succeeded = false;
@@ -1301,15 +1287,14 @@ public class ClientGet extends ClientRequest
                 new GetFailedMessage(innerDIS, reqID, foundDataLength, foundDataMimeType);
             started = true;
           } catch (IOException e) {
-            Logger.error(
-                this, "Unable to restore reason for failure, restarting request : " + e, e);
+            LOG.error("Unable to restore reason for failure, restarting request : " + e, e);
             finished = false;
             getFailedMessage = null;
           } finally {
             innerDIS.close();
           }
         } catch (ChecksumFailedException e) {
-          Logger.error(this, "Unable to restore reason for failure, restarting request");
+          LOG.error("Unable to restore reason for failure, restarting request");
           finished = false;
           getFailedMessage = null;
         }
@@ -1325,12 +1310,12 @@ public class ClientGet extends ClientRequest
             readTransientProgressFields(innerDIS);
           }
         } catch (IOException e) {
-          Logger.error(this, "Unable to restore splitfile, restarting: " + e);
+          LOG.error("Unable to restore splitfile, restarting: " + e);
         } finally {
           innerDIS.close();
         }
       } catch (ChecksumFailedException e) {
-        Logger.error(this, "Unable to restore splitfile, restarting (checksum failed)");
+        LOG.error("Unable to restore splitfile, restarting (checksum failed)");
       }
     }
     if (compatMode == null) compatMode = new CompatibilityAnalyser();

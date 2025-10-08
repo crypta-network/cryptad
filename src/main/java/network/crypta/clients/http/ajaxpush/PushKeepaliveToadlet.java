@@ -9,19 +9,18 @@ import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This toadlet receives keepalives. It requires the requestId parameter. If the keepalive is
  * failed, the request is already deleted.
  */
 public class PushKeepaliveToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(PushKeepaliveToadlet.class);
 
   static {
-    Logger.registerClass(PushKeepaliveToadlet.class);
   }
 
   public PushKeepaliveToadlet(HighLevelSimpleClient client) {
@@ -31,8 +30,8 @@ public class PushKeepaliveToadlet extends Toadlet {
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");
-    if (logMINOR) {
-      Logger.minor(this, "Got keepalive:" + requestId);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Got keepalive:" + requestId);
     }
     boolean success =
         ((SimpleToadletServer) ctx.getContainer())

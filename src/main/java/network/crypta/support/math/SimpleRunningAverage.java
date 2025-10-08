@@ -3,8 +3,8 @@ package network.crypta.support.math;
 import java.io.DataOutputStream;
 import java.io.Serial;
 import java.util.Arrays;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Simple running average: linear mean of the last N reports.
@@ -12,6 +12,8 @@ import network.crypta.support.Logger.LogLevel;
  * @author amphibian
  */
 public final class SimpleRunningAverage implements RunningAverage, Cloneable {
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleRunningAverage.class);
+
   @Serial private static final long serialVersionUID = -1;
   final double[] refs;
   int nextSlotPtr = 0;
@@ -19,7 +21,6 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
   double total = 0;
   int totalReports = 0;
   final double initValue;
-  private final boolean logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
 
   @Override
   public SimpleRunningAverage clone() {
@@ -83,7 +84,7 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
   @Override
   public synchronized void report(double d) {
     totalReports++;
-    if (logDEBUG) Logger.debug(this, "report(" + d + ") on " + this);
+    if (LOG.isTraceEnabled()) LOG.trace("report(" + d + ") on " + this);
     if (curLen < refs.length) curLen++;
     else total -= popValue();
     pushValue(d);

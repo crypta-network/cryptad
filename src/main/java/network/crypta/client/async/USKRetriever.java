@@ -15,17 +15,18 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestClient;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.DecompressorThreadManager;
 import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Poll a USK, and when a new slot is found, fetch it. */
 public class USKRetriever extends BaseClientGetter implements USKCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(USKRetriever.class);
+
   @Serial private static final long serialVersionUID = 5913500655676487409L;
 
   /** Context for fetching data */
@@ -47,16 +48,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    */
   private USKFetcher fetcher;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   public USKRetriever(
@@ -85,19 +77,14 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
       boolean newKnownGood,
       boolean newSlotToo) {
     if (l < 0) {
-      Logger.error(this, "Found negative edition: " + l + " for " + key + " !!!");
+      LOG.error("Found negative edition: " + l + " for " + key + " !!!");
       return;
     }
     if (l < origUSK.suggestedEdition) {
-      Logger.warning(
-          this,
-          "Found edition prior to that specified by the client: "
-              + l
-              + " < "
-              + origUSK.suggestedEdition);
+      LOG.info("Found edition {} < requested {} for {}", l, origUSK.suggestedEdition, origUSK);
       return;
     }
-    if (logMINOR) Logger.minor(this, "Found edition " + l + " for " + this + " - fetching...");
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l + " for " + this + " - fetching...");
     // Create a SingleFileFetcher for the key (as an SSK).
     // Put the edition number into its context object.
     // Put ourself as callback.
@@ -124,9 +111,9 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
                   false);
       getter.schedule(context);
     } catch (MalformedURLException e) {
-      Logger.error(this, "Impossible: " + e, e);
+      LOG.error("Impossible: " + e, e);
     } catch (FetchException e) {
-      Logger.error(this, "Could not start fetcher for " + uri + " : " + e, e);
+      LOG.error("Could not start fetcher for " + uri + " : " + e, e);
     }
   }
 
@@ -137,9 +124,8 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
       List<? extends Compressor> decompressors,
       final ClientGetState state,
       ClientContext context) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Success on "
               + this
               + " from "
@@ -157,11 +143,11 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), state, context);
       return;
     } catch (IOException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, e), state, context);
       return;
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
       return;
     }
@@ -169,7 +155,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
     try (OutputStream output = finalResult.getOutputStream()) {
       // Decompress
       if (decompressors != null) {
-        if (logMINOR) Logger.minor(this, "Decompressing...");
+        if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
         try (PipedInputStream pipeIn = new PipedInputStream();
             PipedOutputStream pipeOut = new PipedOutputStream(pipeIn)) {
           decompressorManager = new DecompressorThreadManager(pipeIn, decompressors, maxLen);
@@ -195,10 +181,10 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
         streamGenerator.writeTo(output, context);
       }
     } catch (IOException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, e), state, context);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
       return;
     }
@@ -230,8 +216,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
         context.uskManager.updateKnownGood(origUSK, state.getToken(), context);
         return;
     }
-    Logger.warning(
-        this, "Found edition " + state.getToken() + " but failed to fetch edition: " + e, e);
+    LOG.warn("Found edition " + state.getToken() + " but failed to fetch edition: " + e, e);
   }
 
   @Override
@@ -386,7 +371,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 
   @Override
   public void innerOnResume(ClientContext context) {
-    Logger.error(this, "Cannot be persistent");
+    LOG.error("Cannot be persistent");
     // Do nothing. Cannot be persistent.
   }
 

@@ -9,16 +9,15 @@ import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.HTMLDecoder;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** This toadlet is used to dismiss alerts from the client side */
 public class DismissAlertToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(DismissAlertToadlet.class);
 
   static {
-    Logger.registerClass(DismissAlertToadlet.class);
   }
 
   public DismissAlertToadlet(HighLevelSimpleClient client) {
@@ -29,8 +28,8 @@ public class DismissAlertToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException, RedirectException {
     // The anchor is used to identify the alert
     String anchor = HTMLDecoder.decode(req.getParam("anchor"));
-    if (logMINOR) {
-      Logger.minor(this, "Dismissing alert with anchor:" + anchor);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dismissing alert with anchor:" + anchor);
     }
     // Dismiss the alert
     // boolean success = ((SimpleToadletServer)

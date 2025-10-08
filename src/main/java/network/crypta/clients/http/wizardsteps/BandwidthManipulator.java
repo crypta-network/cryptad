@@ -9,13 +9,15 @@ import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.IllegalValueException;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Utility class used by bandwidth steps to detect and set bandwidth, and set the wizard completion
  * flag.
  */
 public abstract class BandwidthManipulator {
+  private static final Logger LOG = LoggerFactory.getLogger(BandwidthManipulator.class);
 
   protected final NodeClientCore core;
   protected final Config config;
@@ -39,13 +41,13 @@ public abstract class BandwidthManipulator {
     String limitType = setOutputLimit ? "outputBandwidthLimit" : "inputBandwidthLimit";
     try {
       config.get("node").set(limitType, limit);
-      Logger.normal(this, "The " + limitType + " has been set to " + limit);
+      LOG.info("The " + limitType + " has been set to " + limit);
     } catch (ConfigException e) {
       if (e instanceof InvalidConfigValueException exception) {
         // Limit was not readable.
         throw exception;
       }
-      Logger.error(this, "Should not happen, please report!" + e, e);
+      LOG.error("Should not happen, please report!" + e, e);
     }
   }
 
@@ -93,8 +95,7 @@ public abstract class BandwidthManipulator {
 
     int downstreamBits = bwIndicator.getDownstreamMaxBitRate();
     int upstreamBits = bwIndicator.getUpstramMaxBitRate();
-    Logger.normal(
-        bwIndicator,
+    LOG.info(
         "bandwidthIndicator reports downstream "
             + downstreamBits
             + " bits/s and upstream "
@@ -133,7 +134,7 @@ public abstract class BandwidthManipulator {
       // TODO: Is there anything that can reasonably be done about this? What kind of failures could
       // occur?
       // TODO: Is logging and continuing a reasonable behavior?
-      Logger.error(this, e.getMessage(), e);
+      LOG.error(e.getMessage(), e);
     }
   }
 }

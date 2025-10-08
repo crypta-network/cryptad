@@ -12,18 +12,17 @@ import network.crypta.client.async.CacheFetchResult;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.NoFreeBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Per-PersistentRequestClient cache of status of requests. */
 public class RequestStatusCache {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(RequestStatusCache.class);
 
   static {
-    Logger.registerClass(RequestStatusCache.class);
   }
 
   private final ArrayList<RequestStatus> downloads;
@@ -42,7 +41,7 @@ public class RequestStatusCache {
 
   synchronized void addDownload(DownloadRequestStatus status) {
     RequestStatus old = requestsByIdentifier.put(status.getIdentifier(), status);
-    if (logMINOR) Logger.minor(this, "Starting download " + status.getIdentifier());
+    if (LOG.isDebugEnabled()) LOG.debug("Starting download " + status.getIdentifier());
     if (old == status) return;
     if (old != null) downloads.remove(old);
     downloads.add(status);
@@ -52,7 +51,7 @@ public class RequestStatusCache {
   synchronized void addUpload(UploadRequestStatus status) {
     RequestStatus old = requestsByIdentifier.put(status.getIdentifier(), status);
     if (old == status) return;
-    if (logMINOR) Logger.minor(this, "Starting upload " + status.getIdentifier());
+    if (LOG.isDebugEnabled()) LOG.debug("Starting upload " + status.getIdentifier());
     if (old != null) uploads.remove(old);
     uploads.add(status);
     FreenetURI uri = status.getURI();

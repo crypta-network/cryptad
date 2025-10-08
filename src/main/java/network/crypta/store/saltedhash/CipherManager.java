@@ -12,7 +12,8 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.node.MasterKeys;
 import network.crypta.support.ByteArrayWrapper;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Cipher Manager
@@ -22,6 +23,8 @@ import network.crypta.support.Logger;
  * @author sdiz
  */
 public class CipherManager {
+  private static final Logger LOG = LoggerFactory.getLogger(CipherManager.class);
+
   /** The actual salt. 16 bytes. */
   private final byte[] salt;
 
@@ -144,7 +147,7 @@ public class CipherManager {
 
       return PCFBMode.create(aes, iv2);
     } catch (UnsupportedCipherException e) {
-      Logger.error(this, "Rijndael not supported!", e);
+      LOG.error("Rijndael not supported!", e);
       throw new Error("Rijndael not supported!", e);
     }
   }

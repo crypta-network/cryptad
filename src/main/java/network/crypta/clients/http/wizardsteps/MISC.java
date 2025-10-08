@@ -6,14 +6,16 @@ import network.crypta.config.ConfigException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Allows the user to choose whether to enable auto-updating, and what official utility plugins to
  * install.
  */
 public class MISC implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(MISC.class);
 
   private final Config config;
   private final NodeClientCore core;
@@ -96,7 +98,7 @@ public class MISC implements Step {
     try {
       config.get("node.updater").set("autoupdate", enabled);
     } catch (ConfigException e) {
-      Logger.error(this, "Should not happen, please report!" + e, e);
+      LOG.error("Should not happen, please report!" + e, e);
     }
   }
 

@@ -10,14 +10,13 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ClientGet message.
@@ -35,6 +34,7 @@ import network.crypta.support.io.FileUtil;
  * to maintain its own state IgnoreUSKDatehints=false // true = don't use USK datehints EndMessage
  */
 public class ClientGetMessage extends BaseDataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGetMessage.class);
 
   public static final String NAME = "ClientGet";
   final boolean ignoreDS;
@@ -61,17 +61,7 @@ public class ClientGetMessage extends BaseDataCarryingMessage {
   private Bucket initialMetadata;
   private final long initialMetadataLength;
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   public ClientGetMessage(SimpleFieldSet fs) throws MessageInvalidException {
     short defaultPriority;
@@ -199,7 +189,7 @@ public class ClientGetMessage extends BaseDataCarryingMessage {
             global);
       }
     }
-    if (logMINOR) Logger.minor(this, "max retries=" + maxRetries);
+    if (LOG.isDebugEnabled()) LOG.debug("max retries=" + maxRetries);
     String priorityString = fs.get("PriorityClass");
     if (priorityString == null) {
       // defaults to the one just below FProxy

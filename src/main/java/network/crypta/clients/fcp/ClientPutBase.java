@@ -19,10 +19,9 @@ import network.crypta.client.events.StartedCompressionEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Base class for ClientPut and ClientPutDir. Any code which can be shared between the two goes
@@ -30,6 +29,7 @@ import network.crypta.support.api.Bucket;
  */
 public abstract class ClientPutBase extends ClientRequest
     implements ClientPutCallback, ClientEventListener {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutBase.class);
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -70,17 +70,7 @@ public abstract class ClientPutBase extends ClientRequest
   public static final String SALT = "Salt";
   public static final String FILE_HASH = "FileHash";
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy threshold callback removed.
 
   private static final Map<Integer, UploadFrom> uploadFromByCode = new HashMap<>();
 
@@ -245,7 +235,7 @@ public abstract class ClientPutBase extends ClientRequest
       finished = true;
       completionTime = System.currentTimeMillis();
       if (generatedURI == null)
-        Logger.error(this, "No generated URI in onSuccess() for " + this + " from " + state);
+        LOG.error("No generated URI in onSuccess() for " + this + " from " + state);
     }
     if (persistence == Persistence.CONNECTION) {
       freeData();
@@ -277,17 +267,15 @@ public abstract class ClientPutBase extends ClientRequest
     synchronized (this) {
       if (generatedURI != null) {
         if (!uri.equals(generatedURI))
-          Logger.error(
-              this,
+          LOG.error(
               "onGeneratedURI("
                   + uri
                   + ','
                   + state
                   + ") but already set generatedURI to "
                   + generatedURI);
-        else if (logMINOR)
-          Logger.minor(
-              this, "onGeneratedURI() twice with same value: " + generatedURI + " -> " + uri);
+        else if (LOG.isDebugEnabled())
+          LOG.debug("onGeneratedURI() twice with same value: " + generatedURI + " -> " + uri);
       } else {
         generatedURI = uri;
       }
@@ -310,10 +298,9 @@ public abstract class ClientPutBase extends ClientRequest
     boolean delete = false;
     synchronized (this) {
       if (generatedURI != null)
-        Logger.error(
-            this, "Got generated metadata but already have URI on " + this + " from " + state);
+        LOG.error("Got generated metadata but already have URI on " + this + " from " + state);
       if (generatedMetadata != null) {
-        Logger.error(this, "Already got generated metadata from " + state + " on " + this);
+        LOG.error("Already got generated metadata from " + state + " on " + this);
         delete = true;
       } else {
         generatedMetadata = metadata;
@@ -365,7 +352,7 @@ public abstract class ClientPutBase extends ClientRequest
   @Override
   public void receive(final ClientEvent ce, ClientContext context) {
     if (finished) return;
-    if (logMINOR) Logger.minor(this, "Receiving event " + ce + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Receiving event " + ce + " on " + this);
     if (ce instanceof SplitfileProgressEvent event3) {
       if ((verbosity & VERBOSITY_SPLITFILE_PROGRESS) == VERBOSITY_SPLITFILE_PROGRESS) {
         SimpleProgressMessage progress = new SimpleProgressMessage(identifier, global, event3);
@@ -430,7 +417,7 @@ public abstract class ClientPutBase extends ClientRequest
     }
 
     if (msg == null) {
-      Logger.error(this, "Trying to send null message on " + this, new Exception("error"));
+      LOG.warn("Trying to send null message on {}", this);
     } else {
       if (persistence == Persistence.CONNECTION && handler == null) {
         if (origHandler != null)

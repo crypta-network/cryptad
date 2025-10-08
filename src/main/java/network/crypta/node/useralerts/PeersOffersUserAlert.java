@@ -8,9 +8,11 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PeersOffersUserAlert extends AbstractUserAlert {
+  private static final Logger LOG = LoggerFactory.getLogger(PeersOffersUserAlert.class);
 
   private final String frefFiles;
 
@@ -82,8 +84,7 @@ public class PeersOffersUserAlert extends AbstractUserAlert {
     try {
       node.getConfig().get("node").set("peersOffersDismissed", true);
     } catch (InvalidConfigValueException | NodeNeedRestartException e) {
-      if (Logger.shouldLog(Logger.LogLevel.MINOR, this))
-        Logger.minor(this, e.getLocalizedMessage());
+      if (LOG.isDebugEnabled()) LOG.debug(e.getLocalizedMessage());
       valid = false;
     }
   }

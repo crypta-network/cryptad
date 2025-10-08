@@ -32,7 +32,6 @@ import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientCHK;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.RandomArrayIterator;
 import network.crypta.support.Ticker;
@@ -52,6 +51,8 @@ import network.crypta.support.io.RAFInputStream;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Similar to SplitFileFetcherStorage. The status of a splitfile insert, including the encoded check
@@ -77,12 +78,9 @@ import network.crypta.support.math.MersenneTwister;
  * @author toad
  */
 public class SplitFileInserterStorage {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterStorage.class);
 
   static {
-    Logger.registerClass(SplitFileInserterStorage.class);
   }
 
   /** The original file to upload */
@@ -427,13 +425,13 @@ public class SplitFileInserterStorage {
 
     if (crossCheckBlocks != 0) {
       byte[] seed = Metadata.getCrossSegmentSeed(hashes, hashThisLayerOnly);
-      if (logMINOR) Logger.minor(this, "Cross-segment seed: " + HexUtil.bytesToHex(seed));
+      if (LOG.isDebugEnabled()) LOG.debug("Cross-segment seed: " + HexUtil.bytesToHex(seed));
       Random xsRandom = MersenneTwister.createUnsynchronized(seed);
       // Cross segment redundancy: Allocate the blocks.
       crossSegments = new SplitFileInserterCrossSegmentStorage[segs];
       int segLen = segmentSize;
       for (int i = 0; i < crossSegments.length; i++) {
-        if (logMINOR) Logger.minor(this, "Allocating blocks for cross segment " + i);
+        if (LOG.isDebugEnabled()) LOG.debug("Allocating blocks for cross segment " + i);
         if (segments.length - i == deductBlocksFromSegments) {
           segLen--;
         }
@@ -588,12 +586,12 @@ public class SplitFileInserterStorage {
     if (persistent) {
       // Padding is initialized to random already.
       for (SplitFileInserterSegmentStorage segment : segments) {
-        if (logMINOR) Logger.minor(this, "Clearing status for " + segment);
+        if (LOG.isDebugEnabled()) LOG.debug("Clearing status for " + segment);
         segment.storeStatus(true);
       }
       if (crossSegments != null) {
         for (SplitFileInserterCrossSegmentStorage segment : crossSegments) {
-          if (logMINOR) Logger.minor(this, "Clearing status for " + segment);
+          if (LOG.isDebugEnabled()) LOG.debug("Clearing status for " + segment);
           segment.storeStatus();
         }
       }
@@ -1163,9 +1161,8 @@ public class SplitFileInserterStorage {
                 keysFetching);
 
         if (deductBlocksFromSegments != 0)
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "INSERTING: Segment "
                     + segNo
                     + " of "
@@ -1204,8 +1201,7 @@ public class SplitFileInserterStorage {
           || status == Status.SUCCEEDED) return;
     }
     for (SplitFileInserterSegmentStorage segment : segments) segment.checkKeys();
-    Logger.normal(
-        this,
+    LOG.info(
         "Starting splitfile, "
             + countEncodedSegments()
             + "/"
@@ -1213,8 +1209,7 @@ public class SplitFileInserterStorage {
             + " segments encoded on "
             + this);
     if (crossSegments != null)
-      Logger.normal(
-          this,
+      LOG.info(
           "Starting splitfile, "
               + countEncodedCrossSegments()
               + "/"
@@ -1318,7 +1313,7 @@ public class SplitFileInserterStorage {
     synchronized (this) {
       if (status == Status.ENCODED_CROSS_SEGMENTS) return; // Race condition.
       if (status != Status.STARTED) {
-        Logger.error(this, "Wrong state " + status + " for " + this, new Exception("error"));
+        LOG.error("Wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED_CROSS_SEGMENTS;
@@ -1331,7 +1326,7 @@ public class SplitFileInserterStorage {
       if (status == Status.ENCODED) return; // Race condition.
       if (!(status == Status.ENCODED_CROSS_SEGMENTS
           || (crossSegments == null && status == Status.STARTED))) {
-        Logger.error(this, "Wrong state " + status + " for " + this, new Exception("error"));
+        LOG.error("Wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED;
@@ -1527,9 +1522,8 @@ public class SplitFileInserterStorage {
     assert (segNo >= 0 && segNo < segments.length);
     assert (blockNo >= 0 && blockNo < segments[segNo].totalBlockCount);
     long fileOffset = this.offsetSegmentKeys[segNo] + (long) keyLength * blockNo;
-    if (logDEBUG)
-      Logger.debug(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Writing key for block "
               + blockNo
               + " for segment "
@@ -1544,9 +1538,8 @@ public class SplitFileInserterStorage {
   byte[] innerReadSegmentKey(int segNo, int blockNo) throws IOException {
     byte[] buf = new byte[keyLength];
     long fileOffset = this.offsetSegmentKeys[segNo] + (long) keyLength * blockNo;
-    if (logDEBUG)
-      Logger.debug(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Reading key for block "
               + blockNo
               + " for segment "
@@ -1565,14 +1558,15 @@ public class SplitFileInserterStorage {
 
   /** Called when a segment completes. Can be called inside locks as it runs off-thread. */
   public void segmentSucceeded(final SplitFileInserterSegmentStorage completedSegment) {
-    if (logMINOR) Logger.minor(this, "Succeeded segment " + completedSegment + " for " + callback);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Succeeded segment " + completedSegment + " for " + callback);
     jobRunner.queueNormalOrDrop(
         new PersistentJob() {
 
           @Override
           public boolean run(ClientContext context) {
-            if (logMINOR)
-              Logger.minor(this, "Succeeding segment " + completedSegment + " for " + callback);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Succeeding segment " + completedSegment + " for " + callback);
             if (maybeFail()) return true;
             if (allSegmentsSucceeded()) {
               synchronized (this) {
@@ -1580,7 +1574,7 @@ public class SplitFileInserterStorage {
                 if (hasFinished()) return false;
                 status = Status.GENERATING_METADATA;
               }
-              if (logMINOR) Logger.minor(this, "Generating metadata...");
+              if (LOG.isDebugEnabled()) LOG.debug("Generating metadata...");
               try {
                 Metadata metadata = encodeMetadata();
                 synchronized (this) {
@@ -1606,7 +1600,7 @@ public class SplitFileInserterStorage {
                 callback.onFailed(e1);
               }
             } else {
-              if (logMINOR) Logger.minor(this, "Not all segments succeeded for " + this);
+              if (LOG.isDebugEnabled()) LOG.debug("Not all segments succeeded for " + this);
             }
             return true;
           }
@@ -1622,12 +1616,12 @@ public class SplitFileInserterStorage {
         if (failing == null) return false;
         e = failing;
         if (hasFinished()) {
-          if (logMINOR) Logger.minor(this, "Maybe fail returning true because already finished");
+          if (LOG.isDebugEnabled()) LOG.debug("Maybe fail returning true because already finished");
           return true;
         }
         status = Status.FAILED;
       }
-      if (logMINOR) Logger.minor(this, "Maybe fail returning true with error " + e);
+      if (LOG.isDebugEnabled()) LOG.debug("Maybe fail returning true with error " + e);
       callback.onFailed(e);
       return true;
     } else {
@@ -1650,7 +1644,7 @@ public class SplitFileInserterStorage {
   private boolean allSegmentsSucceeded() {
     for (SplitFileInserterSegmentStorage segment : segments) {
       if (!segment.hasSucceeded()) return false;
-      if (logMINOR) Logger.minor(this, "Succeeded " + segment);
+      if (LOG.isDebugEnabled()) LOG.debug("Succeeded " + segment);
     }
     return true;
   }
@@ -1682,8 +1676,7 @@ public class SplitFileInserterStorage {
           || this.status == Status.GENERATING_METADATA) {
         // Not serious but often indicates a problem e.g. we are sending requests after completing.
         // So log as ERROR for now.
-        Logger.error(
-            this, "Already finished (" + status + ") but failing with " + e + " (" + this + ")", e);
+        LOG.error("Already finished (" + status + ") but failing with " + e + " (" + this + ")", e);
         return;
       }
       // Only fail once.
@@ -1691,8 +1684,8 @@ public class SplitFileInserterStorage {
       failing = e;
     }
     if (e.mode == InsertExceptionMode.BUCKET_ERROR || e.mode == InsertExceptionMode.INTERNAL_ERROR)
-      Logger.error(this, "Failing: " + e + " for " + this, e);
-    else Logger.normal(this, "Failing: " + e + " for " + this, e);
+      LOG.error("Failing: " + e + " for " + this, e);
+    else LOG.info("Failing: " + e + " for " + this, e);
     jobRunner.queueNormalOrDrop(
         new PersistentJob() {
 
@@ -1753,8 +1746,7 @@ public class SplitFileInserterStorage {
             return false;
           } catch (IOException e) {
             if (isFinishing()) return false;
-            Logger.error(
-                this, "Failed writing metadata for " + SplitFileInserterStorage.this + ": " + e, e);
+            LOG.error("Failed writing metadata for " + SplitFileInserterStorage.this + ": " + e, e);
             return false;
           }
         }

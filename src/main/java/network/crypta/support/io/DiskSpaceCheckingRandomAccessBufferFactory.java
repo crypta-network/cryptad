@@ -5,12 +5,16 @@ import java.io.IOException;
 import java.util.Random;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import network.crypta.support.Logger;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DiskSpaceCheckingRandomAccessBufferFactory
     implements LockableRandomAccessBufferFactory, DiskSpaceChecker, FileRandomAccessBufferFactory {
+
+  private static final Logger LOG =
+      LoggerFactory.getLogger(DiskSpaceCheckingRandomAccessBufferFactory.class);
 
   private final LockableRandomAccessBufferFactory underlying;
   private final File dir;
@@ -93,7 +97,7 @@ public class DiskSpaceCheckingRandomAccessBufferFactory
   @Override
   public boolean checkDiskSpace(File file, int toWrite, int bufferSize) {
     if (!FileUtil.isParent(dir, file)) {
-      Logger.error(this, "Not checking disk space because " + file + " is not child of " + dir);
+      LOG.error("Not checking disk space because " + file + " is not child of " + dir);
       return true;
     }
     lock.lock();

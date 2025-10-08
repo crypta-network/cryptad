@@ -13,8 +13,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import network.crypta.support.LRUMap;
-import network.crypta.support.Logger;
 import network.crypta.support.StringValidityChecker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A basic session manager for cookie-based HTTP session. It allows its parent web interface to
@@ -44,6 +45,7 @@ import network.crypta.support.StringValidityChecker;
  * @author xor (xor@freenetproject.org)
  */
 public final class SessionManager {
+  private static final Logger LOG = LoggerFactory.getLogger(SessionManager.class);
 
   /** The amount of milliseconds after which a session is deleted due to expiration. */
   public static final long MAX_SESSION_IDLE_TIME = HOURS.toMillis(1);
@@ -326,7 +328,7 @@ public final class SessionManager {
 
       return sessionCookie == null ? null : UUID.fromString(sessionCookie.getValue());
     } catch (ParseException | IllegalArgumentException e) {
-      Logger.error(this, "Getting session cookie failed", e);
+      LOG.error("Getting session cookie failed", e);
       return null;
     }
   }
@@ -409,8 +411,7 @@ public final class SessionManager {
       Session session = sessions.nextElement();
 
       if (!mSessionsByID.containsKey(session.getID())) {
-        Logger.error(
-            this,
+        LOG.error(
             "Sessions by user ID hashtable contains deleted session, removing it: " + session);
 
         mSessionsByUserID.remove(session.getUserID());

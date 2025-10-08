@@ -9,12 +9,12 @@ import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.PersistentTempBucketFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -44,6 +44,7 @@ import network.crypta.support.io.PersistentTempBucketFactory;
  * </pre>
  */
 public class ClientPutComplexDirMessage extends ClientPutDirMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientPutComplexDirMessage.class);
 
   /** The files attached to this message, in a directory hierarchy */
   private final HashMap<String, Object /* <HashMap || DirPutFile> */> filesByName;
@@ -68,7 +69,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     if (files == null)
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "Missing Files section", identifier, global);
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
     for (int i = 0; ; i++) {
       SimpleFieldSet subset = files.subset(Integer.toString(i));
       if (subset == null) break;
@@ -79,11 +80,11 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
               global,
               (persistence == Persistence.FOREVER) ? bfPersistent : bfTemp);
       addFile(f);
-      if (logMINOR) Logger.minor(this, "Adding " + f);
+      if (LOG.isDebugEnabled()) LOG.debug("Adding " + f);
       if (f instanceof DirectDirPutFile file) {
         totalBytes += file.bytesToRead();
         filesToRead.addLast(f);
-        if (logMINOR) Logger.minor(this, "totalBytes now " + totalBytes);
+        if (LOG.isDebugEnabled()) LOG.debug("totalBytes now " + totalBytes);
       }
     }
     attachedBytes = totalBytes;

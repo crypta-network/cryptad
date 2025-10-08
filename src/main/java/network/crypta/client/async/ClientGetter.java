@@ -39,7 +39,6 @@ import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
-import network.crypta.support.Logger;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.CompressionOutputSizeException;
 import network.crypta.support.compress.Compressor;
@@ -50,6 +49,8 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.io.NullOutputStream;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A high level data request. Follows redirects, downloads splitfiles, etc. Similar to what you get
@@ -61,11 +62,11 @@ import network.crypta.support.io.StorageFormatException;
 public class ClientGetter extends BaseClientGetter
     implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGetter.class);
+
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(ClientGetter.class);
   }
 
   /** Will be called when the request completes */
@@ -257,8 +258,8 @@ public class ClientGetter extends BaseClientGetter
    */
   public boolean start(boolean restart, FreenetURI overrideURI, ClientContext context)
       throws FetchException {
-    if (logMINOR)
-      Logger.minor(this, "Starting " + this + " persistent=" + persistent() + " for " + uri);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Starting " + this + " persistent=" + persistent() + " for " + uri);
     try {
       // FIXME synchronization is probably unnecessary.
       // But we DEFINITELY do not want to synchronize while calling currentState.schedule(),
@@ -340,7 +341,7 @@ public class ClientGetter extends BaseClientGetter
       List<? extends Compressor> decompressors,
       ClientGetState state,
       ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Succeeded from " + state + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Succeeded from " + state + " on " + this);
     // Fetching the container is essentially a full success, we should update the latest known good.
     context.uskManager.checkUSK(uri, persistent(), false);
     try {
@@ -409,16 +410,15 @@ public class ClientGetter extends BaseClientGetter
       if (returnBucket == null)
         finalResult = context.getBucketFactory(persistent()).makeBucket(maxLen);
       else finalResult = returnBucket;
-      if (logMINOR)
-        Logger.minor(
-            this, "Writing final data to " + finalResult + " return bucket is " + returnBucket);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Writing final data to " + finalResult + " return bucket is " + returnBucket);
       dataOutput.connect(dataInput);
       result = new FetchResult(clientMetadata, finalResult);
 
       // Decompress
       InputStream processedDataInput = dataInput;
       if (decompressors != null) {
-        if (logMINOR) Logger.minor(this, "Decompressing...");
+        if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
         decompressorManager = new DecompressorThreadManager(dataInput, decompressors, maxLen);
         processedDataInput = decompressorManager.execute();
       }
@@ -450,11 +450,12 @@ public class ClientGetter extends BaseClientGetter
 
         // An error will propagate backwards, so wait for the worker first.
 
-        if (logMINOR) Logger.minor(this, "Waiting for hashing, filtration, and writing to finish");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Waiting for hashing, filtration, and writing to finish");
         worker.waitFinished();
 
         if (decompressorManager != null) {
-          if (logMINOR) Logger.minor(this, "Waiting for decompression to finalize");
+          if (LOG.isDebugEnabled()) LOG.debug("Waiting for decompression to finalize");
           decompressorManager.waitFinished();
         }
 
@@ -469,29 +470,29 @@ public class ClientGetter extends BaseClientGetter
         }
       }
     } catch (UnsafeContentTypeException e) {
-      Logger.normal(this, "Error filtering content: will not validate", e);
+      LOG.info("Error filtering content: will not validate", e);
       ex =
           e.createFetchException(
               ctx.overrideMIME != null ? ctx.overrideMIME : expectedMIME, expectedSize);
       /*Not really the state's fault*/
     } catch (URISyntaxException e) {
       // Impossible
-      Logger.error(this, "URISyntaxException converting a Crypta URI to a URI!: " + e, e);
+      LOG.error("URISyntaxException converting a Crypta URI to a URI!: " + e, e);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
       /*Not really the state's fault*/
     } catch (CompressionOutputSizeException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       ex = new FetchException(FetchExceptionMode.TOO_BIG, e);
     } catch (InsufficientDiskSpaceException e) {
       ex = new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (IOException | FetchException e) {
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       ex =
           e instanceof FetchException fe
               ? fe
               : new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (Throwable t) {
-      Logger.error(this, "Caught " + t, t);
+      LOG.error("Caught " + t, t);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
     }
     if (ex != null) {
@@ -530,7 +531,7 @@ public class ClientGetter extends BaseClientGetter
     File completionFile = getCompletionFile();
     assert (completionFile != null);
     assert (!ctx.filterData);
-    Logger.normal(this, "Succeeding via truncation from " + tempFile + " to " + completionFile);
+    LOG.info("Succeeding via truncation from " + tempFile + " to " + completionFile);
     FetchException ex = null;
     RandomAccessFile raf = null;
     FetchResult result = null;
@@ -560,7 +561,7 @@ public class ClientGetter extends BaseClientGetter
               context.linkFilterExceptionProvider);
       worker.start();
 
-      if (logMINOR) Logger.minor(this, "Waiting for hashing, filtration, and writing to finish");
+      if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
       worker.waitFinished();
 
       is.close();
@@ -585,17 +586,17 @@ public class ClientGetter extends BaseClientGetter
       result = new FetchResult(metadata, returnBucket);
 
     } catch (IOException e) {
-      Logger.error(this, "Failed while completing via truncation: " + e, e);
+      LOG.error("Failed while completing via truncation: " + e, e);
       ex = new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
     } catch (URISyntaxException e) {
-      Logger.error(this, "Impossible failure while completing via truncation: " + e, e);
+      LOG.error("Impossible failure while completing via truncation: " + e, e);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
     } catch (FetchException e) {
       // Hashes failed.
-      Logger.error(this, "Caught " + e, e);
+      LOG.error("Caught " + e, e);
       ex = e;
     } catch (Throwable e) {
-      Logger.error(this, "Failed while completing via truncation: " + e, e);
+      LOG.error("Failed while completing via truncation: " + e, e);
       ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
     }
     if (ex != null) {
@@ -633,7 +634,7 @@ public class ClientGetter extends BaseClientGetter
    */
   public void onFailure(
       FetchException e, ClientGetState state, ClientContext context, boolean force) {
-    if (logMINOR) Logger.minor(this, "Failed from " + state + " : " + e + " on " + this, e);
+    if (LOG.isDebugEnabled()) LOG.debug("Failed from " + state + " : " + e + " on " + this, e);
     ClientGetState oldState = null;
     if (expectedSize > 0 && (e.expectedSize <= 0 || finalBlocksTotal != 0))
       e.expectedSize = expectedSize;
@@ -664,7 +665,7 @@ public class ClientGetter extends BaseClientGetter
           archiveRestarts++;
           ar = archiveRestarts;
         }
-        if (logMINOR) Logger.minor(this, "Archive restart on " + this + " ar=" + ar);
+        if (LOG.isDebugEnabled()) LOG.debug("Archive restart on " + this + " ar=" + ar);
         if (ar > ctx.maxArchiveRestarts)
           e = new FetchException(FetchExceptionMode.TOO_MANY_ARCHIVE_RESTARTS);
         else {
@@ -681,10 +682,8 @@ public class ClientGetter extends BaseClientGetter
       synchronized (this) {
         if (finished && !force) {
           if (!cancelled)
-            Logger.error(
-                this,
-                "Already finished - not calling callbacks on " + this,
-                new Exception("error"));
+            LOG.error(
+                "Already finished - not calling callbacks on " + this, new Exception("error"));
           alreadyFinished = true;
         }
         finished = true;
@@ -719,8 +718,8 @@ public class ClientGetter extends BaseClientGetter
         e = new FetchException(e.errorCodes.getFirstCodeFetch());
       if (e.mode == FetchExceptionMode.DATA_NOT_FOUND && super.successfulBlocks > 0)
         e = new FetchException(e, FetchExceptionMode.ALL_DATA_NOT_FOUND);
-      if (logMINOR)
-        Logger.minor(this, "onFailure(" + e + ", " + state + ") on " + this + " for " + uri, e);
+      if (LOG.isDebugEnabled())
+        LOG.debug("onFailure(" + e + ", " + state + ") on " + this + " for " + uri, e);
       final FetchException e1 = e;
       if (!alreadyFinished) clientCallback.onFailure(e1, ClientGetter.this);
       return;
@@ -733,21 +732,21 @@ public class ClientGetter extends BaseClientGetter
    */
   @Override
   public void cancel(ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Cancelling " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Cancelling {}", this);
     ClientGetState s;
     synchronized (this) {
       if (super.cancel()) {
-        if (logMINOR) Logger.minor(this, "Already cancelled " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Already cancelled " + this);
         return;
       }
       s = currentState;
     }
     if (s != null) {
-      if (logMINOR)
-        Logger.minor(this, "Cancelling " + s + " for " + this + " instance " + super.toString());
+      if (LOG.isDebugEnabled())
+        LOG.debug("Cancelling " + s + " for " + this + " instance " + super.toString());
       s.cancel(context);
     } else {
-      if (logMINOR) Logger.minor(this, "Nothing to cancel");
+      if (LOG.isDebugEnabled()) LOG.debug("Nothing to cancel");
     }
   }
 
@@ -817,7 +816,7 @@ public class ClientGetter extends BaseClientGetter
    */
   @Override
   public void onBlockSetFinished(ClientGetState state, ClientContext context) {
-    if (logMINOR) Logger.minor(this, "Set finished", new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Set finished");
     blockSetFinalized(context);
   }
 
@@ -833,9 +832,8 @@ public class ClientGetter extends BaseClientGetter
     synchronized (this) {
       if (currentState == oldState) {
         currentState = newState;
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Transition: "
                   + oldState
                   + " -> "
@@ -848,9 +846,8 @@ public class ClientGetter extends BaseClientGetter
                   + super.toString(),
               new Exception("debug"));
       } else {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Ignoring transition: "
                   + oldState
                   + " -> "
@@ -871,7 +868,7 @@ public class ClientGetter extends BaseClientGetter
   /** Can the request be restarted? */
   public boolean canRestart() {
     if (currentState != null && !finished) {
-      if (logMINOR) Logger.minor(this, "Cannot restart because not finished for " + uri);
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot restart because not finished for " + uri);
       return false;
     }
     return true;
@@ -904,27 +901,25 @@ public class ClientGetter extends BaseClientGetter
     if (binaryBlobWriter == null) return;
     synchronized (this) {
       if (finished) {
-        if (logMINOR)
-          Logger.minor(this, "Add key to binary blob for " + this + " but already finished");
+        if (LOG.isDebugEnabled())
+          LOG.debug("Add key to binary blob for " + this + " but already finished");
         return;
       }
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
-          "Adding key " + block.getClientKey().getURI() + " to " + this,
-          new Exception("debug"));
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Adding key " + block.getClientKey().getURI() + " to " + this, new Exception("debug"));
     try {
       binaryBlobWriter.addKey(block, context);
     } catch (IOException e) {
-      Logger.error(this, "Failed to write key to binary blob stream: " + e, e);
+      LOG.error("Failed to write key to binary blob stream: " + e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR, "Failed to write key to binary blob stream: " + e),
           null,
           context);
     } catch (BinaryBlobAlreadyClosedException e) {
-      Logger.error(this, "Failed to write key to binary blob stream (already closed??): " + e, e);
+      LOG.error("Failed to write key to binary blob stream (already closed??): " + e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR,
@@ -1069,9 +1064,8 @@ public class ClientGetter extends BaseClientGetter
   public void onExpectedTopSize(
       long size, long compressed, int blocksReq, int blocksTotal, ClientContext context) {
     if (finalBlocksRequired != 0 || finalBlocksTotal != 0) return;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "New format metadata has top data: original size "
               + size
               + " (compressed "
@@ -1111,8 +1105,7 @@ public class ClientGetter extends BaseClientGetter
   public void onHashes(HashResult[] hashes, ClientContext context) {
     synchronized (this) {
       if (this.hashes != null) {
-        if (!HashResult.strictEquals(hashes, this.hashes))
-          Logger.error(this, "Two sets of hashes?!");
+        if (!HashResult.strictEquals(hashes, this.hashes)) LOG.error("Two sets of hashes?!");
         return;
       }
       this.hashes = hashes;
@@ -1172,11 +1165,11 @@ public class ClientGetter extends BaseClientGetter
         currentState.onResume(context);
       } catch (FetchException e) {
         currentState = null;
-        Logger.error(this, "Failed to resume: " + e, e);
+        LOG.error("Failed to resume: " + e, e);
         throw new ResumeFailedException(e);
       } catch (RuntimeException e) {
         // Severe serialization problems, lost a class silently etc.
-        Logger.error(this, "Failed to resume: " + e, e);
+        LOG.error("Failed to resume: " + e, e);
         throw new ResumeFailedException(e);
       }
     // returnBucket is responsibility of the callback.
@@ -1227,13 +1220,13 @@ public class ClientGetter extends BaseClientGetter
         resumedFetcher = true;
         return true;
       } catch (StorageFormatException e) {
-        Logger.error(this, "Failed to restore from splitfile, restarting: " + e, e);
+        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
         return false;
       } catch (ResumeFailedException e) {
-        Logger.error(this, "Failed to restore from splitfile, restarting: " + e, e);
+        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
         return false;
       } catch (IOException e) {
-        Logger.error(this, "Failed to restore from splitfile, restarting: " + e, e);
+        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
         return false;
       }
     } else return false;

@@ -4,6 +4,8 @@ import java.util.Hashtable;
 import java.util.Timer;
 import java.util.TimerTask;
 import network.crypta.node.FastRunnable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Ticker implemented using Timer's.
@@ -14,6 +16,8 @@ import network.crypta.node.FastRunnable;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class TrivialTicker implements Ticker {
+
+  private static final Logger LOG = LoggerFactory.getLogger(TrivialTicker.class);
 
   private final Timer timer = new Timer(true);
 
@@ -149,7 +153,7 @@ public class TrivialTicker implements Ticker {
         try {
           shutdownThread.join();
         } catch (InterruptedException e) {
-          Logger.error(this, "Got an unexpected InterruptedException", e);
+          LOG.error("Got an unexpected InterruptedException", e);
         }
       }
     }

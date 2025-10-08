@@ -15,12 +15,14 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
 import network.crypta.io.SSLNetworkInterface;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TextModeClientInterfaceServer implements Runnable {
+  private static final Logger LOG = LoggerFactory.getLogger(TextModeClientInterfaceServer.class);
 
   final RandomSource r;
   final Node n;
@@ -53,7 +55,7 @@ public class TextModeClientInterfaceServer implements Runnable {
   }
 
   void start() {
-    Logger.normal(core, "TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
+    LOG.info("TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
     System.out.println("TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
 
     n.getExecutor().execute(this, "Text mode client interface");
@@ -320,7 +322,7 @@ public class TextModeClientInterfaceServer implements Runnable {
       try {
         networkInterface.setSoTimeout(1000);
       } catch (SocketException e1) {
-        Logger.error(this, "Could not set timeout: " + e1, e1);
+        LOG.error("Could not set timeout: " + e1, e1);
         System.err.println("Could not start TMCI: " + e1);
         e1.printStackTrace();
         return;
@@ -339,15 +341,15 @@ public class TextModeClientInterfaceServer implements Runnable {
 
           n.getExecutor().execute(tmci, "Text mode client interface handler for " + s.getPort());
         } catch (SocketException e) {
-          Logger.error(this, "Socket error : " + e, e);
+          LOG.error("Socket error : " + e, e);
         } catch (IOException e) {
-          Logger.error(this, "TMCI failed to accept socket: " + e, e);
+          LOG.error("TMCI failed to accept socket: " + e, e);
         }
       }
       try {
         networkInterface.close();
       } catch (IOException e) {
-        Logger.error(this, "Error shuting down TMCI", e);
+        LOG.error("Error shuting down TMCI", e);
       }
     }
   }

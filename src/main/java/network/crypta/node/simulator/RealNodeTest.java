@@ -12,9 +12,8 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Optional base class for RealNode*Test. Has some useful utilities.
@@ -23,6 +22,7 @@ import network.crypta.support.Logger.LogLevel;
  * @author robert
  */
 public class RealNodeTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeTest.class);
 
   static final int EXIT_BASE = NodeInitException.EXIT_NODE_UPPER_LIMIT;
   static final int EXIT_CANNOT_DELETE_OLD_DATA = EXIT_BASE + 3;
@@ -34,16 +34,7 @@ public class RealNodeTest {
   static final FRIEND_TRUST trust = FRIEND_TRUST.LOW;
   static final FRIEND_VISIBILITY visibility = FRIEND_VISIBILITY.NO;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   /* Because we start a whole bunch of nodes at once, we will get many "Not reusing
@@ -108,13 +99,13 @@ public class RealNodeTest {
       a.connect(b, trust, visibility);
       b.connect(a, trust, visibility);
     } catch (FSParseException e) {
-      Logger.error(RealNodeTest.class, "cannot connect!!!!", e);
+      LOG.error("cannot connect!!!!", e);
     } catch (PeerParseException e) {
-      Logger.error(RealNodeTest.class, "cannot connect #2!!!!", e);
+      LOG.error("cannot connect #2!!!!", e);
     } catch (ReferenceSignatureVerificationException e) {
-      Logger.error(RealNodeTest.class, "cannot connect #3!!!!", e);
+      LOG.error("cannot connect #3!!!!", e);
     } catch (PeerTooOldException e) {
-      Logger.error(RealNodeTest.class, "cannot connect #4!!!!", e);
+      LOG.error("cannot connect #4!!!!", e);
     }
   }
 
@@ -166,9 +157,8 @@ public class RealNodeTest {
           countFullyConnected++;
           if (countBackedOff == 0) countReallyConnected++;
         } else {
-          if (logMINOR)
-            Logger.minor(
-                RealNodeTest.class,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Connection count for "
                     + nodes[i]
                     + " : "
@@ -177,8 +167,7 @@ public class RealNodeTest {
                     + countAlmostConnected);
         }
         if (countBackedOff > 0) {
-          if (logMINOR)
-            Logger.minor(RealNodeTest.class, "Backed off: " + nodes[i] + " : " + countBackedOff);
+          if (LOG.isDebugEnabled()) LOG.debug("Backed off: " + nodes[i] + " : " + countBackedOff);
         }
       }
       double avgPingTime = totalPingTime / nodes.length;
@@ -189,7 +178,7 @@ public class RealNodeTest {
           && maxPingTime < NodeStats.DEFAULT_SUB_MAX_PING_TIME
           && avgPingTime < NodeStats.DEFAULT_SUB_MAX_PING_TIME) {
         System.err.println("All nodes fully connected");
-        Logger.normal(RealNodeTest.class, "All nodes fully connected");
+        LOG.info("All nodes fully connected");
         System.err.println();
         return;
       } else {
@@ -218,8 +207,7 @@ public class RealNodeTest {
                 + " at "
                 + tDelta
                 + 's');
-        Logger.normal(
-            RealNodeTest.class,
+        LOG.info(
             "Waiting for nodes to be fully connected: "
                 + countFullyConnected
                 + " / "

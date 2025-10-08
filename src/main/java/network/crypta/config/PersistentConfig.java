@@ -1,11 +1,13 @@
 package network.crypta.config;
 
 import java.util.Iterator;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Config but supports an initial SimpleFieldSet, from which options are drawn. */
 public class PersistentConfig extends Config {
+  private static final Logger LOG = LoggerFactory.getLogger(PersistentConfig.class);
 
   protected SimpleFieldSet origConfigFileContents;
   protected volatile boolean finishedInit;
@@ -22,8 +24,7 @@ public class PersistentConfig extends Config {
     Iterator<String> i = origConfigFileContents.keyIterator();
     while (i.hasNext()) {
       String key = i.next();
-      Logger.error(
-          this, "Unknown option: " + key + " (value=" + origConfigFileContents.get(key) + ')');
+      LOG.error("Unknown option: " + key + " (value=" + origConfigFileContents.get(key) + ')');
     }
     origConfigFileContents = null;
     super.finishedInit();
@@ -67,7 +68,7 @@ public class PersistentConfig extends Config {
     try {
       o.setInitialValue(val.trim());
     } catch (InvalidConfigValueException e) {
-      Logger.error(this, "Could not parse config option " + name + ": " + e, e);
+      LOG.error("Could not parse config option " + name + ": " + e, e);
     }
   }
 

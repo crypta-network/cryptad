@@ -5,10 +5,13 @@ import static network.crypta.support.PredicateUtil.not;
 import java.io.*;
 import java.util.*;
 import java.util.function.Predicate;
-import network.crypta.support.Logger;
 import network.crypta.support.io.BitInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TheoraPacketFilter implements CodecPacketFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(TheoraPacketFilter.class);
+
   static final byte[] magicNumber = new byte[] {'t', 'h', 'e', 'o', 'r', 'a'};
 
   enum Packet {
@@ -27,19 +30,19 @@ public class TheoraPacketFilter implements CodecPacketFilter {
     try {
       switch (expectedPacket) {
         case IDENTIFICATION_HEADER: // must be first
-          Logger.minor(this, "IDENTIFICATION_HEADER");
+          LOG.debug("IDENTIFICATION_HEADER");
           verifyIdentificationHeader(input);
           expectedPacket = Packet.COMMENT_HEADER;
           break;
 
         case COMMENT_HEADER: // must be second
-          Logger.minor(this, "COMMENT_HEADER");
+          LOG.debug("COMMENT_HEADER");
           verifyTypeAndHeader("Comment", input, 0x81); // expected -127
           expectedPacket = Packet.SETUP_HEADER;
           return constructCommentHeaderWithEmptyVendorStringAndComments();
 
         case SETUP_HEADER: // must be third
-          Logger.minor(this, "SETUP_HEADER");
+          LOG.debug("SETUP_HEADER");
           verifySetupHeader(input);
           expectedPacket = Packet.FRAME;
           break;
@@ -47,7 +50,7 @@ public class TheoraPacketFilter implements CodecPacketFilter {
         case FRAME:
       }
     } catch (IOException e) {
-      Logger.minor(this, "In Theora parser caught " + e, e);
+      LOG.debug("In Theora parser caught " + e, e);
       throw e;
     }
 
@@ -179,7 +182,7 @@ public class TheoraPacketFilter implements CodecPacketFilter {
 
     try {
       input.readBit();
-      Logger.minor(this, "SETUP_HEADER contains redundant bits");
+      LOG.debug("SETUP_HEADER contains redundant bits");
     } catch (EOFException ignored) { // should be eof
     }
   }

@@ -15,9 +15,8 @@ import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestItemKey;
 import network.crypta.node.SendableRequestSender;
 import network.crypta.support.ListUtils;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * All the keys at a given priority which we have received key offers from other nodes for.
@@ -32,22 +31,13 @@ import network.crypta.support.Logger.LogLevel;
  */
 @SuppressWarnings("serial") // We don't serialize this.
 public class OfferedKeysList extends BaseSendableGet implements RequestClient {
+  private static final Logger LOG = LoggerFactory.getLogger(OfferedKeysList.class);
 
   private final HashSet<Key> keys;
   private final ArrayList<Key>
       keysList; // O(1) remove random element the way we use it, see chooseKey().
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private final RandomSource random;
@@ -73,9 +63,8 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
     assert (keysList.size() == keys.size());
     if (keys.remove(key)) {
       ListUtils.removeBySwapLast(keysList, key);
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Found " + key + " , removing it " + " for " + this + " size now " + keysList.size());
     }
     assert (keysList.size() == keys.size());
@@ -165,7 +154,7 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
   @Override
   public void internalError(
       Throwable t, RequestScheduler sched, ClientContext context, boolean persistent) {
-    Logger.error(this, "Internal error: " + t, t);
+    LOG.error("Internal error: " + t, t);
   }
 
   @Override
@@ -233,7 +222,7 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
     assert (keysList.size() == keys.size());
     if (keys.add(key)) {
       keysList.add(key);
-      if (logMINOR) Logger.minor(this, "Queued key " + key + " on " + this);
+      if (LOG.isDebugEnabled()) LOG.debug("Queued key " + key + " on " + this);
     }
     assert (keysList.size() == keys.size());
   }

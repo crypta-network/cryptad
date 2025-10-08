@@ -41,13 +41,14 @@ import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Supervises auto‑update components: core application updates and plugin updates.
@@ -69,6 +70,7 @@ import network.crypta.support.io.IOUtils;
  * bug #6009 for some current UOM compatibility issues.
  */
 public class NodeUpdateManager {
+  private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -162,10 +164,9 @@ public class NodeUpdateManager {
   /* It’s not the field that is deprecated but accessing it directly is. */
   public final UpdateOverMandatoryManager uom;
 
-  private static volatile boolean logMINOR;
   private boolean disabledThisSession;
 
-  // Removed fields related to legacy main-jar flow
+  // CoreUpdater manages core updates; legacy main-jar fields are no longer used.
 
   private static final Object deployLock = new Object();
 
@@ -173,7 +174,6 @@ public class NodeUpdateManager {
   static final String TEMP_FILE_SUFFIX = ".updater.tmp";
 
   static {
-    Logger.registerClass(NodeUpdateManager.class);
   }
 
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
@@ -432,8 +432,8 @@ public class NodeUpdateManager {
   }
 
   void broadcastUOMAnnounces() {
-    if (logMINOR) {
-      Logger.minor(this, "Broadcast UOM announcements");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Broadcast UOM announcements");
     }
     long size = canAnnounceUOMNew();
     Message msg;
@@ -447,8 +447,8 @@ public class NodeUpdateManager {
       broadcastUOMAnnounces = true;
       msg = getNewUOMAnnouncement(size);
     }
-    if (logMINOR) {
-      Logger.minor(this, "Broadcasting UOM announcements");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Broadcasting UOM announcements");
     }
     node.getPeers().localBroadcast(msg, true, true, ctr, TRANSITION_VERSION, Integer.MAX_VALUE);
   }
@@ -480,15 +480,15 @@ public class NodeUpdateManager {
 
     synchronized (broadcastUOMAnnouncesSync) {
       if (!broadcastUOMAnnounces) {
-        if (logMINOR) {
-          Logger.minor(this, "Not sending UOM on connect: Nothing worth announcing yet");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Not sending UOM on connect: Nothing worth announcing yet");
         }
         return; // nothing worth announcing yet
       }
     }
     if (hasBeenBlown && !revocationChecker.hasBlown()) {
-      if (logMINOR) {
-        Logger.minor(this, "Not sending UOM (any) on connect: Local problem causing blown key");
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Not sending UOM (any) on connect: Local problem causing blown key");
       }
       // Local problem, don't broadcast.
       return;
@@ -517,8 +517,7 @@ public class NodeUpdateManager {
   void enable(boolean enable) throws InvalidConfigValueException {
     // FIXME 194eb7bb6f295e52d18378d805bd315c95030b24 is doubtful and incomplete.
     // if(!node.isUsingWrapper()){
-    // Logger.normal(this,
-    // "Don't try to start the updater as we are not running under the wrapper.");
+    // LOG.info(// "Don't try to start the updater as we are not running under the wrapper.");
     // return;
     // }
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
@@ -546,8 +545,7 @@ public class NodeUpdateManager {
       } else {
         // if((!WrapperManager.isControlledByNativeWrapper()) ||
         // (NodeStarter.extBuildNumber == -1)) {
-        // Logger.error(this,
-        // "Cannot update because not running under wrapper");
+        // LOG.error(// "Cannot update because not running under wrapper");
         // throw new
         // InvalidConfigValueException(l10n("noUpdateWithoutWrapper"));
         // }
@@ -580,16 +578,16 @@ public class NodeUpdateManager {
    *     (no .jar)
    */
   public void startPluginUpdater(String plugName) {
-    if (logMINOR) {
-      Logger.minor(this, "Starting plugin updater for " + plugName);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Starting plugin updater for " + plugName);
     }
     OfficialPluginDescription plugin = node.getPluginManager().getOfficialPlugin(plugName);
     if (plugin != null) {
       startPluginUpdater(plugin);
     } else
     // Most likely not an official plugin
-    if (logMINOR) {
-      Logger.minor(this, "No such plugin " + plugName + " in startPluginUpdater()");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("No such plugin " + plugName + " in startPluginUpdater()");
     }
   }
 
@@ -601,8 +599,8 @@ public class NodeUpdateManager {
     PluginInfoWrapper info = node.getPluginManager().findPluginByIdentifier(name);
     if (info == null) {
       if (!(node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(name))) {
-        if (logMINOR) {
-          Logger.minor(this, "Plugin not loaded");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Plugin not loaded");
         }
         return;
       }
@@ -624,14 +622,14 @@ public class NodeUpdateManager {
             autoDeployPluginsOnRestart);
     synchronized (this) {
       if (pluginUpdaters == null) {
-        if (logMINOR) {
-          Logger.minor(this, "Updating not enabled");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Updating not enabled");
         }
         return; // Not enabled
       }
       if (pluginUpdaters.containsKey(name)) {
-        if (logMINOR) {
-          Logger.minor(this, "Already in updaters list");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Already in updaters list");
         }
         return; // Already started
       }
@@ -649,8 +647,8 @@ public class NodeUpdateManager {
     PluginJarUpdater updater = null;
     synchronized (this) {
       if (pluginUpdaters == null) {
-        if (logMINOR) {
-          Logger.minor(this, "Updating not enabled");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Updating not enabled");
         }
         return; // Not enabled
       }
@@ -924,7 +922,7 @@ public class NodeUpdateManager {
   // restart removed
 
   private void failUpdate(String reason) {
-    Logger.error(this, "Update failed: " + reason);
+    LOG.error("Update failed: " + reason);
     System.err.println("Update failed: " + reason);
     this.killUpdateAlerts();
     node.getClientCore()
@@ -980,8 +978,7 @@ public class NodeUpdateManager {
         if (this.disabledNotBlown && !disabledNotBlown) {
           disabledNotBlown = true;
         }
-        Logger.error(
-            this,
+        LOG.error(
             "The key has ALREADY been marked as blown! Message was "
                 + revocationMessage
                 + " new message "
@@ -1007,7 +1004,7 @@ public class NodeUpdateManager {
           }
         } catch (Throwable t) {
           try {
-            Logger.error(this, "Caught " + t, t);
+            LOG.error("Caught " + t, t);
           } catch (Throwable t1) {
           }
         }
@@ -1079,8 +1076,8 @@ public class NodeUpdateManager {
   }
 
   protected void maybeBroadcastUOMAnnounces() {
-    if (logMINOR) {
-      Logger.minor(this, "Maybe broadcast UOM announces");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Maybe broadcast UOM announces");
     }
     synchronized (NodeUpdateManager.this) {
       if (hasBeenBlown) {
@@ -1090,8 +1087,8 @@ public class NodeUpdateManager {
         return;
       }
     }
-    if (logMINOR) {
-      Logger.minor(this, "Maybe broadcast UOM announces (2)");
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Maybe broadcast UOM announces (2)");
     }
     // If the node has no peers, noRevocationFound will never be called.
     broadcastUOMAnnounces();
@@ -1315,8 +1312,7 @@ public class NodeUpdateManager {
     PluginJarUpdater updater;
     synchronized (this) {
       if (hasBeenBlown) {
-        Logger.error(
-            this, "Not deploying update for " + fn + " because revocation key has been blown!");
+        LOG.error("Not deploying update for " + fn + " because revocation key has been blown!");
         return;
       }
       updater = pluginUpdaters.get(fn);
@@ -1328,8 +1324,7 @@ public class NodeUpdateManager {
     PluginJarUpdater updater;
     synchronized (this) {
       if (hasBeenBlown) {
-        Logger.error(
-            this, "Not deploying update for " + fn + " because revocation key has been blown!");
+        LOG.error("Not deploying update for " + fn + " because revocation key has been blown!");
         return;
       }
       updater = pluginUpdaters.get(fn);

@@ -22,9 +22,10 @@ import network.crypta.io.comm.Peer;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
 import network.crypta.node.ProgramDirectory;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Track packet traffic to/from specific peers and IP addresses, in order to determine whether we
@@ -35,6 +36,7 @@ import network.crypta.support.io.FileUtil;
  * @author toad
  */
 public class AddressTracker {
+  private static final Logger LOG = LoggerFactory.getLogger(AddressTracker.class);
 
   /** PeerAddressTrackerItem's by Peer */
   private final HashMap<Peer, PeerAddressTrackerItem> peerTrackers;
@@ -71,8 +73,7 @@ public class AddressTracker {
     } catch (IOException e) {
       // Fall through
     } catch (FSParseException e) {
-      Logger.warning(
-          AddressTracker.class, "Failed to load from disk for port " + port + ": " + e, e);
+      LOG.warn("Failed to load from disk for port " + port + ": " + e, e);
       // Fall through
     } finally {
       if (fis != null)
@@ -148,7 +149,7 @@ public class AddressTracker {
   private void packetTo(Peer peer, boolean sent) {
     Peer peer2 = peer.dropHostName();
     if (peer2 == null) {
-      Logger.error(this, "Impossible: No host name in AddressTracker.packetTo for " + peer);
+      LOG.error("Impossible: No host name in AddressTracker.packetTo for " + peer);
       return;
     }
     peer = peer2;
@@ -162,7 +163,7 @@ public class AddressTracker {
             new PeerAddressTrackerItem(
                 timeDefinitelyNoPacketsReceivedPeer, timeDefinitelyNoPacketsSentPeer, peer);
         if (peerTrackers.size() > MAX_ITEMS) {
-          Logger.error(this, "Clearing peer trackers on " + this);
+          LOG.error("Clearing peer trackers on " + this);
           peerTrackers.clear();
           ipTrackers.clear();
           timeDefinitelyNoPacketsReceivedPeer = now;
@@ -178,7 +179,7 @@ public class AddressTracker {
             new InetAddressAddressTrackerItem(
                 timeDefinitelyNoPacketsReceivedIP, timeDefinitelyNoPacketsSentIP, ip);
         if (ipTrackers.size() > MAX_ITEMS) {
-          Logger.error(this, "Clearing IP trackers on " + this);
+          LOG.error("Clearing IP trackers on " + this);
           peerTrackers.clear();
           ipTrackers.clear();
           timeDefinitelyNoPacketsReceivedIP = now;
@@ -299,7 +300,7 @@ public class AddressTracker {
       fos = null;
       FileUtil.moveTo(dataBak, data);
     } catch (IOException e) {
-      Logger.error(this, "Cannot store packet tracker to disk");
+      LOG.error("Cannot store packet tracker to disk");
     } finally {
       if (fos != null)
         try {

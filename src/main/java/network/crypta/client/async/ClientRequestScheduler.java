@@ -19,24 +19,22 @@ import network.crypta.node.SendableRequest;
 import network.crypta.node.SendableRequestItemKey;
 import network.crypta.support.Fields;
 import network.crypta.support.IdentityHashSet;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Every X seconds, the RequestSender calls the ClientRequestScheduler to ask for a request to
  * start. A request is then started, in its own thread. It is removed at that point.
  */
 public class ClientRequestScheduler implements RequestScheduler {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientRequestScheduler.class);
 
   private KeyListenerTracker schedCore;
   final KeyListenerTracker schedTransient;
   final transient ClientRequestSelector selector;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerClass(ClientRequestScheduler.class);
   }
 
   /**
@@ -143,9 +141,8 @@ public class ClientRequestScheduler implements RequestScheduler {
       final boolean persistent,
       final BlockSet blocks,
       final boolean noCheckStore) {
-    if (logMINOR)
-      Logger.minor(
-          this, "register(" + persistent + "," + hasListener + "," + Fields.commaList(getters));
+    if (LOG.isDebugEnabled())
+      LOG.debug("register(" + persistent + "," + hasListener + "," + Fields.commaList(getters));
     if (isInsertScheduler) {
       throw new IllegalStateException("finishRegister on an insert scheduler");
     }
@@ -153,7 +150,7 @@ public class ClientRequestScheduler implements RequestScheduler {
     if (hasListener != null) {
       listener = hasListener.makeKeyListener(clientContext, false);
       if (listener != null) (persistent ? schedCore : schedTransient).addPendingKeys(listener);
-      else Logger.normal(this, "No KeyListener for " + hasListener);
+      else LOG.info("No KeyListener for " + hasListener);
     } else listener = null;
     if (getters != null && !noCheckStore) {
       for (SendableGet getter : getters) datastoreChecker.queueRequest(getter, blocks);
@@ -169,9 +166,8 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   void finishRegister(final SendableGet[] getters, boolean persistent, final boolean anyValid) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "finishRegister for "
               + Fields.commaList(getters)
               + " anyValid="
@@ -187,7 +183,7 @@ public class ClientRequestScheduler implements RequestScheduler {
     }
     if (persistent) {
       // Add to the persistent registration queue
-      if (logMINOR) Logger.minor(this, "finishRegister() for " + Fields.commaList(getters));
+      if (LOG.isDebugEnabled()) LOG.debug("finishRegister() for " + Fields.commaList(getters));
       if (anyValid) {
         boolean wereAnyValid = false;
         for (SendableGet getter : getters) {
@@ -200,10 +196,10 @@ public class ClientRequestScheduler implements RequestScheduler {
           } else getter.preRegister(clientContext, false);
         }
         if (!wereAnyValid) {
-          Logger.normal(this, "No requests valid");
+          LOG.info("No requests valid");
         }
       } else {
-        Logger.normal(this, "No valid requests passed in");
+        LOG.info("No valid requests passed in");
       }
     } else {
       // Register immediately.
@@ -234,9 +230,8 @@ public class ClientRequestScheduler implements RequestScheduler {
   public void removeRunningRequest(SendableRequest request) {
     synchronized (runningPersistentRequests) {
       if (runningPersistentRequests.remove(request)) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Removed running request "
                   + request
                   + " size now "
@@ -274,7 +269,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   public void removePendingKeys(KeyListener getter, boolean complain) {
     boolean found = schedTransient.removePendingKeys(getter);
     if (schedCore != null) found |= schedCore.removePendingKeys(getter);
-    if (complain && !found) Logger.error(this, "Listener not found when removing: " + getter);
+    if (complain && !found) LOG.error("Listener not found when removing: " + getter);
   }
 
   /**
@@ -286,7 +281,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   public void removePendingKeys(HasKeyListener getter, boolean complain) {
     boolean found = schedTransient.removePendingKeys(getter);
     if (schedCore != null) found |= schedCore.removePendingKeys(getter);
-    if (complain && !found) Logger.error(this, "Listener not found when removing: " + getter);
+    if (complain && !found) LOG.error("Listener not found when removing: " + getter);
   }
 
   public void reregisterAll(final ClientRequester request, short oldPrio) {
@@ -306,7 +301,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   public void tripPendingKey(final KeyBlock block) {
-    if (logMINOR) Logger.minor(this, "tripPendingKey(" + block.getKey() + ")");
+    if (LOG.isDebugEnabled()) LOG.debug("tripPendingKey(" + block.getKey() + ")");
 
     if (offeredKeys != null) {
       offeredKeys.remove(block.getKey());
@@ -340,7 +335,7 @@ public class ClientRequestScheduler implements RequestScheduler {
 
               @Override
               public boolean run(ClientContext context) {
-                if (logMINOR) Logger.minor(this, "tripPendingKey for " + key);
+                if (LOG.isDebugEnabled()) LOG.debug("tripPendingKey for " + key);
                 schedCore.tripPendingKey(key, block, clientContext);
                 return false;
               }
@@ -368,7 +363,7 @@ public class ClientRequestScheduler implements RequestScheduler {
 
   /** Queue the offered key */
   public void queueOfferedKey(final Key key, boolean realTime) {
-    if (logMINOR) Logger.minor(this, "queueOfferedKey(" + key);
+    if (LOG.isDebugEnabled()) LOG.debug("queueOfferedKey(" + key);
     offeredKeys.queueKey(key);
     starter.wakeUp();
   }
@@ -424,10 +419,8 @@ public class ClientRequestScheduler implements RequestScheduler {
             },
             prio);
       } catch (PersistenceDisabledException e1) {
-        Logger.error(
-            this,
-            "callFailure() on a persistent request but database disabled",
-            new Exception("error"));
+        LOG.error(
+            "callFailure() on a persistent request but database disabled", new Exception("error"));
       }
     }
   }
@@ -455,10 +448,8 @@ public class ClientRequestScheduler implements RequestScheduler {
             },
             prio);
       } catch (PersistenceDisabledException e1) {
-        Logger.error(
-            this,
-            "callFailure() on a persistent request but database disabled",
-            new Exception("error"));
+        LOG.error(
+            "callFailure() on a persistent request but database disabled", new Exception("error"));
       }
     }
   }

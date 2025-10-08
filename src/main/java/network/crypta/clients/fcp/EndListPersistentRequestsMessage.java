@@ -2,8 +2,11 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class EndListPersistentRequestsMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(EndListPersistentRequestsMessage.class);
 
   static final String name = "EndListPersistentRequests";
   private final String listRequestIdentifier;

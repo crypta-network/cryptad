@@ -61,9 +61,6 @@ import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.MediaType;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
@@ -75,8 +72,11 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NoFreeBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class FProxyToadlet extends Toadlet implements RequestClient {
+  private static final Logger LOG = LoggerFactory.getLogger(FProxyToadlet.class);
 
   private static byte[] random;
   final NodeClientCore core;
@@ -120,17 +120,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
   }
 
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
-  }
+  // Legacy logMINOR removed; use LOG.isDebugEnabled() directly.
 
   // FIXME make this configurable (or get rid of prefetch support)
   static final int MAX_PREFETCH = 50;
@@ -181,21 +171,16 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       boolean dontFreeData,
       String maybeCharset)
       throws ToadletContextClosedException, IOException {
-    if (logMINOR)
-      Logger.minor(
-          FProxyToadlet.class,
-          "handleDownload(data.size="
-              + data.size()
-              + ", mimeType="
-              + mimeType
-              + ", requestedMimeType="
-              + requestedMimeType
-              + ", forceDownload="
-              + forceDownload
-              + ", basePath="
-              + basePath
-              + ", key="
-              + key);
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "handleDownload(data.size={}, mimeType={}, requestedMimeType={}, forceDownload={},"
+              + " basePath={}, key={})",
+          data.size(),
+          mimeType,
+          requestedMimeType,
+          forceDownload,
+          basePath,
+          key);
     String extrasNoMime =
         extras; // extras will not include MIME type to start with - REDFLAG maybe it should be an
     // array
@@ -602,7 +587,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     MultiValueTable<String, String> headers = ctx.getHeaders();
     final String ua = headers.getFirst("user-agent");
     final String accept = headers.getFirst("accept");
-    if (logMINOR) Logger.minor(this, "UA = " + ua + " accept = " + accept);
+    if (LOG.isDebugEnabled()) LOG.debug("UA = {} accept = {}", ua, accept);
     final boolean canSendProgress =
         isBrowser(ua)
             && !ctx.disableProgressPage()
@@ -642,7 +627,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         try {
           newURI = new FreenetURI(k);
         } catch (MalformedURLException e) {
-          Logger.normal(this, "Invalid key: " + e + " for " + k, e);
+          LOG.info("Invalid key: {} for {}", e.toString(), k, e);
           sendErrorPage(
               ctx,
               404,
@@ -655,7 +640,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
           return;
         }
 
-        if (logMINOR) Logger.minor(this, "Redirecting to Crypta URI: " + newURI);
+        if (LOG.isDebugEnabled()) LOG.debug("Redirecting to Crypta URI: {}", newURI);
         String requestedMimeType = httprequest.getParam("type");
         String location =
             getLink(
@@ -681,7 +666,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
          * This shouldn't happen because all the inputs to the URI constructor come from getters
          * of existing URIs.
          */
-        Logger.error(FProxyToadlet.class, "Unexpected syntax error in URI: " + e);
+        LOG.error("Unexpected syntax error in URI: {}", e.toString());
         writeTemporaryRedirect(
             ctx, "Internal error. Please check logs and report.", WelcomeToadlet.PATH);
         return;
@@ -733,7 +718,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       try {
         parseRange(rangeStr);
       } catch (HTTPRangeException e) {
-        Logger.normal(this, "Invalid Range Header: " + rangeStr, e);
+        LOG.info("Invalid Range Header: {}", rangeStr, e);
         ctx.sendReplyHeaders(416, "Requested Range Not Satisfiable", null, null, 0);
         return;
       }
@@ -786,7 +771,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       fctx.maxSplitfileBlockRetries = maxRetries;
     }
     if (!force && !httprequest.isParameterSet("forcedownload")) fctx.filterData = true;
-    else if (logMINOR) Logger.minor(this, "Content filter disabled via request parameter");
+    else if (LOG.isDebugEnabled()) LOG.debug("Content filter disabled via request parameter");
     // Load the fetch context with the callbacks needed for web-pushing, if enabled
     if (container.enableInlinePrefetch()) {
       fctx.prefetchHook =
@@ -802,7 +787,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             @Override
             public void foundURI(FreenetURI uri, boolean inline) {
               if (!inline) return;
-              if (logMINOR) Logger.minor(this, "Prefetching " + uri);
+              if (LOG.isDebugEnabled()) LOG.debug("Prefetching {}", uri);
               synchronized (this) {
                 if (uris.size() < MAX_PREFETCH)
                   // FIXME Maybe we should do this randomly, but since it's a DoS protection (in an
@@ -874,7 +859,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               && !fr.hasWaited()
               && key.isUSK()
               && context.uskManager.lookupKnownGood(USK.create(key)) > key.getSuggestedEdition()) {
-            Logger.normal(this, "Loading later edition...");
+            LOG.info("Loading later edition...");
             fetch.progress.requestImmediateCancel();
             fr = null;
             fetch = null;
@@ -887,18 +872,18 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             continue;
           }
 
-          if (logMINOR) Logger.minor(this, "Found data");
+          if (LOG.isDebugEnabled()) LOG.debug("Found data");
           data = new NoFreeBucket(fr.data);
           mimeType = fr.mimeType;
           fetch.close(); // Not waiting any more, but still locked the results until sent
           break;
         } else if (fr.failed != null) {
-          if (logMINOR) Logger.minor(this, "Request failed");
+          if (LOG.isDebugEnabled()) LOG.debug("Request failed");
           fe = fr.failed;
           fetch.close(); // Not waiting any more, but still locked the results until sent
           break;
         } else if (canSendProgress) {
-          if (logMINOR) Logger.minor(this, "Still in progress");
+          if (LOG.isDebugEnabled()) LOG.debug("Still in progress");
           // Still in progress
           boolean isJsEnabled =
               ctx.getContainer().isFProxyJavascriptEnabled()
@@ -989,7 +974,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
 
     try {
-      if (logMINOR) Logger.minor(this, "FProxy fetching " + key + " (" + maxSize + ')');
+      if (LOG.isDebugEnabled()) LOG.debug("FProxy fetching {} ({})", key, maxSize);
       if (data == null && fe == null) {
         boolean needsFetch = true;
         // If we don't have the data, then check if an FProxyFetchInProgress has. It can happen when
@@ -1051,8 +1036,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     } catch (FetchException e) {
       // Handle exceptions thrown from the ContentFilter
       String msg = e.getMessage();
-      if (logMINOR) {
-        Logger.minor(this, "Failed to fetch " + uri + " : " + e);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Failed to fetch {} : {}", uri, e.toString());
       }
       if (e.newURI != null) {
         if (accept != null
@@ -1073,7 +1058,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             innerHandleMethodGET(uri, httprequest, ctx, recursion);
             return;
           } catch (URISyntaxException e1) {
-            Logger.error(this, "Caught " + e1 + " parsing new link " + link, e1);
+            LOG.error("Caught {} parsing new link {}", e1.toString(), link, e1);
           }
         }
         Toadlet.writePermanentRedirect(
@@ -1393,9 +1378,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     } catch (SocketException e) {
       // Probably irrelevant
       if (e.getMessage().equals("Broken pipe")) {
-        if (logMINOR) Logger.minor(this, "Caught " + e + " while handling GET", e);
+        if (LOG.isDebugEnabled()) LOG.debug("Caught {} while handling GET", e.toString(), e);
       } else {
-        Logger.normal(this, "Caught " + e);
+        LOG.info("Caught {}", e.toString());
       }
       throw e;
     } catch (Throwable t) {
@@ -1521,9 +1506,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         if (type != null && !type.isEmpty()) referer += "?type=" + type;
       } catch (MalformedURLException e) {
         referer = "/";
-        Logger.normal(this, "Caught MalformedURLException on the referer : " + e.getMessage());
+        LOG.info("Caught MalformedURLException on the referer : {}", e.getMessage());
       } catch (Throwable t) {
-        Logger.error(this, "Caught handling referrer: " + t + " for " + referer, t);
+        LOG.error("Caught handling referrer: {} for {}", t.toString(), referer, t);
         referer = null;
       }
     }

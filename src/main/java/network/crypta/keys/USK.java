@@ -7,7 +7,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.regex.Pattern;
 import network.crypta.support.Fields;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Updatable Subspace Key. Not really a ClientKey as it cannot be directly requested.
@@ -18,6 +19,7 @@ import network.crypta.support.Logger;
  * restarting downloads or losing uploads.
  */
 public class USK extends BaseClientKey implements Comparable<USK>, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(USK.class);
 
   @Serial private static final long serialVersionUID = 1L;
   /* The character to separate the site name from the edition number in its SSK form.
@@ -130,7 +132,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
     this.cryptoAlgorithm = ssk.cryptoAlgorithm;
 
     if (badDocNamePattern.matcher(siteName).matches()) // not error -- just "possible" bug
-    Logger.normal(this, "POSSIBLE BUG: edition in ClientSSK " + ssk, new Exception("debug"));
+    LOG.info("POSSIBLE BUG: edition in ClientSSK {}", ssk);
 
     hashCode =
         Fields.hashCode(pubKeyHash)
@@ -177,7 +179,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
       return new ClientSSK(
           string, pubKeyHash, ClientSSK.getExtraBytes(cryptoAlgorithm), null, cryptoKey);
     } catch (MalformedURLException e) {
-      Logger.error(this, "Caught " + e + " should not be possible in USK.getSSK", e);
+      LOG.error("Caught " + e + " should not be possible in USK.getSSK", e);
       throw new Error(e);
     }
   }
@@ -253,8 +255,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
       try {
         edition = Long.parseLong(doc);
       } catch (NumberFormatException e) {
-        Logger.normal(
-            this, "Trying to turn SSK back into USK: " + uri + " doc=" + doc + " caught " + e, e);
+        LOG.info("Trying to turn SSK back into USK: " + uri + " doc=" + doc + " caught " + e, e);
         return uri;
       }
       if (!doc.equals(Long.toString(edition))) return uri;

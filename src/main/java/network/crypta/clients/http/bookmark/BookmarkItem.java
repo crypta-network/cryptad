@@ -1,7 +1,6 @@
 package network.crypta.clients.http.bookmark;
 
 import java.net.MalformedURLException;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
@@ -11,10 +10,13 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class BookmarkItem extends Bookmark {
+  private static final Logger LOG = LoggerFactory.getLogger(BookmarkItem.class);
+
   public static final String NAME = "Bookmark";
   private final BookmarkManager manager;
   private FreenetURI key;
@@ -65,10 +67,7 @@ public class BookmarkItem extends Bookmark {
     this.alert = new BookmarkUpdatedUserAlert();
   }
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(ClientGetter.class);
   }
 
   private class BookmarkUpdatedUserAlert extends AbstractUserAlert {
@@ -220,7 +219,7 @@ public class BookmarkItem extends Bookmark {
    */
   public synchronized boolean setEdition(long ed, NodeClientCore node) {
     if (key.getSuggestedEdition() >= ed) {
-      if (logMINOR) Logger.minor(this, "Edition " + ed + " is too old, not updating " + key);
+      if (LOG.isDebugEnabled()) LOG.debug("Edition " + ed + " is too old, not updating " + key);
       return false;
     }
     key = key.setSuggestedEdition(ed);

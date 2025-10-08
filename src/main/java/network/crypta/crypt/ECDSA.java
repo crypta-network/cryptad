@@ -20,10 +20,13 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 import network.crypta.node.FSParseException;
 import network.crypta.support.Base64;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ECDSA {
+  private static final Logger LOG = LoggerFactory.getLogger(ECDSA.class);
+
   public final Curves curve;
   private final KeyPair key;
 
@@ -95,8 +98,7 @@ public class ECDSA {
           key = selftest(kg, kf, modulusSize);
         } catch (Throwable e) {
           /* we don't care why we fail, just fallback */
-          Logger.warning(
-              this,
+          LOG.warn(
               "default KeyPairGenerator provider ("
                   + (kg != null ? kg.getProvider() : null)
                   + ") is broken, falling back to BouncyCastle",
@@ -112,8 +114,7 @@ public class ECDSA {
           selftest_sign(key, sig);
         } catch (Throwable e) {
           /* we don't care why we fail, just fallback */
-          Logger.warning(
-              this,
+          LOG.warn(
               "default Signature provider ("
                   + (sig != null ? sig.getProvider() : null)
                   + ") is broken or incompatible with KeyPairGenerator, falling back to"
@@ -127,10 +128,10 @@ public class ECDSA {
           selftest_sign(key, sig);
         }
       } catch (NoSuchAlgorithmException e) {
-        Logger.error(ECDSA.class, "NoSuchAlgorithmException : " + e.getMessage(), e);
+        LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
         e.printStackTrace();
       } catch (InvalidAlgorithmParameterException e) {
-        Logger.error(ECDSA.class, "InvalidAlgorithmParameterException : " + e.getMessage(), e);
+        LOG.error("InvalidAlgorithmParameterException : " + e.getMessage(), e);
         e.printStackTrace();
       } catch (InvalidKeyException e) {
         throw new Error(e);
@@ -146,10 +147,9 @@ public class ECDSA {
       this.defaultHashAlgorithm = defaultHashAlgorithm;
       this.modulusSize = modulusSize;
       this.maxSigSize = maxSigSize;
-      Logger.normal(this, name + ": using " + kgProvider + " for KeyPairGenerator(EC)");
-      Logger.normal(this, name + ": using " + kfProvider + " for KeyFactory(EC)");
-      Logger.normal(
-          this, name + ": using " + sigProvider + " for Signature(" + defaultHashAlgorithm + ")");
+      LOG.info(name + ": using " + kgProvider + " for KeyPairGenerator(EC)");
+      LOG.info(name + ": using " + kfProvider + " for KeyFactory(EC)");
+      LOG.info(name + ": using " + sigProvider + " for Signature(" + defaultHashAlgorithm + ")");
     }
 
     public synchronized KeyPair generateKeyPair() {
@@ -222,8 +222,7 @@ public class ECDSA {
         // If it doesn't let's re-sign.
         if (result.length <= curve.maxSigSize) break;
         else
-          Logger.error(
-              this,
+          LOG.error(
               "DER encoded signature used "
                   + result.length
                   + " bytes, more than expected "
@@ -231,13 +230,13 @@ public class ECDSA {
                   + " - re-signing...");
       }
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(this, "NoSuchAlgorithmException : " + e.getMessage(), e);
+      LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (InvalidKeyException e) {
-      Logger.error(this, "InvalidKeyException : " + e.getMessage(), e);
+      LOG.error("InvalidKeyException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (SignatureException e) {
-      Logger.error(this, "SignatureException : " + e.getMessage(), e);
+      LOG.error("SignatureException : " + e.getMessage(), e);
       e.printStackTrace();
     }
 
@@ -326,13 +325,13 @@ public class ECDSA {
       siglen = actualSignatureLength(signature, sigoffset, siglen);
       result = sig.verify(signature, sigoffset, siglen);
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(ECDSA.class, "NoSuchAlgorithmException : " + e.getMessage(), e);
+      LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (InvalidKeyException e) {
-      Logger.error(ECDSA.class, "InvalidKeyException : " + e.getMessage(), e);
+      LOG.error("InvalidKeyException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (SignatureException e) {
-      Logger.error(ECDSA.class, "SignatureException : " + e.getMessage(), e);
+      LOG.error("SignatureException : " + e.getMessage(), e);
       e.printStackTrace();
     }
     return result;
@@ -356,10 +355,10 @@ public class ECDSA {
       remotePublicKey = (ECPublicKey) kf.generatePublic(ks);
 
     } catch (NoSuchAlgorithmException e) {
-      Logger.error(ECDSA.class, "NoSuchAlgorithmException : " + e.getMessage(), e);
+      LOG.error("NoSuchAlgorithmException : " + e.getMessage(), e);
       e.printStackTrace();
     } catch (InvalidKeySpecException e) {
-      Logger.error(ECDSA.class, "InvalidKeySpecException : " + e.getMessage(), e);
+      LOG.error("InvalidKeySpecException : " + e.getMessage(), e);
       e.printStackTrace();
     }
 

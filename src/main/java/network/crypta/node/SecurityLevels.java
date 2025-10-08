@@ -9,8 +9,9 @@ import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.api.StringCallback;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * We have 3 basic security settings. The user chooses these in the first-time wizard, and can
@@ -24,6 +25,7 @@ import network.crypta.support.api.StringCallback;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class SecurityLevels {
+  private static final Logger LOG = LoggerFactory.getLogger(SecurityLevels.class);
 
   private final Node node;
 
@@ -208,7 +210,7 @@ public class SecurityLevels {
 
     public void addListener(SecurityLevelListener<T> listener) {
       if (listeners.contains(listener)) {
-        Logger.error(this, "Already have listener " + listener + " in " + this);
+        LOG.error("Already have listener " + listener + " in " + this);
         return;
       }
       listeners.add(listener);
@@ -438,7 +440,7 @@ public class SecurityLevels {
   public FRIEND_TRUST getDefaultFriendTrust() {
     synchronized (this) {
       if (friendsThreatLevel == null) {
-        Logger.error(this, "Asking for default friend trust yet we have no friend security level!");
+        LOG.error("Asking for default friend trust yet we have no friend security level!");
         return FRIEND_TRUST.NORMAL;
       }
       if (friendsThreatLevel == FRIENDS_THREAT_LEVEL.HIGH) {

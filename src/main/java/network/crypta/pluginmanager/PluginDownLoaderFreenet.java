@@ -15,9 +15,12 @@ import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginManager.PluginProgress;
-import network.crypta.support.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
+  private static final Logger LOG = LoggerFactory.getLogger(PluginDownLoaderFreenet.class);
+
   final HighLevelSimpleClient hlsc;
   final boolean desperate;
   final Node node;
@@ -35,7 +38,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
     try {
       return new FreenetURI(source);
     } catch (MalformedURLException e) {
-      Logger.error(this, "not a valid freenet key: " + source, e);
+      LOG.error("not a valid freenet key: " + source, e);
       throw new PluginNotFoundException("not a valid freenet key: " + source, e);
     }
   }
@@ -84,7 +87,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
           continue;
         }
         if (e.isFatal()) fatalFailure = true;
-        Logger.error(this, "error while fetching plugin: " + getSource(), e);
+        LOG.error("error while fetching plugin: " + getSource(), e);
         throw new PluginNotFoundException(
             "error while fetching plugin: " + e.getMessage() + " for key " + getSource(), e);
       }

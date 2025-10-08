@@ -14,16 +14,18 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Allows the user to select datastore size, considering available storage space when offering
  * options.
  */
 public class DATASTORE_SIZE implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(DATASTORE_SIZE.class);
 
   private final NodeClientCore core;
   private final Config config;
@@ -167,9 +169,9 @@ public class DATASTORE_SIZE implements Step {
               + Fields.longToString(slashdotCacheSize, true));
       config.get("node").set("slashdotCacheSize", Fields.longToString(slashdotCacheSize, true));
 
-      Logger.normal(callback, "The storeSize has been set to " + selectedStoreSize);
+      LOG.info("The storeSize has been set to " + selectedStoreSize);
     } catch (ConfigException e) {
-      Logger.error(callback, "Should not happen, please report!" + e, e);
+      LOG.error("Should not happen, please report!" + e, e);
     }
   }
 

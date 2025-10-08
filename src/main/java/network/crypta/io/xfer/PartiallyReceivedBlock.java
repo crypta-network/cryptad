@@ -5,9 +5,8 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.LinkedList;
 import network.crypta.support.Buffer;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author ian
@@ -15,19 +14,9 @@ import network.crypta.support.Logger.LogLevel;
  *     Code Generation - Code and Comments
  */
 public class PartiallyReceivedBlock {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(PartiallyReceivedBlock.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   byte[] _data;
@@ -132,8 +121,8 @@ public class PartiallyReceivedBlock {
 
   public synchronized boolean allReceived() throws AbortedException {
     if (_receivedCount == _packets) {
-      if (logDEBUG)
-        Logger.debug(this, "Received " + _receivedCount + " of " + _packets + " on " + this);
+      if (LOG.isTraceEnabled())
+        LOG.trace("Received " + _receivedCount + " of " + _packets + " on " + this);
       return true;
     }
     if (_aborted) {
@@ -184,9 +173,8 @@ public class PartiallyReceivedBlock {
     PacketReceivedListener[] listeners;
     synchronized (this) {
       if (_aborted) {
-        if (logMINOR)
-          Logger.minor(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Already aborted "
                   + this
                   + " : reason="
@@ -196,13 +184,11 @@ public class PartiallyReceivedBlock {
         return null;
       }
       if (_receivedCount == _packets) {
-        if (logMINOR) Logger.minor(this, "Already received");
+        if (LOG.isDebugEnabled()) LOG.debug("Already received");
         return _data;
       }
-      Logger.normal(
-          this,
-          "Aborting PRB: " + reason + " : " + description + " on " + this,
-          new Exception("debug"));
+      LOG.info(
+          "Aborting PRB: " + reason + " : " + description + " on " + this, new Exception("debug"));
       _aborted = true;
       _abortedLocally = cancelledLocally;
       _abortReason = reason;

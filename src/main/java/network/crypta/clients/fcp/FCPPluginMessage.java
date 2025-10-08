@@ -5,9 +5,13 @@ import network.crypta.pluginmanager.FredPluginFCPMessageHandler;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.StringValidityChecker;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Container class for both incoming and outgoing FCP messages. */
 public final class FCPPluginMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginMessage.class);
+
   public enum ClientPermissions {
     /**
      * The client is connected by network and the owner of the node has configured restricted access

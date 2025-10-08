@@ -24,6 +24,17 @@ some Kotlin components.
 - If the Java Runtime cannot be located, or if any other errors occur when running a command, request approval to
   proceed. Do not skip the command.
 
+### Commenting Guidelines
+
+- Prefer clean diffs over in-code historical explanations. Do not add "Removed …" style comments to explain code you just deleted in the same change. Rationale belongs in the commit message and PR description, not in source files.
+  - Forbidden example (do not add):
+    - `// (Removed) Temporary 'legacyLoggerCheck' task used during SLF4J migration.`
+    - `// The legacy logger has been removed in PR8, so this guard task is no longer needed.`
+    - `// Std stream capture has been removed; rely on configured appenders.`
+    - `// No std stream capture to restore.`
+- When deprecating behavior that remains in code, use standard `@Deprecated` (Java/Kotlin) and a brief forward-looking note (link to issue/PR). Avoid PR-number narratives in comments.
+- If additional context is valuable long-term, document it here in `AGENTS.md` or in `docs/`, not inline next to removed code.
+
 When operating as an autonomous or semi-autonomous agent, proactively leverage specialized skills/roles based on the
 current task (e.g., context management, Kotlin/Java expertise, debugging, performance/security review, search, and
 architecture review).

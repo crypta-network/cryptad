@@ -1,7 +1,8 @@
 package network.crypta.node;
 
-import network.crypta.support.Logger;
 import network.crypta.support.TimeUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tag tracking an offer reply.
@@ -9,6 +10,7 @@ import network.crypta.support.TimeUtil;
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public class OfferReplyTag extends UIDTag {
+  private static final Logger LOG = LoggerFactory.getLogger(OfferReplyTag.class);
 
   final boolean ssk;
 
@@ -20,7 +22,7 @@ public class OfferReplyTag extends UIDTag {
   @Override
   public void logStillPresent(Long uid) {
     String sb = "Still present after " + TimeUtil.formatTime(age()) + " : ssk=" + ssk;
-    Logger.error(this, sb);
+    LOG.error(sb);
   }
 
   @Override

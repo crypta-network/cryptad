@@ -1,8 +1,11 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class N2NFeedMessage extends FeedMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(N2NFeedMessage.class);
 
   protected final String sourceNodeName;
   protected final long composed, sent, received;

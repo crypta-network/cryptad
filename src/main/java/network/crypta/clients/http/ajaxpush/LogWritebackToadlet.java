@@ -8,18 +8,17 @@ import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
-import network.crypta.support.Logger;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** This toadlet is used to let the client write to the logs */
 public class LogWritebackToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(LogWritebackToadlet.class);
 
   static {
-    Logger.registerClass(LogWritebackToadlet.class);
   }
 
   public LogWritebackToadlet(HighLevelSimpleClient client) {
@@ -28,11 +27,11 @@ public class LogWritebackToadlet extends Toadlet {
 
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
-    if (logMINOR) {
+    if (LOG.isDebugEnabled()) {
       try {
-        Logger.minor(this, "GWT:" + URLDecoder.decode(req.getParam("msg"), false));
+        LOG.debug("GWT:" + URLDecoder.decode(req.getParam("msg"), false));
       } catch (URLEncodedFormatException e) {
-        Logger.error(this, "Invalid GWT:" + req.getParam("msg"));
+        LOG.error("Invalid GWT:" + req.getParam("msg"));
       }
     }
     writeHTMLReply(ctx, 200, "OK", UpdaterConstants.SUCCESS);

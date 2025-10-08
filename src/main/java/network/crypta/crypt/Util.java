@@ -20,10 +20,12 @@ import java.util.Random;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.support.Fields;
 import network.crypta.support.Loader;
-import network.crypta.support.Logger;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Util {
+  private static final Logger LOG = LoggerFactory.getLogger(Util.class);
 
   // Crypto utility methods:
   public static final BigInteger TWO = BigInteger.valueOf(2);
@@ -55,23 +57,23 @@ public class Util {
               long time_sun = benchmark(sun_md);
               System.out.println(algo + " (" + md.getProvider() + "): " + time_def + "ns");
               System.out.println(algo + " (" + sun_md.getProvider() + "): " + time_sun + "ns");
-              Logger.minor(clazz, algo + " (" + md.getProvider() + "): " + time_def + "ns");
-              Logger.minor(clazz, algo + " (" + sun_md.getProvider() + "): " + time_sun + "ns");
+              LOG.debug(algo + " (" + md.getProvider() + "): " + time_def + "ns");
+              LOG.debug(algo + " (" + sun_md.getProvider() + "): " + time_sun + "ns");
               if (time_sun < time_def) {
                 md = sun_md;
               }
             }
           } catch (GeneralSecurityException e) {
             // ignore
-            Logger.warning(clazz, algo + "@" + sun + " benchmark failed", e);
+            LOG.warn(algo + "@" + sun + " benchmark failed", e);
           } catch (Throwable e) {
             // ignore
-            Logger.error(clazz, algo + "@" + sun + " benchmark failed", e);
+            LOG.error(algo + "@" + sun + " benchmark failed", e);
           }
         }
         Provider mdProvider = md.getProvider();
         System.out.println(algo + ": using " + mdProvider);
-        Logger.normal(clazz, algo + ": using " + mdProvider);
+        LOG.info(algo + ": using " + mdProvider);
         mdProviders_internal.put(algo, mdProvider);
       }
       mdProviders = Collections.unmodifiableMap(mdProviders_internal);

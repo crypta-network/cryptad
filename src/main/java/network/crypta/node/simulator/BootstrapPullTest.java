@@ -18,14 +18,13 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.LineReadingInputStream;
 import network.crypta.support.math.MersenneTwister;
+import org.slf4j.event.Level;
 
 /**
  * Insert a random block of data to an established node via FCP, then bootstrap a newbie node and
@@ -49,13 +48,12 @@ public class BootstrapPullTest {
 
   /**
    * @param args
-   * @throws InvalidThresholdException
    * @throws IOException
    * @throws NodeInitException
    * @throws InterruptedException
    */
   public static void main(String[] args)
-      throws InvalidThresholdException, IOException, NodeInitException, InterruptedException {
+      throws IOException, NodeInitException, InterruptedException {
     Node secondNode = null;
     try {
       String ipOverride = null;
@@ -63,7 +61,7 @@ public class BootstrapPullTest {
       final String ipOverrideFinal = ipOverride;
       File dir = new File("bootstrap-pull-test");
       FileUtil.removeAll(dir);
-      RandomSource random = NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
+      RandomSource random = NodeStarter.globalTestInit(dir, false, Level.ERROR, "", false, null);
       byte[] seed = new byte[64];
       random.nextBytes(seed);
       MersenneTwister fastRandom = MersenneTwister.createUnsynchronized(seed);

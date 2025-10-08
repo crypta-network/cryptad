@@ -6,8 +6,11 @@ import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ListPersistentRequestsMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ListPersistentRequestsMessage.class);
 
   static final String NAME = "ListPersistentRequests";
   private final String identifier;

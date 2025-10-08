@@ -8,10 +8,12 @@ import network.crypta.client.filter.FlacMetadataBlock.BlockType;
 import network.crypta.client.filter.FlacMetadataBlock.FlacMetadataBlockHeader;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FlacPacketFilter implements CodecPacketFilter {
+  private static final Logger LOG = LoggerFactory.getLogger(FlacPacketFilter.class);
+
   boolean streamValid = true;
 
   enum State {
@@ -34,7 +36,7 @@ public class FlacPacketFilter implements CodecPacketFilter {
 
   public CodecPacket parse(CodecPacket packet) throws IOException {
     if (!streamValid) return null;
-    boolean logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
+    boolean logMINOR = LOG.isDebugEnabled();
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(packet.toArray()));
     switch (currentState) {
       case UNINITIALIZED:
@@ -88,7 +90,7 @@ public class FlacPacketFilter implements CodecPacketFilter {
         }
     }
     if (packet instanceof FlacMetadataBlock block && logMINOR)
-      Logger.minor(this, "Returning packet of type" + block.getMetadataBlockType());
+      LOG.debug("Returning packet of type" + block.getMetadataBlockType());
     return packet;
   }
 }

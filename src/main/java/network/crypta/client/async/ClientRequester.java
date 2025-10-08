@@ -13,9 +13,9 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.SendableRequest;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.io.ResumeFailedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A high level request or insert. This may create any number of low-level requests of inserts, for
@@ -28,12 +28,11 @@ import network.crypta.support.io.ResumeFailedException;
  *     in restarting downloads or losing uploads.
  */
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  private static volatile boolean logMINOR;
 
   static {
-    Logger.registerClass(ClientRequester.class);
   }
 
   public abstract void onTransition(
@@ -217,7 +216,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
       if (blockSetFinalized) return;
       blockSetFinalized = true;
     }
-    if (logMINOR) Logger.minor(this, "Finalized set of blocks for " + this, new Exception("debug"));
+    if (LOG.isDebugEnabled()) LOG.debug("Finalized set of blocks for {}", this);
     notifyClients(context);
   }
 
@@ -230,14 +229,11 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     }
 
     if (wasFinalized) {
-      if (LogLevel.MINOR.matchesThreshold(Logger.globalGetThresholdNew()))
-        Logger.error(this, "addBlock() but set finalized! on " + this, new Exception("error"));
-      else Logger.error(this, "addBlock() but set finalized! on " + this);
+      LOG.error("addBlock() but set finalized! on {}", this);
     }
 
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "addBlock(): total="
               + totalBlocks
               + " successful="
@@ -257,14 +253,11 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     }
 
     if (wasFinalized) {
-      if (LogLevel.MINOR.matchesThreshold(Logger.globalGetThresholdNew()))
-        Logger.error(this, "addBlocks() but set finalized! on " + this, new Exception("error"));
-      else Logger.error(this, "addBlocks() but set finalized! on " + this);
+      LOG.error("addBlocks() but set finalized! on {}", this);
     }
 
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "addBlocks("
               + num
               + "): total="
@@ -279,9 +272,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
 
   /** We completed a block. Count it and notify clients unless dontNotify. */
   public void completedBlock(boolean dontNotify, ClientContext context) {
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Completed block ("
               + dontNotify
               + "): total="
@@ -344,9 +336,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public synchronized void addMustSucceedBlocks(int blocks) {
     totalBlocks += blocks;
     minSuccessBlocks += blocks;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "addMustSucceedBlocks("
               + blocks
               + "): total="
@@ -367,9 +358,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public synchronized void addRedundantBlocksInsert(int blocks) {
     totalBlocks += blocks;
     minSuccessBlocks += blocks;
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "addMustSucceedBlocks("
               + blocks
               + "): total="
@@ -450,9 +440,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
       oldPrio = priorityClass;
       this.priorityClass = newPriorityClass;
     }
-    if (logMINOR)
-      Logger.minor(
-          this,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Changing priority class of " + this + " from " + oldPrio + " to " + newPriorityClass);
     ctx.getChkFetchScheduler(realTimeFlag).reregisterAll(this, oldPrio);
     ctx.getChkInsertScheduler(realTimeFlag).reregisterAll(this, oldPrio);

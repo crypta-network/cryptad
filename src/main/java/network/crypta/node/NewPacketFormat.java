@@ -20,12 +20,12 @@ import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.NewPacketFormatKeyContext.AddedAcks;
 import network.crypta.support.Fields;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SparseBitmap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NewPacketFormat implements PacketFormat {
+  private static final Logger LOG = LoggerFactory.getLogger(NewPacketFormat.class);
 
   private static final int HMAC_LENGTH = 10;
   // FIXME Use a more efficient structure - int[] or maybe just a big byte[].
@@ -41,18 +41,7 @@ public class NewPacketFormat implements PacketFormat {
   private static final int MAX_ACKS = 500;
   static boolean DO_KEEPALIVES = true;
 
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-            logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-          }
-        });
   }
 
   private final BasePeerNode pn;
@@ -143,12 +132,12 @@ public class NewPacketFormat implements PacketFormat {
       if (s == null) continue;
       packet = tryDecipherPacket(buf, offset, length, s);
       if (packet != null) {
-        if (logDEBUG) Logger.debug(this, "Decrypted packet with tracker " + i);
+        if (LOG.isTraceEnabled()) LOG.trace("Decrypted packet with tracker " + i);
         break;
       }
     }
     if (packet == null) {
-      if (logMINOR) Logger.minor(this, "Could not decrypt received packet");
+      if (LOG.isDebugEnabled()) LOG.debug("Could not decrypt received packet");
       return false;
     }
 
@@ -158,7 +147,8 @@ public class NewPacketFormat implements PacketFormat {
     pn.reportIncomingBytes(length);
 
     List<byte[]> finished = handleDecryptedPacket(packet, s);
-    if (logMINOR && !finished.isEmpty()) Logger.minor(this, "Decoded messages: " + finished.size());
+    if (LOG.isDebugEnabled() && !finished.isEmpty())
+      LOG.debug("Decoded messages: " + finished.size());
     DecodingMessageGroup group = pn.startProcessingDecryptedMessages(finished.size());
     for (byte[] buffer : finished) {
       group.processDecryptedMessage(buffer, 0, buffer.length, 0);
@@ -179,8 +169,8 @@ public class NewPacketFormat implements PacketFormat {
     boolean dontAck = false;
     boolean wakeUp = false;
     if (packet.getError() || packet.getFragments().isEmpty()) {
-      if (logMINOR)
-        Logger.minor(this, "Not acking because " + (packet.getError() ? "error" : "no fragments"));
+      if (LOG.isDebugEnabled())
+        LOG.debug("Not acking because " + (packet.getError() ? "error" : "no fragments"));
       dontAck = true;
     }
     List<byte[]> l = packet.getLossyMessages();
@@ -201,27 +191,24 @@ public class NewPacketFormat implements PacketFormat {
         lossyMessages.add(msg);
       }
       // Handle them *before* the rest.
-      if (logMINOR && !lossyMessages.isEmpty())
-        Logger.minor(
-            this, "Successfully parsed " + lossyMessages.size() + " lossy packet messages");
+      if (LOG.isDebugEnabled() && !lossyMessages.isEmpty())
+        LOG.debug("Successfully parsed " + lossyMessages.size() + " lossy packet messages");
       for (Message msg : lossyMessages) pn.handleMessage(msg);
     }
     for (MessageFragment fragment : packet.getFragments()) {
       if (messageWindowPtrReceived + MSG_WINDOW_SIZE > NUM_MESSAGE_IDS) {
         int upperBound = (messageWindowPtrReceived + MSG_WINDOW_SIZE) % NUM_MESSAGE_IDS;
         if ((fragment.messageID > upperBound) && (fragment.messageID < messageWindowPtrReceived)) {
-          if (logMINOR)
-            Logger.minor(
-                this, "Received message " + fragment.messageID + " outside window, acking");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Received message " + fragment.messageID + " outside window, acking");
           continue;
         }
       } else {
         int upperBound = messageWindowPtrReceived + MSG_WINDOW_SIZE;
         if (!((fragment.messageID >= messageWindowPtrReceived)
             && (fragment.messageID < upperBound))) {
-          if (logMINOR)
-            Logger.minor(
-                this, "Received message " + fragment.messageID + " outside window, acking");
+          if (LOG.isDebugEnabled())
+            LOG.debug("Received message " + fragment.messageID + " outside window, acking");
           continue;
         }
       }
@@ -232,7 +219,8 @@ public class NewPacketFormat implements PacketFormat {
       PartiallyReceivedBuffer recvBuffer = receiveBuffers.get(fragment.messageID);
       SparseBitmap recvMap = receiveMaps.get(fragment.messageID);
       if (recvBuffer == null) {
-        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID + ": Creating buffer");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Message id " + fragment.messageID + ": Creating buffer");
 
         recvBuffer = new PartiallyReceivedBuffer(this);
         if (fragment.firstFragment) {
@@ -243,7 +231,7 @@ public class NewPacketFormat implements PacketFormat {
         } else {
           synchronized (receiveBufferSizeLock) {
             if ((receiveBufferUsed + fragment.fragmentLength) > MAX_RECEIVE_BUFFER_SIZE) {
-              if (logMINOR) Logger.minor(this, "Could not create buffer, would excede max size");
+              if (LOG.isDebugEnabled()) LOG.debug("Could not create buffer, would excede max size");
               dontAck = true;
               continue;
             }
@@ -267,7 +255,7 @@ public class NewPacketFormat implements PacketFormat {
         continue;
       }
       if (fragment.fragmentLength == 0) {
-        Logger.warning(this, "Received fragment of length 0");
+        LOG.warn("Received fragment of length 0");
         continue;
       }
       recvMap.add(fragment.fragmentOffset, fragment.fragmentOffset + fragment.fragmentLength - 1);
@@ -295,9 +283,8 @@ public class NewPacketFormat implements PacketFormat {
 
         synchronized (receiveBufferSizeLock) {
           receiveBufferUsed -= recvBuffer.messageLength;
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Removed "
                     + recvBuffer.messageLength
                     + " from buffer. Total is now "
@@ -306,9 +293,9 @@ public class NewPacketFormat implements PacketFormat {
 
         fullyReceived.add(recvBuffer.buffer);
 
-        if (logMINOR) Logger.minor(this, "Message id " + fragment.messageID + ": Completed");
+        if (LOG.isTraceEnabled()) LOG.trace("Message id " + fragment.messageID + ": Completed");
       } else {
-        if (logDEBUG) Logger.debug(this, "Message id " + fragment.messageID + ": " + recvMap);
+        if (LOG.isTraceEnabled()) LOG.trace("Message id " + fragment.messageID + ": " + recvMap);
       }
     }
 
@@ -334,8 +321,8 @@ public class NewPacketFormat implements PacketFormat {
     NewPacketFormatKeyContext keyContext = sessionKey.packetContext;
     // Create the watchlist if the key has changed
     if (keyContext.seqNumWatchList == null) {
-      if (logMINOR)
-        Logger.minor(this, "Creating watchlist starting at " + keyContext.watchListOffset);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Creating watchlist starting at " + keyContext.watchListOffset);
 
       keyContext.seqNumWatchList = new byte[NUM_SEQNUMS_TO_WATCH_FOR][4];
 
@@ -365,12 +352,12 @@ public class NewPacketFormat implements PacketFormat {
       }
 
       if (moveBy > keyContext.seqNumWatchList.length) {
-        Logger.warning(this, "Moving watchlist pointer by " + moveBy);
+        LOG.warn("Moving watchlist pointer by " + moveBy);
       } else if (moveBy < 0) {
-        Logger.warning(this, "Tried moving watchlist pointer by " + moveBy);
+        LOG.warn("Tried moving watchlist pointer by " + moveBy);
         moveBy = 0;
       } else {
-        if (logDEBUG) Logger.debug(this, "Moving watchlist pointer by " + moveBy);
+        if (LOG.isTraceEnabled()) LOG.trace("Moving watchlist pointer by " + moveBy);
       }
 
       int seqNum =
@@ -399,11 +386,12 @@ public class NewPacketFormat implements PacketFormat {
           keyContext.seqNumWatchList[index].length)) continue;
 
       int sequenceNumber = (int) (((long) keyContext.watchListOffset + i) % NUM_SEQNUMS);
-      if (logDEBUG) Logger.debug(this, "Received packet matches sequence number " + sequenceNumber);
+      if (LOG.isTraceEnabled())
+        LOG.trace("Received packet matches sequence number " + sequenceNumber);
       NPFPacket p = decipherFromSeqnum(buf, offset, length, sessionKey, sequenceNumber);
       if (p != null) {
-        if (logMINOR)
-          Logger.minor(this, "Received packet " + p.getSequenceNumber() + " on " + sessionKey);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Received packet " + p.getSequenceNumber() + " on " + sessionKey);
         return p;
       }
     }
@@ -429,8 +417,8 @@ public class NewPacketFormat implements PacketFormat {
     byte[] hash = Arrays.copyOfRange(buf, offset, offset + HMAC_LENGTH);
     byte[] localHash = Arrays.copyOf(HMAC.macWithSHA256(sessionKey.hmacKey, payload), HMAC_LENGTH);
     if (!MessageDigest.isEqual(hash, localHash)) {
-      if (logMINOR) {
-        Logger.minor(this, "Failed to validate the HMAC using TrackerID=" + sessionKey.trackerID);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Failed to validate the HMAC using TrackerID=" + sessionKey.trackerID);
       }
 
       return null;
@@ -493,7 +481,7 @@ public class NewPacketFormat implements PacketFormat {
     }
     sessionKey = pn.getCurrentKeyTracker();
     if (sessionKey == null) {
-      Logger.warning(this, "No key for encrypting hash");
+      LOG.warn("No key for encrypting hash");
       return false;
     }
     return maybeSendPacket(ackOnly, sessionKey);
@@ -510,7 +498,7 @@ public class NewPacketFormat implements PacketFormat {
     int paddedLen = packet.getLength() + HMAC_LENGTH;
     if (pn.shouldPadDataPackets()) {
       int packetLength = paddedLen;
-      if (logDEBUG) Logger.debug(this, "Pre-padding length: " + packetLength);
+      if (LOG.isTraceEnabled()) LOG.trace("Pre-padding length: " + packetLength);
 
       if (packetLength < 64) {
         paddedLen = 64 + pn.paddingGen().nextInt(32);
@@ -547,7 +535,7 @@ public class NewPacketFormat implements PacketFormat {
     System.arraycopy(hash, 0, data, 0, HMAC_LENGTH);
 
     try {
-      if (logMINOR) {
+      if (LOG.isDebugEnabled()) {
         String fragments = null;
         for (MessageFragment frag : packet.getFragments()) {
           if (fragments == null) fragments = String.valueOf(frag.messageID);
@@ -560,8 +548,7 @@ public class NewPacketFormat implements PacketFormat {
                   + ")";
         }
 
-        Logger.minor(
-            this,
+        LOG.debug(
             "Sending packet "
                 + packet.getSequenceNumber()
                 + " ("
@@ -575,7 +562,7 @@ public class NewPacketFormat implements PacketFormat {
       }
       pn.sendEncryptedPacket(data);
     } catch (LocalAddressException e) {
-      Logger.error(this, "Caught exception while sending packet", e);
+      LOG.error("Caught exception while sending packet", e);
       return false;
     }
 
@@ -621,7 +608,7 @@ public class NewPacketFormat implements PacketFormat {
 
     AddedAcks moved = keyContext.addAcks(packet, maxPacketSize, now);
     if (moved != null && moved.anyUrgentAcks) {
-      if (logDEBUG) Logger.debug(this, "Must send because urgent acks");
+      if (LOG.isTraceEnabled()) LOG.trace("Must send because urgent acks");
       mustSend = true;
     }
 
@@ -632,7 +619,7 @@ public class NewPacketFormat implements PacketFormat {
     }
 
     if (numAcks > 0) {
-      if (logDEBUG) Logger.debug(this, "Added acks for " + this + " for " + pn.shortToString());
+      if (LOG.isTraceEnabled()) LOG.trace("Added acks for " + this + " for " + pn.shortToString());
     }
 
     if (!ackOnly) {
@@ -660,12 +647,12 @@ public class NewPacketFormat implements PacketFormat {
       }
 
       if (addedFragments) {
-        if (logDEBUG) Logger.debug(this, "Added fragments for " + this + " (must send)");
+        if (LOG.isTraceEnabled()) LOG.trace("Added fragments for " + this + " (must send)");
       }
     }
 
     if ((!mustSend) && packet.getLength() >= (maxPacketSize * 4 / 5)) {
-      if (logDEBUG) Logger.debug(this, "Must send because packet is big on acks alone");
+      if (LOG.isTraceEnabled()) LOG.trace("Must send because packet is big on acks alone");
       // Lots of acks to send, send a packet.
       mustSend = true;
     }
@@ -673,7 +660,7 @@ public class NewPacketFormat implements PacketFormat {
     if ((!ackOnly) && (!mustSend)) {
       if (messageQueue.mustSendNow(now)
           || messageQueue.mustSendSize(packet.getLength(), maxPacketSize)) {
-        if (logDEBUG) Logger.debug(this, "Must send because of message queue");
+        if (LOG.isTraceEnabled()) LOG.trace("Must send because of message queue");
         mustSend = true;
       }
     }
@@ -682,8 +669,8 @@ public class NewPacketFormat implements PacketFormat {
       int maxSendBufferSize = maxSendBufferSize();
       synchronized (sendBufferLock) {
         if (sendBufferUsed > maxSendBufferSize / 2) {
-          if (logDEBUG)
-            Logger.debug(this, "Must send because other side buffer size is " + sendBufferUsed);
+          if (LOG.isTraceEnabled())
+            LOG.trace("Must send because other side buffer size is " + sendBufferUsed);
           mustSend = true;
         }
       }
@@ -765,8 +752,7 @@ public class NewPacketFormat implements PacketFormat {
             // and all peers.
             // We might in future split it across multiple threads but it'd be best to keep the same
             // peer on the same thread.
-            Logger.error(
-                this,
+            LOG.error(
                 "No availiable message ID, requeuing and sending packet (we already checked didn't"
                     + " we???)");
             if (!wasGeneratedPing) {
@@ -778,8 +764,8 @@ public class NewPacketFormat implements PacketFormat {
             break fragments;
           }
 
-          if (logDEBUG)
-            Logger.debug(this, "Allocated " + messageID + " for " + item + " for " + this);
+          if (LOG.isTraceEnabled())
+            LOG.trace("Allocated " + messageID + " for " + item + " for " + this);
 
           MessageWrapper wrapper = new MessageWrapper(item, messageID);
           MessageFragment frag = wrapper.getMessageFragment(maxPacketSize - packet.getLength());
@@ -796,9 +782,8 @@ public class NewPacketFormat implements PacketFormat {
             // CONCURRENCY: This could go over the limit if we allow createPacket() for the same
             // node on two threads in parallel. That's probably a bad idea anyway.
             sendBufferUsed += item.buf.length;
-            if (logDEBUG)
-              Logger.debug(
-                  this,
+            if (LOG.isDebugEnabled())
+              LOG.debug(
                   "Added "
                       + item.buf.length
                       + " to remote buffer. Total is now "
@@ -817,10 +802,10 @@ public class NewPacketFormat implements PacketFormat {
     if (seqNum == -1) return null;
     packet.setSequenceNumber(seqNum);
 
-    if (logDEBUG && ackOnly) {
-      Logger.debug(this, "Sending ack-only packet length " + packet.getLength() + " for " + this);
-    } else if (logDEBUG && !ackOnly) {
-      Logger.debug(this, "Sending packet length " + packet.getLength() + " for " + this);
+    if (LOG.isTraceEnabled() && ackOnly) {
+      LOG.trace("Sending ack-only packet length " + packet.getLength() + " for " + this);
+    } else if (LOG.isTraceEnabled() && !ackOnly) {
+      LOG.trace("Sending packet length " + packet.getLength() + " for " + this);
     }
 
     if (!packet.getFragments().isEmpty()) {
@@ -896,8 +881,7 @@ public class NewPacketFormat implements PacketFormat {
       sendBufferUsed -= messageSize;
       // This is just a check for logging/debugging purposes.
       if (sendBufferUsed != 0) {
-        Logger.warning(
-            this,
+        LOG.warn(
             "Possible leak in transport code: Buffer size not empty after disconnecting on "
                 + this
                 + " for "
@@ -935,8 +919,7 @@ public class NewPacketFormat implements PacketFormat {
             long d = wrapper.getItem().getDeadline();
             if (d > 0) ret = Math.min(ret, d);
             else
-              Logger.error(
-                  this, "Started sending message " + wrapper.getItem() + " but deadline is " + d);
+              LOG.error("Started sending message " + wrapper.getItem() + " but deadline is " + d);
           }
         }
       }
@@ -982,7 +965,7 @@ public class NewPacketFormat implements PacketFormat {
       if (!keyContext.canAllocateSeqNum()) {
         // We can't allocate more sequence numbers because we haven't rekeyed yet
         pn.startRekeying();
-        Logger.error(this, "Can't send because we would block on " + this);
+        LOG.error("Can't send because we would block on " + this);
         return false;
       }
     }
@@ -994,9 +977,8 @@ public class NewPacketFormat implements PacketFormat {
       }
       int maxSendBufferSize = maxSendBufferSize();
       if ((bufferUsage + MAX_MESSAGE_SIZE) > maxSendBufferSize) {
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Cannot send: Would exceed remote buffer size. Remote at "
                   + bufferUsage
                   + " max is "
@@ -1035,9 +1017,8 @@ public class NewPacketFormat implements PacketFormat {
           // that the number of packets is visible,
           // whereas messages are supposed to not be visible.
           // Arguably we should count bytes rather than packets.
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Cannot send because "
                     + packets.countSentPackets()
                     + " in flight of limit "
@@ -1059,8 +1040,8 @@ public class NewPacketFormat implements PacketFormat {
       }
     }
 
-    if (logDEBUG && !canAllocateID)
-      Logger.debug(this, "Cannot send because cannot allocate ID on " + this);
+    if (LOG.isTraceEnabled() && !canAllocateID)
+      LOG.trace("Cannot send because cannot allocate ID on " + this);
     return canAllocateID;
   }
 
@@ -1115,9 +1096,8 @@ public class NewPacketFormat implements PacketFormat {
         MessageWrapper wrapper = msgIt.next();
         int[] range = rangeIt.next();
 
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Acknowledging " + range[0] + " to " + range[1] + " on " + wrapper.getMessageID());
 
         if (wrapper.ack(range[0], range[1], npf.pn)) {
@@ -1128,16 +1108,14 @@ public class NewPacketFormat implements PacketFormat {
             if (removed != null) {
               int size = wrapper.getLength();
               npf.sendBufferUsed -= size;
-              if (logDEBUG)
-                Logger.debug(
-                    this,
+              if (LOG.isDebugEnabled())
+                LOG.debug(
                     "Removed " + size + " from remote buffer. Total is now " + npf.sendBufferUsed);
             }
           }
-          if (removed == null && logMINOR) {
+          if (removed == null && LOG.isDebugEnabled()) {
             // ack() can return true more than once, it just only calls the callbacks once.
-            Logger.minor(
-                this,
+            LOG.debug(
                 "Completed message "
                     + wrapper.getMessageID()
                     + " but it is not in the map from "
@@ -1145,9 +1123,8 @@ public class NewPacketFormat implements PacketFormat {
           }
 
           if (removed != null) {
-            if (logDEBUG)
-              Logger.debug(
-                  this, "Completed message " + wrapper.getMessageID() + " from " + wrapper);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Completed message " + wrapper.getMessageID() + " from " + wrapper);
 
             boolean couldSend = npf.canSend(key);
             int id = wrapper.getMessageID();
@@ -1222,14 +1199,13 @@ public class NewPacketFormat implements PacketFormat {
 
     private boolean setMessageLength(int messageLength) {
       if (this.messageLength != -1 && this.messageLength != messageLength) {
-        Logger.warning(this, "Message length has already been set to a different length");
+        LOG.warn("Message length has already been set to a different length");
       }
 
       this.messageLength = messageLength;
 
       if (buffer.length > messageLength) {
-        Logger.warning(
-            this,
+        LOG.warn(
             "Buffer is larger than set message length! ("
                 + buffer.length
                 + ">"
@@ -1241,18 +1217,17 @@ public class NewPacketFormat implements PacketFormat {
     }
 
     private boolean resize(int length) {
-      if (logDEBUG) Logger.debug(this, "Resizing from " + buffer.length + " to " + length);
+      if (LOG.isTraceEnabled()) LOG.trace("Resizing from " + buffer.length + " to " + length);
 
       synchronized (npf.receiveBufferSizeLock) {
         if ((npf.receiveBufferUsed + (length - buffer.length)) > MAX_RECEIVE_BUFFER_SIZE) {
-          if (logMINOR) Logger.minor(this, "Could not resize buffer, would excede max size");
+          if (LOG.isDebugEnabled()) LOG.debug("Could not resize buffer, would excede max size");
           return false;
         }
 
         npf.receiveBufferUsed += (length - buffer.length);
-        if (logDEBUG)
-          Logger.debug(
-              this,
+        if (LOG.isDebugEnabled())
+          LOG.debug(
               "Added "
                   + (length - buffer.length)
                   + " to buffer. Total is now "

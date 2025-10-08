@@ -7,6 +7,8 @@ import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FCP Message which is received from a client and requests a network probe of a specific type.
@@ -31,6 +33,8 @@ import network.crypta.support.SimpleFieldSet;
  * </ul>
  */
 public class ProbeRequest extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(ProbeRequest.class);
+
   public static final String NAME = "ProbeRequest";
 
   private final String identifier;

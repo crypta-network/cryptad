@@ -12,20 +12,16 @@ import network.crypta.clients.http.ToadletContextClosedException;
 import network.crypta.clients.http.updateableelements.BaseUpdateableElement;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
-import network.crypta.support.Logger;
 import network.crypta.support.api.HTTPRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A toadlet that provides the current data of pushed elements. It requires the requestId and the
  * elementId parameters.
  */
 public class PushDataToadlet extends Toadlet {
-
-  private static volatile boolean logMINOR;
-
-  static {
-    Logger.registerClass(PushDataToadlet.class);
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(PushDataToadlet.class);
 
   public PushDataToadlet(HighLevelSimpleClient client) {
     super(client);
@@ -38,16 +34,12 @@ public class PushDataToadlet extends Toadlet {
     elementId =
         elementId.replace(
             " ", "+"); // This is needed, because BASE64 has '+', but it is a HTML escape for ' '
-    if (logMINOR) {
-      Logger.minor(this, "Getting data for element:" + elementId);
-    }
+    if (LOG.isDebugEnabled()) LOG.debug("Getting data for element:{}", elementId);
     BaseUpdateableElement node =
         ((SimpleToadletServer) ctx.getContainer())
             .getPushDataManager()
             .getRenderedElement(requestId, elementId);
-    if (logMINOR) {
-      Logger.minor(this, "Data got element:" + node.generateChildren());
-    }
+    if (LOG.isDebugEnabled()) LOG.debug("Data got element:{}", node.generateChildren());
     writeHTMLReply(
         ctx,
         200,

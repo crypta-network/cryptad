@@ -3,9 +3,13 @@ package network.crypta.clients.fcp;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Carries the result of a content filter test back to the client. */
 public class FilterResultMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(FilterResultMessage.class);
+
   public static final String NAME = "FilterResult";
 
   private final String identifier;

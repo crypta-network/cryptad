@@ -6,8 +6,11 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.NullBucket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class URIFeedMessage extends N2NFeedMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(URIFeedMessage.class);
 
   public static final String NAME = "URIFeed";
   private final FreenetURI URI;

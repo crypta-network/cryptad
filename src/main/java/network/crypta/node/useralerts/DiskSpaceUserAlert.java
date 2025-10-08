@@ -6,8 +6,9 @@ import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.io.FilenameGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tell the user when there is insufficient disk space for either short term (transient requests,
@@ -16,6 +17,7 @@ import network.crypta.support.io.FilenameGenerator;
  * @author toad
  */
 public class DiskSpaceUserAlert implements UserAlert {
+  private static final Logger LOG = LoggerFactory.getLogger(DiskSpaceUserAlert.class);
 
   final NodeClientCore core;
   private Status status;
@@ -114,7 +116,7 @@ public class DiskSpaceUserAlert implements UserAlert {
     } catch (Throwable t) {
       // This is an alert. If it fails, it can break the web interface completely.
       // So it's essential that we catch Throwable's here.
-      Logger.error(this, "Unable to check disk space: " + t, t);
+      LOG.error("Unable to check disk space: " + t, t);
       return Status.OK;
     }
   }

@@ -9,8 +9,11 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PutFailedMessage extends FCPMessage implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(PutFailedMessage.class);
 
   @Serial private static final long serialVersionUID = 1L;
   final InsertExceptionMode code;

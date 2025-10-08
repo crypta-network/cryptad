@@ -6,9 +6,10 @@ import java.util.Iterator;
 import java.util.Map;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Essentially a map of integer to incrementible integer. FIXME maybe move this to support, give it
@@ -18,6 +19,7 @@ import network.crypta.support.io.StorageFormatException;
  * restarting downloads or losing uploads.
  */
 public class FailureCodeTracker implements Cloneable, Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(FailureCodeTracker.class);
 
   @Serial private static final long serialVersionUID = 1L;
   public final boolean insert;
@@ -67,7 +69,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
 
   public synchronized void inc(int k) {
     if (k == 0) {
-      Logger.error(this, "Can't increment 0, not a valid failure mode", new Exception("error"));
+      LOG.warn("Can't increment 0, not a valid failure mode");
     }
     if (map == null) map = new HashMap<>();
     Integer key = k;
@@ -89,7 +91,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
 
   public synchronized void inc(Integer k, int val) {
     if (k == 0) {
-      Logger.error(this, "Can't increment 0, not a valid failure mode", new Exception("error"));
+      LOG.warn("Can't increment 0, not a valid failure mode");
     }
     if (map == null) map = new HashMap<>();
     Integer i = map.get(k);

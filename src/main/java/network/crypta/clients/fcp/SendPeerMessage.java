@@ -4,8 +4,11 @@ import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.support.SimpleFieldSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class SendPeerMessage extends DataCarryingMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(SendPeerMessage.class);
 
   protected final String identifier;
   protected final String nodeIdentifier;

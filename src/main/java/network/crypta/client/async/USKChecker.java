@@ -6,9 +6,8 @@ import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.ClientSSKBlock;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.SendableRequestItem;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Checks a single USK slot.
@@ -17,22 +16,14 @@ import network.crypta.support.Logger.LogLevel;
  */
 @SuppressWarnings("serial")
 class USKChecker extends BaseSingleFileFetcher {
+  private static final Logger LOG = LoggerFactory.getLogger(USKChecker.class);
 
   final USKCheckerCallback cb;
   private int dnfs;
 
   private long cooldownWakeupTime;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   USKChecker(
@@ -44,7 +35,7 @@ class USKChecker extends BaseSingleFileFetcher {
       boolean realTimeFlag) {
     super(key, maxRetries, ctx, parent, false, realTimeFlag);
     this.cb = cb;
-    if (logMINOR) Logger.minor(USKChecker.class, "Created USKChecker for " + key + " : " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Created USKChecker for " + key + " : " + this);
   }
 
   @Override
@@ -56,7 +47,7 @@ class USKChecker extends BaseSingleFileFetcher {
 
   @Override
   public void onFailure(LowLevelGetException e, SendableRequestItem token, ClientContext context) {
-    if (logMINOR) Logger.minor(this, "onFailure: " + e + " for " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure: " + e + " for " + this);
     // Firstly, can we retry?
     boolean canRetry;
     switch (e.code) {
@@ -80,7 +71,7 @@ class USKChecker extends BaseSingleFileFetcher {
         canRetry = true;
         break;
       default:
-        Logger.error(this, "Unknown low-level fetch error code: " + e.code, new Exception("error"));
+        LOG.error("Unknown low-level fetch error code: {}", e.code);
         canRetry = true;
     }
 

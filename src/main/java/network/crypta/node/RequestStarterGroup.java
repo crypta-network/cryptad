@@ -10,25 +10,17 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
-import network.crypta.support.LogThresholdCallback;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.StringCallback;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RequestStarterGroup {
-  private static volatile boolean logMINOR;
+  private static final Logger LOG = LoggerFactory.getLogger(RequestStarterGroup.class);
 
   static {
-    Logger.registerLogThresholdCallback(
-        new LogThresholdCallback() {
-          @Override
-          public void shouldUpdate() {
-            logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-          }
-        });
   }
 
   private final ThrottleWindowManager throttleWindowBulk;
@@ -336,9 +328,8 @@ public class RequestStarterGroup {
 
     public synchronized void successfulCompletion(long rtt) {
       roundTripTime.report(Math.max(rtt, 10));
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Reported successful completion: "
                 + rtt
                 + " on "

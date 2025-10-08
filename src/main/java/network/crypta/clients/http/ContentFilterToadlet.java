@@ -16,16 +16,19 @@ import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.Logger;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.api.HTTPUploadedFile;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Allows the user to run the content filter on a file and view the result. */
 public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(ContentFilterToadlet.class);
+
   public static final String PATH = "/filterfile/";
 
   /** What to do the the output from the content filter. */
@@ -335,7 +338,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     } catch (UnsafeContentTypeException e) {
       unsafe = true;
     } catch (IOException e) {
-      Logger.error(this, "IO error running content filter", e);
+      LOG.error("IO error running content filter", e);
       throw e;
     }
 
@@ -378,7 +381,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     try {
       fakeUri = new URI("http://127.0.0.1:8888/");
     } catch (URISyntaxException e) {
-      Logger.error(ContentFilterToadlet.class, "Inexplicable URI error", e);
+      LOG.error("Inexplicable URI error", e);
       return null;
     }
     // TODO: check operation, once ContentFilter supports write filtering

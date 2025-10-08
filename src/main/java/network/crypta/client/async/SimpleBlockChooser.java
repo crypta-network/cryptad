@@ -5,8 +5,9 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.keys.NodeCHK;
-import network.crypta.support.Logger;
 import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Tracks which blocks have been completed, how many attempts have been made for which blocks,
@@ -15,12 +16,9 @@ import network.crypta.support.io.StorageFormatException;
  * @author toad
  */
 public class SimpleBlockChooser {
-
-  private static volatile boolean logMINOR;
-  private static volatile boolean logDEBUG;
+  private static final Logger LOG = LoggerFactory.getLogger(SimpleBlockChooser.class);
 
   static {
-    Logger.registerClass(SimpleBlockChooser.class);
   }
 
   private final int blocks;
@@ -91,7 +89,7 @@ public class SimpleBlockChooser {
       completed[blockNo] = true;
       completedCount++;
       if (completedCount < blocks) {
-        if (logMINOR) Logger.minor(this, "Completed blocks: " + completedCount + "/" + blocks);
+        if (LOG.isDebugEnabled()) LOG.debug("Completed blocks: " + completedCount + "/" + blocks);
         return true;
       }
     }

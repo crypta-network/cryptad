@@ -29,15 +29,15 @@ import network.crypta.node.PeerTooOldException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Executor;
 import network.crypta.support.HexUtil;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
-import network.crypta.support.LoggerHook.InvalidThresholdException;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * Create a key block with random key and contents. Create a bunch of nodes. Connect them. Request
@@ -52,6 +52,7 @@ import network.crypta.support.io.FileUtil;
  * @author toad
  */
 public class RealNodeULPRTest extends RealNodeTest {
+  private static final Logger LOG = LoggerFactory.getLogger(RealNodeULPRTest.class);
 
   public static final int DARKNET_PORT_BASE = RealNodePingTest.DARKNET_PORT_END;
 
@@ -59,7 +60,6 @@ public class RealNodeULPRTest extends RealNodeTest {
       throws FSParseException,
           PeerParseException,
           CHKEncodeException,
-          InvalidThresholdException,
           NodeInitException,
           ReferenceSignatureVerificationException,
           KeyCollisionException,
@@ -94,15 +94,15 @@ public class RealNodeULPRTest extends RealNodeTest {
     NodeStarter.globalTestInit(
         wd,
         false,
-        LogLevel.ERROR,
-        "network.crypta.node.Location:normal,network.crypta.node.simulator"
-            + ".RealNodeRoutingTest:normal,network.crypta.node"
-            + ".NodeDispatcher:NORMAL,network.crypta.node.FailureTable:MINOR,"
-            + "network.crypta.node.Node:MINOR,network.crypta.node.Request:MINOR,"
-            + "network.crypta.io.comm.MessageCore:MINOR,network.crypta.node"
-            + ".PeerNode:MINOR,network.crypta.node.DarknetPeerNode:MINOR,network"
-            + ".crypta.io.xfer.PacketThrottle:MINOR,network.crypta.node"
-            + ".PeerManager:MINOR,network.crypta.client.async:MINOR",
+        Level.ERROR,
+        "network.crypta.node.Location:INFO,network.crypta.node.simulator"
+            + ".RealNodeRoutingTest:INFO,network.crypta.node"
+            + ".NodeDispatcher:INFO,network.crypta.node.FailureTable:DEBUG,"
+            + "network.crypta.node.Node:DEBUG,network.crypta.node.Request:DEBUG,"
+            + "network.crypta.io.comm.MessageCore:DEBUG,network.crypta.node"
+            + ".PeerNode:DEBUG,network.crypta.node.DarknetPeerNode:DEBUG,network"
+            + ".crypta.io.xfer.PacketThrottle:DEBUG,network.crypta.node"
+            + ".PeerManager:DEBUG,network.crypta.client.async:DEBUG",
         true,
         null);
     // For testing low-level stuff (connection bugs)
@@ -112,7 +112,7 @@ public class RealNodeULPRTest extends RealNodeTest {
     // network.crypta.node.DarknetPeerNode:MINOR,network.crypta.node.FNP:MINOR,network.crypta.io.xfer
     // .PacketThrottle:MINOR,network.crypta.node.PeerManager:MINOR", true);
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    Logger.normal(RealNodeRoutingTest.class, "Creating nodes...");
+    LOG.info("Creating nodes...");
     Executor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       final int port = DARKNET_PORT_BASE + i;
@@ -141,13 +141,13 @@ public class RealNodeULPRTest extends RealNodeTest {
                 p.longPingTimes = true;
               });
       nodes[i] = NodeStarter.createTestNode(params);
-      Logger.normal(RealNodeRoutingTest.class, "Created node " + i);
+      LOG.info("Created node " + i);
     }
     SimpleFieldSet[] refs = new SimpleFieldSet[NUMBER_OF_NODES];
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       refs[i] = nodes[i].exportDarknetPublicFieldSet();
     }
-    Logger.normal(RealNodeRoutingTest.class, "Created " + NUMBER_OF_NODES + " nodes");
+    LOG.info("Created " + NUMBER_OF_NODES + " nodes");
     // Now link them up
     // Connect the set
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
@@ -156,11 +156,11 @@ public class RealNodeULPRTest extends RealNodeTest {
       nodes[i].connect(nodes[next], trust, visibility);
       nodes[i].connect(nodes[prev], trust, visibility);
     }
-    Logger.normal(RealNodeRoutingTest.class, "Connected nodes");
+    LOG.info("Connected nodes");
     // Now add some random links
     for (int i = 0; i < NUMBER_OF_NODES * 5; i++) {
       if (i % NUMBER_OF_NODES == 0) {
-        Logger.normal(RealNodeRoutingTest.class, String.valueOf(i));
+        LOG.info(String.valueOf(i));
       }
       int length = (int) Math.pow(NUMBER_OF_NODES, random.nextDouble());
       int nodeA = random.nextInt(NUMBER_OF_NODES);
@@ -172,7 +172,7 @@ public class RealNodeULPRTest extends RealNodeTest {
       b.connect(a, trust, visibility);
     }
 
-    Logger.normal(RealNodeRoutingTest.class, "Added random links");
+    LOG.info("Added random links");
 
     for (Node node : nodes) {
       node.start(false);
@@ -232,8 +232,7 @@ public class RealNodeULPRTest extends RealNodeTest {
       System.err.println();
       System.err.println("Created random test key " + testKey + " = " + nodeKey);
       System.err.println();
-      Logger.error(
-          RealNodeULPRTest.class,
+      LOG.error(
           "Starting ULPR test #"
               + successfulTests
               + ": "
@@ -321,11 +320,11 @@ public class RealNodeULPRTest extends RealNodeTest {
 
       // Store the key to ONE node.
 
-      Logger.normal(RealNodeULPRTest.class, "Inserting to node " + (nodes.length - 1));
+      LOG.info("Inserting to node " + (nodes.length - 1));
       long tStart = System.currentTimeMillis();
       nodes[nodes.length - 1].store(
           block.getBlock(), false, false, true, false); // Write to datastore
-      Logger.normal(RealNodeULPRTest.class, "Inserted to node " + (nodes.length - 1));
+      LOG.info("Inserted to node " + (nodes.length - 1));
 
       int x = -1;
       while (true) {
@@ -347,8 +346,7 @@ public class RealNodeULPRTest extends RealNodeTest {
                 + " have the data on test "
                 + successfulTests
                 + ".");
-        Logger.normal(
-            RealNodeULPRTest.class,
+        LOG.info(
             "T="
                 + x
                 + " : "

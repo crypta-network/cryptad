@@ -4,9 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import network.crypta.clients.fcp.FCPConnectionHandler.DDACheckJob;
 import network.crypta.node.Node;
-import network.crypta.support.Logger;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * client -> node: DDARequest { WantRead=true, WantWrite=true, Dir=/tmp/blah } node -> client:
@@ -17,6 +18,8 @@ import network.crypta.support.io.FileUtil;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
 public class TestDDACompleteMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDDACompleteMessage.class);
+
   public static final String name = "TestDDAComplete";
   public static final String READ_ALLOWED = "ReadDirectoryAllowed";
   public static final String WRITE_ALLOWED = "WriteDirectoryAllowed";
@@ -54,8 +57,7 @@ public class TestDDACompleteMessage extends FCPMessage {
           String existingContent = FileUtil.readUTF(maybeWrittenFile).toString().trim();
           isWriteAllowed = checkJob.writeContent.equals(existingContent);
         } catch (IOException e) {
-          Logger.error(
-              this,
+          LOG.error(
               "Caught an IOE trying to read the file ("
                   + maybeWrittenFile
                   + ")! "

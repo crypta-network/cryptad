@@ -9,17 +9,17 @@ import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Logger;
 import network.crypta.support.io.NativeThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RealCompressor {
+  private static final Logger LOG = LoggerFactory.getLogger(RealCompressor.class);
+
   private final ExecutorService executorService;
   private ClientContext context;
 
-  private static volatile boolean logMINOR;
-
   static {
-    Logger.registerClass(RealCompressor.class);
   }
 
   public RealCompressor() {
@@ -33,7 +33,7 @@ public class RealCompressor {
   }
 
   public void enqueueNewJob(final CompressJob j) {
-    if (logMINOR) Logger.minor(this, "Enqueueing compression job: " + j);
+    if (LOG.isDebugEnabled()) LOG.debug("Enqueueing compression job: " + j);
 
     Future<String> task = null;
     while (!executorService.isShutdown() && task == null) {
@@ -49,7 +49,7 @@ public class RealCompressor {
                       } catch (InsertException e) {
                         j.onFailure(e, null, context);
                       } catch (Throwable t) {
-                        Logger.error(this, "Caught in OffThreadCompressor: " + t, t);
+                        LOG.error("Caught in OffThreadCompressor: " + t, t);
                         System.err.println("Caught in OffThreadCompressor: " + t);
                         t.printStackTrace();
                         // Try to fail gracefully
@@ -60,7 +60,7 @@ public class RealCompressor {
                       }
 
                     } catch (Throwable t) {
-                      Logger.error(this, "Caught " + t + " in " + this, t);
+                      LOG.error("Caught " + t + " in " + this, t);
                     }
                   }
 
@@ -70,9 +70,9 @@ public class RealCompressor {
                   }
                 },
                 "Compressor thread for " + j);
-        if (logMINOR) Logger.minor(this, "Compression job: " + j + "has been enqueued.");
+        if (LOG.isDebugEnabled()) LOG.debug("Compression job: " + j + "has been enqueued.");
       } catch (RejectedExecutionException e) {
-        Logger.error(this, "RejectedExectutionException for " + j, e);
+        LOG.error("RejectedExectutionException for " + j, e);
         task = null;
       }
     }
@@ -97,7 +97,7 @@ public class RealCompressor {
         max = Math.min(max, (int) (Math.min(Integer.MAX_VALUE, maxMemory / (128 * 1024 * 1024))));
       maxRunningThreads = max;
     }
-    Logger.minor(RealCompressor.class, "Maximum Compressor threads: " + maxRunningThreads);
+    LOG.debug("Maximum Compressor threads: " + maxRunningThreads);
     return maxRunningThreads;
   }
 

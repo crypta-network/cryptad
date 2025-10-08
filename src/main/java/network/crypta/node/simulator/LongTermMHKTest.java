@@ -28,11 +28,11 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.Version;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
+import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.FileUtil;
+import org.slf4j.event.Level;
 
 /**
  * Simulates MHKs. Creates 4 CHKs, inserts the first one 3 times, and inserts the others 1 time
@@ -85,8 +85,7 @@ public class LongTermMHKTest extends LongTermTest {
       final File dir = new File("longterm-mhk-test-" + uid);
       if (!dumpOnly) {
         FileUtil.removeAll(dir);
-        RandomSource random =
-            NodeStarter.globalTestInit(dir, false, LogLevel.ERROR, "", false, null);
+        RandomSource random = NodeStarter.globalTestInit(dir, false, Level.ERROR, "", false, null);
         File seednodes = new File("seednodes.fref");
         if (!seednodes.exists() || seednodes.length() == 0 || !seednodes.canRead()) {
           System.err.println("Unable to read seednodes.fref, it doesn't exist, or is empty");
@@ -123,7 +122,7 @@ public class LongTermMHKTest extends LongTermTest {
                   p.connectToSeednodes = true;
                 });
         node = NodeStarter.createTestNode(params);
-        Logger.getChain().setThreshold(LogLevel.ERROR);
+        Logging.setRootLevel(org.slf4j.event.Level.ERROR);
 
         // Start it
         node.start(true);

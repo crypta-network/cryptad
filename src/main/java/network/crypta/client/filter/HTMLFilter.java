@@ -34,22 +34,20 @@ import network.crypta.clients.http.ToadletContextImpl;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.HTMLDecoder;
 import network.crypta.support.HTMLEncoder;
-import network.crypta.support.Logger;
-import network.crypta.support.Logger.LogLevel;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.io.NullWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
+  private static final Logger LOG = LoggerFactory.getLogger(HTMLFilter.class);
 
   private static final String M3U_PLAYER_TAG_FILE =
       "network/crypta/clients/http/staticfiles/js/m3u-player.js";
 
   /** if true, embed m3u player. Enabled when fproxy javascript is enabled. * */
   public static boolean embedM3uPlayer = true;
-
-  private static boolean logMINOR;
-  private static boolean logDEBUG;
 
   private static final boolean deleteWierdStuff = true;
   private static final boolean deleteErrors = true;
@@ -82,9 +80,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       FilterCallback cb)
       throws IOException {
     if (cb == null) cb = new NullFilterCallback();
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
-    if (logMINOR) Logger.minor(this, "readFilter(): charset=" + charset);
+
+    if (LOG.isDebugEnabled()) LOG.debug("readFilter(): charset=" + charset);
     Reader r = null;
     Writer w = null;
     InputStreamReader isr = null;
@@ -104,11 +101,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   @Override
   public String getCharset(byte[] input, int length, String parseCharset) throws IOException {
-    logMINOR = Logger.shouldLog(LogLevel.MINOR, this);
-    if (logMINOR) Logger.minor(this, "getCharset(): default=" + parseCharset);
-    if (length > getCharsetBufferSize() && Logger.shouldLog(LogLevel.MINOR, this)) {
-      Logger.minor(
-          this,
+
+    if (LOG.isDebugEnabled()) LOG.debug("getCharset(): default=" + parseCharset);
+    if (length > getCharsetBufferSize() && LOG.isDebugEnabled()) {
+      LOG.debug(
           "More data than was strictly needed was passed to the charset extractor for extraction");
     }
     ByteArrayInputStream strm = new ByteArrayInputStream(input, 0, length);
@@ -130,23 +126,22 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       throw e;
     } catch (Throwable t) {
       // Ignore ALL errors
-      if (logMINOR)
-        Logger.minor(this, "Caught " + t + " trying to detect MIME type with " + parseCharset);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Caught " + t + " trying to detect MIME type with " + parseCharset);
     }
     try {
       r.close();
     } catch (IOException e) {
       throw e;
     } catch (Throwable t) {
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "Caught "
                 + t
                 + " closing stream after trying to detect MIME type with "
                 + parseCharset);
     }
-    if (logMINOR) Logger.minor(this, "Returning charset " + pc.detectedCharset);
+    if (LOG.isDebugEnabled()) LOG.debug("Returning charset " + pc.detectedCharset);
     return pc.detectedCharset;
   }
 
@@ -532,7 +527,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     if (pc.onlyDetectingCharset) return;
 
-    if (logDEBUG) Logger.debug(this, "Saving text: " + s.toString());
+    if (LOG.isTraceEnabled()) LOG.trace("Saving text: " + s.toString());
     if (pc.killText) {
       return;
     }
@@ -548,7 +543,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         // Not a real character
         // STRONGLY suggests somebody is using a bogus charset.
         // This could be in order to break the filter.
-        if (logDEBUG) Logger.debug(this, "Removing '" + c + "' from the output stream");
+        if (LOG.isTraceEnabled()) LOG.trace("Removing '" + c + "' from the output stream");
       } else {
         out.append(c);
       }
@@ -584,7 +579,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       stringBuilder.append("</script>");
       tagContent = stringBuilder.toString();
     } catch (IOException e) {
-      Logger.error(HTMLFilter.class, "Could not read m3uPlayer inline-script.");
+      LOG.error("Could not read m3uPlayer inline-script.");
       return errorTag;
     }
     return tagContent;
@@ -592,9 +587,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   String processTag(List<String> splitTag, Writer w, HTMLParseContext pc) throws IOException {
     // First, check that it is a recognized tag
-    if (logDEBUG) {
-      for (int i = 0; i < splitTag.size(); i++)
-        Logger.debug(this, "Tag[" + i + "]=" + splitTag.get(i));
+    if (LOG.isTraceEnabled()) {
+      for (int i = 0; i < splitTag.size(); i++) LOG.trace("Tag[" + i + "]=" + splitTag.get(i));
     }
     ParsedTag t = new ParsedTag(splitTag);
     if (!pc.killTag) {
@@ -703,7 +697,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (s.charAt(s.length() - 1) == '-') s.setLength(s.length() - 1);
       if (s.charAt(s.length() - 1) == '-') s.setLength(s.length() - 1);
     }
-    if (logDEBUG) Logger.debug(this, "Saving comment: " + s);
+    if (LOG.isTraceEnabled()) LOG.trace("Saving comment: " + s);
     if (pc.expectingBadComment) return; // ignore it
 
     if (pc.inStyle || pc.inScript) {
@@ -807,12 +801,12 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         unparsedAttrs = new String[len - 1];
         for (int x = 1; x < len; x++) unparsedAttrs[x - 1] = v.get(x);
       } else unparsedAttrs = new String[0];
-      if (logDEBUG) Logger.debug(this, "Element = " + element);
+      if (LOG.isTraceEnabled()) LOG.trace("Element = " + element);
     }
 
     public ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
       TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase());
-      if (logDEBUG) Logger.debug(this, "Got verifier: " + tv + " for " + element);
+      if (LOG.isTraceEnabled()) LOG.trace("Got verifier: " + tv + " for " + element);
       if (tv == null) {
         if (deleteWierdStuff) {
           return null;
@@ -2276,9 +2270,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         throws DataFilterException {
       Map<String, Object> hn = new LinkedHashMap<>();
       for (Map.Entry<String, Object> entry : h.entrySet()) {
-        if (logDEBUG)
-          Logger.debug(
-              this, "HTML Filter is sanitizing: " + entry.getKey() + " = " + entry.getValue());
+        if (LOG.isDebugEnabled())
+          LOG.debug("HTML Filter is sanitizing: " + entry.getKey() + " = " + entry.getValue());
         String x = entry.getKey();
         Object o = entry.getValue();
 
@@ -2287,9 +2280,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         // URI attributes require additional processing
         if (inline || uriAttrs.contains(x)) {
           if (!inline) {
-            if (logMINOR) Logger.minor(this, "Non-inline URI attribute: " + x);
+            if (LOG.isDebugEnabled()) LOG.debug("Non-inline URI attribute: " + x);
           } else {
-            if (logMINOR) Logger.minor(this, "Inline URI attribute: " + x);
+            if (LOG.isDebugEnabled()) LOG.debug("Inline URI attribute: " + x);
           }
           // URI
           if (o instanceof String uri) {
@@ -2303,9 +2296,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             o = uri;
           }
           // FIXME: rewrite absolute URLs, handle ?date= etc
-          if (logDEBUG)
-            Logger.debug(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "HTML Filter is putting "
                     + (inline ? "inline" : "")
                     + " uri attribute: "
@@ -2349,7 +2341,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
                 && (string.equalsIgnoreCase("ltr")
                     || string.equalsIgnoreCase("rtl")
                     || string.equalsIgnoreCase("auto")))) {
-          if (logDEBUG) Logger.debug(this, "HTML Filter is putting attribute: " + x + " =  " + o);
+          if (LOG.isTraceEnabled())
+            LOG.trace("HTML Filter is putting attribute: " + x + " =  " + o);
           hn.put(x, o);
         }
         // ARIA properties
@@ -2412,7 +2405,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     Map<String, Object> finish(Map<String, Object> h, Map<String, Object> hn, HTMLParseContext pc)
         throws DataFilterException {
-      if (logDEBUG) Logger.debug(this, "Finishing script/style");
+      if (LOG.isTraceEnabled()) LOG.trace("Finishing script/style");
       // Finishing
       setStyle(false, pc);
       pc.styleScriptRecurseCount--;
@@ -2439,7 +2432,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     Map<String, Object> start(Map<String, Object> h, Map<String, Object> hn, HTMLParseContext pc)
         throws DataFilterException {
-      if (logDEBUG) Logger.debug(this, "Starting script/style");
+      if (LOG.isTraceEnabled()) LOG.trace("Starting script/style");
       pc.styleScriptRecurseCount++;
       if (pc.styleScriptRecurseCount > 1) {
         if (deleteErrors)
@@ -2484,7 +2477,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       try {
         pc.currentStyleScriptChunk = sanitizeStyle(pc.currentStyleScriptChunk, pc.cb, pc, false);
       } catch (DataFilterException e) {
-        Logger.error(this, "Error parsing style: " + e, e);
+        LOG.error("Error parsing style: " + e, e);
         pc.currentStyleScriptChunk = "";
       }
     }
@@ -2680,8 +2673,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if ((typesplit[1] != null) && !typesplit[1].isEmpty()) {
           charset = typesplit[1];
         }
-        if (logDEBUG)
-          Logger.debug(this, "Processing link tag, type=" + type + ", charset=" + charset);
+        if (LOG.isTraceEnabled())
+          LOG.trace("Processing link tag, type=" + type + ", charset=" + charset);
       }
       String c = getHashString(h, "charset");
       if (c != null) charset = c;
@@ -3008,9 +3001,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       String name = getHashString(h, "name");
       String content = getHashString(h, "content");
       String scheme = getHashString(h, "scheme");
-      if (logMINOR)
-        Logger.minor(
-            this,
+      if (LOG.isDebugEnabled())
+        LOG.debug(
             "meta: name="
                 + name
                 + ", content="
@@ -3073,11 +3065,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             }
             // FIXME: add some more headers - Dublin Core?
           } else if (http_equiv.equalsIgnoreCase("Content-Type")) {
-            if (logMINOR) Logger.minor(this, "Found http-equiv content-type=" + content);
+            if (LOG.isTraceEnabled()) LOG.debug("Found http-equiv content-type=" + content);
             String[] typesplit = splitType(content);
-            if (logDEBUG) {
-              for (int i = 0; i < typesplit.length; i++)
-                Logger.debug(this, "[" + i + "] = " + typesplit[i]);
+            if (LOG.isTraceEnabled()) {
+              for (int i = 0; i < typesplit.length; i++) LOG.trace("[" + i + "] = " + typesplit[i]);
             }
             boolean detected = false;
             for (String allowedContentType : allowedContentTypes) {
@@ -3235,35 +3226,35 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     @Override
     ParsedTag sanitize(ParsedTag t, HTMLParseContext pc) throws DataFilterException {
       if (t.unparsedAttrs.length != 2 && t.unparsedAttrs.length != 3) {
-        if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid length");
+        if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid length");
         return null;
       }
       if (t.unparsedAttrs.length == 3 && !t.unparsedAttrs[2].equals("?")) {
-        if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid ending (length 2)");
+        if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid ending (length 2)");
         return null;
       }
       if (t.unparsedAttrs.length == 2 && !t.unparsedAttrs[1].endsWith("?")) {
-        if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid ending (length 3)");
+        if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid ending (length 3)");
         return null;
       }
       if (!(t.unparsedAttrs[0].equals("version=\"1.0\"")
           || t.unparsedAttrs[0].equals("version='1.0'"))) {
-        if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid version");
+        if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid version");
         return null;
       }
       String encodingAttr = t.unparsedAttrs[1];
       if (encodingAttr.startsWith("encoding=\"")) {
         if (!encodingAttr.endsWith("\"")) {
-          if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid encoding");
+          if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid encoding");
           return null;
         }
       } else if (encodingAttr.startsWith("encoding='")) {
         if (!encodingAttr.endsWith("'")) {
-          if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid encoding");
+          if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid encoding");
           return null;
         }
       } else {
-        if (logMINOR) Logger.minor(this, "Deleting xml declaration, invalid encoding");
+        if (LOG.isDebugEnabled()) LOG.debug("Deleting xml declaration, invalid encoding");
         return null;
       }
 
@@ -3271,9 +3262,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
       if (!charset.equalsIgnoreCase(pc.charset)) {
         if (pc.charset != null) {
-          if (logMINOR)
-            Logger.minor(
-                this,
+          if (LOG.isDebugEnabled())
+            LOG.debug(
                 "Deleting xml declaration (invalid charset "
                     + charset
                     + " should be "
@@ -3346,23 +3336,23 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     Reader r = new StringReader(style);
     Writer w = new StringWriter();
     style = style.trim();
-    if (logMINOR) Logger.minor(HTMLFilter.class, "Sanitizing style: " + style);
+    if (LOG.isDebugEnabled()) LOG.debug("Sanitizing style: " + style);
     CSSParser pc = new CSSParser(r, w, false, cb, hpc.charset, false, isInline);
     try {
       pc.parse();
     } catch (IOException e) {
-      Logger.error(HTMLFilter.class, "IOException parsing inline CSS!");
+      LOG.error("IOException parsing inline CSS!");
     } catch (Error e) {
       if (e.getMessage().equals("Error: could not match input")) {
         // this sucks, it should be a proper exception
-        Logger.normal(HTMLFilter.class, "CSS Parse Error!", e);
+        LOG.info("CSS Parse Error!", e);
         return "/* " + l10n("couldNotParseStyle") + " */";
       } else throw e;
     }
     String s = w.toString();
     if ((s == null) || s.isEmpty()) return null;
     //		Core.logger.log(SaferFilter.class, "Style now: " + s, LogLevel.DEBUG);
-    if (logMINOR) Logger.minor(HTMLFilter.class, "Style finally: " + s);
+    if (LOG.isDebugEnabled()) LOG.debug("Style finally: " + s);
     return s;
   }
 
@@ -3471,9 +3461,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       FilterCallback cb,
       boolean inline)
       throws CommentException {
-    if (logMINOR)
-      Logger.minor(
-          HTMLFilter.class,
+    if (LOG.isDebugEnabled())
+      LOG.debug(
           "Sanitizing URI: "
               + suri
               + " ( override type "
