@@ -145,7 +145,12 @@ public class LoggingConfigHandler {
 
     registerMaxBacklogNotBusy();
 
-    if (loggingEnabled) enableLogger();
+    if (loggingEnabled) {
+      enableLogger();
+    } else {
+      // Ensure SLF4J/Logback does not emit logs when disabled at startup
+      disableLogger();
+    }
     config.finishedInitialization();
   }
 
@@ -641,7 +646,6 @@ public class LoggingConfigHandler {
   @SuppressWarnings("java:S106")
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
-      if (!loggerEnabled) return;
       // Reconfigure SLF4J/Logback so no further logs are emitted.
       try {
         LoggerContext ctx = resolveLoggerContext();
@@ -659,7 +663,7 @@ public class LoggingConfigHandler {
       } catch (Exception e) {
         System.err.println("Failed to disable logging via Logback: " + e);
       }
-
+      // Mark as disabled even if we were already disabled
       loggerEnabled = false;
     }
   }
