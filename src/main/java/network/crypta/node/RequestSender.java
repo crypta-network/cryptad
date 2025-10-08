@@ -500,21 +500,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     public void onTimeout() {
       // This is probably a downstream timeout.
       // It's not a serious problem until we have a second (fatal) timeout.
-      LOG.warn(
-          "Timed out after waiting "
-              + searchTimeout
-              + " on "
-              + uid
-              + " from "
-              + waitingFor
-              + " ("
-              + gotMessages
-              + " messages; last="
-              + lastMessage
-              + ") for "
-              + uid
-              + " noReroute="
-              + noReroute);
+      LOG.info(
+          "Timed out after waiting {} on {} from {} ({} messages; last={}) noReroute={}",
+          searchTimeout,
+          uid,
+          waitingFor,
+          gotMessages,
+          lastMessage,
+          noReroute);
       if (noReroute) {
         waitingFor.localRejectedOverload("FatalTimeoutForked", realTimeFlag);
       } else {
@@ -689,7 +682,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
                 @Override
                 public void onTimeout() {
-                  LOG.warn("Timeout awaiting reply to offer request on " + this + " to " + pn);
+                  LOG.info("Timeout awaiting reply to offer request on {} to {}", this, pn);
                   // Two stage timeout.
                   OFFER_STATUS status = handleOfferTimeout(offer, pn, offers);
                   tryOffers(offers, pn, status);
