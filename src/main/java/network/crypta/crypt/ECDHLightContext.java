@@ -38,10 +38,10 @@ public class ECDHLightContext extends KeyAgreementSchemeContext {
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Curve in use: " + ecdh.curve.toString());
-      if (LOG.isDebugEnabled()) {
+      if (LOG.isTraceEnabled()) {
         LOG.debug("My exponential: " + HexUtil.bytesToHex(ecdh.getPublicKey().getEncoded()));
         LOG.debug("Peer's exponential: " + HexUtil.bytesToHex(peerExponential.getEncoded()));
-        LOG.debug("SharedSecret = " + HexUtil.bytesToHex(sharedKey));
+        LOG.trace("SharedSecret = " + HexUtil.bytesToHex(sharedKey));
       }
     }
 

@@ -551,8 +551,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     public void start(ClientContext context) throws InsertException {
       // new Error("trace start "+this).printStackTrace();
-      if (LOG.isDebugEnabled())
-        LOG.debug("Starting a PutHandler for '" + this.itemName + "' " + this);
+      if (LOG.isTraceEnabled())
+        LOG.trace("Starting a PutHandler for '" + this.itemName + "' " + this);
 
       if (origSFI == null) {
         fail(new IllegalStateException("origSFI is null on start(), impossible"), context);
@@ -1228,28 +1228,28 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   private void tryComplete(ClientContext context) {
     // debugDecompose("try complete");
-    if (LOG.isDebugEnabled()) LOG.debug("try complete", new Error("trace tryComplete()"));
+    if (LOG.isTraceEnabled()) LOG.trace("try complete", new Error("trace tryComplete()"));
     synchronized (this) {
       if (finished || cancelled) {
         if (LOG.isDebugEnabled()) LOG.debug("Already " + (finished ? "finished" : "cancelled"));
         return;
       }
       if (!runningPutHandlers.isEmpty()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not finished, runningPutHandlers not empty.");
+        if (LOG.isTraceEnabled()) LOG.trace("Not finished, runningPutHandlers not empty.");
         return;
       }
       if (!containerPutHandlers.isEmpty()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not finished, containerPutHandlers not empty.");
+        if (LOG.isTraceEnabled()) LOG.trace("Not finished, containerPutHandlers not empty.");
         return;
       }
       if (containerMode) {
         if (rootContainerPutHandler != null) {
-          if (LOG.isDebugEnabled()) LOG.debug("Not finished, rootContainerPutHandler not empty.");
+          if (LOG.isTraceEnabled()) LOG.trace("Not finished, rootContainerPutHandler not empty.");
           return;
         }
       } else {
         if (rootMetaPutHandler != null) {
-          if (LOG.isDebugEnabled()) LOG.debug("Not finished, rootMetaPutHandler not empty.");
+          if (LOG.isTraceEnabled()) LOG.trace("Not finished, rootMetaPutHandler not empty.");
           return;
         }
       }

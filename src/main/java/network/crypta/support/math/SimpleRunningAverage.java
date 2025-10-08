@@ -84,7 +84,7 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
   @Override
   public synchronized void report(double d) {
     totalReports++;
-    if (LOG.isDebugEnabled()) LOG.debug("report(" + d + ") on " + this);
+    if (LOG.isTraceEnabled()) LOG.trace("report(" + d + ") on " + this);
     if (curLen < refs.length) curLen++;
     else total -= popValue();
     pushValue(d);

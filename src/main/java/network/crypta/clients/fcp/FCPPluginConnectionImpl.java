@@ -560,8 +560,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
             message.errorMessage);
 
     // Now that the message is completely initialized, we can dump it to the logfile.
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("send(): direction = " + direction + "; " + "message = " + message);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("send(): direction = " + direction + "; " + "message = " + message);
     }
 
     // True if the target server or client message handler is running in this VM.

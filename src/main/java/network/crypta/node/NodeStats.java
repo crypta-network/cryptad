@@ -3044,7 +3044,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   public synchronized void insertSentBytes(boolean ssk, int x) {
-    if (LOG.isDebugEnabled()) LOG.debug("insertSentBytes(" + ssk + ", " + x + ")");
+    if (LOG.isTraceEnabled()) LOG.trace("insertSentBytes(" + ssk + ", " + x + ")");
     if (ssk) sskInsertSentBytes += x;
     else chkInsertSentBytes += x;
   }

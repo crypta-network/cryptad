@@ -294,7 +294,7 @@ public class WebPFilter extends RIFFFilter {
           l10n("invalidTitle"), l10n("invalidTitle"), "The VP8 chunk was too small to be valid");
     }
     output.write(ID);
-    if (LOG.isDebugEnabled()) LOG.debug("Passing through WebP VP8 block with " + size + " bytes.");
+    if (LOG.isTraceEnabled()) LOG.trace("Passing through WebP VP8 block with " + size + " bytes.");
     VP8PacketFilter VP8filter = new VP8PacketFilter(true);
     // Just read 6 bytes of the header to validate
     byte[] buf = new byte[6];
@@ -329,7 +329,7 @@ public class WebPFilter extends RIFFFilter {
           l10n("alphUnsupportedTitle"), l10n("alphUnsupportedTitle"), l10n("alphUnsupported"));
     }
     output.write(ID);
-    if (LOG.isDebugEnabled()) LOG.debug("Passing through WebP ALPH block with " + size + " bytes.");
+    if (LOG.isTraceEnabled()) LOG.trace("Passing through WebP ALPH block with " + size + " bytes.");
     writeLittleEndianInt(output, size);
     output.writeByte(flags);
     passthroughBytes(input, output, size - 1);

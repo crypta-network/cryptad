@@ -287,7 +287,7 @@ public class UdpSocketHandler
         LOG.error("Caught " + t + " from " + lowLevelFilter, t);
       }
     } else {
-      if (LOG.isDebugEnabled()) LOG.debug("No packet received");
+      if (LOG.isTraceEnabled()) LOG.trace("No packet received");
     }
   }
 

@@ -501,8 +501,8 @@ public class PacketSender implements Runnable {
         // because a new packet came in.
       }
     } else {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Next urgent time is " + (now - nextActionTime) + "ms in the past");
+      if (LOG.isTraceEnabled())
+        LOG.trace("Next urgent time is " + (now - nextActionTime) + "ms in the past");
     }
   }
 

@@ -255,8 +255,8 @@ public class Message {
 
   private byte[] encodeToPacket(boolean includeSubMessages, boolean isSubMessage) {
 
-    if (LOG.isDebugEnabled())
-      LOG.debug("My spec code: " + _spec.getName().hashCode() + " for " + _spec.getName());
+    if (LOG.isTraceEnabled())
+      LOG.trace("My spec code: " + _spec.getName().hashCode() + " for " + _spec.getName());
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
     try {
@@ -284,8 +284,8 @@ public class Message {
     }
 
     byte[] buf = baos.toByteArray();
-    if (LOG.isDebugEnabled())
-      LOG.debug("Length: " + buf.length + ", hash: " + Fields.hashCode(buf));
+    if (LOG.isTraceEnabled())
+      LOG.trace("Length: " + buf.length + ", hash: " + Fields.hashCode(buf));
     return buf;
   }
 

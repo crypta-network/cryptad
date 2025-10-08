@@ -71,7 +71,7 @@ public class NativeThread extends Thread {
     LOG.debug("Running init()");
     // Loading the NativeThread library isn't useful on macOS
     boolean maybeLoadNative = Platform.isLinux();
-    LOG.debug("Run init(): should loadNative=" + maybeLoadNative);
+    LOG.trace("Run init(): should loadNative=" + maybeLoadNative);
     // Detect sandboxed/containerized environments where decreasing nice is blocked.
     AppEnv envDet = new AppEnv();
     boolean inSnap = envDet.isSnap();

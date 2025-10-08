@@ -4472,7 +4472,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgClientCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestClientCacheSSKSuccess)
             nodeStats.furthestClientCacheSSKSuccess = dist;
-          if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in client-cache");
+          if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in client-cache");
           return block;
         }
       } catch (IOException e) {
@@ -4487,7 +4487,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgSlashdotCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestSlashdotCacheSSKSuccess)
             nodeStats.furthestSlashdotCacheSSKSuccess = dist;
-          if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in slashdot-cache");
+          if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in slashdot-cache");
           return block;
         }
       } catch (IOException e) {
@@ -4523,7 +4523,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgStoreSSKSuccess.report(loc);
         if (dist > nodeStats.furthestStoreSSKSuccess) nodeStats.furthestStoreSSKSuccess = dist;
-        if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in store");
+        if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in store");
         return block;
       }
       block =
@@ -4549,7 +4549,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgCacheSSKSuccess.report(loc);
         if (dist > nodeStats.furthestCacheSSKSuccess) nodeStats.furthestCacheSSKSuccess = dist;
-        if (LOG.isDebugEnabled()) LOG.debug("Found key " + key + " in cache");
+        if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in cache");
       }
       return block;
     } catch (IOException e) {

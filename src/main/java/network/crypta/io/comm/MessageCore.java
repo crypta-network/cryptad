@@ -467,7 +467,7 @@ public class MessageCore {
    * @throws IllegalArgumentException If {@code filter} has a callback
    */
   public Message waitFor(MessageFilter filter, ByteCounter ctr) throws DisconnectedException {
-    if (LOG.isDebugEnabled()) LOG.debug("Waiting for " + filter);
+    if (LOG.isTraceEnabled()) LOG.trace("Waiting for " + filter);
 
     if (filter.hasCallback()) {
       throw new IllegalArgumentException("waitFor called with a filter that has a callback");
@@ -629,7 +629,7 @@ public class MessageCore {
     //			Dijjer.getDijjer().getDumpMessageWaitTimes().flush();
     //		}
     long endTime = System.currentTimeMillis();
-    if (LOG.isDebugEnabled()) LOG.debug("Returning in " + (endTime - startTime) + "ms");
+    if (LOG.isTraceEnabled()) LOG.trace("Returning in " + (endTime - startTime) + "ms");
     if ((ctr != null) && (ret != null)) ctr.receivedBytes(ret._receivedByteCount);
     return ret;
   }

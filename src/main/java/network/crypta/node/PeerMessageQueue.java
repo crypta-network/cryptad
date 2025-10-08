@@ -171,7 +171,7 @@ public class PeerMessageQueue {
           moveIt = true;
         }
         if (moveIt) {
-          if (LOG.isDebugEnabled()) LOG.debug("Moving message to urgent list: " + item);
+          if (LOG.isTraceEnabled()) LOG.trace("Moving message to urgent list: " + item);
           if (LOG.isDebugEnabled()) checkOrder();
           // Move to urgent list
           if (itemsByID == null) {
@@ -211,8 +211,8 @@ public class PeerMessageQueue {
           if (LOG.isDebugEnabled()) checkOrder();
         } else if (!roundRobinBetweenUIDs) break;
       }
-      if (LOG.isDebugEnabled() && moved > 0)
-        LOG.debug("Moved " + moved + " items to urgent round-robin");
+      if (LOG.isTraceEnabled() && moved > 0)
+        LOG.trace("Moved " + moved + " items to urgent round-robin");
       if (LOG.isDebugEnabled()) checkOrder();
     }
 
@@ -468,8 +468,8 @@ public class PeerMessageQueue {
             DoublyLinkedList<? super Items> parent = tracker.getParent();
             // Demote the corresponding tracker to maintain round-robin.
             if (tracker.items.isEmpty()) {
-              if (LOG.isDebugEnabled())
-                LOG.debug("Moving " + tracker + " to end of empty list in addNonUrgentMessages");
+              if (LOG.isTraceEnabled())
+                LOG.trace("Moving " + tracker + " to end of empty list in addNonUrgentMessages");
               if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<>();
               if (parent == null) {
                 LOG.error("Tracker is in itemsByID but not in either list! (empty)");
@@ -550,21 +550,21 @@ public class PeerMessageQueue {
           item.setDeadline(list.timeLastSent + timeout);
           list.timeLastSent = now;
           if (!list.items.isEmpty()) {
-            if (LOG.isDebugEnabled())
-              LOG.debug("Moving " + list + " to end of non empty list in addUrgentMessages");
+            if (LOG.isTraceEnabled())
+              LOG.trace("Moving " + list + " to end of non empty list in addUrgentMessages");
             addToNonEmptyBackward(list);
           } else {
-            if (LOG.isDebugEnabled())
-              LOG.debug("Moving " + list + " to end of empty list in addUrgentMessages");
+            if (LOG.isTraceEnabled())
+              LOG.trace("Moving " + list + " to end of empty list in addUrgentMessages");
             addToEmptyBackward(list);
           }
           if (prev == null) list = nonEmptyItemsWithID.head();
           else list = prev.getNext();
           ret = item;
-          if (LOG.isDebugEnabled()) checkOrder();
+          if (LOG.isTraceEnabled()) checkOrder();
           if (ret != null) return ret;
         }
-        if (LOG.isDebugEnabled()) LOG.debug("No more messages queued at this priority");
+        if (LOG.isTraceEnabled()) LOG.trace("No more messages queued at this priority");
         if (LOG.isDebugEnabled()) checkOrder();
         return null;
       }
@@ -650,8 +650,8 @@ public class PeerMessageQueue {
           emptyItemsWithID.remove(list);
           removed++;
         } else {
-          if (LOG.isDebugEnabled() && removed > 0)
-            LOG.debug("Removed " + removed + " old empty UID trackers");
+          if (LOG.isTraceEnabled() && removed > 0)
+            LOG.trace("Removed " + removed + " old empty UID trackers");
           break;
         }
       }

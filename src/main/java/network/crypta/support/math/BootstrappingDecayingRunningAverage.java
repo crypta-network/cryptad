@@ -103,11 +103,11 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   public synchronized void report(double d) {
     // Check for invalid values and return early without updating
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (LOG.isDebugEnabled()) {
-        if (d < min) LOG.debug("Too low: " + d, new Exception("debug"));
-        else if (d > max) LOG.debug("Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d)) LOG.debug("Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) LOG.debug("NaN value", new Exception("debug"));
+      if (LOG.isTraceEnabled()) {
+        if (d < min) LOG.trace("Too low: " + d, new Exception("debug"));
+        else if (d > max) LOG.trace("Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d)) LOG.trace("Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) LOG.trace("NaN value", new Exception("debug"));
       }
       return; // Don't update the average with invalid values
     }
@@ -135,11 +135,11 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   public synchronized double valueIfReported(double d) {
     // Return current value for invalid inputs
     if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (LOG.isDebugEnabled()) {
-        if (d < min) LOG.debug("Too low: " + d, new Exception("debug"));
-        else if (d > max) LOG.debug("Too high: " + d, new Exception("debug"));
-        else if (Double.isInfinite(d)) LOG.debug("Infinite value: " + d, new Exception("debug"));
-        else if (Double.isNaN(d)) LOG.debug("NaN value", new Exception("debug"));
+      if (LOG.isTraceEnabled()) {
+        if (d < min) LOG.trace("Too low: " + d, new Exception("debug"));
+        else if (d > max) LOG.trace("Too high: " + d, new Exception("debug"));
+        else if (Double.isInfinite(d)) LOG.trace("Infinite value: " + d, new Exception("debug"));
+        else if (Double.isNaN(d)) LOG.trace("NaN value", new Exception("debug"));
       }
       return currentValue; // Return unchanged value for invalid inputs
     }

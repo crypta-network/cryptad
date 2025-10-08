@@ -104,13 +104,13 @@ public class IPAddressDetector implements Runnable {
     if (!old) {
       while (interfaces.hasMoreElements()) {
         NetworkInterface iface = interfaces.nextElement();
-        if (LOG.isDebugEnabled()) LOG.debug("Scanning NetworkInterface " + iface.getDisplayName());
+        if (LOG.isTraceEnabled()) LOG.trace("Scanning NetworkInterface " + iface.getDisplayName());
         int ifaceMTU = 0;
         try {
           if (!iface.isLoopback()) {
             ifaceMTU = iface.getMTU(); // MTU is retrieved directly instead of using
             // a plugin
-            if (LOG.isDebugEnabled()) LOG.debug("MTU = " + ifaceMTU);
+            if (LOG.isTraceEnabled()) LOG.trace("MTU = " + ifaceMTU);
           }
         } catch (SocketException e) {
           LOG.error("SocketException trying to retrieve the MTU NetworkInterfaces: " + e, e);
@@ -135,13 +135,13 @@ public class IPAddressDetector implements Runnable {
             }
           }
           addrs.add(addr);
-          if (LOG.isDebugEnabled())
-            LOG.debug("Adding address " + addr + " from " + iface.getDisplayName());
+          if (LOG.isTraceEnabled())
+            LOG.trace("Adding address " + addr + " from " + iface.getDisplayName());
         }
-        if (LOG.isDebugEnabled())
-          LOG.debug("Finished scanning interface " + iface.getDisplayName());
+        if (LOG.isTraceEnabled())
+          LOG.trace("Finished scanning interface " + iface.getDisplayName());
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Finished scanning interfaces");
+      if (LOG.isTraceEnabled()) LOG.trace("Finished scanning interfaces");
     }
 
     InetAddress[] oldAddressList = lastAddressList;
@@ -165,8 +165,8 @@ public class IPAddressDetector implements Runnable {
    * @return
    */
   protected InetAddress oldDetect() {
-    boolean shouldLog = LOG.isDebugEnabled();
-    if (shouldLog) LOG.debug("Running old style detection code");
+    boolean shouldLog = LOG.isTraceEnabled();
+    if (shouldLog) LOG.trace("Running old style detection code");
     DatagramSocket ds = null;
     try {
       try {
@@ -198,10 +198,10 @@ public class IPAddressDetector implements Runnable {
    * @param addrs Vector of InetAddresses
    */
   protected void onGetAddresses(List<InetAddress> addrs) {
-    final boolean logDEBUG = LOG.isDebugEnabled();
+    final boolean logDEBUG = LOG.isTraceEnabled();
     List<InetAddress> output = new ArrayList<>();
-    if (LOG.isDebugEnabled())
-      LOG.debug("onGetAddresses found " + addrs.size() + " potential addresses)");
+    if (LOG.isTraceEnabled())
+      LOG.trace("onGetAddresses found " + addrs.size() + " potential addresses)");
     if (addrs.isEmpty()) {
       LOG.error("No addresses found!");
       lastAddressList = null;
@@ -211,7 +211,7 @@ public class IPAddressDetector implements Runnable {
       for (int x = 0; x < addrs.size(); x++) {
         if (addrs.get(x) != null) {
           InetAddress i = addrs.get(x);
-          if (LOG.isDebugEnabled()) LOG.debug("Address " + x + ": " + i);
+          if (LOG.isTraceEnabled()) LOG.trace("Address " + x + ": " + i);
           if (i.isAnyLocalAddress()) {
             // Wildcard address, 0.0.0.0, ignore.
           } else if (i.isLinkLocalAddress() || i.isLoopbackAddress() || i.isSiteLocalAddress()) {

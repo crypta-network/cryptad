@@ -443,7 +443,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     long[] offset = getOffsetFromDigestedKey(digestedKey, probeStoreSize);
 
     for (int i = 0; i < offset.length; i++) {
-      if (LOG.isDebugEnabled()) LOG.debug("probing for i=" + i + ", offset=" + offset[i]);
+      if (LOG.isTraceEnabled()) LOG.trace("probing for i=" + i + ", offset=" + offset[i]);
 
       try {
         if (storeFileOffsetReady == -1 || offset[i] < this.storeFileOffsetReady) {
@@ -526,7 +526,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
                     null,
                     (block instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
             if (block.equals(oldBlock)) {
-              if (LOG.isDebugEnabled()) LOG.debug("Block already stored");
+              if (LOG.isTraceEnabled()) LOG.trace("Block already stored");
               if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
                 // Currently flagged as an old block
                 oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
@@ -560,8 +560,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
             long flag = getFlag(offset[i], false);
             if ((flag & Entry.ENTRY_FLAG_OCCUPIED) == 0) {
               // write to free block
-              if (LOG.isDebugEnabled())
-                LOG.debug("probing, write to i=" + i + ", offset=" + offset[i]);
+              if (LOG.isTraceEnabled())
+                LOG.trace("probing, write to i=" + i + ", offset=" + offset[i]);
               writeEntry(entry, digestedKey, offset[i]);
               keyCount.incrementAndGet();
               onWrite();
@@ -1438,7 +1438,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           try {
             cleanerCondition.await(CLEANER_PERIOD, TimeUnit.MILLISECONDS);
           } catch (InterruptedException e) {
-            LOG.debug("interrupted", e);
+            LOG.trace("interrupted", e);
           }
         } finally {
           cleanerLock.unlock();
@@ -1855,7 +1855,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
               return true;
             }
           } catch (IOException e) {
-            LOG.debug("IOExcception on resolveOldEntry", e);
+            LOG.trace("IOExcception on resolveOldEntry", e);
           }
         }
 
@@ -1869,7 +1869,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
               return true;
             }
           } catch (IOException e) {
-            LOG.debug("IOExcception on resolveOldEntry", e);
+            LOG.trace("IOExcception on resolveOldEntry", e);
           }
         }
         return false;

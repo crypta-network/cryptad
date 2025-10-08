@@ -132,7 +132,7 @@ public class NewPacketFormat implements PacketFormat {
       if (s == null) continue;
       packet = tryDecipherPacket(buf, offset, length, s);
       if (packet != null) {
-        if (LOG.isDebugEnabled()) LOG.debug("Decrypted packet with tracker " + i);
+        if (LOG.isTraceEnabled()) LOG.trace("Decrypted packet with tracker " + i);
         break;
       }
     }
@@ -219,8 +219,8 @@ public class NewPacketFormat implements PacketFormat {
       PartiallyReceivedBuffer recvBuffer = receiveBuffers.get(fragment.messageID);
       SparseBitmap recvMap = receiveMaps.get(fragment.messageID);
       if (recvBuffer == null) {
-        if (LOG.isDebugEnabled())
-          LOG.debug("Message id " + fragment.messageID + ": Creating buffer");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Message id " + fragment.messageID + ": Creating buffer");
 
         recvBuffer = new PartiallyReceivedBuffer(this);
         if (fragment.firstFragment) {
@@ -293,9 +293,9 @@ public class NewPacketFormat implements PacketFormat {
 
         fullyReceived.add(recvBuffer.buffer);
 
-        if (LOG.isDebugEnabled()) LOG.debug("Message id " + fragment.messageID + ": Completed");
+        if (LOG.isTraceEnabled()) LOG.trace("Message id " + fragment.messageID + ": Completed");
       } else {
-        if (LOG.isDebugEnabled()) LOG.debug("Message id " + fragment.messageID + ": " + recvMap);
+        if (LOG.isTraceEnabled()) LOG.trace("Message id " + fragment.messageID + ": " + recvMap);
       }
     }
 
@@ -357,7 +357,7 @@ public class NewPacketFormat implements PacketFormat {
         LOG.warn("Tried moving watchlist pointer by " + moveBy);
         moveBy = 0;
       } else {
-        if (LOG.isDebugEnabled()) LOG.debug("Moving watchlist pointer by " + moveBy);
+        if (LOG.isTraceEnabled()) LOG.trace("Moving watchlist pointer by " + moveBy);
       }
 
       int seqNum =
@@ -386,8 +386,8 @@ public class NewPacketFormat implements PacketFormat {
           keyContext.seqNumWatchList[index].length)) continue;
 
       int sequenceNumber = (int) (((long) keyContext.watchListOffset + i) % NUM_SEQNUMS);
-      if (LOG.isDebugEnabled())
-        LOG.debug("Received packet matches sequence number " + sequenceNumber);
+      if (LOG.isTraceEnabled())
+        LOG.trace("Received packet matches sequence number " + sequenceNumber);
       NPFPacket p = decipherFromSeqnum(buf, offset, length, sessionKey, sequenceNumber);
       if (p != null) {
         if (LOG.isDebugEnabled())
@@ -498,7 +498,7 @@ public class NewPacketFormat implements PacketFormat {
     int paddedLen = packet.getLength() + HMAC_LENGTH;
     if (pn.shouldPadDataPackets()) {
       int packetLength = paddedLen;
-      if (LOG.isDebugEnabled()) LOG.debug("Pre-padding length: " + packetLength);
+      if (LOG.isTraceEnabled()) LOG.trace("Pre-padding length: " + packetLength);
 
       if (packetLength < 64) {
         paddedLen = 64 + pn.paddingGen().nextInt(32);
@@ -608,7 +608,7 @@ public class NewPacketFormat implements PacketFormat {
 
     AddedAcks moved = keyContext.addAcks(packet, maxPacketSize, now);
     if (moved != null && moved.anyUrgentAcks) {
-      if (LOG.isDebugEnabled()) LOG.debug("Must send because urgent acks");
+      if (LOG.isTraceEnabled()) LOG.trace("Must send because urgent acks");
       mustSend = true;
     }
 
@@ -619,7 +619,7 @@ public class NewPacketFormat implements PacketFormat {
     }
 
     if (numAcks > 0) {
-      if (LOG.isDebugEnabled()) LOG.debug("Added acks for " + this + " for " + pn.shortToString());
+      if (LOG.isTraceEnabled()) LOG.trace("Added acks for " + this + " for " + pn.shortToString());
     }
 
     if (!ackOnly) {
@@ -647,12 +647,12 @@ public class NewPacketFormat implements PacketFormat {
       }
 
       if (addedFragments) {
-        if (LOG.isDebugEnabled()) LOG.debug("Added fragments for " + this + " (must send)");
+        if (LOG.isTraceEnabled()) LOG.trace("Added fragments for " + this + " (must send)");
       }
     }
 
     if ((!mustSend) && packet.getLength() >= (maxPacketSize * 4 / 5)) {
-      if (LOG.isDebugEnabled()) LOG.debug("Must send because packet is big on acks alone");
+      if (LOG.isTraceEnabled()) LOG.trace("Must send because packet is big on acks alone");
       // Lots of acks to send, send a packet.
       mustSend = true;
     }
@@ -660,7 +660,7 @@ public class NewPacketFormat implements PacketFormat {
     if ((!ackOnly) && (!mustSend)) {
       if (messageQueue.mustSendNow(now)
           || messageQueue.mustSendSize(packet.getLength(), maxPacketSize)) {
-        if (LOG.isDebugEnabled()) LOG.debug("Must send because of message queue");
+        if (LOG.isTraceEnabled()) LOG.trace("Must send because of message queue");
         mustSend = true;
       }
     }
@@ -669,8 +669,8 @@ public class NewPacketFormat implements PacketFormat {
       int maxSendBufferSize = maxSendBufferSize();
       synchronized (sendBufferLock) {
         if (sendBufferUsed > maxSendBufferSize / 2) {
-          if (LOG.isDebugEnabled())
-            LOG.debug("Must send because other side buffer size is " + sendBufferUsed);
+          if (LOG.isTraceEnabled())
+            LOG.trace("Must send because other side buffer size is " + sendBufferUsed);
           mustSend = true;
         }
       }
@@ -764,8 +764,8 @@ public class NewPacketFormat implements PacketFormat {
             break fragments;
           }
 
-          if (LOG.isDebugEnabled())
-            LOG.debug("Allocated " + messageID + " for " + item + " for " + this);
+          if (LOG.isTraceEnabled())
+            LOG.trace("Allocated " + messageID + " for " + item + " for " + this);
 
           MessageWrapper wrapper = new MessageWrapper(item, messageID);
           MessageFragment frag = wrapper.getMessageFragment(maxPacketSize - packet.getLength());
@@ -802,10 +802,10 @@ public class NewPacketFormat implements PacketFormat {
     if (seqNum == -1) return null;
     packet.setSequenceNumber(seqNum);
 
-    if (LOG.isDebugEnabled() && ackOnly) {
-      LOG.debug("Sending ack-only packet length " + packet.getLength() + " for " + this);
-    } else if (LOG.isDebugEnabled() && !ackOnly) {
-      LOG.debug("Sending packet length " + packet.getLength() + " for " + this);
+    if (LOG.isTraceEnabled() && ackOnly) {
+      LOG.trace("Sending ack-only packet length " + packet.getLength() + " for " + this);
+    } else if (LOG.isTraceEnabled() && !ackOnly) {
+      LOG.trace("Sending packet length " + packet.getLength() + " for " + this);
     }
 
     if (!packet.getFragments().isEmpty()) {
@@ -1040,8 +1040,8 @@ public class NewPacketFormat implements PacketFormat {
       }
     }
 
-    if (LOG.isDebugEnabled() && !canAllocateID)
-      LOG.debug("Cannot send because cannot allocate ID on " + this);
+    if (LOG.isTraceEnabled() && !canAllocateID)
+      LOG.trace("Cannot send because cannot allocate ID on " + this);
     return canAllocateID;
   }
 
@@ -1217,7 +1217,7 @@ public class NewPacketFormat implements PacketFormat {
     }
 
     private boolean resize(int length) {
-      if (LOG.isDebugEnabled()) LOG.debug("Resizing from " + buffer.length + " to " + length);
+      if (LOG.isTraceEnabled()) LOG.trace("Resizing from " + buffer.length + " to " + length);
 
       synchronized (npf.receiveBufferSizeLock) {
         if ((npf.receiveBufferUsed + (length - buffer.length)) > MAX_RECEIVE_BUFFER_SIZE) {

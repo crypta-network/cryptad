@@ -428,7 +428,7 @@ public class Probe implements ByteCounter {
     final Type type;
     if (Type.isValid(typeCode)) {
       type = Type.valueOf(typeCode);
-      if (LOG.isDebugEnabled()) LOG.debug("Probe type is " + type.name() + ".");
+      if (LOG.isTraceEnabled()) LOG.trace("Probe type is " + type.name() + ".");
     } else {
       if (LOG.isDebugEnabled()) LOG.debug("Invalid probe type " + typeCode + ".");
       listener.onError(Error.UNRECOGNIZED_TYPE, typeCode, true);
@@ -500,8 +500,8 @@ public class Probe implements ByteCounter {
     }
     if (!availableSlot) {
       // Send an overload error back to the source.
-      if (LOG.isDebugEnabled())
-        LOG.debug("Already accepted maximum number of probes; rejecting incoming.");
+      if (LOG.isTraceEnabled())
+        LOG.trace("Already accepted maximum number of probes; rejecting incoming.");
       listener.onError(Error.OVERLOAD, null, true);
       return;
     }
@@ -576,15 +576,15 @@ public class Probe implements ByteCounter {
         if (candidateDegree == 0) acceptProbability = 1.0f;
         else acceptProbability = (float) degree / candidateDegree;
 
-        if (LOG.isDebugEnabled()) LOG.debug("acceptProbability is " + acceptProbability);
+        if (LOG.isTraceEnabled()) LOG.trace("acceptProbability is " + acceptProbability);
         if (node.getRandom().nextFloat() < acceptProbability) {
-          if (LOG.isDebugEnabled()) LOG.debug("Accepted candidate.");
+          if (LOG.isTraceEnabled()) LOG.trace("Accepted candidate.");
           // Filter for response to this probe with requested result type.
           final MessageFilter filter = createResponseFilter(type, candidate, uid, htl);
           message.set(DMT.HTL, htl);
           try {
             node.getUSM().addAsyncFilter(filter, new ResultListener(listener), this);
-            if (LOG.isDebugEnabled()) LOG.debug("Sending.");
+            if (LOG.isTraceEnabled()) LOG.trace("Sending.");
             candidate.sendAsync(message, null, this);
             return true;
           } catch (NotConnectedException e) {
@@ -855,7 +855,7 @@ public class Probe implements ByteCounter {
 
     @Override
     public void onDisconnect(PeerContext context) {
-      if (LOG.isDebugEnabled()) LOG.debug("Next node in chain disconnected.");
+      if (LOG.isTraceEnabled()) LOG.trace("Next node in chain disconnected.");
       listener.onError(Error.DISCONNECTED, null, true);
     }
 
@@ -866,7 +866,7 @@ public class Probe implements ByteCounter {
      */
     @Override
     public void onMatched(Message message) {
-      if (LOG.isDebugEnabled()) LOG.debug("Matched " + message.getSpec().getName());
+      if (LOG.isTraceEnabled()) LOG.trace("Matched " + message.getSpec().getName());
       if (message.getSpec().equals(DMT.ProbeBandwidth)) {
         listener.onOutputBandwidth(message.getFloat(DMT.OUTPUT_BANDWIDTH_UPPER_LIMIT));
       } else if (message.getSpec().equals(DMT.ProbeBuild)) {
@@ -908,7 +908,7 @@ public class Probe implements ByteCounter {
 
     @Override
     public void onTimeout() {
-      if (LOG.isDebugEnabled()) LOG.debug("Timed out.");
+      if (LOG.isTraceEnabled()) LOG.trace("Timed out.");
       listener.onError(Error.TIMEOUT, null, true);
     }
 

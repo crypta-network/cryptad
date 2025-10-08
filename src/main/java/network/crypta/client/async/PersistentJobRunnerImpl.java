@@ -78,10 +78,10 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       if (killed) throw new PersistenceDisabledException();
       if (context == null) throw new IllegalStateException();
       if (mustCheckpoint && enableCheckpointing) {
-        if (LOG.isDebugEnabled()) LOG.debug("Queueing job " + job);
+        if (LOG.isTraceEnabled()) LOG.trace("Queueing job " + job);
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
-        if (LOG.isDebugEnabled()) LOG.debug("Running job " + job);
+        if (LOG.isTraceEnabled()) LOG.trace("Running job " + job);
         executor.execute(new JobRunnable(job, threadPriority, context));
         runningJobs++;
       }
@@ -103,10 +103,10 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
         if (mustCheckpoint) {
-          if (LOG.isDebugEnabled()) LOG.debug("Delaying checkpoint...");
+          if (LOG.isTraceEnabled()) LOG.debug("Delaying checkpoint...");
         }
         runningJobs++;
-        if (LOG.isDebugEnabled()) LOG.debug("Running job " + job);
+        if (LOG.isTraceEnabled()) LOG.trace("Running job " + job);
         executor.execute(new JobRunnable(job, threadPriority, context));
       }
     }
@@ -146,7 +146,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     public void run() {
       boolean ret = false;
       try {
-        if (LOG.isDebugEnabled()) LOG.debug("Starting " + job);
+        if (LOG.isTraceEnabled()) LOG.trace("Starting " + job);
         ret = job.run(context);
       } catch (Throwable t) {
         LOG.error("Caught " + t + " running job " + job, t);
@@ -191,7 +191,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         return;
       }
       if (runningJobs != 0) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not writing yet");
+        if (LOG.isTraceEnabled()) LOG.trace("Not writing yet");
         return;
       }
       if (!killed) {
@@ -235,7 +235,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       mustCheckpoint = false;
       writing = false;
       QueuedJob[] jobs = queuedJobs.toArray(new QueuedJob[0]);
-      if (LOG.isDebugEnabled()) LOG.debug("Starting " + jobs.length + " queued jobs");
+      if (LOG.isTraceEnabled()) LOG.trace("Starting " + jobs.length + " queued jobs");
       for (QueuedJob job : jobs) {
         runningJobs++;
         executor.execute(new JobRunnable(job.job, job.threadPriority, context));

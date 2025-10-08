@@ -95,9 +95,9 @@ public class PluginManager {
     this.node = node;
     this.core = node.getClientCore();
 
-    if (LOG.isDebugEnabled()) LOG.debug("Starting Plugin Manager");
+    if (LOG.isTraceEnabled()) LOG.debug("Starting Plugin Manager");
 
-    if (LOG.isDebugEnabled()) LOG.debug("Initialize Plugin Manager config");
+    if (LOG.isTraceEnabled()) LOG.trace("Initialize Plugin Manager config");
 
     client = core.makeClient(PRIO, true, false);
 

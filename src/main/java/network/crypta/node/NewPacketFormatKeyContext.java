@@ -113,7 +113,7 @@ public class NewPacketFormatKeyContext {
     int maxSize;
     boolean validAck = false;
     long ackReceived = System.currentTimeMillis();
-    if (LOG.isDebugEnabled()) LOG.debug("Acknowledging packet " + ack + " from " + pn);
+    if (LOG.isTraceEnabled()) LOG.trace("Acknowledging packet " + ack + " from " + pn);
     SentPacket sent;
     synchronized (sentPackets) {
       sent = sentPackets.remove(ack);
@@ -123,10 +123,10 @@ public class NewPacketFormatKeyContext {
       rtt = sent.acked(key);
       validAck = true;
     } else {
-      if (LOG.isDebugEnabled()) LOG.debug("Already acked or lost " + ack);
+      if (LOG.isTraceEnabled()) LOG.trace("Already acked or lost " + ack);
       long packetSent = lostSentTimes.queryAndRemove(ack);
       if (packetSent < 0) {
-        if (LOG.isDebugEnabled()) LOG.debug("No time for " + ack + " - maybe acked twice?");
+        if (LOG.isTraceEnabled()) LOG.trace("No time for " + ack + " - maybe acked twice?");
         return;
       }
       rtt = ackReceived - packetSent;
@@ -197,9 +197,9 @@ public class NewPacketFormatKeyContext {
         Map.Entry<Integer, Long> entry = it.next();
         int ack = entry.getKey();
         // All acks must be sent within 200ms.
-        if (LOG.isDebugEnabled()) LOG.debug("Trying to ack " + ack);
+        if (LOG.isTraceEnabled()) LOG.trace("Trying to ack " + ack);
         if (!packet.addAck(ack, maxPacketSize)) {
-          if (LOG.isDebugEnabled()) LOG.debug("Can't add ack " + ack);
+          if (LOG.isTraceEnabled()) LOG.trace("Can't add ack " + ack);
           break;
         }
         if (entry.getValue() + MAX_ACK_DELAY < now) mustSend = true;
@@ -230,8 +230,8 @@ public class NewPacketFormatKeyContext {
       int inFlight = sentPackets.size();
       if (inFlight > maxSeenInFlight) {
         maxSeenInFlight = inFlight;
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Max seen in flight new record: " + maxSeenInFlight + " for " + this);
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("Max seen in flight new record: " + maxSeenInFlight + " for " + this);
         }
       }
     }

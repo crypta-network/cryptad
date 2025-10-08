@@ -47,9 +47,9 @@ public abstract class FCPMessage {
     String msg = sfs.toString();
     os.write((getName() + '\n').getBytes(StandardCharsets.UTF_8));
     os.write(msg.getBytes(StandardCharsets.UTF_8));
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Outgoing FCP message:\n" + getName() + '\n' + sfs);
-      LOG.debug("Being handled by " + this);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Outgoing FCP message:\n" + getName() + '\n' + sfs);
+      LOG.trace("Being handled by " + this);
     }
   }
 

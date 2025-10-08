@@ -937,7 +937,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         Lookup[] toPoll = list.toPoll;
         Lookup[] toFetch = list.toFetch;
         for (Lookup i : toPoll) {
-          if (LOG.isDebugEnabled()) LOG.debug("Polling " + i + " for " + this);
+          if (LOG.isTraceEnabled()) LOG.trace("Polling " + i + " for " + this);
           attemptsToStart.add(add(i, true));
         }
         for (Lookup i : toFetch) {
@@ -1142,7 +1142,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
           Lookup[] toPoll = list.toPoll;
           Lookup[] toFetch = list.toFetch;
           for (Lookup i : toPoll) {
-            if (LOG.isDebugEnabled()) LOG.debug("Polling " + i + " for " + this);
+            if (LOG.isTraceEnabled()) LOG.trace("Polling " + i + " for " + this);
             attemptsToStart.add(add(i, true));
           }
           for (Lookup i : toFetch) {
@@ -1294,17 +1294,17 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 
     for (USKCallback cb : localCallbacks) {
       short prio = cb.getPollingPriorityNormal();
-      if (LOG.isDebugEnabled()) LOG.debug("Normal priority for " + cb + " : " + prio);
+      if (LOG.isTraceEnabled()) LOG.trace("Normal priority for " + cb + " : " + prio);
       if (prio < normalPrio) normalPrio = prio;
-      if (LOG.isDebugEnabled()) LOG.debug("Progress priority for " + cb + " : " + prio);
+      if (LOG.isTraceEnabled()) LOG.trace("Progress priority for " + cb + " : " + prio);
       prio = cb.getPollingPriorityProgress();
       if (prio < progressPrio) progressPrio = prio;
     }
     for (USKFetcherCallback cb : fetcherCallbacks) {
       short prio = cb.getPollingPriorityNormal();
-      if (LOG.isDebugEnabled()) LOG.debug("Normal priority for " + cb + " : " + prio);
+      if (LOG.isTraceEnabled()) LOG.trace("Normal priority for " + cb + " : " + prio);
       if (prio < normalPrio) normalPrio = prio;
-      if (LOG.isDebugEnabled()) LOG.debug("Progress priority for " + cb + " : " + prio);
+      if (LOG.isTraceEnabled()) LOG.trace("Progress priority for " + cb + " : " + prio);
       prio = cb.getPollingPriorityProgress();
       if (prio < progressPrio) progressPrio = prio;
     }
@@ -1402,8 +1402,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         Lookup[] toPoll = list.toPoll;
         Lookup[] toFetch = list.toFetch;
         for (Lookup i : toPoll) {
-          if (LOG.isDebugEnabled())
-            LOG.debug("Polling " + i + " for " + this + " in onFoundEdition");
+          if (LOG.isTraceEnabled())
+            LOG.trace("Polling " + i + " for " + this + " in onFoundEdition");
           attemptsToStart.add(add(i, true));
         }
         for (Lookup i : toFetch) {
@@ -2063,11 +2063,11 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         Lookup l = new Lookup();
         l.val = ed;
         if (lookupList.contains(l)) {
-          if (LOG.isDebugEnabled()) LOG.debug("Ignoring " + l);
+          if (LOG.isTraceEnabled()) LOG.trace("Ignoring " + l);
           return false;
         }
         if (alreadyRunning.remove(l)) {
-          if (LOG.isDebugEnabled()) LOG.debug("Ignoring (2): " + l);
+          if (LOG.isTraceEnabled()) LOG.trace("Ignoring (2): " + l);
           return false;
         }
         ClientSSK key;
@@ -2077,7 +2077,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         l.key = key;
         l.ignoreStore = ignoreStore;
         if (lookupList.contains(l)) {
-          if (LOG.isDebugEnabled()) LOG.debug("Ignoring (3): " + l);
+          if (LOG.isTraceEnabled()) LOG.trace("Ignoring (3): " + l);
           return false;
         }
         return lookupList.add(l);
@@ -2288,8 +2288,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
           // Normal due to race conditions. We don't always report the new edition to the USKManager
           // immediately.
           // So ignore it.
-          if (LOG.isDebugEnabled())
-            LOG.debug("Ignoring regression in match() from " + curBaseEdition + " to " + firstSlot);
+          if (LOG.isTraceEnabled())
+            LOG.trace("Ignoring regression in match() from " + curBaseEdition + " to " + firstSlot);
           return key == null ? -1 : innerMatch(key, ehDocnames, 0, ehDocnames.size(), firstSlot);
         }
         return -1;

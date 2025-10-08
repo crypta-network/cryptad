@@ -533,7 +533,7 @@ public class RequestTracker {
                       + transfersOut
                       + " in now "
                       + transfersIn);
-          } else if (LOG.isDebugEnabled()) LOG.debug("Not counting " + entry.getKey());
+          } else if (LOG.isTraceEnabled()) LOG.trace("Not counting " + entry.getKey());
         }
         if (LOG.isDebugEnabled())
           LOG.debug("Returning count: " + count + " in: " + transfersIn + " out: " + transfersOut);
@@ -567,7 +567,7 @@ public class RequestTracker {
                 tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, false);
             transfersIn += tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, false);
             count++;
-          } else if (LOG.isDebugEnabled()) LOG.debug("Not counting " + entry.getKey());
+          } else if (LOG.isTraceEnabled()) LOG.trace("Not counting " + entry.getKey());
         }
         if (LOG.isDebugEnabled())
           LOG.debug(

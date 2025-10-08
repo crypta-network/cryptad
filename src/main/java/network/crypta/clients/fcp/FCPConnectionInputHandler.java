@@ -91,7 +91,7 @@ public class FCPConnectionInputHandler implements Runnable {
 
         FCPMessage msg;
         try {
-          if (LOG.isDebugEnabled()) LOG.debug("Incoming FCP message:\n" + messageType + '\n' + fs);
+          if (LOG.isTraceEnabled()) LOG.trace("Incoming FCP message:\n" + messageType + '\n' + fs);
           msg =
               FCPMessage.create(
                   messageType,
@@ -145,7 +145,7 @@ public class FCPConnectionInputHandler implements Runnable {
           continue;
         }
         try {
-          if (LOG.isDebugEnabled()) LOG.debug("Parsed message: " + msg + " for " + handler);
+          if (LOG.isTraceEnabled()) LOG.trace("Parsed message: " + msg + " for " + handler);
           msg.run(handler, handler.getServer().getNode());
         } catch (MessageInvalidException e) {
           FCPMessage err =

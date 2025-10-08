@@ -56,8 +56,8 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
     this.deleteOnFree = deleteOnFree;
     this.file = generator.getFilename(id);
 
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Initializing TempFileBucket(" + getFile());
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Initializing TempFileBucket(" + getFile());
     }
   }
 

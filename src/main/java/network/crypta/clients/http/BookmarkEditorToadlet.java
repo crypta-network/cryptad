@@ -558,7 +558,7 @@ public class BookmarkEditorToadlet extends Toadlet {
           NodeL10n.getBase().getString("BookmarkEditorToadlet.addDefaultBookmarks")
         });
 
-    if (LOG.isDebugEnabled()) LOG.debug("Returning:\n{}", page.generate());
+    if (LOG.isTraceEnabled()) LOG.trace("Returning:\n{}", page.generate());
 
     this.writeHTMLReply(ctx, 200, "OK", page.generate());
   }

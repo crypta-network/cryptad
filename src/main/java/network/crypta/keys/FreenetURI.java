@@ -170,7 +170,7 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
       extra = uri.extra.clone();
     } else extra = null;
     this.suggestedEdition = uri.suggestedEdition;
-    if (LOG.isDebugEnabled()) LOG.debug("Copied: " + this + " from " + uri, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Copied: " + this + " from " + uri, new Exception("debug"));
   }
 
   /**
@@ -402,8 +402,8 @@ public class FreenetURI implements Cloneable, Comparable<FreenetURI>, Serializab
     } catch (IllegalBase64Exception e) {
       throw new MalformedURLException("Invalid Base64 quantity: " + e);
     }
-    if (LOG.isDebugEnabled())
-      LOG.debug("Created from parse: " + this + " from " + URI, new Exception("debug"));
+    if (LOG.isTraceEnabled())
+      LOG.trace("Created from parse: " + this + " from " + URI, new Exception("debug"));
   }
 
   /** USK constructor from components. */

@@ -107,7 +107,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
       FileBucketOutputStream os = new FileBucketOutputStream(tempfile, streamNumber);
 
-      if (LOG.isDebugEnabled()) LOG.debug("Creating " + os, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating " + os, new Exception("debug"));
 
       addStream(os);
       return os;
@@ -280,7 +280,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     } else {
       FileBucketInputStream is = new FileBucketInputStream(file);
       addStream(is);
-      if (LOG.isDebugEnabled()) LOG.debug("Creating " + is, new Exception("debug"));
+      if (LOG.isTraceEnabled()) LOG.trace("Creating " + is, new Exception("debug"));
       return is;
     }
   }
@@ -428,7 +428,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
 
     File file = getFile();
     if ((deleteOnFree() || forceFree) && file.exists()) {
-      LOG.debug("Deleting bucket " + file, new Exception("debug"));
+      LOG.trace("Deleting bucket " + file, new Exception("debug"));
       deleteFile();
       if (file.exists()) LOG.error("Delete failed on bucket " + file, new Exception("debug"));
     }

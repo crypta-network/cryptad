@@ -121,8 +121,8 @@ public class PartiallyReceivedBlock {
 
   public synchronized boolean allReceived() throws AbortedException {
     if (_receivedCount == _packets) {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Received " + _receivedCount + " of " + _packets + " on " + this);
+      if (LOG.isTraceEnabled())
+        LOG.trace("Received " + _receivedCount + " of " + _packets + " on " + this);
       return true;
     }
     if (_aborted) {

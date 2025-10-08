@@ -121,8 +121,8 @@ public class FreenetInetAddress {
     // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
     // correctly, such as "fe80::204:1234:dead:beef"
     AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (LOG.isDebugEnabled())
-      LOG.debug("Address type of '" + host + "' appears to be '" + addressType + '\'');
+    if (LOG.isTraceEnabled())
+      LOG.trace("Address type of '" + host + "' appears to be '" + addressType + '\'');
     if (addressType != AddressIdentifier.AddressType.OTHER) {
       // Is an IP address
       addr = InetAddress.getByName(host);
@@ -137,7 +137,7 @@ public class FreenetInetAddress {
       }
     }
     if (addr == null) {
-      if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' does not look like an IP address");
+      if (LOG.isTraceEnabled()) LOG.trace('\'' + host + "' does not look like an IP address");
     }
     this._address = addr;
     this.hostname = host;
@@ -156,8 +156,8 @@ public class FreenetInetAddress {
     // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
     // correctly, such as "fe80::204:1234:dead:beef"
     AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(host);
-    if (LOG.isDebugEnabled())
-      LOG.debug("Address type of '" + host + "' appears to be '" + addressType + '\'');
+    if (LOG.isTraceEnabled())
+      LOG.trace("Address type of '" + host + "' appears to be '" + addressType + '\'');
     if (addressType != AddressIdentifier.AddressType.OTHER) {
       try {
         addr = InetAddress.getByName(host);
@@ -172,14 +172,14 @@ public class FreenetInetAddress {
                 + "' and addr.getHostAddress() is '"
                 + (addr != null ? addr.getHostAddress() + '\'' : ""));
       if (addr != null && addr.getHostAddress().equals(host)) {
-        if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' looks like an IP address");
+        if (LOG.isTraceEnabled()) LOG.trace('\'' + host + "' looks like an IP address");
         host = null;
       } else {
         addr = null;
       }
     }
     if (addr == null) {
-      if (LOG.isDebugEnabled()) LOG.debug('\'' + host + "' does not look like an IP address");
+      if (LOG.isTraceEnabled()) LOG.trace('\'' + host + "' does not look like an IP address");
     }
     this._address = addr;
     this.hostname = host;

@@ -174,7 +174,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (length > Node.SYMMETRIC_KEY_LENGTH /* iv */ + HASH_LENGTH + 2) {
       for (PeerNode pn : peers) {
         if (pn == opn) continue;
-        if (LOG.isDebugEnabled()) LOG.debug("Trying auth with " + pn);
+        if (LOG.isTraceEnabled()) LOG.trace("Trying auth with " + pn);
         if (tryProcessAuth(buf, offset, length, pn, peer, false, now)) {
           return DECODED.DECODED;
         }
@@ -305,8 +305,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
     int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
+    if (LOG.isTraceEnabled())
+      LOG.trace("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
     if (dataLength > length - (ivLength + hash.length + 2)) {
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -377,8 +377,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
     int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
+    if (LOG.isTraceEnabled())
+      LOG.trace("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
     if (dataLength > length - (ivLength + hash.length + 2)) {
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -451,8 +451,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
     int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
-    if (LOG.isDebugEnabled())
-      LOG.debug("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
+    if (LOG.isTraceEnabled())
+      LOG.trace("Data length: " + dataLength + " (1 = " + byte1 + " 2 = " + byte2 + ')');
     if (dataLength > length - (ivLength + hash.length + 2)) {
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -1060,9 +1060,9 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
                 myNonce,
                 nonceInitator,
                 replyTo.getAddress().getAddress()));
-    if (LOG.isDebugEnabled())
-      LOG.debug("We are using the following HMAC : " + HexUtil.bytesToHex(authenticator));
-    if (LOG.isDebugEnabled()) LOG.debug("We have Ni' : " + HexUtil.bytesToHex(nonceInitator));
+    if (LOG.isTraceEnabled())
+      LOG.trace("We are using the following HMAC : " + HexUtil.bytesToHex(authenticator));
+    if (LOG.isTraceEnabled()) LOG.trace("We have Ni' : " + HexUtil.bytesToHex(nonceInitator));
     byte[] message2 =
         new byte[nonceInitator.length + nonceSize + modulusLength + sig.length + HASH_LENGTH];
 
@@ -1327,8 +1327,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] nonceInitiator = new byte[nonceSize];
     System.arraycopy(payload, inputOffset, nonceInitiator, 0, nonceSize);
     inputOffset += nonceSize;
-    if (LOG.isDebugEnabled())
-      LOG.debug("We are receiving Ni : " + HexUtil.bytesToHex(nonceInitiator));
+    if (LOG.isTraceEnabled())
+      LOG.trace("We are receiving Ni : " + HexUtil.bytesToHex(nonceInitiator));
     // Before negtype 9 we didn't hash it!
     byte[] nonceInitiatorHashed = SHA256.digest(nonceInitiator);
 
@@ -1360,10 +1360,10 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
             replyTo.getAddress().getAddress()),
         authenticator)) {
       if (shouldLogErrorInHandshake(t1)) {
-        if (LOG.isDebugEnabled())
+        if (LOG.isTraceEnabled())
           LOG.debug("We received the following HMAC : " + HexUtil.bytesToHex(authenticator));
-        if (LOG.isDebugEnabled())
-          LOG.debug("We have Ni' : " + HexUtil.bytesToHex(nonceInitiatorHashed));
+        if (LOG.isTraceEnabled())
+          LOG.trace("We have Ni' : " + HexUtil.bytesToHex(nonceInitiatorHashed));
         LOG.info(
             "The HMAC doesn't match; let's discard the packet (either we rekeyed or we are victim"
                 + " of forgery) - JFK3 - "
@@ -2091,8 +2091,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     // Ni
     System.arraycopy(nonceInitiator, 0, message3, offset, nonceSize);
     offset += nonceSize;
-    if (LOG.isDebugEnabled())
-      LOG.debug("We are sending Ni : " + HexUtil.bytesToHex(nonceInitiator));
+    if (LOG.isTraceEnabled())
+      LOG.trace("We are sending Ni : " + HexUtil.bytesToHex(nonceInitiator));
     // Nr
     System.arraycopy(nonceResponder, 0, message3, offset, nonceSize);
     offset += nonceSize;
@@ -2388,8 +2388,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     synchronized (authenticatorCache) {
       if (!maybeResetTransientKey())
         authenticatorCache.put(new ByteArrayWrapper(authenticator), message4);
-      if (LOG.isDebugEnabled())
-        LOG.debug("Storing JFK(4) for " + HexUtil.bytesToHex(authenticator));
+      if (LOG.isTraceEnabled())
+        LOG.trace("Storing JFK(4) for " + HexUtil.bytesToHex(authenticator));
     }
 
     if (unknownInitiator) {
@@ -2487,7 +2487,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] iv = new byte[PCFBMode.lengthIV(cipher)];
     node.getRandom().nextBytes(iv);
     byte[] hash = SHA256.digest(output);
-    if (LOG.isDebugEnabled()) LOG.debug("Data hash: " + HexUtil.bytesToHex(hash));
+    if (LOG.isTraceEnabled()) LOG.trace("Data hash: " + HexUtil.bytesToHex(hash));
     int prePaddingLength = iv.length + hash.length + 2 /* length */ + output.length;
     int maxPacketSize = sock.getMaxPacketSize();
     int paddingLength;

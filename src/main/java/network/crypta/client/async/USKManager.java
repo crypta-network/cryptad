@@ -435,7 +435,7 @@ public class USKManager {
 
         @Override
         public void run() {
-          if (LOG.isDebugEnabled()) LOG.debug("Running prefetch checker...");
+          if (LOG.isTraceEnabled()) LOG.trace("Running prefetch checker...");
           ArrayList<USK> toFetch = null;
           long now = System.currentTimeMillis();
           boolean empty = true;

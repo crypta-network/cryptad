@@ -270,7 +270,7 @@ public final class MessageFilter {
   }
 
   public synchronized void setMessage(Message message) {
-    // LOG.debug("setMessage("+message+") on "+this, new Exception("debug"));
+    // LOG.trace("setMessage("+message+") on "+this, new Exception("debug"));
     _message = message;
     // Avoid race conditions where it is removed from the filter list because of a timeout but not
     // woken up.

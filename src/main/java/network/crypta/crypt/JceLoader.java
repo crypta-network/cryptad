@@ -105,9 +105,9 @@ public class JceLoader {
         } catch (Throwable e) {
           throw e;
         }
-        LOG.debug("Loaded BouncyCastle provider: " + p);
+        LOG.trace("Loaded BouncyCastle provider: " + p);
       } else {
-        LOG.debug("Found BouncyCastle provider: " + p);
+        LOG.trace("Found BouncyCastle provider: " + p);
       }
       try {
         // We don't want totally unusable provider
@@ -150,9 +150,9 @@ public class JceLoader {
         } else {
           Security.addProvider(nssProvider);
         }
-        LOG.debug("Loaded NSS provider " + nssProvider);
+        LOG.trace("Loaded NSS provider " + nssProvider);
       } else {
-        LOG.debug("Found NSS provider " + nssProvider);
+        LOG.trace("Found NSS provider " + nssProvider);
       }
       return nssProvider;
     }

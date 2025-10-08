@@ -32,7 +32,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    if (LOG.isDebugEnabled()) LOG.debug("running " + this + "with charset" + charset);
+    if (LOG.isTraceEnabled()) LOG.trace("running " + this + "with charset" + charset);
     Reader r = null;
     Writer w = null;
     try {
@@ -54,7 +54,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
 
   @Override
   public String getCharset(byte[] input, int length, String charset) throws IOException {
-    if (LOG.isDebugEnabled()) LOG.debug("Fetching charset for CSS with initial charset " + charset);
+    if (LOG.isTraceEnabled()) LOG.trace("Fetching charset for CSS with initial charset " + charset);
     if (input.length > getCharsetBufferSize() && LOG.isDebugEnabled()) {
       LOG.debug(
           "More data than was strictly needed was passed to the charset extractor for extraction");

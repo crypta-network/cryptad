@@ -639,7 +639,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
       if (detector.oldIPAddress != null
           && detector.oldIPAddress.isRealInternetAddress(false, false, false)) {
-        if (LOG.isDebugEnabled()) LOG.debug("Detecting in 2 minutes as have oldIPAddress");
+        if (LOG.isTraceEnabled()) LOG.trace("Detecting in 2 minutes as have oldIPAddress");
         // Allow 2 minutes to get incoming connections and therefore detect from them.
         // In the meantime, *hopefully* our oldIPAddress is valid.
         // If not, we'll find out in 2 minutes.

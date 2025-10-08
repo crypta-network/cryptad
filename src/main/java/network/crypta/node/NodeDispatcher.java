@@ -251,7 +251,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     }
 
     if (!source.isRoutable()) {
-      if (LOG.isDebugEnabled()) LOG.debug("Not routable");
+      if (LOG.isTraceEnabled()) LOG.trace("Not routable");
 
       if (spec == DMT.FNPCHKDataRequest) {
         rejectRequest(m, node.getNodeStats().chkRequestCtr);

@@ -115,7 +115,7 @@ public class ToadletContextImpl implements ToadletContext {
     this.uri = uri;
     sockOutputStream = sock.getOutputStream();
     remoteAddr = sock.getInetAddress();
-    if (LOG.isDebugEnabled()) LOG.debug("Connection from {}", remoteAddr);
+    if (LOG.isTraceEnabled()) LOG.trace("Connection from {}", remoteAddr);
     this.bf = bf;
     this.pagemaker = pageMaker;
     this.container = container;

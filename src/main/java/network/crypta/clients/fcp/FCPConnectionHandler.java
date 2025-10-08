@@ -173,7 +173,7 @@ public class FCPConnectionHandler implements Closeable {
    * message will ever be sent.
    */
   public final void send(final FCPMessage message) {
-    if (LOG.isDebugEnabled()) LOG.debug("Queueing " + message, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Queueing " + message, new Exception("debug"));
     if (message == null) throw new NullPointerException();
     boolean neverDropAMessage = server.neverDropAMessage();
     int MAX_QUEUE_LENGTH = server.maxMessageQueueLength();

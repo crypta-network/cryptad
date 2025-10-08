@@ -154,8 +154,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   private void start(ClientContext context) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Atempt to start a container inserter", new Exception("debug"));
+    if (LOG.isTraceEnabled())
+      LOG.trace("Atempt to start a container inserter", new Exception("debug"));
 
     makeMetadata(context);
 
@@ -348,8 +348,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
         HashMap<String, Object> hm = Metadata.forceMap(o);
         // System.out.println("Decompose: "+name+" (SubDir)");
         smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
-        if (LOG.isDebugEnabled())
-          LOG.debug("Sub map for " + name + " : " + hm.size() + " elements");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Sub map for " + name + " : " + hm.size() + " elements");
       } else if (o instanceof Metadata metadata) {
         // already Metadata, take it as is
         // System.out.println("Decompose: "+name+" (Metadata)");

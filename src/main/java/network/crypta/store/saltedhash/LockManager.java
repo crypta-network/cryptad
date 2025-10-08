@@ -31,7 +31,7 @@ public class LockManager {
    * then one lock at a time (or deadlock may occur).
    */
   Condition lockEntry(long offset) {
-    if (LOG.isDebugEnabled()) LOG.debug("try locking {}", offset, new Exception());
+    if (LOG.isTraceEnabled()) LOG.trace("try locking {}", offset, new Exception());
 
     Condition condition;
     try {
@@ -54,13 +54,13 @@ public class LockManager {
       return null;
     }
 
-    if (LOG.isDebugEnabled()) LOG.debug("locked {}", offset, new Exception());
+    if (LOG.isTraceEnabled()) LOG.trace("locked {}", offset, new Exception());
     return condition;
   }
 
   /** Unlock the entry */
   void unlockEntry(long offset, Condition condition) {
-    if (LOG.isDebugEnabled()) LOG.debug("unlocking {}", offset, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("unlocking {}", offset, new Exception("debug"));
 
     entryLock.lock();
     try {

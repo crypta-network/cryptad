@@ -94,7 +94,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Created " + this, new Exception("debug"));
     this.timeSkewCallback = callback;
   }
 
@@ -123,7 +123,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isDebugEnabled()) LOG.debug("Created " + this, new Exception("debug"));
+    if (LOG.isTraceEnabled()) LOG.trace("Created " + this, new Exception("debug"));
     if (fs != null) {
       started = fs.getBoolean("Started", false);
       if (started) {
@@ -229,7 +229,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       if (!started) {
         curValue = d;
         started = true;
-        if (LOG.isDebugEnabled()) LOG.debug("Reported " + d + " on " + this + " when just started");
+        if (LOG.isTraceEnabled()) LOG.trace("Reported " + d + " on " + this + " when just started");
       } else if (lastReportTime != -1) { // might be just serialized in
         long thisInterval = now - lastReportTime;
         long uptime = now - createdTime;

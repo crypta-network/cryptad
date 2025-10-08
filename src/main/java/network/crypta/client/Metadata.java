@@ -934,7 +934,7 @@ public class Metadata implements Cloneable, Serializable {
       Object o = entry.getValue();
       if (o instanceof Metadata data) {
         if (data == null) throw new NullPointerException();
-        if (LOG.isDebugEnabled()) LOG.debug("Putting metadata for " + key);
+        if (LOG.isTraceEnabled()) LOG.trace("Putting metadata for " + key);
         manifestEntries.put(key, data);
       } else if (o instanceof HashMap) {
         if (key.isEmpty()) {
@@ -944,10 +944,10 @@ public class Metadata implements Cloneable, Serializable {
               new Exception("error"));
         }
         HashMap<String, Object> hm = Metadata.forceMap(o);
-        if (LOG.isDebugEnabled()) LOG.debug("Making metadata map for " + key);
+        if (LOG.isTraceEnabled()) LOG.trace("Making metadata map for " + key);
         Metadata subMap = mkRedirectionManifestWithMetadata(hm);
         manifestEntries.put(key, subMap);
-        if (LOG.isDebugEnabled()) LOG.debug("Putting metadata map for " + key);
+        if (LOG.isTraceEnabled()) LOG.trace("Putting metadata map for " + key);
       }
     }
   }

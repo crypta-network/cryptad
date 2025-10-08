@@ -69,7 +69,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
    * classes.
    */
   public void start() {
-    LOG.debug("Starting...");
+    LOG.trace("Starting...");
     mTicker.queueTimedJob(this, mName, getStartupDelay(), false, true);
   }
 
@@ -83,7 +83,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   public void run() {
     long sleepTime = SECONDS.toMillis(1);
     try {
-      LOG.debug("Loop running...");
+      LOG.trace("Loop running...");
       iterate();
       sleepTime = getSleepTime();
     } catch (Exception e) {
@@ -101,14 +101,14 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   }
 
   protected void abortAllTransfers() {
-    LOG.debug("Trying to stop all fetches & inserts...");
+    LOG.trace("Trying to stop all fetches & inserts...");
 
     abortFetches();
     abortInserts();
   }
 
   protected void abortFetches() {
-    LOG.debug("Trying to stop all fetches...");
+    LOG.trace("Trying to stop all fetches...");
     if (mFetches != null)
       synchronized (mFetches) {
         ClientGetter[] fetches = mFetches.toArray(new ClientGetter[0]);
@@ -119,12 +119,12 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
           ++fcounter;
         }
 
-        LOG.debug("Stopped " + fcounter + " current fetches.");
+        LOG.trace("Stopped " + fcounter + " current fetches.");
       }
   }
 
   protected void abortInserts() {
-    LOG.debug("Trying to stop all inserts...");
+    LOG.trace("Trying to stop all inserts...");
     if (mInserts != null)
       synchronized (mInserts) {
         BaseClientPutter[] inserts = mInserts.toArray(new BaseClientPutter[0]);
@@ -134,7 +134,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
           insert.cancel(mNode.getClientCore().getClientContext());
           ++icounter;
         }
-        LOG.debug("Stopped " + icounter + " current inserts.");
+        LOG.trace("Stopped " + icounter + " current inserts.");
       }
   }
 
@@ -148,7 +148,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     synchronized (mFetches) {
       mFetches.remove(g);
     }
-    LOG.debug("Removed request for " + g.getURI());
+    LOG.trace("Removed request for " + g.getURI());
   }
 
   protected void addInsert(BaseClientPutter p) {
@@ -161,7 +161,7 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
     synchronized (mInserts) {
       mInserts.remove(p);
     }
-    LOG.debug("Removed insert for " + p.getURI());
+    LOG.trace("Removed insert for " + p.getURI());
   }
 
   protected int fetchCount() {
@@ -177,14 +177,14 @@ public abstract class TransferThread implements PrioRunnable, ClientGetCallback,
   }
 
   public void terminate() {
-    LOG.debug("Terminating...");
+    LOG.trace("Terminating...");
     mTicker.shutdown();
     try {
       abortAllTransfers();
     } catch (RuntimeException e) {
       LOG.error("Aborting all transfers failed", e);
     }
-    LOG.debug("Terminated.");
+    LOG.trace("Terminated.");
   }
 
   protected abstract Collection<ClientGetter> createFetchStorage();

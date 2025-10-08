@@ -52,11 +52,11 @@ final class Rijndael_Algorithm // implicit no-argument constructor
   private static final boolean TRACE = false;
 
   private static void debug(String s) {
-    if (LOG.isDebugEnabled()) LOG.debug(">>> " + NAME + ": " + s);
+    if (LOG.isTraceEnabled()) LOG.trace(">>> " + NAME + ": " + s);
   }
 
   private static void trace(boolean in, String s) {
-    if (TRACE && LOG.isDebugEnabled()) LOG.debug((in ? "==> " : "<== ") + NAME + '.' + s);
+    if (TRACE && LOG.isTraceEnabled()) LOG.trace((in ? "==> " : "<== ") + NAME + '.' + s);
   }
 
   //	Constants and variables

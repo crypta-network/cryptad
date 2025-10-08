@@ -84,8 +84,8 @@ public class MessageWrapper {
    * @return The number of bytes lost
    */
   public int lost(int start, int end) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("Lost from " + start + " to " + end + " on " + this.messageID);
+    if (LOG.isTraceEnabled())
+      LOG.trace("Lost from " + start + " to " + end + " on " + this.messageID);
     int size = end - start + 1;
     synchronized (sent) {
       synchronized (acks) {

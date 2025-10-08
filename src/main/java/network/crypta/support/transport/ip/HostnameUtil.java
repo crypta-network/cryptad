@@ -20,8 +20,8 @@ public class HostnameUtil {
       // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
       // correctly, such as "fe80::204:1234:dead:beef"
       AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
-      if (LOG.isDebugEnabled())
-        LOG.debug("Address type of '" + hn + "' appears to be '" + addressType + '\'');
+      if (LOG.isTraceEnabled())
+        LOG.trace("Address type of '" + hn + "' appears to be '" + addressType + '\'');
       if (!addressType.toString().equals("Other")) {
         // the address typer thinks it's either an IPv4 or IPv6 IP address
         return true;

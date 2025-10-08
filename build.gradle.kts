@@ -69,4 +69,3 @@ application {
 }
 
 // Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'
-

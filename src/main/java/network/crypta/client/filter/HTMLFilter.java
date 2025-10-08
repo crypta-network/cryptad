@@ -527,7 +527,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     if (pc.onlyDetectingCharset) return;
 
-    if (LOG.isDebugEnabled()) LOG.debug("Saving text: " + s.toString());
+    if (LOG.isTraceEnabled()) LOG.trace("Saving text: " + s.toString());
     if (pc.killText) {
       return;
     }
@@ -543,7 +543,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         // Not a real character
         // STRONGLY suggests somebody is using a bogus charset.
         // This could be in order to break the filter.
-        if (LOG.isDebugEnabled()) LOG.debug("Removing '" + c + "' from the output stream");
+        if (LOG.isTraceEnabled()) LOG.trace("Removing '" + c + "' from the output stream");
       } else {
         out.append(c);
       }
@@ -587,8 +587,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   String processTag(List<String> splitTag, Writer w, HTMLParseContext pc) throws IOException {
     // First, check that it is a recognized tag
-    if (LOG.isDebugEnabled()) {
-      for (int i = 0; i < splitTag.size(); i++) LOG.debug("Tag[" + i + "]=" + splitTag.get(i));
+    if (LOG.isTraceEnabled()) {
+      for (int i = 0; i < splitTag.size(); i++) LOG.trace("Tag[" + i + "]=" + splitTag.get(i));
     }
     ParsedTag t = new ParsedTag(splitTag);
     if (!pc.killTag) {
@@ -697,7 +697,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (s.charAt(s.length() - 1) == '-') s.setLength(s.length() - 1);
       if (s.charAt(s.length() - 1) == '-') s.setLength(s.length() - 1);
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Saving comment: " + s);
+    if (LOG.isTraceEnabled()) LOG.trace("Saving comment: " + s);
     if (pc.expectingBadComment) return; // ignore it
 
     if (pc.inStyle || pc.inScript) {
@@ -801,12 +801,12 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         unparsedAttrs = new String[len - 1];
         for (int x = 1; x < len; x++) unparsedAttrs[x - 1] = v.get(x);
       } else unparsedAttrs = new String[0];
-      if (LOG.isDebugEnabled()) LOG.debug("Element = " + element);
+      if (LOG.isTraceEnabled()) LOG.trace("Element = " + element);
     }
 
     public ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
       TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase());
-      if (LOG.isDebugEnabled()) LOG.debug("Got verifier: " + tv + " for " + element);
+      if (LOG.isTraceEnabled()) LOG.trace("Got verifier: " + tv + " for " + element);
       if (tv == null) {
         if (deleteWierdStuff) {
           return null;
@@ -2341,8 +2341,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
                 && (string.equalsIgnoreCase("ltr")
                     || string.equalsIgnoreCase("rtl")
                     || string.equalsIgnoreCase("auto")))) {
-          if (LOG.isDebugEnabled())
-            LOG.debug("HTML Filter is putting attribute: " + x + " =  " + o);
+          if (LOG.isTraceEnabled())
+            LOG.trace("HTML Filter is putting attribute: " + x + " =  " + o);
           hn.put(x, o);
         }
         // ARIA properties
@@ -2405,7 +2405,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     Map<String, Object> finish(Map<String, Object> h, Map<String, Object> hn, HTMLParseContext pc)
         throws DataFilterException {
-      if (LOG.isDebugEnabled()) LOG.debug("Finishing script/style");
+      if (LOG.isTraceEnabled()) LOG.trace("Finishing script/style");
       // Finishing
       setStyle(false, pc);
       pc.styleScriptRecurseCount--;
@@ -2432,7 +2432,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     Map<String, Object> start(Map<String, Object> h, Map<String, Object> hn, HTMLParseContext pc)
         throws DataFilterException {
-      if (LOG.isDebugEnabled()) LOG.debug("Starting script/style");
+      if (LOG.isTraceEnabled()) LOG.trace("Starting script/style");
       pc.styleScriptRecurseCount++;
       if (pc.styleScriptRecurseCount > 1) {
         if (deleteErrors)
@@ -2673,8 +2673,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if ((typesplit[1] != null) && !typesplit[1].isEmpty()) {
           charset = typesplit[1];
         }
-        if (LOG.isDebugEnabled())
-          LOG.debug("Processing link tag, type=" + type + ", charset=" + charset);
+        if (LOG.isTraceEnabled())
+          LOG.trace("Processing link tag, type=" + type + ", charset=" + charset);
       }
       String c = getHashString(h, "charset");
       if (c != null) charset = c;
@@ -3065,10 +3065,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             }
             // FIXME: add some more headers - Dublin Core?
           } else if (http_equiv.equalsIgnoreCase("Content-Type")) {
-            if (LOG.isDebugEnabled()) LOG.debug("Found http-equiv content-type=" + content);
+            if (LOG.isTraceEnabled()) LOG.debug("Found http-equiv content-type=" + content);
             String[] typesplit = splitType(content);
-            if (LOG.isDebugEnabled()) {
-              for (int i = 0; i < typesplit.length; i++) LOG.debug("[" + i + "] = " + typesplit[i]);
+            if (LOG.isTraceEnabled()) {
+              for (int i = 0; i < typesplit.length; i++) LOG.trace("[" + i + "] = " + typesplit[i]);
             }
             boolean detected = false;
             for (String allowedContentType : allowedContentTypes) {

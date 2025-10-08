@@ -43,8 +43,8 @@ public abstract class AbstractFCPHandler {
       PluginReplySender replysender, SimpleFieldSet params, Bucket data, int accesstype)
       throws PluginNotFoundException {
 
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Got Message: " + params.toOrderedString());
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Got Message: " + params.toOrderedString());
     }
 
     final String command = params.get("Command");
