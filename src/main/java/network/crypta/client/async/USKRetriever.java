@@ -81,11 +81,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
       return;
     }
     if (l < origUSK.suggestedEdition) {
-      LOG.warn(
-          "Found edition prior to that specified by the client: "
-              + l
-              + " < "
-              + origUSK.suggestedEdition);
+      LOG.info("Found edition {} < requested {} for {}", l, origUSK.suggestedEdition, origUSK);
       return;
     }
     if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l + " for " + this + " - fetching...");
