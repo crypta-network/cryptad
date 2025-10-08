@@ -38,7 +38,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class LoggingConfigHandler {
-  private static final Logger LOG = LoggerFactory.getLogger(LoggingConfigHandler.class);
+  // No class-level logger needed; we log via System.err in guarded spots.
+
+  // String literals used at least 3 times (java:S1192)
+  private static final String LVL_TRACE = "TRACE";
+  private static final String LVL_DEBUG = "DEBUG";
+  private static final String LVL_ERROR = "ERROR";
+  private static final String LVL_INFO = "INFO";
+  private static final String LVL_WARN = "WARN";
+  private static final String LVL_OFF = "OFF";
 
   private class PriorityCallback extends StringCallback implements EnumerableOptionCallback {
     @Override
@@ -57,10 +65,36 @@ public class LoggingConfigHandler {
       }
     }
 
+    private String fromLogbackLevel(Level lvl) {
+      if (lvl == null) return LVL_WARN; // default
+      return switch (lvl.levelInt) {
+        case Level.TRACE_INT -> LVL_TRACE;
+        case Level.DEBUG_INT -> LVL_DEBUG;
+        case Level.INFO_INT -> LVL_INFO;
+        case Level.ERROR_INT -> LVL_ERROR;
+        case Level.OFF_INT -> LVL_OFF;
+        default -> LVL_WARN;
+      };
+    }
+
+    private void setRootLevel(Level level) {
+      LoggerContext ctx = resolveLoggerContext();
+      if (ctx == null) return;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(Logger.ROOT_LOGGER_NAME);
+      root.setLevel(level);
+    }
+
+    private Level getRootLevel() {
+      LoggerContext ctx = resolveLoggerContext();
+      if (ctx == null) return Level.WARN;
+      ch.qos.logback.classic.Logger root = ctx.getLogger(Logger.ROOT_LOGGER_NAME);
+      return root.getLevel();
+    }
+
     @Override
     public String[] getPossibleValues() {
       // Present standard SLF4J/Logback levels in UI (synonyms still accepted on input)
-      return new String[] {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"};
+      return new String[] {LVL_TRACE, LVL_DEBUG, LVL_INFO, LVL_WARN, LVL_ERROR, LVL_OFF};
     }
   }
 
@@ -91,8 +125,6 @@ public class LoggingConfigHandler {
   private PrintStream originalStdout;
   private PrintStream originalStderr;
   private boolean capturedStdStreams;
-  // Track current per-logger overrides so we can clear them on update
-  private final Map<String, Level> currentOverrides = new HashMap<>();
   private final Set<String> appliedLoggerNames = new HashSet<>();
   private String priorityDetailRaw = "";
 
@@ -381,7 +413,7 @@ public class LoggingConfigHandler {
   private final Object enableLoggerLock = new Object();
 
   /** Turn on the logger. */
-  @SuppressWarnings("java:S106")
+  @SuppressWarnings({"java:S106", "java:S4507", "CallToPrintStackTrace"})
   private void enableLogger() {
     try {
       preSetLogDir(logDir);
@@ -651,7 +683,6 @@ public class LoggingConfigHandler {
             logger.setLevel(null);
           }
           appliedLoggerNames.clear();
-          currentOverrides.clear();
           // Set root level to OFF to disable emission
           ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
           root.setLevel(Level.OFF);
@@ -697,47 +728,16 @@ public class LoggingConfigHandler {
     // Accept standard names and historical synonyms for backward compatibility
     return switch (s) {
       // Standard
-      case "TRACE" -> Level.TRACE;
-      case "DEBUG" -> Level.DEBUG;
-      case "INFO" -> Level.INFO;
-      case "WARN" -> Level.WARN;
-      case "ERROR" -> Level.ERROR;
-      case "OFF" -> Level.OFF;
+      case LVL_TRACE -> Level.TRACE;
+      case LVL_DEBUG, "MINOR" -> Level.DEBUG;
+      case LVL_INFO, "NORMAL" -> Level.INFO;
+      case LVL_WARN, "WARNING" -> Level.WARN;
+      case LVL_ERROR -> Level.ERROR;
+      case LVL_OFF, "NONE" -> Level.OFF;
       // Synonyms
       case "MINIMAL" -> Level.TRACE;
-      case "MINOR" -> Level.DEBUG;
-      case "NORMAL" -> Level.INFO;
-      case "WARNING" -> Level.WARN;
-      case "NONE" -> Level.OFF;
       default -> throw new IllegalArgumentException("Unknown priority: " + val);
     };
-  }
-
-  private String fromLogbackLevel(Level lvl) {
-    if (lvl == null) return "WARN"; // default
-    return switch (lvl.levelInt) {
-      case Level.TRACE_INT -> "TRACE";
-      case Level.DEBUG_INT -> "DEBUG";
-      case Level.INFO_INT -> "INFO";
-      case Level.WARN_INT -> "WARN";
-      case Level.ERROR_INT -> "ERROR";
-      case Level.OFF_INT -> "OFF";
-      default -> "WARN";
-    };
-  }
-
-  private void setRootLevel(Level level) {
-    LoggerContext ctx = resolveLoggerContext();
-    if (ctx == null) return;
-    ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    root.setLevel(level);
-  }
-
-  private Level getRootLevel() {
-    LoggerContext ctx = resolveLoggerContext();
-    if (ctx == null) return Level.WARN;
-    ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    return root.getLevel();
   }
 
   private void applyPerLoggerOverrides(String detail) throws InvalidConfigValueException {
@@ -750,51 +750,65 @@ public class LoggingConfigHandler {
     String raw = detail.trim();
     // Explicitly clearing overrides when empty
     if (raw.isEmpty()) {
-      for (String name : appliedLoggerNames) {
-        ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
-        logger.setLevel(null); // inherit root
-      }
-      appliedLoggerNames.clear();
-      currentOverrides.clear();
+      clearAllOverrides(ctx);
       priorityDetailRaw = "";
       return;
     }
 
     // Parse into a temporary map first; do not mutate existing overrides until validated
-    Map<String, Level> newOverrides = new HashMap<>();
+    Map<String, Level> newOverrides = parseOverrides(raw);
+
+    // Apply updates
+    removeObsoleteOverrides(ctx, newOverrides);
+    applyOverrides(ctx, newOverrides);
+    priorityDetailRaw = raw;
+  }
+
+  private void clearAllOverrides(LoggerContext ctx) {
+    for (String name : appliedLoggerNames) {
+      ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
+      logger.setLevel(null); // inherit root
+    }
+    appliedLoggerNames.clear();
+  }
+
+  private Map<String, Level> parseOverrides(String raw) throws InvalidConfigValueException {
+    Map<String, Level> result = new HashMap<>();
     String[] tokens = raw.split(",");
     for (String token : tokens) {
-      if (token == null || token.isEmpty()) continue;
-      int x = token.indexOf(':');
-      if (x < 0 || x == token.length() - 1) continue; // ignore malformed pair silently as before
-      String section = token.substring(0, x);
-      String val = token.substring(x + 1);
-      Level lvl;
-      try {
-        lvl = toLogbackLevel(val);
-      } catch (IllegalArgumentException e) {
-        // Do not change existing overrides on parse error
-        throw new InvalidConfigValueException(e.getMessage());
+      if (token != null && !token.isEmpty()) {
+        int x = token.indexOf(':');
+        if (x >= 0 && x != token.length() - 1) { // ignore malformed pair silently as before
+          String section = token.substring(0, x);
+          String val = token.substring(x + 1);
+          Level lvl;
+          try {
+            lvl = toLogbackLevel(val);
+          } catch (IllegalArgumentException e) {
+            throw new InvalidConfigValueException(e.getMessage());
+          }
+          result.put(section, lvl);
+        }
       }
-      newOverrides.put(section, lvl);
     }
+    return result;
+  }
 
-    // Apply: remove overrides no longer present
+  private void removeObsoleteOverrides(LoggerContext ctx, Map<String, Level> newOverrides) {
     for (String name : new java.util.HashSet<>(appliedLoggerNames)) {
       if (!newOverrides.containsKey(name)) {
         ch.qos.logback.classic.Logger logger = ctx.getLogger(name);
         logger.setLevel(null);
         appliedLoggerNames.remove(name);
-        currentOverrides.remove(name);
       }
     }
-    // Apply/refresh new overrides
+  }
+
+  private void applyOverrides(LoggerContext ctx, Map<String, Level> newOverrides) {
     for (Map.Entry<String, Level> e : newOverrides.entrySet()) {
       ch.qos.logback.classic.Logger lgr = ctx.getLogger(e.getKey());
       lgr.setLevel(e.getValue());
       appliedLoggerNames.add(e.getKey());
-      currentOverrides.put(e.getKey(), e.getValue());
     }
-    priorityDetailRaw = raw;
   }
 }
