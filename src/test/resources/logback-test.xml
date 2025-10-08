@@ -4,12 +4,12 @@
   <property name="LOG_DIR" value="${user.dir}/build/test-logs"/>
 
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <immediateFlush>true</immediateFlush>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
       <level>WARN</level>
     </filter>
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} %-5level %logger - %msg%n</pattern>
-      <immediateFlush>true</immediateFlush>
     </encoder>
   </appender>
 
@@ -40,4 +40,3 @@
     <appender-ref ref="ASYNC_FILE"/>
   </root>
 </configuration>
-
