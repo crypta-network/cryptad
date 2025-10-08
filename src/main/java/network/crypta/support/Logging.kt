@@ -65,15 +65,12 @@ object Logging {
 
   private fun String.toSlf4jLevelOrNull(): Level? =
     when (this) {
+      // Accept only standard SLF4J names
       "ERROR" -> Level.ERROR
-      "WARN",
-      "WARNING" -> Level.WARN
-      "INFO",
-      "NORMAL" -> Level.INFO
-      "MINOR",
-      "DEBUG" -> Level.DEBUG // historical: MINOR maps to DEBUG
-      "TRACE",
-      "MINIMAL" -> Level.TRACE
+      "WARN" -> Level.WARN
+      "INFO" -> Level.INFO
+      "DEBUG" -> Level.DEBUG
+      "TRACE" -> Level.TRACE
       else -> null
     }
 

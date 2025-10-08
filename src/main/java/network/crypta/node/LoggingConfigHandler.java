@@ -59,8 +59,8 @@ public class LoggingConfigHandler {
 
     @Override
     public String[] getPossibleValues() {
-      // Preserve historical option names from Logger.LogLevel
-      return new String[] {"MINIMAL", "DEBUG", "MINOR", "NORMAL", "WARNING", "ERROR", "NONE"};
+      // Present standard SLF4J/Logback levels in UI (synonyms still accepted on input)
+      return new String[] {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"};
     }
   }
 
@@ -694,29 +694,35 @@ public class LoggingConfigHandler {
   private Level toLogbackLevel(String val) {
     if (val == null) throw new IllegalArgumentException("priority cannot be null");
     String s = val.trim().toUpperCase(Locale.ROOT);
-    // MINIMAL → TRACE; MINOR/DEBUG → DEBUG; NORMAL → INFO; WARNING → WARN; ERROR → ERROR; NONE →
-    // OFF
+    // Accept standard names and historical synonyms for backward compatibility
     return switch (s) {
+      // Standard
+      case "TRACE" -> Level.TRACE;
+      case "DEBUG" -> Level.DEBUG;
+      case "INFO" -> Level.INFO;
+      case "WARN" -> Level.WARN;
+      case "ERROR" -> Level.ERROR;
+      case "OFF" -> Level.OFF;
+      // Synonyms
       case "MINIMAL" -> Level.TRACE;
-      case "MINOR", "DEBUG" -> Level.DEBUG; // historical: MINOR maps to DEBUG
+      case "MINOR" -> Level.DEBUG;
       case "NORMAL" -> Level.INFO;
       case "WARNING" -> Level.WARN;
-      case "ERROR" -> Level.ERROR;
       case "NONE" -> Level.OFF;
       default -> throw new IllegalArgumentException("Unknown priority: " + val);
     };
   }
 
   private String fromLogbackLevel(Level lvl) {
-    if (lvl == null) return "WARNING"; // default
+    if (lvl == null) return "WARN"; // default
     return switch (lvl.levelInt) {
-      case Level.TRACE_INT -> "MINIMAL";
-      case Level.DEBUG_INT -> "DEBUG"; // historical values include MINOR and DEBUG; prefer DEBUG
-      case Level.INFO_INT -> "NORMAL";
-      case Level.WARN_INT -> "WARNING";
+      case Level.TRACE_INT -> "TRACE";
+      case Level.DEBUG_INT -> "DEBUG";
+      case Level.INFO_INT -> "INFO";
+      case Level.WARN_INT -> "WARN";
       case Level.ERROR_INT -> "ERROR";
-      case Level.OFF_INT -> "NONE";
-      default -> "WARNING";
+      case Level.OFF_INT -> "OFF";
+      default -> "WARN";
     };
   }
 

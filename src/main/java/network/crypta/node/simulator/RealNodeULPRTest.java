@@ -95,14 +95,14 @@ public class RealNodeULPRTest extends RealNodeTest {
         wd,
         false,
         Level.ERROR,
-        "network.crypta.node.Location:normal,network.crypta.node.simulator"
-            + ".RealNodeRoutingTest:normal,network.crypta.node"
-            + ".NodeDispatcher:NORMAL,network.crypta.node.FailureTable:MINOR,"
-            + "network.crypta.node.Node:MINOR,network.crypta.node.Request:MINOR,"
-            + "network.crypta.io.comm.MessageCore:MINOR,network.crypta.node"
-            + ".PeerNode:MINOR,network.crypta.node.DarknetPeerNode:MINOR,network"
-            + ".crypta.io.xfer.PacketThrottle:MINOR,network.crypta.node"
-            + ".PeerManager:MINOR,network.crypta.client.async:MINOR",
+        "network.crypta.node.Location:INFO,network.crypta.node.simulator"
+            + ".RealNodeRoutingTest:INFO,network.crypta.node"
+            + ".NodeDispatcher:INFO,network.crypta.node.FailureTable:DEBUG,"
+            + "network.crypta.node.Node:DEBUG,network.crypta.node.Request:DEBUG,"
+            + "network.crypta.io.comm.MessageCore:DEBUG,network.crypta.node"
+            + ".PeerNode:DEBUG,network.crypta.node.DarknetPeerNode:DEBUG,network"
+            + ".crypta.io.xfer.PacketThrottle:DEBUG,network.crypta.node"
+            + ".PeerManager:DEBUG,network.crypta.client.async:DEBUG",
         true,
         null);
     // For testing low-level stuff (connection bugs)
