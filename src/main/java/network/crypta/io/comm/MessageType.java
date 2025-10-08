@@ -100,11 +100,17 @@ public class MessageType {
     return _name.hashCode();
   }
 
+  /**
+   * Resolve a message spec by its hashed ID.
+   *
+   * <p>If the ID is unknown we log at INFO level (unless {@code dontLog} is true). Unknown message
+   * types can legitimately occur due to version skew or malformed traffic and are not necessarily
+   * fatal errors.
+   */
   public static MessageType getSpec(Integer specID, boolean dontLog) {
     MessageType id = _specs.get(specID);
-    if (id == null) {
-      if (!dontLog) LOG.error("Unrecognised message type received (" + specID + ')');
-    }
+    if (id == null && !dontLog) LOG.info("Unrecognised message type received ({})", specID);
+
     return id;
   }
 
