@@ -166,7 +166,7 @@ public class NodeUpdateManager {
 
   private boolean disabledThisSession;
 
-  // Removed fields related to legacy main-jar flow
+  // CoreUpdater manages core updates; legacy main-jar fields are no longer used.
 
   private static final Object deployLock = new Object();
 

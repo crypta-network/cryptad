@@ -213,7 +213,7 @@ public class UdpSocketHandler
         System.err.println();
       } catch (Throwable tt) {
       }
-      // Note: Removed forced GC calls as they are ineffective and can mask real memory issues
+      // Avoid forced GC calls; they are ineffective and can mask real memory issues
       try {
         Runtime r = Runtime.getRuntime();
         System.err.print(r.freeMemory());

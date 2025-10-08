@@ -1065,11 +1065,7 @@ public class RequestTracker {
     HashMap<NodeCHK, RequestSender> transferringRequestSenders =
         sender.realTimeFlag ? transferringRequestSendersRT : transferringRequestSendersBulk;
     synchronized (transferringRequestSenders) {
-      //			RequestSender rs = (RequestSender) transferringRequestSenders.remove(key);
-      //			if(rs != sender) {
-      //				LOG.error("Removed "+rs+" should be "+sender+" for "+key+" in
-      // removeTransferringSender");
-      //			}
+      // Intentionally remove only when the stored sender matches the provided one.
 
       // Since there is no request coalescing, we only remove it if it matches,
       // and don't complain if it doesn't.

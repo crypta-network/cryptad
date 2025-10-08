@@ -144,7 +144,7 @@ public class NewLZMACompressor extends AbstractCompressor {
   private static final class BoundedInputStream extends CountedInputStream {
     private final long max;
 
-    // Removed unused EOF tracking flags (no external readers, dead code).
+    // This wrapper does not maintain explicit EOF flags.
 
     BoundedInputStream(InputStream in, long max) {
       super(in);
