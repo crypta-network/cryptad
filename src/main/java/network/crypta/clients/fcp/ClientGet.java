@@ -622,7 +622,7 @@ public class ClientGet extends ClientRequest
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted, and also possibly failed deletions.
-      LOG.error("lowLevelClient == null", new Exception("error"));
+      LOG.warn("lowLevelClient == null");
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -702,7 +702,7 @@ public class ClientGet extends ClientRequest
     } else if (ce instanceof ExpectedHashesEvent event) {
       synchronized (this) {
         if (expectedHashes != null) {
-          LOG.error("Got a new ExpectedHashes", new Exception("debug"));
+          LOG.warn("Got a new ExpectedHashes");
           return;
         } else {
           progress = this.expectedHashes = new ExpectedHashes(event, identifier, global);

@@ -3170,7 +3170,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
         @Override
         public void sentPayload(int x) {
-          LOG.error("Payload sent in resendByteCounter????", new Exception("error"));
+          LOG.warn("Payload sent in resendByteCounter????");
         }
       };
 

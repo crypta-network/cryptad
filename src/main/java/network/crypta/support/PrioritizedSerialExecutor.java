@@ -49,7 +49,7 @@ public class PrioritizedSerialExecutor implements Executor {
       synchronized (jobs) {
         if (current != null) {
           if (current.isAlive()) {
-            LOG.error("Already running a thread for " + this + " !!", new Exception("error"));
+            LOG.warn("Already running a thread for {} !!", this);
             return;
           }
         }
@@ -192,12 +192,11 @@ public class PrioritizedSerialExecutor implements Executor {
   private void reallyStart() {
     synchronized (jobs) {
       if (running) {
-        LOG.error("Not reallyStart()ing: ALREADY RUNNING", new Exception("error"));
+        LOG.warn("Not reallyStart()ing: ALREADY RUNNING");
         return;
       }
       running = true;
-      if (LOG.isDebugEnabled())
-        LOG.debug("Starting thread... " + name + " : " + runner, new Exception("debug"));
+      if (LOG.isDebugEnabled()) LOG.debug("Starting thread... {} : {}", name, runner);
       realExecutor.execute(runner, name);
     }
   }

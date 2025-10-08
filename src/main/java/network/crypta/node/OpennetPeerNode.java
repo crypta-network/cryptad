@@ -281,7 +281,7 @@ public class OpennetPeerNode extends PeerNode {
 
   public LinkLengthClass linkLengthClass() {
     if (!Location.isValid(getLocation())) {
-      LOG.error("No location on " + this, new Exception("debug"));
+      LOG.warn("No location on {}", this);
       return LinkLengthClass
           .SHORT; // FIXME add unknown to enum? Would need more complex error handling...
     }

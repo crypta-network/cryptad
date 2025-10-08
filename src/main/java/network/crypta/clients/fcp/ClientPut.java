@@ -431,7 +431,7 @@ public class ClientPut extends ClientPutBase {
 
   @Override
   protected FCPMessage persistentTagMessage() {
-    if (putter == null) LOG.error("putter == null", new Exception("error"));
+    if (putter == null) LOG.warn("putter == null");
     // FIXME end
     return new PersistentPut(
         identifier,
@@ -463,7 +463,7 @@ public class ClientPut extends ClientPutBase {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted, and also possibly failed deletions.
-      LOG.error("lowLevelClient == null", new Exception("error"));
+      LOG.warn("lowLevelClient == null");
       return false;
     }
     return lowLevelClient.realTimeFlag();

@@ -950,7 +950,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     do {
       int status = metaFC.read(mbf, Entry.METADATA_LENGTH * offset + mbf.position());
       if (status == -1) {
-        LOG.error("Failed to access offset " + offset, new Exception("error"));
+        LOG.error("Failed to access offset {}", offset);
         throw new EOFException();
       }
     } while (mbf.hasRemaining());

@@ -200,7 +200,7 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     if (LOG.isDebugEnabled()) LOG.debug("Failed on " + this);
     synchronized (this) {
       if (finished) {
-        LOG.error("onFailure called after finish on " + this, new Exception("error"));
+        LOG.warn("onFailure called after finish on {}", this);
         return;
       }
       finished = true;
@@ -249,13 +249,12 @@ class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serializable 
     if (LOG.isDebugEnabled()) LOG.debug("Found edition " + l + " on " + this);
     synchronized (this) {
       if (fetcher == null) {
-        LOG.error(
+        LOG.warn(
             "onFoundEdition but fetcher is null - isn't onFoundEdition() terminal for"
-                + " USKFetcherCallback's??",
-            new Exception("debug"));
+                + " USKFetcherCallback's??");
       }
       if (finished) {
-        LOG.error("onFoundEdition called after finish on " + this, new Exception("error"));
+        LOG.warn("onFoundEdition called after finish on {}", this);
         return;
       }
       finished = true;

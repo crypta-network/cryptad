@@ -141,7 +141,7 @@ public class ProtocolErrorMessage extends FCPMessage implements Serializable {
       case PERSISTENCE_DISABLED:
         return "Persistence disabled (e.g. encrypted queue waiting for password?)";
       default:
-        LOG.error("Unknown error code: " + code, new Exception("debug"));
+        LOG.warn("Unknown error code: {}", code);
         return "(Unknown)";
     }
   }

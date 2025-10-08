@@ -310,7 +310,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
 
   @Override
   public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
-    LOG.error("Bogus onGeneratedMetadata() on " + this + " from " + state, new Exception("error"));
+    LOG.warn("Bogus onGeneratedMetadata() on {} from {}", this, state);
     metadata.free();
   }
 

@@ -149,7 +149,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   public DECODED process(byte[] buf, int offset, int length, Peer peer, PeerNode opn, long now) {
 
     if (opn != null && opn.getOutgoingMangler() != this) {
-      LOG.error("Apparently contacted by " + opn + ") on " + this, new Exception("error"));
+      LOG.warn("Apparently contacted by {} on {}", opn, this);
       opn = null;
     }
     boolean wantAnonAuth = crypto.wantAnonAuth();

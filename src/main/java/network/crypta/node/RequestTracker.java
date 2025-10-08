@@ -150,7 +150,7 @@ public class RequestTracker {
       T oldTag = overallMap.get(uid);
       if (oldTag != null) {
         if (oldTag == tag) {
-          LOG.error("Tag already registered: " + tag, new Exception("debug"));
+          LOG.warn("Tag already registered: {}", tag);
         } else {
           return false;
         }
@@ -189,13 +189,12 @@ public class RequestTracker {
         oldTag = localMap.get(uid);
         if (oldTag != null) {
           if (oldTag == tag) {
-            LOG.error("Tag already registered (local): " + tag, new Exception("debug"));
+            LOG.warn("Tag already registered (local): {}", tag);
           } else {
             // Violates the invariant that local requests are always registered on the main
             // (non-local) map too.
             LOG.error(
-                "Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: " + tag,
-                new Exception("debug"));
+                "Different tag already registered (local) EVEN THOUGH NOT ON MAIN MAP: {}", tag);
             overallMap.remove(uid);
             return false;
           }

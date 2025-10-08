@@ -69,7 +69,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
 
   public synchronized void inc(int k) {
     if (k == 0) {
-      LOG.error("Can't increment 0, not a valid failure mode", new Exception("error"));
+      LOG.warn("Can't increment 0, not a valid failure mode");
     }
     if (map == null) map = new HashMap<>();
     Integer key = k;
@@ -91,7 +91,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
 
   public synchronized void inc(Integer k, int val) {
     if (k == 0) {
-      LOG.error("Can't increment 0, not a valid failure mode", new Exception("error"));
+      LOG.warn("Can't increment 0, not a valid failure mode");
     }
     if (map == null) map = new HashMap<>();
     Integer i = map.get(k);

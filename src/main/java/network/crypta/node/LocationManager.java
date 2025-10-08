@@ -160,7 +160,7 @@ public class LocationManager implements ByteCounter {
    */
   public synchronized void setLocation(double l) {
     if (!Location.isValid(l)) {
-      LOG.error("Setting invalid location: " + l, new Exception("error"));
+      LOG.error("Setting invalid location: {}", l);
       return;
     }
     this.loc = l;
@@ -1589,7 +1589,7 @@ public class LocationManager implements ByteCounter {
     byte[] data = ((ShortBuffer) m.getObject(DMT.DATA)).getData();
 
     if (data.length < 16 || data.length % 8 != 0) {
-      LOG.error("Data invalid length in swap commit: " + data.length, new Exception("error"));
+      LOG.error("Data invalid length in swap commit: {}", data.length);
       return;
     }
 
@@ -1597,7 +1597,7 @@ public class LocationManager implements ByteCounter {
 
     double hisLoc = locations[0];
     if (!Location.isValid(hisLoc)) {
-      LOG.error("Invalid hisLoc in swap commit: " + hisLoc, new Exception("error"));
+      LOG.error("Invalid hisLoc in swap commit: {}", hisLoc);
       return;
     }
 
@@ -1675,7 +1675,7 @@ public class LocationManager implements ByteCounter {
   private void removeRecentlyForwardedItem(RecentlyForwardedItem item) {
     if (LOG.isDebugEnabled()) LOG.debug("Removing: " + item);
     if (item == null) {
-      LOG.error("removeRecentlyForwardedItem(null)", new Exception("error"));
+      LOG.warn("removeRecentlyForwardedItem(null)");
     }
     synchronized (recentlyForwardedIDs) {
       recentlyForwardedIDs.remove(item.incomingID);

@@ -95,7 +95,7 @@ public class PluginTalker {
       if (plug == null) {
         // FIXME How to get this out to surrounding send(..)?
         // throw new PluginNotFoundException(How to get this out to surrounding send(..)?);
-        LOG.error("Connection to plugin '" + pluginName + "' lost.", new Exception("FIXME"));
+        LOG.warn("Connection to plugin '{}' lost.", pluginName);
         return;
       }
       plug.handle(replysender, plugparams, data2, access);

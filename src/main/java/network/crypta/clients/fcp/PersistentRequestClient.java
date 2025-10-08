@@ -366,7 +366,7 @@ public class PersistentRequestClient {
    */
   public boolean setWatchGlobal(boolean enabled, int verbosityMask, FCPServer server) {
     if (isGlobalQueue) {
-      LOG.error("Set watch global on global queue!: " + this, new Exception("debug"));
+      LOG.warn("Set watch global on global queue!: {}", this);
       return false;
     }
     if (server.getGlobalForeverClient() == null) return false;

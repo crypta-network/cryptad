@@ -147,7 +147,7 @@ public class InsertException extends Exception implements Cloneable {
       case LowLevelPutException.ROUTE_REALLY_NOT_FOUND:
         return new InsertException(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
       default:
-        LOG.error("Unknown LowLevelPutException: " + e + " code " + e.code, new Exception("error"));
+        LOG.error("Unknown LowLevelPutException code {}", e.code, e);
         return new InsertException(
             InsertExceptionMode.INTERNAL_ERROR, "Unknown error " + e.code, null);
     }

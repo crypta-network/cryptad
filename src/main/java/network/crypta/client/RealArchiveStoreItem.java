@@ -57,7 +57,7 @@ class RealArchiveStoreItem extends ArchiveStoreItem {
       // This still happens. It is clearly impossible as we check in the constructor and throw if it
       // is null.
       // Nonetheless there is little we can do here ...
-      LOG.error("IMPOSSIBLE: BUCKET IS NULL!", new Exception("error"));
+      LOG.error("IMPOSSIBLE: BUCKET IS NULL!");
       return;
     }
     bucket.free();

@@ -417,7 +417,7 @@ public abstract class ClientPutBase extends ClientRequest
     }
 
     if (msg == null) {
-      LOG.error("Trying to send null message on " + this, new Exception("error"));
+      LOG.warn("Trying to send null message on {}", this);
     } else {
       if (persistence == Persistence.CONNECTION && handler == null) {
         if (origHandler != null)

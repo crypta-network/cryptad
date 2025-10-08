@@ -132,7 +132,7 @@ public class LoadPlugin extends FCPMessage {
                     pi = node.getPluginManager().startPluginURL(pluginURL, store);
                     break;
                   default:
-                    LOG.error("This should really not happen!", new Exception("FIXME"));
+                    LOG.error("This should really not happen!");
                     handler.send(
                         new ProtocolErrorMessage(
                             ProtocolErrorMessage.INTERNAL_ERROR,

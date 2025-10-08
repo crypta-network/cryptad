@@ -390,7 +390,7 @@ public class ClientPutMessage extends DataCarryingMessage {
   public void freeData() {
     if (bucket == null) {
       if (dataLength() <= 0) return; // Okay.
-      LOG.error("bucket is null on " + this + " - freed twice?", new Exception("error"));
+      LOG.warn("bucket is null on {} - freed twice?", this);
       return;
     }
     bucket.free();

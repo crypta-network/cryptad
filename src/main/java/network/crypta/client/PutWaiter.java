@@ -49,7 +49,7 @@ public class PutWaiter implements ClientPutCallback {
     if (LOG.isDebugEnabled()) LOG.debug("URI: " + uri);
     if (this.uri == null) this.uri = uri;
     if (uri.equals(this.uri)) return;
-    LOG.error("URI already set: " + this.uri + " but new URI: " + uri, new Exception("error"));
+    LOG.warn("URI already set: {} but new URI: {}", this.uri, uri);
   }
 
   /** Waits for the insert to finish, returns the URI generated, throws if it failed. */
@@ -78,7 +78,7 @@ public class PutWaiter implements ClientPutCallback {
 
   @Override
   public void onGeneratedMetadata(Bucket metadata, BaseClientPutter state) {
-    LOG.error("onGeneratedMetadata() on PutWaiter from " + state, new Exception("error"));
+    LOG.warn("onGeneratedMetadata() on PutWaiter from {}", state);
     metadata.free();
   }
 

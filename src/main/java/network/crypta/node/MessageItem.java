@@ -47,7 +47,7 @@ public class MessageItem {
       // and the window size is frequently very small, so if we have really big messages they
       // could cause big problems e.g. starvation of other messages, resulting in timeouts
       // (especially if there are retransmits).
-      LOG.error("WARNING: Message too big: " + buf.length + " for " + msg2, new Exception("error"));
+      LOG.warn("Message too big: {} for {}", buf.length, msg2);
     }
   }
 

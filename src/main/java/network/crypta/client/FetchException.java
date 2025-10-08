@@ -220,7 +220,7 @@ public class FetchException extends Exception implements Cloneable {
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes) {
     super(getMessage(mode));
     if (errorCodes.isEmpty()) {
-      LOG.error("Failing with no error codes?!", new Exception("error"));
+      LOG.error("Failing with no error codes?!");
     }
     extraMessage = null;
     this.mode = mode;
@@ -234,7 +234,7 @@ public class FetchException extends Exception implements Cloneable {
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes, String msg) {
     super(getMessage(mode) + ": " + msg);
     if (errorCodes.isEmpty()) {
-      LOG.error("Failing with no error codes?!", new Exception("error"));
+      LOG.error("Failing with no error codes?!");
     }
     extraMessage = msg;
     this.mode = mode;

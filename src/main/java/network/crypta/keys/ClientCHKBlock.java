@@ -478,7 +478,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     else encKey = md256.digest(data);
     if (cryptoAlgorithm == 0) {
       // TODO find all such cases and fix them.
-      LOG.error("Passed in 0 crypto algorithm", new Exception("warning"));
+      LOG.warn("Passed in 0 crypto algorithm");
       cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     }
     if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)

@@ -1516,7 +1516,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   @Override
   public void forceDisconnect() {
-    LOG.error("Forcing disconnect on " + this, new Exception("debug"));
+    LOG.warn("Forcing disconnect on {}", this);
     disconnected(true, true); // always dump trackers, maybe dump messages
   }
 
@@ -2098,10 +2098,9 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         // A race condition involving forceCancelDisconnecting causing a mistaken log message anyway
         // is conceivable, but unlikely...
         if ((unverifiedTracker == null) && (currentTracker == null) && !disconnecting)
-          LOG.error("Received packet while disconnected!: " + this, new Exception("error"));
+          LOG.warn("Received packet while disconnected!: {}", this);
         else if (LOG.isDebugEnabled())
-          LOG.debug(
-              "Received packet while disconnected on " + this + " - recently disconnected() ?");
+          LOG.debug("Received packet while disconnected on {} - recently disconnected() ?", this);
       } else {
         if (LOG.isDebugEnabled()) LOG.debug("Received packet on " + this);
       }
@@ -4271,14 +4270,14 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     for (long l : runningAnnounceUIDs) {
       if (l == uid) continue;
       if (x == newList.length) {
-        LOG.warn("UID not found in completedAnnounce, should not happen", new Exception("debug"));
+        LOG.warn("UID not found in completedAnnounce, should not happen");
         // uid was not found in runningAnnounceUIDs
         return false;
       }
       newList[x++] = l;
     }
     if (x < newList.length) {
-      LOG.error("Duplicated UID, should not happen", new Exception("debug"));
+      LOG.error("Duplicated UID, should not happen");
       newList = Arrays.copyOf(newList, x);
       runningAnnounceUIDs = newList;
       return true;
