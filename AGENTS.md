@@ -30,6 +30,8 @@ some Kotlin components.
   - Forbidden example (do not add):
     - `// (Removed) Temporary 'legacyLoggerCheck' task used during SLF4J migration.`
     - `// The legacy logger has been removed in PR8, so this guard task is no longer needed.`
+    - `// Std stream capture has been removed; rely on configured appenders.`
+    - `// No std stream capture to restore.`
 - When deprecating behavior that remains in code, use standard `@Deprecated` (Java/Kotlin) and a brief forward-looking note (link to issue/PR). Avoid PR-number narratives in comments.
 - If additional context is valuable long-term, document it here in `AGENTS.md` or in `docs/`, not inline next to removed code.
 

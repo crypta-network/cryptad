@@ -427,7 +427,7 @@ public class LoggingConfigHandler {
       } catch (NodeNeedRestartException e) {
         // not expected for priority updates
       }
-      // Std stream capture has been removed; rely on configured appenders.
+
       loggerEnabled = true;
     }
   }
@@ -659,7 +659,7 @@ public class LoggingConfigHandler {
       } catch (Exception e) {
         System.err.println("Failed to disable logging via Logback: " + e);
       }
-      // No std stream capture to restore.
+
       loggerEnabled = false;
     }
   }
