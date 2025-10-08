@@ -49,7 +49,7 @@ object Logging {
       .filter { it.isNotEmpty() && it.contains(':') }
       .forEach { token ->
         val idx = token.indexOf(':')
-        val section = token.substring(0, idx)
+        val section = token.take(idx)
         val lvl = token.substring(idx + 1).trim()
         val up = lvl.uppercase()
         if (up == "NONE" || up == "OFF") {
@@ -96,9 +96,8 @@ object Logging {
   ): Pair<ch.qos.logback.classic.LoggerContext, ch.qos.logback.classic.Logger>? {
     val factory = LoggerFactory.getILoggerFactory()
     return if (factory is ch.qos.logback.classic.LoggerContext) {
-      val ctx = factory
-      val logger = ctx.getLogger(name)
-      Pair(ctx, logger)
+      val logger = factory.getLogger(name)
+      Pair(factory, logger)
     } else null
   }
 
