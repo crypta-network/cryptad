@@ -157,7 +157,7 @@ public class TimeDecayingRunningAverageTest {
     TimeDecayingRunningAverage first =
         new TimeDecayingRunningAverage(
             0, 1000, 0, 1, null, null, clock::getWallClockMillis, clock::getMonotonicNanos);
-    TimeDecayingRunningAverage second = first.clone();
+    TimeDecayingRunningAverage second = new TimeDecayingRunningAverage(first);
     second.report(0);
     clock.tick(1000);
     second.report(1);
@@ -169,6 +169,33 @@ public class TimeDecayingRunningAverageTest {
     // New instance should be updated
     assertThat(second.currentValue(), equalTo(0.5));
     assertThat(second.countReports(), equalTo(2L));
+  }
+
+  @Test
+  public void binaryRoundTripPreservesValueAndCount() throws Exception {
+    TimeDecayingRunningAverage avg =
+        new TimeDecayingRunningAverage(
+            0, 1000, 0, 1, null, null, clock::getWallClockMillis, clock::getMonotonicNanos);
+    clock.tick(500);
+    avg.report(1.0);
+    clock.tick(1000);
+    avg.report(1.0);
+
+    // Serialize to a binary stream
+    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+    try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+      avg.writeDataTo(dos);
+    }
+
+    // Restore from the binary stream
+    java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(baos.toByteArray());
+    try (java.io.DataInputStream dis = new java.io.DataInputStream(bais)) {
+      TimeDecayingRunningAverage restored =
+          new TimeDecayingRunningAverage(0, 1000, 0, 1, dis, null);
+
+      assertThat(restored.currentValue(), equalTo(avg.currentValue()));
+      assertThat(restored.lastReportTime(), equalTo(-1L)); // as per constructor semantics
+    }
   }
 
   static class Clock {

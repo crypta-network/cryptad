@@ -3,27 +3,71 @@ package network.crypta.support.math;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
+import java.util.function.LongSupplier;
 import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Time decaying running average.
+ * Exponentially time‑decaying running average.
  *
- * <p>Decay factor = 0.5 ^ (interval / halflife).
+ * <p>This implementation applies exponential smoothing where each new observation is weighted by
+ * the time elapsed since the previous accepted observation. Given a half‑life {@code H}
+ * (milliseconds) and a monotonic elapsed interval {@code dt} (milliseconds), the decay factor is:
  *
- * <p>So if the interval is exactly the half-life then reporting 0 will halve the value.
+ * <pre>
+ *   decay = 0.5 ^ (dt / H)
+ *   current = (current * decay) + (1 - decay) * reportedValue
+ * </pre>
  *
- * <p>Note that the older version has a half life on the influence of any given report without
- * taking into account the fact that reports persist and accumulate. :)
+ * <p>Consequences:
+ *
+ * <ul>
+ *   <li>If {@code dt == H} then the new value contributes 50% to the updated average.
+ *   <li>Short intervals yield a decay close to 1 (small influence of the new value), while long
+ *       intervals yield a decay close to 0 (the new value dominates).
+ *   <li>Elapsed time is computed from a monotonic time source to make the average resilient to
+ *       wall‑clock adjustments. Wall‑clock time is only used for human‑readable timestamps and
+ *       persistence metadata.
+ * </ul>
+ *
+ * <p>Inputs outside the configured range {@code [min, max]} and non‑finite values are ignored (they
+ * do not change the current value and do not advance time), but they are counted as invalid events
+ * in logs. The first valid report sets the current value directly and marks the series as started.
+ *
+ * <p>Thread‑safety: All public methods are thread‑safe. The class uses internal synchronization to
+ * ensure a consistent view of state and to compute decays atomically.
+ *
+ * <p>Copying: Use the copy constructor or {@link RunningAverage#copyOf(RunningAverage)}. The
+ * snapshot produced by the copy constructor is independent of future updates to the original.
+ *
+ * <p>Persistence: The instance can be serialized in two ways:
+ *
+ * <ul>
+ *   <li>Binary stream via {@link #writeDataTo(DataOutputStream)} and the corresponding constructor
+ *       that reads from {@link DataInputStream}.
+ *   <li>Human‑readable map via {@link #exportFieldSet(boolean)}. When restored with a non‑null
+ *       {@link SimpleFieldSet} and {@code Started=true}, the first subsequent report only
+ *       initializes timestamps and does not alter {@code currentValue}. This avoids a warm‑up spike
+ *       from an arbitrarily long pause while persisted.
+ * </ul>
  */
-public final class TimeDecayingRunningAverage implements RunningAverage, Cloneable {
+public final class TimeDecayingRunningAverage implements RunningAverage {
   private static final Logger LOG = LoggerFactory.getLogger(TimeDecayingRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
   static final int MAGIC = 0x5ff4ac94;
+
+  // Reused literals
+  private static final String LOG_MSG_CREATED = "Created {}";
+  private static final String FS_KEY_STARTED = "Started";
+  private static final String FS_KEY_CURRENT_VALUE = "CurrentValue";
+  private static final String FS_KEY_TOTAL_REPORTS = "TotalReports";
+  private static final String FS_KEY_UPTIME = "Uptime";
+  private static final String LOG_LIT_WAS = " was ";
 
   // Copying is via the copy constructor.
 
@@ -38,9 +82,9 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   double minReport;
   double maxReport;
 
-  private final TimeSkewDetectorCallback timeSkewCallback;
-  private final java.util.function.LongSupplier wallClockTimeSourceMillis;
-  private final java.util.function.LongSupplier monotonicTimeSourceNanos;
+  private final transient TimeSkewDetectorCallback timeSkewCallback;
+  private transient LongSupplier wallClockTimeSourceMillis;
+  private transient LongSupplier monotonicTimeSourceNanos;
 
   @Override
   public String toString() {
@@ -72,11 +116,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   }
 
   /**
-   * @param defaultValue
-   * @param halfLife
-   * @param min
-   * @param max
-   * @param callback
+   * Creates a new average starting at {@code defaultValue} and decaying with the given half‑life.
+   *
+   * @param defaultValue initial value returned by {@link #currentValue()} until the first valid
+   *     {@link #report(double)} is accepted
+   * @param halfLife half‑life in milliseconds; when {@code 0}, a minimum of {@code 1 ms} is used to
+   *     avoid division by zero
+   * @param min minimum accepted observation (inclusive); lower values are ignored
+   * @param max maximum accepted observation (inclusive); higher values are ignored
+   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
    */
   public TimeDecayingRunningAverage(
       double defaultValue,
@@ -96,17 +144,24 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
     this.timeSkewCallback = callback;
   }
 
   /**
-   * @param defaultValue
-   * @param halfLife
-   * @param min
-   * @param max
-   * @param fs
-   * @param callback
+   * Creates a new average, optionally restoring state from a {@link SimpleFieldSet} snapshot.
+   *
+   * <p>When {@code fs} is non‑null and contains {@code Started=true}, the fields {@code
+   * CurrentValue}, {@code TotalReports} and {@code Uptime} are validated and used. The first
+   * subsequent {@link #report(double)} updates internal timestamps without changing the current
+   * value, preventing a large jump after a long persisted pause.
+   *
+   * @param defaultValue initial value before the first valid report
+   * @param halfLife half‑life in milliseconds
+   * @param min minimum accepted observation (inclusive)
+   * @param max maximum accepted observation (inclusive)
+   * @param fs optional snapshot to restore from; may be {@code null}
+   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
    */
   public TimeDecayingRunningAverage(
       double defaultValue,
@@ -128,18 +183,18 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
     if (fs != null) {
-      started = fs.getBoolean("Started", false);
+      started = fs.getBoolean(FS_KEY_STARTED, false);
       if (started) {
-        curValue = fs.getDouble("CurrentValue", curValue);
+        curValue = fs.getDouble(FS_KEY_CURRENT_VALUE, curValue);
         if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
           curValue = defaultValue;
           totalReports = 0;
           createdTime = wallClockTimeSourceMillis.getAsLong();
         } else {
-          totalReports = fs.getLong("TotalReports", 0);
-          long uptime = fs.getLong("Uptime", 0);
+          totalReports = fs.getLong(FS_KEY_TOTAL_REPORTS, 0);
+          long uptime = fs.getLong(FS_KEY_UPTIME, 0);
           createdTime = wallClockTimeSourceMillis.getAsLong() - uptime;
         }
       }
@@ -147,7 +202,22 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.timeSkewCallback = callback;
   }
 
-  /** Test-friendly constructor with injected time sources. */
+  /**
+   * Test‑friendly constructor with injectable time sources.
+   *
+   * <p>This overload behaves like the {@link #TimeDecayingRunningAverage(double, long, double,
+   * double, SimpleFieldSet, TimeSkewDetectorCallback)} constructor but uses the given time
+   * suppliers instead of the system clocks.
+   *
+   * @param defaultValue initial value before the first valid report
+   * @param halfLife half‑life in milliseconds
+   * @param min minimum accepted observation (inclusive)
+   * @param max maximum accepted observation (inclusive)
+   * @param fs optional snapshot to restore from; may be {@code null}
+   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
+   * @param wallClockTimeSourceMillis wall‑clock time supplier returning milliseconds since epoch
+   * @param monotonicTimeSourceNanos monotonic time supplier returning nanoseconds
+   */
   public TimeDecayingRunningAverage(
       double defaultValue,
       long halfLife,
@@ -155,8 +225,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       double max,
       SimpleFieldSet fs,
       TimeSkewDetectorCallback callback,
-      java.util.function.LongSupplier wallClockTimeSourceMillis,
-      java.util.function.LongSupplier monotonicTimeSourceNanos) {
+      LongSupplier wallClockTimeSourceMillis,
+      LongSupplier monotonicTimeSourceNanos) {
     curValue = defaultValue;
     this.defaultValue = defaultValue;
     started = false;
@@ -170,18 +240,18 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     this.maxReport = max;
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace("Created {}", this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
     if (fs != null) {
-      started = fs.getBoolean("Started", false);
+      started = fs.getBoolean(FS_KEY_STARTED, false);
       if (started) {
-        curValue = fs.getDouble("CurrentValue", curValue);
+        curValue = fs.getDouble(FS_KEY_CURRENT_VALUE, curValue);
         if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
           curValue = defaultValue;
           totalReports = 0;
           createdTime = this.wallClockTimeSourceMillis.getAsLong();
         } else {
-          totalReports = fs.getLong("TotalReports", 0);
-          long uptime = fs.getLong("Uptime", 0);
+          totalReports = fs.getLong(FS_KEY_TOTAL_REPORTS, 0);
+          long uptime = fs.getLong(FS_KEY_UPTIME, 0);
           createdTime = this.wallClockTimeSourceMillis.getAsLong() - uptime;
         }
       }
@@ -190,13 +260,29 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   }
 
   /**
-   * @param defaultValue
-   * @param halfLife
-   * @param min
-   * @param max
-   * @param dis
-   * @param callback
-   * @throws IOException
+   * Restores an instance from a compact binary stream.
+   *
+   * <p>The stream format is:
+   *
+   * <ol>
+   *   <li>int {@code MAGIC}
+   *   <li>int {@code version} (currently {@code 1})
+   *   <li>double {@code currentValue}
+   *   <li>boolean {@code started}
+   *   <li>long {@code totalReports}
+   *   <li>long {@code priorExperienceTimeMillis} (uptime)
+   * </ol>
+   *
+   * <p>Monotonic timestamps are reinitialized on load; the first subsequent report will compute
+   * decay using the new monotonic baseline.
+   *
+   * @param defaultValue default value used if the serialized value is invalid or out of range
+   * @param halfLife half‑life in milliseconds
+   * @param min minimum accepted observation (inclusive)
+   * @param max maximum accepted observation (inclusive)
+   * @param dis input stream positioned at the beginning of the record
+   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
+   * @throws IOException if the stream is malformed or contains out‑of‑range/non‑finite values
    */
   public TimeDecayingRunningAverage(
       double defaultValue,
@@ -232,36 +318,77 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   }
 
   /**
-   * @param a
+   * Copy constructor creating an independent snapshot of {@code a}.
+   *
+   * <p>The copy will not observe future updates to {@code a} and preserves the same time sources.
+   *
+   * @param a instance to copy; must not be {@code null}
    */
   public TimeDecayingRunningAverage(TimeDecayingRunningAverage a) {
-    synchronized (a) {
-      this.createdTime = a.createdTime;
-      this.defaultValue = a.defaultValue;
-      this.halfLife = a.halfLife;
-      this.lastReportTime = a.lastReportTime;
-      this.lastMonotonicNanos = a.lastMonotonicNanos;
-      this.maxReport = a.maxReport;
-      this.minReport = a.minReport;
-      this.started = a.started;
-      this.totalReports = a.totalReports;
-      this.curValue = a.curValue;
-      this.timeSkewCallback = a.timeSkewCallback;
-      this.wallClockTimeSourceMillis = a.wallClockTimeSourceMillis;
-      this.monotonicTimeSourceNanos = a.monotonicTimeSourceNanos;
-    }
+    Snapshot s = a.snapshot();
+    this.createdTime = s.createdTime;
+    this.defaultValue = s.defaultValue;
+    this.halfLife = s.halfLife;
+    this.lastReportTime = s.lastReportTime;
+    this.lastMonotonicNanos = s.lastMonotonicNanos;
+    this.maxReport = s.maxReport;
+    this.minReport = s.minReport;
+    this.started = s.started;
+    this.totalReports = s.totalReports;
+    this.curValue = s.curValue;
+    this.timeSkewCallback = s.timeSkewCallback;
+    this.wallClockTimeSourceMillis = s.wallClockTimeSourceMillis;
+    this.monotonicTimeSourceNanos = s.monotonicTimeSourceNanos;
   }
 
-  /**
-   * @return
-   */
+  private static final class Snapshot {
+    long createdTime;
+    double defaultValue;
+    double halfLife;
+    long lastReportTime;
+    long lastMonotonicNanos;
+    double maxReport;
+    double minReport;
+    boolean started;
+    long totalReports;
+    double curValue;
+    TimeSkewDetectorCallback timeSkewCallback;
+    LongSupplier wallClockTimeSourceMillis;
+    LongSupplier monotonicTimeSourceNanos;
+  }
+
+  private synchronized Snapshot snapshot() {
+    Snapshot s = new Snapshot();
+    s.createdTime = this.createdTime;
+    s.defaultValue = this.defaultValue;
+    s.halfLife = this.halfLife;
+    s.lastReportTime = this.lastReportTime;
+    s.lastMonotonicNanos = this.lastMonotonicNanos;
+    s.maxReport = this.maxReport;
+    s.minReport = this.minReport;
+    s.started = this.started;
+    s.totalReports = this.totalReports;
+    s.curValue = this.curValue;
+    s.timeSkewCallback = this.timeSkewCallback;
+    s.wallClockTimeSourceMillis = this.wallClockTimeSourceMillis;
+    s.monotonicTimeSourceNanos = this.monotonicTimeSourceNanos;
+    return s;
+  }
+
+  /** Returns the current estimate of the average. */
   @Override
   public synchronized double currentValue() {
     return curValue;
   }
 
   /**
-   * @param d
+   * Reports a single observation.
+   *
+   * <p>Values outside {@code [min, max]} or non‑finite values are ignored. The first valid report
+   * sets the current value and establishes the time baseline; subsequent reports are combined using
+   * the exponential decay formula based on monotonic elapsed time.
+   *
+   * @param d the observation to incorporate
    */
   @Override
   public void report(double d) {
@@ -282,100 +409,94 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       }
       totalReports++;
       if (!started) {
-        curValue = d;
-        started = true;
-        lastReportTime = wall;
-        lastMonotonicNanos = monoNanos;
-        if (LOG.isTraceEnabled()) LOG.trace("Reported " + d + " on " + this + " when just started");
+        setStartedInitialValues(d, wall, monoNanos);
       } else if (lastReportTime != -1) { // might be just serialized in
-        long clockDelta = wall - lastReportTime;
-        if (clockDelta < 0) {
-          LOG.error(
-              "Clock (reporting) went back in time, ignoring report: "
-                  + wall
-                  + " was "
-                  + lastReportTime
-                  + " (back "
-                  + (-clockDelta)
-                  + "ms)");
-          lastReportTime = wall;
-          if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
-          // Do not return; still compute decay using monotonic time so the average is not affected
-          // by wall-clock drift.
-        }
-        long uptime = wall - createdTime;
-        double thisHalfLife = halfLife;
-        if (uptime < 0) {
-          LOG.error(
-              "Clock (uptime) went back in time, ignoring report: "
-                  + wall
-                  + " was "
-                  + createdTime
-                  + " (back "
-                  + (-uptime)
-                  + "ms)");
-          if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
-          // Do not return; continue to compute decay based on monotonic time.
-          // Disable sensitivity hack.
-          // Excessive sensitivity at start isn't necessarily a good thing.
-          // In particular it makes the average inconsistent - 20 reports of 0 at 1s intervals have
-          // a *different* effect to 10 reports of 0 at 2s intervals!
-          // Also it increases the impact of startup spikes, which then take a long time to recover
-          // from.
-          // } else {
-          // double oneFourthOfUptime = uptime / 4D;
-          // if(oneFourthOfUptime < thisHalfLife) thisHalfLife = oneFourthOfUptime;
-        }
-        if (thisHalfLife == 0) thisHalfLife = 1;
-        long monoDeltaMillis = Math.max(0L, (monoNanos - lastMonotonicNanos) / 1_000_000L);
-        double changeFactor = Math.pow(0.5, (monoDeltaMillis) / thisHalfLife);
-        double oldCurValue = curValue;
-        curValue =
-            curValue
-                    * changeFactor /* close to 1.0 if short interval, close to 0.0 if long interval */
-                + (1.0 - changeFactor) * d;
-        // FIXME remove when stop getting reports of wierd output values
-        if (curValue < minReport || curValue > maxReport) {
-          LOG.error("curValue=" + curValue + " was " + oldCurValue + " - out of range");
-          curValue = oldCurValue;
-        }
-        if (LOG.isDebugEnabled())
-          LOG.debug(
-              "Reported "
-                  + d
-                  + " on "
-                  + this
-                  + ": monoDeltaMillis="
-                  + monoDeltaMillis
-                  + ", halfLife="
-                  + halfLife
-                  + ", uptime="
-                  + uptime
-                  + ", thisHalfLife="
-                  + thisHalfLife
-                  + ", changeFactor="
-                  + changeFactor
-                  + ", oldCurValue="
-                  + oldCurValue
-                  + ", currentValue="
-                  + currentValue()
-                  + ", monoDeltaMillis="
-                  + monoDeltaMillis
-                  + ", thisHalfLife="
-                  + thisHalfLife
-                  + ", uptime="
-                  + uptime
-                  + ", changeFactor="
-                  + changeFactor);
+        handleSubsequentReport(d, wall, monoNanos);
       }
       lastReportTime = wall;
       lastMonotonicNanos = monoNanos;
     }
   }
 
-  /**
-   * @param d
-   */
+  private void setStartedInitialValues(double d, long wall, long monoNanos) {
+    curValue = d;
+    started = true;
+    lastReportTime = wall;
+    lastMonotonicNanos = monoNanos;
+    if (LOG.isTraceEnabled()) LOG.trace("Reported {} on {} when just started", d, this);
+  }
+
+  private void handleSubsequentReport(double d, long wall, long monoNanos) {
+    long clockDelta = wall - lastReportTime;
+    if (clockDelta < 0) {
+      LOG.error(
+          "Clock (reporting) went back in time, ignoring report: {}"
+              + LOG_LIT_WAS
+              + "{} (back {}ms)",
+          wall,
+          lastReportTime,
+          -clockDelta);
+      lastReportTime = wall;
+      if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
+      // Do not return; still compute decay using monotonic time so the average is not affected
+      // by wall-clock drift.
+    }
+
+    long uptime = wall - createdTime;
+    double thisHalfLife = halfLife;
+    if (uptime < 0) {
+      LOG.error(
+          "Clock (uptime) went back in time, ignoring report: {}" + LOG_LIT_WAS + "{} (back {}ms)",
+          wall,
+          createdTime,
+          -uptime);
+      if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
+      // Do not return; continue to compute decay based on monotonic time.
+      // Disable sensitivity hack.
+      // Excessive sensitivity at start isn't necessarily a good thing.
+      // In particular, it makes the average inconsistent - 20 reports of 0 at 1s intervals have
+      // a *different* effect to 10 reports of 0 at 2s intervals!
+      // Also, it increases the impact of startup spikes, which then take a long time to recover
+      // from.
+    }
+    if (thisHalfLife == 0) thisHalfLife = 1;
+    long monoDeltaMillis = Math.max(0L, (monoNanos - lastMonotonicNanos) / 1_000_000L);
+    double changeFactor = Math.pow(0.5, (monoDeltaMillis) / thisHalfLife);
+    applyUpdatedValueAndDebug(d, monoDeltaMillis, uptime, thisHalfLife, changeFactor);
+  }
+
+  private void applyUpdatedValueAndDebug(
+      double d, long monoDeltaMillis, long uptime, double thisHalfLife, double changeFactor) {
+    double oldCurValue = curValue;
+    curValue =
+        curValue * changeFactor /* close to 1.0 if short interval, close to 0.0 if long interval */
+            + (1.0 - changeFactor) * d;
+    // Keep bounds check to guard against sporadic invalid values.
+    if (curValue < minReport || curValue > maxReport) {
+      LOG.error("curValue={}" + LOG_LIT_WAS + "{} - out of range", curValue, oldCurValue);
+      curValue = oldCurValue;
+    }
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "Reported {} on {}: monoDeltaMillis={}, halfLife={}, uptime={}, thisHalfLife={},"
+              + " changeFactor={}, oldCurValue={}, currentValue={}, monoDeltaMillis={},"
+              + " thisHalfLife={}, uptime={}, changeFactor={}",
+          d,
+          this,
+          monoDeltaMillis,
+          halfLife,
+          uptime,
+          thisHalfLife,
+          changeFactor,
+          oldCurValue,
+          currentValue(),
+          monoDeltaMillis,
+          thisHalfLife,
+          uptime,
+          changeFactor);
+  }
+
+  /** Convenience overload forwarding to {@link #report(double)}. */
   @Override
   public void report(long d) {
     report((double) d);
@@ -383,13 +504,13 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
 
   @Override
   public double valueIfReported(double r) {
+    // Intentionally unsupported: a correct prediction depends on the unknown time until the next
+    // report, which is integral to the decay calculation. Callers should create a snapshot and
+    // experiment on a copy if they need a what‑if value.
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * @param out
-   * @throws IOException
-   */
+  /** Writes the compact binary representation described in the constructor Javadoc. */
   public void writeDataTo(DataOutputStream out) throws IOException {
     long now = wallClockTimeSourceMillis.getAsLong();
     synchronized (this) {
@@ -403,7 +524,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
   }
 
   /**
-   * @return
+   * Returns the length, in bytes, of the binary representation produced by {@link #writeDataTo}.
    */
   public int getDataLength() {
     return 4 + 4 + 8 + 8 + 1 + 8 + 8;
@@ -414,29 +535,33 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
     return totalReports;
   }
 
-  /**
-   * @return
-   */
+  /** Returns the wall‑clock timestamp (milliseconds since epoch) of the last accepted report. */
   public synchronized long lastReportTime() {
     return lastReportTime;
   }
 
   /**
-   * @param shortLived
-   * @return
+   * Exports a human‑readable snapshot to a {@link SimpleFieldSet}.
+   *
+   * @param shortLived whether the returned field set is intended for short‑lived usage
+   * @return a field set containing {@code Type}, {@code CurrentValue}, {@code Started}, {@code
+   *     TotalReports} and {@code Uptime}
    */
   public synchronized SimpleFieldSet exportFieldSet(boolean shortLived) {
     SimpleFieldSet fs = new SimpleFieldSet(shortLived);
     fs.putSingle("Type", "TimeDecayingRunningAverage");
-    fs.put("CurrentValue", curValue);
-    fs.put("Started", started);
-    fs.put("TotalReports", totalReports);
-    fs.put("Uptime", wallClockTimeSourceMillis.getAsLong() - createdTime);
+    fs.put(FS_KEY_CURRENT_VALUE, curValue);
+    fs.put(FS_KEY_STARTED, started);
+    fs.put(FS_KEY_TOTAL_REPORTS, totalReports);
+    fs.put(FS_KEY_UPTIME, wallClockTimeSourceMillis.getAsLong() - createdTime);
     return fs;
   }
 
-  /** Returns an independent snapshot copy. */
-  public TimeDecayingRunningAverage clone() {
-    return new TimeDecayingRunningAverage(this);
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    if (wallClockTimeSourceMillis == null) wallClockTimeSourceMillis = System::currentTimeMillis;
+    if (monotonicTimeSourceNanos == null) monotonicTimeSourceNanos = System::nanoTime;
+    // timeSkewCallback intentionally remains null after Java deserialization
   }
 }
