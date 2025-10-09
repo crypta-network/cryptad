@@ -302,6 +302,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     if ((curValue < min) || (curValue > max))
       throw new IOException("Out of range: curValue = " + curValue);
     started = dis.readBoolean();
+    // Read fields in the same order they are written: totalReports first, then uptime
+    totalReports = dis.readLong();
     long priorExperienceTime = dis.readLong();
     this.halfLife = halfLife;
     this.minReport = min;
@@ -313,7 +315,6 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     lastReportTime = -1;
     createdTime = wallClockTimeSourceMillis.getAsLong() - priorExperienceTime;
     lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
-    totalReports = dis.readLong();
     this.timeSkewCallback = callback;
   }
 
@@ -527,7 +528,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
    * Returns the length, in bytes, of the binary representation produced by {@link #writeDataTo}.
    */
   public int getDataLength() {
-    return 4 + 4 + 8 + 8 + 1 + 8 + 8;
+    // int MAGIC + int version + double curValue + boolean started + long totalReports + long uptime
+    return 4 + 4 + 8 + 1 + 8 + 8;
   }
 
   @Override

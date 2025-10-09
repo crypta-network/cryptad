@@ -198,6 +198,31 @@ public class TimeDecayingRunningAverageTest {
     }
   }
 
+  @Test
+  public void binaryRoundTripPreservesReportCount() throws Exception {
+    TimeDecayingRunningAverage avg =
+        new TimeDecayingRunningAverage(
+            0, 1000, 0, 1, null, null, clock::getWallClockMillis, clock::getMonotonicNanos);
+    for (int i = 0; i < 7; i++) {
+      avg.report(0.75);
+    }
+
+    // Serialize to a binary stream
+    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+    try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+      avg.writeDataTo(dos);
+    }
+
+    // Restore from the binary stream
+    java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(baos.toByteArray());
+    try (java.io.DataInputStream dis = new java.io.DataInputStream(bais)) {
+      TimeDecayingRunningAverage restored =
+          new TimeDecayingRunningAverage(0, 1000, 0, 1, dis, null);
+
+      assertThat(restored.countReports(), equalTo(7L));
+    }
+  }
+
   static class Clock {
     private long wallClockMillis = System.currentTimeMillis();
     private long monotonicMillis = new Random().nextLong();
