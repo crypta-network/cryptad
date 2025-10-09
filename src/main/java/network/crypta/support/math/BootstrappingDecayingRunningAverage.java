@@ -20,21 +20,13 @@ import org.slf4j.LoggerFactory;
  * <p>Thread-safety: All public methods that read or mutate state are synchronized. Instances are
  * {@link java.io.Serializable} and can be exported/imported via {@link SimpleFieldSet}.
  */
-public final class BootstrappingDecayingRunningAverage implements RunningAverage, Cloneable {
+public final class BootstrappingDecayingRunningAverage implements RunningAverage {
   private static final Logger LOG =
       LoggerFactory.getLogger(BootstrappingDecayingRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
 
   /** Copying is provided via the copy constructor. */
-  @Override
-  public BootstrappingDecayingRunningAverage clone() {
-    try {
-      return (BootstrappingDecayingRunningAverage) super.clone();
-    } catch (CloneNotSupportedException e) {
-      throw new AssertionError(e);
-    }
-  }
 
   private final double min;
 
@@ -81,11 +73,13 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
    * modifications to either instance do not affect the other.
    */
   public BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
-    this.min = a.min;
-    this.max = a.max;
-    this.currentValue = a.currentValue();
-    this.reports = a.countReports();
-    this.maxReports = a.getMaxReports();
+    synchronized (a) {
+      this.min = a.min;
+      this.max = a.max;
+      this.currentValue = a.currentValue; // consistent snapshot under 'a' lock
+      this.reports = a.reports;
+      this.maxReports = a.maxReports;
+    }
   }
 
   /** {@inheritDoc} */

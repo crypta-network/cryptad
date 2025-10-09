@@ -19,20 +19,13 @@ import org.slf4j.LoggerFactory;
  * <p>Note that the older version has a half life on the influence of any given report without
  * taking into account the fact that reports persist and accumulate. :)
  */
-public final class TimeDecayingRunningAverage implements RunningAverage, Cloneable {
+public final class TimeDecayingRunningAverage implements RunningAverage {
   private static final Logger LOG = LoggerFactory.getLogger(TimeDecayingRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
   static final int MAGIC = 0x5ff4ac94;
 
-  @Override
-  public TimeDecayingRunningAverage clone() {
-    // Override clone to synchronize, as per comments in RunningAverage.
-    // Implement Cloneable to shut up findbugs.
-    synchronized (this) {
-      return new TimeDecayingRunningAverage(this);
-    }
-  }
+  // Copying is via the copy constructor.
 
   double curValue;
   final double halfLife;
@@ -185,16 +178,18 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
    * @param a
    */
   public TimeDecayingRunningAverage(TimeDecayingRunningAverage a) {
-    this.createdTime = a.createdTime;
-    this.defaultValue = a.defaultValue;
-    this.halfLife = a.halfLife;
-    this.lastReportTime = a.lastReportTime;
-    this.maxReport = a.maxReport;
-    this.minReport = a.minReport;
-    this.started = a.started;
-    this.totalReports = a.totalReports;
-    this.curValue = a.curValue;
-    this.timeSkewCallback = a.timeSkewCallback;
+    synchronized (a) {
+      this.createdTime = a.createdTime;
+      this.defaultValue = a.defaultValue;
+      this.halfLife = a.halfLife;
+      this.lastReportTime = a.lastReportTime;
+      this.maxReport = a.maxReport;
+      this.minReport = a.minReport;
+      this.started = a.started;
+      this.totalReports = a.totalReports;
+      this.curValue = a.curValue;
+      this.timeSkewCallback = a.timeSkewCallback;
+    }
   }
 
   /**

@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author amphibian
  */
-public final class SimpleRunningAverage implements RunningAverage, Cloneable {
+public final class SimpleRunningAverage implements RunningAverage {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleRunningAverage.class);
 
   @Serial private static final long serialVersionUID = -1;
@@ -22,11 +22,7 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
   int totalReports = 0;
   final double initValue;
 
-  @Override
-  public SimpleRunningAverage clone() {
-    // Deep copy needed. Implement Cloneable to shut up findbugs.
-    return new SimpleRunningAverage(this);
-  }
+  // Copying is via the copy constructor.
 
   /** Clear the SRA */
   public synchronized void clear() {
@@ -51,12 +47,14 @@ public final class SimpleRunningAverage implements RunningAverage, Cloneable {
    * @param a
    */
   public SimpleRunningAverage(SimpleRunningAverage a) {
-    this.curLen = a.curLen;
-    this.initValue = a.initValue;
-    this.nextSlotPtr = a.nextSlotPtr;
-    this.refs = a.refs.clone();
-    this.total = a.total;
-    this.totalReports = a.totalReports;
+    synchronized (a) {
+      this.curLen = a.curLen;
+      this.initValue = a.initValue;
+      this.nextSlotPtr = a.nextSlotPtr;
+      this.refs = a.refs.clone();
+      this.total = a.total;
+      this.totalReports = a.totalReports;
+    }
   }
 
   /**

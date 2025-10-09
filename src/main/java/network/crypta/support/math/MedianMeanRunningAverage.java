@@ -11,7 +11,7 @@ import java.util.Collections;
  *
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
-public final class MedianMeanRunningAverage implements RunningAverage, Cloneable {
+public final class MedianMeanRunningAverage implements RunningAverage {
   @Serial private static final long serialVersionUID = 1L;
 
   final ArrayList<Double> reports;
@@ -27,17 +27,10 @@ public final class MedianMeanRunningAverage implements RunningAverage, Cloneable
    * @param average
    */
   public MedianMeanRunningAverage(MedianMeanRunningAverage average) {
-    this.mean = new TrivialRunningAverage(average.mean);
-    this.reports = new ArrayList<>();
-    reports.addAll(average.reports);
-  }
-
-  @Override
-  public MedianMeanRunningAverage clone() {
-    // Override clone() for synchronization.
-    // Implement Cloneable to shut up findbugs.
-    synchronized (this) {
-      return new MedianMeanRunningAverage(this);
+    synchronized (average) {
+      this.mean = new TrivialRunningAverage(average.mean);
+      this.reports = new ArrayList<>();
+      reports.addAll(average.reports);
     }
   }
 

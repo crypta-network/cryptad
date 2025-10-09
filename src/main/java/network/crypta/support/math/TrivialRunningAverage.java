@@ -2,7 +2,7 @@ package network.crypta.support.math;
 
 import java.io.Serial;
 
-public final class TrivialRunningAverage implements RunningAverage, Cloneable {
+public final class TrivialRunningAverage implements RunningAverage {
 
   @Serial private static final long serialVersionUID = 1L;
   private long reports;
@@ -12,8 +12,10 @@ public final class TrivialRunningAverage implements RunningAverage, Cloneable {
    * @param average
    */
   public TrivialRunningAverage(TrivialRunningAverage average) {
-    this.reports = average.reports;
-    this.total = average.total;
+    synchronized (average) {
+      this.reports = average.reports;
+      this.total = average.total;
+    }
   }
 
   /** */
@@ -62,12 +64,5 @@ public final class TrivialRunningAverage implements RunningAverage, Cloneable {
     return (total + r) / (reports + 1);
   }
 
-  @Override
-  public TrivialRunningAverage clone() {
-    // Override clone() for synchronization.
-    // Implement Cloneable to shut up findbugs.
-    synchronized (this) {
-      return new TrivialRunningAverage(this);
-    }
-  }
+  // Copying is via the copy constructor.
 }

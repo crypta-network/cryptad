@@ -9,7 +9,7 @@ import network.crypta.support.SimpleFieldSet;
  *     <p>A filter on BootstrappingDecayingRunningAverage which makes it aware of the circular
  *     keyspace.
  */
-public final class DecayingKeyspaceAverage implements RunningAverage, Cloneable {
+public final class DecayingKeyspaceAverage implements RunningAverage {
 
   @Serial private static final long serialVersionUID = 5129429614949179428L;
 
@@ -33,15 +33,16 @@ public final class DecayingKeyspaceAverage implements RunningAverage, Cloneable 
    */
   public DecayingKeyspaceAverage(BootstrappingDecayingRunningAverage a) {
     // check the max/min values? ignore them?
-    avg = a.clone();
+    avg = new BootstrappingDecayingRunningAverage(a);
   }
 
-  @Override
-  public synchronized DecayingKeyspaceAverage clone() {
-    // Override clone() for deep copy.
-    // Implement Cloneable to shut up findbugs.
-    return new DecayingKeyspaceAverage(avg);
+  /** Copy constructor. */
+  public DecayingKeyspaceAverage(DecayingKeyspaceAverage other) {
+    // Deep copy of the underlying average.
+    this.avg = new BootstrappingDecayingRunningAverage(other.avg);
   }
+
+  // Copying is via the copy constructor.
 
   /**
    * @return
