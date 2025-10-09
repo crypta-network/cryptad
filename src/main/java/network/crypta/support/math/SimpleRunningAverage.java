@@ -1,6 +1,5 @@
 package network.crypta.support.math;
 
-import java.io.DataOutputStream;
 import java.io.Serial;
 import java.util.Arrays;
 import org.slf4j.Logger;
@@ -87,27 +86,55 @@ public final class SimpleRunningAverage implements RunningAverage {
     return new Snapshot(curLen, initValue, nextSlotPtr, refs.clone(), total, totalReports);
   }
 
-  private static final class Snapshot {
-    final int curLen;
-    final double initValue;
-    final int nextSlotPtr;
-    final double[] refs;
-    final double total;
-    final int totalReports;
+  private record Snapshot(
+      int curLen,
+      double initValue,
+      int nextSlotPtr,
+      double[] refs,
+      double total,
+      int totalReports) {
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o
+          instanceof
+          Snapshot(int cLen, double iInit, int nPtr, double[] rRefs, double tTotal, int tReports)))
+        return false;
+      return curLen == cLen
+          && nextSlotPtr == nPtr
+          && totalReports == tReports
+          && Double.compare(initValue, iInit) == 0
+          && Double.compare(total, tTotal) == 0
+          && Arrays.equals(refs, rRefs);
+    }
 
-    Snapshot(
-        int curLen,
-        double initValue,
-        int nextSlotPtr,
-        double[] refs,
-        double total,
-        int totalReports) {
-      this.curLen = curLen;
-      this.initValue = initValue;
-      this.nextSlotPtr = nextSlotPtr;
-      this.refs = refs;
-      this.total = total;
-      this.totalReports = totalReports;
+    @Override
+    public int hashCode() {
+      int result = Integer.hashCode(curLen);
+      result = 31 * result + Double.hashCode(initValue);
+      result = 31 * result + Integer.hashCode(nextSlotPtr);
+      result = 31 * result + Arrays.hashCode(refs);
+      result = 31 * result + Double.hashCode(total);
+      result = 31 * result + Integer.hashCode(totalReports);
+      return result;
+    }
+
+    @Override
+    public String toString() {
+      return "Snapshot{"
+          + "curLen="
+          + curLen
+          + ", initValue="
+          + initValue
+          + ", nextSlotPtr="
+          + nextSlotPtr
+          + ", refs="
+          + Arrays.toString(refs)
+          + ", total="
+          + total
+          + ", totalReports="
+          + totalReports
+          + '}';
     }
   }
 
@@ -142,7 +169,7 @@ public final class SimpleRunningAverage implements RunningAverage {
   @Override
   public synchronized void report(double d) {
     totalReports++;
-    if (LOG.isTraceEnabled()) LOG.trace("report(" + d + ") on " + this);
+    if (LOG.isTraceEnabled()) LOG.trace("report({}) on {}", d, this);
     if (curLen < refs.length) curLen++;
     else total -= popValue();
     pushValue(d);
@@ -180,55 +207,8 @@ public final class SimpleRunningAverage implements RunningAverage {
     report((double) d);
   }
 
-  /**
-   * Writes the internal state to the given output stream.
-   *
-   * <p>Not currently supported; included for API compatibility.
-   *
-   * @throws UnsupportedOperationException always
-   */
-  public void writeDataTo(DataOutputStream out) {
-    throw new UnsupportedOperationException();
-  }
-
   @Override
   public synchronized long countReports() {
     return totalReports;
-  }
-
-  /**
-   * Returns the minimal report value {@code x} such that {@link #valueIfReported(double)} with
-   * {@code x} would be greater than or equal to {@code targetValue}.
-   *
-   * <p>Derivation (let {@code T} be the current total and {@code L} the current length):
-   *
-   * <ul>
-   *   <li>If the window is not full, {@code (T + x) / (L + 1) >= target} ⇒ {@code x >= target * (L
-   *       + 1) - T}.
-   *   <li>If the window is full, the next insert evicts {@code refs[nextSlotPtr]} and the length
-   *       remains {@code L}: {@code (T + x - refs[nextSlotPtr]) / L >= target} ⇒ {@code x >= target
-   *       * L - (T - refs[nextSlotPtr])}.
-   * </ul>
-   *
-   * @param targetValue desired average after one more report
-   * @return the minimal single report that achieves at least {@code targetValue}
-   */
-  public synchronized double minReportForValue(double targetValue) {
-    if (curLen < refs.length) {
-      /*
-       * Don't need to remove any values before reporting, so is slightly simpler. (total + report)
-       * / (curLen + 1) >= targetValue => report / (curLen + 1) >= targetValue - total/(curLen+1) =>
-       * report >= (targetValue - total/(curLen + 1)) * (curLen+1) => report >= targetValue *
-       * (curLen + 1) - total EXAMPLE: Mean (5, 5, 5, 5, 5, X) = 10 X = 10 * 6 - 25 = 35 => Mean =
-       * (25 + 35) / 6 = 60/6 = 10
-       */
-      return targetValue * (curLen + 1) - total;
-    } else {
-      /*
-       * Essentially the same, but: 1) Length will be curLen, not curLen+1, because is full. 2) Take
-       * off the value that will be taken off first.
-       */
-      return targetValue * curLen - (total - refs[nextSlotPtr]);
-    }
   }
 }
