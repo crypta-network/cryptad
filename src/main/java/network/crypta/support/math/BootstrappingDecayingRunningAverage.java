@@ -68,17 +68,15 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   /**
    * Copy constructor.
    *
-   * <p>Takes a thread-safe snapshot of {@code a}'s state at construction time. Subsequent
-   * modifications to either instance do not affect the other.
+   * <p>Takes a thread-safe snapshot of {@code a}'s state at construction time using synchronized
+   * accessors. Subsequent modifications to either instance do not affect the other.
    */
   public BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
-    synchronized (a) {
-      this.min = a.min;
-      this.max = a.max;
-      this.currentValue = a.currentValue; // consistent snapshot under 'a' lock
-      this.reports = a.reports;
-      this.maxReports = a.maxReports;
-    }
+    this.min = a.min;
+    this.max = a.max;
+    this.currentValue = a.currentValue();
+    this.reports = a.countReports();
+    this.maxReports = a.getMaxReports();
   }
 
   /** {@inheritDoc} */
