@@ -25,21 +25,22 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
 
   @Serial private static final long serialVersionUID = -1;
 
+  /** Copying is provided via the copy constructor. */
   @Override
   public BootstrappingDecayingRunningAverage clone() {
-    // Override clone() for locking; BDRAs are self-synchronized.
-    // Implement Cloneable to shut up findbugs.
-    return new BootstrappingDecayingRunningAverage(this);
+    try {
+      return (BootstrappingDecayingRunningAverage) super.clone();
+    } catch (CloneNotSupportedException e) {
+      throw new AssertionError(e);
+    }
   }
 
   private final double min;
+
   private final double max;
   private double currentValue;
   private long reports;
   private int maxReports;
-
-  static {
-  }
 
   /**
    * Constructor
@@ -57,7 +58,9 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
     reports = 0;
     currentValue = defaultValue;
     this.maxReports = maxReports;
-    assert (maxReports > 0);
+    if (maxReports <= 0) {
+      throw new IllegalArgumentException("maxReports must be > 0");
+    }
     if (fs != null) {
       double d = fs.getDouble("CurrentValue", currentValue);
       if (!(Double.isNaN(d) || Double.isInfinite(d) || d < min || d > max)) {
@@ -65,6 +68,15 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
         reports = fs.getLong("Reports", reports);
       }
     }
+  }
+
+  /** Copy constructor. Creates a thread-safe snapshot. */
+  public BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
+    this.min = a.min;
+    this.max = a.max;
+    this.currentValue = a.currentValue();
+    this.reports = a.countReports();
+    this.maxReports = a.getMaxReports();
   }
 
   /**
@@ -102,13 +114,8 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   @Override
   public synchronized void report(double d) {
     // Check for invalid values and return early without updating
-    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (LOG.isTraceEnabled()) {
-        if (d < min) LOG.trace("Too low: {}", d);
-        else if (d > max) LOG.trace("Too high: {}", d);
-        else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
-        else if (Double.isNaN(d)) LOG.trace("NaN value");
-      }
+    if (isInvalid(d)) {
+      traceInvalid(d);
       return; // Don't update the average with invalid values
     }
     reports++;
@@ -134,17 +141,24 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   @Override
   public synchronized double valueIfReported(double d) {
     // Return current value for invalid inputs
-    if (d < min || d > max || Double.isInfinite(d) || Double.isNaN(d)) {
-      if (LOG.isTraceEnabled()) {
-        if (d < min) LOG.trace("Too low: {}", d);
-        else if (d > max) LOG.trace("Too high: {}", d);
-        else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
-        else if (Double.isNaN(d)) LOG.trace("NaN value");
-      }
+    if (isInvalid(d)) {
+      traceInvalid(d);
       return currentValue; // Return unchanged value for invalid inputs
     }
     double decayFactor = 1.0 / (Math.min(reports + 1, maxReports));
     return (d * decayFactor) + (currentValue * (1 - decayFactor));
+  }
+
+  private boolean isInvalid(double d) {
+    return d < min || d > max || Double.isInfinite(d) || Double.isNaN(d);
+  }
+
+  private void traceInvalid(double d) {
+    if (!LOG.isTraceEnabled()) return;
+    if (d < min) LOG.trace("Too low: {}", d);
+    else if (d > max) LOG.trace("Too high: {}", d);
+    else if (Double.isInfinite(d)) LOG.trace("Infinite value: {}", d);
+    else if (Double.isNaN(d)) LOG.trace("NaN value");
   }
 
   /**
@@ -156,15 +170,9 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
     this.maxReports = maxReports;
   }
 
-  /** Copy constructor. */
-  private BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
-    synchronized (a) {
-      this.currentValue = a.currentValue;
-      this.max = a.max;
-      this.maxReports = a.maxReports;
-      this.min = a.min;
-      this.reports = a.reports;
-    }
+  /** Returns the current maxReports under the instance lock. */
+  private synchronized int getMaxReports() {
+    return maxReports;
   }
 
   /** {@inheritDoc} */
