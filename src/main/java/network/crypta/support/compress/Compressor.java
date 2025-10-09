@@ -92,14 +92,12 @@ public interface Compressor {
         throws InvalidCompressionCodecException {
       COMPRESSOR_TYPE[] result = getCompressorsArrayNoDefault(compressordescriptor);
       if (result == null) {
+        // Build default list: exclude legacy LZMA silently; warn only when explicitly requested
+        // via a non-default descriptor.
         COMPRESSOR_TYPE[] ret = new COMPRESSOR_TYPE[values.length - 1];
         int x = 0;
         for (COMPRESSOR_TYPE v : values) {
-          // LZMA should no longer be used. Use LZMA_NEW instead.
-          if (v == LZMA) {
-            logLzmaOldRemovedWarning();
-            continue;
-          }
+          if (v == LZMA) continue;
           ret[x++] = v;
         }
         result = ret;
