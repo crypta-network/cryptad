@@ -27,7 +27,6 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   @Serial private static final long serialVersionUID = -1;
 
   /** Copying is provided via the copy constructor. */
-
   private final double min;
 
   private final double max;

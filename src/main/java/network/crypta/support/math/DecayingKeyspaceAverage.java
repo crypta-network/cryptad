@@ -14,22 +14,26 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
   @Serial private static final long serialVersionUID = 5129429614949179428L;
 
   /**
-   * 'avg' is the normalized average location, note that the the reporting bounds are (-2.0, 2.0)
-   * however.
+   * Underlying decaying running average over a circular keyspace. 'avg' is the normalized average
+   * location, note that the reporting bounds are (-2.0, 2.0) however.
    */
-  BootstrappingDecayingRunningAverage avg;
+  private final BootstrappingDecayingRunningAverage avg;
 
   /**
-   * @param defaultValue
-   * @param maxReports
-   * @param fs
+   * Creates a new keyspace-aware decaying running average.
+   *
+   * @param defaultValue initial value returned by {@link #currentValue()} before any valid report
+   * @param maxReports number of valid reports before decay stabilizes at {@code 1/maxReports}
+   * @param fs optional persisted state from which to initialize; may be {@code null}
    */
   public DecayingKeyspaceAverage(double defaultValue, int maxReports, SimpleFieldSet fs) {
     avg = new BootstrappingDecayingRunningAverage(defaultValue, -2.0, 2.0, maxReports, fs);
   }
 
   /**
-   * @param a
+   * Wraps an existing decaying running average.
+   *
+   * @param a base average whose configuration/state should be copied
    */
   public DecayingKeyspaceAverage(BootstrappingDecayingRunningAverage a) {
     // check the max/min values? ignore them?
@@ -44,16 +48,21 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
 
   // Copying is via the copy constructor.
 
-  /**
-   * @return
-   */
+  /** Returns the current (normalized) average value. */
   @Override
   public synchronized double currentValue() {
     return avg.currentValue();
   }
 
   /**
-   * @param d
+   * Reports a value in the normalized keyspace range {@code [0.0, 1.0]}.
+   *
+   * <p>To gracefully handle the circular keyspace at the {@code 1.0/0.0} boundary, this method
+   * averages across the wrap using the unwrapped representation and then normalizes the stored
+   * value back into {@code [0.0, 1.0]} after updating.
+   *
+   * @param d normalized keyspace value to report
+   * @throws IllegalArgumentException if {@code d} is outside {@code [0.0, 1.0]}
    */
   @Override
   public synchronized void report(double d) {
@@ -64,15 +73,6 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
     double thisValue = Location.normalize(superValue);
     double diff = Location.change(thisValue, d);
     double toAverage = (superValue + diff);
-    /*
-    To gracefully wrap around the 1.0/0.0 threshold we average over (or under) it, and simply normalize the result when reporting a currentValue
-    ---example---
-    d=0.2;          //being reported
-    superValue=1.9; //already wrapped once, but at 0.9
-    thisValue=0.9;  //the normalized value of where we are in the keyspace
-    diff = +0.3;    //the diff from the normalized values; Location.change(0.9, 0.2);
-    avg.report(2.2);//to successfully move the average towards the closest route to the given value.
-     */
     avg.report(toAverage);
     double newValue = avg.currentValue();
     if (newValue < 0.0 || newValue > 1.0) avg.setCurrentValue(Location.normalize(newValue));
@@ -93,25 +93,18 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
     return avg.countReports();
   }
 
-  /**
-   * @param d
-   */
+  /** Unsupported: this implementation does not accept long-based reports. */
   @Override
-  public void report(long d) {
+  public synchronized void report(long d) {
     throw new IllegalArgumentException("KeyspaceAverage does not like longs");
   }
 
-  /**
-   * @param maxReports
-   */
+  /** Updates the maximum report window used to compute decay. */
   public synchronized void changeMaxReports(int maxReports) {
     avg.changeMaxReports(maxReports);
   }
 
-  /**
-   * @param shortLived
-   * @return
-   */
+  /** Exports this instance's state into a {@link SimpleFieldSet}. */
   public synchronized SimpleFieldSet exportFieldSet(boolean shortLived) {
     return avg.exportFieldSet(shortLived);
   }

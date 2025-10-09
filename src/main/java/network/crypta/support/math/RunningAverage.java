@@ -48,8 +48,8 @@ public interface RunningAverage extends Serializable {
   /**
    * Reports a single observation as a {@code double}.
    *
-   * <p>Implementations define what constitutes a valid input and whether invalid values are
-   * ignored or rejected with an exception.
+   * <p>Implementations define what constitutes a valid input and whether invalid values are ignored
+   * or rejected with an exception.
    *
    * @param d observation to incorporate
    * @throws IllegalArgumentException if the value is invalid and the implementation chooses to
