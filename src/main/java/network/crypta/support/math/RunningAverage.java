@@ -106,7 +106,6 @@ public interface RunningAverage extends Serializable {
       case null -> throw new NullPointerException("original");
       case SimpleRunningAverage sra -> new SimpleRunningAverage(sra);
       case TrivialRunningAverage tra -> new TrivialRunningAverage(tra);
-      case MedianMeanRunningAverage mmra -> new MedianMeanRunningAverage(mmra);
       case TimeDecayingRunningAverage tdra -> new TimeDecayingRunningAverage(tdra);
       case BootstrappingDecayingRunningAverage bdra ->
           new BootstrappingDecayingRunningAverage(bdra);
