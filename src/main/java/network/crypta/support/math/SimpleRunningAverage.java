@@ -47,13 +47,41 @@ public final class SimpleRunningAverage implements RunningAverage {
    * @param a
    */
   public SimpleRunningAverage(SimpleRunningAverage a) {
-    synchronized (a) {
-      this.curLen = a.curLen;
-      this.initValue = a.initValue;
-      this.nextSlotPtr = a.nextSlotPtr;
-      this.refs = a.refs.clone();
-      this.total = a.total;
-      this.totalReports = a.totalReports;
+    Snapshot s = a.snapshot();
+    this.curLen = s.curLen;
+    this.initValue = s.initValue;
+    this.nextSlotPtr = s.nextSlotPtr;
+    this.refs = s.refs;
+    this.total = s.total;
+    this.totalReports = s.totalReports;
+  }
+
+  /** Creates a consistent snapshot of this instance's state. */
+  private synchronized Snapshot snapshot() {
+    return new Snapshot(curLen, initValue, nextSlotPtr, refs.clone(), total, totalReports);
+  }
+
+  private static final class Snapshot {
+    final int curLen;
+    final double initValue;
+    final int nextSlotPtr;
+    final double[] refs;
+    final double total;
+    final int totalReports;
+
+    Snapshot(
+        int curLen,
+        double initValue,
+        int nextSlotPtr,
+        double[] refs,
+        double total,
+        int totalReports) {
+      this.curLen = curLen;
+      this.initValue = initValue;
+      this.nextSlotPtr = nextSlotPtr;
+      this.refs = refs;
+      this.total = total;
+      this.totalReports = totalReports;
     }
   }
 
