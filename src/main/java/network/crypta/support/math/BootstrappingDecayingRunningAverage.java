@@ -68,15 +68,30 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   /**
    * Copy constructor.
    *
-   * <p>Takes a thread-safe snapshot of {@code a}'s state at construction time using synchronized
-   * accessors. Subsequent modifications to either instance do not affect the other.
+   * <p>Takes an atomic, thread-safe snapshot of {@code a}'s state at construction time using an
+   * internal synchronized snapshot method. This guarantees the copied {@code currentValue}, {@code
+   * reports}, and {@code maxReports} come from a consistent moment in time. Subsequent
+   * modifications to either instance do not affect the other.
    */
   public BootstrappingDecayingRunningAverage(BootstrappingDecayingRunningAverage a) {
     this.min = a.min;
     this.max = a.max;
-    this.currentValue = a.currentValue();
-    this.reports = a.countReports();
-    this.maxReports = a.getMaxReports();
+    StateSnapshot s = a.snapshot();
+    this.currentValue = s.currentValue();
+    this.reports = s.reports();
+    this.maxReports = s.maxReports();
+  }
+
+  /** Immutable snapshot of the mutable fields. */
+  private record StateSnapshot(double currentValue, long reports, int maxReports) {}
+
+  /**
+   * Returns a consistent snapshot of the mutable state.
+   *
+   * <p>Synchronized to ensure all fields are read under the same monitor hold.
+   */
+  private synchronized StateSnapshot snapshot() {
+    return new StateSnapshot(currentValue, reports, maxReports);
   }
 
   /** {@inheritDoc} */
@@ -146,11 +161,6 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
    */
   public synchronized void changeMaxReports(int maxReports) {
     this.maxReports = maxReports;
-  }
-
-  /** Returns the current maxReports under the instance lock. */
-  private synchronized int getMaxReports() {
-    return maxReports;
   }
 
   /** {@inheritDoc} */
