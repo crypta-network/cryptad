@@ -3,7 +3,7 @@ package network.crypta.support.math;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SimpleRunningAverageTest {
   private final SimpleRunningAverage average = new SimpleRunningAverage(4, 100.0);
@@ -45,4 +45,3 @@ public class SimpleRunningAverageTest {
     assertThat(average.countReports(), equalTo(0L));
   }
 }
-

@@ -2,9 +2,9 @@ package network.crypta.support.math;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class DecayingKeyspaceAverageTest {
   private final DecayingKeyspaceAverage average = new DecayingKeyspaceAverage(0.5, 2, null);
@@ -34,4 +34,3 @@ public class DecayingKeyspaceAverageTest {
     assertThrows(IllegalArgumentException.class, () -> average.report(Double.NEGATIVE_INFINITY));
   }
 }
-

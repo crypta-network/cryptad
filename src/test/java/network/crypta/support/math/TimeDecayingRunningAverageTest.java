@@ -7,12 +7,12 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.Random;
 import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.SimpleFieldSet;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class TimeDecayingRunningAverageTest {
   private final Clock clock = new Clock();
@@ -74,7 +74,7 @@ public class TimeDecayingRunningAverageTest {
     // Wall-clock time drifts forward should not be reported
     clock.drift(12345);
     average.report(0);
-    verifyZeroInteractions(callback);
+    verifyNoInteractions(callback);
 
     // Wall-clock time drifts backwards should be reported
     clock.drift(-12345);
@@ -193,4 +193,3 @@ public class TimeDecayingRunningAverageTest {
     }
   }
 }
-

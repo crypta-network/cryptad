@@ -44,7 +44,10 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
 
   @Override
   public String toString() {
-    long now = wallClockTimeSourceMillis == null ? System.currentTimeMillis() : wallClockTimeSourceMillis.getAsLong();
+    long now =
+        wallClockTimeSourceMillis == null
+            ? System.currentTimeMillis()
+            : wallClockTimeSourceMillis.getAsLong();
     synchronized (this) {
       return super.toString()
           + ": currentValue="
@@ -237,12 +240,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
       this.defaultValue = a.defaultValue;
       this.halfLife = a.halfLife;
       this.lastReportTime = a.lastReportTime;
+      this.lastMonotonicNanos = a.lastMonotonicNanos;
       this.maxReport = a.maxReport;
       this.minReport = a.minReport;
       this.started = a.started;
       this.totalReports = a.totalReports;
       this.curValue = a.curValue;
       this.timeSkewCallback = a.timeSkewCallback;
+      this.wallClockTimeSourceMillis = a.wallClockTimeSourceMillis;
+      this.monotonicTimeSourceNanos = a.monotonicTimeSourceNanos;
     }
   }
 
@@ -294,7 +300,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
                   + "ms)");
           lastReportTime = wall;
           if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
-          return;
+          // Do not return; still compute decay using monotonic time so the average is not affected
+          // by wall-clock drift.
         }
         long uptime = wall - createdTime;
         double thisHalfLife = halfLife;
@@ -308,7 +315,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
                   + (-uptime)
                   + "ms)");
           if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
-          return;
+          // Do not return; continue to compute decay based on monotonic time.
           // Disable sensitivity hack.
           // Excessive sensitivity at start isn't necessarily a good thing.
           // In particular it makes the average inconsistent - 20 reports of 0 at 1s intervals have
@@ -338,8 +345,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage, Cloneab
                   + d
                   + " on "
                   + this
-                  + ": thisInterval="
-                  + thisInterval
+                  + ": monoDeltaMillis="
+                  + monoDeltaMillis
                   + ", halfLife="
                   + halfLife
                   + ", uptime="

@@ -66,7 +66,7 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
    */
   @Override
   public synchronized void report(double d) {
-    if ((d < 0.0) || (d > 1.0))
+    if ((d < 0.0) || (d > 1.0) || Double.isNaN(d) || Double.isInfinite(d))
       // Just because we use non-normalized locations doesn't mean we can accept them.
       throw new IllegalArgumentException("Not a valid normalized key: " + d);
     double superValue = avg.currentValue();
@@ -74,13 +74,13 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
     double diff = Location.change(thisValue, d);
     double toAverage = (superValue + diff);
     avg.report(toAverage);
-    double newValue = avg.currentValue();
-    if (newValue < 0.0 || newValue > 1.0) avg.setCurrentValue(Location.normalize(newValue));
+    // Always normalize the stored value back into [0.0, 1.0), so exactly 1.0 becomes 0.0.
+    avg.setCurrentValue(Location.normalize(avg.currentValue()));
   }
 
   @Override
   public synchronized double valueIfReported(double d) {
-    if ((d < 0.0) || (d > 1.0))
+    if ((d < 0.0) || (d > 1.0) || Double.isNaN(d) || Double.isInfinite(d))
       throw new IllegalArgumentException("Not a valid normalized key: " + d);
     double superValue = avg.currentValue();
     double thisValue = Location.normalize(superValue);
