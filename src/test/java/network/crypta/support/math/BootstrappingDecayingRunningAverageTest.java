@@ -85,7 +85,7 @@ public class BootstrappingDecayingRunningAverageTest {
   public void cloneCreatesIndependentInstance() {
     BootstrappingDecayingRunningAverage first =
         new BootstrappingDecayingRunningAverage(0, 0, 1, 2, null);
-    BootstrappingDecayingRunningAverage second = first.clone();
+    BootstrappingDecayingRunningAverage second = new BootstrappingDecayingRunningAverage(first);
     second.report(0);
     second.report(1);
 

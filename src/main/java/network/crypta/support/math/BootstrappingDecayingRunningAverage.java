@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
  * <p>Thread-safety: All public methods that read or mutate state are synchronized. Instances are
  * {@link java.io.Serializable} and can be exported/imported via {@link SimpleFieldSet}.
  */
-public final class BootstrappingDecayingRunningAverage implements RunningAverage, Cloneable {
+public final class BootstrappingDecayingRunningAverage implements RunningAverage {
   private static final Logger LOG =
       LoggerFactory.getLogger(BootstrappingDecayingRunningAverage.class);
 
@@ -157,11 +157,6 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   @Override
   public synchronized long countReports() {
     return reports;
-  }
-
-  /** Returns an independent snapshot copy of this instance. */
-  public BootstrappingDecayingRunningAverage clone() {
-    return new BootstrappingDecayingRunningAverage(this);
   }
 
   /**
