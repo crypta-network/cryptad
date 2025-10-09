@@ -7,7 +7,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Simple running average: linear mean of the last N reports.
+ * Fixed-size windowed running average computing the arithmetic mean of the last {@code N}
+ * observations.
+ *
+ * <p>Semantics
+ *
+ * <ul>
+ *   <li><b>Window</b>: keeps at most {@code length} most-recent reports. When full, the oldest
+ *       value is evicted when a new one arrives.
+ *   <li><b>Initial value</b>: until the first report is accepted, {@link #currentValue()} returns
+ *       {@code initValue}. After that, it returns the mean of the values currently in the window.
+ *   <li><b>Complexity</b>: {@link #report(double)}, {@link #valueIfReported(double)} and {@link
+ *       #currentValue()} are O(1).
+ *   <li><b>Thread‑safety</b>: all public methods are synchronized; instances are safe to use from
+ *       multiple threads.
+ * </ul>
  *
  * @author amphibian
  */
@@ -24,7 +38,12 @@ public final class SimpleRunningAverage implements RunningAverage {
 
   // Copying is via the copy constructor.
 
-  /** Clear the SRA */
+  /**
+   * Clears all state and forgets any previously reported values.
+   *
+   * <p>After a call to this method, {@link #currentValue()} will again return the {@code initValue}
+   * until a new value is reported.
+   */
   public synchronized void clear() {
     nextSlotPtr = 0;
     curLen = 0;
@@ -34,8 +53,11 @@ public final class SimpleRunningAverage implements RunningAverage {
   }
 
   /**
-   * @param length
-   * @param initValue
+   * Creates a running average with a window that holds up to {@code length} values and an initial
+   * value returned before any reports are made.
+   *
+   * @param length maximum number of recent observations to retain (window size)
+   * @param initValue value returned by {@link #currentValue()} until the first report is accepted
    */
   public SimpleRunningAverage(int length, double initValue) {
     refs = new double[length];
@@ -44,7 +66,11 @@ public final class SimpleRunningAverage implements RunningAverage {
   }
 
   /**
-   * @param a
+   * Copy constructor that takes a thread‑safe snapshot of {@code a}.
+   *
+   * <p>The new instance is independent and will not reflect future changes to {@code a}.
+   *
+   * @param a source instance to copy
    */
   public SimpleRunningAverage(SimpleRunningAverage a) {
     Snapshot s = a.snapshot();
@@ -86,7 +112,10 @@ public final class SimpleRunningAverage implements RunningAverage {
   }
 
   /**
-   * @return
+   * Returns the current average.
+   *
+   * <p>Until the first report is accepted, this returns {@code initValue}. Once at least one value
+   * has been reported, it returns the arithmetic mean of the values currently held in the window.
    */
   @Override
   public synchronized double currentValue() {
@@ -96,6 +125,7 @@ public final class SimpleRunningAverage implements RunningAverage {
 
   @Override
   public synchronized double valueIfReported(double r) {
+    // Hypothetical next value; does not mutate internal state.
     if (curLen < refs.length) {
       return (total + r) / (curLen + 1);
     } else {
@@ -105,7 +135,9 @@ public final class SimpleRunningAverage implements RunningAverage {
   }
 
   /**
-   * @param d
+   * Reports a single observation.
+   *
+   * @param d value to incorporate into the running average
    */
   @Override
   public synchronized void report(double d) {
@@ -117,18 +149,14 @@ public final class SimpleRunningAverage implements RunningAverage {
     total += d;
   }
 
-  /**
-   * @param value
-   */
+  /** Adds {@code value} into the circular buffer, advancing the slot pointer. */
   private synchronized void pushValue(double value) {
     refs[nextSlotPtr] = value;
     nextSlotPtr++;
     if (nextSlotPtr >= refs.length) nextSlotPtr = 0;
   }
 
-  /**
-   * @return
-   */
+  /** Returns the value that will be evicted next when the window is full. */
   private synchronized double popValue() {
     return refs[nextSlotPtr];
   }
@@ -146,16 +174,18 @@ public final class SimpleRunningAverage implements RunningAverage {
         + total / curLen;
   }
 
-  /**
-   * @param d
-   */
+  /** Convenience overload that reports a {@code long} value. */
   @Override
   public void report(long d) {
     report((double) d);
   }
 
   /**
-   * @param out
+   * Writes the internal state to the given output stream.
+   *
+   * <p>Not currently supported; included for API compatibility.
+   *
+   * @throws UnsupportedOperationException always
    */
   public void writeDataTo(DataOutputStream out) {
     throw new UnsupportedOperationException();
@@ -167,12 +197,25 @@ public final class SimpleRunningAverage implements RunningAverage {
   }
 
   /**
-   * @param targetValue
-   * @return
+   * Returns the minimal report value {@code x} such that {@link #valueIfReported(double)} with
+   * {@code x} would be greater than or equal to {@code targetValue}.
+   *
+   * <p>Derivation (let {@code T} be the current total and {@code L} the current length):
+   *
+   * <ul>
+   *   <li>If the window is not full, {@code (T + x) / (L + 1) >= target} ⇒ {@code x >= target * (L
+   *       + 1) - T}.
+   *   <li>If the window is full, the next insert evicts {@code refs[nextSlotPtr]} and the length
+   *       remains {@code L}: {@code (T + x - refs[nextSlotPtr]) / L >= target} ⇒ {@code x >= target
+   *       * L - (T - refs[nextSlotPtr])}.
+   * </ul>
+   *
+   * @param targetValue desired average after one more report
+   * @return the minimal single report that achieves at least {@code targetValue}
    */
   public synchronized double minReportForValue(double targetValue) {
     if (curLen < refs.length) {
-      /**
+      /*
        * Don't need to remove any values before reporting, so is slightly simpler. (total + report)
        * / (curLen + 1) >= targetValue => report / (curLen + 1) >= targetValue - total/(curLen+1) =>
        * report >= (targetValue - total/(curLen + 1)) * (curLen+1) => report >= targetValue *
@@ -181,7 +224,7 @@ public final class SimpleRunningAverage implements RunningAverage {
        */
       return targetValue * (curLen + 1) - total;
     } else {
-      /**
+      /*
        * Essentially the same, but: 1) Length will be curLen, not curLen+1, because is full. 2) Take
        * off the value that will be taken off first.
        */
