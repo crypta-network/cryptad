@@ -2,6 +2,7 @@ package network.crypta.support.math;
 
 import java.io.Serial;
 import java.util.Arrays;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,7 +121,7 @@ public final class SimpleRunningAverage implements RunningAverage {
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return "Snapshot{"
           + "curLen="
           + curLen
