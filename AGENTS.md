@@ -15,7 +15,7 @@ some Kotlin components.
 - Code style:
     - Kotlin: Official coding convention described [here](https://kotlinlang.org/docs/coding-conventions.html)
     - Java: Google Java Style Guide described [here](https://google.github.io/styleguide/javaguide.html)
-- Testing: JUnit and kotlin-test
+- Testing: JUnit 6 (Jupiter) and kotlin-test
 - Coverage requirement: 80% minimum
 - After editing a Java or Kotlin file, please check for any missing or poorly written JavaDoc/KDoc comments. Add or
   improve them as needed.
@@ -555,3 +555,29 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
 - CI tips
   - Minimal job step: `./gradlew --parallel test jacocoTestReport sonarqube`
   - Provide the token securely (env `SONAR_TOKEN`).
+
+## JUnit 6 Upgrade — Oct 2025
+
+- Version bump
+  - Upgraded to JUnit 6.0.0. Platform and Jupiter now share the same version (`6.0.0`).
+  - Versions are pinned in the version catalog: `gradle/libs.versions.toml` → `junitJupiter=6.0.0`, `junitPlatform=6.0.0`.
+
+- Gradle configuration
+  - Tests run on the JUnit Platform (`useJUnitPlatform()` in `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`).
+  - Dependencies (resolved via catalog):
+    - `testImplementation(libs.junitJupiterApi)` and `testImplementation(libs.junitJupiterParams)`
+    - `testRuntimeOnly(libs.junitJupiterEngine)` and `testRuntimeOnly(libs.junitPlatformLauncher)`
+  - Vintage is not included; avoid adding JUnit 4 tests unless you explicitly add Vintage for migration-only purposes.
+  - Dependency verification: JUnit 6 introduces `org.jspecify:jspecify` (nullability annotations). If strict verification blocks resolution, follow the steps in “Spotless + Dependency Verification” to refresh metadata, then restore strict mode.
+
+- Notes from JUnit 6 release
+  - `junit-platform-runner` (JUnit 4 bridge) is not supported; do not use `@RunWith(JUnitPlatform.class)`.
+  - `junit-platform-jfr` module is discontinued.
+  - Certain deprecated APIs from pre-6 have been removed (e.g., some ordering strategies). Prefer current APIs.
+  - Kotlin `suspend` test functions are supported in JUnit 6.
+
+- How to run
+  - All tests: `./gradlew --parallel test`
+  - By class/method: `./gradlew --parallel test --tests *ClassName` or `--tests *ClassName.method`
+
+Reference: JUnit 6.0.0 release notes (docs.junit.org)
