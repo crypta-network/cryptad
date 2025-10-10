@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration scan="true" scanPeriod="30 seconds">
+<configuration>
   <!-- Log directory comes from LoggingConfigHandler via system property. -->
   <property name="LOG_DIR" value="${crypta.log.dir:-${user.dir}/logs}"/>
 
