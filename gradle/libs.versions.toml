@@ -20,6 +20,7 @@ junitJupiter = "6.0.0"
 junitPlatform = "6.0.0"
 sonarqube = "6.3.1.5724"
 remalSonarlint = "7.0.0-rc-2"
+#noinspection UnusedVersionCatalogEntry
 jacoco = "0.8.13"
 
 [libraries]
@@ -48,6 +49,9 @@ junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-l
 junitPlatformSuite = { group = "org.junit.platform", name = "junit-platform-suite", version.ref = "junitPlatform" }
 
 [plugins]
+#noinspection UnusedVersionCatalogEntry
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+#noinspection UnusedVersionCatalogEntry
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+#noinspection UnusedVersionCatalogEntry
 sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
