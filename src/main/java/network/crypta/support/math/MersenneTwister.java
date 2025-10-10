@@ -34,7 +34,7 @@ import network.crypta.support.Fields;
  * additional {@code setSeed()} methods. Instances are synchronized unless created through * {@link
  * #createUnsynchronized}. * * @author infinity0
  */
-public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwister {
+public class MersenneTwister extends MersenneTwisterBase {
 
   @Serial private static final long serialVersionUID = 6555069655883958609L;
 
@@ -58,33 +58,28 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
     super(seed);
   }
 
-  /**
-   * Creates a new random number generator using a byte array seed.
-   *
-   * @deprecated use {@link #createSynchronized} or {@link #createUnsynchronized} depending on
-   *     thread-safety requirements
-   */
-  @Deprecated
-  public MersenneTwister(byte[] seed) {
-    super(Fields.bytesToInts(seed, 0, seed.length));
+  /** {@inheritDoc} */
+  @Override
+  public void setSeed(int seed) {
+    synchronized (this) {
+      super.setSeed(seed);
+    }
   }
 
   /** {@inheritDoc} */
   @Override
-  public synchronized void setSeed(int seed) {
-    super.setSeed(seed);
+  public void setSeed(int[] seed) {
+    synchronized (this) {
+      super.setSeed(seed);
+    }
   }
 
   /** {@inheritDoc} */
   @Override
-  public synchronized void setSeed(int[] seed) {
-    super.setSeed(seed);
-  }
-
-  /** {@inheritDoc} */
-  @Override
-  public synchronized void setSeed(long seed) {
-    super.setSeed(seed);
+  public void setSeed(long seed) {
+    synchronized (this) {
+      super.setSeed(seed);
+    }
   }
 
   /**
@@ -94,14 +89,18 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
    * seed. * @param seed the initial seed (8 bits byte array), if null * the seed of the generator
    * will be related to the current time
    */
-  public synchronized void setSeed(byte[] seed) {
-    super.setSeed(Fields.bytesToInts(seed, 0, seed.length));
+  public void setSeed(byte[] seed) {
+    synchronized (this) {
+      super.setSeed(Fields.bytesToInts(seed, 0, seed.length));
+    }
   }
 
   /** {@inheritDoc} */
   @Override
-  protected synchronized int next(int bits) {
-    return super.next(bits);
+  protected int next(int bits) {
+    synchronized (this) {
+      return super.next(bits);
+    }
   }
 
   /**
@@ -170,5 +169,29 @@ public class MersenneTwister extends org.spaceroots.mantissa.random.MersenneTwis
 
   final void unsynchronizedSetSeed(byte[] seed) {
     super.setSeed(Fields.bytesToInts(seed));
+  }
+}
+
+/**
+ * Package-private base class to avoid class-name shadowing with the upstream
+ * org.spaceroots.mantissa.random.MersenneTwister while preserving behavior and API.
+ */
+class MersenneTwisterBase extends org.spaceroots.mantissa.random.MersenneTwister {
+  @Serial private static final long serialVersionUID = 1L;
+
+  MersenneTwisterBase() {
+    super();
+  }
+
+  MersenneTwisterBase(int seed) {
+    super(seed);
+  }
+
+  MersenneTwisterBase(int[] seed) {
+    super(seed);
+  }
+
+  MersenneTwisterBase(long seed) {
+    super(seed);
   }
 }
