@@ -20,7 +20,8 @@ import network.crypta.support.Buffer;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
-import network.crypta.support.math.MedianMeanRunningAverage;
+import network.crypta.support.math.RunningAverage;
+import network.crypta.support.math.TrivialRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -307,11 +308,12 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
               long endTime = System.currentTimeMillis();
               long transferTime = (endTime - startTime);
               if (LOG.isDebugEnabled()) {
-                synchronized (avgTimeTaken) {
-                  avgTimeTaken.report(transferTime);
-                  LOG.debug(
-                      "Block transfer took " + transferTime + "ms - average is " + avgTimeTaken);
-                }
+                avgTimeTaken.report(transferTime);
+                LOG.debug(
+                    "Block transfer took "
+                        + transferTime
+                        + "ms - average is "
+                        + avgTimeTaken.currentValue());
               }
               complete(_prb.getBlock());
               return;
@@ -578,7 +580,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
     }
   }
 
-  private static final MedianMeanRunningAverage avgTimeTaken = new MedianMeanRunningAverage();
+  private static final RunningAverage avgTimeTaken = new TrivialRunningAverage();
 
   private void maybeResetDiscardFilter() {
     long timeleft = discardEndTime - System.currentTimeMillis();

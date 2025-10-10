@@ -37,7 +37,8 @@ import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
-import network.crypta.support.math.MedianMeanRunningAverage;
+import network.crypta.support.math.RunningAverage;
+import network.crypta.support.math.TrivialRunningAverage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1823,10 +1824,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     }
   }
 
-  private static final MedianMeanRunningAverage avgTimeTaken = new MedianMeanRunningAverage();
+  private static final RunningAverage avgTimeTaken = new TrivialRunningAverage();
 
-  private static final MedianMeanRunningAverage avgTimeTakenTransfer =
-      new MedianMeanRunningAverage();
+  private static final RunningAverage avgTimeTakenTransfer = new TrivialRunningAverage();
 
   private long transferTime;
 
@@ -1874,25 +1874,25 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (status == SUCCESS) {
       if ((!isSSK) && transferTime > 0 && LOG.isDebugEnabled()) {
         long timeTaken = System.currentTimeMillis() - startTime;
-        synchronized (avgTimeTaken) {
-          avgTimeTaken.report(timeTaken);
-          avgTimeTakenTransfer.report(transferTime);
-          if (LOG.isDebugEnabled())
-            LOG.debug("Successful CHK request took " + timeTaken + " average " + avgTimeTaken);
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "Successful CHK request transfer "
-                    + transferTime
-                    + " average "
-                    + avgTimeTakenTransfer);
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "Search phase: median "
-                    + (avgTimeTaken.currentValue() - avgTimeTakenTransfer.currentValue())
-                    + "ms, mean "
-                    + (avgTimeTaken.meanValue() - avgTimeTakenTransfer.meanValue())
-                    + "ms");
-        }
+        avgTimeTaken.report(timeTaken);
+        avgTimeTakenTransfer.report(transferTime);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Successful CHK request took "
+                  + timeTaken
+                  + " average "
+                  + avgTimeTaken.currentValue());
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Successful CHK request transfer "
+                  + transferTime
+                  + " average "
+                  + avgTimeTakenTransfer.currentValue());
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Search phase: mean "
+                  + (avgTimeTaken.currentValue() - avgTimeTakenTransfer.currentValue())
+                  + "ms");
       }
       if (next != null) {
         next.onSuccess(false, isSSK);
