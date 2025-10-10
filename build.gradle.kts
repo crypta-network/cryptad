@@ -15,6 +15,7 @@ plugins {
 version = "2"
 
 dependencies {
+  // implementation
   implementation(libs.bcprov)
   implementation(libs.bcpkix)
   implementation(libs.jna)
@@ -24,8 +25,6 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
-  // Compile-time access to Logback classes for runtime reconfiguration
-  compileOnly("ch.qos.logback:logback-classic:1.5.6")
   // Coroutines (Swing Main dispatcher)
   implementation(libs.kotlinxCoroutinesSwing)
   // FlatLaf (modern Swing Look & Feel)
@@ -34,24 +33,32 @@ dependencies {
   implementation(libs.jsystemThemeDetector)
   // Flatpak/Portal detection via D-Bus
   implementation(libs.dbusCore)
-  runtimeOnly(libs.dbusTransportNativeUnix)
   // CLI parsing and UX
   implementation(libs.picocli)
 
+  // compileOnly
+  // Compile-time access to Logback classes for runtime reconfiguration
+  compileOnly(libs.logbackClassic)
+
+  // runtimeOnly
+  runtimeOnly(libs.dbusTransportNativeUnix)
+  runtimeOnly(files("libs/db4o-7.4.58.jar"))
+  // SLF4J binding (Logback) for the new Slf4jLoggerHook
+  runtimeOnly(libs.logbackClassic)
+
+  // testImplementation
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
   // For tests asserting SLF4J integration
-  testImplementation("ch.qos.logback:logback-classic:1.5.6")
-  testRuntimeOnly(libs.junitJupiterEngine)
-  testRuntimeOnly(libs.junitPlatformLauncher)
+  testImplementation(libs.logbackClassic)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
 
-  runtimeOnly(files("libs/db4o-7.4.58.jar"))
-  // SLF4J binding (Logback) for the new Slf4jLoggerHook
-  runtimeOnly("ch.qos.logback:logback-classic:1.5.6")
+  // testRuntimeOnly
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
 // Utility task to print the project version
