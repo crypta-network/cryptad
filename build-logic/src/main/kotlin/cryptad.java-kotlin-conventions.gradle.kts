@@ -76,6 +76,8 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
     jvmArgs("--add-opens=java.base/java.util.zip=ALL-UNNAMED")
   }
+  // Allow dynamic agent loading for Mockito inline mock-maker (JEP 451).
+  jvmArgs("-XX:+EnableDynamicAgentLoading")
   minHeapSize = "128m"
   maxHeapSize = "512m"
   include("network/crypta/**/*Test.class")
