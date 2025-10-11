@@ -15,7 +15,7 @@ public class StartedCompressionEvent implements ClientEvent {
 
   @Override
   public String getDescription() {
-    return "Started compression attempt with " + codec.name;
+    return "Started compression attempt with " + codec.codecName;
   }
 
   @Override
