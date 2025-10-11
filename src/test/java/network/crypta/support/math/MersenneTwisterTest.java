@@ -9,10 +9,10 @@ import java.util.stream.Stream;
 import network.crypta.support.Fields;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.ThrowingSupplier;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.api.function.ThrowingSupplier;
 
 /**
  * Unit tests for {@link MersenneTwister} wrapper.
