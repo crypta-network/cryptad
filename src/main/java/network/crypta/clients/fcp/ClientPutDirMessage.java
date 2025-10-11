@@ -189,7 +189,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
       }
-      if (ca == null) codecs = null;
+      if (ca == null || ca.length == 0) codecs = null;
     }
     compressorDescriptor = codecs;
     if (fs.get("ForkOnCacheable") != null)
