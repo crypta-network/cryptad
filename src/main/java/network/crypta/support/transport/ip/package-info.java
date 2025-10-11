@@ -12,9 +12,9 @@
  *   <li>{@link network.crypta.support.transport.ip.IPUtil} — IP address classification helpers
  *       (IPv4/IPv6). Notably:
  *       <ul>
- *         <li>{@code isSiteLocalAddress(...)} recognizes IPv6 Unique Local Addresses
- *             ({@code fc00::/7}) and the deprecated site-local range ({@code fec0::/10}), and
- *             otherwise delegates to the JDK for non-IPv6 addresses.
+ *         <li>{@code isSiteLocalAddress(...)} recognizes IPv6 Unique Local Addresses ({@code
+ *             fc00::/7}) and the deprecated site-local range ({@code fec0::/10}), and otherwise
+ *             delegates to the JDK for non-IPv6 addresses.
  *         <li>{@code isValidAddress(...)} rejects wildcard and multicast addresses, and optionally
  *             rejects local-only addresses (loopback, link-local, site/unique-local). For IPv4, it
  *             also rejects {@code 0.0.0.0/8}.
@@ -53,8 +53,8 @@
  *   <li>Bracketed IPv6 literals such as {@code [::1]} are not recognized by the hostname validator;
  *       supply raw address literals.
  *   <li>Top-level domains longer than six ASCII letters are rejected by {@code HostnameUtil}.
- *   <li>TODO: Clarify classification for IPv6-mapped IPv4 addresses to ensure consistent
- *       treatment across utilities.
+ *   <li>TODO: Clarify classification for IPv6-mapped IPv4 addresses to ensure consistent treatment
+ *       across utilities.
  * </ul>
  */
 package network.crypta.support.transport.ip;
