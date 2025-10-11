@@ -31,11 +31,9 @@ public interface CompressJob {
    * be responsive to shutdown via {@link ClientContext} facilities where applicable. TODO: Document
    * the exact cancellation/interrupt contract once defined.
    *
-   * @param context execution context providing schedulers, persistence, and configuration;
-   *     non-null
+   * @param context execution context providing schedulers, persistence, and configuration; non-null
    * @throws InsertException if compression cannot proceed or complete successfully; the caller
-   *     catches this and invokes {@link #onFailure(InsertException, ClientPutState,
-   *     ClientContext)}
+   *     catches this and invokes {@link #onFailure(InsertException, ClientPutState, ClientContext)}
    */
   void tryCompress(ClientContext context) throws InsertException;
 
@@ -43,12 +41,12 @@ public interface CompressJob {
    * Reports a failure that occurred during {@link #tryCompress(ClientContext)}.
    *
    * <p>Called by the compressor when the job throws an {@link InsertException} or when an
-   * unexpected error is translated to one. Implementations should log the error, free any
-   * allocated resources, and notify their owner that compression failed.
+   * unexpected error is translated to one. Implementations should log the error, free any allocated
+   * resources, and notify their owner that compression failed.
    *
    * @param e the failure reason; never {@code null}
-   * @param c the request state associated with this job, if available; may be {@code null} when
-   *     not known by the caller
+   * @param c the request state associated with this job, if available; may be {@code null} when not
+   *     known by the caller
    * @param context execution context for performing callbacks or rescheduling; non-null
    */
   void onFailure(InsertException e, ClientPutState c, ClientContext context);
