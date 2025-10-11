@@ -12,8 +12,8 @@
  * <ul>
  *   <li>{@link network.crypta.support.compress.Compressor} — main abstraction for streaming
  *       compression and decompression; see {@link
- *       network.crypta.support.compress.Compressor#compress(java.io.InputStream, java.io.OutputStream,
- *       long, long)} and {@link
+ *       network.crypta.support.compress.Compressor#compress(java.io.InputStream,
+ *       java.io.OutputStream, long, long)} and {@link
  *       network.crypta.support.compress.Compressor#decompress(java.io.InputStream,
  *       java.io.OutputStream, long, long)}.
  *   <li>{@link network.crypta.support.compress.Compressor.COMPRESSOR_TYPE} — selection and
@@ -42,17 +42,15 @@
  *       network.crypta.support.compress.Compressor.COMPRESSOR_TYPE} selects the default set of
  *       codecs (currently all but legacy {@code LZMA}).
  *   <li>Ordering: when using {@link network.crypta.support.compress.DecompressorThreadManager},
- *       decompressors are applied in
- *       reverse list order; the last element in the list runs first.
+ *       decompressors are applied in reverse list order; the last element in the list runs first.
  * </ul>
  *
  * <h2>Threading</h2>
  *
  * <p>{@link network.crypta.support.compress.DecompressorThreadManager} starts one worker thread per
- * stage, connects them via pipes,
- * and returns the final {@link java.io.PipedInputStream} for the caller to read uncompressed
- * bytes. Public methods are synchronized to serialize state transitions and error delivery. The
- * manager signals completion via {@link
+ * stage, connects them via pipes, and returns the final {@link java.io.PipedInputStream} for the
+ * caller to read uncompressed bytes. Public methods are synchronized to serialize state transitions
+ * and error delivery. The manager signals completion via {@link
  * network.crypta.support.compress.DecompressorThreadManager#onFinish()} and exposes the first
  * terminal failure via {@link
  * network.crypta.support.compress.DecompressorThreadManager#getError()}. Instances of individual
