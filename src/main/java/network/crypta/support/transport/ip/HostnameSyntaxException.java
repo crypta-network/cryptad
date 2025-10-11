@@ -6,9 +6,9 @@ import java.io.Serial;
  * Signals that a host name (or, when permitted, an IP literal) does not conform to the expected
  * syntax.
  *
- * <p>This checked exception is raised by hostname/IP parsers and validators when the supplied
- * input fails basic syntactic checks. It does not imply that a DNS lookup was attempted or that a
- * host is unreachable; it strictly represents a formatting problem with the value.
+ * <p>This checked exception is raised by hostname/IP parsers and validators when the supplied input
+ * fails basic syntactic checks. It does not imply that a DNS lookup was attempted or that a host is
+ * unreachable; it strictly represents a formatting problem with the value.
  *
  * <p>Typical sources include:
  *
