@@ -17,20 +17,28 @@ import org.sevenzip.compression.lzma.Encoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * LZMA compressor/decompressor using the 7-Zip reference implementation.
+ *
+ * <p>This implementation writes the standard 5-byte LZMA coder properties at the beginning of the
+ * compressed stream and enables the end-marker mode. During compression, it enforces
+ * caller-provided read and write budgets via counting wrappers. The dictionary size is derived from
+ * the expected input size and is capped at {@link #MAX_DICTIONARY_SIZE}.
+ *
+ * <p>Instances are lightweight and reusable. This class keeps no mutable shared state; each call
+ * creates fresh encoder/decoder objects.
+ */
 public class NewLZMACompressor extends AbstractCompressor {
   private static final Logger LOG = LoggerFactory.getLogger(NewLZMACompressor.class);
 
-  // Dictionary size 1MB, this is equivalent to lzma -4, it uses 16MB to compress and 2MB to
-  // decompress.
-  // Next one up is 2MB = -5 = 26M compress, 3M decompress.
+  // Max dictionary size: 1 MiB (approximately "lzma -4").
+  // Rough resource guide: ~16 MiB to compress, ~2 MiB to decompress at this size.
+  // The next preset (2 MiB, similar to "-5") increases usage to ~26 MiB / ~3 MiB.
   static final int MAX_DICTIONARY_SIZE = 1 << 20;
 
   private static final String SIZE_LITERAL = " size ";
 
-  static {
-  }
-
-  // Copied from EncoderThread. See below re licensing.
+  // Compression entry point adapted from historical EncoderThread patterns in this codebase.
   @Override
   public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
       throws IOException {
@@ -38,13 +46,33 @@ public class NewLZMACompressor extends AbstractCompressor {
     try (InputStream is = data.getInputStream();
         OutputStream os = output.getOutputStream()) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Compressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
+        LOG.debug(
+            "Compressing {}" + SIZE_LITERAL + "{} to new bucket {}", data, data.size(), output);
       compress(is, os, maxReadLength, maxWriteLength);
     }
     return output;
   }
 
-  @Override
+  /**
+   * Compresses data from a stream to a stream with optional effectiveness checks.
+   *
+   * <p>The method writes the 5-byte LZMA properties, then the compressed payload, and flushes the
+   * output. It enforces the supplied maximum read and write lengths strictly.
+   *
+   * @param is source of raw data; not closed by this method
+   * @param os destination for compressed data; not closed by this method
+   * @param maxReadLength hard upper bound in bytes on how much to read; negative values and {@link
+   *     Long#MAX_VALUE} imply no bound and select the maximum dictionary size
+   * @param maxWriteLength hard upper bound in bytes on how much may be written; negative values and
+   *     {@link Long#MAX_VALUE} imply no explicit bound
+   * @param amountOfDataToCheckCompressionRatio number of input bytes after which to evaluate the
+   *     compression ratio using {@link #checkCompressionEffect(long, long, int)}
+   * @param minimumCompressionPercentage minimum acceptable compression percentage; {@code 0}
+   *     disables the check
+   * @return number of bytes written to {@code os}
+   * @throws IOException on I/O errors
+   * @throws CompressionRatioException if the compression ratio check fails
+   */
   public long compress(
       InputStream is,
       OutputStream os,
@@ -57,11 +85,12 @@ public class NewLZMACompressor extends AbstractCompressor {
     CountedInputStream cis = createCountedInputStream(is, maxReadLength);
     CountedOutputStream cos = createCountedOutputStream(os, maxWriteLength);
 
+    // Configure the encoder. An end-marker allows decoding without a known uncompressed length.
     Encoder encoder = new Encoder();
     encoder.setEndMarkerMode(true);
     encoder.setDictionarySize(selectDictionarySize(maxReadLength));
-    // Coder properties are part of the output stream and must count toward the
-    // maxWriteLength constraint; write them through the bounded stream.
+    // Coder properties must count toward the maxWriteLength; therefore write through the bounded
+    // output.
     encoder.writeCoderProperties(cos);
 
     ICodeProgress progress =
@@ -70,22 +99,31 @@ public class NewLZMACompressor extends AbstractCompressor {
     if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
       throw new CompressionOutputSizeException(cos.written());
     cos.flush();
-    if (LOG.isDebugEnabled()) LOG.debug("Read " + cis.count() + " written " + cos.written());
+    if (LOG.isDebugEnabled()) LOG.debug("Read {} written {}", cis.count(), cos.written());
     return cos.written();
   }
 
+  /* Select a counting input wrapper. A bounded variant throws when the limit is exceeded; a plain
+   * {@link CountedInputStream} is used otherwise. */
   private CountedInputStream createCountedInputStream(InputStream is, long maxReadLength) {
     return (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
         ? new BoundedInputStream(is, maxReadLength)
         : new CountedInputStream(is);
   }
 
+  /* Select a counting output wrapper. A bounded variant throws on overflow; a plain
+   * {@link CountedOutputStream} is used otherwise. */
   private CountedOutputStream createCountedOutputStream(OutputStream os, long maxWriteLength) {
     return (maxWriteLength >= 0 && maxWriteLength != Long.MAX_VALUE)
         ? new BoundedOutputStream(os, maxWriteLength)
         : new CountedOutputStream(os);
   }
 
+  /*
+   * Choose a power-of-two dictionary size based on the expected input length, capped at
+   * {@link #MAX_DICTIONARY_SIZE}. When the expected length is unknown, fall back to the maximum
+   * size and log (at error level) to surface the inefficiency.
+   */
   private int selectDictionarySize(long maxReadLength) {
     int dictionarySize = 1;
     if (maxReadLength == Long.MAX_VALUE || maxReadLength < 0) {
@@ -100,6 +138,9 @@ public class NewLZMACompressor extends AbstractCompressor {
     return dictionarySize;
   }
 
+  /* Create a progress callback that triggers a one-time compression-effect check. The check wraps
+   * {@link CompressionRatioException} into a runtime exception so the foreign encoder API can
+   * abort. */
   private ICodeProgress createProgressChecker(
       final long amountOfDataToCheckCompressionRatio, final int minimumCompressionPercentage) {
     return new ICodeProgress() {
@@ -112,7 +153,7 @@ public class NewLZMACompressor extends AbstractCompressor {
           try {
             checkCompressionEffect(processedInSize, processedOutSize, minimumCompressionPercentage);
           } catch (CompressionRatioException e) {
-            // Wrap to escape through foreign API with a dedicated unchecked type.
+            // Wrap to escape through the foreign API with a dedicated unchecked type.
             throw new ProgressAbortException(e);
           }
           compressionEffectShouldBeChecked = false;
@@ -121,6 +162,8 @@ public class NewLZMACompressor extends AbstractCompressor {
     };
   }
 
+  /* Run the encoder and rethrow an underlying {@link CompressionRatioException} if the progress
+   * callback aborted the encoding. */
   private void runEncoder(
       Encoder encoder, InputStream input, CountedOutputStream output, ICodeProgress progress)
       throws IOException, CompressionRatioException {
@@ -140,11 +183,17 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
   }
 
-  /** Input stream wrapper that stops reading after {@code max} bytes have been returned. */
+  /**
+   * Input stream wrapper that stops reading after the configured number of bytes.
+   *
+   * <p>When the underlying stream contains more data than {@code max}, the wrapper throws {@link
+   * CompressionInputSizeException} as soon as it can determine the overflow (on the first extra
+   * byte). If the underlying stream ends exactly at {@code max}, read methods return {@code -1}.
+   */
   private static final class BoundedInputStream extends CountedInputStream {
     private final long max;
 
-    // This wrapper does not maintain explicit EOF flags.
+    // This wrapper does not maintain explicit EOF flags; it probes the delegate as needed.
 
     BoundedInputStream(InputStream in, long max) {
       super(in);
@@ -155,10 +204,10 @@ public class NewLZMACompressor extends AbstractCompressor {
     @Override
     public int read() throws IOException {
       if (count() < max) return super.read();
-      // We are at the limit; determine whether the underlying stream has more data.
+      // At the limit: probe the delegate to distinguish true EOF from overflow.
       int next = in.read();
       if (next == -1) {
-        return -1; // true EOF coincides with limit
+        return -1; // true EOF
       }
       throw new CompressionInputSizeException(max);
     }
@@ -170,7 +219,7 @@ public class NewLZMACompressor extends AbstractCompressor {
         int toRead = (int) Math.min(len, remaining);
         return super.read(b, off, toRead);
       }
-      // No remaining budget: check if there is more data beyond the limit.
+      // No remaining budget: check whether there is more data beyond the limit.
       int next = in.read();
       if (next == -1) {
         return -1;
@@ -217,6 +266,21 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
   }
 
+  /**
+   * Decompresses data from a bucket into a new or preferred bucket.
+   *
+   * <p>The method uses a counting input to report the number of bytes consumed for diagnostics. If
+   * {@code preferred} is non-{@code null}, decompressed data is written into it; otherwise a new
+   * bucket is created via {@code bf}.
+   *
+   * @param data compressed data source
+   * @param bf factory to create the destination when {@code preferred} is {@code null}
+   * @param maxLength hard upper bound in bytes on the decompressed size; passed to the decoder
+   * @param maxCheckSizeLength not used by LZMA; retained for interface parity
+   * @param preferred optional destination bucket to reuse
+   * @return the destination bucket that received the decompressed data
+   * @throws IOException on I/O errors
+   */
   public Bucket decompress(
       Bucket data, BucketFactory bf, long maxLength, long maxCheckSizeLength, Bucket preferred)
       throws IOException {
@@ -224,17 +288,34 @@ public class NewLZMACompressor extends AbstractCompressor {
     if (preferred != null) output = preferred;
     else output = bf.makeBucket(maxLength);
     if (LOG.isDebugEnabled())
-      LOG.debug("Decompressing " + data + SIZE_LITERAL + data.size() + " to new bucket " + output);
+      LOG.debug(
+          "Decompressing {}" + SIZE_LITERAL + "{} to new bucket {}", data, data.size(), output);
     try (CountedInputStream is = new CountedInputStream(data.getInputStream());
         OutputStream os = output.getOutputStream()) {
       decompress(is, os, maxLength, maxCheckSizeLength);
       if (LOG.isDebugEnabled())
-        LOG.debug("Output: " + output + SIZE_LITERAL + output.size() + " read " + is.count());
+        LOG.debug("Output: {}" + SIZE_LITERAL + "{} read {}", output, output.size(), is.count());
     }
     return output;
   }
 
-  @Override
+  /**
+   * Decompresses LZMA data from a stream to a stream.
+   *
+   * <p>Expects the first five bytes to be the LZMA properties. Validates the dictionary size and
+   * decoder properties prior to decoding. The {@code maxLength} parameter is passed to the decoder
+   * to limit the amount of produced data.
+   *
+   * @param is source stream containing the LZMA frame (properties + payload)
+   * @param os destination stream for uncompressed bytes
+   * @param maxLength maximum number of bytes the decoder may emit
+   * @param maxCheckSizeBytes reserved for future checks; currently unused by this implementation
+   * @return number of bytes written to {@code os}
+   * @throws IOException on I/O errors
+   * @throws InvalidCompressedDataException if properties are malformed or dictionary size is
+   *     negative
+   * @throws TooBigDictionaryException if the dictionary exceeds {@link #MAX_DICTIONARY_SIZE}
+   */
   public long decompress(InputStream is, OutputStream os, long maxLength, long maxCheckSizeBytes)
       throws IOException {
     byte[] props = new byte[5];
@@ -254,10 +335,23 @@ public class NewLZMACompressor extends AbstractCompressor {
     return cos.written();
   }
 
-  @Override
+  /**
+   * Decompresses an in-memory LZMA buffer into a provided output buffer.
+   *
+   * <p>This is a convenience wrapper around the streaming {@link #decompress(InputStream,
+   * OutputStream, long, long)} method. The method throws {@link UncheckedIOException} when the
+   * underlying streaming call fails with an {@link IOException}.
+   *
+   * @param dbuf input buffer containing the LZMA frame
+   * @param i start offset within {@code dbuf}
+   * @param j number of bytes to read from {@code dbuf}
+   * @param output destination buffer; must be large enough to hold the decompressed data
+   * @return number of bytes written into {@code output}
+   * @throws CompressionOutputSizeException if the decompressed size would exceed {@code output}
+   */
   public int decompress(byte[] dbuf, int i, int j, byte[] output)
       throws CompressionOutputSizeException {
-    // Note: Using Inflater is not applicable here due to LZMA format specifics.
+    // Note: java.util.zip.Inflater does not apply to LZMA bitstream format.
     ByteArrayInputStream bais = new ByteArrayInputStream(dbuf, i, j);
     ByteArrayOutputStream baos = new ByteArrayOutputStream(output.length);
     int bytes;
@@ -265,7 +359,7 @@ public class NewLZMACompressor extends AbstractCompressor {
       decompress(bais, baos, output.length, -1);
       bytes = baos.size();
     } catch (IOException e) {
-      // Unexpected I/O, wrap in a more specific unchecked exception.
+      // Propagate as a more precise unchecked exception for convenience in array-based callers.
       throw new UncheckedIOException("Unexpected I/O during LZMA decompression", e);
     }
     byte[] buf = baos.toByteArray();
