@@ -24,6 +24,14 @@ some Kotlin components.
 - If the Java Runtime cannot be located, or if any other errors occur when running a command, request approval to
   proceed. Do not skip the command.
 
+### Codex CLI tool policy
+Do not use built-in picker or search/replace. Use these tools instead.
+- fzf: deterministic file/line selection. Fast text filter. Multi-select (-m). Noninteractive.
+- fastmod: repo-wide regex. Supports multiline. Best for large text refactors and simple renames. Preview with --print-changes.
+- ast-grep (sg): AST-aware search/replace. Matches nodes (calls, fields, imports). Best for API renames, signature changes, structural edits.
+
+Choice: ast-grep when syntax or semantics matter. fastmod when plain regex is enough. Always use fzf first to narrow targets.
+
 ### Commenting Guidelines
 
 - Prefer clean diffs over in-code historical explanations. Do not add "Removed …" style comments to explain code you just deleted in the same change. Rationale belongs in the commit message and PR description, not in source files.
