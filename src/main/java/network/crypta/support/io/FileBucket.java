@@ -44,9 +44,9 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * class method {@link #deleteOnFree()} and clarifies intent.
    *
    * <p>Serialization note: default Java serialization compatibility with older versions is not
-   * preserved for this field rename. Old serialized streams will not populate this field and it may
-   * therefore default to {@code false} on deserialization. Use {@link #storeTo(DataOutputStream)}
-   * for stable, versioned persistence.
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
   protected boolean deleteOnFreeFlag;
 
@@ -58,9 +58,9 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * class method {@link #deleteOnExit()} and clarifies intent.
    *
    * <p>Serialization note: default Java serialization compatibility with older versions is not
-   * preserved for this field rename. Old serialized streams will not populate this field and it may
-   * therefore default to {@code false} on deserialization. Use {@link #storeTo(DataOutputStream)}
-   * for stable, versioned persistence.
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
   protected final boolean deleteOnExitFlag;
 
@@ -71,9 +71,9 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * base class method {@link #createFileOnly()} and clarifies intent.
    *
    * <p>Serialization note: default Java serialization compatibility with older versions is not
-   * preserved for this field rename. Old serialized streams will not populate this field and it may
-   * therefore default to {@code false} on deserialization. Use {@link #storeTo(DataOutputStream)}
-   * for stable, versioned persistence.
+   * preserved for this field rename. Old serialized streams will not populate this field, and it
+   * may therefore default to {@code false} on deserialization. Use {@link
+   * #storeTo(DataOutputStream)} for stable, versioned persistence.
    */
   protected final boolean createFileOnlyFlag;
 
