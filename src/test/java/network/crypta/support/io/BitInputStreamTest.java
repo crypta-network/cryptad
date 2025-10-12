@@ -8,12 +8,12 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteOrder;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import java.util.stream.Stream;
 
 class BitInputStreamTest {
 
@@ -55,7 +55,8 @@ class BitInputStreamTest {
   void readBit_whenBigEndian_returnsMsbToLsb() throws IOException {
     // Arrange: 0b1011_0010
     byte b = (byte) 0b1011_0010;
-    BitInputStream bis = new BitInputStream(new ByteArrayInputStream(new byte[] {b}), ByteOrder.BIG_ENDIAN);
+    BitInputStream bis =
+        new BitInputStream(new ByteArrayInputStream(new byte[] {b}), ByteOrder.BIG_ENDIAN);
 
     // Act & Assert: bits 7..0
     int[] expected = {1, 0, 1, 1, 0, 0, 1, 0};
@@ -68,7 +69,8 @@ class BitInputStreamTest {
   void readBit_whenLittleEndian_returnsLsbToMsb() throws IOException {
     // Arrange: 0b1011_0010
     byte b = (byte) 0b1011_0010;
-    BitInputStream bis = new BitInputStream(new ByteArrayInputStream(new byte[] {b}), ByteOrder.LITTLE_ENDIAN);
+    BitInputStream bis =
+        new BitInputStream(new ByteArrayInputStream(new byte[] {b}), ByteOrder.LITTLE_ENDIAN);
 
     // Act & Assert: bits 0..7
     int[] expected = {0, 1, 0, 0, 1, 1, 0, 1};
@@ -103,7 +105,9 @@ class BitInputStreamTest {
 
   @Test
   void readInt_whenAligned8BigEndian_expectByteValue() throws IOException {
-    BitInputStream bis = new BitInputStream(new ByteArrayInputStream(new byte[] {(byte) 0xAB}), ByteOrder.BIG_ENDIAN);
+    BitInputStream bis =
+        new BitInputStream(
+            new ByteArrayInputStream(new byte[] {(byte) 0xAB}), ByteOrder.BIG_ENDIAN);
     assertEquals(0xAB, bis.readInt(8));
   }
 
@@ -139,15 +143,22 @@ class BitInputStreamTest {
 
   @Test
   void readInt_whenLittleEndianLengthMultipleOf8_expectUnsupportedOperation() throws IOException {
-    BitInputStream bis = new BitInputStream(new ByteArrayInputStream(new byte[] {0x11, 0x22}), ByteOrder.LITTLE_ENDIAN);
-    // Misalign to force bit-by-bit path where LITTLE_ENDIAN with byte-multiple length is unsupported
+    BitInputStream bis =
+        new BitInputStream(
+            new ByteArrayInputStream(new byte[] {0x11, 0x22}), ByteOrder.LITTLE_ENDIAN);
+    // Misalign to force bit-by-bit path where LITTLE_ENDIAN with byte-multiple length is
+    // unsupported
     bis.readBit();
-    assertThrows(UnsupportedOperationException.class, () -> bis.readInt(8, ByteOrder.LITTLE_ENDIAN));
+    assertThrows(
+        UnsupportedOperationException.class, () -> bis.readInt(8, ByteOrder.LITTLE_ENDIAN));
 
     // New instance for 16 bits
-    BitInputStream bis2 = new BitInputStream(new ByteArrayInputStream(new byte[] {0x11, 0x22}), ByteOrder.LITTLE_ENDIAN);
+    BitInputStream bis2 =
+        new BitInputStream(
+            new ByteArrayInputStream(new byte[] {0x11, 0x22}), ByteOrder.LITTLE_ENDIAN);
     bis2.readBit();
-    assertThrows(UnsupportedOperationException.class, () -> bis2.readInt(16, ByteOrder.LITTLE_ENDIAN));
+    assertThrows(
+        UnsupportedOperationException.class, () -> bis2.readInt(16, ByteOrder.LITTLE_ENDIAN));
   }
 
   @Test
@@ -167,11 +178,13 @@ class BitInputStreamTest {
   }
 
   @Test
-  void readInt_whenLittleEndianNonByteMultiple_expectCorrectWithLittleEndianStream() throws IOException {
+  void readInt_whenLittleEndianNonByteMultiple_expectCorrectWithLittleEndianStream()
+      throws IOException {
     // For little-endian bit aggregation to be correct, stream bit order must be LITTLE_ENDIAN
     // Data byte: 0b1011_0110; reading 3 bits LSB-first => value = 0b110 = 6
     byte[] data = new byte[] {(byte) 0b1011_0110};
-    BitInputStream bis = new BitInputStream(new ByteArrayInputStream(data), ByteOrder.LITTLE_ENDIAN);
+    BitInputStream bis =
+        new BitInputStream(new ByteArrayInputStream(data), ByteOrder.LITTLE_ENDIAN);
     assertEquals(6, bis.readInt(3, ByteOrder.LITTLE_ENDIAN));
   }
 
@@ -204,14 +217,16 @@ class BitInputStreamTest {
   @Test
   void readFully_whenUnderlyingReturnsPartial_expectEofException() throws IOException {
     InputStream mockIn = mock(InputStream.class);
-    when(mockIn.read(any(byte[].class))).thenAnswer(invocation -> {
-      byte[] buf = invocation.getArgument(0);
-      if (buf.length >= 2) {
-        buf[0] = 0x55; // write a single byte only
-        return 1; // partial read triggers EOFException in BitInputStream
-      }
-      return -1;
-    });
+    when(mockIn.read(any(byte[].class)))
+        .thenAnswer(
+            invocation -> {
+              byte[] buf = invocation.getArgument(0);
+              if (buf.length >= 2) {
+                buf[0] = 0x55; // write a single byte only
+                return 1; // partial read triggers EOFException in BitInputStream
+              }
+              return -1;
+            });
 
     BitInputStream bis = new BitInputStream(mockIn);
     byte[] dst = new byte[2];
