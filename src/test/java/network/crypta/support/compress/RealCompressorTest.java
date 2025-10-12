@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
+// Test-only logging control (Logback)
+import org.slf4j.LoggerFactory;
 
 class RealCompressorTest {
 
@@ -96,37 +100,50 @@ class RealCompressorTest {
   @DisplayName("enqueueNewJob_whenTryCompressThrowsThrowable_wrapsAsInternalErrorAndCallsOnFailure")
   void enqueueNewJob_whenTryCompressThrowsThrowable_wrapsAsInternalErrorAndCallsOnFailure()
       throws Exception {
-    // Arrange
-    compressor = new RealCompressor();
-    ClientContext ctx = mock(ClientContext.class);
-    compressor.setClientContext(ctx);
-    CompressJob job = mock(CompressJob.class);
-    RuntimeException boom = new RuntimeException("boom");
-    doAnswer(
-            inv -> {
-              throw boom;
-            })
-        .when(job)
-        .tryCompress(any());
-    CountDownLatch failed = new CountDownLatch(1);
-    doAnswer(
-            inv -> {
-              failed.countDown();
-              return null;
-            })
-        .when(job)
-        .onFailure(any(), any(), any());
+    // Silence expected error-level log noise from RealCompressor for this test only (Linux CI).
+    Logger logCompressor = (Logger) LoggerFactory.getLogger(RealCompressor.class);
+    Logger logInsertEx =
+        (Logger) LoggerFactory.getLogger(network.crypta.client.InsertException.class);
+    Level prevCompressor = logCompressor.getLevel();
+    Level prevInsertEx = logInsertEx.getLevel();
+    logCompressor.setLevel(Level.OFF);
+    logInsertEx.setLevel(Level.OFF);
+    try {
+      // Arrange
+      compressor = new RealCompressor();
+      ClientContext ctx = mock(ClientContext.class);
+      compressor.setClientContext(ctx);
+      CompressJob job = mock(CompressJob.class);
+      RuntimeException boom = new RuntimeException("boom");
+      doAnswer(
+              inv -> {
+                throw boom;
+              })
+          .when(job)
+          .tryCompress(any());
+      CountDownLatch failed = new CountDownLatch(1);
+      doAnswer(
+              inv -> {
+                failed.countDown();
+                return null;
+              })
+          .when(job)
+          .onFailure(any(), any(), any());
 
-    // Act
-    compressor.enqueueNewJob(job);
+      // Act
+      compressor.enqueueNewJob(job);
 
-    // Assert
-    assertTrue(failed.await(2, TimeUnit.SECONDS), "onFailure was not called in time");
-    ArgumentCaptor<InsertException> exCaptor = ArgumentCaptor.forClass(InsertException.class);
-    verify(job).onFailure(exCaptor.capture(), isNull(), same(ctx));
-    InsertException wrapped = exCaptor.getValue();
-    assertThat(wrapped.getMode(), is(InsertExceptionMode.INTERNAL_ERROR));
-    assertThat(wrapped.getCause(), is(boom));
+      // Assert
+      assertTrue(failed.await(2, TimeUnit.SECONDS), "onFailure was not called in time");
+      ArgumentCaptor<InsertException> exCaptor = ArgumentCaptor.forClass(InsertException.class);
+      verify(job).onFailure(exCaptor.capture(), isNull(), same(ctx));
+      InsertException wrapped = exCaptor.getValue();
+      assertThat(wrapped.getMode(), is(InsertExceptionMode.INTERNAL_ERROR));
+      assertThat(wrapped.getCause(), is(boom));
+    } finally {
+      logCompressor.setLevel(prevCompressor);
+      logInsertEx.setLevel(prevInsertEx);
+    }
   }
 
   @Test

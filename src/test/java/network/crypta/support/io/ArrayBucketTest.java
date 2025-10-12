@@ -1,15 +1,30 @@
 package network.crypta.support.io;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
+import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
+import network.crypta.support.api.RandomAccessBucket;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -26,6 +41,58 @@ class ArrayBucketTest {
   // ---------- Helpers ----------
   private static byte[] bytes(String s) {
     return s.getBytes(StandardCharsets.US_ASCII);
+  }
+
+  // ---------- ArrayBucketFactory ----------
+
+  @Test
+  void factory_makeBucket_whenCalled_expectArrayBucketAndEmpty() throws Exception {
+    // Arrange
+    BucketFactory factory = new ArrayBucketFactory();
+    // Act
+    try (RandomAccessBucket b = factory.makeBucket(1024)) {
+      // Assert
+      assertInstanceOf(ArrayBucket.class, b);
+      assertEquals(0, b.size());
+      assertEquals("ArrayBucket", b.getName());
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("factorySizeHints")
+  void factory_makeBucket_ignoresSizeHint_allowsWrite(long sizeHint) throws Exception {
+    // Arrange
+    BucketFactory factory = new ArrayBucketFactory();
+    // Act
+    try (RandomAccessBucket b = factory.makeBucket(sizeHint)) {
+      try (OutputStream os = b.getOutputStream()) {
+        os.write(bytes("data"));
+      }
+      // Assert
+      assertEquals(4, b.size());
+      assertArrayEquals(bytes("data"), ((ArrayBucket) b).toByteArray());
+    }
+  }
+
+  private static Stream<Arguments> factorySizeHints() {
+    return Stream.of(Arguments.of(-1L), Arguments.of(Long.MAX_VALUE));
+  }
+
+  @Test
+  void factory_makeBucket_eachCallReturnsFreshInstance() throws Exception {
+    // Arrange
+    BucketFactory factory = new ArrayBucketFactory();
+    try (RandomAccessBucket a = factory.makeBucket(10);
+        RandomAccessBucket b = factory.makeBucket(10)) {
+      // Act
+      try (OutputStream os = a.getOutputStream()) {
+        os.write(bytes("x"));
+      }
+      // Assert
+      assertNotSame(a, b);
+      assertEquals(1, a.size());
+      assertEquals(0, b.size());
+    }
   }
 
   private static Stream<Arguments> asciiPayloads() {
