@@ -131,7 +131,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     private final String storageLimit;
 
     private final String minStorageLimit =
-        String.format(Locale.ENGLISH, "%.2f", (float) MIN_STORAGE_LIMIT / DatastoreUtil.oneGiB);
+        String.format(Locale.ENGLISH, "%.2f", (float) MIN_STORAGE_LIMIT / DatastoreUtil.ONE_GIB);
 
     private String setPassword = "";
 
@@ -156,11 +156,11 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
             sizeOption.getValue()
                 + clientCacheSizeOption.getValue()
                 + slashdotCacheSizeOption.getValue();
-        storage = (float) totalSize / DatastoreUtil.oneGiB;
+        storage = (float) totalSize / DatastoreUtil.ONE_GIB;
       } else {
         long autodetectedDatastoreSize = DatastoreUtil.autodetectDatastoreSize(core, config);
         if (autodetectedDatastoreSize > 0) {
-          storage = (float) autodetectedDatastoreSize / DatastoreUtil.oneGiB;
+          storage = (float) autodetectedDatastoreSize / DatastoreUtil.ONE_GIB;
         }
       }
       // format with English locale to ensure that the decimal point is "." as required for the form
@@ -262,7 +262,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
                 NodeL10n.getBase()
                     .getString(
                         "Node.invalidMaxStoreSize",
-                        "%.2f".formatted((float) maxDatastoreSize / DatastoreUtil.oneGiB)));
+                        "%.2f".formatted((float) maxDatastoreSize / DatastoreUtil.ONE_GIB)));
           }
         }
       } catch (NumberFormatException e) {

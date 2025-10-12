@@ -131,7 +131,7 @@ public class BANDWIDTH_MONTHLY extends BandwidthManipulator implements Step {
             .append("&parseTarget=");
     try {
       GBPerMonth = Double.parseDouble(capTo);
-      bytesPerMonth = Math.round(GBPerMonth * DatastoreUtil.oneGiB);
+      bytesPerMonth = Math.round(GBPerMonth * DatastoreUtil.ONE_GIB);
     } catch (NumberFormatException e) {
       target.append(URLEncoder.encode(capTo, true));
       target.append("&parseError=true");

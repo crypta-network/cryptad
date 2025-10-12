@@ -11,7 +11,7 @@ import static network.crypta.node.stats.DataStoreType.CACHE;
 import static network.crypta.node.stats.DataStoreType.CLIENT;
 import static network.crypta.node.stats.DataStoreType.SLASHDOT;
 import static network.crypta.node.stats.DataStoreType.STORE;
-import static network.crypta.support.io.DatastoreUtil.oneGiB;
+import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -2658,7 +2658,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             }
             if (storeSize > (maxDatastoreSize = DatastoreUtil.maxDatastoreSize())) {
               throw new InvalidConfigValueException(
-                  l10n("invalidMaxStoreSize", Long.toString(maxDatastoreSize / oneGiB)));
+                  l10n("invalidMaxStoreSize", Long.toString(maxDatastoreSize / ONE_GIB)));
             }
 
             long newMaxStoreKeys = storeSize / sizePerKey;
