@@ -10,16 +10,16 @@ import java.util.Objects;
 /**
  * Bit-level reader backed by an {@link InputStream}.
  *
- * <p>This class allows reading individual bits and fixed-width unsigned integers from an
- * {@link InputStream} without altering the underlying stream semantics. It maintains an
- * 8-bit buffer and a counter of remaining bits from the most recently fetched byte. Bit
- * order (within each byte) can be either {@link ByteOrder#BIG_ENDIAN} (most significant bit
- * first) or {@link ByteOrder#LITTLE_ENDIAN} (least significant bit first).
+ * <p>This class allows reading individual bits and fixed-width unsigned integers from an {@link
+ * InputStream} without altering the underlying stream semantics. It maintains an 8-bit buffer and a
+ * counter of remaining bits from the most recently fetched byte. Bit order (within each byte) can
+ * be either {@link ByteOrder#BIG_ENDIAN} (most significant bit first) or {@link
+ * ByteOrder#LITTLE_ENDIAN} (least significant bit first).
  *
  * <p>Fast paths are provided for byte-aligned reads of 8/16/24/32 bits. When the reader is not
- * mid-byte (i.e., no partially consumed bits) these lengths are read directly from the
- * underlying stream in as few calls as possible. For 16/24/32-bit reads, the supplied
- * {@code ByteOrder} controls how bytes are combined.
+ * mid-byte (i.e., no partially consumed bits) these lengths are read directly from the underlying
+ * stream in as few calls as possible. For 16/24/32-bit reads, the supplied {@code ByteOrder}
+ * controls how bytes are combined.
  *
  * <p>Instances of this class are not thread-safe.
  */
@@ -43,9 +43,9 @@ public class BitInputStream implements Closeable {
   /**
    * Create a new reader with a specific bit order.
    *
-   * <p>The bit order applies to how bits within a byte are numbered and how multi-bit values
-   * are accumulated when using the bit-by-bit path. For 16/24/32-bit byte-aligned fast paths,
-   * the provided order controls how bytes are combined to form the result.
+   * <p>The bit order applies to how bits within a byte are numbered and how multi-bit values are
+   * accumulated when using the bit-by-bit path. For 16/24/32-bit byte-aligned fast paths, the
+   * provided order controls how bytes are combined to form the result.
    *
    * @param in the underlying stream; must not be {@code null}.
    * @param bitOrder bit order to use for this reader; must not be {@code null}.
@@ -73,13 +73,12 @@ public class BitInputStream implements Closeable {
   /**
    * Read the next single bit.
    *
-   * <p>When the internal bit buffer is empty, a new byte is fetched from the underlying
-   * stream. The returned bit is either the next most-significant bit (big-endian bit order)
-   * or the next least-significant bit (little-endian bit order) of the buffered byte.
+   * <p>When the internal bit buffer is empty, a new byte is fetched from the underlying stream. The
+   * returned bit is either the next most-significant bit (big-endian bit order) or the next
+   * least-significant bit (little-endian bit order) of the buffered byte.
    *
    * @return the next bit as {@code 0} or {@code 1}.
-   * @throws EOFException if the end of the underlying stream is reached before a bit is
-   *     available.
+   * @throws EOFException if the end of the underlying stream is reached before a bit is available.
    * @throws IOException if an I/O error occurs while reading from the underlying stream.
    */
   public int readBit() throws IOException {
@@ -115,24 +114,24 @@ public class BitInputStream implements Closeable {
    * Read an unsigned integer composed of {@code length} bits using the provided bit order.
    *
    * <p>Behavior depends on alignment and length:
+   *
    * <ul>
-   *   <li>If no bits are currently buffered from a prior byte (i.e., byte-aligned) and
-   *       {@code length} is 8/16/24/32, the method reads directly from the underlying stream.
-   *       For 16/24/32, {@code bitOrder} controls how bytes are combined.</li>
-   *   <li>Otherwise, the value is assembled bit by bit. For {@link ByteOrder#BIG_ENDIAN}, bits
-   *       are shifted left; for {@link ByteOrder#LITTLE_ENDIAN}, bits are accumulated LSB-first.</li>
-   *   <li>For {@link ByteOrder#LITTLE_ENDIAN} with a {@code length} that is an exact multiple
-   *       of 8 on the bit-by-bit path, this method throws
-   *       {@link UnsupportedOperationException}. When byte-aligned, the fast path supports such
-   *       lengths.</li>
+   *   <li>If no bits are currently buffered from a prior byte (i.e., byte-aligned) and {@code
+   *       length} is 8/16/24/32, the method reads directly from the underlying stream. For
+   *       16/24/32, {@code bitOrder} controls how bytes are combined.
+   *   <li>Otherwise, the value is assembled bit by bit. For {@link ByteOrder#BIG_ENDIAN}, bits are
+   *       shifted left; for {@link ByteOrder#LITTLE_ENDIAN}, bits are accumulated LSB-first.
+   *   <li>For {@link ByteOrder#LITTLE_ENDIAN} with a {@code length} that is an exact multiple of 8
+   *       on the bit-by-bit path, this method throws {@link UnsupportedOperationException}. When
+   *       byte-aligned, the fast path supports such lengths.
    * </ul>
    *
    * @param length number of bits to read; {@code 0} returns {@code 0}.
    * @param bitOrder bit order to use for this call.
    * @return the accumulated unsigned value in the low bits of the returned {@code int}.
    * @throws IllegalArgumentException if {@code length} is negative.
-   * @throws UnsupportedOperationException if little-endian bit-by-bit reading is requested for
-   *     a length that is a multiple of 8 (only applicable when not byte-aligned).
+   * @throws UnsupportedOperationException if little-endian bit-by-bit reading is requested for a
+   *     length that is a multiple of 8 (only applicable when not byte-aligned).
    * @throws EOFException if there is not enough data to satisfy the read.
    * @throws IOException if an I/O error occurs while reading from the underlying stream.
    */
@@ -166,10 +165,10 @@ public class BitInputStream implements Closeable {
   /**
    * Read {@code b.length} bytes into the provided array.
    *
-   * <p>If the reader is byte-aligned, this performs a single {@link InputStream#read(byte[])}
-   * and throws {@link EOFException} if that call does not return exactly {@code b.length}.
-   * When not aligned, this method reads eight bits at a time via {@link #readInt(int)} to fill
-   * the array across byte boundaries.
+   * <p>If the reader is byte-aligned, this performs a single {@link InputStream#read(byte[])} and
+   * throws {@link EOFException} if that call does not return exactly {@code b.length}. When not
+   * aligned, this method reads eight bits at a time via {@link #readInt(int)} to fill the array
+   * across byte boundaries.
    *
    * @param b destination array; must not be {@code null}.
    * @throws EOFException if there are fewer than {@code b.length} bytes available.
@@ -192,21 +191,21 @@ public class BitInputStream implements Closeable {
    * Skip up to {@code n} bits.
    *
    * <p>Behavior:
+   *
    * <ul>
-   *   <li>If the request is satisfied entirely by the currently buffered bits (i.e.,
-   *       {@code bitsLeft > n}), the method consumes those bits and returns {@code n}.</li>
-   *   <li>Otherwise, it consumes any remaining buffered bits, then skips whole bytes followed
-   *       by any final bits. If all {@code n} bits are skipped successfully, it returns
-   *       {@code 0}.</li>
-   *   <li>If EOF is reached before skipping {@code n} bits, it returns the number of bits that
-   *       were actually skipped.</li>
+   *   <li>If the request is satisfied entirely by the currently buffered bits (i.e., {@code
+   *       bitsLeft > n}), the method consumes those bits and returns {@code n}.
+   *   <li>Otherwise, it consumes any remaining buffered bits, then skips whole bytes followed by
+   *       any final bits. If all {@code n} bits are skipped successfully, it returns {@code 0}.
+   *   <li>If EOF is reached before skipping {@code n} bits, it returns the number of bits that were
+   *       actually skipped.
    * </ul>
    *
    * <p>These return values preserve historical behavior relied on by existing callers.
    *
    * @param n the number of bits to skip; non-positive values result in {@code 0}.
-   * @return the value described above (either {@code n}, {@code 0}, or the number of bits
-   *     actually skipped on EOF).
+   * @return the value described above (either {@code n}, {@code 0}, or the number of bits actually
+   *     skipped on EOF).
    * @throws IOException if an I/O error occurs while reading from the underlying stream.
    */
   public long skip(long n) throws IOException {
