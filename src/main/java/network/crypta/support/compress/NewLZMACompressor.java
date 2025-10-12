@@ -11,6 +11,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.CountedInputStream;
 import network.crypta.support.io.CountedOutputStream;
+import org.jetbrains.annotations.NotNull;
 import org.sevenzip.ICodeProgress;
 import org.sevenzip.compression.lzma.Decoder;
 import org.sevenzip.compression.lzma.Encoder;
@@ -213,7 +214,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
 
     @Override
-    public int read(byte[] b, int off, int len) throws IOException {
+    public int read(byte @NotNull [] b, int off, int len) throws IOException {
       long remaining = max - count();
       if (remaining > 0) {
         int toRead = (int) Math.min(len, remaining);
@@ -228,7 +229,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
 
     @Override
-    public int read(byte[] b) throws IOException {
+    public int read(byte @NotNull [] b) throws IOException {
       long remaining = max - count();
       if (remaining > 0) {
         int toRead = (int) Math.min(b.length, remaining);
@@ -259,7 +260,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
 
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
       if (len < 0) throw new ArrayIndexOutOfBoundsException(len);
       if (written() + len > max) throw new CompressionOutputSizeException(written() + len);
       super.write(b, off, len);
