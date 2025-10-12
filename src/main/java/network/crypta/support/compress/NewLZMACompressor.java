@@ -260,7 +260,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     }
 
     @Override
-    public void write(byte[] b, int off, int len) throws IOException {
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
       if (len < 0) throw new ArrayIndexOutOfBoundsException(len);
       if (written() + len > max) throw new CompressionOutputSizeException(written() + len);
       super.write(b, off, len);
