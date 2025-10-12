@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
@@ -81,10 +82,21 @@ class DatastoreUtilTest {
   @Test
   @DisplayName("maxDatastoreSize_whenDiskBiggerThanMemory_expectMemoryCap")
   void maxDatastoreSize_whenDiskBiggerThanMemory_expectMemoryCap() {
-    // Arrange: force a small memory cap so disk is effectively larger
-    try (MockedStatic<NodeStarter> ns = mockStatic(NodeStarter.class)) {
-      ns.when(NodeStarter::getMemoryLimitBytes).thenReturn(129L * DatastoreUtil.ONE_MIB);
-      long memoryCap = runtimeMemoryDerivedMax();
+    // Arrange: deterministically make disk larger than the memory cap by
+    // (a) forcing the 1 GiB memory fallback and (b) mocking filesystem free space to 10 GiB.
+    Path dataPath = resolveDataDirPath();
+    try (MockedStatic<NodeStarter> ns = mockStatic(NodeStarter.class);
+        MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
+      ns.when(NodeStarter::getMemoryLimitBytes).thenReturn(127L * DatastoreUtil.ONE_MIB);
+      long memoryCap = runtimeMemoryDerivedMax(); // expected: 1 GiB fallback
+
+      FileStore store = mock(FileStore.class);
+      try {
+        when(store.getUnallocatedSpace()).thenReturn(10L * DatastoreUtil.ONE_GIB);
+      } catch (IOException e) {
+        throw new AssertionError(e);
+      }
+      files.when(() -> Files.getFileStore(eq(dataPath))).thenReturn(store);
 
       // Act
       long actual = DatastoreUtil.maxDatastoreSize();
