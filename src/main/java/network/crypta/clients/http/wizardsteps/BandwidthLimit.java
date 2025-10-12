@@ -14,7 +14,7 @@ public class BandwidthLimit {
    * 49.4384765625 GiB
    */
   public static final Double minMonthlyLimit =
-      2 * Node.getMinimumBandwidth() * secondsPerMonth / DatastoreUtil.oneGiB;
+      2 * Node.getMinimumBandwidth() * secondsPerMonth / DatastoreUtil.ONE_GIB;
 
   /** Download limit in bytes. */
   public final long downBytes;

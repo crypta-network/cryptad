@@ -1,6 +1,6 @@
 package network.crypta.clients.http.wizardsteps;
 
-import static network.crypta.support.io.DatastoreUtil.oneGiB;
+import static network.crypta.support.io.DatastoreUtil.ONE_GIB;
 
 import java.io.File;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
@@ -134,7 +134,7 @@ public class DATASTORE_SIZE implements Step {
             "Attempting to set DatastoreSize ("
                 + size
                 + ") larger than maxDatastoreSize ("
-                + maxDatastoreSize / oneGiB
+                + maxDatastoreSize / ONE_GIB
                 + " GiB)");
       }
 
