@@ -30,7 +30,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.api.RandomAccessBuffer;
-import network.crypta.testsupport.BucketTestUtils;
+import network.crypta.testsupport.FileTestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -606,7 +606,7 @@ class BucketToolsTest {
       Random seeded = new Random(123456789L);
 
       // Act
-      BucketTestUtils.fill(bucket, seeded, length);
+      FileTestUtils.fill(bucket, seeded, length);
 
       // Assert
       byte[] expected = new byte[(int) length];

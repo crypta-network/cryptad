@@ -81,7 +81,7 @@ public class SECURITY_PHYSICAL implements Step {
                 "SecurityLevels.physicalThreatLevelSwapfile",
                 "operatingSystem",
                 NodeL10n.getBase().getString("OperatingSystemName." + os.name())));
-    if (os == FileUtil.OperatingSystem.Windows) {
+    if (os == FileUtil.OperatingSystem.WINDOWS) {
       swapWarning.addChild("#", " " + WizardL10n.l10nSec("physicalThreatLevelSwapfileWindows"));
     }
     for (SecurityLevels.PHYSICAL_THREAT_LEVEL level :
