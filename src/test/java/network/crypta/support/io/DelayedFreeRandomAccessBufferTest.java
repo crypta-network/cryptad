@@ -217,9 +217,9 @@ class DelayedFreeRandomAccessBufferTest {
     LockableRandomAccessBuffer other = mock(LockableRandomAccessBuffer.class);
     DelayedFreeRandomAccessBuffer a = new DelayedFreeRandomAccessBuffer(underlying, factory);
     DelayedFreeRandomAccessBuffer b = new DelayedFreeRandomAccessBuffer(other, factory);
-    assertNotEquals(a, b);
-    assertNotEquals(a, null);
-    assertNotEquals(a, new Object());
+    assertNotEquals(b, a);
+    assertNotEquals(null, a);
+    assertNotEquals(new Object(), a);
   }
 
   @Test
