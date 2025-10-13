@@ -52,6 +52,8 @@ tmp*
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
 /.vscode
+.project
+.settings
 
 # Local migration helpers
 tools/migrate_logger_slf4j.py
