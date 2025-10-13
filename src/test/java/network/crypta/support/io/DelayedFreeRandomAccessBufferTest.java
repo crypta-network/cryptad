@@ -1,9 +1,22 @@
 package network.crypta.support.io;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -15,6 +28,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -53,8 +67,7 @@ class DelayedFreeRandomAccessBufferTest {
   }
 
   @Test
-  void free_whenResumed_usesNewFactoryButOriginalCommitID()
-      throws IOException, ResumeFailedException {
+  void free_whenResumed_usesNewFactoryButOriginalCommitID() throws ResumeFailedException {
     PersistentFileTracker factoryAtCreate = mock(PersistentFileTracker.class);
     when(factoryAtCreate.commitID()).thenReturn(42L);
     DelayedFreeRandomAccessBuffer buf =
@@ -122,7 +135,7 @@ class DelayedFreeRandomAccessBufferTest {
 
   @ParameterizedTest(name = "{0} when freed throws IOException")
   @MethodSource("freeGuardedOps")
-  void ops_whenFreed_expectIOException(OpAction action) throws IOException {
+  void ops_whenFreed_expectIOException(OpAction action) {
     DelayedFreeRandomAccessBuffer buf = new DelayedFreeRandomAccessBuffer(underlying, factory);
     buf.free();
     IOException ex = assertThrows(IOException.class, () -> action.run(buf, underlying));
@@ -244,14 +257,7 @@ class DelayedFreeRandomAccessBufferTest {
         throws IOException;
   }
 
-  private static final class OpAction {
-    final String name;
-    final Op op;
-
-    OpAction(String name, Op op) {
-      this.name = name;
-      this.op = op;
-    }
+  private record OpAction(String name, Op op) {
 
     void run(DelayedFreeRandomAccessBuffer wrapper, LockableRandomAccessBuffer underlying)
         throws IOException {
@@ -259,7 +265,7 @@ class DelayedFreeRandomAccessBufferTest {
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return name;
     }
   }
