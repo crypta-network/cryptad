@@ -287,23 +287,25 @@ public class NoFreeBucket implements Bucket, Serializable {
       // Field not present in local descriptor; treat as absent.
     }
 
-    // Newer format appends the wrapped bucket after the default field block.
-    // If the stream ends here (EOF), fall back to the legacy field value.
+    // If legacy field is present, use it and return without reading further optional data.
+    if (legacyProxy != null) {
+      proxyRef = new AtomicReference<>(legacyProxy);
+      return;
+    }
+
+    // Otherwise, support older "appended object" format written after the field block.
     try {
       Object appended = in.readObject();
       proxyRef = new AtomicReference<>((Bucket) appended);
     } catch (OptionalDataException e) {
       if (e.eof) {
-        proxyRef = new AtomicReference<>(legacyProxy);
-        if (proxyRef.get() == null)
-          throw new StreamCorruptedException("Legacy NoFreeBucket missing proxy field");
-        return;
+        // No legacy field and no appended object — malformed stream for this type.
+        throw new StreamCorruptedException("NoFreeBucket: missing delegate in serialized form");
       }
       throw e;
     } catch (EOFException e) {
-      // Some streams may surface EOF as plain EOFException rather than OptionalDataException.
-      proxyRef = new AtomicReference<>(legacyProxy);
-      if (proxyRef.get() == null) throw e;
+      // Reached end of this object's data with no delegate present.
+      throw new StreamCorruptedException("NoFreeBucket: unexpected EOF while reading delegate");
     }
   }
 }
