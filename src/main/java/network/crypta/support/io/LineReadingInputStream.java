@@ -267,7 +267,7 @@ public class LineReadingInputStream extends FilterInputStream implements LineRea
               + HexUtil.bytesToHex(s.buf, 0, s.ctr)
               + "\n"
               + decode(s.buf, s.ctr, cs));
-    // Safe to append: on entry we have s.ctr < s.buf.length. If this write fills the buffer,
+    // Safe to append: on entry we have s.ctr < s.buf.length. If this writing fills the buffer,
     // the caller grows capacity before the next iteration (see growth check in the loop above).
     s.buf[s.ctr++] = (byte) x;
   }
