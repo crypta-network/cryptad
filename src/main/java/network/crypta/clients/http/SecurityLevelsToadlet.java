@@ -708,7 +708,7 @@ public class SecurityLevelsToadlet extends Toadlet {
                 "SecurityLevels.physicalThreatLevelSwapfile",
                 "operatingSystem",
                 NodeL10n.getBase().getString("OperatingSystemName." + os.name())));
-    if (os == FileUtil.OperatingSystem.Windows) {
+    if (os == FileUtil.OperatingSystem.WINDOWS) {
       swapWarning.addChild("#", " " + WizardL10n.l10nSec("physicalThreatLevelSwapfileWindows"));
     }
 

@@ -601,7 +601,7 @@ public class BucketTools {
     }
   }
 
-  // Note: Deprecated Random-based fill helpers moved to src/test (BucketTestUtils).
+  // Note: Random-based test helpers live under src/test (FileTestUtils).
 
   /**
    * Fills a bucket with pseudo-random bytes.

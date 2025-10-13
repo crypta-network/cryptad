@@ -462,14 +462,15 @@ Notes
 - Package: `network.crypta.testsupport` (test sources only)
   - Purpose: Common helpers for tests that should not ship in production binaries.
   - Current utilities:
-    - `BucketTestUtils` — deterministic fill helpers for Bucket/RandomAccessBuffer used by tests.
+    - `FileTestUtils` — deterministic fill helpers for OutputStream/Bucket/RandomAccessBuffer used by tests.
+      - `fill(OutputStream, Random, long)`
       - `fill(Bucket, Random, long)`
       - `fill(RandomAccessBuffer, Random, long offset, long length)`
   - Guidance:
     - Do not call these helpers from main sources. If production code needs random fill, use
       `FileUtil.fill(OutputStream, long)` or appropriate non-test utilities.
     - Replace any historical use of `BucketTools.fill(..., Random, ...)` in tests with
-      `BucketTestUtils.fill(...)`.
+      `FileTestUtils.fill(...)`.
 
 ## Important Notes
 
