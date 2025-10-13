@@ -254,8 +254,11 @@ public class DecompressorThreadManager {
     @Override
     public void run() {
       if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
-      try (BufferedInputStream bufferedInput = new BufferedInputStream(input);
-          BufferedOutputStream bufferedOutput = new BufferedOutputStream(output)) {
+      // Do not close the input stream from this side: when a stage fails early, closing the
+      // upstream PipedInputStream would cause the writer's PipedOutputStream to throw
+      // "Pipe closed" immediately. We close only our output to signal downstream termination.
+      BufferedInputStream bufferedInput = new BufferedInputStream(input);
+      try (BufferedOutputStream bufferedOutput = new BufferedOutputStream(output)) {
         /*
          * If another stage already failed, skip work and let the pipeline wind down. Otherwise,
          * invoke the compressor with the configured bounds. The estimated max output length is a
