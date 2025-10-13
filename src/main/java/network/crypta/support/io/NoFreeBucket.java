@@ -28,7 +28,17 @@ import network.crypta.support.api.Bucket;
 public class NoFreeBucket implements Bucket, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
-  private transient AtomicReference<Bucket> proxyRef;
+
+  // Delegate handle:
+  // - transient: control Java serialization manually via writeObject/readObject because the
+  //   wrapped Bucket may be non-Serializable; the default field block must not attempt to
+  //   serialize it.
+  // - volatile: safely publishes the reference itself across threads after construction or
+  //   deserialization so racing readers cannot observe a null handle.
+  // - AtomicReference: provides a thread-safe container for the delegate and allows an atomic
+  //   replace during deserialization/stream restore; also satisfies static analysis that a volatile
+  //   inner value alone is insufficient for safe publication.
+  private transient volatile AtomicReference<Bucket> proxyRef;
 
   // Preserve ability to read legacy streams where 'proxy' was persisted by default
   // (field was non-transient and no extra object followed). Declaring the field in
