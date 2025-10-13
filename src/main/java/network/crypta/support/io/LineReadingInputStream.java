@@ -119,6 +119,8 @@ public class LineReadingInputStream extends FilterInputStream implements LineRea
     while (true) {
       processChunkNonMarked(s, maxLength, cs);
       if (s.done) return s.line;
+      // Grow after append: processChunkNonMarked writes one byte at index s.ctr.
+      // If that write filled the buffer (s.ctr == length), we expand here before next append.
       if (s.ctr >= s.buf.length) {
         s.buf = Arrays.copyOf(s.buf, Math.min(s.buf.length * 2, maxLength));
       }
@@ -257,7 +259,7 @@ public class LineReadingInputStream extends FilterInputStream implements LineRea
       return;
     }
     if (s.ctr >= maxLength)
-      // Enforce the maximum length before appending the next byte.
+      // Enforce maximum length before appending the next byte.
       throw new TooLongException(
           "We reached maxLength="
               + maxLength
@@ -265,6 +267,8 @@ public class LineReadingInputStream extends FilterInputStream implements LineRea
               + HexUtil.bytesToHex(s.buf, 0, s.ctr)
               + "\n"
               + decode(s.buf, s.ctr, cs));
+    // Safe to append: on entry we have s.ctr < s.buf.length. If this write fills the buffer,
+    // the caller grows capacity before the next iteration (see growth check in the loop above).
     s.buf[s.ctr++] = (byte) x;
   }
 
