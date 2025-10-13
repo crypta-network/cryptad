@@ -12,7 +12,7 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileUtil;
-import network.crypta.support.io.NoCloseProxyOutputStream;
+import network.crypta.testsupport.NoCloseProxyOutputStream;
 import org.junit.jupiter.api.Test;
 
 public class AEADStreamsTest {
