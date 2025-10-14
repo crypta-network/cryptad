@@ -37,8 +37,7 @@ public class NoFreeBucket implements Bucket, Serializable {
   //   deserialization so racing readers cannot observe a null handle.
   // - AtomicReference: provides a thread-safe container for the delegate and allows an atomic
   //   replacement during deserialization/stream restore; also satisfies static analysis that a
-  // volatile
-  //   inner value alone is insufficient for safe publication.
+  //   volatile inner value alone is insufficient for safe publication.
   @SuppressWarnings("java:S3077") // AtomicReference is used for safe publication
   private transient volatile AtomicReference<Bucket> proxyRef;
 

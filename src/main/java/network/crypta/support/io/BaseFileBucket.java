@@ -640,7 +640,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
     long size = size();
     if (size == 0) throw new IOException("Must not be empty");
     return new PooledFileRandomAccessBuffer(
-        getFile(), true, size, null, getPersistentTempID(), deleteOnFree());
+        getFile(), true, size, getPersistentTempID(), deleteOnFree());
   }
 
   /**

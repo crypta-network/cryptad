@@ -57,7 +57,7 @@ public class ClientRequestSelectorTest {
     RandomSource r = new DummyRandomSource(12345);
     fg = new FilenameGenerator(r, true, dir, "freenet-test");
     persistentFileTracker = new TrivialPersistentFileTracker(dir, fg);
-    bigRAFFactory = new PooledFileRandomAccessBufferFactory(fg, r);
+    bigRAFFactory = new PooledFileRandomAccessBufferFactory(fg);
     smallBucketFactory = new ArrayBucketFactory();
     bigBucketFactory = new TempBucketFactory(executor, fg, 0, 0, r, false, 0, null);
     baseContext =
