@@ -554,8 +554,7 @@ public class SplitFileFetcher
         throw new ResumeFailedException("Storage file is not of the correct length");
       // FIXME check against finalLength too, maybe we can finish straight away.
       this.raf =
-          new PooledFileRandomAccessBuffer(
-              fileCompleteViaTruncation, false, rafSize, null, -1, true);
+          new PooledFileRandomAccessBuffer(fileCompleteViaTruncation, false, rafSize, -1, true);
     } else {
       this.raf =
           BucketTools.restoreRAFFrom(

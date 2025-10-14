@@ -155,7 +155,7 @@ public class DiskSpaceCheckingRandomAccessBufferFactory
       if (file.length() != 0) throw new IOException("File is wrong length");
       // Keep check and allocation under the same lock for a consistent space snapshot.
       if (dir.getUsableSpace() > size + minDiskSpace) {
-        ret = new PooledFileRandomAccessBuffer(file, false, size, random, -1, true);
+        ret = new PooledFileRandomAccessBuffer(file, false, size, -1, true);
         return ret;
       } else {
         throw new InsufficientDiskSpaceException();
