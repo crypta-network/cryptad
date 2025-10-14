@@ -39,7 +39,7 @@ import org.jetbrains.annotations.NotNull;
  * custom {@code writeObject}/{@code readObject} methods because it may not be {@link Serializable}.
  */
 public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializable {
-  @Serial private static final long serialVersionUID = 2L;
+  @Serial private static final long serialVersionUID = 1L;
   // The underlying bucket may not be java.io.Serializable; keep transient and handle via
   // Java-serialization hooks similar to DelayedFreeBucket/PaddedBucket.
   private transient RandomAccessBucket underlying;
@@ -451,10 +451,9 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
 
   /* ===== Java serialization support ===== */
   // Preserve backward compatibility with legacy Java-serialization layout where 'underlying' was
-  // included in the default field block. We define an explicit persistent field set and reserve the
-  // 'underlying' entry (written as null) so that new streams have a stable descriptor. Older
-  // streams contain a non-null 'underlying' in the field block; readObject() detects this and uses
-  // it instead of reading a trailing object.
+  // included in the default field block. We include the actual underlying in the field block so
+  // older readers (serialVersionUID 1) do not need to read any trailing data. Newer readers keep
+  // accepting both forms.
 
   private static final String FIELD_SIZE = "size";
   private static final String FIELD_READ_ONLY = "readOnly";
@@ -469,20 +468,17 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    // Write the reserved field block with 'underlying' set to null to stabilize the descriptor.
     ObjectOutputStream.PutField fields = out.putFields();
     fields.put(FIELD_SIZE, size);
     fields.put(FIELD_READ_ONLY, readOnly);
-    fields.put(FIELD_UNDERLYING, null);
-    out.writeFields();
-
-    // Then write the actual underlying as a trailing object.
     if (underlying instanceof Serializable serializable) {
-      out.writeObject(serializable);
+      // Write the actual underlying into the field block for legacy readers.
+      fields.put(FIELD_UNDERLYING, serializable);
     } else {
       throw new NotSerializableException(
           underlying == null ? "nullBucket" : underlying.getClass().getName());
     }
+    out.writeFields();
   }
 
   @Serial

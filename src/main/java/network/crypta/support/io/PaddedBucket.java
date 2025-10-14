@@ -411,8 +411,9 @@ public class PaddedBucket implements Bucket, Serializable {
   }
 
   /* ===== Java serialization support ===== */
-  // The custom format reserves a legacy 'underlying' field (written as null) and then writes the
-  // actual bucket after the field set. readObject() accepts both the legacy and the new layout.
+  // Backward-compatible Java-serialization layout: include the underlying bucket in the field set
+  // as older releases did. This ensures older readers (serialVersionUID 1) can deserialize without
+  // reading any trailing data. Newer readers continue to accept both forms.
 
   /**
    * Custom Java serialization writer that preserves backward compatibility.
@@ -429,16 +430,14 @@ public class PaddedBucket implements Bucket, Serializable {
     ObjectOutputStream.PutField fields = out.putFields();
     fields.put(FIELD_SIZE, size);
     fields.put(FIELD_READ_ONLY, readOnly);
-    // Reserve the legacy field entry (set to null) so new streams have a stable descriptor.
-    fields.put(FIELD_UNDERLYING, null);
-    out.writeFields();
-
     if (underlying instanceof Serializable serializable) {
-      out.writeObject(serializable);
+      // Write the actual underlying into the field block for legacy readers.
+      fields.put(FIELD_UNDERLYING, serializable);
     } else {
       throw new NotSerializableException(
           underlying == null ? "nullBucket" : underlying.getClass().getName());
     }
+    out.writeFields();
   }
 
   /**
