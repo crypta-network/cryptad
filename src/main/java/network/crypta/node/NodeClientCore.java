@@ -664,8 +664,7 @@ public class NodeClientCore implements Persistable {
             new HealingDecisionSupplier(node::getLocation, node::isOpennetEnabled));
 
     PooledFileRandomAccessBufferFactory raff =
-        new PooledFileRandomAccessBufferFactory(
-            persistentFilenameGenerator, node.getFastWeakRandom());
+        new PooledFileRandomAccessBufferFactory(persistentFilenameGenerator);
     persistentDiskChecker =
         new DiskSpaceCheckingRandomAccessBufferFactory(
             raff, persistentTempDir.dir(), minDiskFreeLongTerm + tempBucketFactory.getMaxRamUsed());

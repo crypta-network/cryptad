@@ -363,21 +363,5 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
 
   // ---------------------------- setEncryption ----------------------------
 
-  @Test
-  @DisplayName("setEncryption_whenUnderlyingPooledFactory_enableCryptoCalled")
-  void setEncryption_whenUnderlyingPooledFactory_enableCryptoCalled() {
-    // Arrange
-    PooledFileRandomAccessBufferFactory pooled = mock(PooledFileRandomAccessBufferFactory.class);
-    MaybeEncryptedRandomAccessBufferFactory factory =
-        new MaybeEncryptedRandomAccessBufferFactory(pooled, false);
-
-    // Act
-    factory.setEncryption(true);
-    factory.setEncryption(false);
-
-    // Assert
-    verify(pooled, times(1)).enableCrypto(true);
-    verify(pooled, times(1)).enableCrypto(false);
-    verifyNoMoreInteractions(pooled);
-  }
+  // No longer propagates to pooled factory; encryption is handled at this layer by wrapping.
 }

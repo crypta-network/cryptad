@@ -598,9 +598,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     this.maxRAMBucketSize = maxBucketSizeKeptInRam;
     this.reallyEncrypt = reallyEncrypt;
     this.executor = executor;
-    this.underlyingDiskRAFFactory =
-        new PooledFileRandomAccessBufferFactory(filenameGenerator, weakPRNG);
-    underlyingDiskRAFFactory.enableCrypto(reallyEncrypt);
+    this.underlyingDiskRAFFactory = new PooledFileRandomAccessBufferFactory(filenameGenerator);
     this.minDiskSpace = minDiskSpace;
     this.diskRAFFactory =
         new DiskSpaceCheckingRandomAccessBufferFactory(
@@ -659,7 +657,6 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   public void setEncryption(boolean value) {
     reallyEncrypt = value;
-    underlyingDiskRAFFactory.enableCrypto(value);
   }
 
   public synchronized void setMinDiskSpace(long min) {

@@ -2,7 +2,7 @@ package network.crypta.support.io;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Random;
+import java.nio.file.Files;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 
@@ -10,29 +10,26 @@ import network.crypta.support.api.LockableRandomAccessBufferFactory;
 public class PooledFileRandomAccessBufferFactory implements LockableRandomAccessBufferFactory {
 
   private final FilenameGenerator fg;
-  private final Random seedRandom;
-  private volatile boolean enableCrypto;
 
-  public PooledFileRandomAccessBufferFactory(
-      FilenameGenerator filenameGenerator, Random seedRandom) {
+  public PooledFileRandomAccessBufferFactory(FilenameGenerator filenameGenerator) {
     fg = filenameGenerator;
-    this.seedRandom = seedRandom;
   }
 
-  public void enableCrypto(boolean enable) {
-    this.enableCrypto = enable;
-  }
+  // No encryption toggling in this factory; encryption is handled by higher-level factories.
 
   @Override
   public LockableRandomAccessBuffer makeRAF(long size) throws IOException {
     long id = fg.makeRandomFilename();
     File file = fg.getFilename(id);
-    LockableRandomAccessBuffer ret = null;
     try {
-      ret = new PooledFileRandomAccessBuffer(file, false, size, id, true);
-      return ret;
-    } finally {
-      if (ret == null) file.delete();
+      return new PooledFileRandomAccessBuffer(file, false, size, id, true);
+    } catch (IOException | RuntimeException e) {
+      try {
+        Files.deleteIfExists(file.toPath());
+      } catch (IOException ignored) {
+        // Best-effort cleanup; original behavior ignored failures as well.
+      }
+      throw e;
     }
   }
 
@@ -41,13 +38,19 @@ public class PooledFileRandomAccessBufferFactory implements LockableRandomAccess
       byte[] initialContents, int offset, int size, boolean readOnly) throws IOException {
     long id = fg.makeRandomFilename();
     File file = fg.getFilename(id);
-    LockableRandomAccessBuffer ret = null;
     try {
-      ret =
-          new PooledFileRandomAccessBuffer(file, initialContents, offset, size, id, true, readOnly);
-      return ret;
-    } finally {
-      if (ret == null) file.delete();
+      return new PooledFileRandomAccessBuffer(
+          file, initialContents, offset, size, id, true, readOnly);
+    } catch (IOException | RuntimeException e) {
+      // Constructor may throw IOException; writing initial contents may also throw unchecked
+      // exceptions (e.g., IndexOutOfBoundsException, NullPointerException). Clean up the temp file
+      // then rethrow to preserve original behavior.
+      try {
+        Files.deleteIfExists(file.toPath());
+      } catch (IOException ignored) {
+        // Best-effort cleanup; original behavior ignored failures as well.
+      }
+      throw e;
     }
   }
 }

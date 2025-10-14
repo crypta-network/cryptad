@@ -152,8 +152,8 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
    *
    * <p>Changing this flag does not affect previously created buffers. When enabling encryption, a
    * non-null {@link MasterSecret} must also be configured for encryption to take effect. The flag
-   * is also propagated to the underlying factory when it is a {@link
-   * PooledFileRandomAccessBufferFactory}.
+   * is not propagated to underlying factories; encryption here is implemented by wrapping the
+   * returned buffers.
    *
    * @param value {@code true} to request encryption for future allocations; {@code false} to
    *     allocate plaintext buffers.
@@ -162,8 +162,5 @@ public class MaybeEncryptedRandomAccessBufferFactory implements LockableRandomAc
     synchronized (this) {
       reallyEncrypt = value;
     }
-    // Propagate to known delegate that supports toggling its own crypto behavior.
-    if (factory instanceof PooledFileRandomAccessBufferFactory bufferFactory)
-      bufferFactory.enableCrypto(value);
   }
 }
