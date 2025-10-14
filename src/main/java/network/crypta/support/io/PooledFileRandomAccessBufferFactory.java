@@ -7,8 +7,8 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 
 /**
- * Factory that creates file-backed {@link LockableRandomAccessBuffer} instances using a
- * {@link FilenameGenerator}.
+ * Factory that creates file-backed {@link LockableRandomAccessBuffer} instances using a {@link
+ * FilenameGenerator}.
  *
  * <p>This implementation allocates a unique temporary file via the provided filename generator and
  * constructs a {@link PooledFileRandomAccessBuffer} over it. If construction fails for any reason
@@ -42,9 +42,9 @@ public class PooledFileRandomAccessBufferFactory implements LockableRandomAccess
   /**
    * Create a zero-initialized, file-backed random-access buffer of the requested size.
    *
-   * <p>The method allocates a new temporary file using the configured
-   * {@link FilenameGenerator}. If buffer construction fails, the file is deleted on a
-   * best-effort basis before the exception is rethrown.
+   * <p>The method allocates a new temporary file using the configured {@link FilenameGenerator}. If
+   * buffer construction fails, the file is deleted on a best-effort basis before the exception is
+   * rethrown.
    *
    * @param size desired capacity in bytes; must be non-negative.
    * @return a {@link LockableRandomAccessBuffer} backed by a newly created file.
@@ -70,11 +70,11 @@ public class PooledFileRandomAccessBufferFactory implements LockableRandomAccess
   /**
    * Create a file-backed random-access buffer initialized from an array segment.
    *
-   * <p>The content of {@code initialContents} in the half-open range
-   * {@code [offset, offset + size)} is written to a newly allocated backing file before the buffer
-   * is returned. If construction or initialization fails (including unchecked exceptions such as
-   * {@link IndexOutOfBoundsException} or {@link NullPointerException}), the temporary file is
-   * deleted on a best-effort basis and the original exception is rethrown.
+   * <p>The content of {@code initialContents} in the half-open range {@code [offset, offset +
+   * size)} is written to a newly allocated backing file before the buffer is returned. If
+   * construction or initialization fails (including unchecked exceptions such as {@link
+   * IndexOutOfBoundsException} or {@link NullPointerException}), the temporary file is deleted on a
+   * best-effort basis and the original exception is rethrown.
    *
    * @param initialContents source array containing the initial data; must not be {@code null}.
    * @param offset start index within {@code initialContents}.
