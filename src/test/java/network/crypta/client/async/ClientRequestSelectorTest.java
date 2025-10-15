@@ -59,7 +59,7 @@ public class ClientRequestSelectorTest {
     persistentFileTracker = new TrivialPersistentFileTracker(dir, fg);
     bigRAFFactory = new PooledFileRandomAccessBufferFactory(fg);
     smallBucketFactory = new ArrayBucketFactory();
-    bigBucketFactory = new TempBucketFactory(executor, fg, 0, 0, r, false, 0, null);
+    bigBucketFactory = new TempBucketFactory(executor, fg, 0, 0, false, 0, null);
     baseContext =
         HighLevelSimpleClientImpl.makeDefaultInsertContext(
             bigBucketFactory, new SimpleEventProducer());
