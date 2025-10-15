@@ -10,8 +10,8 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>This class provides a lightweight, allocation-free list in which each element stores
  * references to its neighbors and to the parent list (see {@link DoublyLinkedList.Item}). It is
- * designed for constant-time ({@code O(1)}) insertions and removals when the target node is
- * already known. It does not allocate wrapper nodes and therefore avoids GC pressure compared to
+ * designed for constant-time ({@code O(1)}) insertions and removals when the target node is already
+ * known. It does not allocate wrapper nodes and therefore avoids GC pressure compared to
  * non-intrusive structures.
  *
  * <p>Concurrency: Instances are not thread-safe. External synchronization is required for
@@ -47,9 +47,9 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   /**
    * Creates a list that adopts an existing intrusive chain.
    *
-   * <p>The items from {@code head} through {@code tail} (via {@link Item#getNext()}) are assumed
-   * to form a valid chain. This constructor sets their parent to this list and records the
-   * provided size without validation.
+   * <p>The items from {@code head} through {@code tail} (via {@link Item#getNext()}) are assumed to
+   * form a valid chain. This constructor sets their parent to this list and records the provided
+   * size without validation.
    *
    * @param head first item in the chain; may be {@code null} when {@code size} is 0
    * @param tail last item in the chain; may be {@code null} when {@code size} is 0
@@ -579,19 +579,19 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
       }
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Casts an {@link Item} to the concrete type {@code T}.
      *
      * <p>Safe by construction: items in a {@code DoublyLinkedList<T>} are always of type {@code T}.
      */
+    @SuppressWarnings("unchecked")
     private T castItem(DoublyLinkedList.Item<?> i) {
       return (T) i;
     }
   }
 
-  @Override
   /** Returns an {@link Iterator} that traverses from head to tail. */
+  @Override
   public @NotNull Iterator<T> iterator() {
     final Enumeration<T> e = forwardElements();
     return new Iterator<>() {
