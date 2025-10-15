@@ -37,7 +37,7 @@ public class SlashdotStoreTest {
     tempDir = new File("tmp-slashdotstoretest");
     tempDir.mkdir();
     FilenameGenerator fg = new FilenameGenerator(weakPRNG, true, tempDir, "temp-");
-    tbf = new TempBucketFactory(exec, fg, 4096, 65536, weakPRNG, false, 2 * 1024 * 1024, null);
+    tbf = new TempBucketFactory(exec, fg, 4096, 65536, false, 2 * 1024 * 1024, null);
     exec.start();
   }
 

@@ -585,7 +585,6 @@ public class NodeClientCore implements Persistable {
             tempFilenameGenerator,
             nodeConfig.getLong("maxRAMBucketSize"),
             nodeConfig.getLong("RAMBucketPoolSize"),
-            node.getFastWeakRandom(),
             nodeConfig.getBoolean("encryptTempBuckets"),
             minDiskFreeShortTerm,
             cryptoSecretTransient);
