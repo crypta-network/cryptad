@@ -8,6 +8,7 @@ import java.util.List;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -202,7 +203,7 @@ public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
   }
 
   @Override
-  public void execute(Runnable job) {
+  public void execute(@NotNull Runnable job) {
     execute(job, "<noname>");
   }
 

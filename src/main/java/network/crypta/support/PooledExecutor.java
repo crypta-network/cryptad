@@ -8,6 +8,7 @@ import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +53,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
   public void start() {}
 
   @Override
-  public void execute(Runnable job) {
+  public void execute(@NotNull Runnable job) {
     execute(job, "<noname>");
   }
 

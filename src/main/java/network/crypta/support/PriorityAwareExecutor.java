@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * Executor interface with optional priority awareness and lightweight thread-state introspection.
  *
@@ -41,11 +43,11 @@ public interface PriorityAwareExecutor extends java.util.concurrent.Executor {
    *
    * @param job the task to run; must be non-{@code null}
    * @throws RuntimeException implementations may throw unchecked exceptions at submission time
-   *     (e.g., due to shutdown or illegal state)
+   *     (e.g., due to shut down or illegal state)
    * @implNote TODO: Define the null-handling contract explicitly for {@code job}.
    */
   @Override
-  void execute(Runnable job);
+  void execute(@NotNull Runnable job);
 
   /**
    * Submits a task with a human-readable label for logging and diagnostics.

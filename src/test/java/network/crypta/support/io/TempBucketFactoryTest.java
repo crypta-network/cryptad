@@ -18,6 +18,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.TempBucketFactory.TempBucket;
 import network.crypta.support.io.TempBucketFactory.TempRandomAccessBuffer;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -74,7 +75,7 @@ class TempBucketFactoryTest {
   private static PriorityAwareExecutor inlineExecutor() {
     return new PriorityAwareExecutor() {
       @Override
-      public void execute(Runnable job) {
+      public void execute(@NotNull Runnable job) {
         job.run();
       }
 

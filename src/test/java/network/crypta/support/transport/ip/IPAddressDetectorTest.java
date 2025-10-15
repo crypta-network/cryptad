@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.support.PriorityAwareExecutor;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link IPAddressDetector}. */
@@ -115,7 +116,7 @@ class IPAddressDetectorTest {
   /** Minimal direct executor for tests. */
   private static final class DirectExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NotNull Runnable job) {
       job.run();
     }
 

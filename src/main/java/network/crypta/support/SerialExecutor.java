@@ -6,6 +6,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -107,7 +108,7 @@ public class SerialExecutor implements PriorityAwareExecutor {
   }
 
   @Override
-  public void execute(Runnable job) {
+  public void execute(@NotNull Runnable job) {
     execute(job, "<noname>");
   }
 

@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import org.jetbrains.annotations.NotNull;
+
 public class WaitableExecutor implements PriorityAwareExecutor {
 
   public WaitableExecutor(PriorityAwareExecutor exec) {
@@ -7,7 +9,7 @@ public class WaitableExecutor implements PriorityAwareExecutor {
   }
 
   @Override
-  public void execute(Runnable job) {
+  public void execute(@NotNull Runnable job) {
     synchronized (this) {
       count++;
     }
