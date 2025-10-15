@@ -23,9 +23,9 @@ import org.slf4j.LoggerFactory;
  * Bloom filter backed by a compact bit array.
  *
  * <p>This implementation stores one bit per position and uses the hashing and concurrency
- * orchestration provided by {@link BloomFilter}. Instances can be purely in-memory (heap
- * {@link ByteBuffer}) or file-backed via a memory-mapped buffer. File-backed filters set the
- * one‑shot {@link #needRebuild} flag when the on-disk file is missing or has an unexpected size.
+ * orchestration provided by {@link BloomFilter}. Instances can be purely in-memory (heap {@link
+ * ByteBuffer}) or file-backed via a memory-mapped buffer. File-backed filters set the one‑shot
+ * {@link #needRebuild} flag when the on-disk file is missing or has an unexpected size.
  *
  * <h2>Threading</h2>
  *
@@ -35,9 +35,8 @@ import org.slf4j.LoggerFactory;
  * <h2>Usage</h2>
  *
  * <p>Prefer constructing instances via {@link BloomFilter#createFilter(int, int, boolean)} or
- * {@link BloomFilter#createFilter(File, int, int, boolean)} which select this variant when
- * {@code counting == false}. The factories also return {@link NullBloomFilter} for zero-length
- * requests.
+ * {@link BloomFilter#createFilter(File, int, int, boolean)} which select this variant when {@code
+ * counting == false}. The factories also return {@link NullBloomFilter} for zero-length requests.
  *
  * @author sdiz
  */
@@ -62,9 +61,9 @@ public class BinaryBloomFilter extends BloomFilter {
   /**
    * Creates a file-backed binary Bloom filter.
    *
-   * <p>Ensures the file length matches the expected size ({@code length / 8}) and memory-maps it
-   * in read/write mode. When the file does not exist or has a different size, the one-shot flag
-   * {@link #needRebuild} is set for callers to observe.
+   * <p>Ensures the file length matches the expected size ({@code length / 8}) and memory-maps it in
+   * read/write mode. When the file does not exist or has a different size, the one-shot flag {@link
+   * #needRebuild} is set for callers to observe.
    *
    * @param file target file (created or resized as needed)
    * @param length length in bits; rounded down to a multiple of 8

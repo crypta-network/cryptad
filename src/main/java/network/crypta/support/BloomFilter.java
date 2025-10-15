@@ -363,8 +363,6 @@ public abstract class BloomFilter implements AutoCloseable {
     return (int) k;
   }
 
-  
-
   public int getK() {
     return k;
   }
