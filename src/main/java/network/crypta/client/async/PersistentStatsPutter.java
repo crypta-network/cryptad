@@ -35,9 +35,11 @@ public class PersistentStatsPutter implements Serializable {
     // Update our values
     // 0 : total bytes out, 1 : total bytes in
     final long[] nodeBW = n.getCollector().getTotalIO();
-    this.latestBW.totalBytesOut += nodeBW[0] - this.latestNodeBytesOut;
-    this.latestBW.totalBytesIn += nodeBW[1] - this.latestNodeBytesIn;
-    this.latestBW.creationTime = System.currentTimeMillis();
+    this.latestBW.setTotalBytesOut(
+        this.latestBW.getTotalBytesOut() + nodeBW[0] - this.latestNodeBytesOut);
+    this.latestBW.setTotalBytesIn(
+        this.latestBW.getTotalBytesIn() + nodeBW[1] - this.latestNodeBytesIn);
+    this.latestBW.setCreationTime(System.currentTimeMillis());
     this.latestNodeBytesOut = nodeBW[0];
     this.latestNodeBytesIn = nodeBW[1];
 

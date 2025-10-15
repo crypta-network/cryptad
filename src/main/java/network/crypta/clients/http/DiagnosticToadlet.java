@@ -506,8 +506,8 @@ public class DiagnosticToadlet extends Toadlet {
         if (stats == null) {
           throw new NullPointerException();
         }
-        long overall_total_out = stats.totalBytesOut;
-        long overall_total_in = stats.totalBytesIn;
+        long overall_total_out = stats.getTotalBytesOut();
+        long overall_total_in = stats.getTotalBytesIn();
         int percent = (int) (100 * totalPayload / total[0]);
         long[] rate = node.getNodeStats().getNodeIOStats();
         long delta = (rate[5] - rate[2]) / 1000;
