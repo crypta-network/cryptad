@@ -37,29 +37,32 @@ import org.slf4j.LoggerFactory;
 /**
  * Factory for temporary buckets that prefer RAM and transparently migrate to disk.
  *
- * <p>This factory creates buckets that are initially backed either by memory (an
- * {@link ArrayBucket}) or by a file (a {@link TempFileBucket}), depending on the requested size and
+ * <p>This factory creates buckets that are initially backed either by memory (an {@link
+ * ArrayBucket}) or by a file (a {@link TempFileBucket}), depending on the requested size and
  * current pool usage. RAM-backed buckets may later migrate to disk based on age or size so the
  * process can continue without running out of the configured memory pool.
  *
  * <p>Selection rules:
+ *
  * <ul>
- *   <li>Use an in-memory bucket when {@code size <= maxRAMBucketSize} and the pool
- *       ({@link #bytesInUse}) would remain {@code <= maxRamUsed}.
+ *   <li>Use an in-memory bucket when {@code size <= maxRAMBucketSize} and the pool ({@link
+ *       #bytesInUse}) would remain {@code <= maxRamUsed}.
  *   <li>Otherwise, use a disk-backed bucket (optionally wrapped with padding and encryption when
  *       {@link #reallyEncrypt} is enabled).
  * </ul>
  *
  * <p>Migration rules for RAM buckets:
+ *
  * <ul>
  *   <li>Age-based: buckets older than {@link #RAMBUCKET_MAX_AGE} migrate.
- *   <li>Size-based: buckets exceeding
- *       {@code RAMBUCKET_CONVERSION_FACTOR * maxRAMBucketSize} migrate.
+ *   <li>Size-based: buckets exceeding {@code RAMBUCKET_CONVERSION_FACTOR * maxRAMBucketSize}
+ *       migrate.
  *   <li>Pool-pressure: when total usage rises above {@link #MAX_USAGE_HIGH}, a background cleaner
  *       migrates buckets until usage drops below {@link #MAX_USAGE_LOW}.
  * </ul>
  *
  * <p>Threading and lifecycle:
+ *
  * <ul>
  *   <li>Instances are thread-safe for factory operations.
  *   <li>Returned buckets expose synchronized methods where needed; callers must still respect
@@ -161,8 +164,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
    * A bucket that may start in RAM and migrate to disk transparently.
    *
    * <p>Only one output stream can be opened at a time. Reading requires that an output stream has
-   * been opened previously to establish the content; see
-   * {@link #getInputStreamUnbuffered()} for details.
+   * been opened previously to establish the content; see {@link #getInputStreamUnbuffered()} for
+   * details.
    *
    * <p>Instances are safe for concurrent use where methods are synchronized; callers should
    * coordinate access patterns when mixing reads, writes, and migration.
@@ -292,8 +295,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     /**
      * Returns a buffered output stream for writing the bucket contents.
      *
-     * <p>Only one output stream may be open at a time. The returned stream may trigger
-     * migration to disk as content grows beyond the in-memory thresholds.
+     * <p>Only one output stream may be open at a time. The returned stream may trigger migration to
+     * disk as content grows beyond the in-memory thresholds.
      *
      * @return buffered {@link OutputStream}
      * @throws IOException if an output stream is already open or the bucket has been freed
@@ -306,9 +309,9 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     /**
      * Returns an unbuffered output stream for writing the bucket contents.
      *
-     * <p>Preconditions: no other output stream is open. Only a single output stream is supported
-     * at a time. After calling this method, {@link #getInputStreamUnbuffered()} becomes available
-     * once data has been written.
+     * <p>Preconditions: no other output stream is open. Only a single output stream is supported at
+     * a time. After calling this method, {@link #getInputStreamUnbuffered()} becomes available once
+     * data has been written.
      *
      * @return unbuffered {@link OutputStream}
      * @throws IOException if another output stream is open or the bucket has been freed
@@ -598,8 +601,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     /**
      * Releases all resources associated with this bucket.
      *
-     * <p>Closes any open streams, updates memory accounting, and frees the underlying storage.
-     * This method is idempotent.
+     * <p>Closes any open streams, updates memory accounting, and frees the underlying storage. This
+     * method is idempotent.
      */
     @Override
     public synchronized void free() {
@@ -618,11 +621,11 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
             ramBucketQueue.remove(getReference());
           }
 
-      // Explicit free completed; clear the Cleaner registration.
-      if (cleanable != null) {
-        cleanable.clean();
-      }
-      return;
+          // Explicit free completed; clear the Cleaner registration.
+          if (cleanable != null) {
+            cleanable.clean();
+          }
+          return;
         } else {
           // Better to free outside the lock if it's not in-memory.
           cur = currentBucket;
@@ -684,8 +687,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
      * Converts this bucket into a read-only random-access buffer.
      *
      * <p>Preconditions: no output stream is open and no input stream is currently active. The
-     * returned buffer shares the underlying storage; after conversion, this bucket becomes a
-     * {@link RAFBucket} wrapping the new buffer.
+     * returned buffer shares the underlying storage; after conversion, this bucket becomes a {@link
+     * RAFBucket} wrapping the new buffer.
      *
      * @return a read-only {@link LockableRandomAccessBuffer}
      * @throws IOException if the bucket has been freed or streams are still open
@@ -913,8 +916,8 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
   /**
    * Sets the minimum free disk space to preserve.
    *
-   * <p>Operations that would reduce available space below this threshold fail fast with
-   * {@link InsufficientDiskSpaceException}.
+   * <p>Operations that would reduce available space below this threshold fail fast with {@link
+   * InsufficientDiskSpaceException}.
    *
    * @param min minimum free space in bytes to maintain
    */
@@ -934,6 +937,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
 
   static final double MAX_USAGE_LOW = 0.8;
   static final double MAX_USAGE_HIGH = 0.9;
+
   /**
    * Cipher configuration used when wrapping disk-backed storage with encryption.
    *
