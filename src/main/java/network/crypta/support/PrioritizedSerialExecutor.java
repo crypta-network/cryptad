@@ -27,7 +27,7 @@ public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
   private String name;
   private PriorityAwareExecutor realExecutor;
   private boolean running;
-  private final ExecutorIdleCallback callback;
+  private final PrioritizedSerialExecutorIdleCallback callback;
 
   private static final long DEFAULT_JOB_TIMEOUT = MINUTES.toMillis(5);
   private final long jobTimeout;
@@ -149,7 +149,7 @@ public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
       int defaultPriority,
       boolean invertOrder,
       long jobTimeout,
-      ExecutorIdleCallback callback,
+      PrioritizedSerialExecutorIdleCallback callback,
       NodeStats statistics) {
     this.jobs = new ArrayList<>(internalPriorityCount);
     for (int i = 0; i < internalPriorityCount; i++) {
