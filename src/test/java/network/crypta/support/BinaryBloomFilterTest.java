@@ -247,9 +247,9 @@ class BinaryBloomFilterTest {
   @Test
   @DisplayName("optimialK_whenVariousInputs_expectBounds")
   void optimialK_whenVariousInputs_expectBounds() {
-    assertEquals(0, BloomFilter.optimialK(0, 100));
-    assertEquals(64, BloomFilter.optimialK(1024, 1), "Large filter vs tiny set caps at 64");
-    assertEquals(1, BloomFilter.optimialK(8, 1_000_000), "Small filter vs huge set floors at 1");
+    assertEquals(0, BloomFilter.optimalK(0, 100));
+    assertEquals(64, BloomFilter.optimalK(1024, 1), "Large filter vs tiny set caps at 64");
+    assertEquals(1, BloomFilter.optimalK(8, 1_000_000), "Small filter vs huge set floors at 1");
   }
 
   @Nested
