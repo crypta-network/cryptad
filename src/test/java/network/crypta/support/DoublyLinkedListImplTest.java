@@ -2,19 +2,22 @@ package network.crypta.support;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 import network.crypta.support.DoublyLinkedListImpl.Item;
 import org.junit.jupiter.api.Test;
 
-public class DoublyLinkedListImplTest {
+@SuppressWarnings("java:S100") // test method naming with underscores per project conventions
+class DoublyLinkedListImplTest {
   @Test
-  public void testForwardPushPop() {
+  void push_and_pop_whenAddedInOrder_expectLIFOFromTail() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.push(new T(0));
     list.push(new T(1));
@@ -22,29 +25,41 @@ public class DoublyLinkedListImplTest {
     list.push(new T(3));
 
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.pop().assertV(3);
+    T r1 = list.pop();
+    assertNotNull(r1);
+    r1.assertV(3);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.pop().assertV(2);
+    T r2 = list.pop();
+    assertNotNull(r2);
+    r2.assertV(2);
     assertFalse(list.isEmpty(), "isEmpty()");
 
     // add again
     list.push(new T(4));
     list.push(new T(5));
 
-    list.pop().assertV(5);
+    T r3 = list.pop();
+    assertNotNull(r3);
+    r3.assertV(5);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.pop().assertV(4);
+    T r4 = list.pop();
+    assertNotNull(r4);
+    r4.assertV(4);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.pop().assertV(1);
+    T r5 = list.pop();
+    assertNotNull(r5);
+    r5.assertV(1);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.pop().assertV(0);
+    T r6 = list.pop();
+    assertNotNull(r6);
+    r6.assertV(0);
 
     assertTrue(list.isEmpty(), "isEmpty()");
     assertNull(list.pop(), "pop()");
   }
 
   @Test
-  public void testForwardShiftUnshift() {
+  void unshift_and_shift_whenAddedInOrder_expectFIFOFromHead() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.unshift(new T(0));
     list.unshift(new T(1));
@@ -52,29 +67,41 @@ public class DoublyLinkedListImplTest {
     list.unshift(new T(3));
 
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(3);
+    T s1 = list.shift();
+    assertNotNull(s1);
+    s1.assertV(3);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(2);
+    T s2 = list.shift();
+    assertNotNull(s2);
+    s2.assertV(2);
     assertFalse(list.isEmpty(), "isEmpty()");
 
     // add again
     list.unshift(new T(4));
     list.unshift(new T(5));
 
-    list.shift().assertV(5);
+    T s3 = list.shift();
+    assertNotNull(s3);
+    s3.assertV(5);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(4);
+    T s4 = list.shift();
+    assertNotNull(s4);
+    s4.assertV(4);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(1);
+    T s5 = list.shift();
+    assertNotNull(s5);
+    s5.assertV(1);
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(0);
+    T s6 = list.shift();
+    assertNotNull(s6);
+    s6.assertV(0);
 
     assertTrue(list.isEmpty(), "isEmpty()");
     assertNull(list.shift(), "shift()");
   }
 
   @Test
-  public void testClearSize() {
+  void clear_whenListHasElements_expectSizeZeroAndEmpty() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.unshift(new T(0));
     list.unshift(new T(1));
@@ -83,10 +110,14 @@ public class DoublyLinkedListImplTest {
 
     assertEquals(4, list.size(), "size()");
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(3);
+    T cs1 = list.shift();
+    assertNotNull(cs1);
+    cs1.assertV(3);
     assertEquals(3, list.size(), "size()");
     assertFalse(list.isEmpty(), "isEmpty()");
-    list.shift().assertV(2);
+    T cs2 = list.shift();
+    assertNotNull(cs2);
+    cs2.assertV(2);
     assertEquals(2, list.size(), "size()");
     assertFalse(list.isEmpty(), "isEmpty()");
 
@@ -101,15 +132,19 @@ public class DoublyLinkedListImplTest {
     assertEquals(2, list.size(), "size()");
     assertFalse(list.isEmpty(), "isEmpty()");
 
-    list.shift().assertV(5);
-    list.shift().assertV(4);
+    T cs3 = list.shift();
+    assertNotNull(cs3);
+    cs3.assertV(5);
+    T cs4 = list.shift();
+    assertNotNull(cs4);
+    cs4.assertV(4);
 
     assertEquals(0, list.size(), "size()");
     assertTrue(list.isEmpty(), "isEmpty()");
   }
 
   @Test
-  public void testShiftN() {
+  void shift_whenNWithinAndBeyondBounds_expectCorrectPartitioning() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     for (int i = 0; i < 5; i++) {
@@ -118,44 +153,35 @@ public class DoublyLinkedListImplTest {
 
     DoublyLinkedList<T> list2 = list.shift(2);
     assertEquals(2, list2.size(), "list2.size()");
-    list2.shift().assertV(0);
-    list2.shift().assertV(1);
+    T s2a = list2.shift();
+    assertNotNull(s2a);
+    s2a.assertV(0);
+    T s2b = list2.shift();
+    assertNotNull(s2b);
+    s2b.assertV(1);
     assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     assertEquals(3, list.size(), "list.size()");
-    list.shift().assertV(2);
+    T sRemain = list.shift();
+    assertNotNull(sRemain);
+    sRemain.assertV(2);
 
     list2 = list.shift(20);
     assertTrue(list.isEmpty(), "list.isEmpty()");
-    list2.shift().assertV(3);
-    list2.shift().assertV(4);
+    T s2c = list2.shift();
+    assertNotNull(s2c);
+    s2c.assertV(3);
+    T s2d = list2.shift();
+    assertNotNull(s2d);
+    s2d.assertV(4);
     assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     list2 = list.shift(20);
     assertTrue(list2.isEmpty(), "list2.isEmpty()");
   }
 
-  //	public void testClone() {
-  //		DoublyLinkedList<T> list = new DoublyLinkedListImpl<T>();
-  //		for (int i = 0; i < 3; i++) {
-  //			list.unshift(new T(i));
-  //		}
-  //
-  //		DoublyLinkedList<T> listClone = list.clone();
-  //
-  //		for (int i = 2; i >= 0; i--) {
-  //			T t = (T) list.shift();
-  //			t.assertV(i);
-  //			t.assertIsNotClone();
-  //
-  //			T tc = (T) listClone.shift();
-  //			tc.assertV(i);
-  //			tc.assertIsClone();
-  //		}
-  //	}
-
   @Test
-  public void testPopN() {
+  void pop_whenNWithinAndBeyondBounds_expectCorrectPartitioning() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     for (int i = 0; i < 5; i++) {
@@ -164,17 +190,27 @@ public class DoublyLinkedListImplTest {
 
     DoublyLinkedList<T> list2 = list.pop(2);
     assertEquals(2, list2.size(), "list2.size()");
-    list2.pop().assertV(0);
-    list2.pop().assertV(1);
+    T p2a = list2.pop();
+    assertNotNull(p2a);
+    p2a.assertV(0);
+    T p2b = list2.pop();
+    assertNotNull(p2b);
+    p2b.assertV(1);
     assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     assertEquals(3, list.size(), "list.size()");
-    list.pop().assertV(2);
+    T pRemain = list.pop();
+    assertNotNull(pRemain);
+    pRemain.assertV(2);
 
     list2 = list.pop(20);
     assertTrue(list.isEmpty(), "list.isEmpty()");
-    list2.pop().assertV(3);
-    list2.pop().assertV(4);
+    T p2c = list2.pop();
+    assertNotNull(p2c);
+    p2c.assertV(3);
+    T p2d = list2.pop();
+    assertNotNull(p2d);
+    p2d.assertV(4);
     assertTrue(list2.isEmpty(), "list2.isEmpty()");
 
     list2 = list.pop(20);
@@ -182,7 +218,7 @@ public class DoublyLinkedListImplTest {
   }
 
   @Test
-  public void testHeadTail() {
+  void head_and_tail_whenListChanges_expectUpdatedEnds() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
 
     assertNull(list.head(), "head() == null");
@@ -212,7 +248,7 @@ public class DoublyLinkedListImplTest {
   }
 
   @Test
-  public void testIternator() {
+  void iterator_manualForwardAndReverse_expectOrder() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
@@ -224,11 +260,11 @@ public class DoublyLinkedListImplTest {
     // manual, forward
     T h = list.head();
     for (int i = 0; i < 5; i++) {
-      assertEquals(array[i], h, "manual iternate, forward");
-      // assertEquals(h.getNext(), list.next(h), "DoublyLinkedList.next() == Item.next()");
+      assertEquals(array[i], h, "manual iterate, forward");
       assertEquals(i != 4, list.hasNext(h), "hasNext()");
       assertEquals(i != 0, list.hasPrev(h), "hasPrev()");
 
+      assertNotNull(h);
       h.assertV(i);
 
       h = list.next(h);
@@ -238,11 +274,11 @@ public class DoublyLinkedListImplTest {
     // manual, reverse
     T t = list.tail();
     for (int i = 4; i >= 0; i--) {
-      assertEquals(array[i], t, "manual iternate, reverse");
-      // assertEquals(tail.getPrev(), list.prev(tail), "DoublyLinkedList.prev() == Item.getPrev()");
+      assertEquals(array[i], t, "manual iterate, reverse");
       assertEquals(i != 4, list.hasNext(t), "hasNext()");
       assertEquals(i != 0, list.hasPrev(t), "hasPrev()");
 
+      assertNotNull(t);
       t.assertV(i);
 
       t = list.prev(t);
@@ -254,19 +290,16 @@ public class DoublyLinkedListImplTest {
       assertTrue(e.hasMoreElements(), "hasMoreElements()");
 
       T n = e.nextElement();
+      assertNotNull(n);
       n.assertV(i);
 
       assertEquals(i != 4, e.hasMoreElements(), "hasMoreElements()");
     }
-    try {
-      e.nextElement();
-      fail("NoSuchElementException");
-    } catch (NoSuchElementException nsee) {
-    }
+    assertThrows(NoSuchElementException.class, e::nextElement);
   }
 
   @Test
-  public void testRandomRemovePush() {
+  void remove_whenRemovingFromMiddle_thenPushBack_expectOrderPreserved() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
@@ -284,17 +317,27 @@ public class DoublyLinkedListImplTest {
     // Remove non-identical (but equal) item -> give null
     assertNull(list.remove(new T(2)));
 
-    list.shift().assertV(0);
-    list.shift().assertV(1);
-    list.shift().assertV(2);
-    list.shift().assertV(4);
-    list.shift().assertV(3);
+    T rr0 = list.shift();
+    assertNotNull(rr0);
+    rr0.assertV(0);
+    T rr1 = list.shift();
+    assertNotNull(rr1);
+    rr1.assertV(1);
+    T rr2 = list.shift();
+    assertNotNull(rr2);
+    rr2.assertV(2);
+    T rr3 = list.shift();
+    assertNotNull(rr3);
+    rr3.assertV(4);
+    T rr4 = list.shift();
+    assertNotNull(rr4);
+    rr4.assertV(3);
 
     assertNull(list.remove(new T(-1)));
   }
 
   @Test
-  public void testRandomShiftPush() {
+  void shift_and_push_whenInterleaved_expectDeterministicOrder() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     list.push(new T(0));
     list.push(new T(1));
@@ -303,16 +346,28 @@ public class DoublyLinkedListImplTest {
     list.unshift(new T(4));
     list.unshift(new T(5));
 
-    list.shift().assertV(5);
-    list.pop().assertV(3);
-    list.pop().assertV(1);
-    list.pop().assertV(0);
-    list.shift().assertV(4);
-    list.shift().assertV(2);
+    T rsp0 = list.shift();
+    assertNotNull(rsp0);
+    rsp0.assertV(5);
+    T rpp0 = list.pop();
+    assertNotNull(rpp0);
+    rpp0.assertV(3);
+    T rpp1 = list.pop();
+    assertNotNull(rpp1);
+    rpp1.assertV(1);
+    T rpp2 = list.pop();
+    assertNotNull(rpp2);
+    rpp2.assertV(0);
+    T rsp1 = list.shift();
+    assertNotNull(rsp1);
+    rsp1.assertV(4);
+    T rsp2 = list.shift();
+    assertNotNull(rsp2);
+    rsp2.assertV(2);
   }
 
   @Test
-  public void testRandomInsert() {
+  void insertPrev_and_insertNext_whenAnchored_expectOrderAndGuards() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
 
@@ -329,70 +384,150 @@ public class DoublyLinkedListImplTest {
     DoublyLinkedList<T> list2 = new DoublyLinkedListImpl<>();
     T l2 = new T(9999);
     list2.push(l2);
-    try {
-      // already exist
-      list2.insertNext(l2, l2);
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
-    try {
-      // already exist
-      list2.insertNext(l2, l2);
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
-    try {
-      // bad position
-      list2.insertPrev(array[3], new T(8888));
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
-    try {
-      // bad position
-      list2.insertNext(array[3], new T(8888));
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
-
-    try {
-      // item in other list
-      list2.insertPrev(l2, array[3]);
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
-    try {
-      // item in other list
-      list2.insertNext(l2, array[3]);
-      fail("PromiscuousItemException");
-    } catch (PromiscuousItemException pie) {
-    }
+    assertThrows(PromiscuousItemException.class, () -> list2.insertNext(l2, l2));
+    assertThrows(PromiscuousItemException.class, () -> list2.insertNext(l2, l2));
+    T notInListForPrev = new T(8888);
+    T notInListForNext = new T(8888);
+    assertThrows(
+        PromiscuousItemException.class, () -> list2.insertPrev(array[3], notInListForPrev));
+    assertThrows(
+        PromiscuousItemException.class, () -> list2.insertNext(array[3], notInListForNext));
+    assertThrows(PromiscuousItemException.class, () -> list2.insertPrev(l2, array[3]));
+    assertThrows(PromiscuousItemException.class, () -> list2.insertNext(l2, array[3]));
 
     T l3 = new T(9999);
     list2.push(l3);
-    try {
-      // VirginItemException
-      l3.setPrev(null); // corrupt it
-      list2.insertPrev(l3, new T(8888));
-      fail("VirginItemException");
-    } catch (VirginItemException vie) {
+    l3.setPrev(null); // corrupt it
+    T virginPrev = new T(8888);
+    assertThrows(VirginItemException.class, () -> list2.insertPrev(l3, virginPrev));
+    l2.setNext(null); // corrupt it
+    T virginNext = new T(8888);
+    assertThrows(VirginItemException.class, () -> list2.insertNext(l2, virginNext));
+
+    int[] expected = {100, 0, 1, 102, 2, 3, 4, 105, 104};
+    int[] actual = new int[expected.length];
+    for (int i = 0; i < expected.length; i++) {
+      T node = list.shift();
+      assertNotNull(node);
+      actual[i] = node.value;
     }
-    try {
-      // VirginItemException
-      l2.setNext(null); // corrupt it
-      list2.insertNext(l2, new T(8888));
-      fail("VirginItemException");
-    } catch (VirginItemException vie) {
+    org.junit.jupiter.api.Assertions.assertArrayEquals(expected, actual);
+  }
+
+  @Test
+  void contains_whenEquivalentItemPresent_expectTrue() {
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
+    list.push(new T(1));
+    list.push(new T(2));
+    list.push(new T(3));
+
+    assertTrue(list.contains(new T(2)));
+    assertFalse(list.contains(new T(99)));
+  }
+
+  @Test
+  void iterator_whenExhausted_expectNoSuchElementException() {
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
+    list.push(new T(1));
+    Iterator<T> it = list.iterator();
+    assertTrue(it.hasNext());
+    assertNotNull(it.next());
+    assertFalse(it.hasNext());
+    assertThrows(NoSuchElementException.class, it::next);
+  }
+
+  @Test
+  void iterator_remove_expectUnsupportedOperation() {
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
+    list.push(new T(1));
+    Iterator<T> it = list.iterator();
+    assertThrows(UnsupportedOperationException.class, it::remove);
+  }
+
+  @Test
+  void reverseElements_whenIterated_expectReverseOrder() {
+    DoublyLinkedListImpl<T> list = new DoublyLinkedListImpl<>();
+    T[] array = new T[4];
+    for (int i = 0; i < array.length; i++) {
+      array[i] = new T(i);
+      list.push(array[i]);
     }
 
-    list.shift().assertV(100);
-    list.shift().assertV(0);
-    list.shift().assertV(1);
-    list.shift().assertV(102);
-    list.shift().assertV(2);
-    list.shift().assertV(3);
-    list.shift().assertV(4);
-    list.shift().assertV(105);
-    list.shift().assertV(104);
+    Enumeration<T> rev = list.reverseElements();
+    for (int i = array.length - 1; i >= 0; i--) {
+      assertTrue(rev.hasMoreElements());
+      assertSame(array[i], rev.nextElement());
+    }
+    assertFalse(rev.hasMoreElements());
+    assertThrows(NoSuchElementException.class, rev::nextElement);
+  }
+
+  @Test
+  void shift_whenNLessThanOne_expectEmptyReturnedAndListUnchanged() {
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
+    list.push(new T(1));
+    list.push(new T(2));
+    int before = list.size();
+    DoublyLinkedList<T> out = list.shift(0);
+    assertTrue(out.isEmpty());
+    assertEquals(before, list.size());
+  }
+
+  @Test
+  void pop_whenNLessThanOne_expectEmptyReturnedAndListUnchanged() {
+    DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
+    list.push(new T(1));
+    list.push(new T(2));
+    int before = list.size();
+    DoublyLinkedList<T> out = list.pop(0);
+    assertTrue(out.isEmpty());
+    assertEquals(before, list.size());
+  }
+
+  @Test
+  void remove_whenItemBelongsToOtherList_expectPromiscuousItemException() {
+    DoublyLinkedListImpl<T> l1 = new DoublyLinkedListImpl<>();
+    DoublyLinkedList<T> l2 = new DoublyLinkedListImpl<>();
+    T x = new T(10);
+    l2.push(x);
+    // ensure l1 is non-empty so remove() does not return null early
+    l1.push(new T(-1));
+    assertThrows(PromiscuousItemException.class, () -> l1.remove(x));
+  }
+
+  @Test
+  void clear_whenCalled_expectNodesDetached() {
+    DoublyLinkedListImpl<T> list = new DoublyLinkedListImpl<>();
+    T a = new T(1);
+    T b = new T(2);
+    T c = new T(3);
+    list.push(a);
+    list.push(b);
+    list.push(c);
+
+    list.clear();
+    assertEquals(0, list.size());
+    assertNull(list.head());
+    assertNull(list.tail());
+    // All nodes detached
+    assertNull(a.getParent());
+    assertNull(b.getParent());
+    assertNull(c.getParent());
+    assertNull(a.getNext());
+    assertNull(b.getNext());
+    assertNull(c.getNext());
+    assertNull(a.getPrev());
+    assertNull(b.getPrev());
+    assertNull(c.getPrev());
+  }
+
+  @Test
+  void remove_whenItemClearedFromList_expectNullOnSecondRemoval() {
+    DoublyLinkedListImpl<T> list = new DoublyLinkedListImpl<>();
+    T a = new T(1);
+    list.push(a);
+    assertSame(a, list.remove(a));
+    assertNull(list.remove(a));
   }
 
   private static class T extends Item<T> {
@@ -400,12 +535,7 @@ public class DoublyLinkedListImplTest {
       value = v;
     }
 
-    @Override
-    public T clone() {
-      T c = new T(value);
-      c.isClone = true;
-      return c;
-    }
+    // No clone() override needed for tests; avoid Sonar S1182 on super.clone().
 
     @Override
     public String toString() {
