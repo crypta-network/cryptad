@@ -151,7 +151,7 @@ public class PrioritizedSerialExecutorTest {
     private final String name;
   }
 
-  private Executor realExec;
+  private PriorityAwareExecutor realExec;
   private PrioritizedSerialExecutor exec;
   private SynchronousQueue<String> completingJob;
   private List<String> completedJobs;

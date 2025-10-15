@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 
 /** Utility for constructing {@link TestNodeParameters} instances with shared defaults. */
 public final class TestNodeParameterFactory {
@@ -15,7 +15,7 @@ public final class TestNodeParameterFactory {
   public static TestNodeParameters create(
       File baseDirectory,
       RandomSource random,
-      Executor executor,
+      PriorityAwareExecutor executor,
       Consumer<TestNodeParameters> customizer) {
     Objects.requireNonNull(baseDirectory, "baseDirectory");
     Objects.requireNonNull(customizer, "customizer");

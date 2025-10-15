@@ -43,10 +43,10 @@ public class PrioritizedTicker implements Ticker, Runnable {
 
   private final HashMap<Job, Long> timedJobsQueued;
   final NativeThread myThread;
-  final Executor executor;
+  final PriorityAwareExecutor executor;
   static final int MAX_SLEEP_TIME = 200;
 
-  public PrioritizedTicker(Executor executor, int portNumber) {
+  public PrioritizedTicker(PriorityAwareExecutor executor, int portNumber) {
     this.executor = executor;
     timedJobsByTime = new TreeMap<>();
     timedJobsQueued = new HashMap<>();
@@ -251,7 +251,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
   }
 
   @Override
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return executor;
   }
 

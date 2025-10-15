@@ -17,7 +17,7 @@ public class PrioritizedTickerTest {
     private boolean sleeping;
     private final Object sleepSync = new Object();
 
-    public MyTicker(Executor executor, int portNumber) {
+    public MyTicker(PriorityAwareExecutor executor, int portNumber) {
       super(executor, portNumber);
     }
 

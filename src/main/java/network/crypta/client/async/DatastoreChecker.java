@@ -14,7 +14,7 @@ import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SendableGet;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
@@ -32,7 +32,7 @@ public class DatastoreChecker implements PrioRunnable {
   /** True if lazy is true and the datastore checker thread is running */
   private boolean running;
 
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
   private final String threadName;
 
   // Setting these to 1, 3 kills 1/3rd of datastore checks.
@@ -88,7 +88,8 @@ public class DatastoreChecker implements PrioRunnable {
     this.context = context;
   }
 
-  public DatastoreChecker(Node node, boolean lazyStart, Executor executor, String threadName) {
+  public DatastoreChecker(
+      Node node, boolean lazyStart, PriorityAwareExecutor executor, String threadName) {
     this.node = node;
     this.lazy = lazyStart;
     this.executor = executor;

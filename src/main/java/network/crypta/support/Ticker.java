@@ -28,7 +28,7 @@ public interface Ticker {
       Runnable job, String name, long offset, boolean runOnTickerAnyway, boolean noDupes);
 
   /** Get the underlying Executor. */
-  Executor getExecutor();
+  PriorityAwareExecutor getExecutor();
 
   /** Remove a queued job. */
   void removeQueuedJob(Runnable job);

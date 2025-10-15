@@ -11,7 +11,7 @@ import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class PrioritizedSerialExecutor implements Executor {
+public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(PrioritizedSerialExecutor.class);
 
   static {
@@ -24,7 +24,7 @@ public class PrioritizedSerialExecutor implements Executor {
   private final boolean invertOrder;
 
   private String name;
-  private Executor realExecutor;
+  private PriorityAwareExecutor realExecutor;
   private boolean running;
   private final ExecutorIdleCallback callback;
 
@@ -174,7 +174,7 @@ public class PrioritizedSerialExecutor implements Executor {
         null);
   }
 
-  public void start(Executor realExecutor, String name) {
+  public void start(PriorityAwareExecutor realExecutor, String name) {
     this.realExecutor = realExecutor;
     this.name = name;
     synchronized (jobs) {

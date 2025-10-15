@@ -20,8 +20,8 @@ import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ServerSideFCPMes
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginRespirator;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
@@ -146,10 +146,10 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   /**
    * Executor upon which we run threads of the send functions.<br>
    * Since the send functions can be called very often, it would be inefficient to create a new
-   * {@link Thread} for each one. An {@link Executor} prevents this by having a pool of Threads
-   * which will be recycled.
+   * {@link Thread} for each one. An {@link PriorityAwareExecutor} prevents this by having a pool of
+   * Threads which will be recycled.
    */
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
 
   /** The class name of the plugin to which this FCPPluginConnectionImpl is connected. */
   private final String serverPluginName;
@@ -298,12 +298,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * The client is not running within the node, it is attached by network with a {@link
    * FCPConnectionHandler}.<br>
    *
-   * @see #constructForNetworkedFCP(FCPPluginConnectionTracker, Executor, PluginManager, String,
-   *     FCPConnectionHandler) The public interface to this constructor.
+   * @see #constructForNetworkedFCP(FCPPluginConnectionTracker, PriorityAwareExecutor,
+   *     PluginManager, String, FCPConnectionHandler) The public interface to this constructor.
    */
   private FCPPluginConnectionImpl(
       FCPPluginConnectionTracker tracker,
-      Executor executor,
+      PriorityAwareExecutor executor,
       String serverPluginName,
       ServerSideFCPMessageHandler serverPlugin,
       FCPConnectionHandler clientConnection) {
@@ -352,7 +352,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    */
   static FCPPluginConnectionImpl constructForNetworkedFCP(
       FCPPluginConnectionTracker tracker,
-      Executor executor,
+      PriorityAwareExecutor executor,
       PluginManager serverPluginManager,
       String serverPluginName,
       FCPConnectionHandler clientConnection)
@@ -381,12 +381,13 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * The client's message handler is accessible as an implementor of {@link
    * ClientSideFCPMessageHandler}.<br>
    *
-   * @see #constructForIntraNodeFCP(FCPPluginConnectionTracker, Executor, PluginManager, String,
-   *     ClientSideFCPMessageHandler) The public interface to this constructor.
+   * @see #constructForIntraNodeFCP(FCPPluginConnectionTracker, PriorityAwareExecutor,
+   *     PluginManager, String, ClientSideFCPMessageHandler) The public interface to this
+   *     constructor.
    */
   private FCPPluginConnectionImpl(
       FCPPluginConnectionTracker tracker,
-      Executor executor,
+      PriorityAwareExecutor executor,
       String serverPluginName,
       ServerSideFCPMessageHandler server,
       ClientSideFCPMessageHandler client) {
@@ -437,7 +438,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    */
   static FCPPluginConnectionImpl constructForIntraNodeFCP(
       FCPPluginConnectionTracker tracker,
-      Executor executor,
+      PriorityAwareExecutor executor,
       PluginManager serverPluginManager,
       String serverPluginName,
       ClientSideFCPMessageHandler client)

@@ -26,8 +26,8 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucket;
@@ -102,7 +102,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
-    Executor executor = new PooledExecutor();
+    PriorityAwareExecutor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       final int port = DARKNET_PORT_BASE + i;
       TestNodeParameters params =

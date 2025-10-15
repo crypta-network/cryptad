@@ -3,7 +3,7 @@ package network.crypta.io.comm;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -325,7 +325,7 @@ public final class MessageFilter {
    *
    * @param ctx
    */
-  public void onDroppedConnection(final PeerContext ctx, Executor executor) {
+  public void onDroppedConnection(final PeerContext ctx, PriorityAwareExecutor executor) {
     final AsyncMessageFilterCallback cb;
     synchronized (this) {
       cb = _callback;
@@ -360,7 +360,7 @@ public final class MessageFilter {
    *
    * @param ctx
    */
-  public void onRestartedConnection(final PeerContext ctx, Executor executor) {
+  public void onRestartedConnection(final PeerContext ctx, PriorityAwareExecutor executor) {
     final AsyncMessageFilterCallback cb;
     synchronized (this) {
       _droppedConnection = ctx;
@@ -393,7 +393,7 @@ public final class MessageFilter {
    * Notify waiters that we have been matched. Hopefully no locks will be held at this point by the
    * caller.
    */
-  public void onMatched(Executor executor) {
+  public void onMatched(PriorityAwareExecutor executor) {
     final Message msg;
     final AsyncMessageFilterCallback cb;
     ByteCounter ctr;
@@ -426,7 +426,7 @@ public final class MessageFilter {
   }
 
   /** Notify waiters that we have timed out. */
-  public void onTimedOut(Executor executor) {
+  public void onTimedOut(PriorityAwareExecutor executor) {
     final AsyncMessageFilterCallback cb;
     synchronized (this) {
       notifyAll();

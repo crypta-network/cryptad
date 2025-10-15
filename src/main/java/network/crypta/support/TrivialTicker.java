@@ -21,13 +21,13 @@ public class TrivialTicker implements Ticker {
 
   private final Timer timer = new Timer(true);
 
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
 
   private final Hashtable<Runnable, TimerTask> jobs = new Hashtable<>();
 
   private boolean running = true;
 
-  public TrivialTicker(Executor executor) {
+  public TrivialTicker(PriorityAwareExecutor executor) {
     this.executor = executor;
   }
 
@@ -160,7 +160,7 @@ public class TrivialTicker implements Ticker {
   }
 
   @Override
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return executor;
   }
 

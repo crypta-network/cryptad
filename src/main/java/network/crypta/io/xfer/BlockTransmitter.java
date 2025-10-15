@@ -24,7 +24,7 @@ import network.crypta.node.MessageItem;
 import network.crypta.node.Node;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.BitArray;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
@@ -76,7 +76,7 @@ public class BlockTransmitter {
   private final HashSet<MessageItem> itemsPending = new HashSet<>();
 
   private final Ticker _ticker;
-  private final Executor _executor;
+  private final PriorityAwareExecutor _executor;
   private final BlockTransmitterCompletion _callback;
 
   public interface BlockTimeCallback {

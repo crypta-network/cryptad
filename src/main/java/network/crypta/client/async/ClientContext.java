@@ -17,8 +17,8 @@ import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.DummyJobRunner;
-import network.crypta.support.Executor;
 import network.crypta.support.MemoryLimitedJobRunner;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
@@ -53,7 +53,7 @@ public class ClientContext {
    *
    * @deprecated Use {@link #getMainExecutor()} instead
    */
-  @Deprecated public final transient Executor mainExecutor;
+  @Deprecated public final transient PriorityAwareExecutor mainExecutor;
 
   /**
    * We need to be able to suspend execution of jobs changing persistent state in order to write it
@@ -108,7 +108,7 @@ public class ClientContext {
   public ClientContext(
       long bootID,
       ClientLayerPersister jobRunner,
-      Executor mainExecutor,
+      PriorityAwareExecutor mainExecutor,
       ArchiveManager archiveManager,
       PersistentTempBucketFactory ptbf,
       TempBucketFactory tbf,
@@ -344,7 +344,7 @@ public class ClientContext {
     return config;
   }
 
-  public Executor getMainExecutor() {
+  public PriorityAwareExecutor getMainExecutor() {
     return mainExecutor;
   }
 }

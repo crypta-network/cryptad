@@ -4,7 +4,7 @@ package network.crypta.support;
  * * Note that unlike {@link java.util.concurrent.Executor}, none of these run * methods throw
  * {@link java.util.concurrent.RejectedExecutionException}.
  */
-public interface Executor extends java.util.concurrent.Executor {
+public interface PriorityAwareExecutor extends java.util.concurrent.Executor {
 
   /** Execute a job. */
   @Override

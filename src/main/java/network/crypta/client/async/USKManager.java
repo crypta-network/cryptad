@@ -20,8 +20,8 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.Executor;
 import network.crypta.support.LRUMap;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.NullBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +80,7 @@ public class USKManager {
   /** This one actually fetches data */
   final FetchContext realFetchContext;
 
-  final Executor executor;
+  final PriorityAwareExecutor executor;
 
   private ClientContext context;
 

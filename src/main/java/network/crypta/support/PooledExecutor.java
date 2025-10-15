@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class PooledExecutor implements Executor {
+public class PooledExecutor implements PriorityAwareExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(PooledExecutor.class);
 
   /** All threads running or waiting */

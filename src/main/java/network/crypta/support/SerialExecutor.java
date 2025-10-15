@@ -9,7 +9,7 @@ import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SerialExecutor implements Executor {
+public class SerialExecutor implements PriorityAwareExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(SerialExecutor.class);
 
   static {
@@ -23,7 +23,7 @@ public class SerialExecutor implements Executor {
   private volatile boolean threadStarted;
 
   private String name;
-  private Executor realExecutor;
+  private PriorityAwareExecutor realExecutor;
 
   private static final long NEWJOB_TIMEOUT = MINUTES.toMillis(5);
 
@@ -89,7 +89,7 @@ public class SerialExecutor implements Executor {
     this.syncLock = new Object();
   }
 
-  public void start(Executor realExecutor, String name) {
+  public void start(PriorityAwareExecutor realExecutor, String name) {
     assert (realExecutor != this);
     this.realExecutor = realExecutor;
     this.name = name;

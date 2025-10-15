@@ -22,8 +22,8 @@ import network.crypta.client.async.SimpleBlockSet;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.TestProperty;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
@@ -45,7 +45,7 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
       return;
     }
     DummyRandomSource random = new DummyRandomSource(25312);
-    final Executor executor = new PooledExecutor();
+    final PriorityAwareExecutor executor = new PooledExecutor();
     FileUtil.removeAll(dir);
     dir.mkdir();
     NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);

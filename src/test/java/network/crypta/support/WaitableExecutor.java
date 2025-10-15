@@ -1,8 +1,8 @@
 package network.crypta.support;
 
-public class WaitableExecutor implements Executor {
+public class WaitableExecutor implements PriorityAwareExecutor {
 
-  public WaitableExecutor(Executor exec) {
+  public WaitableExecutor(PriorityAwareExecutor exec) {
     this.underlying = exec;
   }
 
@@ -82,6 +82,6 @@ public class WaitableExecutor implements Executor {
     final Runnable job;
   }
 
-  private final Executor underlying;
+  private final PriorityAwareExecutor underlying;
   private int count;
 }

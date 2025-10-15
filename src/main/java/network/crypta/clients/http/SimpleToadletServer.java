@@ -33,8 +33,8 @@ import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.pluginmanager.FredPluginL10n;
-import network.crypta.support.Executor;
 import network.crypta.support.HTMLNode;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.BucketFactory;
@@ -96,7 +96,7 @@ public final class SimpleToadletServer
 
   // Control
   private Thread myThread;
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
   private final Random random;
   private BucketFactory bf;
   private volatile NodeClientCore core;
@@ -441,7 +441,10 @@ public final class SimpleToadletServer
 
   /** Create a SimpleToadletServer, using the settings from the SubConfig (the fproxy.* config). */
   public SimpleToadletServer(
-      SubConfig fproxyConfig, BucketFactory bucketFactory, Executor executor, Node node)
+      SubConfig fproxyConfig,
+      BucketFactory bucketFactory,
+      PriorityAwareExecutor executor,
+      Node node)
       throws IOException, InvalidConfigValueException {
 
     this.executor = executor;

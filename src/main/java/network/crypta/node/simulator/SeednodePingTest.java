@@ -32,9 +32,9 @@ import network.crypta.node.OpennetDisabledException;
 import network.crypta.node.SeedServerPeerNode;
 import network.crypta.node.SeedServerTestPeerNode;
 import network.crypta.node.SeedServerTestPeerNode.FATE;
-import network.crypta.support.Executor;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import org.slf4j.event.Level;
@@ -65,7 +65,7 @@ public class SeednodePingTest extends RealNodeTest {
       RandomSource random =
           NodeStarter.globalTestInit(baseDir, false, Level.ERROR, "", false, null);
       // Create one node
-      Executor executor = new PooledExecutor();
+      PriorityAwareExecutor executor = new PooledExecutor();
       TestNodeParameters params = new TestNodeParameters();
       params.baseDirectory = baseDir;
       params.port = DARKNET_PORT;

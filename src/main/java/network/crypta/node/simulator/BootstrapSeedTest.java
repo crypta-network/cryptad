@@ -8,9 +8,9 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
-import network.crypta.support.Executor;
 import network.crypta.support.Logging;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
@@ -54,7 +54,7 @@ public class BootstrapSeedTest {
       FileUtil.writeTo(fis, new File(innerDir, "seednodes.fref"));
       fis.close();
       // Create one node
-      Executor executor = new PooledExecutor();
+      PriorityAwareExecutor executor = new PooledExecutor();
       TestNodeParameters params =
           TestNodeParameterFactory.create(
               dir,

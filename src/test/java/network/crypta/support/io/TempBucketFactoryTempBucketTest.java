@@ -19,7 +19,7 @@ import java.util.List;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SerialExecutor;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -66,7 +66,7 @@ class TempBucketFactoryTempBucketTest {
 
   private static final MasterSecret SECRET = new MasterSecret();
   private FilenameGenerator fg;
-  private Executor exec;
+  private PriorityAwareExecutor exec;
 
   @BeforeEach
   void setUp() throws IOException {
@@ -479,7 +479,8 @@ class TempBucketMigrationTest {
     }
   }
 
-  private final Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
+  private final PriorityAwareExecutor exec =
+      new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
   private final FilenameGenerator fg;
   private static final long MIN_DISK_SPACE = 2L * 1024 * 1024;
   private static final MasterSecret secret = new MasterSecret();
@@ -530,7 +531,7 @@ class RealTempBucketTest_ extends BucketTestBase {
   RealTempBucketTest_(int maxRamSize, int maxTotalRamSize, boolean encrypted) throws IOException {
     RandomSource weakPRNG = new DummyRandomSource(54321);
     FilenameGenerator fg = new FilenameGenerator(weakPRNG, false, null, "junit");
-    Executor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
+    PriorityAwareExecutor exec = new SerialExecutor(NativeThread.PriorityLevel.NORM_PRIORITY.value);
     tbf =
         new TempBucketFactory(
             exec, fg, maxRamSize, maxTotalRamSize, encrypted, MIN_DISK_SPACE, SECRET);

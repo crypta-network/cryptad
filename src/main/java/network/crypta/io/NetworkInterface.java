@@ -19,7 +19,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import network.crypta.io.AddressIdentifier.AddressType;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -71,13 +71,17 @@ public class NetworkInterface implements Closeable {
 
   private volatile boolean shutdown = false;
 
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
 
   // FIXME make configurable
   static final int maxQueueLength = 100;
 
   public static NetworkInterface create(
-      int port, String bindTo, String allowedHosts, Executor executor, boolean ignoreUnbindableIP6)
+      int port,
+      String bindTo,
+      String allowedHosts,
+      PriorityAwareExecutor executor,
+      boolean ignoreUnbindableIP6)
       throws IOException {
     NetworkInterface iface = new NetworkInterface(port, allowedHosts, executor);
     String[] failedBind = iface.setBindTo(bindTo, ignoreUnbindableIP6);
@@ -98,7 +102,8 @@ public class NetworkInterface implements Closeable {
    * @param bindTo A comma-separated list of addresses to bind to
    * @param allowedHosts A comma-separated list of allowed addresses
    */
-  protected NetworkInterface(int port, String allowedHosts, Executor executor) throws IOException {
+  protected NetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor)
+      throws IOException {
     this.port = port;
     this.allowedHosts = new AllowedHosts(allowedHosts);
     this.executor = executor;

@@ -3,7 +3,7 @@ package network.crypta.client.async;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.PrioRunnable;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
@@ -19,7 +19,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   static {
   }
 
-  final Executor executor;
+  final PriorityAwareExecutor executor;
   final Ticker ticker;
 
   /** The number of jobs actually running. */
@@ -57,7 +57,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   /** True if we should reject all new jobs */
   private boolean killed = false;
 
-  public PersistentJobRunnerImpl(Executor executor, Ticker ticker, long interval) {
+  public PersistentJobRunnerImpl(PriorityAwareExecutor executor, Ticker ticker, long interval) {
     this.executor = executor;
     this.ticker = ticker;
     queuedJobs = new ArrayList<>();

@@ -8,7 +8,7 @@ public class SpeedyTicker implements Ticker {
   public void queueTimedJob(
       Runnable job, String name, long offset, boolean runOnTickerAnyway, boolean noDupes) {}
 
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     throw new UnsupportedOperationException();
   }
 

@@ -72,9 +72,9 @@ import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.pluginmanager.PluginStores;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Base64;
-import network.crypta.support.Executor;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.Ticker;
@@ -2452,7 +2452,7 @@ public class NodeClientCore implements Persistable {
     return node.getTicker();
   }
 
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return node.getExecutor();
   }
 
