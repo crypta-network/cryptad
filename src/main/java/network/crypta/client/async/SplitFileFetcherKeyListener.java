@@ -137,7 +137,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
     int perSegmentSize = perSegmentBitsPerKey * segBlocks;
     perSegmentSize = (perSegmentSize + 7) & ~7;
     perSegmentBloomFilterSizeBytes = perSegmentSize / 8;
-    perSegmentK = BloomFilter.optimialK(perSegmentSize, segBlocks);
+    perSegmentK = BloomFilter.optimalK(perSegmentSize, segBlocks);
     segmentFilters = new BinaryBloomFilter[segments];
     byte[] segmentsFilterBuffer = new byte[perSegmentBloomFilterSizeBytes * segments];
     ByteBuffer baseBuffer = ByteBuffer.wrap(segmentsFilterBuffer);
