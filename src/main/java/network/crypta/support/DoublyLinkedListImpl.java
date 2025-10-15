@@ -6,24 +6,55 @@ import java.util.NoSuchElementException;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * DoublyLinkedList implementation. See DoublyLinkedList for an explanation when to use this.
+ * Intrusive doubly linked list implementation.
  *
- * <p>Note: Some methods remain unimplemented; they may not be needed.
+ * <p>This class provides a lightweight, allocation-free list in which each element stores
+ * references to its neighbors and to the parent list (see {@link DoublyLinkedList.Item}). It is
+ * designed for constant-time ({@code O(1)}) insertions and removals when the target node is
+ * already known. It does not allocate wrapper nodes and therefore avoids GC pressure compared to
+ * non-intrusive structures.
  *
+ * <p>Concurrency: Instances are not thread-safe. External synchronization is required for
+ * concurrent use.
+ *
+ * <p>Nullability: Methods such as {@link #head()} and {@link #tail()} return {@code null} for an
+ * empty list. Accessors on {@link Item} may also return {@code null} at the boundaries.
+ *
+ * <p>Iteration: {@link #elements()} and {@link #reverseElements()} return simple enumerations over
+ * the current structure. They are not fail-fast and have unspecified behavior if the list is
+ * structurally modified during iteration.
+ *
+ * @param <T> concrete intrusive item type stored in this list
  * @author tavin
  */
 public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     implements DoublyLinkedList<T> {
 
+  /** Current number of items in the list. Never negative. */
   protected int size;
+
+  /** Reference to the first item (head) or {@code null} when empty. */
   protected T firstItem;
+
+  /** Reference to the last item (tail) or {@code null} when empty. */
   protected T lastItem;
 
-  /** A new list with no items. */
+  /** Creates an empty list with no items. */
   public DoublyLinkedListImpl() {
     clear();
   }
 
+  /**
+   * Creates a list that adopts an existing intrusive chain.
+   *
+   * <p>The items from {@code head} through {@code tail} (via {@link Item#getNext()}) are assumed
+   * to form a valid chain. This constructor sets their parent to this list and records the
+   * provided size without validation.
+   *
+   * @param head first item in the chain; may be {@code null} when {@code size} is 0
+   * @param tail last item in the chain; may be {@code null} when {@code size} is 0
+   * @param size number of items contained in the chain
+   */
   protected DoublyLinkedListImpl(T head, T tail, int size) {
     firstItem = head;
     lastItem = tail;
@@ -42,9 +73,9 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   /** {@inheritDoc} */
   @Override
   public void clear() {
-    // Help to detect removal after clear().
-    // The check in remove() is enough, strictly,
-    // as long as people don't add elements afterward.
+    // Help detect later misuse: detach and null all neighbor links and clear parent pointers.
+    // Note: {@link #remove(Object)} separately guards against removing after clear; we keep
+    // this full unlinking pass to avoid accidental retention.
     if (firstItem == null) return;
 
     T pos = firstItem;
@@ -76,16 +107,20 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     return size == 0;
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * @see #forwardElements()
-   */
+  /** Returns a forward {@link Enumeration} over list items. See {@link #forwardElements()}. */
   @Override
   public final Enumeration<T> elements() {
     return forwardElements();
   }
 
+  /**
+   * Returns whether an equal item is present.
+   *
+   * <p>Equality uses {@link Object#equals(Object)} on elements already in the list.
+   *
+   * @param item item to search for; may be {@code null}
+   * @return {@code true} if an equal item exists; {@code false} otherwise
+   */
   @Override
   public boolean contains(T item) {
     for (T i : this) {
@@ -94,32 +129,40 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     return false;
   }
 
-  /** {@inheritDoc} */
+  /** Returns the first item or {@code null} when empty. */
   @Override
   public final T head() {
     return size == 0 ? null : firstItem;
   }
 
-  /** {@inheritDoc} */
+  /** Returns the last item or {@code null} when empty. */
   @Override
   public final T tail() {
     return size == 0 ? null : lastItem;
   }
 
   // === methods that add/remove items at the head of the list ================
-  /** {@inheritDoc} */
+  /** Inserts {@code i} at the head in {@code O(1)} time. */
   @Override
   public final void unshift(T i) {
     insertNext(null, i);
   }
 
-  /** {@inheritDoc} */
+  /** Removes and returns the head in {@code O(1)} time, or {@code null} if empty. */
   @Override
   public final T shift() {
     return size == 0 ? null : remove(firstItem);
   }
 
-  /** {@inheritDoc} */
+  /**
+   * Removes up to {@code n} items from the head and returns them as a new list.
+   *
+   * <p>If {@code n} exceeds the current size, all items are removed. If {@code n} is less than 1,
+   * this returns an empty list and does not modify this list.
+   *
+   * @param n number of items to remove; non-positive values yield an empty result
+   * @return a list containing the removed prefix, preserving original order
+   */
   @Override
   public DoublyLinkedList<T> shift(int n) {
     if (n > size) n = size;
@@ -146,19 +189,27 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   }
 
   // === methods that add/remove items at the tail of the list ================
-  /** {@inheritDoc} */
+  /** Appends {@code i} at the tail in {@code O(1)} time. */
   @Override
   public final void push(T i) {
     insertPrev(null, i);
   }
 
-  /** {@inheritDoc} */
+  /** Removes and returns the tail in {@code O(1)} time, or {@code null} if empty. */
   @Override
   public final T pop() {
     return size == 0 ? null : remove(lastItem);
   }
 
-  /** {@inheritDoc} */
+  /**
+   * Removes up to {@code n} items from the tail and returns them as a new list.
+   *
+   * <p>If {@code n} exceeds the current size, all items are removed. If {@code n} is less than 1,
+   * this returns an empty list and does not modify this list.
+   *
+   * @param n number of items to remove; non-positive values yield an empty result
+   * @return a list containing the removed suffix, preserving original order
+   */
   @Override
   public DoublyLinkedList<T> pop(int n) {
     if (n > size) n = size;
@@ -183,27 +234,27 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   }
 
   // === testing/looking at neighbor items ====================================
-  /** {@inheritDoc} */
+  /** Returns whether {@code i} has a successor (not the tail). */
   @Override
   public final boolean hasNext(T i) {
     T next = i.getNext();
     return next != null;
   }
 
-  /** {@inheritDoc} */
+  /** Returns whether {@code i} has a predecessor (not the head). */
   @Override
   public final boolean hasPrev(T i) {
     T prev = i.getPrev();
     return prev != null;
   }
 
-  /** {@inheritDoc} */
+  /** Returns the successor of {@code i}, or {@code null} if {@code i} is the tail. */
   @Override
   public final T next(T i) {
     return i.getNext();
   }
 
-  /** {@inheritDoc} */
+  /** Returns the predecessor of {@code i}, or {@code null} if {@code i} is the head. */
   @Override
   public final T prev(T i) {
     return i.getPrev();
@@ -211,7 +262,18 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
 
   // === insertion and removal of items =======================================
 
-  /** {@inheritDoc} */
+  /**
+   * Removes {@code i} from this list.
+   *
+   * <p>Returns {@code null} if {@code i} is not in any list. If {@code i} belongs to a different
+   * list, a {@link PromiscuousItemException} is thrown. Internal invariants are validated and may
+   * raise {@link IllegalStateException} if corrupted links are detected.
+   *
+   * @param i item to remove
+   * @return the same item, or {@code null} if not contained
+   * @throws PromiscuousItemException if {@code i} belongs to another list
+   * @throws IllegalStateException if neighbor links do not match expected invariants
+   */
   @Override
   public T remove(T i) {
     if (i.getParent() == null || isEmpty()) return null; // not in list
@@ -265,7 +327,18 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     }
   }
 
-  /** {@inheritDoc} */
+  /**
+   * Inserts {@code j} immediately before {@code i}.
+   *
+   * <p>When {@code i} is {@code null}, {@code j} is appended as the new tail. The item {@code j}
+   * must not already be linked into any list.
+   *
+   * @param i anchor item to insert before, or {@code null} for tail insertion
+   * @param j item to insert (must be unlinked)
+   * @throws PromiscuousItemException if {@code j} is already linked or {@code i} belongs to another
+   *     list
+   * @throws VirginItemException if invariants indicate {@code i} is not positioned as expected
+   */
   @Override
   public void insertPrev(T i, T j) {
     if (j.getParent() != null) throw new PromiscuousItemException(j, j.getParent());
@@ -278,8 +351,8 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     }
   }
 
+  /** Inserts {@code j} as the new tail. Precondition: {@code j} is not linked. */
   private void insertAsTail(T j) {
-    // insert as tail
     j.setPrev(lastItem);
     j.setNext(null);
     j.setParent(this);
@@ -292,8 +365,8 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     ++size;
   }
 
+  /** Inserts {@code j} before {@code i}. Precondition: {@code i} belongs to this list. */
   private void insertBefore(T i, T j) {
-    // insert in middle (before 'i')
     if (i.getParent() == null)
       throw new PromiscuousItemException(
           i, i.getParent()); // different trace to make easier debugging
@@ -312,7 +385,18 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     ++size;
   }
 
-  /** {@inheritDoc} */
+  /**
+   * Inserts {@code j} immediately after {@code i}.
+   *
+   * <p>When {@code i} is {@code null}, {@code j} becomes the new head. The item {@code j} must not
+   * already be linked into any list.
+   *
+   * @param i anchor item to insert after, or {@code null} for head insertion
+   * @param j item to insert (must be unlinked)
+   * @throws PromiscuousItemException if {@code j} is already linked or {@code i} belongs to another
+   *     list
+   * @throws VirginItemException if invariants indicate {@code i} is not positioned as expected
+   */
   @Override
   public void insertNext(T i, T j) {
     if (j.getParent() != null) throw new PromiscuousItemException(j, j.getParent());
@@ -325,8 +409,8 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     }
   }
 
+  /** Inserts {@code j} as the new head. Precondition: {@code j} is not linked. */
   private void insertAsHead(T j) {
-    // insert as head
     j.setPrev(null);
     j.setNext(firstItem);
     j.setParent(this);
@@ -341,6 +425,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     ++size;
   }
 
+  /** Inserts {@code j} after {@code i}. Precondition: {@code i} belongs to this list. */
   private void insertAfter(T i, T j) {
     if (i.getParent() != this) throw new PromiscuousItemException(i, i.getParent());
     T next = i.getNext();
@@ -360,9 +445,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
 
   // === Walkable implementation ==============================================
 
-  /**
-   * @return an Enumeration of list elements from head to tail
-   */
+  /** Returns an {@link Enumeration} over items from head to tail. */
   private Enumeration<T> forwardElements() {
     return new Enumeration<>() {
       private T next = firstItem;
@@ -382,9 +465,7 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     };
   }
 
-  /**
-   * @return an Enumeration of list elements from tail to head
-   */
+  /** Returns an {@link Enumeration} over items from tail to head. */
   public Enumeration<T> reverseElements() {
     return new Enumeration<>() {
       private T next = lastItem;
@@ -406,37 +487,69 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
 
   // === list element ====================================================
 
+  /**
+   * Base implementation of an intrusive list item.
+   *
+   * <p>Implementations typically extend this class to inherit neighbor link management and a
+   * reference to the parent list.
+   *
+   * @param <T> the concrete self-referential item type (e.g., {@code T extends Item<T>})
+   */
   public static class Item<T extends DoublyLinkedListImpl.Item<?>>
       implements DoublyLinkedList.Item<T> {
     private T prev;
     private T next;
     private DoublyLinkedList<T> list;
 
+    /** Returns the next item, or {@code null} if this is the tail. */
     @Override
     public final T getNext() {
       return next;
     }
 
+    /**
+     * Sets the next link.
+     *
+     * @param i next item or {@code null}
+     * @return the previously linked next item (may be {@code null})
+     */
     @Override
     public final T setNext(DoublyLinkedList.Item<?> i) {
       return nextAndSet(castItem(i));
     }
 
+    /** Returns the previous item, or {@code null} if this is the head. */
     @Override
     public final T getPrev() {
       return prev;
     }
 
+    /**
+     * Sets the previous link.
+     *
+     * @param i previous item or {@code null}
+     * @return the previously linked previous item (may be {@code null})
+     */
     @Override
     public final T setPrev(DoublyLinkedList.Item<?> i) {
       return prevAndSet(castItem(i));
     }
 
+    /** Returns the parent list, or {@code null} if not linked. */
     @Override
     public DoublyLinkedList<T> getParent() {
       return list;
     }
 
+    /**
+     * Sets the parent list reference.
+     *
+     * <p>Intended for use by list implementations to support sanity checks. Changing this value
+     * does not by itself insert or remove the item.
+     *
+     * @param l new parent list or {@code null}
+     * @return the previous parent list
+     */
     @Override
     public DoublyLinkedList<T> setParent(DoublyLinkedList<T> l) {
       return parentAndSet(l);
@@ -467,14 +580,18 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Casts an {@link Item} to the concrete type {@code T}.
+     *
+     * <p>Safe by construction: items in a {@code DoublyLinkedList<T>} are always of type {@code T}.
+     */
     private T castItem(DoublyLinkedList.Item<?> i) {
-      // Safe by construction: this Item<T> only participates in lists of T, and callers
-      // use the same T throughout DoublyLinkedList<T>. We localize the unchecked cast here.
       return (T) i;
     }
   }
 
   @Override
+  /** Returns an {@link Iterator} that traverses from head to tail. */
   public @NotNull Iterator<T> iterator() {
     final Enumeration<T> e = forwardElements();
     return new Iterator<>() {
