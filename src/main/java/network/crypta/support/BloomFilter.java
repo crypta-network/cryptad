@@ -363,13 +363,7 @@ public abstract class BloomFilter implements AutoCloseable {
     return (int) k;
   }
 
-  /**
-   * @deprecated Use {@link #optimalK(int, long)}. Kept for backward compatibility.
-   */
-  @Deprecated(since = "2")
-  public static int optimialK(int filterLength, long maxKey) {
-    return optimalK(filterLength, maxKey);
-  }
+  
 
   public int getK() {
     return k;
