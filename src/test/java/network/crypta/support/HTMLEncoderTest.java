@@ -27,10 +27,8 @@ class HTMLEncoderTest {
   @ParameterizedTest
   @MethodSource("specialEntityProvider")
   void encode_whenSpecials_expectEntities(String ch, String expectedEntity) {
-    // Arrange
-    String input = ch;
-    // Act
-    String encoded = HTMLEncoder.encode(input);
+    // Arrange & Act
+    String encoded = HTMLEncoder.encode(ch);
     // Assert
     assertEquals(expectedEntity, encoded);
   }
@@ -38,7 +36,7 @@ class HTMLEncoderTest {
   @Test
   void encode_whenMixedContent_expectEncodedOnlyForNonAlnumSpecials() {
     // Arrange
-    String input = "Abc\u00A9<>&'\"Z9";
+    String input = "Abc©<>&'\"Z9";
     // Act
     String encoded = HTMLEncoder.encode(input);
     // Assert
@@ -58,7 +56,7 @@ class HTMLEncoderTest {
   @Test
   void encode_whenGreekLetter_expectUnchanged() {
     // Arrange
-    String alpha = "\u03B1"; // Greek small alpha: not encoded by HTMLEncoder (letter)
+    String alpha = "α"; // Greek small alpha: not encoded by HTMLEncoder (letter)
     // Act
     String encoded = HTMLEncoder.encode(alpha);
     // Assert
@@ -80,8 +78,8 @@ class HTMLEncoderTest {
         Arguments.of("&", "&amp;"),
         Arguments.of("'", "&#39;"),
         Arguments.of("\"", "&quot;"),
-        Arguments.of("\u00A9", "&copy;"),
-        Arguments.of("\u20AC", "&euro;"));
+        Arguments.of("©", "&copy;"),
+        Arguments.of("€", "&euro;"));
   }
 
   @Test
