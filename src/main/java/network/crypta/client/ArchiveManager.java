@@ -17,7 +17,6 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.ExceptionWrapper;
 import network.crypta.support.LRUMap;
-import network.crypta.support.MutableBoolean;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.compress.CompressionOutputSizeException;
@@ -29,6 +28,7 @@ import network.crypta.support.io.SkipShieldingInputStream;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -508,7 +508,7 @@ public class ArchiveManager {
           } else {
             // We are here because they asked for this file.
             callback.gotBucket(output, context);
-            gotElement.value = true;
+            gotElement.setTrue();
             addErrorElement(
                 ctx,
                 key,
@@ -529,7 +529,7 @@ public class ArchiveManager {
       }
       if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
 
-      if ((!gotElement.value) && element != null) callback.notInArchive(context);
+      if ((!gotElement.booleanValue()) && element != null) callback.notInArchive(context);
 
     } catch (IOException e) {
       throw new ArchiveFailureException("Error reading archive: " + e.getMessage(), e);
@@ -619,7 +619,7 @@ public class ArchiveManager {
           } else {
             // We are here because they asked for this file.
             callback.gotBucket(output, context);
-            gotElement.value = true;
+            gotElement.setTrue();
             addErrorElement(
                 ctx,
                 key,
@@ -640,7 +640,7 @@ public class ArchiveManager {
       }
       if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
 
-      if ((!gotElement.value) && element != null) callback.notInArchive(context);
+      if ((!gotElement.booleanValue()) && element != null) callback.notInArchive(context);
 
     } catch (IOException e) {
       throw new ArchiveFailureException("Error reading archive: " + e.getMessage(), e);
@@ -828,7 +828,7 @@ public class ArchiveManager {
     ArchiveStoreItem oldItem;
     // Let it throw, if it does something is drastically wrong
     Bucket matchBucket = null;
-    if ((!gotElement.value) && name.equals(callbackName)) {
+    if ((!gotElement.booleanValue()) && name.equals(callbackName)) {
       matchBucket = element.getReaderBucket();
     }
     synchronized (this) {
@@ -844,7 +844,7 @@ public class ArchiveManager {
     }
     if (matchBucket != null) {
       callback.gotBucket(matchBucket, context);
-      gotElement.value = true;
+      gotElement.setTrue();
     }
     return element;
   }
