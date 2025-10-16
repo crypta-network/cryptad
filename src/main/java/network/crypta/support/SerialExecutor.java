@@ -13,15 +13,15 @@ import org.slf4j.LoggerFactory;
 /**
  * Executor that guarantees tasks execute one after another on a single worker thread.
  *
- * <p>This executor queues submitted {@link Runnable} instances and processes them strictly in
- * FIFO order. It uses a real, backing {@link PriorityAwareExecutor} supplied via {@link #start} to
- * run a single long-lived "runner" task which drains the internal queue. The runner thread is not
- * created until {@link #start(PriorityAwareExecutor, String)} is called; submissions prior to that
- * point are queued and will run once started.
+ * <p>This executor queues submitted {@link Runnable} instances and processes them strictly in FIFO
+ * order. It uses a real, backing {@link PriorityAwareExecutor} supplied via {@link #start} to run a
+ * single long-lived "runner" task which drains the internal queue. The runner thread is not created
+ * until {@link #start(PriorityAwareExecutor, String)} is called; submissions prior to that point
+ * are queued and will run once started.
  *
- * <p>Priority: the runner implements {@link network.crypta.node.PrioRunnable} and reports the
- * fixed priority passed to this executor's constructor. Individual jobs do not influence the
- * runner's priority.
+ * <p>Priority: the runner implements {@link network.crypta.node.PrioRunnable} and reports the fixed
+ * priority passed to this executor's constructor. Individual jobs do not influence the runner's
+ * priority.
  *
  * <p>Queueing and capacity: jobs are stored in a {@link LinkedBlockingQueue}. When constructed with
  * a positive {@code bound}, the queue is bounded; additional submissions beyond capacity are
@@ -29,8 +29,8 @@ import org.slf4j.LoggerFactory;
  * submissions are only limited by memory.
  *
  * <p>Errors and exceptions thrown by jobs are caught and logged; processing continues with the next
- * job. The runner thread will exit when no job arrives for {@link #NEWJOB_TIMEOUT} milliseconds.
- * A new runner will be created automatically by future submissions.
+ * job. The runner thread will exit when no job arrives for {@link #NEWJOB_TIMEOUT} milliseconds. A
+ * new runner will be created automatically by future submissions.
  *
  * <p>Thread-safety: All public methods are thread-safe. Introspection methods return snapshots that
  * may become stale immediately after return and are intended for diagnostics only.
@@ -42,11 +42,13 @@ public class SerialExecutor implements PriorityAwareExecutor {
 
   /** Queue of submitted tasks. May be bounded or unbounded depending on constructor. */
   private final LinkedBlockingQueue<Runnable> jobs;
+
   private final Object syncLock;
   private final int priority;
 
   /** True when the runner is currently waiting for work (for introspection only). */
   private volatile boolean threadWaiting;
+
   /** True after a runner has been submitted to the backing executor (for introspection only). */
   private volatile boolean threadStarted;
 
@@ -130,8 +132,8 @@ public class SerialExecutor implements PriorityAwareExecutor {
   /**
    * Construct an executor with an unbounded queue.
    *
-   * @param priority runner priority reported to the backing executor; usually one of
-   *     {@link NativeThread.PriorityLevel} values
+   * @param priority runner priority reported to the backing executor; usually one of {@link
+   *     NativeThread.PriorityLevel} values
    */
   public SerialExecutor(int priority) {
     this(priority, 0);
@@ -140,8 +142,8 @@ public class SerialExecutor implements PriorityAwareExecutor {
   /**
    * Construct an executor with an optional queue capacity.
    *
-   * @param priority runner priority reported to the backing executor; usually one of
-   *     {@link NativeThread.PriorityLevel} values
+   * @param priority runner priority reported to the backing executor; usually one of {@link
+   *     NativeThread.PriorityLevel} values
    * @param bound maximum number of queued jobs; {@code <= 0} creates an unbounded queue
    */
   public SerialExecutor(int priority, int bound) {
@@ -179,8 +181,7 @@ public class SerialExecutor implements PriorityAwareExecutor {
     synchronized (syncLock) {
       threadStarted = true;
     }
-    if (LOG.isDebugEnabled())
-      LOG.debug("Starting thread... {} : {}", name, runner);
+    if (LOG.isDebugEnabled()) LOG.debug("Starting thread... {} : {}", name, runner);
     realExecutor.execute(runner, name);
   }
 
@@ -201,8 +202,8 @@ public class SerialExecutor implements PriorityAwareExecutor {
   /**
    * Submit a task with a label for diagnostics.
    *
-   * <p>The task is queued and will execute serially on the runner thread. When the queue is
-   * bounded and full, the task is dropped and a warning is logged.
+   * <p>The task is queued and will execute serially on the runner thread. When the queue is bounded
+   * and full, the task is dropped and a warning is logged.
    *
    * @param job task to execute; must be non-{@code null}
    * @param jobName descriptive label used in logs; may be {@code null} or empty
@@ -210,8 +211,8 @@ public class SerialExecutor implements PriorityAwareExecutor {
   @Override
   public void execute(Runnable job, String jobName) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Running {} : {} started={} waiting={}", jobName, job, threadStarted,
-          threadWaiting);
+      LOG.debug(
+          "Running {} : {} started={} waiting={}", jobName, job, threadStarted, threadWaiting);
     boolean offered = jobs.offer(job);
     if (!offered && LOG.isWarnEnabled()) {
       LOG.warn("SerialExecutor queue is full; dropping job {} ({})", jobName, job);
@@ -238,8 +239,8 @@ public class SerialExecutor implements PriorityAwareExecutor {
    * Return a snapshot of running worker counts per priority.
    *
    * <p>For {@code SerialExecutor} the value is either {@code 0} or {@code 1} at the configured
-   * priority, depending on whether the runner is executing a job as opposed to waiting for one.
-   * The array length equals {@code NativeThread.JAVA_PRIORITY_RANGE + 1}.
+   * priority, depending on whether the runner is executing a job as opposed to waiting for one. The
+   * array length equals {@code NativeThread.JAVA_PRIORITY_RANGE + 1}.
    *
    * @return array of running counts per priority (never {@code null})
    */
