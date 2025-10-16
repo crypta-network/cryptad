@@ -21,6 +21,7 @@ dependencies {
   implementation(libs.jna)
   implementation(libs.jnaPlatform)
   implementation(libs.commonsCompress)
+  implementation(libs.commonsLang3)
   implementation(files("libs/wrapper.jar"))
   implementation(libs.pebble)
   implementation(libs.unbescape)
