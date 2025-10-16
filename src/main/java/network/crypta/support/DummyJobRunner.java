@@ -11,10 +11,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Non-persistent implementation of {@link PersistentJobRunner}.
  *
- * <p>This runner submits jobs directly to a provided {@link Executor} and does not coordinate
- * checkpointing, persistence, or loading phases. It is useful for transient or best-effort work
- * where saving client-layer state is unnecessary. Using this avoids sprinkling callers with {@code
- * if (persistent) ...} checks.
+ * <p>This runner submits jobs directly to a provided {@link PriorityAwareExecutor} and does not
+ * coordinate checkpointing, persistence, or loading phases. It is useful for transient or
+ * best-effort work where saving client-layer state is unnecessary. Using this avoids sprinkling
+ * callers with {@code if (persistent) ...} checks.
  *
  * <p>Threading: Jobs are executed on the given executor and therefore usually run off the calling
  * thread. Jobs are wrapped in a {@link PrioRunnable} so priority-aware executors can read the
@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 public class DummyJobRunner implements PersistentJobRunner {
   private static final Logger LOG = LoggerFactory.getLogger(DummyJobRunner.class);
 
-  final Executor executor;
+  final PriorityAwareExecutor executor;
   final ClientContext context;
 
   /**
@@ -37,7 +37,7 @@ public class DummyJobRunner implements PersistentJobRunner {
    * @param context {@link ClientContext} passed to each job's {@link
    *     PersistentJob#run(ClientContext)}; may be {@code null}
    */
-  public DummyJobRunner(Executor executor, ClientContext context) {
+  public DummyJobRunner(PriorityAwareExecutor executor, ClientContext context) {
     this.executor = executor;
     this.context = context;
   }

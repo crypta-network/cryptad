@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 public class MemoryLimitedJobRunnerTest {
 
-  final Executor executor = new PooledExecutor();
+  final PriorityAwareExecutor executor = new PooledExecutor();
 
   class SynchronousJob extends MemoryLimitedJob {
 

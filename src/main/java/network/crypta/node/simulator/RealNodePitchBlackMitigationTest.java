@@ -13,8 +13,8 @@ import network.crypta.node.LocationManager;
 import network.crypta.node.Node;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.PeerNode;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 import network.crypta.support.math.RunningAverage;
@@ -97,7 +97,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
-    Executor executor = new PooledExecutor();
+    PriorityAwareExecutor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();

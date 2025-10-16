@@ -13,11 +13,12 @@ import java.security.Security;
 import java.util.Random;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.io.TempBucketFactory.TempBucket;
 import network.crypta.support.io.TempBucketFactory.TempRandomAccessBuffer;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -66,15 +67,15 @@ class TempBucketFactoryTest {
   }
 
   private TempBucketFactory newFactory(
-      Executor exec, long maxRamBucket, long maxRamUsed, boolean encrypt) {
+      PriorityAwareExecutor exec, long maxRamBucket, long maxRamUsed, boolean encrypt) {
     return new TempBucketFactory(
         exec, fg, maxRamBucket, maxRamUsed, encrypt, MIN_DISK_SPACE, secret);
   }
 
-  private static Executor inlineExecutor() {
-    return new Executor() {
+  private static PriorityAwareExecutor inlineExecutor() {
+    return new PriorityAwareExecutor() {
       @Override
-      public void execute(Runnable job) {
+      public void execute(@NotNull Runnable job) {
         job.run();
       }
 
@@ -251,7 +252,7 @@ class TempBucketFactoryTest {
   @Test
   void cleaner_whenUsageCrossesHighThreshold_migratesUntilBelowLowThreshold() throws IOException {
     // Arrange: mock Executor to run jobs inline and verify scheduling
-    Executor exec = mock(Executor.class);
+    PriorityAwareExecutor exec = mock(PriorityAwareExecutor.class);
     doAnswer(
             inv -> {
               Runnable r = inv.getArgument(0);

@@ -128,7 +128,6 @@ import network.crypta.store.caching.CachingFreenetStore;
 import network.crypta.store.caching.CachingFreenetStoreTracker;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
-import network.crypta.support.Executor;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -136,6 +135,7 @@ import network.crypta.support.JVMVersion;
 import network.crypta.support.OutputThrottle;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PrioritizedTicker;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
@@ -826,7 +826,7 @@ public class Node implements TimeSkewDetectorCallback {
    */
   @Deprecated
   /* It’s not the field that is deprecated but accessing it directly is. */
-  public final Executor executor;
+  public final PriorityAwareExecutor executor;
 
   /**
    * @deprecated Use {@link #getPacketSender()} instead of accessing this directly.
@@ -1300,7 +1300,7 @@ public class Node implements TimeSkewDetectorCallback {
       RandomSource weakRandom,
       LoggingConfigHandler lc,
       NodeStarter ns,
-      Executor executor)
+      PriorityAwareExecutor executor)
       throws NodeInitException {
     this.shutdownHook = SemiOrderedShutdownHook.get();
     // Easy stuff
@@ -6182,7 +6182,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return darknetCrypto;
   }
 
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return executor;
   }
 

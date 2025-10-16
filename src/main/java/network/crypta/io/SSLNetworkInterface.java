@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Set;
 import javax.net.ssl.SSLServerSocket;
 import network.crypta.crypt.SSL;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 
 /**
  * An SSL extension to the {@link NetworkInterface}
@@ -19,7 +19,11 @@ import network.crypta.support.Executor;
 public class SSLNetworkInterface extends NetworkInterface {
 
   public static NetworkInterface create(
-      int port, String bindTo, String allowedHosts, Executor executor, boolean ignoreUnbindableIP6)
+      int port,
+      String bindTo,
+      String allowedHosts,
+      PriorityAwareExecutor executor,
+      boolean ignoreUnbindableIP6)
       throws IOException {
     NetworkInterface iface = new SSLNetworkInterface(port, allowedHosts, executor);
     String[] failedBind = iface.setBindTo(bindTo, ignoreUnbindableIP6);
@@ -34,7 +38,7 @@ public class SSLNetworkInterface extends NetworkInterface {
   }
 
   /** See {@link NetworkInterface} */
-  protected SSLNetworkInterface(int port, String allowedHosts, Executor executor)
+  protected SSLNetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor)
       throws IOException {
     super(port, allowedHosts, executor);
   }

@@ -10,7 +10,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import network.crypta.node.NodeIPDetector;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 /** Unit tests for {@link IPAddressDetector}. */
@@ -56,7 +57,7 @@ class IPAddressDetectorTest {
     TestIPAddressDetector det = new TestIPAddressDetector(1, nodeIPDetector);
     det.lastDetectedTime = -1; // force checkpoint on first call
 
-    Executor directExec = new DirectExecutor();
+    PriorityAwareExecutor directExec = new DirectExecutor();
     InetAddress[] out = det.getAddress(directExec);
     assertNotNull(out);
     assertEquals(1, out.length);
@@ -113,9 +114,9 @@ class IPAddressDetectorTest {
   }
 
   /** Minimal direct executor for tests. */
-  private static final class DirectExecutor implements Executor {
+  private static final class DirectExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NotNull Runnable job) {
       job.run();
     }
 

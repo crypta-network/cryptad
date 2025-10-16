@@ -14,8 +14,8 @@ import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +62,7 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     NodeStarter.globalTestInit(baseDirectory, false, Level.ERROR, "", true, random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
-    Executor executor = new PooledExecutor();
+    PriorityAwareExecutor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
       final int port = DARKNET_PORT_BASE + i;

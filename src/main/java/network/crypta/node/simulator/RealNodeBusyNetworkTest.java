@@ -72,7 +72,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
-    Executor executor = new PooledExecutor();
+    PriorityAwareExecutor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
       params.port = DARKNET_PORT_BASE + i;

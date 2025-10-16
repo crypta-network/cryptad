@@ -27,7 +27,7 @@ public class MemoryLimitedJobRunner {
   /** The jobs we can't start yet, bucketed by priority. */
   private final List<Deque<MemoryLimitedJob>> jobs;
 
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
   private int runningThreads;
   private int maxThreads;
   private boolean shutdown;
@@ -35,7 +35,8 @@ public class MemoryLimitedJobRunner {
   static {
   }
 
-  public MemoryLimitedJobRunner(long capacity, int maxThreads, Executor executor, int priorities) {
+  public MemoryLimitedJobRunner(
+      long capacity, int maxThreads, PriorityAwareExecutor executor, int priorities) {
     this.capacity = capacity;
     this.counter = 0;
     this.jobs = new ArrayList<>(priorities);

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import network.crypta.io.AddressIdentifier;
 import network.crypta.node.NodeIPDetector;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.InetAddressComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * for common non-routable cases. IPv6 global addresses have any scope-id removed. The most recent
  * snapshot is cached and returned by the query methods. When a change in the address set is
  * detected, the associated {@link network.crypta.node.NodeIPDetector} is notified on a caller
- * provided {@link network.crypta.support.Executor}.
+ * provided {@link PriorityAwareExecutor}.
  *
  * <p>This class does not start threads by itself. If you want periodic detection independent of
  * explicit queries, run it as a {@link Runnable}. The background loop runs on the caller's thread
@@ -79,13 +79,13 @@ public class IPAddressDetector implements Runnable {
    *
    * <p>If the cached snapshot is older than {@link #interval}, a detection pass is performed. When
    * the set of addresses has changed since the previous snapshot, {@link
-   * NodeIPDetector#redetectAddress()} is dispatched on the supplied {@link Executor}. The callback
-   * is never invoked synchronously on the caller's thread.
+   * NodeIPDetector#redetectAddress()} is dispatched on the supplied {@link PriorityAwareExecutor}.
+   * The callback is never invoked synchronously on the caller's thread.
    *
    * @param executor the executor used to run the callback; must not be {@code null}
    * @return an array of addresses (possibly empty) representing the last known snapshot
    */
-  public InetAddress[] getAddress(Executor executor) {
+  public InetAddress[] getAddress(PriorityAwareExecutor executor) {
     Objects.requireNonNull(executor, "executor");
     if (System.currentTimeMillis() > (lastDetectedTime + interval) && checkpoint()) {
       executor.execute(detector::redetectAddress);

@@ -32,6 +32,7 @@ import java.io.OutputStream;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
 import org.jetbrains.annotations.NotNull;
@@ -130,7 +131,7 @@ class DelayedFreeRandomAccessBucketTest {
         new ClientContext(
             1L,
             mock(network.crypta.client.async.ClientLayerPersister.class),
-            mock(network.crypta.support.Executor.class),
+            mock(PriorityAwareExecutor.class),
             mock(network.crypta.client.ArchiveManager.class),
             newFactory, // persistentBucketFactory
             mock(TempBucketFactory.class),

@@ -11,7 +11,7 @@ import java.util.ListIterator;
 import java.util.Map;
 import network.crypta.io.comm.MessageFilter.MATCHED;
 import network.crypta.node.PeerNode;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
@@ -27,7 +27,7 @@ public class MessageCore {
   }
 
   private Dispatcher _dispatcher;
-  private final Executor _executor;
+  private final PriorityAwareExecutor _executor;
 
   /** _filters serves as lock for both */
   private final LinkedList<MessageFilter> _filters = new LinkedList<>();
@@ -47,7 +47,7 @@ public class MessageCore {
     return startedTime;
   }
 
-  public MessageCore(Executor executor) {
+  public MessageCore(PriorityAwareExecutor executor) {
     _executor = executor;
   }
 
@@ -681,7 +681,7 @@ public class MessageCore {
     return messageCounts;
   }
 
-  public Executor getExecutor() {
+  public PriorityAwareExecutor getExecutor() {
     return _executor;
   }
 }

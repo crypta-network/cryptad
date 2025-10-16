@@ -23,7 +23,7 @@ import java.security.Security;
 import java.util.Random;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SerialExecutor;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
@@ -56,7 +56,7 @@ class TempBucketFactoryTempRandomAccessBufferTest {
 
   private Path tempDir;
   private FilenameGenerator fg;
-  private Executor exec;
+  private PriorityAwareExecutor exec;
   private final MasterSecret secret = new MasterSecret();
 
   @BeforeAll

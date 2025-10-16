@@ -26,7 +26,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("queue schedules PrioRunnable and runs job with provided context")
   void queue_whenCalled_executesJobWithContextAndPriorityPreserved() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     PersistentJob job = Mockito.mock(PersistentJob.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
@@ -52,7 +52,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("queueNormalOrDrop uses NORM priority and runs job")
   void queueNormalOrDrop_whenCalled_usesNormPriority() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     PersistentJob job = Mockito.mock(PersistentJob.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
@@ -75,7 +75,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("queueInternal(priority) delegates to queue and preserves priority")
   void queueInternal_withPriority_delegatesToQueue() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     PersistentJob job = Mockito.mock(PersistentJob.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
@@ -98,7 +98,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("queueInternal() uses NORM priority")
   void queueInternal_withoutPriority_usesNormPriority() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     PersistentJob job = Mockito.mock(PersistentJob.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
@@ -121,7 +121,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("lock returns a no-op CheckpointLock")
   void lock_whenUnlockCalled_doesNothing() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
     PersistentJobRunner.CheckpointLock lock = runner.lock();
@@ -134,7 +134,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("hasLoaded always returns true")
   void hasLoaded_whenCalled_returnsTrue() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
     assertTrue(runner.hasLoaded());
@@ -143,7 +143,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("newSalt always returns false")
   void newSalt_whenCalled_returnsFalse() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
     assertFalse(runner.newSalt());
@@ -152,7 +152,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("shuttingDown always returns false")
   void shuttingDown_whenCalled_returnsFalse() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     ClientContext context = Mockito.mock(ClientContext.class);
     DummyJobRunner runner = new DummyJobRunner(executor, context);
     assertFalse(runner.shuttingDown());
@@ -161,7 +161,7 @@ class DummyJobRunnerTest {
   @Test
   @DisplayName("queue passes null context through to job.run")
   void queue_whenContextIsNull_jobReceivesNull() {
-    Executor executor = Mockito.mock(Executor.class);
+    PriorityAwareExecutor executor = Mockito.mock(PriorityAwareExecutor.class);
     PersistentJob job = Mockito.mock(PersistentJob.class);
     DummyJobRunner runner = new DummyJobRunner(executor, null);
 

@@ -3,8 +3,8 @@ package network.crypta.client.async;
 import static org.junit.jupiter.api.Assertions.*;
 
 import network.crypta.support.CheatingTicker;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.WaitableExecutor;
 import network.crypta.support.io.NativeThread;
@@ -105,7 +105,7 @@ public class PersistentJobRunnerImplTest {
 
   private static class JobRunner extends PersistentJobRunnerImpl {
 
-    public JobRunner(Executor executor, Ticker ticker, long interval) {
+    public JobRunner(PriorityAwareExecutor executor, Ticker ticker, long interval) {
       super(executor, ticker, interval);
       // TODO Auto-generated constructor stub
     }

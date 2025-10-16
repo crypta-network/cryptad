@@ -22,7 +22,7 @@ import network.crypta.crypt.EncryptedRandomAccessBucket;
 import network.crypta.crypt.EncryptedRandomAccessBuffer;
 import network.crypta.crypt.EncryptedRandomAccessBufferType;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.api.Bucket;
@@ -128,7 +128,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
   private final DiskSpaceCheckingRandomAccessBufferFactory diskRAFFactory;
   private volatile long minDiskSpace;
   private long bytesInUse = 0;
-  private final Executor executor;
+  private final PriorityAwareExecutor executor;
   private volatile boolean reallyEncrypt;
   private final MasterSecret secret;
 
@@ -733,7 +733,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
    * @param masterSecret key material used when {@code reallyEncrypt} is {@code true}
    */
   public TempBucketFactory(
-      Executor executor,
+      PriorityAwareExecutor executor,
       FilenameGenerator filenameGenerator,
       long maxBucketSizeKeptInRam,
       long maxRamUsed,

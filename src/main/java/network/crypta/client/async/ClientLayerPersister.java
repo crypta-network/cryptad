@@ -29,7 +29,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.RequestStarterGroup;
-import network.crypta.support.Executor;
+import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.DelayedFree;
@@ -120,7 +120,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    *     everything else.
    */
   public ClientLayerPersister(
-      Executor executor,
+      PriorityAwareExecutor executor,
       Ticker ticker,
       Node node,
       NodeClientCore core,

@@ -14,8 +14,8 @@ import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
-import network.crypta.support.Executor;
 import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -47,7 +47,7 @@ public class RealNodePingTest {
     RandomSource random =
         NodeStarter.globalTestInit(baseDirectory, false, Level.ERROR, "", true, null);
     // Create 2 nodes
-    Executor executor = new PooledExecutor();
+    PriorityAwareExecutor executor = new PooledExecutor();
     TestNodeParameters node1Params =
         TestNodeParameterFactory.create(
             baseDirectory,
