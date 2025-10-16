@@ -4,6 +4,7 @@ coroutines = "1.10.2"
 bcprov = "2.73.9"
 jna = "5.17.0"
 commonsCompress = "1.28.0"
+commonsLang = "3.19.0"
 pebble = "3.2.4"
 unbescape = "1.1.6.RELEASE"
 slf4j = "2.0.17"
@@ -29,6 +30,7 @@ bcpkix = { group = "org.bouncycastle", name = "bcpkix-lts8on", version.ref = "bc
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 jnaPlatform = { group = "net.java.dev.jna", name = "jna-platform", version.ref = "jna" }
 commonsCompress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+commonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang" }
 pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
 unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
