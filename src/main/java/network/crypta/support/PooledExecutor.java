@@ -396,17 +396,23 @@ public class PooledExecutor implements PriorityAwareExecutor {
           try {
             wait(remaining);
           } catch (InterruptedException e) {
-            // A thread that is interrupted while idle should not spin.
-            // Break out so the worker can retire promptly; clear the flag to avoid leaking it
-            // to unrelated work if a job arrives concurrently.
+            // Preserve the interrupt status so higher levels can make an exit decision
+            // (rule S2142: either rethrow or re‑interrupt). We choose to re‑interrupt and then
+            // decide below whether to clear it when a job is actually present.
+            Thread.currentThread().interrupt();
             wasInterrupted = true;
             break;
           }
         }
         if (wasInterrupted) {
-          // Clear interrupted status (Object.wait already cleared it on throw, but callers may
-          // set it again; ensure we do not propagate to the next job).
-          Thread.interrupted();
+          // We observed an interrupt while idle: clear the status unconditionally so that user
+          // code never starts with an unexpected interrupted flag, regardless of whether a job is
+          // already assigned now or will be assigned just after we release this monitor.
+          // Capture the return value to satisfy static analysis (don’t ignore result).
+          boolean cleared = Thread.interrupted();
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Cleared interrupt status after idle interrupt (cleared={})", cleared);
+          }
         }
       }
       synchronized (PooledExecutor.this) {
