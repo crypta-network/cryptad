@@ -285,7 +285,8 @@ public abstract class Fields {
    *   <li>{@code YYYYMMDD-HH:MM:SS} (24-hour clock) or {@code YYYYMMDD} (midnight assumed).
    *   <li>Relative deltas: {@code [+|-]<n><unit>} where unit is one of {@code y|year}, {@code
    *       month|mo}, {@code week|w}, {@code day|d}, {@code hour|h}, {@code minute|min}, {@code
-   *       second|s|sec}. The system default {@link TimeZone} applies.
+   *       second|s|sec}. When the unit is omitted, days are assumed. The system default {@link
+   *       TimeZone} applies.
    * </ul>
    *
    * @param date absolute or relative expression.
@@ -315,14 +316,15 @@ public abstract class Fields {
     }
     int num = Integer.parseInt(sb.toString());
     int chop = 1 + sb.length();
-    if (date.length() == chop) {
-      // Original behavior: fall through to absolute parsing when unit is omitted.
-      return parseAbsoluteDateTime(date);
-    }
-    String deltaTypeString = date.substring(chop).toLowerCase();
     int amount = (date.charAt(0) == '+') ? num : -num;
     GregorianCalendar gc = new GregorianCalendar();
-    addDelta(gc, deltaTypeString, amount);
+    if (date.length() == chop) {
+      // Preserve historical behavior: default to days when the unit is omitted.
+      gc.add(Calendar.DAY_OF_YEAR, amount);
+    } else {
+      String deltaTypeString = date.substring(chop).toLowerCase();
+      addDelta(gc, deltaTypeString, amount);
+    }
     return gc.getTime().getTime();
   }
 
