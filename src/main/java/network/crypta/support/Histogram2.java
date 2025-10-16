@@ -6,7 +6,7 @@ import network.crypta.support.math.TrivialRunningAverage;
 /**
  * A lightweight, bucketed aggregator built from independent running averages.
  *
- * <p>This class partitions the key space {@code [0, MAX)} into a fixed number of equally sized bins
+ * <p>This class partitions the key space {@code [0, max)} into a fixed number of equally sized bins
  * ("bars"). Each bar holds a {@link RunningAverage} that is updated when {@link #report} receives a
  * key within that bar's interval. Unlike a conventional histogram that counts occurrences, each bar
  * tracks an average of caller-provided values. A common use case is tracking success rates per
@@ -54,8 +54,8 @@ public class Histogram2 {
    * <p>Behavior:
    *
    * <ul>
-   *   <li>Keys outside {@code [0, MAX)} are ignored.
-   *   <li>Valid keys map to a bar via {@code floor(bars.length * key / MAX)}. This is equivalent to
+   *   <li>Keys outside {@code [0, max)} are ignored.
+   *   <li>Valid keys map to a bar via {@code floor(bars.length * key / max)}. This is equivalent to
    *       dividing the key range into equal-width intervals and choosing the corresponding index.
    *   <li>The chosen bar's running average incorporates {@code value}.
    * </ul>
@@ -65,7 +65,7 @@ public class Histogram2 {
    * <p>Threading: See class-level notes. This method does not synchronize; it delegates to the
    * thread-safe {@link RunningAverage} held by the selected bar.
    *
-   * @param key location in {@code [0, MAX)} that selects the bar
+   * @param key location in {@code [0, max)} that selects the bar
    * @param value observation to feed to that bar's running average; units are caller-defined
    * @throws RuntimeException any exception thrown by the underlying {@link RunningAverage}
    *     implementation is propagated
@@ -73,7 +73,7 @@ public class Histogram2 {
   public void report(final double key, final double value) {
     if (key < 0.0 || key >= max) return;
     // Compute bar index by scaling key into [0, bars.length) and truncating toward zero (floor for
-    // non‑negative inputs). This yields a uniform partition of [0, MAX) into equal-width bins.
+    // non‑negative inputs). This yields a uniform partition of [0, max) into equal-width bins.
     int n = (int) (bars.length * key / max);
     bars[n].report(value);
   }
@@ -82,15 +82,15 @@ public class Histogram2 {
    * Returns a snapshot of per-bar averages scaled to {@code localMax} and truncated to integers.
    *
    * <p>For each bar {@code i}, the returned array contains {@code (int) (bars[i].currentValue() *
-   * localMax / MAX)}. This provides a linear mapping from the bar's average (assumed to be in the
-   * range {@code [0, MAX]} for percentage-like data) into {@code [0, localMax]}.
+   * localMax / max)}. This provides a linear mapping from the bar's average (assumed to be in the
+   * range {@code [0, max]} for percentage-like data) into {@code [0, localMax]}.
    *
    * <p>Notes:
    *
    * <ul>
    *   <li>Values are truncated toward zero due to the explicit cast to {@code int}.
    *   <li>If a bar's average is negative, the corresponding entry will be negative.
-   *   <li>Precondition (not enforced): {@code MAX > 0}; otherwise the scale factor is undefined
+   *   <li>Precondition (not enforced): {@code max > 0}; otherwise the scale factor is undefined
    *       (division by zero). TODO: consider validating {@code maxValue > 0} at construction time.
    * </ul>
    *
@@ -102,7 +102,7 @@ public class Histogram2 {
   public int[] getPercentageArray(int localMax) {
     int[] retval = new int[bars.length];
     for (int i = 0; i < retval.length; i++) {
-      // Scale the current average from [0, MAX] into [0, localMax], then truncate to an int.
+      // Scale the current average from [0, max] into [0, localMax], then truncate to an int.
       int val = (int) (bars[i].currentValue() * localMax / max);
       retval[i] = val;
     }
