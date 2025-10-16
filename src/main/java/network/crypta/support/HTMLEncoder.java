@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -17,6 +16,8 @@ import java.util.Map;
  */
 public class HTMLEncoder {
   public static final CharTable charTable = new CharTable(HTMLEntities.encodeMap);
+
+  private HTMLEncoder() {}
 
   public static String encode(String s) {
     int n = s.length();
@@ -72,7 +73,7 @@ public class HTMLEncoder {
     private final String[] strings;
     private int modulo = 0;
 
-    public CharTable(HashMap<Character, String> map) {
+    public CharTable(Map<Character, String> map) {
       int[] keys = new int[map.size()];
       int keyIndex = 0;
 
