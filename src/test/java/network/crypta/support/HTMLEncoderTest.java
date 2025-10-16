@@ -114,9 +114,12 @@ class HTMLEncoderTest {
 
   @Test
   void encodeToBuffer_whenNullInput_throwsNullPointerException() {
-    // Act / Assert (builder is unused because null input triggers early NPE)
-    assertThrows(
-        NullPointerException.class, () -> HTMLEncoder.encodeToBuffer(null, new StringBuilder()));
+    // Arrange
+    StringBuilder sb = new StringBuilder();
+    // Act / Assert (ensure the lambda performs a single potentially throwing call)
+    assertThrows(NullPointerException.class, () -> HTMLEncoder.encodeToBuffer(null, sb));
+    // Also verify the builder remains untouched (consume to satisfy static analysis)
+    assertEquals(0, sb.length());
   }
 
   @Test
