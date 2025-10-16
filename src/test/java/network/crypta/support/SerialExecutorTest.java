@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.Test;
- 
+
 @SuppressWarnings("java:S100") // test method names follow method_whenCondition_expectOutcome style
 class SerialExecutorTest {
 
@@ -189,14 +189,16 @@ class SerialExecutorTest {
     CountDownLatch job2Done = new CountDownLatch(1);
     AtomicInteger ranCount = new AtomicInteger();
 
-    Runnable job1 = () -> {
-      ranCount.incrementAndGet();
-      job1Done.countDown();
-    };
-    Runnable job2 = () -> {
-      ranCount.incrementAndGet();
-      job2Done.countDown();
-    };
+    Runnable job1 =
+        () -> {
+          ranCount.incrementAndGet();
+          job1Done.countDown();
+        };
+    Runnable job2 =
+        () -> {
+          ranCount.incrementAndGet();
+          job2Done.countDown();
+        };
 
     // Fill to capacity before starting; the second offer() should be dropped silently
     exec.execute(job1, "first");

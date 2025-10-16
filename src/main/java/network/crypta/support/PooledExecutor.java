@@ -61,9 +61,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
     this.ticker = ticker;
   }
 
-  /**
-   * Construct a new executor with empty per‑priority pools and counters.
-   */
+  /** Construct a new executor with empty per‑priority pools and counters. */
   public PooledExecutor() {
     for (int i = 0; i < runningThreads.length; i++) {
       waitingThreads.add(new ArrayList<>());
@@ -126,8 +124,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
   public void execute(Runnable runnable, String jobName, boolean fromTicker) {
     final int prio = priorityOf(runnable);
 
-    if (LOG.isDebugEnabled())
-      LOG.debug("Executing {} as {} at prio {}", runnable, jobName, prio);
+    if (LOG.isDebugEnabled()) LOG.debug("Executing {} as {} at prio {}", runnable, jobName, prio);
     validatePriority(prio);
 
     final Job job = new Job(runnable, jobName);
@@ -176,8 +173,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
     if (!list.isEmpty()) {
       MyThread t = list.removeLast();
       if (t != null) waitingThreadsCount.decrementAndGet();
-      if (LOG.isDebugEnabled())
-        LOG.debug("Reusing thread {}", t);
+      if (LOG.isDebugEnabled()) LOG.debug("Reusing thread {}", t);
       return t;
     }
     return null;
@@ -215,7 +211,10 @@ public class PooledExecutor implements PriorityAwareExecutor {
   private void logNotStarting(String jobName) {
     if (LOG.isDebugEnabled())
       synchronized (this) {
-        LOG.debug("Not starting: Jobs: {} misses of {} starting urgently {}", jobMisses, jobCount,
+        LOG.debug(
+            "Not starting: Jobs: {} misses of {} starting urgently {}",
+            jobMisses,
+            jobCount,
             jobName);
       }
   }
@@ -300,9 +299,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
       nextJob = firstJob;
     }
 
-    /**
-     * Execute the worker loop and decrement pool counters on exit.
-     */
+    /** Execute the worker loop and decrement pool counters on exit. */
     @Override
     public void realRun() {
       int nativePriority = getNativePriority();
