@@ -20,7 +20,7 @@ import network.crypta.support.math.TrivialRunningAverage;
  */
 public class Histogram2 {
 
-  private final double MAX;
+  private final double max;
   private final RunningAverage[] bars;
 
   /**
@@ -41,7 +41,7 @@ public class Histogram2 {
    *     positive for meaningful results
    */
   public Histogram2(final int numBars, final double maxValue) {
-    this.MAX = maxValue;
+    this.max = maxValue;
     this.bars = new RunningAverage[numBars];
     for (int i = 0; i < numBars; i++) {
       this.bars[i] = new TrivialRunningAverage();
@@ -71,10 +71,10 @@ public class Histogram2 {
    *     implementation is propagated
    */
   public void report(final double key, final double value) {
-    if (key < 0.0 || key >= MAX) return;
+    if (key < 0.0 || key >= max) return;
     // Compute bar index by scaling key into [0, bars.length) and truncating toward zero (floor for
     // non‑negative inputs). This yields a uniform partition of [0, MAX) into equal-width bins.
-    int n = (int) (bars.length * key / MAX);
+    int n = (int) (bars.length * key / max);
     bars[n].report(value);
   }
 
@@ -103,7 +103,7 @@ public class Histogram2 {
     int[] retval = new int[bars.length];
     for (int i = 0; i < retval.length; i++) {
       // Scale the current average from [0, MAX] into [0, localMax], then truncate to an int.
-      int val = (int) (bars[i].currentValue() * localMax / MAX);
+      int val = (int) (bars[i].currentValue() * localMax / max);
       retval[i] = val;
     }
     return retval;
