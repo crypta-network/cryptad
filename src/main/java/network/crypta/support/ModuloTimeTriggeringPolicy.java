@@ -122,7 +122,7 @@ public class ModuloTimeTriggeringPolicy<E>
 
     // Align to wall-clock boundaries rather than JVM-relative counts so restarts do not drift
     // multi-unit rotations (e.g., every 5 minutes or every 3 hours).
-    long now = System.currentTimeMillis();
+    long now = nowMillis();
     java.time.ZoneId zone = java.time.ZoneId.systemDefault();
     java.time.ZonedDateTime zdt =
         java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(now), zone);
@@ -164,5 +164,15 @@ public class ModuloTimeTriggeringPolicy<E>
             && zdt.getHour() == 0
             && zdt.getMinute() == 0;
     }
+  }
+
+  /**
+   * Returns the current epoch time in milliseconds.
+   *
+   * <p>Subclasses may override in tests to provide a fixed instant, making boundary checks
+   * deterministic without affecting production behavior.
+   */
+  protected long nowMillis() {
+    return System.currentTimeMillis();
   }
 }

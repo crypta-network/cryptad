@@ -2,6 +2,7 @@ package network.crypta.support;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
@@ -20,8 +21,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * Tests for {@link ModuloTimeTriggeringPolicy}.
  *
  * <p>These tests control the Logback policy clock via the inherited {@code setCurrentTime(long)}
- * and {@code setDateInCurrentPeriod(long)} methods and stub {@code System.currentTimeMillis()} to
- * keep the policy's wall-clock alignment deterministic.
+ * and {@code setDateInCurrentPeriod(long)} methods. For modulo alignment checks, tests compute the
+ * expected predicate from a fresh {@code System.currentTimeMillis()} captured immediately before
+ * calling the policy and skip if the system clock is too close to a minute boundary to avoid race
+ * conditions.
  */
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
@@ -106,9 +109,13 @@ class ModuloTimeTriggeringPolicyTest {
     policy.setUnit(ModuloTimeTriggeringPolicy.Unit.HOUR);
     final int multiple = 3;
     policy.setMultiple(multiple);
-
-    long now = System.currentTimeMillis();
-    ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.systemDefault());
+    ZoneId zone = ZoneId.systemDefault();
+    ZonedDateTime zdt =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Avoid minute-boundary races that could desynchronize expectation and policy call.
+    assumeTrue(
+        zdt.getSecond() >= 2 && zdt.getSecond() <= 57,
+        "Skip near minute boundary to keep modulo check stable");
     // Force a minute boundary transition in the underlying policy
     long boundary = zdt.withSecond(0).withNano(0).toInstant().toEpochMilli();
     long previous = boundary - 60_000L;
@@ -118,7 +125,9 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    boolean expected = (zdt.getHour() % multiple) == 0 && zdt.getMinute() == 0;
+    ZonedDateTime zdtCall =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    boolean expected = (zdtCall.getHour() % multiple) == 0 && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
 
@@ -130,9 +139,12 @@ class ModuloTimeTriggeringPolicyTest {
     policy.setUnit(ModuloTimeTriggeringPolicy.Unit.DAY);
     final int multiple = 2;
     policy.setMultiple(multiple);
-
-    long now = System.currentTimeMillis();
-    ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.systemDefault());
+    ZoneId zone = ZoneId.systemDefault();
+    ZonedDateTime zdt =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    assumeTrue(
+        zdt.getSecond() >= 2 && zdt.getSecond() <= 57,
+        "Skip near minute boundary to keep modulo check stable");
     long boundary = zdt.withSecond(0).withNano(0).toInstant().toEpochMilli();
     long previous = boundary - 60_000L;
 
@@ -141,8 +153,11 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    long epochDay = zdt.toLocalDate().toEpochDay();
-    boolean expected = (epochDay % multiple) == 0 && zdt.getHour() == 0 && zdt.getMinute() == 0;
+    ZonedDateTime zdtCall =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    long epochDay = zdtCall.toLocalDate().toEpochDay();
+    boolean expected =
+        (epochDay % multiple) == 0 && zdtCall.getHour() == 0 && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
 
@@ -154,9 +169,12 @@ class ModuloTimeTriggeringPolicyTest {
     policy.setUnit(ModuloTimeTriggeringPolicy.Unit.WEEK);
     final int multiple = 2;
     policy.setMultiple(multiple);
-
-    long now = System.currentTimeMillis();
-    ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.systemDefault());
+    ZoneId zone = ZoneId.systemDefault();
+    ZonedDateTime zdt =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    assumeTrue(
+        zdt.getSecond() >= 2 && zdt.getSecond() <= 57,
+        "Skip near minute boundary to keep modulo check stable");
     long boundary = zdt.withSecond(0).withNano(0).toInstant().toEpochMilli();
     long previous = boundary - 60_000L;
 
@@ -165,13 +183,15 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    long epochDay = zdt.toLocalDate().toEpochDay();
+    ZonedDateTime zdtCall =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    long epochDay = zdtCall.toLocalDate().toEpochDay();
     long isoWeekIndex = Math.floorDiv(epochDay + 3, 7);
     boolean expected =
         (isoWeekIndex % multiple) == 0
-            && zdt.getDayOfWeek() == java.time.DayOfWeek.MONDAY
-            && zdt.getHour() == 0
-            && zdt.getMinute() == 0;
+            && zdtCall.getDayOfWeek() == java.time.DayOfWeek.MONDAY
+            && zdtCall.getHour() == 0
+            && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
 
@@ -183,9 +203,12 @@ class ModuloTimeTriggeringPolicyTest {
     policy.setUnit(ModuloTimeTriggeringPolicy.Unit.MONTH);
     final int multiple = 6;
     policy.setMultiple(multiple);
-
-    long now = System.currentTimeMillis();
-    ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.systemDefault());
+    ZoneId zone = ZoneId.systemDefault();
+    ZonedDateTime zdt =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    assumeTrue(
+        zdt.getSecond() >= 2 && zdt.getSecond() <= 57,
+        "Skip near minute boundary to keep modulo check stable");
     long boundary = zdt.withSecond(0).withNano(0).toInstant().toEpochMilli();
     long previous = boundary - 60_000L;
 
@@ -194,12 +217,14 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    int monthIndex = zdt.getYear() * 12 + (zdt.getMonthValue() - 1);
+    ZonedDateTime zdtCall =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    int monthIndex = zdtCall.getYear() * 12 + (zdtCall.getMonthValue() - 1);
     boolean expected =
         (monthIndex % multiple) == 0
-            && zdt.getDayOfMonth() == 1
-            && zdt.getHour() == 0
-            && zdt.getMinute() == 0;
+            && zdtCall.getDayOfMonth() == 1
+            && zdtCall.getHour() == 0
+            && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
 
@@ -211,9 +236,12 @@ class ModuloTimeTriggeringPolicyTest {
     policy.setUnit(ModuloTimeTriggeringPolicy.Unit.YEAR);
     final int multiple = 4;
     policy.setMultiple(multiple);
-
-    long now = System.currentTimeMillis();
-    ZonedDateTime zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(now), ZoneId.systemDefault());
+    ZoneId zone = ZoneId.systemDefault();
+    ZonedDateTime zdt =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    assumeTrue(
+        zdt.getSecond() >= 2 && zdt.getSecond() <= 57,
+        "Skip near minute boundary to keep modulo check stable");
     long boundary = zdt.withSecond(0).withNano(0).toInstant().toEpochMilli();
     long previous = boundary - 60_000L;
 
@@ -222,11 +250,13 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
+    ZonedDateTime zdtCall =
+        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
     boolean expected =
-        (zdt.getYear() % multiple) == 0
-            && zdt.getDayOfYear() == 1
-            && zdt.getHour() == 0
-            && zdt.getMinute() == 0;
+        (zdtCall.getYear() % multiple) == 0
+            && zdtCall.getDayOfYear() == 1
+            && zdtCall.getHour() == 0
+            && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
 }
