@@ -53,6 +53,7 @@ dependencies {
   // For tests asserting SLF4J integration
   testImplementation(libs.logbackClassic)
   testImplementation(libs.mockitoCore)
+  testImplementation(libs.mockitoJunitJupiter)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
 
