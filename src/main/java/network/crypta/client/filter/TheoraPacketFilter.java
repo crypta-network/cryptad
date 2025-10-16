@@ -1,6 +1,6 @@
 package network.crypta.client.filter;
 
-import static network.crypta.support.PredicateUtil.not;
+import static java.util.function.Predicate.not;
 
 import java.io.*;
 import java.util.*;
