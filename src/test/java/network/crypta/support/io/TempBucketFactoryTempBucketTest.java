@@ -307,15 +307,27 @@ class TempBucketFactoryTempBucketTest {
   @Nested
   @SuppressWarnings("java:S100")
   class DiskSpaceChecks {
+    /**
+     * Helper to create a TempBucketFactory with a specific minimum free-disk threshold.
+     *
+     * <p>Parameters {@code maxRamBucket} and {@code maxRamUsed} are used to steer selection toward
+     * a disk-backed bucket when needed for these disk-space tests.
+     */
+    private TempBucketFactory newFactoryWithMinDisk(
+        long minDisk, long maxRamBucket, long maxRamUsed) {
+      return new TempBucketFactory(exec, fg, maxRamBucket, maxRamUsed, false, minDisk, SECRET);
+    }
+
     @Test
     @DisplayName("makeBucket_whenMinDiskSpaceExceededOnCreate_throwsInsufficientDiskSpace")
     void makeBucket_whenMinDiskSpaceExceededOnCreate_throwsInsufficientDiskSpace() {
       // Arrange
-      long usable = fg.getDir().getUsableSpace();
-      long minDisk = usable + 8192 + 1; // force failure on pre-check
-      TempBucketFactory tbf =
-          new TempBucketFactory(
-              exec, fg, /*maxRamBucket*/ 1, /*maxRamUsed*/ 1, false, minDisk, SECRET);
+      long initialUsable = fg.getDir().getUsableSpace();
+      long guard = 64L * 1024 * 1024; // 64 MiB safety margin against CI free-space fluctuations
+      long currentUsable = fg.getDir().getUsableSpace();
+      long baseUsable = Math.max(initialUsable, currentUsable);
+      long minDisk = baseUsable + guard + 8192; // force failure on pre-check robustly
+      TempBucketFactory tbf = newFactoryWithMinDisk(minDisk, /*maxRamBucket*/ 1, /*maxRamUsed*/ 1);
 
       // Act + Assert (ensure resource would be closed if unexpectedly created)
       assertThrows(
@@ -331,11 +343,12 @@ class TempBucketFactoryTempBucketTest {
     @DisplayName("write_whenDiskBucketAndBelowUsableSpace_throwsInsufficientDiskSpace")
     void write_whenDiskBucketAndBelowUsableSpace_throwsInsufficientDiskSpace() throws IOException {
       // Arrange
-      long usable = fg.getDir().getUsableSpace();
-      long minDisk = usable + 4096 + 1; // fail the per-write disk check on first 4K flush
-      TempBucketFactory tbf =
-          new TempBucketFactory(
-              exec, fg, /*maxRamBucket*/ 0, /*maxRamUsed*/ 0, false, minDisk, SECRET);
+      long initialUsable = fg.getDir().getUsableSpace();
+      long guard = 64L * 1024 * 1024; // 64 MiB safety margin against CI free-space fluctuations
+      long currentUsable = fg.getDir().getUsableSpace();
+      long baseUsable = Math.max(initialUsable, currentUsable);
+      long minDisk = baseUsable + guard + 4096; // fail per-write check on first 4K flush robustly
+      TempBucketFactory tbf = newFactoryWithMinDisk(minDisk, /*maxRamBucket*/ 0, /*maxRamUsed*/ 0);
 
       try (RandomAccessBucket bucket = tbf.makeBucket(-1);
           OutputStream os = bucket.getOutputStreamUnbuffered()) {
