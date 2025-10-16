@@ -22,10 +22,10 @@ import java.util.Objects;
  *
  * <p>Concurrency: Most operations synchronize on {@code this}. Mutations and the majority of read
  * operations (e.g., {@link #contains(Object)}, {@link #toArray()}, {@link #toArrayOrdered()},
- * {@link #clear()}, {@link #get(Object)}) are synchronized. The {@link #size()} and {@link
- * #elements()} methods are not synchronized and may observe transient states if other threads
- * mutate the queue concurrently. For a consistent snapshot, prefer the synchronized array-producing
- * methods.
+ * {@link #clear()}, {@link #get(Object)}, and {@link #elements()}) are synchronized. The {@link
+ * #size()} method is not synchronized and may observe transient states if other threads mutate the
+ * queue concurrently. The enumeration returned by {@link #elements()} is built from a snapshot
+ * captured while holding the monitor; it does not reflect later mutations.
  *
  * <p>Nullability: {@link #push(Object)}, {@link #pushLeast(Object)}, and {@link #remove(Object)}
  * reject {@code null} and throw {@link NullPointerException}. Other lookups using {@code null}
@@ -158,8 +158,8 @@ public class LRUQueue<T> {
    *
    * @return enumeration from LRU to MRU
    */
-  public Enumeration<T> elements() {
-    // Provide an Enumeration view without implementing Enumeration ourselves (Sonar S1150).
+  public synchronized Enumeration<T> elements() {
+    // Build snapshot under lock because DoublyLinkedListImpl is not thread-safe.
     ArrayList<T> snapshot = new ArrayList<>(list.size());
     for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
       snapshot.add(e.nextElement().obj);
