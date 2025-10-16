@@ -289,7 +289,7 @@ public class MediaType {
    *
    * @return new {@link LinkedHashMap} containing all parameters
    */
-  public LinkedHashMap<String, String> getParameters() {
+  public Map<String, String> getParameters() {
     return new LinkedHashMap<>(parameters);
   }
 
