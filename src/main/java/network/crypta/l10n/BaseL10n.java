@@ -897,14 +897,14 @@ public class BaseL10n {
       if (x == -1) {
         // It goes up to the end of the tag. It has no contents.
         if (subnode != null) {
-          node.addChild(subnode.clone());
+          node.addChild(subnode.copy());
         }
       } else {
         // It has contents. Must recurse.
         String inner = value.substring(0, x);
         String rest = value.substring(x + searchFor.length());
         if (subnode != null) {
-          subnode = subnode.clone();
+          subnode = subnode.copy();
           node.addChild(subnode);
         } else {
           subnode = node;
