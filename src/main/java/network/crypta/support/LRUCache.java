@@ -10,22 +10,22 @@ package network.crypta.support;
  * the entry were absent.
  *
  * <p>Expiration is evaluated against {@link System#currentTimeMillis()} when entries are created
- * and when they are retrieved via {@link #get}. Expired entries are only purged on access
- * (or when they are evicted for capacity reasons); there is no background or periodic garbage
- * collection in this implementation. This cache is therefore intended for small capacities (or for
- * holding many small items) where opportunistic cleanup is acceptable. If a larger cache is
- * required, consider an alternative that includes scheduled cleanup.
+ * and when they are retrieved via {@link #get}. Expired entries are only purged on access (or when
+ * they are evicted for capacity reasons); there is no background or periodic garbage collection in
+ * this implementation. This cache is therefore intended for small capacities (or for holding many
+ * small items) where opportunistic cleanup is acceptable. If a larger cache is required, consider
+ * an alternative that includes scheduled cleanup.
  *
  * <p>Operations delegate to {@link LRUMap}, which uses a tree-based map to avoid hash-collision
- * denial-of-service scenarios. Typical {@code put} and {@code get} are {@code O(log N)} due to
- * the underlying {@code TreeMap}.
+ * denial-of-service scenarios. Typical {@code put} and {@code get} are {@code O(log N)} due to the
+ * underlying {@code TreeMap}.
  *
  * <p>Thread-safety: this class does not provide external synchronization guarantees. Callers should
  * synchronize externally if using the same instance from multiple threads.
  *
- * <p>Nullability: keys must be non-null (a {@link NullPointerException} is thrown by
- * {@link LRUMap}); values may be null. A stored {@code null} value is indistinguishable from an
- * absent or expired entry when using {@link #get}.
+ * <p>Nullability: keys must be non-null (a {@link NullPointerException} is thrown by {@link
+ * LRUMap}); values may be null. A stored {@code null} value is indistinguishable from an absent or
+ * expired entry when using {@link #get}.
  *
  * @param <K> key type; must be {@link Comparable}
  * @param <V> value type
@@ -86,9 +86,9 @@ public final class LRUCache<K extends Comparable<K>, V> {
   /**
    * Constructs a cache with the given capacity and expiration policy.
    *
-   * <p>Each inserted or updated entry receives a deadline equal to
-   * {@code System.currentTimeMillis() + expirationDelay}. The deadline is checked on retrieval.
-   * Negative delays cause entries to be considered expired immediately.
+   * <p>Each inserted or updated entry receives a deadline equal to {@code
+   * System.currentTimeMillis() + expirationDelay}. The deadline is checked on retrieval. Negative
+   * delays cause entries to be considered expired immediately.
    *
    * @param sizeLimit maximum number of entries held at once
    * @param expirationDelay delay in milliseconds from insertion/update until an entry expires; use
