@@ -307,6 +307,17 @@ class TempBucketFactoryTempBucketTest {
   @Nested
   @SuppressWarnings("java:S100")
   class DiskSpaceChecks {
+    /**
+     * Helper to create a TempBucketFactory with a specific minimum free-disk threshold.
+     *
+     * <p>Parameters {@code maxRamBucket} and {@code maxRamUsed} are used to steer selection toward
+     * a disk-backed bucket when needed for these disk-space tests.
+     */
+    private TempBucketFactory newFactoryWithMinDisk(
+        long minDisk, long maxRamBucket, long maxRamUsed) {
+      return new TempBucketFactory(exec, fg, maxRamBucket, maxRamUsed, false, minDisk, SECRET);
+    }
+
     @Test
     @DisplayName("makeBucket_whenMinDiskSpaceExceededOnCreate_throwsInsufficientDiskSpace")
     void makeBucket_whenMinDiskSpaceExceededOnCreate_throwsInsufficientDiskSpace() {
@@ -316,9 +327,7 @@ class TempBucketFactoryTempBucketTest {
       long currentUsable = fg.getDir().getUsableSpace();
       long baseUsable = Math.max(initialUsable, currentUsable);
       long minDisk = baseUsable + guard + 8192; // force failure on pre-check robustly
-      TempBucketFactory tbf =
-          new TempBucketFactory(
-              exec, fg, /*maxRamBucket*/ 1, /*maxRamUsed*/ 1, false, minDisk, SECRET);
+      TempBucketFactory tbf = newFactoryWithMinDisk(minDisk, /*maxRamBucket*/ 1, /*maxRamUsed*/ 1);
 
       // Act + Assert (ensure resource would be closed if unexpectedly created)
       assertThrows(
@@ -339,9 +348,7 @@ class TempBucketFactoryTempBucketTest {
       long currentUsable = fg.getDir().getUsableSpace();
       long baseUsable = Math.max(initialUsable, currentUsable);
       long minDisk = baseUsable + guard + 4096; // fail per-write check on first 4K flush robustly
-      TempBucketFactory tbf =
-          new TempBucketFactory(
-              exec, fg, /*maxRamBucket*/ 0, /*maxRamUsed*/ 0, false, minDisk, SECRET);
+      TempBucketFactory tbf = newFactoryWithMinDisk(minDisk, /*maxRamBucket*/ 0, /*maxRamUsed*/ 0);
 
       try (RandomAccessBucket bucket = tbf.makeBucket(-1);
           OutputStream os = bucket.getOutputStreamUnbuffered()) {
