@@ -393,14 +393,23 @@ public class PooledExecutor implements PriorityAwareExecutor {
       synchronized (this) {
         long end = System.currentTimeMillis() + TIMEOUT;
         long remaining;
+        boolean wasInterrupted = false;
         while (nextJob == null && (remaining = end - System.currentTimeMillis()) > 0) {
           this.setName(defaultName);
           try {
             wait(remaining);
           } catch (InterruptedException e) {
-            // Restore interrupted flag and re-check condition to handle spurious wakeups.
-            Thread.currentThread().interrupt();
+            // A thread that is interrupted while idle should not spin.
+            // Break out so the worker can retire promptly; clear the flag to avoid leaking it
+            // to unrelated work if a job arrives concurrently.
+            wasInterrupted = true;
+            break;
           }
+        }
+        if (wasInterrupted) {
+          // Clear interrupted status (Object.wait already cleared it on throw, but callers may
+          // set it again; ensure we do not propagate to the next job).
+          Thread.interrupted();
         }
       }
       synchronized (PooledExecutor.this) {

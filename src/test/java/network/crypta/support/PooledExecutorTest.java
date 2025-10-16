@@ -224,6 +224,74 @@ class PooledExecutorTest {
     assertEquals(id1, id2, "expected the same worker thread to be reused");
   }
 
+  @Test
+  void idleWorker_whenInterrupted_exitsInsteadOfSpinning_andNextJobUsesNewThread() {
+    PooledExecutor exec = new PooledExecutor();
+
+    AtomicReference<Thread> workerRef = new AtomicReference<>();
+    AtomicReference<String> firstName = new AtomicReference<>();
+    CountDownLatch ran1 = new CountDownLatch(1);
+
+    Runnable first =
+        () -> {
+          Thread t = Thread.currentThread();
+          workerRef.set(t);
+          firstName.set(t.getName());
+          ran1.countDown();
+        };
+
+    exec.execute(first, "first");
+    assertTrue(uninterruptiblyAwait(ran1, 2), "first job did not run");
+
+    // Wait for the worker to become idle/registered as waiting.
+    assertTimeout(
+        Duration.ofSeconds(2),
+        () -> {
+          while (exec.getWaitingThreadsCount() == 0) {
+            Thread.onSpinWait();
+          }
+        });
+
+    // Interrupt the idle worker and verify it retires (waiting count returns to 0).
+    Thread w = workerRef.get();
+    w.interrupt();
+
+    assertTimeout(
+        Duration.ofSeconds(2),
+        () -> {
+          while (exec.getWaitingThreadsCount() != 0) {
+            Thread.onSpinWait();
+          }
+        });
+
+    // Also confirm there are no running workers at the default priority once it retires.
+    int idx = NativeThread.PriorityLevel.NORM_PRIORITY.value - 1;
+    assertTimeout(
+        Duration.ofSeconds(2),
+        () -> {
+          while (exec.runningThreads()[idx] != 0) {
+            Thread.onSpinWait();
+          }
+        });
+
+    // Submit a second job and ensure it runs on a different worker id.
+    AtomicReference<String> secondName = new AtomicReference<>();
+    CountDownLatch ran2 = new CountDownLatch(1);
+    Runnable second =
+        () -> {
+          secondName.set(Thread.currentThread().getName());
+          ran2.countDown();
+        };
+    exec.execute(second, "second");
+    assertTrue(uninterruptiblyAwait(ran2, 2), "second job did not run");
+
+    String id1 = extractWorkerIdSuffix(firstName.get());
+    String id2 = extractWorkerIdSuffix(secondName.get());
+    // If the interrupted worker retired, the thread id suffix must differ.
+    org.junit.jupiter.api.Assertions.assertFalse(
+        id1.equals(id2), "expected a new worker thread after interrupt");
+  }
+
   // --- Helpers ---
 
   private static boolean uninterruptiblyAwait(CountDownLatch latch, long seconds) {
