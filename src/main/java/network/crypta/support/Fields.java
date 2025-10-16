@@ -185,11 +185,11 @@ public abstract class Fields {
    * Splits a comma-separated list into trimmed elements.
    *
    * @param ls input string; may be {@code null}.
-   * @return a new array of trimmed tokens, or {@code null} when {@code ls} is {@code null}.
+   * @return a new array of trimmed tokens, or an empty array when {@code ls} is {@code null}.
    */
   public static String[] commaList(String ls) {
     if (ls == null) {
-      return null;
+      return new String[0];
     }
     StringTokenizer st = new StringTokenizer(ls, ",");
     String[] r = new String[st.countTokens()];
@@ -357,7 +357,9 @@ public abstract class Fields {
       return buildCalendarMillis(year, month, day, hour, minute, second);
     } catch (Exception e) {
       LOG.debug("Invalid date {}", date, e);
-      throw new NumberFormatException("Invalid date " + date + ": " + e);
+      NumberFormatException nfe = new NumberFormatException("Invalid date '" + date + "'");
+      nfe.initCause(e);
+      throw nfe;
     }
   }
 
