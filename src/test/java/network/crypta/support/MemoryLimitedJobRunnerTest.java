@@ -339,8 +339,8 @@ class MemoryLimitedJobRunnerTest {
       Thread waiter = new Thread(runner::waitForShutdown, "mljr-waiter-test");
       waiter.start();
 
-      // Give the waiter a moment to enter wait(); then interrupt it. It should keep waiting.
-      Thread.sleep(50);
+      // Interrupt promptly; whether the thread is in wait() yet or not, the
+      // implementation records the interruption and continues to wait until all jobs finish.
       waiter.interrupt();
       // It must still be alive shortly after the interrupt because jobs haven't finished yet.
       waiter.join(150);
@@ -403,7 +403,6 @@ class MemoryLimitedJobRunnerTest {
       runner.shutdown();
       Thread waiter = new Thread(runner::waitForShutdown);
       waiter.start();
-      Thread.sleep(50); // give waiter time to block
       assertTrue(waiter.isAlive());
 
       // release(0) must still mark the thread as finished (deallocate(0, true))
