@@ -26,9 +26,10 @@ import java.util.regex.Pattern;
  *
  * <p>Thread-safety: Instances are not thread-safe.
  */
-public class HTMLNode implements XMLCharacterClasses {
+public class HTMLNode {
 
-  private static final Pattern namePattern = Pattern.compile("^[" + NAME + "]*$");
+  private static final Pattern namePattern =
+      Pattern.compile("^[" + XMLCharacterClasses.NAME + "]*$");
   private static final Pattern simpleNamePattern = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
 
   /** Shared, read-only {@code <strong>} element convenience instance. Do not mutate. */
