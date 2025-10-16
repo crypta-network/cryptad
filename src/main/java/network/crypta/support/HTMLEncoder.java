@@ -15,7 +15,7 @@ import java.util.Map;
  * @author Unique Person@w3nO30p4p9L81xKTXbCaQBOvUww (via Frost)
  */
 public class HTMLEncoder {
-  public static final CharTable charTable = new CharTable(HTMLEntities.encodeMap);
+  private static final CharTable charTable = new CharTable(HTMLEntities.encodeMap);
 
   private HTMLEncoder() {}
 
