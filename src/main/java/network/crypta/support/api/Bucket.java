@@ -8,67 +8,123 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
- * A bucket is any arbitrary object can temporarily store data. In other words, it is the equivalent
- * of a temporary file, but it could be in RAM, on disk, encrypted, part of a file on disk, composed
- * from a chain of other buckets etc.
+ * Abstraction of a temporary data container.
  *
- * <p>Not all buckets are Serializable.
+ * <p>A {@code Bucket} behaves like a temporary file but the underlying storage can vary: it may
+ * live in memory, on disk, be encrypted, occupy a slice of another file, or be composed from a
+ * chain of other buckets. Implementations are free to choose the storage strategy while exposing a
+ * simple stream-based read/write API.
+ *
+ * <p>Serialization is not required; not all bucket implementations are {@link java.io.Serializable
+ * Serializable}.
+ *
+ * <p>Thread-safety: unless otherwise documented by a specific implementation, instances are not
+ * guaranteed to be safe for concurrent use. Coordinate access externally.
  *
  * @author oskar
  */
 public interface Bucket extends AutoCloseable {
 
   /**
-   * Returns an OutputStream that is used to put data in this Bucket, from the beginning. It is not
-   * possible to append data to a Bucket! This simplifies the code significantly for some classes.
-   * If you need to append, just pass the OutputStream around. Will be buffered if appropriate (e.g.
-   * byte array backed buckets don't need to be buffered).
+   * Opens a stream for writing the bucket's content from the beginning.
+   *
+   * <p>Writing always starts at offset {@code 0}; appending is not supported. If the caller needs
+   * append-like behavior, it must retain and reuse the returned {@link OutputStream} while writing
+   * sequentially. Implementations may return a buffered stream where appropriate (for example,
+   * memory-backed buckets may not require additional buffering).
+   *
+   * <p>Callers must close the returned stream (preferably using try-with-resources) to ensure all
+   * data is flushed and resources are released.
+   *
+   * @return an {@link OutputStream} for writing, positioned at the start
+   * @throws IOException if the stream cannot be created or the bucket cannot be opened for write
    */
   OutputStream getOutputStream() throws IOException;
 
   /**
-   * Get an OutputStream which is not buffered. Should be called when we will buffer the stream at a
-   * higher level or when we will only be doing large writes (e.g. copying data from one Bucket to
-   * another). Does not make any more persistence guarantees than getOutputStream() does, this is
-   * just to save memory.
+   * Opens an unbuffered stream for writing from the beginning.
+   *
+   * <p>Prefer this when the caller provides its own buffering or performs large block writes (for
+   * example, when piping data from one bucket to another). This method does not provide stronger
+   * durability guarantees than {@link #getOutputStream()}—it exists primarily to avoid redundant
+   * buffering and reduce memory overhead.
+   *
+   * <p>Callers must close the returned stream to complete the writing.
+   *
+   * @return an unbuffered {@link OutputStream} for writing, positioned at the start
+   * @throws IOException if the stream cannot be created or the bucket cannot be opened for write
    */
   OutputStream getOutputStreamUnbuffered() throws IOException;
 
   /**
-   * Returns an InputStream that reads data from this Bucket. If there is no data in this bucket,
-   * null is returned.
+   * Opens a stream for reading the bucket's current content.
    *
-   * <p>You have to call IOUtils.closeQuietly(inputStream) on the obtained stream to prevent
-   * resource leakage.
+   * <p>If the bucket currently contains no data, this method returns {@code null}. Callers should
+   * use try-with-resources or explicitly close the returned {@link InputStream} to avoid resource
+   * leaks.
+   *
+   * @return an {@link InputStream} for reading, or {@code null} when the bucket is empty
+   * @throws IOException if the stream cannot be created or the content cannot be read
    */
   InputStream getInputStream() throws IOException;
 
+  /**
+   * Opens an unbuffered stream for reading the bucket's current content.
+   *
+   * <p>Semantics match {@link #getInputStream()} except that the returned stream is not wrapped in
+   * additional buffering layers. Use when the caller manages buffering explicitly.
+   *
+   * @return an unbuffered {@link InputStream} for reading, or {@code null} when the bucket is empty
+   * @throws IOException if the stream cannot be created or the content cannot be read
+   */
   InputStream getInputStreamUnbuffered() throws IOException;
 
   /**
-   * Returns a name for the bucket, may be used to identify them in certain in certain situations.
+   * Returns a human-readable identifier for the bucket.
+   *
+   * <p>The value is intended for diagnostics and logging only; callers must not rely on uniqueness
+   * or a specific format.
+   *
+   * @return a descriptive name suitable for logs and debug output
    */
   String getName();
 
-  /** Returns the amount of data currently in this bucket in bytes. */
+  /**
+   * Returns the number of bytes currently stored in the bucket.
+   *
+   * @return size in bytes; {@code 0} when empty
+   */
   long size();
 
-  /** Is the bucket read-only? */
+  /**
+   * Reports whether the bucket currently rejects further writes.
+   *
+   * @return {@code true} if the bucket is read-only; {@code false} otherwise
+   */
   boolean isReadOnly();
 
-  /** Make the bucket read-only. Irreversible. */
+  /**
+   * Permanently marks the bucket as read-only.
+   *
+   * <p>After this call, attempts to obtain a writable stream are expected to fail. The operation is
+   * irreversible for the lifetime of the instance.
+   */
   void setReadOnly();
 
   /**
-   * Free the bucket, if supported. Note that you must call free() even if you haven't used the
-   * Bucket (haven't called getOutputStream()) for some kinds of Bucket's, as they may have
-   * allocated space (e.g. created a temporary file).
+   * Releases the bucket and its underlying resources, if supported by the implementation.
+   *
+   * <p>Call this even if no streams were opened; some implementations may eagerly allocate
+   * resources (for example, creating a temporary file). After freeing, further operations on the
+   * instance may fail.
    */
   void free();
 
   /**
-   * AutoCloseable implementation that delegates to free(). This allows Bucket to be used with
-   * try-with-resources.
+   * Allows use with try-with-resources by delegating to {@link #free()}.
+   *
+   * <p>Calling close() is equivalent to calling {@link #free()} and should be considered a terminal
+   * operation for the bucket instance.
    */
   @Override
   default void close() {
@@ -76,28 +132,38 @@ public interface Bucket extends AutoCloseable {
   }
 
   /**
-   * Create a shallow read-only copy of this bucket, using different objects but using the same
-   * external storage. If this is not possible, return null. Note that if the underlying bucket is
-   * deleted, the copy will become invalid and probably throw an IOException on read, or possibly
-   * return too-short data etc. In some use cases e.g. on fproxy, this is acceptable.
+   * Creates a shallow, read-only view of this bucket that shares the same underlying storage.
+   *
+   * <p>The returned instance is logically independent but references the same external data. If the
+   * original bucket is deleted or freed, the shadow may become invalid and subsequent reads can
+   * throw {@link IOException} or yield truncated data. Some call sites tolerate this behavior (for
+   * example, HTTP proxying scenarios).
+   *
+   * @return a read-only shadow bucket, or {@code null} if shadowing is not supported
    */
   Bucket createShadow();
 
   /**
-   * Called after restarting. The Bucket should do any necessary housekeeping after resuming, e.g.
-   * registering itself with the appropriate persistent bucket tracker to avoid being
-   * garbage-collected. May be called twice, so the Bucket may need to track this internally.
+   * Notifies the bucket that the application has resumed after a restart.
    *
-   * @param context All the necessary runtime support will be on this object.
-   * @throws ResumeFailedException
+   * <p>Implementations should perform any required housekeeping (for example, re-registering with a
+   * persistent bucket tracker) to prevent premature garbage collection of external resources. The
+   * method may be invoked more than once; implementations should handle duplicate notifications.
+   *
+   * @param context runtime services and helpers required to reinitialize the bucket
+   * @throws ResumeFailedException if the bucket cannot reattach to its persisted state
    */
   void onResume(ClientContext context) throws ResumeFailedException;
 
   /**
-   * Write enough data to reconstruct the Bucket, or throw UnsupportedOperationException. Used for
-   * recovering in emergencies, should be versioned if necessary.
+   * Writes the metadata necessary to reconstruct the bucket to the given stream.
    *
-   * @throws IOException
+   * <p>Implementations that do not support persistence should throw {@link
+   * UnsupportedOperationException}. When supported, the written format should be treated as an
+   * internal contract and versioned as needed for forward compatibility.
+   *
+   * @param dos destination for serialization data
+   * @throws IOException on I/O failure while writing the metadata
    */
   void storeTo(DataOutputStream dos) throws IOException;
 }
