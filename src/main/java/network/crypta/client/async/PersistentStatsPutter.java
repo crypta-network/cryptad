@@ -44,8 +44,9 @@ public class PersistentStatsPutter implements Serializable {
     this.latestNodeBytesIn = nodeBW[1];
 
     final long uptime = n.getUptime();
-    this.latestUptime.totalUptime += uptime - this.latestUptimeVal;
-    this.latestUptime.creationTime = System.currentTimeMillis();
+    this.latestUptime.setTotalUptime(
+        this.latestUptime.getTotalUptime() + uptime - this.latestUptimeVal);
+    this.latestUptime.setCreationTime(System.currentTimeMillis());
     this.latestUptimeVal = uptime;
   }
 
