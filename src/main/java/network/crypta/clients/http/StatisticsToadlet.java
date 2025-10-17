@@ -304,7 +304,7 @@ public class StatisticsToadlet extends Toadlet {
           drawOverviewBox(
               overviewInfobox,
               nodeUptimeSeconds,
-              node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().totalUptime,
+              node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().getTotalUptime(),
               now,
               swaps,
               noSwaps);
@@ -847,7 +847,7 @@ public class StatisticsToadlet extends Toadlet {
         // FIXME this is not necessarily the same as the datastore's uptime if we've switched.
         // Ideally we'd track uptime there too.
         totalUptimeSeconds =
-            node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().totalUptime;
+            node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().getTotalUptime();
       } catch (StatsNotAvailableException e) {
         totalAccess = null;
       }
