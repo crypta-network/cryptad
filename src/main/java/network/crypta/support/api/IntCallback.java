@@ -3,7 +3,22 @@ package network.crypta.support.api;
 import network.crypta.config.ConfigCallback;
 
 /**
- * A callback to be called when a config value of integer type changes. Also reports the current
- * value.
+ * Callback for configuration options that use {@link Integer} values.
+ *
+ * <p>Implementations expose the current value via {@link #get()} and apply updates in {@link
+ * #set(Integer)}. Validation and units (e.g., bytes, seconds) are option-specific and should be
+ * enforced in {@code set}.
+ *
+ * <p>Contract notes:
+ *
+ * <ul>
+ *   <li>{@link #get()} returns the effective, non-null value currently in use.
+ *   <li>{@link #set(Integer)} may reject invalid values by throwing {@link
+ *       network.crypta.config.InvalidConfigValueException} and may request a restart by throwing
+ *       {@link network.crypta.config.NodeNeedRestartException}, as defined by the {@link
+ *       network.crypta.config.ConfigCallback} contract.
+ * </ul>
+ *
+ * @see network.crypta.config.ConfigCallback
  */
 public abstract class IntCallback extends ConfigCallback<Integer> {}
