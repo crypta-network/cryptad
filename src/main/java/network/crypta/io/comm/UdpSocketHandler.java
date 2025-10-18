@@ -27,10 +27,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Handles UDP I/O for a node using a non-blocking {@link DatagramChannel}.
  *
- * <p>This handler binds to a specific local address/port, receives packets into an internal
- * {@link ByteBuffer}, and forwards them to a configured {@link IncomingPacketFilter}. Outgoing
- * packets are sent via {@link #sendPacket(byte[], Peer, boolean)}. Connectivity and basic traffic
- * statistics are recorded through {@link AddressTracker} and {@link IOStatisticCollector}.
+ * <p>This handler binds to a specific local address/port, receives packets into an internal {@link
+ * ByteBuffer}, and forwards them to a configured {@link IncomingPacketFilter}. Outgoing packets are
+ * sent via {@link #sendPacket(byte[], Peer, boolean)}. Connectivity and basic traffic statistics
+ * are recorded through {@link AddressTracker} and {@link IOStatisticCollector}.
  *
  * <p>Threading: instances are executed on the node's executor (see {@link Node#getExecutor()}). The
  * run loop continues while {@code active == true}. {@link #close()} stops the loop, closes the
@@ -57,7 +57,9 @@ public class UdpSocketHandler
    */
   private final Random dropRandom;
 
-  /** If &gt; 0, there is a 1 in {@code dropProbability} chance to drop a packet (debugging only). */
+  /**
+   * If &gt; 0, there is a 1 in {@code dropProbability} chance to drop a packet (debugging only).
+   */
   private int dropProbability;
 
   // Cross-layer reference to Node for configuration and scheduling.
@@ -479,9 +481,7 @@ public class UdpSocketHandler
     return getMaxPacketSize() - 100;
   }
 
-  /**
-   * Starts the receive loop on the node executor. No-op if already inactive.
-   */
+  /** Starts the receive loop on the node executor. No-op if already inactive. */
   public void start() {
     if (!active) return;
     synchronized (this) {
@@ -547,9 +547,7 @@ public class UdpSocketHandler
     return localAddress.getPort();
   }
 
-  /**
-   * Returns a string form of the bound local socket address.
-   */
+  /** Returns a string form of the bound local socket address. */
   @Override
   public String toString() {
     return localAddress.toString();
@@ -605,9 +603,7 @@ public class UdpSocketHandler
     return tracker.getPortForwardStatus();
   }
 
-  /**
-   * Returns the native thread priority to use when scheduling this runnable.
-   */
+  /** Returns the native thread priority to use when scheduling this runnable. */
   @Override
   public int getPriority() {
     return NativeThread.PriorityLevel.MAX_PRIORITY.value;
