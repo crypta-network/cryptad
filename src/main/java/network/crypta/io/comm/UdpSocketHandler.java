@@ -24,10 +24,26 @@ import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Handles UDP I/O for a node using a non-blocking {@link DatagramChannel}.
+ *
+ * <p>This handler binds to a specific local address/port, receives packets into an internal
+ * {@link ByteBuffer}, and forwards them to a configured {@link IncomingPacketFilter}. Outgoing
+ * packets are sent via {@link #sendPacket(byte[], Peer, boolean)}. Connectivity and basic traffic
+ * statistics are recorded through {@link AddressTracker} and {@link IOStatisticCollector}.
+ *
+ * <p>Threading: instances are executed on the node's executor (see {@link Node#getExecutor()}). The
+ * run loop continues while {@code active == true}. {@link #close()} stops the loop, closes the
+ * channel, and waits for termination. This class is not intended to be used from multiple threads
+ * concurrently except for the lifecycle methods and {@link #sendPacket(byte[], Peer, boolean)}.
+ *
+ * <p>Units: sizes are in bytes; times are in milliseconds since the epoch.
+ */
 public class UdpSocketHandler
     implements PrioRunnable, PacketSocketHandler, PortForwardSensitiveSocketHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UdpSocketHandler.class);
+  private static final String CAUGHT_PREFIX = "Caught ";
 
   private final ByteBuffer receiveBuffer = ByteBuffer.allocate(MAX_RECEIVE_SIZE);
   private final DatagramChannel datagramChannel;
@@ -36,35 +52,32 @@ public class UdpSocketHandler
   private IncomingPacketFilter lowLevelFilter;
 
   /**
-   * RNG for debugging, used with _dropProbability. NOT CRYPTO SAFE. DO NOT USE FOR THINGS THAT NEED
-   * CRYPTO SAFE RNG!
+   * RNG for debugging, used with {@link #dropProbability}. Not cryptographically secure; do not use
+   * for any security-sensitive purpose.
    */
   private final Random dropRandom;
 
-  /** If &gt;0, 1 in _dropProbability chance of dropping a packet; for debugging */
-  private int _dropProbability;
+  /** If &gt; 0, there is a 1 in {@code dropProbability} chance to drop a packet (debugging only). */
+  private int dropProbability;
 
-  // Icky layer violation
+  // Cross-layer reference to Node for configuration and scheduling.
   private final Node node;
 
-  private boolean _isDone;
-  private volatile boolean _active = true;
+  private boolean isDone;
+  private volatile boolean active = true;
   private final String title;
-  private boolean _started;
+  private boolean started;
   private long startTime;
   private final IOStatisticCollector ioStatistics;
 
-  static {
-  }
-
-  private static class socketOptions {
-    private static class socketOptionsHolder {
+  private static class SocketOptions {
+    private static class SocketOptionsHolder {
       static {
         Native.register(Platform.C_LIBRARY_NAME);
       }
 
       private static native int setsockopt(
-          int fd, int level, int option_name, Pointer option_value, int option_len)
+          int fd, int level, int optionName, Pointer optionValue, int optionLen)
           throws LastErrorException;
     }
 
@@ -97,7 +110,7 @@ public class UdpSocketHandler
       IPV6_PREFER_SRC_CGA(0x0008),
       IPV6_PREFER_SRC_NONCGA(0x0800);
 
-      final SOCKET_option_name option_name = SOCKET_option_name.IPV6_ADDR_PREFERENCES;
+      final SOCKET_option_name optionName = SOCKET_option_name.IPV6_ADDR_PREFERENCES;
       final int linux;
 
       SOCKET_ADDR_PREFERENCE(int linux) {
@@ -105,12 +118,17 @@ public class UdpSocketHandler
       }
     }
 
+    @SuppressWarnings("java:S3011")
     private static int getFd(DatagramChannel channel) {
       try {
         Field fdVal = channel.getClass().getDeclaredField("fdVal");
-        fdVal.setAccessible(true);
+        if (!fdVal.canAccess(channel)) {
+          // Reflective access: the JDK keeps this field private,
+          // and we rely on it to set IPV6 address preferences on Linux.
+          fdVal.setAccessible(true);
+        }
         return fdVal.getInt(channel);
-      } catch (Exception e) {
+      } catch (NoSuchFieldException | IllegalAccessException | RuntimeException e) {
         LOG.warn(e.getMessage(), e);
         return -1;
       }
@@ -126,10 +144,10 @@ public class UdpSocketHandler
       }
       try {
         int ret =
-            socketOptionsHolder.setsockopt(
+            SocketOptionsHolder.setsockopt(
                 fd,
                 SOCKET_level.IPPROTO_IPV6.linux,
-                p.option_name.linux,
+                p.optionName.linux,
                 new IntByReference(p.linux).getPointer(),
                 Native.POINTER_SIZE);
         return ret == 0;
@@ -140,6 +158,21 @@ public class UdpSocketHandler
     }
   }
 
+  /**
+   * Creates a UDP socket handler bound to {@code bindToAddress:listenPort}.
+   *
+   * <p>The constructor binds a {@link DatagramChannel}, applies basic socket options (receive
+   * buffer, {@code SO_REUSEADDR}, IP TOS/DSCP when supported), and initializes connectivity
+   * tracking.
+   *
+   * @param listenPort Local UDP port to bind.
+   * @param bindToAddress Local address to bind.
+   * @param node Owning node used for configuration, scheduling, and randomness.
+   * @param startupTime Milliseconds timestamp to mark the beginning of send tracking.
+   * @param title Human-readable label for diagnostics.
+   * @param ioStatistics Collector that receives per-address byte counters.
+   * @throws IOException If the channel cannot be opened, configured, or bound.
+   */
   public UdpSocketHandler(
       int listenPort,
       InetAddress bindToAddress,
@@ -152,98 +185,110 @@ public class UdpSocketHandler
     this.ioStatistics = ioStatistics;
     this.title = title;
     localAddress = new InetSocketAddress(bindToAddress, listenPort);
-    datagramChannel =
-        DatagramChannel.open()
-            .bind(localAddress)
-            .setOption(StandardSocketOptions.SO_RCVBUF, 65536)
-            .setOption(StandardSocketOptions.SO_REUSEADDR, true);
-
+    DatagramChannel tmp = DatagramChannel.open();
+    boolean success = false;
     try {
-      datagramChannel.setOption(StandardSocketOptions.IP_TOS, node.getTrafficClass().value);
-    } catch (UnsupportedOperationException e) {
-      LOG.error("Failed to set IP_TOS socket option", e);
-    }
+      tmp.bind(localAddress);
+      tmp.setOption(StandardSocketOptions.SO_RCVBUF, 65536);
+      tmp.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+      datagramChannel = tmp;
 
-    boolean r =
-        socketOptions.setAddressPreference(
-            datagramChannel, socketOptions.SOCKET_ADDR_PREFERENCE.IPV6_PREFER_SRC_PUBLIC);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "Setting IPV6_PREFER_SRC_PUBLIC for port "
-              + listenPort
-              + " is a "
-              + (r ? "success" : "failure"));
-    }
+      try {
+        datagramChannel.setOption(StandardSocketOptions.IP_TOS, node.getTrafficClass().value);
+      } catch (UnsupportedOperationException e) {
+        LOG.error("Failed to set IP_TOS socket option", e);
+      }
 
-    // Only used for debugging, no need to seed from Yarrow
-    dropRandom = node.getFastWeakRandom();
-    tracker = AddressTracker.create(node.getLastBootId(), node.runDir(), listenPort);
-    tracker.startSend(startupTime);
+      boolean r =
+          SocketOptions.setAddressPreference(
+              datagramChannel, SocketOptions.SOCKET_ADDR_PREFERENCE.IPV6_PREFER_SRC_PUBLIC);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Setting IPV6_PREFER_SRC_PUBLIC for port {} is a {}",
+            listenPort,
+            r ? "success" : "failure");
+      }
+
+      // Only used for debugging, no need to seed from Yarrow
+      dropRandom = node.getFastWeakRandom();
+      tracker = AddressTracker.create(node.getLastBootId(), node.runDir(), listenPort);
+      tracker.startSend(startupTime);
+      success = true;
+    } finally {
+      if (!success) {
+        try {
+          tmp.close();
+        } catch (IOException e) {
+          LOG.warn("Error closing DatagramChannel after constructor failure", e);
+        }
+      }
+    }
   }
 
-  /** Must be called, or we will NPE in run() */
+  /**
+   * Sets the low-level filter used to process received packets.
+   *
+   * <p>Must be called before {@link #start()} (or any call that triggers {@link #run()}); otherwise
+   * the receive path will dereference a {@code null} filter and fail.
+   *
+   * @param f The filter that decodes/dispatches incoming packets.
+   */
   @Override
   public void setLowLevelFilter(IncomingPacketFilter f) {
     lowLevelFilter = f;
   }
 
+  /**
+   * Returns the local address this handler is bound to.
+   *
+   * @return The bound {@link InetAddress}.
+   */
   public InetAddress getBindTo() {
     return localAddress.getAddress();
   }
 
+  /**
+   * Returns the diagnostic title supplied at construction.
+   *
+   * @return Human-readable label for this handler.
+   */
   public String getTitle() {
     return title;
   }
 
+  /**
+   * Main receive loop. Continues to read from the channel and dispatch packets while active.
+   *
+   * <p>All unexpected throwables are logged with memory information to aid diagnostics.
+   */
   @Override
   public void run() { // Listen for packets
     tracker.startReceive(System.currentTimeMillis());
     try {
       runLoop();
-    } catch (Throwable t) {
-      // Impossible? It keeps on exiting. We get the below,
-      // but not this...
-      try {
-        System.err.print(t.getClass().getName());
-        System.err.println();
-      } catch (Throwable tt) {
-      }
-      try {
-        System.err.print(t.getMessage());
-        System.err.println();
-      } catch (Throwable tt) {
-      }
+    } catch (Exception t) {
+      // Catch-all guard to avoid silent thread death; log details for analysis.
+      LOG.error("Unhandled throwable in run(): {}", t.getClass().getName());
+      LOG.error("Unhandled throwable message: {}", t.getMessage());
       // Avoid forced GC calls; they are ineffective and can mask real memory issues
-      try {
-        Runtime r = Runtime.getRuntime();
-        System.err.print(r.freeMemory());
-        System.err.println();
-        System.err.print(r.totalMemory());
-        System.err.println();
-      } catch (Throwable tt) {
-      }
-      try {
-        t.printStackTrace();
-      } catch (Throwable tt) {
-      }
+      Runtime r = Runtime.getRuntime();
+      LOG.error("freeMemory={} totalMemory={}", r.freeMemory(), r.totalMemory());
+      LOG.error("Unhandled exception in run()", t);
     } finally {
-      System.err.println("run() exiting for UdpSocketHandler on port " + localAddress.getPort());
-      LOG.error("run() exiting for UdpSocketHandler on port " + localAddress.getPort());
+      LOG.error("run() exiting for UdpSocketHandler on port {}", localAddress.getPort());
       synchronized (this) {
-        _isDone = true;
+        isDone = true;
         notifyAll();
       }
     }
   }
 
   private void runLoop() {
-    while (_active) {
+    while (active) {
       try {
         realRun();
-      } catch (Throwable t) {
-        System.err.println("Caught " + t);
-        t.printStackTrace(System.err);
-        LOG.error("Caught " + t, t);
+      } catch (Exception t) {
+        LOG.error(CAUGHT_PREFIX + "{}", t, t);
       }
     }
   }
@@ -252,42 +297,44 @@ public class UdpSocketHandler
     InetSocketAddress remote = receive();
     long now = System.currentTimeMillis();
     if (remote != null) {
-      long startTime = System.currentTimeMillis();
-      Peer peer = new Peer(remote.getAddress(), remote.getPort());
-      tracker.receivedPacketFrom(peer);
-      long endTime = System.currentTimeMillis();
-      if (endTime - startTime > 50) {
-        if (endTime - startTime > 3000) {
-          LOG.error("packet creation took " + (endTime - startTime) + "ms");
-        } else {
-          if (LOG.isDebugEnabled())
-            LOG.debug("packet creation took " + (endTime - startTime) + "ms");
-        }
-      }
-
-      try {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Processing packet of length " + receiveBuffer.limit() + " from " + peer);
-        }
-        startTime = System.currentTimeMillis();
-        lowLevelFilter.process(receiveBuffer.array(), 0, receiveBuffer.limit(), peer, now);
-        endTime = System.currentTimeMillis();
-        if (endTime - startTime > 50) {
-          if (endTime - startTime > 3000) {
-            LOG.error("processing packet took " + (endTime - startTime) + "ms");
-          } else {
-            if (LOG.isDebugEnabled())
-              LOG.debug("processing packet took " + (endTime - startTime) + "ms");
-          }
-        }
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Successfully handled packet length " + receiveBuffer.limit());
-        }
-      } catch (Throwable t) {
-        LOG.error("Caught " + t + " from " + lowLevelFilter, t);
-      }
+      handleRemote(remote, now);
     } else {
       if (LOG.isTraceEnabled()) LOG.trace("No packet received");
+    }
+  }
+
+  @SuppressWarnings("java:S1181") // we really do want to catch Throwable here
+  private void handleRemote(InetSocketAddress remote, long now) {
+    long start = System.currentTimeMillis();
+    Peer peer = new Peer(remote.getAddress(), remote.getPort());
+    tracker.receivedPacketFrom(peer);
+    long end = System.currentTimeMillis();
+    logIfSlow("packet creation", start, end);
+
+    try {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Processing packet of length {} from {}", receiveBuffer.limit(), peer);
+      }
+      start = System.currentTimeMillis();
+      lowLevelFilter.process(receiveBuffer.array(), 0, receiveBuffer.limit(), peer, now);
+      end = System.currentTimeMillis();
+      logIfSlow("processing packet", start, end);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Successfully handled packet length {}", receiveBuffer.limit());
+      }
+    } catch (Throwable t) {
+      LOG.error(CAUGHT_PREFIX + "{} from {}", t, lowLevelFilter, t);
+    }
+  }
+
+  private static void logIfSlow(String what, long start, long end) {
+    long duration = end - start;
+    if (duration > 50) {
+      if (duration > 3000) {
+        LOG.error("{} took {}ms", what, duration);
+      } else if (LOG.isDebugEnabled()) {
+        LOG.debug("{} took {}ms", what, duration);
+      }
     }
   }
 
@@ -299,58 +346,61 @@ public class UdpSocketHandler
       InetSocketAddress remote = (InetSocketAddress) datagramChannel.receive(receiveBuffer);
       receiveBuffer.flip();
       InetAddress address = remote.getAddress();
+      // Account for transport overhead in statistics to approximate on-the-wire size.
       ioStatistics.reportReceivedBytes(address, getHeadersLength(address) + receiveBuffer.limit());
       return remote;
     } catch (SocketTimeoutException e1) {
       return null;
     } catch (IOException e2) {
-      if (!_active) { // closed, just return silently
+      if (!active) { // Channel closed during shutdown; return silently.
         return null;
       } else {
-        throw new RuntimeException(e2);
+        throw new java.io.UncheckedIOException(e2);
       }
     }
   }
 
   /**
-   * Send a block of encoded bytes to a peer. This is called by send, and by
-   * IncomingPacketFilter.processOutgoing(..).
+   * Sends an encoded UDP payload to a peer.
    *
-   * @param blockToSend The data block to send.
-   * @param destination The peer to send it to.
+   * <p>Normally the destination address is pre-resolved; if it is missing, this method attempts a
+   * best-effort resolution via {@link Peer#getAddress(boolean, boolean)} and logs failures.
+   *
+   * @param blockToSend The UDP payload to transmit.
+   * @param destination The peer target (address/port).
+   * @param allowLocalAddresses Whether local/private addresses are permitted for this send.
+   * @throws LocalAddressException If local addresses are disallowed and the peer resolves to one.
    */
   @Override
   public void sendPacket(byte[] blockToSend, Peer destination, boolean allowLocalAddresses)
       throws LocalAddressException {
-    if (!_active) {
+    if (!active) {
       LOG.error("Trying to send packet but no longer active");
-      // It is essential that for recording accurate AddressTracker data that we don't send any more
-      // packets after shutdown.
+      // Do not send during shutdown to keep AddressTracker data accurate.
       return;
     }
 
     ByteBuffer packet = ByteBuffer.wrap(blockToSend);
     int port = destination.getPort();
     InetAddress address;
-    // there should be no DNS needed here, but go ahead if we can, but complain doing it
+    // Address should be pre-resolved; fall back to resolution and log if we must.
     if ((address = destination.getAddress(false, allowLocalAddresses)) == null) {
       LOG.error(
           "Tried sending to destination without pre-looked up IP address(needs a real"
-              + " Peer.getHostname()): null:"
-              + destination.getPort(),
+              + " Peer.getHostname()): null:{}",
+          destination.getPort(),
           new Exception("error"));
       if ((address = destination.getAddress(true, allowLocalAddresses)) == null) {
         LOG.error(
-            "Tried sending to bad destination address: null:" + destination.getPort(),
+            "Tried sending to bad destination address: null:{}",
+            destination.getPort(),
             new Exception("error"));
         return;
       }
     }
-    if (_dropProbability > 0) {
-      if (dropRandom.nextInt() % _dropProbability == 0) {
-        LOG.info("DROPPED: " + localAddress.getPort() + " -> " + destination.getPort());
-        return;
-      }
+    if (dropProbability > 0 && (dropRandom.nextInt() % dropProbability == 0)) {
+      LOG.info("DROPPED: {} -> {}", localAddress.getPort(), destination.getPort());
+      return;
     }
 
     try {
@@ -358,13 +408,13 @@ public class UdpSocketHandler
       tracker.sentPacketTo(destination);
       ioStatistics.reportSentBytes(address, getHeadersLength(address) + blockToSend.length);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Sent packet length " + blockToSend.length + " to " + address + ':' + port);
+        LOG.debug("Sent packet length {} to {}:{}", blockToSend.length, address, port);
       }
     } catch (IOException | UnsupportedAddressTypeException e) {
       if (address instanceof Inet6Address) {
-        LOG.info("Error while sending packet to IPv6 address: " + destination + ": " + e);
+        LOG.info("Error while sending packet to IPv6 address: {}: {}", destination, e, e);
       } else {
-        LOG.error("Error while sending packet to " + destination + ": " + e, e);
+        LOG.error("Error while sending packet to {}: {}", destination, e, e);
       }
     }
   }
@@ -374,133 +424,200 @@ public class UdpSocketHandler
   // http://www.compuserve.de/cso/hilfe/linux/hilfekategorien/installation/contentview.jsp?conid=385700
   // http://www.studenten-ins-netz.net/inhalt/service_faq.html
   // officially GRE is 1476 and PPPoE is 1492.
-  // unofficially, PPPoE is often 1472 (seen in the wild). Also PPPoATM is sometimes 1472.
+  // unofficially, PPPoE is often 1472 (seen in the wild). Also, PPPoATM is sometimes 1472.
   static final int MAX_ALLOWED_MTU = 1492;
-  static final int UDPv4_HEADERS_LENGTH = 28;
-  static final int UDPv6_HEADERS_LENGTH = 48;
+  static int udpV4HeadersLength = 28;
+  static int udpV6HeadersLength = 48;
   // conservative estimation when AF is not known
-  public static final int UDP_HEADERS_LENGTH = UDPv6_HEADERS_LENGTH;
+  public static final int UDP_HEADERS_LENGTH = udpV6HeadersLength;
 
-  static final int MIN_IPv4_MTU = 576;
-  static final int MIN_IPv6_MTU = 1280;
+  static final int MIN_IPV4_MTU = 576;
   // conservative estimation when AF is not known
-  public static final int MIN_MTU = MIN_IPv4_MTU;
+  public static final int MIN_MTU = MIN_IPV4_MTU;
 
   private volatile int maxPacketSize = MAX_ALLOWED_MTU;
 
   /**
-   * @return The maximum packet size supported by this SocketManager, not including transport
-   *     (UDP/IP) headers.
+   * Returns the maximum payload size supported, excluding UDP/IP headers.
+   *
+   * @return Maximum number of payload bytes per packet.
    */
   @Override
   public int getMaxPacketSize() {
     return maxPacketSize;
   }
 
+  /**
+   * Recomputes and stores the maximum payload size based on the node's advertised minimum MTU.
+   *
+   * @return The newly computed maximum payload size in bytes.
+   */
   public int calculateMaxPacketSize() {
     int oldSize = maxPacketSize;
     int newSize = innerCalculateMaxPacketSize();
     maxPacketSize = newSize;
-    if (oldSize != newSize) System.out.println("Max packet size: " + newSize);
+    if (oldSize != newSize) LOG.info("Max packet size: {}", newSize);
     return maxPacketSize;
   }
 
-  /** Recalculate the maximum packet size */
-  int innerCalculateMaxPacketSize() { // FIXME: what about passing a peerNode though and doing it on
+  /** Recalculate the maximum packet size (internal helper). */
+  int innerCalculateMaxPacketSize() { // Note: consider passing a peerNode and doing per-peer sizing
     // a per-peer basis? How? PMTU would require JNI, although it
     // might be worth it...
     final int minAdvertisedMTU = node.getMinimumMTU();
-    return maxPacketSize = Math.min(MAX_ALLOWED_MTU, minAdvertisedMTU) - UDP_HEADERS_LENGTH;
+    maxPacketSize = Math.min(MAX_ALLOWED_MTU, minAdvertisedMTU) - UDP_HEADERS_LENGTH;
+    return maxPacketSize;
   }
 
+  /**
+   * Returns a conservative payload size threshold used by senders to avoid fragmentation.
+   *
+   * @return {@code getMaxPacketSize() - 100}.
+   */
   @Override
   public int getPacketSendThreshold() {
     return getMaxPacketSize() - 100;
   }
 
+  /**
+   * Starts the receive loop on the node executor. No-op if already inactive.
+   */
   public void start() {
-    if (!_active) return;
+    if (!active) return;
     synchronized (this) {
-      _started = true;
+      started = true;
       startTime = System.currentTimeMillis();
     }
     node.getExecutor().execute(this, "UdpSocketHandler for port " + localAddress.getPort());
   }
 
+  /**
+   * Stops the handler, closes the channel, waits for the run loop to exit, and persists tracker
+   * data.
+   */
   public void close() {
     LOG.info("Closing.");
     synchronized (this) {
-      _active = false;
+      active = false;
       try {
         datagramChannel.close();
       } catch (IOException e) {
         LOG.error("Error closing DatagramChannel", e);
       }
 
-      if (!_started) return;
-      while (!_isDone) {
+      if (!started) return;
+      while (!isDone) {
         try {
           wait(2000);
         } catch (InterruptedException e) {
-          e.printStackTrace();
+          LOG.warn("Interrupted while waiting for UdpSocketHandler shutdown", e);
+          Thread.currentThread().interrupt();
         }
       }
     }
     tracker.storeData(node.getBootId(), node.runDir(), localAddress.getPort());
   }
 
+  /**
+   * Returns the current debug drop probability parameter.
+   *
+   * @return The denominator of the 1/N drop chance, or zero to disable.
+   */
+  @SuppressWarnings("unused")
   public int getDropProbability() {
-    return _dropProbability;
+    return dropProbability;
   }
 
+  /**
+   * Sets the debug drop probability.
+   *
+   * @param dropProbability A value {@code N >= 0}. When {@code N > 0}, each send has a 1/N chance
+   *     to be dropped locally for testing.
+   */
   public void setDropProbability(int dropProbability) {
-    _dropProbability = dropProbability;
+    this.dropProbability = dropProbability;
   }
 
+  /**
+   * Returns the local UDP port number.
+   *
+   * @return The bound port.
+   */
   public int getPortNumber() {
     return localAddress.getPort();
   }
 
+  /**
+   * Returns a string form of the bound local socket address.
+   */
   @Override
   public String toString() {
     return localAddress.toString();
   }
 
+  /**
+   * Returns the assumed UDP/IP header length when address family is unknown.
+   *
+   * @return Header length in bytes (defaults to IPv6 size).
+   */
   @Override
   public int getHeadersLength() {
     return UDP_HEADERS_LENGTH;
   }
 
+  /**
+   * Returns the UDP/IP header length for the peer's address family.
+   *
+   * @param peer Destination peer.
+   * @return Header length in bytes for IPv4 or IPv6.
+   */
   @Override
   public int getHeadersLength(Peer peer) {
     return getHeadersLength(peer.getAddress(false));
   }
 
   int getHeadersLength(InetAddress addr) {
-    return addr == null || addr instanceof Inet6Address
-        ? UDPv6_HEADERS_LENGTH
-        : UDPv4_HEADERS_LENGTH;
+    return addr == null || addr instanceof Inet6Address ? udpV6HeadersLength : udpV4HeadersLength;
   }
 
+  /**
+   * Exposes the connectivity tracker used by this handler.
+   *
+   * @return The {@link AddressTracker} instance.
+   */
   public AddressTracker getAddressTracker() {
     return tracker;
   }
 
+  /** Requests a re-scan of the port-forwarding status. */
   @Override
   public void rescanPortForward() {
     tracker.rescan();
   }
 
+  /**
+   * Returns the most recently detected connectivity status.
+   *
+   * @return Current {@link AddressTracker.Status}.
+   */
   @Override
   public AddressTracker.Status getDetectedConnectivityStatus() {
     return tracker.getPortForwardStatus();
   }
 
+  /**
+   * Returns the native thread priority to use when scheduling this runnable.
+   */
   @Override
   public int getPriority() {
     return NativeThread.PriorityLevel.MAX_PRIORITY.value;
   }
 
+  /**
+   * Returns the {@code System.currentTimeMillis()} timestamp recorded at {@link #start()}.
+   *
+   * @return Start time in milliseconds since the epoch.
+   */
   public long getStartTime() {
     return startTime;
   }

@@ -13,7 +13,8 @@ wrapper.java.additional.4=--enable-native-access=ALL-UNNAMED
 wrapper.java.additional.5=--add-opens=java.base/java.lang=ALL-UNNAMED
 wrapper.java.additional.6=--add-opens=java.base/java.util=ALL-UNNAMED
 wrapper.java.additional.7=--add-opens=java.base/java.io=ALL-UNNAMED
-wrapper.java.additional.8=-enableassertions:freenet
+wrapper.java.additional.8=--add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+wrapper.java.additional.9=-enableassertions:freenet
 
 # Main class
 wrapper.java.mainclass=network.crypta.node.NodeStarter
