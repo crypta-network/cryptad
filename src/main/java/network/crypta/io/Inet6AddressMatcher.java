@@ -28,7 +28,7 @@ public class Inet6AddressMatcher implements AddressMatcher {
   /**
    * Returns the address family supported by this matcher.
    *
-   * @return {@link AddressType#IPv6}
+   * @return {@link AddressType#IPV6}
    */
   public AddressType getAddressType() {
     return AddressType.IPV6;
