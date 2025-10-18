@@ -327,17 +327,21 @@ public class ManifestElement implements Serializable {
 
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    // Read the default field block first. Historically, checkpoints stored the bucket inside the
+    // default field block. However, intermediary builds also wrote the bucket as a trailing object
+    // after the default fields. To remain compatible with those streams, attempt to read a trailing
+    // object and treat it as the bucket when present. When no trailing object exists (the common
+    // case), ObjectInputStream signals the end of class-defined data with
+    // OptionalDataException#eof=true, so we must not advance the stream further.
+    // Behavior is guarded by test:
+    //   ManifestElementTest.deserialization_whenTwoElementsInStream_doesNotConsumeNextObject
     in.defaultReadObject();
-    Object restored;
     try {
-      // If present, a trailing object carries the bucket (or null). Streams produced by the current
-      // writer normally don't include one; tolerate both forms.
-      restored = in.readObject();
+      Object maybeBucket = in.readObject();
+      data = (maybeBucket == null) ? null : (RandomAccessBucket) maybeBucket;
     } catch (OptionalDataException e) {
-      // End-of-block (TC_ENDBLOCKDATA). Keep whatever defaultReadObject() restored and return.
-      if (e.eof) return;
-      throw e;
+      // No trailing object for this class; keep the bucket restored from default fields.
+      if (!e.eof) throw e;
     }
-    data = (restored == null) ? null : (RandomAccessBucket) restored;
   }
 }

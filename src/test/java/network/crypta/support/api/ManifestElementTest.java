@@ -258,4 +258,48 @@ class ManifestElementTest {
       assertThrows(NotSerializableException.class, () -> oos.writeObject(me));
     }
   }
+
+  @Test
+  @DisplayName(
+      "Deserialization: speculative trailing read must not consume the next object in stream")
+  void deserialization_whenTwoElementsInStream_doesNotConsumeNextObject() throws Exception {
+    // Arrange: two serializable-bucket elements written back-to-back using current writer
+    ArrayBucket b1 = new ArrayBucket("b1");
+    try (OutputStream os = b1.getOutputStream()) {
+      os.write(new byte[] {10, 20});
+    }
+    ManifestElement e1 = new ManifestElement("first.bin", b1, null, b1.size());
+
+    ArrayBucket b2 = new ArrayBucket("b2");
+    try (OutputStream os = b2.getOutputStream()) {
+      os.write(new byte[] {30});
+    }
+    ManifestElement e2 = new ManifestElement("second.bin", b2, null, b2.size());
+
+    byte[] bytes;
+    try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+      oos.writeObject(e1);
+      oos.writeObject(e2);
+      oos.flush();
+      bytes = bos.toByteArray();
+    }
+
+    // Act: read the first, then the second object
+    ManifestElement r1;
+    ManifestElement r2;
+    try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
+      r1 = (ManifestElement) ois.readObject();
+      r2 = (ManifestElement) ois.readObject();
+    }
+
+    // Assert: both objects are present and intact; stream was not advanced past r2
+    assertEquals("first.bin", r1.getName());
+    assertNotNull(r1.getData());
+    assertEquals(2L, r1.getSize());
+
+    assertEquals("second.bin", r2.getName());
+    assertNotNull(r2.getData());
+    assertEquals(1L, r2.getSize());
+  }
 }
