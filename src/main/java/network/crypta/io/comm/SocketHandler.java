@@ -1,9 +1,17 @@
 package network.crypta.io.comm;
 
 /**
- * Base class for all transports. We have a single object of this type for both incoming and
- * outgoing packets, but multiple instances for different instances of the transport e.g. on
- * different ports, with different crypto backends etc.
+ * Marker interface for transport handlers that send and receive protocol messages.
+ *
+ * <p>Implementations encapsulate a specific transport (for example, UDP) and typically manage both
+ * inbound and outbound traffic. A node may create multiple handler instances for different
+ * configurations such as ports, peers, or cryptographic contexts. Implementations define their own
+ * lifecycle and may expose additional transport‑specific APIs via subinterfaces.
+ *
+ * <p>Thread‑safety: Unless otherwise stated by the implementation, callers should assume that
+ * instances are thread‑safe and may be invoked concurrently by the networking stack.
+ *
+ * <p>Example implementation: {@link UdpSocketHandler}.
  *
  * @author toad
  */
