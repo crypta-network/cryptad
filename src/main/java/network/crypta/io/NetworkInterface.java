@@ -121,7 +121,7 @@ public class NetworkInterface implements Closeable {
       boolean ignoreUnbindableIP6) {
     NetworkInterface iface = new NetworkInterface(port, allowedHosts, executor);
     String[] failedBind = iface.setBindTo(bindTo, ignoreUnbindableIP6);
-    if (failedBind.length > 0 && LOG.isWarnEnabled()) {
+    if (failedBind != null && failedBind.length > 0 && LOG.isWarnEnabled()) {
       LOG.warn(
           "Could not bind to some of the interfaces specified for port {} : {}",
           port,
@@ -169,9 +169,10 @@ public class NetworkInterface implements Closeable {
    * @param bindTo comma-separated list of local addresses to bind
    * @param ignoreUnbindableIP6 when {@code true}, ignore {@link SocketException} for IPv6 binding
    *     failures and continue binding other addresses
-   * @return array of addresses that failed to bind; returns an empty array when all bindings
-   *     succeed or when a shutdown is in progress
+   * @return array of addresses that failed to bind; returns {@code null} when all bindings succeed
+   *     or when a shutdown is in progress (legacy contract relied upon by callers)
    */
+  @SuppressWarnings("java:S1168")
   public String[] setBindTo(String bindTo, boolean ignoreUnbindableIP6) {
     if (bindTo == null || bindTo.isEmpty()) bindTo = NetworkInterface.DEFAULT_BIND_TO;
     List<String> bindToTokenList = tokenizeBindTo(bindTo);
@@ -180,7 +181,8 @@ public class NetworkInterface implements Closeable {
 
     // Abort rebinding when shutdown has been requested (explicitly or by the Wrapper hook).
     if (shutdown || WrapperManager.hasShutdownHookBeenTriggered()) {
-      return new String[0];
+      // Preserve legacy contract: null signifies success/no failures.
+      return null;
     }
 
     List<String> brokenList = null;
@@ -208,7 +210,8 @@ public class NetworkInterface implements Closeable {
     }
 
     signalBound();
-    return brokenList == null ? new String[0] : brokenList.toArray(new String[0]);
+    // Legacy contract: null on success, non-null array lists failed addresses.
+    return brokenList == null ? null : brokenList.toArray(new String[0]);
   }
 
   private List<String> tokenizeBindTo(String bindTo) {
