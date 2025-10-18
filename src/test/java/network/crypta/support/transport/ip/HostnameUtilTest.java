@@ -1,14 +1,25 @@
 package network.crypta.support.transport.ip;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100") // Allow method names with underscores for clarity
 class HostnameUtilTest {
+
+  @Test
+  void isValidHostname_whenNull_throwsNullPointerException() {
+    assertThrows(NullPointerException.class, () -> HostnameUtil.isValidHostname(null, true));
+  }
 
   @Nested
   @DisplayName("Domain names (allowIPAddress=false)")
@@ -24,7 +35,7 @@ class HostnameUtilTest {
           "xn--d1acufc7f.com",
           "example.travel" // 6-letter TLD
         })
-    void validDomainsReturnTrue(String domain) {
+    void isValidHostname_whenDomainOnly_validDomains_returnTrue(String domain) {
       assertTrue(HostnameUtil.isValidHostname(domain, false));
     }
 
@@ -38,7 +49,7 @@ class HostnameUtilTest {
           "foo..bar.com",
           "com" // no dot + TLD pair
         })
-    void invalidDomainsReturnFalse(String domain) {
+    void isValidHostname_whenDomainOnly_invalidDomains_returnFalse(String domain) {
       assertFalse(HostnameUtil.isValidHostname(domain, false));
     }
   }
@@ -61,12 +72,13 @@ class HostnameUtilTest {
           "2001:db8::1",
           "2001:db8::9"
         })
-    void ipLiteralsAreAccepted(String ip) {
+    void isValidHostname_whenIpsAllowed_validIpLiterals_returnTrue(String ip) {
       assertTrue(HostnameUtil.isValidHostname(ip, true));
     }
 
-    // Intentionally not asserting negative IP cases here because AddressIdentifier is permissive
-    // (e.g., abridged IPv4) and HostnameUtil passes through to it when allowIPAddress=true.
+    // Intentionally not asserting negative plain-IP cases here because AddressIdentifier is
+    // permissive (e.g., abridged IPv4) and HostnameUtil passes through to it when allowIPAddress
+    // is true.
 
     @ParameterizedTest
     @ValueSource(
@@ -74,6 +86,9 @@ class HostnameUtilTest {
           // IPv4-mapped / embedded IPv6 forms
           "::ffff:127.0.0.1",
           "::ffff:192.0.2.1",
+          // Zero-padded IPv4 tails must remain valid
+          "::ffff:0.0.0.001",
+          "2001:db8::ffff:000.000.000.000",
           "0:0:0:0:0:ffff:192.0.2.1",
           "2001:db8::ffff:192.0.2.1",
           // IPv4-compatible (deprecated, but should still parse as a literal)
@@ -81,8 +96,27 @@ class HostnameUtilTest {
           // With percent scope id (syntactic only)
           "2001:db8::ffff:192.0.2.1%1"
         })
-    void ipv6WithEmbeddedIPv4IsAccepted(String ip) {
+    void isValidHostname_whenIpsAllowed_ipv6EmbeddedIPv4_returnTrue(String ip) {
       assertTrue(HostnameUtil.isValidHostname(ip, true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          // Multiple "::" occurrences are invalid
+          "2001::db8::ffff:192.0.2.1",
+          // Invalid IPv4 tail
+          "2001:db8::ffff:192.0.256.1",
+          "2001:db8::ffff:192.0.2",
+          // Invalid percent scope id (non-numeric or too long or empty)
+          "2001:db8::ffff:192.0.2.1%abc",
+          "2001:db8::ffff:192.0.2.1%1234",
+          "2001:db8::ffff:192.0.2.1%",
+          // Bracketed forms are not recognized by this utility
+          "[::ffff:192.0.2.1]"
+        })
+    void isValidHostname_whenIpsAllowed_invalidEmbeddedIPv4Forms_returnFalse(String ip) {
+      assertFalse(HostnameUtil.isValidHostname(ip, true));
     }
   }
 
@@ -101,7 +135,7 @@ class HostnameUtilTest {
           "::ffff:192.0.2.1",
           "::192.0.2.1"
         })
-    void ipsAreRejectedWhenDisallowed(String ip) {
+    void isValidHostname_whenIpsDisallowed_ips_returnFalse(String ip) {
       assertFalse(HostnameUtil.isValidHostname(ip, false));
     }
   }
@@ -112,7 +146,7 @@ class HostnameUtilTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"example.com", "sub.example.org", "xn--d1acufc7f.com"})
-    void validHostnamesStillValidate(String domain) {
+    void isValidHostname_whenIpsAllowed_validHostnames_returnTrue(String domain) {
       // Even when IPs are allowed, plain hostnames must pass the hostname regex
       assertTrue(HostnameUtil.isValidHostname(domain, true));
     }
@@ -130,8 +164,7 @@ class HostnameUtilTest {
           "::::ffff:192.0.2.1",
           "[::1]" // bracketed forms are not accepted by design
         })
-    void invalidHostnamesAreRejected(String domain) {
-      // Regression check: previously, enum name comparison allowed any string to pass
+    void isValidHostname_whenIpsAllowed_invalidHostnames_returnFalse(String domain) {
       assertFalse(HostnameUtil.isValidHostname(domain, true));
     }
   }
