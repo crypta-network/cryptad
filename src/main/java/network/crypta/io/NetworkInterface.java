@@ -18,7 +18,6 @@ import java.util.StringTokenizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import network.crypta.io.AddressIdentifier.AddressType;
 import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -361,12 +360,8 @@ public class NetworkInterface implements Closeable {
           InetAddress clientAddress = clientSocket.getInetAddress();
           if (LOG.isDebugEnabled()) LOG.debug("Connection from " + clientAddress);
 
-          AddressType clientAddressType =
-              AddressIdentifier.getAddressType(clientAddress.getHostAddress());
-
           /* check if the ip address is allowed */
-          if (allowedHosts.allowed(clientAddressType, clientAddress)
-              && acceptedSockets.size() <= maxQueueLength) {
+          if (allowedHosts.allowed(clientAddress) && acceptedSockets.size() <= maxQueueLength) {
             lock.lock();
             try {
               acceptedSockets.add(clientSocket);
