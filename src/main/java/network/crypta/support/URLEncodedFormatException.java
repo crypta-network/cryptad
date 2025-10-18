@@ -28,6 +28,7 @@ public class URLEncodedFormatException extends Exception {
    *
    * <p>Intended for use when the caller does not have additional error context.
    */
+  @SuppressWarnings("unused")
   URLEncodedFormatException() {}
 
   /**
