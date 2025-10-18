@@ -463,17 +463,18 @@ public class NodeUpdateManager {
     if (blobSize <= 0) {
       fetchedVersion = -1;
     }
-    return DMT.createUOMAnnouncement(
-        updateURI.toString(),
-        revocationURI.toString(),
-        revocationChecker.hasBlown(),
-        fetchedVersion,
-        revocationChecker.lastSucceededDelta(),
-        revocationChecker.getRevocationDNFCounter(),
-        revocationChecker.getBlobSize(),
-        blobSize,
-        (int) node.getNodeStats().getNodeAveragePingTime(),
-        (int) node.getNodeStats().getBwlimitDelayTime());
+    return new DMT.UOMAnnouncementBuilder()
+        .mainKey(updateURI.toString())
+        .revocationKey(revocationURI.toString())
+        .haveRevocation(revocationChecker.hasBlown())
+        .mainJarVersion(fetchedVersion)
+        .timeLastTriedRevocationFetch(revocationChecker.lastSucceededDelta())
+        .revocationDNFCount(revocationChecker.getRevocationDNFCounter())
+        .revocationKeyLength(revocationChecker.getBlobSize())
+        .mainJarLength(blobSize)
+        .pingTime((int) node.getNodeStats().getNodeAveragePingTime())
+        .bwlimitDelayTime((int) node.getNodeStats().getBwlimitDelayTime())
+        .build();
   }
 
   public void maybeSendUOMAnnounce(PeerNode peer) {
