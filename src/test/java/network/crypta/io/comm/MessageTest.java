@@ -1,0 +1,399 @@
+package network.crypta.io.comm;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.util.LinkedList;
+import java.util.List;
+import network.crypta.support.ShortBuffer;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+/** Tests for {@link Message}. */
+@ExtendWith(MockitoExtension.class)
+class MessageTest {
+
+  // Field keys for a custom test MessageType
+  private static final String BOOLEAN = "boolean";
+  private static final String BYTE = "byte";
+  private static final String SHORT = "short";
+  private static final String INT = "int";
+  private static final String LONG = "long";
+  private static final String DOUBLE = "double";
+  private static final String FLOAT = "float";
+  private static final String DOUBLE_ARRAY = "double[]";
+  private static final String FLOAT_ARRAY = "float[]";
+  private static final String STR = "str";
+  private static final String LIST = "list";
+
+  // A single message type used across several tests; registered once.
+  private static final MessageType SIMPLE_SPEC =
+      new MessageType("MessageTest.simple", DMT.PRIORITY_LOW) {
+        {
+          addField(BOOLEAN, Boolean.class);
+          addField(BYTE, Byte.class);
+          addField(SHORT, Short.class);
+          addField(INT, Integer.class);
+          addField(LONG, Long.class);
+          addField(DOUBLE, Double.class);
+          addField(FLOAT, Float.class);
+          addField(DOUBLE_ARRAY, double[].class);
+          addField(FLOAT_ARRAY, float[].class);
+          addField(STR, String.class);
+          addLinkedListField(LIST, Integer.class);
+        }
+      };
+
+  private static final MessageType SUB_SPEC =
+      new MessageType("MessageTest.sub", DMT.PRIORITY_UNSPECIFIED) {
+        {
+          addField("subVal", Integer.class);
+        }
+      };
+
+  // Minimal spec for round-trip encode/decode tests to avoid null fields.
+  private static final MessageType ROUNDTRIP_SPEC =
+      new MessageType("MessageTest.roundtrip", DMT.PRIORITY_UNSPECIFIED) {
+        {
+          addField(INT, Integer.class);
+          addField(STR, String.class);
+        }
+      };
+
+  private static final MessageType INTERNAL_ONLY_SPEC =
+      new MessageType("MessageTest.internalOnly", DMT.PRIORITY_LOW, true, false);
+
+  // No Mockito mocks needed; use a minimal stub PeerContext below.
+
+  @Test
+  @SuppressWarnings("java:S100") // method naming per test naming convention
+  void setGet_whenAllSupportedTypes_expectRoundTripViaAccessors() {
+    Message msg = new Message(SIMPLE_SPEC);
+
+    final boolean booleanVal = true;
+    final byte byteVal = (byte) 123;
+    final short shortVal = (short) 456;
+    final int intVal = 78912;
+    final long longVal = 3_456_789_123L;
+    final double doubleVal = Math.PI;
+    final float floatVal = 0.12345f;
+    final double[] doubleArrayVal = new double[] {Math.PI, Math.E};
+    final float[] floatArrayVal = new float[] {1234.5678f, 912345.6789f};
+    final String strVal = "hello";
+    final LinkedList<Integer> listVal = new LinkedList<>(List.of(1, 2, 3));
+
+    msg.set(BOOLEAN, booleanVal);
+    msg.set(BYTE, byteVal);
+    msg.set(SHORT, shortVal);
+    msg.set(INT, intVal);
+    msg.set(LONG, longVal);
+    msg.set(DOUBLE, doubleVal);
+    msg.set(FLOAT, floatVal);
+    msg.set(DOUBLE_ARRAY, doubleArrayVal);
+    msg.set(FLOAT_ARRAY, floatArrayVal);
+    msg.set(STR, strVal);
+    msg.set(LIST, listVal);
+
+    assertEquals(booleanVal, msg.getBoolean(BOOLEAN));
+    assertEquals(byteVal, msg.getByte(BYTE));
+    assertEquals(shortVal, msg.getShort(SHORT));
+    assertEquals(intVal, msg.getInt(INT));
+    assertEquals(longVal, msg.getLong(LONG));
+    assertEquals(doubleVal, msg.getDouble(DOUBLE), 0.0);
+    assertEquals(floatVal, msg.getFloat(FLOAT), 0.0);
+    assertArrayEquals(doubleArrayVal, msg.getDoubleArray(DOUBLE_ARRAY), 0.0);
+    assertArrayEquals(floatArrayVal, msg.getFloatArray(FLOAT_ARRAY));
+    assertEquals(strVal, msg.getString(STR));
+    assertEquals(listVal, msg.getObject(LIST));
+
+    // Sanity: isSet and getFromPayload happy path
+    assertTrue(msg.isSet(INT));
+    assertEquals(intVal, msg.getFromPayload(INT));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void set_whenUnknownField_expectIllegalState() {
+    Message msg = new Message(SIMPLE_SPEC);
+    assertThrows(IllegalStateException.class, () -> msg.set("nope", 1));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void set_whenWrongType_expectIncorrectTypeException() {
+    Message msg = new Message(SIMPLE_SPEC);
+    assertThrows(IncorrectTypeException.class, () -> msg.set(INT, "notAnInt"));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void set_whenNull_expectIncorrectTypeException() {
+    Message msg = new Message(SIMPLE_SPEC);
+    assertThrows(IncorrectTypeException.class, () -> msg.set(INT, null));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getFromPayload_whenNotSet_expectException() {
+    Message msg = new Message(SIMPLE_SPEC);
+    assertThrows(Message.FieldNotSetException.class, () -> msg.getFromPayload(INT));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void encodeDecode_whenSimpleMessage_expectRoundTripFieldsAndPriority() {
+    Message orig = new Message(ROUNDTRIP_SPEC);
+    orig.set(INT, 42);
+    orig.set(STR, "abc");
+    byte[] packet = orig.encodeToPacket();
+
+    // Provide a PeerContext so getSource() works on decoded messages.
+    PeerContext pc = new TestPeerContext();
+    Message decoded = Message.decodeMessageFromPacket(packet, 0, packet.length, pc, 7);
+    assertNotNull(decoded);
+    assertEquals(ROUNDTRIP_SPEC, decoded.getSpec());
+    assertEquals(42, decoded.getInt(INT));
+    assertEquals("abc", decoded.getString(STR));
+    assertEquals(packet.length + 7, decoded.receivedByteCount());
+    assertSame(pc, decoded.getSource());
+    assertFalse(decoded.isInternal());
+
+    // Default priority comes from the spec; boostPriority() decrements it.
+    short p = decoded.getPriority();
+    decoded.boostPriority();
+    assertEquals((short) (p - 1), decoded.getPriority());
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void encodeDecode_whenWithSubMessage_expectRetrievableViaGetAndGrab() {
+    Message parent = new Message(ROUNDTRIP_SPEC);
+    parent.set(INT, 10);
+    parent.set(STR, "x");
+    Message child = new Message(SUB_SPEC);
+    child.set("subVal", 99);
+    parent.addSubMessage(child);
+
+    byte[] packet = parent.encodeToPacket();
+    Message decoded =
+        Message.decodeMessageFromPacket(packet, 0, packet.length, new TestPeerContext(), 0);
+    assertNotNull(decoded);
+
+    Message sub = decoded.getSubMessage(SUB_SPEC);
+    assertNotNull(sub);
+    assertEquals(99, sub.getInt("subVal"));
+
+    // grabSubMessage removes it on retrieval
+    Message grabbed = decoded.grabSubMessage(SUB_SPEC);
+    assertNotNull(grabbed);
+    assertNull(decoded.getSubMessage(SUB_SPEC));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void decode_whenIncompleteSubMessage_present_expectParentReturnedWithoutSubs()
+      throws IOException {
+    // Build a parent message packet and then append an incomplete submessage length which
+    // claims more bytes than remain.
+    Message parent = new Message(ROUNDTRIP_SPEC);
+    parent.set(INT, 1);
+    parent.set(STR, "x");
+    byte[] base = parent.encodeToPacket();
+
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream(baos);
+    // Copy parent payload bytes.
+    dos.write(base);
+    // Append a sub-message size that's too large (e.g. 1000) but no payload bytes.
+    dos.writeShort(1000);
+    dos.flush();
+
+    Message decoded =
+        Message.decodeMessageFromPacket(
+            baos.toByteArray(), 0, baos.size(), new TestPeerContext(), 0);
+    assertNotNull(decoded);
+    assertNull(decoded.getSubMessage(SUB_SPEC));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void decode_whenInternalOnlyMessage_expectNull() {
+    Message internal = new Message(INTERNAL_ONLY_SPEC);
+    byte[] packet = internal.encodeToPacket();
+
+    Message decoded =
+        Message.decodeMessageFromPacket(packet, 0, packet.length, new TestPeerContext(), 0);
+    assertNull(decoded);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void decodeLax_whenUnknownType_expectNull() throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream(baos);
+    // Unknown spec ID
+    dos.writeInt(0x1234_5678);
+    dos.flush();
+    assertNull(Message.decodeMessageLax(baos.toByteArray(), new TestPeerContext(), 0));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void getShortBufferBytes_whenWindowedBuffer_expectOnlyWindowReturned() {
+    byte[] backing = new byte[] {0, 1, 2, 3, 4, 5, 6};
+    ShortBuffer sb = new ShortBuffer(backing, 2, 3); // bytes 2,3,4
+    Message msg =
+        new Message(
+            new MessageType("MessageTest.shortBuffer", DMT.PRIORITY_LOW) {
+              {
+                addField(DMT.NODE_IDENTITY, ShortBuffer.class);
+              }
+            });
+    msg.set(DMT.NODE_IDENTITY, sb);
+    byte[] got = msg.getShortBufferBytes(DMT.NODE_IDENTITY);
+    assertArrayEquals(new byte[] {2, 3, 4}, got);
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void setRoutedToNodeFields_whenSpecHasRoutedFields_expectValuesSet() {
+    MessageType t = new MessageType("MessageTest.routed", DMT.PRIORITY_LOW);
+    t.addRoutedToNodeMessageFields();
+    Message msg = new Message(t);
+    byte[] nid = new byte[] {7, 8, 9};
+    msg.setRoutedToNodeFields(123L, 0.75, (short) 7, nid);
+
+    assertEquals(123L, msg.getLong(DMT.UID));
+    assertEquals(0.75, msg.getDouble(DMT.TARGET_LOCATION), 0.0);
+    assertEquals((short) 7, msg.getShort(DMT.HTL));
+    assertArrayEquals(nid, msg.getShortBufferBytes(DMT.NODE_IDENTITY));
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void cloneAndDropSubMessages_whenCloned_expectNoSubMessagesAndNoSource() {
+    Message parent = new Message(ROUNDTRIP_SPEC);
+    parent.set(INT, 5);
+    parent.set(STR, "x");
+    Message child = new Message(SUB_SPEC);
+    child.set("subVal", 1);
+    parent.addSubMessage(child);
+    // Simulate a decoded (external) message
+    Message decoded =
+        Message.decodeMessageFromPacket(
+            parent.encodeToPacket(), 0, parent.encodeToPacket().length, new TestPeerContext(), 0);
+    assertNotNull(decoded);
+
+    Message clone = decoded.cloneAndDropSubMessages();
+    assertEquals(ROUNDTRIP_SPEC, clone.getSpec());
+    assertEquals(5, clone.getInt(INT));
+    assertNull(clone.getSubMessage(SUB_SPEC));
+    assertNull(clone.getSource()); // originator is self
+    // Priority is preserved
+    assertEquals(decoded.getPriority(), clone.getPriority());
+    // Received byte count resets to 0 on clone
+    assertEquals(0, clone.receivedByteCount());
+  }
+
+  @Test
+  @SuppressWarnings("java:S100")
+  void toString_whenCalled_containsNameAndKeyValues() {
+    Message msg = new Message(SIMPLE_SPEC);
+    msg.set(INT, 77);
+    msg.set(STR, "xyz");
+    String s = msg.toString();
+    assertTrue(s.contains(SIMPLE_SPEC.getName()));
+    assertTrue(s.contains("77"));
+    assertTrue(s.contains("xyz"));
+  }
+
+  // Minimal stub PeerContext for decode paths. Only getWeakRef() is used by Message.
+  private static final class TestPeerContext implements PeerContext {
+    private final WeakReference<TestPeerContext> ref = new WeakReference<>(this);
+
+    @Override
+    public Peer getPeer() {
+      return null;
+    }
+
+    @Override
+    public void forceDisconnect() {
+      // Intentionally empty in test stub: decode-only tests never control connection lifecycle.
+    }
+
+    @Override
+    public boolean isConnected() {
+      return true;
+    }
+
+    @Override
+    public boolean isRoutable() {
+      return true;
+    }
+
+    @Override
+    public int getBuildNumber() {
+      return -1;
+    }
+
+    @Override
+    public network.crypta.node.MessageItem sendAsync(
+        Message msg, AsyncMessageCallback cb, ByteCounter ctr) {
+      return null;
+    }
+
+    @Override
+    public long getBootID() {
+      return 0;
+    }
+
+    @Override
+    public network.crypta.io.xfer.PacketThrottle getThrottle() {
+      return null;
+    }
+
+    @Override
+    public SocketHandler getSocketHandler() {
+      return null;
+    }
+
+    @Override
+    public network.crypta.node.OutgoingPacketMangler getOutgoingMangler() {
+      return null;
+    }
+
+    @Override
+    public WeakReference<? extends PeerContext> getWeakRef() {
+      return ref;
+    }
+
+    @Override
+    public String shortToString() {
+      return "testPeer";
+    }
+
+    @Override
+    public void transferFailed(String reason, boolean realTime) {
+      // Intentionally empty in test stub: no actual send/transfer occurs during unit tests.
+    }
+
+    @Override
+    public boolean unqueueMessage(network.crypta.node.MessageItem item) {
+      return false;
+    }
+
+    @Override
+    public void reportThrottledPacketSendTime(long time, boolean realTime) {
+      // Intentionally empty in test stub: throttling metrics are irrelevant for decode-only tests.
+    }
+
+    @Override
+    public int getThrottleWindowSize() {
+      return 0;
+    }
+  }
+}

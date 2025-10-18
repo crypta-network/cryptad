@@ -421,7 +421,7 @@ public final class MessageFilter {
             },
             "Slow callback for " + cb);
       else cb.onMatched(msg);
-      if (ctr != null) ctr.receivedBytes(msg._receivedByteCount);
+      if (ctr != null) ctr.receivedBytes(msg.receivedByteCount());
     }
   }
 

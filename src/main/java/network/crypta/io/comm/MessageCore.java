@@ -630,7 +630,7 @@ public class MessageCore {
     //		}
     long endTime = System.currentTimeMillis();
     if (LOG.isTraceEnabled()) LOG.trace("Returning in " + (endTime - startTime) + "ms");
-    if ((ctr != null) && (ret != null)) ctr.receivedBytes(ret._receivedByteCount);
+    if ((ctr != null) && (ret != null)) ctr.receivedBytes(ret.receivedByteCount());
     return ret;
   }
 
