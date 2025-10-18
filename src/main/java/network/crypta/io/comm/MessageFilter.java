@@ -468,4 +468,34 @@ public final class MessageFilter {
   public synchronized boolean hasCallback() {
     return _callback != null;
   }
+
+  /**
+   * Block on this filter's monitor until a message is matched, the peer is dropped/restarted, or
+   * the filter times out. This encapsulates the wait/notify pattern so callers don't need to
+   * synchronize on the filter reference directly.
+   *
+   * <p>Threading: Uses this filter instance as the monitor. Matching and connection events call
+   * {@link #notifyAll()} while holding the same monitor, so waiting here is woken reliably.
+   *
+   * @return the matched {@link Message}, or null if the filter timed out.
+   * @throws DisconnectedException if the associated peer disconnects or restarts while waiting.
+   */
+  Message waitForSignalOrTimeout() throws DisconnectedException {
+    synchronized (this) {
+      try {
+        long now;
+        while (!(_matched
+            || (_droppedConnection != null)
+            || reallyTimedOut(now = System.currentTimeMillis()))) {
+          long wait = _timeout - now;
+          if (wait <= 0) break;
+          this.wait(wait);
+        }
+        if (_droppedConnection != null) throw new DisconnectedException();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return _message;
+    }
+  }
 }
