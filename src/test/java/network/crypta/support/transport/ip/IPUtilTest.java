@@ -1,7 +1,13 @@
 package network.crypta.support.transport.ip;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -9,16 +15,20 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Tests for {@link IPUtil} covering IPv4/IPv6 ranges and edge conditions.
  *
  * <p>Naming: method_whenCondition_expectOutcome (AAA style inside each test).
  */
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100") // test naming: method_whenCondition_expectOutcome
 class IPUtilTest {
 
   // ---------- Helpers ----------
@@ -31,13 +41,7 @@ class IPUtilTest {
     }
   }
 
-  private static InetAddress ipv4(byte a, byte b, byte c, byte d) {
-    try {
-      return InetAddress.getByAddress(new byte[] {a, b, c, d});
-    } catch (UnknownHostException e) {
-      throw new AssertionError(e);
-    }
-  }
+  // no dedicated ipv4-bytes helper to avoid Sonar flagging constant parameters
 
   private static InetAddress ipv6(byte[] addr16) {
     assertEquals(16, addr16.length, "IPv6 address must be 16 bytes");
@@ -80,11 +84,8 @@ class IPUtilTest {
 
     @Test
     void isSiteLocalAddress_whenNull_expectNullPointerException() {
-      // Arrange
-      InetAddress addr = null;
-
-      // Act + Assert
-      assertThrows(NullPointerException.class, () -> IPUtil.isSiteLocalAddress(addr));
+      // Arrange + Act + Assert
+      assertThrows(NullPointerException.class, () -> IPUtil.isSiteLocalAddress(null));
     }
   }
 
@@ -98,7 +99,9 @@ class IPUtilTest {
         Arguments.of(ip("fc00::1")),
         Arguments.of(ip("fd12:3456::1")),
         // IPv6 deprecated site-local: fec0::/10
-        Arguments.of(ip("fec0::1")));
+        Arguments.of(ip("fec0::1")),
+        // Upper bound of fec0::/10 → feff::/10
+        Arguments.of(ip("feff::1")));
   }
 
   static Stream<Arguments> nonSiteLocalAddresses() {
@@ -138,7 +141,7 @@ class IPUtilTest {
     @Test
     void isValidAddress_whenIPv4FirstOctetZero_expectFalse() {
       // Arrange
-      InetAddress zeroLeading = ipv4((byte) 0, (byte) 1, (byte) 2, (byte) 3);
+      InetAddress zeroLeading = ip("0.1.2.3");
 
       // Act
       boolean resultWhenInclude = IPUtil.isValidAddress(zeroLeading, true);
@@ -175,12 +178,10 @@ class IPUtilTest {
     }
 
     @Test
+    @SuppressWarnings("DataFlowIssue")
     void isValidAddress_whenNull_expectNullPointerException() {
-      // Arrange
-      InetAddress addr = null;
-
-      // Act + Assert
-      assertThrows(NullPointerException.class, () -> IPUtil.isValidAddress(addr, true));
+      // Arrange + Act + Assert
+      assertThrows(NullPointerException.class, () -> IPUtil.isValidAddress(null, true));
     }
   }
 
@@ -236,14 +237,52 @@ class IPUtilTest {
   @Test
   void helper_ipv6Bytes_createsInet6Address() {
     // Arrange
-    byte[] fd_ula = new byte[] {(byte) 0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    byte[] fdUla = new byte[] {(byte) 0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 
     // Act
-    InetAddress addr = ipv6(fd_ula);
+    InetAddress addr = ipv6(fdUla);
 
     // Assert
-    assertTrue(addr instanceof Inet6Address);
+    assertInstanceOf(Inet6Address.class, addr);
     assertEquals(16, addr.getAddress().length);
+  }
+
+  @Test
+  void isSiteLocalAddress_whenIPv6MappedPrivateIPv4_expectTrueByJvmNormalization() {
+    // Arrange: IPv4-mapped IPv6 for a private IPv4 address. JDK normalizes to Inet4Address.
+    byte[] mappedBytes =
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (byte) 0xff, (byte) 0xff, (byte) 192, (byte) 168, 1, 50
+        };
+    InetAddress mapped = ipv6(mappedBytes);
+    assertFalse(mapped instanceof Inet6Address);
+    assertEquals(4, mapped.getAddress().length);
+
+    // Act
+    boolean result = IPUtil.isSiteLocalAddress(mapped);
+
+    // Assert: treated as IPv4 RFC1918 site-local
+    assertTrue(result);
+  }
+
+  @Test
+  void isValidAddress_whenIPv6MappedPrivateIPv4_expectMirrorsIncludeLocal() {
+    // Arrange: explicit 16-byte IPv6-mapped address; JDK normalizes to IPv4
+    byte[] mappedBytes =
+        new byte[] {
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (byte) 0xff, (byte) 0xff, (byte) 192, (byte) 168, 1, 50
+        };
+    InetAddress mapped = ipv6(mappedBytes);
+    assertFalse(mapped instanceof Inet6Address);
+    assertEquals(4, mapped.getAddress().length);
+
+    // Act
+    boolean include = IPUtil.isValidAddress(mapped, true);
+    boolean exclude = IPUtil.isValidAddress(mapped, false);
+
+    // Assert: behaves like IPv4 site-local (mirrors includeLocal flag)
+    assertTrue(include);
+    assertFalse(exclude);
   }
 
   @Test
@@ -269,5 +308,18 @@ class IPUtilTest {
 
     // Assert
     assertTrue(result);
+  }
+
+  @Test
+  void constructor_whenReflected_expectIllegalStateException() throws Exception {
+    // Arrange
+    Constructor<IPUtil> ctor = IPUtil.class.getDeclaredConstructor();
+    ctor.setAccessible(true);
+
+    // Act
+    InvocationTargetException ex = assertThrows(InvocationTargetException.class, ctor::newInstance);
+
+    // Assert
+    assertInstanceOf(IllegalStateException.class, ex.getCause());
   }
 }
