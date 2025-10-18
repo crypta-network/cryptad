@@ -3,35 +3,57 @@ package network.crypta.support.api;
 import java.io.IOException;
 
 /**
- * Serves a similar function to BucketFactory. Different factories may serve different functions
- * e.g. temporary storage (not persistent across restarts) only.
+ * Factory for creating {@link LockableRandomAccessBuffer} instances.
+ *
+ * <p>Implementations may allocate memory-backed or file-backed storage, and may add behaviors such
+ * as encryption, padding, or disk-space checks. Some factories produce only temporary
+ * (non-persistent) buffers, while others can persist enough information for later restoration via
+ * the buffer API. See concrete implementations for details.
+ *
+ * <p><strong>Ownership:</strong> Callers are responsible for releasing resources held by returned
+ * buffers (for example, by calling {@link LockableRandomAccessBuffer#free()}) when finished.
+ *
+ * <p><strong>Thread-safety:</strong> Concurrency characteristics are implementation-defined;
+ * consult the concrete class documentation. Concurrency guarantees for the buffers themselves are
+ * documented on {@link LockableRandomAccessBuffer} and its implementations.
+ *
+ * <p><strong>Units:</strong> Sizes are in bytes.
  *
  * @author toad
  */
 public interface LockableRandomAccessBufferFactory {
 
   /**
-   * Create a bucket.
+   * Creates a zero-initialized random-access buffer of fixed size.
    *
-   * @param size The maximum size of the data. Most factories will pre-allocate this space, and it
-   *     may not be exceeded. However we do not guarantee that any I/O operation will complete; even
-   *     if we have pre-allocated the disk space, we may be unable to write to it because of e.g. a
-   *     hardware error.
-   * @return A LockableRandomAccessBuffer of the requested size.
-   * @throws IOException If an I/O error prevented the operation.
-   * @throws IllegalArgumentException If size < 0.
+   * <p>Implementations typically pre-allocate the requested capacity; callers should not assume the
+   * size can grow beyond {@code size}. Even when space is reserved up front, subsequent I/O may
+   * still fail due to hardware or operating-system errors.
+   *
+   * @param size logical length in bytes; must be {@code >= 0}
+   * @return a {@link LockableRandomAccessBuffer} of length {@code size}
+   * @throws IOException if creating the buffer fails due to an I/O error
+   * @throws IllegalArgumentException if {@code size < 0}
    */
   LockableRandomAccessBuffer makeRAF(long size) throws IOException;
 
   /**
-   * Create a bucket with specified initial contents.
+   * Creates a random-access buffer initialized from a segment of a byte array.
    *
-   * @param initialContents Byte array from which to copy data. Data will be copied even if the
-   *     underlying implementation is a byte array, for reasons of consistency.
-   * @param offset Offset within the array to start copying data from.
-   * @param size Number of bytes to copy i.e. length of the new RandomAccessBuffer.
-   * @return
-   * @throws IOException If an I/O error prevented the operation.
+   * <p>The new buffer's content equals {@code initialContents[offset .. offset + size)}. Data is
+   * copied into the buffer even when the underlying implementation is in-memory; callers should not
+   * rely on the factory retaining a reference to {@code initialContents}.
+   *
+   * @param initialContents source array that contains at least {@code offset + size} bytes
+   * @param offset starting index within {@code initialContents}
+   * @param size number of bytes to copy; also the logical length of the returned buffer; must be
+   *     {@code >= 0}
+   * @param readOnly whether the returned buffer should prohibit writes if supported by the
+   *     implementation
+   * @return a {@link LockableRandomAccessBuffer} whose first {@code size} bytes are initialized
+   *     from {@code initialContents}
+   * @throws IOException if allocation or initialization fails due to an I/O error
+   * @throws IllegalArgumentException if {@code size < 0}
    */
   LockableRandomAccessBuffer makeRAF(byte[] initialContents, int offset, int size, boolean readOnly)
       throws IOException;
