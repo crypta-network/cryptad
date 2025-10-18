@@ -184,11 +184,11 @@ public class ConnectivityToadlet extends Toadlet {
           for (int k = 0; k < AddressTrackerItem.TRACK_GAPS; k++) {
             row.addChild(
                 "td",
-                gaps[k].receivedPacketAt == 0
+                gaps[k].receivedPacketAt() == 0
                     ? ""
-                    : (TimeUtil.formatTime(gaps[k].gapLength)
+                    : (TimeUtil.formatTime(gaps[k].gapLength())
                         + " @ "
-                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt)
+                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt())
                         + " ago" /* fixme l10n */));
           }
         }
@@ -237,11 +237,11 @@ public class ConnectivityToadlet extends Toadlet {
           for (int k = 0; k < AddressTrackerItem.TRACK_GAPS; k++) {
             row.addChild(
                 "td",
-                gaps[k].receivedPacketAt == 0
+                gaps[k].receivedPacketAt() == 0
                     ? ""
-                    : (TimeUtil.formatTime(gaps[k].gapLength)
+                    : (TimeUtil.formatTime(gaps[k].gapLength())
                         + " @ "
-                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt)
+                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt())
                         + " ago" /* fixme l10n */));
           }
         }

@@ -6,53 +6,83 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Tracks communication to/from a specific address. That address can be a specific IP:port, a
- * specific IP, or some completely different type of address, so we don't store it in this class;
- * subclasses will do.
+ * Tracks message activity to and from a single logical address and derives recent inactivity gaps.
  *
- * @author toad
+ * <p>The concrete address (for example an IP:port, an IP only, or another scheme) is owned by a
+ * subclass; this type focuses purely on timing and counters:
+ *
+ * <ul>
+ *   <li>First/last send and receive times (milliseconds since epoch).
+ *   <li>Total send/receive counters.
+ *   <li>A fixed-size ring of the most recent inactivity gaps (see {@link #getGaps()}).
+ * </ul>
+ *
+ * <p>Concurrency: mutating and accessor methods on the evolving state are synchronized unless
+ * stated otherwise. {@link #longestGap(long, long)} is intentionally unsynchronized and returns a
+ * best-effort value suitable for diagnostics and UI.
  */
 public class AddressTrackerItem {
   private static final Logger LOG = LoggerFactory.getLogger(AddressTrackerItem.class);
 
-  /** The time at which the first packet was received from this address. */
+  /**
+   * Time of the first observed receive from this address, in milliseconds since epoch, or {@code
+   * -1} if none.
+   */
   private long timeFirstReceivedPacket;
 
-  /** The time at which the first packet was sent to this address. */
+  /**
+   * Time of the first observed send to this address, in milliseconds since epoch, or {@code -1} if
+   * none.
+   */
   private long timeFirstSentPacket;
 
   /**
-   * The earliest time, before timeFirstReceivedPacket, at which we know for certain that there was
-   * no packet received. This is typically the startup time of the server socket. It may be later if
-   * the cache has to be flushed.
+   * Earliest time (strict upper bound) at which we know no packet was received. Typically, the
+   * socket startup time; may advance if caches are flushed.
    */
   private final long timeDefinitelyNoPacketsReceived;
 
   /**
-   * The earliest time, before timeFirstSentPacket, at which we know for certain that there was no
-   * packet sent. This is typically the startup time of the node. It may be later if the cache has
-   * to be flushed.
+   * Earliest time (strict upper bound) at which we know no packet was sent. Typically, the node
+   * startup time; may advance if caches are flushed.
    */
   private final long timeDefinitelyNoPacketsSent;
 
-  /** The time at which we received the most recent packet */
+  /** Time of the most recent receive, in milliseconds since epoch, or {@code -1} if none. */
   private long timeLastReceivedPacket;
 
-  /** The time at which we sent the most recent packet */
+  /** Time of the most recent send, in milliseconds since epoch, or {@code -1} if none. */
   private long timeLastSentPacket;
 
-  /** The total number of packets sent to this address */
+  /** Total number of packets sent to this address. */
   private long packetsSent;
 
-  /** The total number of packets received from this address */
+  /** Total number of packets received from this address. */
   private long packetsReceived;
 
+  /** Number of recent gaps to retain and expose via {@link #getGaps()}. */
   public static final int TRACK_GAPS = 5;
+
   private final long[] gapLengths;
   private final long[] gapLengthRecvTimes;
+
+  /** Minimum inactivity length (ms) required to record a gap. */
   private static final long GAP_THRESHOLD = AddressTracker.MAYBE_TUNNEL_LENGTH;
+
+  /**
+   * When true, the interval start considers the last receive as well as the last send. This yields
+   * conservative (longer) gaps when back-to-back receives occur without intervening sends.
+   */
   static final boolean INCLUDE_RECEIVED_PACKETS = true;
 
+  /**
+   * Creates an empty tracker with known upper bounds for the "no packets yet" window.
+   *
+   * @param timeDefinitelyNoPacketsReceived earliest time at which receiving is known to have been
+   *     impossible (e.g., socket startup), in milliseconds since epoch
+   * @param timeDefinitelyNoPacketsSent earliest time at which sending is known to have been
+   *     impossible (e.g., node startup), in milliseconds since epoch
+   */
   public AddressTrackerItem(
       long timeDefinitelyNoPacketsReceived, long timeDefinitelyNoPacketsSent) {
     timeFirstReceivedPacket = -1;
@@ -67,6 +97,18 @@ public class AddressTrackerItem {
     gapLengthRecvTimes = new long[TRACK_GAPS];
   }
 
+  /**
+   * Reconstructs a tracker from a serialized {@link SimpleFieldSet}.
+   *
+   * <p>Expected keys: {@code TimeFirstReceivedPacket}, {@code TimeFirstSentPacket}, {@code
+   * TimeDefinitelyNoPacketsSent}, {@code TimeDefinitelyNoPacketsReceived}, {@code
+   * TimeLastReceivedPacket}, {@code TimeLastSentPacket}, {@code PacketsSent}, {@code
+   * PacketsReceived}, and a {@code Gaps} subset containing {@code 0..(TRACK_GAPS-1)} with {@code
+   * Length} and {@code Received}.
+   *
+   * @param fs field set produced by {@link #toFieldSet()}
+   * @throws FSParseException if required keys are missing or values cannot be parsed
+   */
   public AddressTrackerItem(SimpleFieldSet fs) throws FSParseException {
     timeFirstReceivedPacket = fs.getLong("TimeFirstReceivedPacket");
     timeFirstSentPacket = fs.getLong("TimeFirstSentPacket");
@@ -82,7 +124,7 @@ public class AddressTrackerItem {
     for (int i = 0; i < TRACK_GAPS; i++) {
       SimpleFieldSet gap = gaps.subset(Integer.toString(i));
       if (gap == null) {
-        LOG.info("No more gaps at i=" + i + " - TRACK_GAPS changed??");
+        LOG.info("No more gaps at i={} - TRACK_GAPS changed??", i);
         break;
       }
       gapLengths[i] = gap.getLong("Length");
@@ -90,18 +132,32 @@ public class AddressTrackerItem {
     }
   }
 
+  /**
+   * Records that a packet was sent at the given time.
+   *
+   * @param now timestamp in milliseconds since epoch
+   */
   public synchronized void sentPacket(long now) {
     packetsSent++;
     if (timeFirstSentPacket < 0) timeFirstSentPacket = now;
     timeLastSentPacket = now;
   }
 
+  /**
+   * Records that a packet was received at the given time and updates gap history when the
+   * inactivity since the last relevant activity exceeds the threshold.
+   *
+   * <p>Interval start is the maximum of the last send, the {@code no-sent} bound, and, when {@link
+   * #INCLUDE_RECEIVED_PACKETS} is true, the last receive and the {@code no-recv} bound.
+   *
+   * @param now timestamp in milliseconds since epoch
+   */
   public synchronized void receivedPacket(long now) {
     packetsReceived++;
     if (timeFirstReceivedPacket < 0) timeFirstReceivedPacket = now;
     long oldTimeLastReceivedPacket = timeLastReceivedPacket;
     timeLastReceivedPacket = now;
-    // Establish the interval
+    // Establish the interval start from known lower bounds and recent activity.
     long startTime;
     startTime = timeLastSentPacket;
     startTime = Math.max(startTime, timeDefinitelyNoPacketsSent);
@@ -109,26 +165,47 @@ public class AddressTrackerItem {
       startTime = Math.max(startTime, oldTimeLastReceivedPacket);
       startTime = Math.max(startTime, timeDefinitelyNoPacketsReceived);
     }
-    if (startTime <= 0) return; // No information
+    // No usable lower bound yet (all unknown/zero) → nothing to record.
+    if (startTime <= 0) return;
     if (now - startTime > GAP_THRESHOLD) {
-      // Not necessarily a new gap
-      // If no packets sent since last one, just replace it
+      // This may be a new gap or a refinement of the most recent one.
+      // Rotate only if a sending occurred after the previously recorded gap; otherwise overwrite
+      // [0].
       if (timeLastSentPacket >= gapLengthRecvTimes[0]) {
-        // Rotate gaps array
-        System.arraycopy(gapLengths, 0, gapLengths, 1, TRACK_GAPS - 1);
-        System.arraycopy(gapLengthRecvTimes, 0, gapLengthRecvTimes, 1, TRACK_GAPS - 1);
-      } else {
-        // else overwrite [0]
+        // Shift right to make room at [0]; manual loop avoids overlapping copy concerns.
+        for (int i = TRACK_GAPS - 1; i > 0; i--) {
+          gapLengths[i] = gapLengths[i - 1];
+          gapLengthRecvTimes[i] = gapLengthRecvTimes[i - 1];
+        }
       }
       gapLengths[0] = (now - startTime);
       gapLengthRecvTimes[0] = now;
     }
   }
 
+  /**
+   * Returns whether the most recent recorded gap ended within the given horizon.
+   *
+   * <p>This is a coarse signal that a long-running tunnel may have been observed recently.
+   *
+   * @param horizon look-back window in milliseconds
+   * @return {@code true} if the latest gap's receive time is within {@code horizon} of "now"
+   */
   public synchronized boolean hasLongTunnel(long horizon) {
     return gapLengthRecvTimes[0] > System.currentTimeMillis() - horizon;
   }
 
+  /**
+   * Returns the maximum gap length among gaps whose end time is within {@code horizon} of {@code
+   * now}.
+   *
+   * <p>Stops scanning once it reaches a gap older than the horizon because entries are ordered most
+   * recent first.
+   *
+   * @param horizon look-back window in milliseconds
+   * @param now reference time in milliseconds since epoch
+   * @return longest qualifying gap length in milliseconds, or {@code -1} if none
+   */
   public long longestGap(long horizon, long now) {
     long longestGap = -1;
     for (int i = 0; i < TRACK_GAPS; i++) {
@@ -138,16 +215,22 @@ public class AddressTrackerItem {
     return longestGap;
   }
 
-  public static class Gap {
-    public final long gapLength;
-    public final long receivedPacketAt;
+  /**
+   * Immutable view of a recorded connectivity gap.
+   *
+   * @param gapLength duration in milliseconds between the derived interval start (see {@link
+   *     #receivedPacket(long)}) and the packet that ended the gap
+   * @param receivedPacketAt absolute time in milliseconds when the ending packet was received
+   */
+  public record Gap(long gapLength, long receivedPacketAt) {}
 
-    Gap(long gapLength, long receivedPacketAt) {
-      this.gapLength = gapLength;
-      this.receivedPacketAt = receivedPacketAt;
-    }
-  }
-
+  /**
+   * Returns a snapshot of the most recent gaps ordered newest-first.
+   *
+   * <p>Unpopulated slots contain zeros for both fields.
+   *
+   * @return fixed-size array of {@link Gap} instances with length {@link #TRACK_GAPS}
+   */
   public synchronized Gap[] getGaps() {
     Gap[] gaps = new Gap[TRACK_GAPS];
     for (int i = 0; i < TRACK_GAPS; i++) {
@@ -156,54 +239,112 @@ public class AddressTrackerItem {
     return gaps;
   }
 
+  /**
+   * Returns the time of the first observed receive, or {@code -1} if none.
+   *
+   * @return milliseconds since epoch, or {@code -1}
+   */
   public synchronized long firstReceivedPacket() {
     return timeFirstReceivedPacket;
   }
 
+  /**
+   * Returns the time of the first observed send, or {@code -1} if none.
+   *
+   * @return milliseconds since epoch, or {@code -1}
+   */
   public synchronized long firstSentPacket() {
     return timeFirstSentPacket;
   }
 
+  /**
+   * Returns the time of the most recent receive, or {@code -1} if none.
+   *
+   * @return milliseconds since epoch, or {@code -1}
+   */
   public synchronized long lastReceivedPacket() {
     return timeLastReceivedPacket;
   }
 
+  /**
+   * Returns the time of the most recent send, or {@code -1} if none.
+   *
+   * @return milliseconds since epoch, or {@code -1}
+   */
   public synchronized long lastSentPacket() {
     return timeLastSentPacket;
   }
 
+  /**
+   * Returns the earliest time at which sending was definitely not possible.
+   *
+   * @return milliseconds since epoch
+   */
   public synchronized long timeDefinitelyNoPacketsSent() {
     return timeDefinitelyNoPacketsSent;
   }
 
+  /**
+   * Returns the earliest time at which receiving was definitely not possible.
+   *
+   * @return milliseconds since epoch
+   */
   public synchronized long timeDefinitelyNoPacketsReceived() {
     return timeDefinitelyNoPacketsReceived;
   }
 
+  /** Returns the total number of packets sent. */
   public synchronized long packetsSent() {
     return packetsSent;
   }
 
+  /** Returns the total number of packets received. */
   public synchronized long packetsReceived() {
     return packetsReceived;
   }
 
+  /**
+   * Returns whether the first observed activity was a sending rather than a receiving.
+   *
+   * <p>Returns {@code true} if there has been no receive, {@code false} if there has been no send,
+   * otherwise compares first-send and first-receive times.
+   *
+   * @return {@code true} if the first event was a sending
+   */
   public synchronized boolean weSentFirst() {
     if (timeFirstReceivedPacket == -1) return true;
     if (timeFirstSentPacket == -1) return false;
     return timeFirstSentPacket < timeFirstReceivedPacket;
   }
 
+  /**
+   * Returns the delay from the {@code no-sent} bound to the first send, or {@code -1} if nothing
+   * has been sent.
+   *
+   * @return milliseconds since the {@code no-sent} bound, or {@code -1}
+   */
   public synchronized long timeFromStartupToFirstSentPacket() {
     if (packetsSent == 0) return -1;
     return timeFirstSentPacket - timeDefinitelyNoPacketsSent;
   }
 
+  /**
+   * Returns the delay from the {@code no-recv} bound to the first receive, or {@code -1} if nothing
+   * has been received.
+   *
+   * @return milliseconds since the {@code no-recv} bound, or {@code -1}
+   */
   public synchronized long timeFromStartupToFirstReceivedPacket() {
     if (packetsReceived == 0) return -1;
     return timeFirstReceivedPacket - timeDefinitelyNoPacketsReceived;
   }
 
+  /**
+   * Serializes this tracker to a {@link SimpleFieldSet} including counters, timestamps, and the
+   * {@code Gaps} subset with up to {@link #TRACK_GAPS} entries.
+   *
+   * @return a field set suitable for persistence and {@link #AddressTrackerItem(SimpleFieldSet)}
+   */
   public SimpleFieldSet toFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.put("TimeFirstReceivedPacket", timeFirstReceivedPacket);
