@@ -6,19 +6,38 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.support.io.ResumeFailedException;
 
 /**
- * A RandomAccessBuffer which allows you to lock it open for a brief period to indicate that you are
- * using it and it would be a bad idea to close the pooled fd. Locking the RAF open does not provide
- * any concurrency guarantees but the implementation must guarantee to do the right thing, either
- * using a mutex or supporting concurrent writes. Also has methods for persisting itself to a
- * DataOutputStream. Implementations must register with BucketTools.restoreRAFFrom().
+ * Random-access buffer with a lightweight "keep-open" lock and persistence support.
+ *
+ * <p>This API extends {@link RandomAccessBuffer} with the ability to temporarily mark the
+ * underlying resource (typically a pooled file descriptor) as in-use so that pooling layers do not
+ * close it while callers are actively working with it. The lock is cooperative and does not provide
+ * mutual exclusion: other readers/writers may still access the buffer concurrently. It is the
+ * responsibility of the implementation to behave correctly under concurrency, either by serializing
+ * access (e.g., via a mutex) or by providing a truly concurrent backing store.
+ *
+ * <p>Implementations may also persist enough information to later reconstruct an equivalent buffer
+ * via {@link #storeTo(DataOutputStream)} and restore it using {@code
+ * BucketTools.restoreRAFFrom(...)}.
+ *
+ * <p><strong>Concurrency and blocking:</strong> acquiring a lock with {@link #lockOpen()} may block
+ * until a slot becomes available. Misuse (for example, locking multiple buffers in different orders
+ * across threads) can cause deadlocks; callers should keep lock lifetimes short and release them
+ * promptly.
  *
  * @author toad
  */
 public interface LockableRandomAccessBuffer extends RandomAccessBuffer {
 
   /**
-   * Keep the RAF open. Does not prevent others from writing to it. Will block until a slot is
-   * available if necessary. Hence can deadlock.
+   * Acquire a cooperative lock to keep the underlying resource open while in use.
+   *
+   * <p>The lock does not provide mutual exclusion. Other callers may read or write concurrently,
+   * depending on the implementation. The call may block if no lock slots are currently available.
+   * Holding multiple locks in different orders can deadlock.
+   *
+   * @return a token that must be released exactly once via {@link RAFLock#unlock()} when work is
+   *     finished; callers should use a {@code try/finally} pattern to guarantee release
+   * @throws IOException if the lock cannot be obtained due to I/O or resource limits
    */
   RAFLock lockOpen() throws IOException;
 
@@ -26,10 +45,23 @@ public interface LockableRandomAccessBuffer extends RandomAccessBuffer {
 
     private boolean locked;
 
-    public RAFLock() {
+    /**
+     * Creates a new lock token in the locked state.
+     *
+     * <p>Subclasses are constructed by the {@link LockableRandomAccessBuffer} implementation when a
+     * lock is acquired. The initial state is locked; the framework guarantees that {@link
+     * #innerUnlock()} is invoked at most once per instance.
+     */
+    protected RAFLock() {
       locked = true;
     }
 
+    /**
+     * Releases the lock.
+     *
+     * <p>After this method returns, the associated buffer may be closed by pooling layers if
+     * otherwise eligible. Calling this method more than once throws {@link IllegalStateException}.
+     */
     public final void unlock() {
       synchronized (this) {
         if (!locked) throw new IllegalStateException("Already unlocked");
@@ -38,32 +70,57 @@ public interface LockableRandomAccessBuffer extends RandomAccessBuffer {
       innerUnlock();
     }
 
+    /**
+     * Implementation hook invoked exactly once when the lock transitions from locked to unlocked.
+     *
+     * <p>Subclasses should perform any resource-release or accounting needed by the owning buffer.
+     * The base class ensures this method is not called again after an unlock.
+     */
     protected abstract void innerUnlock();
   }
 
   /**
-   * Called on resuming, i.e. after serialization. Use to e.g. register with the list of temporary
-   * files.
+   * Callback invoked after the buffer is restored from persistent state.
+   *
+   * <p>Typical implementations use this to (re)register temporary files or renew memberships in
+   * process-local registries.
+   *
+   * @param context runtime context available during resume
+   * @throws ResumeFailedException if the buffer cannot be made ready for use after restoration
    */
   void onResume(ClientContext context) throws ResumeFailedException;
 
   /**
-   * Write enough data to reconstruct the Bucket, or throw UnsupportedOperationException. Used for
-   * recovering in emergencies, should be versioned if necessary. To make this work, write a fixed,
-   * unique integer magic value for the class, and add a clause to BucketTools.restoreRAFFrom().
+   * Writes enough information to reconstruct an equivalent buffer later.
    *
-   * @throws IOException
+   * <p>The record should be self-identifying and versioned if necessary. Implementations commonly
+   * write a fixed, unique integer "magic" followed by any parameters required for reconstruction,
+   * and add a corresponding clause to {@code BucketTools.restoreRAFFrom(...)}.
+   *
+   * @param dos destination stream
+   * @throws IOException on write errors
+   * @throws UnsupportedOperationException if this buffer type cannot persist itself
    */
   void storeTo(DataOutputStream dos) throws IOException;
 
   /**
-   * Must reimplement equals(). Sometimes we will need to compare two RAFs to see if they represent
-   * the same stored object, notably during resuming a splitfile insert.
+   * Compares this buffer to another for logical equality.
+   *
+   * <p>Implementations should define equality to reflect whether two instances refer to the same
+   * stored content or resource identity, as appropriate for the type. This is used, for example,
+   * when resuming a splitfile insert to detect identical underlying storage.
+   *
+   * @param o the object to compare with
+   * @return {@code true} if the objects are equal according to the implementation's definition
    */
   @Override
   boolean equals(Object o);
 
-  /** Must reimplement hashCode() if we change equals(). */
+  /**
+   * Returns a hash code consistent with the definition of {@link #equals(Object)}.
+   *
+   * @return a hash code value
+   */
   @Override
   int hashCode();
 }
