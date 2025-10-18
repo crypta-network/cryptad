@@ -30,7 +30,7 @@ class Inet6AddressMatcherTest {
     AddressIdentifier.AddressType type = matcher.getAddressType();
 
     // Assert
-    assertEquals(AddressIdentifier.AddressType.IPv6, type);
+    assertEquals(AddressIdentifier.AddressType.IPV6, type);
   }
 
   @Test

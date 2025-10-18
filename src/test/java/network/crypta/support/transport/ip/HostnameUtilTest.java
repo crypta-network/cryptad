@@ -67,6 +67,23 @@ class HostnameUtilTest {
 
     // Intentionally not asserting negative IP cases here because AddressIdentifier is permissive
     // (e.g., abridged IPv4) and HostnameUtil passes through to it when allowIPAddress=true.
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          // IPv4-mapped / embedded IPv6 forms
+          "::ffff:127.0.0.1",
+          "::ffff:192.0.2.1",
+          "0:0:0:0:0:ffff:192.0.2.1",
+          "2001:db8::ffff:192.0.2.1",
+          // IPv4-compatible (deprecated, but should still parse as a literal)
+          "::192.0.2.1",
+          // With percent scope id (syntactic only)
+          "2001:db8::ffff:192.0.2.1%1"
+        })
+    void ipv6WithEmbeddedIPv4IsAccepted(String ip) {
+      assertTrue(HostnameUtil.isValidHostname(ip, true));
+    }
   }
 
   @Nested
@@ -74,9 +91,48 @@ class HostnameUtilTest {
   class IpDisallowed {
 
     @ParameterizedTest
-    @ValueSource(strings = {"127.0.0.1", "198.51.100.1", "2001:db8::1", "2001:db8:1:2:3:4:5:6"})
+    @ValueSource(
+        strings = {
+          "127.0.0.1",
+          "198.51.100.1",
+          "2001:db8::1",
+          "2001:db8:1:2:3:4:5:6",
+          // Also reject IPv6-with-embedded-IPv4 when IPs are disallowed
+          "::ffff:192.0.2.1",
+          "::192.0.2.1"
+        })
     void ipsAreRejectedWhenDisallowed(String ip) {
       assertFalse(HostnameUtil.isValidHostname(ip, false));
+    }
+  }
+
+  @Nested
+  @DisplayName("Hostnames when IPs allowed (allowIPAddress=true)")
+  class HostnamesWithIpAllowed {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"example.com", "sub.example.org", "xn--d1acufc7f.com"})
+    void validHostnamesStillValidate(String domain) {
+      // Even when IPs are allowed, plain hostnames must pass the hostname regex
+      assertTrue(HostnameUtil.isValidHostname(domain, true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "localhost",
+          "example.company",
+          "foo..bar.com",
+          "com",
+          "",
+          // Explicitly invalid IPv6-like strings must not pass
+          ":::ffff:192.0.2.1",
+          "::::ffff:192.0.2.1",
+          "[::1]" // bracketed forms are not accepted by design
+        })
+    void invalidHostnamesAreRejected(String domain) {
+      // Regression check: previously, enum name comparison allowed any string to pass
+      assertFalse(HostnameUtil.isValidHostname(domain, true));
     }
   }
 }
