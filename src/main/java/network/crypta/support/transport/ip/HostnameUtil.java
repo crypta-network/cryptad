@@ -1,21 +1,22 @@
 package network.crypta.support.transport.ip;
 
+import java.util.regex.Pattern;
 import network.crypta.io.AddressIdentifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Lightweight hostname validation helpers.
+ * Lightweight helpers for validating hostnames and, optionally, numeric IP literals.
  *
  * <p>Behavior
  *
  * <ul>
- *   <li>If {@code allowIPAddress} is {@code true}, numeric IP literals are accepted based on {@link
+ *   <li>If {@code allowIPAddress} is {@code true}, numeric literals are accepted based on {@link
  *       AddressIdentifier} (IPv4 including abridged forms, IPv6 including abbreviated forms and
  *       optional percent scope IDs).
- *   <li>Otherwise, hostnames are checked with a conservative ASCII pattern intended to cover
- *       ACE/IDNA (Punycode) labels. It requires at least one dot and a 2–6 letter TLD. Single-label
- *       names such as {@code localhost} are rejected by design.
+ *   <li>Otherwise, inputs are matched against a conservative ASCII hostname pattern intended to
+ *       cover ACE/IDNA (Punycode) labels. The pattern requires at least one dot and a 2–6 letter
+ *       TLD; single-label names such as {@code localhost} are rejected by design.
  * </ul>
  *
  * <p>Limitations
@@ -27,53 +28,61 @@ import org.slf4j.LoggerFactory;
  *   <li>TLDs longer than 6 ASCII letters are not accepted.
  * </ul>
  *
- * <p>This class is stateless and thread-safe.
+ * <p>Notes
+ *
+ * <ul>
+ *   <li>Validation is purely syntactic; no DNS or network I/O occurs.
+ *   <li>The class is stateless and thread-safe.
+ * </ul>
  */
 public class HostnameUtil {
   private static final Logger LOG = LoggerFactory.getLogger(HostnameUtil.class);
+  // Dotted-quad shape only; numeric range (0–255) is enforced in code to keep the regex simple.
+  // Leading zeros are allowed by design (e.g., 001, 000) for compatibility with historical input.
+  private static final Pattern IPV4_DOTTED_SHAPE = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
 
   private HostnameUtil() {
     throw new IllegalStateException("Utility class");
   }
 
   /**
-   * Validates a host name or (optionally) a numeric IP literal.
+   * Validates a hostname or (optionally) a numeric IP literal using conservative syntax rules.
    *
-   * @param hn the candidate value; must not be {@code null}
+   * <p>This routine performs no name resolution or network I/O; it checks textual form only.
+   *
+   * @param hn candidate value; must not be {@code null}
    * @param allowIPAddress when {@code true}, IPv4/IPv6 literals are accepted using {@link
-   *     AddressIdentifier}; when {@code false}, only DNS-like hostnames are allowed.
-   * @return {@code true} if the input is valid according to the rules above; otherwise {@code
+   *     AddressIdentifier}; when {@code false}, only DNS-like hostnames are allowed
+   * @return {@code true} if the input is valid according to the class rules; otherwise {@code
    *     false}
    * @throws NullPointerException if {@code hn} is {@code null}
    * @see AddressIdentifier#getAddressType(String, boolean)
    */
   public static boolean isValidHostname(String hn, boolean allowIPAddress) {
     if (allowIPAddress) {
-      // debugging log messages because AddressIdentifier doesn't appear to handle all IPv6 literals
-      // correctly, such as "fe80::204:1234:dead:beef"
+      // Enable trace logging to aid diagnosis when {@link AddressIdentifier} does not classify
+      // certain IPv6 textual variants (e.g., "fe80::204:1234:dead:beef").
       AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
       if (LOG.isTraceEnabled())
         LOG.trace("Address type of '{}' appears to be '{}'", hn, addressType);
       // Treat only non-hostname types as immediate success. Compare the enum directly to avoid
-      // string-name regressions when enum constant names change (e.g., OTHER vs "Other").
+      // string-name regressions if enum constant names change (e.g., OTHER vs "Other").
       if (addressType != AddressIdentifier.AddressType.OTHER) {
         return true;
       }
 
-      // Fallback: Accept IPv6 literals that embed an IPv4 dotted-quad tail (e.g.,
-      // ::ffff:192.0.2.1),
-      // which AddressIdentifier currently does not recognize. This keeps prior behavior where these
-      // legitimate forms passed when IPs were allowed.
+      // Fallback: accept IPv6 literals that embed an IPv4 dotted-quad tail (e.g.,
+      // ::ffff:192.0.2.1), which may not be recognized by AddressIdentifier. This preserves prior
+      // behavior where these legitimate forms passed when IPs were allowed.
       if (looksLikeIPv6WithEmbeddedIPv4(hn)) {
         return true;
       }
     }
-    // NOTE: It is believed that this code supports PUNYCODE based
-    //       ASCII Compatible Encoding (ACE) IDNA labels as
-    //       described in RFC3490.  Such an assertion has not been
-    //       thoroughly tested.
+    // NOTE: Accepts ACE (Punycode) labels commonly produced by IDNA processing; this path is not
+    //       covered by exhaustive tests here.
     if (!hn.matches("(?:[-!#$%&'*+\\\\/0-9=?A-Z^_`a-z{|}]++\\.)++[a-zA-Z]{2,6}")) {
-      LOG.warn("Failed to match {} as a hostname or IPv4/IPv6 IP address", hn);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Rejected {} candidate: '{}'", allowIPAddress ? "host/IP" : "hostname", hn);
       return false;
     }
     return true;
@@ -82,27 +91,22 @@ public class HostnameUtil {
   // --- Helpers ---------------------------------------------------------------
 
   /**
-   * Detects IPv6 textual forms that end with an embedded IPv4 dotted-quad ("ls32" as IPv4address),
-   * allowing abbreviated IPv6 via "::" and an optional percent scope ID suffix, e.g.
-   * "::ffff:127.0.0.1" or "2001:db8::ffff:192.0.2.1%1".
+   * Detects IPv6 textual forms that end with an embedded IPv4 dotted-quad ("ls32" as {@code
+   * IPv4address}), allowing abbreviated IPv6 via {@code ::} and an optional numeric percent scope
+   * ID suffix.
    *
-   * <p>Notes - Bracketed forms like "[::1]" are intentionally not supported per class docs. - This
-   * routine validates purely syntactically without any DNS lookups.
+   * <p>Examples: {@code ::ffff:127.0.0.1}, {@code 2001:db8::ffff:192.0.2.1%1}.
+   *
+   * <p>Notes:
+   *
+   * <ul>
+   *   <li>Bracketed forms like {@code [::1]} are intentionally not supported per class docs.
+   *   <li>Validation is purely syntactic; no DNS lookups occur.
+   * </ul>
    */
   private static boolean looksLikeIPv6WithEmbeddedIPv4(String s) {
-    if (s == null || s.isEmpty()) return false;
-    if (s.indexOf('[') >= 0 || s.indexOf(']') >= 0) return false; // no bracketed forms
-
-    // Optional percent scope ID ("%<digits>") — accept only when trailing and numeric.
-    String addr = s;
-    int pct = s.indexOf('%');
-    if (pct >= 0) {
-      String scope = s.substring(pct + 1);
-      if (scope.isEmpty() || scope.length() > 3) return false;
-      for (int i = 0; i < scope.length(); i++)
-        if (!Character.isDigit(scope.charAt(i))) return false;
-      addr = s.substring(0, pct);
-    }
+    String addr = stripScopeAndRejectBracketed(s);
+    if (addr == null) return false;
 
     int lastColon = addr.lastIndexOf(':');
     if (lastColon < 0) return false; // must contain ':' preceding the IPv4 tail
@@ -112,15 +116,34 @@ public class HostnameUtil {
     String head = addr.substring(0, lastColon);
     if (head.isEmpty()) return false; // must have at least one hextet or '::'
 
-    // Validate there is at most one "::" sequence. Detect on the full address (pre-tail) so
-    // inputs like "::192.0.2.1" still register the double-colon even though "head" would be ":".
-    int dcFirst = addr.indexOf("::");
-    // Reject any second occurrence of "::", including overlapping forms like ":::".
-    if (dcFirst >= 0 && addr.indexOf("::", dcFirst + 1) >= 0) return false;
+    if (!hasAtMostOneDoubleColon(addr)) return false;
 
-    // Count explicit hextets (1..4 hex digits). When no "::" is present, there must be exactly
-    // 6 hextets before the IPv4 tail (the tail counts as two hextets). When "::" is present, the
-    // explicit hextet count must be <= 6 (the compression fills the remainder).
+    int hextets = countExplicitHextets(head);
+    if (hextets < 0) return false;
+
+    boolean hasDoubleColon = addr.contains("::");
+    // For IPv4-embedded IPv6, there are 96 bits carried by hextets and 32 bits by the IPv4 tail.
+    // Thus: at most 6 explicit hextets (or exactly 6 when no "::" compression is present).
+    return hasDoubleColon ? hextets <= 6 : hextets == 6;
+  }
+
+  private static String stripScopeAndRejectBracketed(String s) {
+    if (s == null || s.isEmpty()) return null;
+    if (s.indexOf('[') >= 0 || s.indexOf(']') >= 0) return null; // reject bracketed forms
+    int pct = s.indexOf('%');
+    if (pct < 0) return s;
+    String scope = s.substring(pct + 1);
+    if (scope.isEmpty() || scope.length() > 3) return null; // conservative numeric scope length
+    for (int i = 0; i < scope.length(); i++) if (!Character.isDigit(scope.charAt(i))) return null;
+    return s.substring(0, pct);
+  }
+
+  private static boolean hasAtMostOneDoubleColon(String addr) {
+    int first = addr.indexOf("::");
+    return first < 0 || addr.indexOf("::", first + 1) < 0;
+  }
+
+  private static int countExplicitHextets(String head) {
     int hextets = 0;
     int start = 0;
     while (start <= head.length()) {
@@ -133,21 +156,16 @@ public class HostnameUtil {
         part = head.substring(start, next);
         start = next + 1;
       }
-      if (part.isEmpty()) {
-        // empty part participates in a '::' compression; skip counting
-        continue;
-      }
-      if (!isHextet(part)) return false;
+      if (part.isEmpty()) continue; // participates in '::' compression
+      if (!isHextet(part)) return -1;
       hextets++;
-      if (hextets > 6) return false; // cannot exceed 6 before the IPv4 tail
+      if (hextets > 6) return -1; // cannot exceed 6 before the IPv4 tail
     }
-
-    boolean hasDoubleColon = dcFirst >= 0;
-    return hasDoubleColon ? hextets <= 6 : hextets == 6;
+    return hextets;
   }
 
   private static boolean isHextet(String s) {
-    if (s.length() < 1 || s.length() > 4) return false;
+    if (s.isEmpty() || s.length() > 4) return false;
     for (int i = 0; i < s.length(); i++) {
       char c = s.charAt(i);
       boolean isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
@@ -157,26 +175,18 @@ public class HostnameUtil {
   }
 
   private static boolean isStrictIPv4DottedQuad(String s) {
-    int dots = 0;
-    int val = -1; // -1 indicates not in a number yet
-    int digits = 0;
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (c == '.') {
-        if (val < 0 || digits == 0) return false;
-        if (val > 255) return false;
-        dots++;
-        val = -1;
-        digits = 0;
-        continue;
+    if (!IPV4_DOTTED_SHAPE.matcher(s).matches()) return false;
+    int start = 0;
+    for (int part = 0; part < 4; part++) {
+      int end = (part < 3) ? s.indexOf('.', start) : s.length();
+      if (end <= start || end - start > 3) return false;
+      int v = 0;
+      for (int i = start; i < end; i++) {
+        v = (v * 10) + (s.charAt(i) - '0');
       }
-      if (c < '0' || c > '9') return false;
-      int d = c - '0';
-      val = (val < 0 ? d : (val * 10 + d));
-      if (++digits > 3) return false;
+      if (v > 255) return false;
+      start = end + 1;
     }
-    if (dots != 3) return false;
-    if (val < 0 || val > 255) return false;
     return true;
   }
 }
