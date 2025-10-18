@@ -1,24 +1,37 @@
 package network.crypta.io.comm;
 
 /**
- * Callback for {@link MessageFilter} whose handlers may perform long‑running or blocking work.
+ * Callback variant for filter events whose handlers may block or take noticeable time to run.
  *
- * <p>Unlike a regular {@link AsyncMessageFilterCallback}, implementations of this interface may be
- * executed on a scheduler that understands task priorities. When a matching event occurs, the
- * caller may submit the callback to a {@link network.crypta.support.PriorityAwareExecutor} so that
- * it runs asynchronously with the requested priority. This avoids executing expensive work on
- * threads that hold internal locks or dispatch loops.
+ * <p>Implementations indicate that their {@link AsyncMessageFilterCallback} methods can perform
+ * work that should not run inline on transport or maintenance threads. When a callback implements
+ * this interface, the filter machinery schedules the invocation on a background executor using the
+ * priority supplied by {@link #getPriority()} rather than calling it directly.
+ *
+ * <p>Scheduling details:
+ *
+ * <ul>
+ *   <li>Callbacks are dispatched via a {@link network.crypta.support.PriorityAwareExecutor} using a
+ *       {@code Runnable} that carries the returned priority.
+ *   <li>The exact priority scale is executor-specific. In the built-in pooled executor,
+ *       implementations typically return one of the values from {@link
+ *       network.crypta.support.io.NativeThread.PriorityLevel} (e.g., {@code NORM_PRIORITY.value}).
+ * </ul>
+ *
+ * <p>Thread-safety: Implementations may be called concurrently on different events; any shared
+ * state must be protected appropriately.
  */
 public interface SlowAsyncMessageFilterCallback extends AsyncMessageFilterCallback {
 
   /**
-   * Returns the callback's scheduling priority used by priority‑aware executors.
+   * Returns the scheduling priority to use when dispatching the callback on a worker thread.
    *
-   * <p>Higher values represent higher priority. Implementations typically return one of the integer
-   * values defined by {@link network.crypta.support.io.NativeThread.PriorityLevel} but are free to
-   * choose any value accepted by the executor.
+   * <p>The value is interpreted by the underlying executor. For the default pooled executor,
+   * recommended values are the {@link network.crypta.support.io.NativeThread.PriorityLevel#value
+   * priority} constants provided by {@code NativeThread.PriorityLevel} where larger numbers
+   * generally denote higher urgency.
    *
-   * @return a non‑negative integer priority; larger values indicate higher priority
+   * @return an integer priority understood by the executor
    */
   int getPriority();
 }
