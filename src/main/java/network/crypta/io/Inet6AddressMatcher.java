@@ -11,7 +11,7 @@ import network.crypta.io.AddressIdentifier.AddressType;
  */
 public class Inet6AddressMatcher implements AddressMatcher {
   public AddressType getAddressType() {
-    return AddressType.IPv6;
+    return AddressType.IPV6;
   }
 
   private static final byte[] FULL_MASK = new byte[16];

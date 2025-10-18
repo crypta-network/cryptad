@@ -36,9 +36,9 @@ public class AllowedHosts {
         hostname = allowedHost.substring(0, allowedHost.indexOf('/'));
       }
       AddressType addressType = AddressIdentifier.getAddressType(hostname);
-      if (addressType == AddressType.IPv4) {
+      if (addressType == AddressType.IPV4) {
         newAddressMatchers.add(new Inet4AddressMatcher(allowedHost));
-      } else if (addressType == AddressType.IPv6) {
+      } else if (addressType == AddressType.IPV6) {
         newAddressMatchers.add(new Inet6AddressMatcher(allowedHost));
       } else if (allowedHost.equals("*")) {
         newAddressMatchers.add(new EverythingMatcher());
