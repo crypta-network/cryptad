@@ -13,10 +13,10 @@ import network.crypta.support.SimpleFieldSet;
  * re-normalizes back to {@code [0.0, 1.0)}.
  *
  * <p>Inputs to {@link #report(double)} and {@link #valueIfReported(double)} must be normalized
- * locations in {@code [0.0, 1.0]} and finite; invalid inputs cause an
- * {@link IllegalArgumentException}. The underlying average is configured with bounds
- * {@code [-2.0, 2.0]} to accommodate temporary unwrapped values during updates; the stored value
- * is always normalized back to {@code [0.0, 1.0)} after each update.
+ * locations in {@code [0.0, 1.0]} and finite; invalid inputs cause an {@link
+ * IllegalArgumentException}. The underlying average is configured with bounds {@code [-2.0, 2.0]}
+ * to accommodate temporary unwrapped values during updates; the stored value is always normalized
+ * back to {@code [0.0, 1.0)} after each update.
  *
  * <p>Thread-safety: All public methods are synchronized, so instances are safe for use by multiple
  * threads with external synchronization not required.
@@ -78,8 +78,8 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
   /**
    * Returns the current average location.
    *
-   * <p>The result is normalized to {@code [0.0, 1.0)}; exactly {@code 1.0} is normalized to
-   * {@code 0.0}.
+   * <p>The result is normalized to {@code [0.0, 1.0)}; exactly {@code 1.0} is normalized to {@code
+   * 0.0}.
    *
    * @return normalized average location in {@code [0.0, 1.0)}
    */
@@ -173,8 +173,8 @@ public final class DecayingKeyspaceAverage implements RunningAverage {
    * Exports this instance's state into a {@link SimpleFieldSet}.
    *
    * <p>Delegates to the underlying {@link BootstrappingDecayingRunningAverage}. The serialized
-   * fields include {@code Type}, {@code CurrentValue}, and {@code Reports}. See
-   * {@link BootstrappingDecayingRunningAverage#exportFieldSet(boolean)} for details.
+   * fields include {@code Type}, {@code CurrentValue}, and {@code Reports}. See {@link
+   * BootstrappingDecayingRunningAverage#exportFieldSet(boolean)} for details.
    *
    * @param shortLived see {@link SimpleFieldSet#SimpleFieldSet(boolean)}
    * @return a field set containing the serialized state of the underlying average
