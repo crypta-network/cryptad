@@ -190,7 +190,7 @@ public class MessageCore {
     for (Message m : unclaimed) {
       MATCHED status = f.match(m, true, tStart);
       if (status == MATCHED.MATCHED) {
-        // Don't match it, we timed out; two-level timeouts etc may want it for the next filter.
+        // Don't match it, we timed out; two-level timeouts etc. may want it for the next filter.
         LOG.error("Timed out but should have matched in _unclaimed: {} for {}", m, f);
         break;
       }
@@ -710,8 +710,8 @@ public class MessageCore {
   private Message finalizeWaitAndRemoveFilter(MessageFilter filter, Message ret) {
     synchronized (filters) {
       // Some nasty race conditions can happen here.
-      // E.g. the filter can be matched and yet we timeout at the same time.
-      // Hence we need to be absolutely sure that when we remove it it hasn't been matched.
+      // E.g. the filter can be matched, and yet we time out at the same time.
+      // Hence, we need to be absolutely sure that when we remove it, it hasn't been matched.
       // Note also that the locking does work here - the filter lock is taken last, and
       // filters protects both the unwanted messages, the filter list, and is taken when a match is
       // found too.
