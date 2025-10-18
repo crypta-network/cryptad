@@ -161,19 +161,12 @@ public class FCPServer implements Runnable, DownloadCache {
     if (this.networkInterface != null) return;
 
     NetworkInterface tempNetworkInterface = null;
-    try {
-      if (ssl) {
-        tempNetworkInterface =
-            SSLNetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
-      } else {
-        tempNetworkInterface =
-            NetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
-      }
-    } catch (IOException be) {
-      LOG.error(
-          "Couldn't bind to FCP Port " + bindTo + ':' + port + ". FCP Server not started.", be);
-      System.out.println(
-          "Couldn't bind to FCP Port " + bindTo + ':' + port + ". FCP Server not started.");
+    if (ssl) {
+      tempNetworkInterface =
+          SSLNetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
+    } else {
+      tempNetworkInterface =
+          NetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
     }
 
     this.networkInterface = tempNetworkInterface;

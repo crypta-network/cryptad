@@ -23,8 +23,7 @@ public class SSLNetworkInterface extends NetworkInterface {
       String bindTo,
       String allowedHosts,
       PriorityAwareExecutor executor,
-      boolean ignoreUnbindableIP6)
-      throws IOException {
+      boolean ignoreUnbindableIP6) {
     NetworkInterface iface = new SSLNetworkInterface(port, allowedHosts, executor);
     String[] failedBind = iface.setBindTo(bindTo, ignoreUnbindableIP6);
     if (failedBind != null) {
@@ -38,8 +37,7 @@ public class SSLNetworkInterface extends NetworkInterface {
   }
 
   /** See {@link NetworkInterface} */
-  protected SSLNetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor)
-      throws IOException {
+  protected SSLNetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor) {
     super(port, allowedHosts, executor);
   }
 
