@@ -184,7 +184,6 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
             prb,
             this,
             node.getTicker(),
-            false,
             realTimeFlag,
             myTimeoutHandler,
             false);
@@ -354,16 +353,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       br =
           new BlockReceiver(
-              node.getUSM(),
-              source,
-              uid,
-              prb,
-              this,
-              node.getTicker(),
-              false,
-              realTimeFlag,
-              null,
-              false);
+              node.getUSM(), source, uid, prb, this, node.getTicker(), realTimeFlag, null, false);
       prb.abort(RetrievalException.NO_DATAINSERT, "No DataInsert", true);
       source.localRejectedOverload("TimedOutAwaitingDataInsert", realTimeFlag);
 
