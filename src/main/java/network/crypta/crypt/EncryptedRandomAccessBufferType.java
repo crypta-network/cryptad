@@ -12,8 +12,8 @@ import org.bouncycastle.crypto.engines.ChaChaEngine;
  * @author unixninja92
  */
 public enum EncryptedRandomAccessBufferType {
-  ChaCha128(1, 12, CryptByteBufferType.ChaCha128, MACType.HMACSHA256, 32),
-  ChaCha256(2, 12, CryptByteBufferType.ChaCha256, MACType.HMACSHA256, 32);
+  ChaCha128(1, 12, CryptByteBufferType.CHACHA_128, MACType.HMACSHA256, 32),
+  ChaCha256(2, 12, CryptByteBufferType.CHACHA_256, MACType.HMACSHA256, 32);
 
   public final int bitmask;
   public final int headerLen; // bytes

@@ -35,7 +35,7 @@ import network.crypta.support.Fields;
  * or reset the IV as appropriate for the chosen {@link CryptByteBufferType}.
  *
  * @author unixninja92
- *     <p>Suggested {@link CryptByteBufferType}: {@link CryptByteBufferType#ChaCha128}
+ *     <p>Suggested {@link CryptByteBufferType}: {@link CryptByteBufferType#CHACHA_128}
  */
 public final class CryptByteBuffer implements Serializable {
   @Serial private static final long serialVersionUID = 6143338995971755362L;
