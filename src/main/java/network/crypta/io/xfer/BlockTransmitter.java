@@ -228,7 +228,7 @@ public class BlockTransmitter {
       boolean success = false;
       boolean complete = false;
       synchronized (senderThread) {
-        if (unsent.isEmpty() && getNumSent() == prb._packets) {
+        if (unsent.isEmpty() && getNumSent() == prb.packets) {
           // No unsent packets, no unreceived packets
           sendAllSentNotification();
           if (maybeAllSent()) {
@@ -299,7 +299,7 @@ public class BlockTransmitter {
     prb = source;
     this.ctr = ctr;
     if (this.ctr == null) throw new NullPointerException();
-    packetSize = DMT.packetTransmitSize(prb._packetSize, prb._packets);
+    packetSize = DMT.packetTransmitSize(prb.packetSize, prb.packets);
     try {
       sentPackets = new BitArray(prb.getNumPackets());
     } catch (AbortedException e) {
@@ -389,7 +389,7 @@ public class BlockTransmitter {
    *     or a timeout; {@code false} otherwise.
    */
   public boolean maybeAllSent() {
-    if (blockSendsPending == 0 && unsent.isEmpty() && getNumSent() == prb._packets) {
+    if (blockSendsPending == 0 && unsent.isEmpty() && getNumSent() == prb.packets) {
       timeAllSent = System.currentTimeMillis();
       if (LOG.isDebugEnabled()) LOG.debug("Sent all blocks, none unsent on {}", this);
       senderThread.schedule();
@@ -809,7 +809,7 @@ public class BlockTransmitter {
       registerAsyncFilters(mfAllReceived, mfSendAborted);
 
     } catch (AbortedException e) {
-      onAborted(prb._abortReason, prb._abortDescription);
+      onAborted(prb.abortReason, prb.abortDescription);
     }
   }
 
