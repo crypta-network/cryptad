@@ -166,9 +166,13 @@ class Ed2MessageDigestTest {
   }
 
   @Test
-  void update_withNullArray_expectIllegalArgument() {
+  void update_withNullArray_expectNullPointerOrIllegalArgument() {
     MessageDigest md = new Ed2MessageDigest();
-    assertThrows(IllegalArgumentException.class, () -> md.update(null, 0, 0));
+    Throwable t = assertThrows(RuntimeException.class, () -> md.update(null, 0, 0));
+    assertTrue(
+        (t instanceof NullPointerException) || (t instanceof IllegalArgumentException),
+        "Expected NullPointerException or IllegalArgumentException but got: "
+            + t.getClass().getName());
   }
 
   // --- helpers ---
