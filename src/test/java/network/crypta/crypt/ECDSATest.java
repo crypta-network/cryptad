@@ -1,53 +1,83 @@
 package network.crypta.crypt;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.security.PublicKey;
+import java.security.interfaces.ECPublicKey;
+import java.util.Arrays;
 import network.crypta.crypt.ECDSA.Curves;
 import network.crypta.node.FSParseException;
+import network.crypta.support.Base64;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-public class ECDSATest {
+@ExtendWith(MockitoExtension.class)
+@SuppressWarnings("java:S100")
+class ECDSATest {
 
-  ECDSA.Curves curveToTest;
-  ECDSA ecdsa;
+  private ECDSA.Curves curveToTest;
+  private ECDSA ecdsa;
 
   @BeforeEach
-  public void setUp() throws Exception {
+  void setUp() {
     curveToTest = Curves.P256;
     ecdsa = new ECDSA(curveToTest);
   }
 
   @Test
-  public void testGetPublicKey() {
+  void getPublicKey_whenGenerated_isPresentAndBounded() {
     PublicKey pub = ecdsa.getPublicKey();
     assertNotNull(pub);
     assertTrue(pub.getEncoded().length <= curveToTest.modulusSize);
   }
 
   @Test
-  public void testSign() {
+  void sign_whenCalled_producesBytes() {
     byte[] sig = ecdsa.sign("test".getBytes());
     assertNotNull(sig);
     assertTrue(sig.length > 0);
   }
 
   @Test
-  public void testSignToNetworkFormat() {
-    byte[] toSign = "test".getBytes();
-    byte[] sig = ecdsa.signToNetworkFormat(toSign);
-    assertNotNull(sig);
-    assertEquals(sig.length, curveToTest.maxSigSize);
+  void sign_whenCalledTwiceWithSameData_isDeterministic() {
+    byte[] m = "deterministic".getBytes();
+    byte[] s1 = ecdsa.sign(m);
+    byte[] s2 = ecdsa.sign(m);
+    assertArrayEquals(s1, s2);
   }
 
   @Test
-  public void testVerify() {
+  void signToNetworkFormat_whenCalled_returnsFixedLength() {
+    byte[] toSign = "test".getBytes();
+    byte[] sig = ecdsa.signToNetworkFormat(toSign);
+    assertNotNull(sig);
+    assertEquals(curveToTest.maxSigSize, sig.length);
+  }
+
+  @Test
+  void signToNetworkFormat_whenUnderlyingSignatureTooLong_throws() {
+    ECDSA spy = Mockito.spy(new ECDSA(curveToTest));
+    byte[] tooLong = new byte[curveToTest.maxSigSize + 1];
+    Mockito.doReturn(tooLong).when(spy).sign(Mockito.any());
+    byte[] smallMsg = "x".getBytes();
+    assertThrows(IllegalStateException.class, () -> spy.signToNetworkFormat(smallMsg));
+  }
+
+  @Test
+  void verify_whenValidSignature_succeeds() {
     String toSign = "test";
     byte[] sig = ecdsa.sign(toSign.getBytes());
     assertTrue(ecdsa.verify(sig, toSign.getBytes()));
@@ -55,13 +85,85 @@ public class ECDSATest {
   }
 
   @Test
-  public void testAsFieldSet() throws FSParseException {
+  void verify_whenUsingNetworkPaddedSignature_succeeds() {
+    byte[] msg = "pad me".getBytes();
+    byte[] padded = ecdsa.signToNetworkFormat(msg);
+    assertTrue(ecdsa.verify(padded, msg));
+  }
+
+  @Test
+  void verify_withOffsetAndExtraBytes_ignoresPaddingAndSuceeds() {
+    byte[] msg = "offset ok".getBytes();
+    byte[] padded = ecdsa.signToNetworkFormat(msg);
+    byte[] container = new byte[10 + padded.length + 5];
+    // Fill with non-zero noise around the signature to ensure we only use declared range
+    Arrays.fill(container, (byte) 0x5A);
+    int off = 10;
+    System.arraycopy(padded, 0, container, off, padded.length);
+    assertTrue(ecdsa.verify(container, off, padded.length + 5, msg));
+  }
+
+  @Test
+  void verify_withTamperedSignature_fails() {
+    byte[] msg = "tamper".getBytes();
+    byte[] sig = ecdsa.sign(msg); // raw DER without network padding
+    byte[] tampered = Arrays.copyOf(sig, sig.length);
+    tampered[tampered.length - 1] ^= 0x01; // flip a byte inside the DER payload
+    assertFalse(ecdsa.verify(tampered, msg));
+  }
+
+  @Test
+  void verify_withMismatchedKey_fails() {
+    byte[] msg = "wrong key".getBytes();
+    byte[] sig = ecdsa.sign(msg);
+    // New ECDSA with different key
+    ECDSA other = new ECDSA(curveToTest);
+    assertFalse(ECDSA.verify(curveToTest, other.getPublicKey(), sig, msg));
+  }
+
+  @Test
+  void verify_withInvalidDerHeader_returnsFalse() {
+    byte[] msg = "bad header".getBytes();
+    byte[] sig = ecdsa.sign(msg);
+    byte[] invalid = Arrays.copyOf(sig, sig.length);
+    invalid[0] = 0x31; // not a DER SEQUENCE (should be 0x30)
+    assertFalse(ecdsa.verify(invalid, msg));
+  }
+
+  @Test
+  void staticVerify_withNullArgs_returnsFalse() {
+    assertFalse(ECDSA.verify(curveToTest, null, new byte[0]));
+    assertFalse(ECDSA.verify(null, ecdsa.getPublicKey(), new byte[0]));
+    ECPublicKey key = ecdsa.getPublicKey();
+    assertThrows(NullPointerException.class, () -> ECDSA.verify(curveToTest, key, null));
+    assertFalse(ECDSA.verify(curveToTest, ecdsa.getPublicKey(), new byte[0], (byte[][]) null));
+  }
+
+  @Test
+  void getPublicKeyStatic_whenInvalidBytes_returnsNull() {
+    assertNull(ECDSA.getPublicKey(new byte[] {0x01, 0x02, 0x03}, curveToTest));
+  }
+
+  @Test
+  void curvesGetSFS_whenCalled_containsBase64PubAndReconstructible() throws Exception {
+    ECPublicKey pub = ecdsa.getPublicKey();
+    SimpleFieldSet sfs = curveToTest.getSFS(pub);
+    SimpleFieldSet subset = sfs.getSubset(curveToTest.name());
+    assertNotNull(subset);
+    assertNotNull(subset.get("pub"));
+    byte[] decoded = Base64.decode(subset.get("pub"));
+    ECPublicKey parsed = ECDSA.getPublicKey(decoded, curveToTest);
+    assertNotNull(parsed);
+    assertArrayEquals(pub.getEncoded(), parsed.getEncoded());
+  }
+
+  @Test
+  void asFieldSet_whenIncludePrivate_controlsPresenceOfPriField() throws FSParseException {
     SimpleFieldSet privSFS = ecdsa.asFieldSet(true);
     assertNotNull(privSFS.getSubset(curveToTest.name()));
     assertNotNull(privSFS.get(curveToTest.name() + ".pub"));
     assertNotNull(privSFS.get(curveToTest.name() + ".pri"));
 
-    // Ensure we don't leak the privkey when we don't intend to
     SimpleFieldSet pubSFS = ecdsa.asFieldSet(false);
     assertNotNull(pubSFS.getSubset(curveToTest.name()));
     assertNotNull(pubSFS.get(curveToTest.name() + ".pub"));
@@ -69,9 +171,22 @@ public class ECDSATest {
   }
 
   @Test
-  public void testSerializeUnserialize() throws FSParseException {
+  void serializeUnserialize_whenRoundTripped_preservesPublicKey() throws FSParseException {
     SimpleFieldSet sfs = ecdsa.asFieldSet(true);
     ECDSA ecdsa2 = new ECDSA(sfs.getSubset(curveToTest.name()), curveToTest);
     assertEquals(ecdsa.getPublicKey(), ecdsa2.getPublicKey());
+  }
+
+  @DisplayName("sign/verify works across all configured curves")
+  @ParameterizedTest
+  @EnumSource(Curves.class)
+  void signVerify_acrossCurves_succeeds(Curves curve) {
+    ECDSA local = new ECDSA(curve);
+    byte[] msg1 = "hello".getBytes();
+    byte[] msg2 = "world".getBytes();
+    byte[] sig1 = local.sign(msg1);
+    byte[] sig2 = local.signToNetworkFormat(msg2);
+    assertTrue(local.verify(sig1, msg1));
+    assertTrue(ECDSA.verify(curve, local.getPublicKey(), sig2, msg2));
   }
 }
