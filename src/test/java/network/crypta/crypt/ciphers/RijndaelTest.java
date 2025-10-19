@@ -16,7 +16,7 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
-import network.crypta.crypt.CTRBlockCipherTest;
+import network.crypta.crypt.TestJca;
 import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.support.HexUtil;
 import org.junit.jupiter.api.Test;
@@ -88,7 +88,7 @@ public class RijndaelTest {
           NoSuchPaddingException,
           IllegalBlockSizeException,
           BadPaddingException {
-    if (!CTRBlockCipherTest.TEST_JCA) {
+    if (!TestJca.AES_CTR_AVAILABLE) {
       return;
     }
     // KEYSIZE=128
@@ -252,7 +252,7 @@ public class RijndaelTest {
               cipher.decipher(copyOfCiphertext, output);
               assertArrayEquals(output, plaintext);
               if (blockSize == 128) {
-                if (keySize == 128 || CTRBlockCipherTest.TEST_JCA) {
+                if (keySize == 128 || TestJca.AES_CTR_AVAILABLE) {
                   // We can test with JCA too.
                   // Encrypt.
                   SecretKeySpec k = new SecretKeySpec(key, "AES");
