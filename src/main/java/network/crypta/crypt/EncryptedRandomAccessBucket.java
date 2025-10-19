@@ -10,7 +10,7 @@ import java.security.InvalidKeyException;
 import java.util.Arrays;
 import javax.crypto.SecretKey;
 import network.crypta.client.async.ClientContext;
-import network.crypta.crypt.EncryptedRandomAccessBuffer.kdfInput;
+import network.crypta.crypt.EncryptedRandomAccessBuffer.KdfInput;
 import network.crypta.support.Fields;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
@@ -233,7 +233,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
               KeyGenUtils.deriveSecretKey(
                       unencryptedBaseKey,
                       EncryptedRandomAccessBuffer.class,
-                      kdfInput.underlyingKey.input,
+                      KdfInput.underlyingKey.input,
                       type.encryptKey)
                   .getEncoded());
       tempPram =
@@ -242,7 +242,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
               KeyGenUtils.deriveIvParameterSpec(
                       unencryptedBaseKey,
                       EncryptedRandomAccessBuffer.class,
-                      kdfInput.underlyingIV.input,
+                      KdfInput.underlyingIV.input,
                       type.encryptKey)
                   .getIV());
     } catch (InvalidKeyException e) {
