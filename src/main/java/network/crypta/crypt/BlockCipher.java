@@ -1,40 +1,62 @@
 package network.crypta.crypt;
 
 /**
- * Defines the interface that must be implemented by symmetric block ciphers used in the Freenet
- * cryptography architecture
+ * Contract for symmetric block ciphers.
+ *
+ * <p>This interface abstracts a raw block cipher: initialization with a key, queries for key and
+ * block sizes (in bits), and single-block encipher/decipher operations. It does not define padding
+ * or modes of operation.
  */
 public interface BlockCipher {
 
   /**
-   * Initializes the cipher context with the given key. This might entail performing pre-encryption
-   * calculation of subkeys, S-Boxes, etc.
+   * Initializes the cipher with the provided key.
+   *
+   * <p>Implementations typically perform any key-schedule work here (for example, computing subkeys
+   * or lookup tables). The expected key length is algorithm-specific; callers should pass a
+   * non-null array of the appropriate length (commonly {@code getKeySize()/8}).
+   *
+   * @param key raw secret key bytes; must be non-null and of a supported length.
    */
   void initialize(byte[] key);
 
-  /** Returns the key size, in bits, of the given block-cipher */
+  /**
+   * Returns the key size in bits expected by this cipher.
+   *
+   * @return key size in bits.
+   */
   int getKeySize();
 
-  /** Returns the block size, in bits, of the given block-cipher */
+  /**
+   * Returns the block size in bits.
+   *
+   * @return block size in bits.
+   */
   int getBlockSize();
 
   /**
-   * Enciphers the contents of <b>block</b> where block must be equal to getBlockSize()/8. The
-   * result is placed in result and, too has to have length getBlockSize()/8. Block and result may
-   * refer to the same array.
+   * Encrypts exactly one block.
    *
-   * <p>Warning: It is not a guarantee that <b>block</b> will not be over- written in the course of
-   * the algorithm
+   * <p>The {@code block} array must contain {@code getBlockSize()/8} bytes starting at offset 0.
+   * The {@code result} array must have at least {@code getBlockSize()/8} bytes available starting
+   * at offset 0. The same array may be supplied for both parameters. Implementations may overwrite
+   * the contents of {@code block} during processing.
+   *
+   * @param block input buffer containing one plaintext block.
+   * @param result output buffer that receives one ciphertext block.
    */
   void encipher(byte[] block, byte[] result);
 
   /**
-   * Deciphers the contents of <b>block</b> where block must be equal to getBlockSize()/8. The
-   * result is placed in result and, too has to have length getBlockSize()/8. Block and result may
-   * refer to the same array.
+   * Decrypts exactly one block.
    *
-   * <p>Warning: It is not a guarantee that <b>block</b> will not be over- written in the course of
-   * the algorithm
+   * <p>The {@code block} array must contain {@code getBlockSize()/8} bytes starting at offset 0.
+   * The {@code result} array must have at least {@code getBlockSize()/8} bytes available starting
+   * at offset 0. The same array may be supplied for both parameters. Implementations may overwrite
+   * the contents of {@code block} during processing.
+   *
+   * @param block input buffer containing one ciphertext block.
+   * @param result output buffer that receives one plaintext block.
    */
   void decipher(byte[] block, byte[] result);
 }
