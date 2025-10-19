@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Random;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
-import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.AEADCipher;
 import org.bouncycastle.crypto.modes.GCMBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
@@ -39,7 +39,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public class AEADOutputStream extends FilterOutputStream {
 
-  private final AEADBlockCipher cipher;
+  private final AEADCipher cipher;
 
   /**
    * Constructs an encrypting stream that writes AES‑GCM ciphertext to {@code os}.
