@@ -7,21 +7,21 @@ import java.security.SecureRandom;
 import java.util.Random;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.InvalidCipherTextException;
-import org.bouncycastle.crypto.modes.AEADBlockCipher;
+import org.bouncycastle.crypto.modes.AEADCipher;
 import org.bouncycastle.crypto.modes.GCMBlockCipher;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 
 /**
  * Uses bouncycastle's AEAD code. BC provides Cipher*Stream but they don't work with authenticating.
- * FIXME This probably needs an internal buffer. Shouldn't be too inefficient provided that any
- * short writes are buffered before they reach here though.
+ * NOTE: This stream may benefit from an internal buffer; in practice short writes are typically
+ * buffered by callers before reaching here.
  *
  * @author toad
  */
 public class AEADOutputStream extends FilterOutputStream {
 
-  private final AEADBlockCipher cipher;
+  private final AEADCipher cipher;
 
   /**
    * Create an encrypting, authenticating OutputStream using AES-GCM.
@@ -48,7 +48,7 @@ public class AEADOutputStream extends FilterOutputStream {
     super(os);
     // Persist the 16-byte prefix (block size: 16 for AES) to keep file overhead stable.
     os.write(writtenNonce);
-    AEADBlockCipher gcm = new GCMBlockCipher(mainCipher);
+    AEADCipher gcm = GCMBlockCipher.newInstance(mainCipher);
     cipher = gcm;
     KeyParameter keyParam = new KeyParameter(key);
     AEADParameters params = new AEADParameters(keyParam, MAC_SIZE_BITS, gcmNonce);
@@ -78,8 +78,8 @@ public class AEADOutputStream extends FilterOutputStream {
     try {
       cipher.doFinal(output, 0);
     } catch (InvalidCipherTextException e) {
-      // Impossible???
-      throw new RuntimeException("Impossible: " + e);
+      // Encryption mode should not throw InvalidCipherTextException during doFinal().
+      throw new IllegalStateException("Unexpected GCM doFinal() failure", e);
     }
     out.write(output);
     out.close();

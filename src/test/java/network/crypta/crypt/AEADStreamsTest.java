@@ -15,11 +15,11 @@ import network.crypta.support.io.FileUtil;
 import network.crypta.testsupport.NoCloseProxyOutputStream;
 import org.junit.jupiter.api.Test;
 
-public class AEADStreamsTest {
+class AEADStreamsTest {
 
   @Test
-  public void testSuccessfulRoundTrip() throws IOException {
-    Random random = new Random(0x96231307);
+  void testSuccessfulRoundTrip() throws IOException {
+    Random random = new Random(0x96231307L);
     for (int i = 0; i < 10; i++) {
       ArrayBucket input = new ArrayBucket();
       fillBucketWithRandom(input, random, 65536L, true);
@@ -30,8 +30,8 @@ public class AEADStreamsTest {
   }
 
   @Test
-  public void testCorruptedRoundTrip() throws IOException {
-    Random random = new Random(0x96231307); // Same seed as first test, intentionally.
+  void testCorruptedRoundTrip() throws IOException {
+    Random random = new Random(0x96231307L); // Same seed as first test, intentionally.
     for (int i = 0; i < 10; i++) {
       ArrayBucket input = new ArrayBucket();
       fillBucketWithRandom(input, random, 65536L, true);
@@ -42,7 +42,7 @@ public class AEADStreamsTest {
   }
 
   @Test
-  public void testTruncatedReadsWritesRoundTrip() throws IOException {
+  void testTruncatedReadsWritesRoundTrip() throws IOException {
     Random random = new Random(0x49ee92f5);
     ArrayBucket input = new ArrayBucket();
     fillBucketWithRandom(input, random, 512L * 1024L, true);
@@ -51,7 +51,7 @@ public class AEADStreamsTest {
     checkSuccessfulRoundTripRandomSplits(32, random, input, new ArrayBucket(), new ArrayBucket());
   }
 
-  public void checkSuccessfulRoundTrip(
+  void checkSuccessfulRoundTrip(
       int keysize, Random random, Bucket input, Bucket output, Bucket decoded) throws IOException {
     byte[] key = new byte[keysize];
     random.nextBytes(key);
@@ -67,7 +67,7 @@ public class AEADStreamsTest {
     assertTrue(BucketTools.equalBuckets(decoded, input));
   }
 
-  public void checkFailedCorruptedRoundTrip(
+  void checkFailedCorruptedRoundTrip(
       int keysize, Random random, Bucket input, Bucket output, Bucket decoded) throws IOException {
     byte[] key = new byte[keysize];
     random.nextBytes(key);
@@ -90,7 +90,7 @@ public class AEADStreamsTest {
     assertFalse(BucketTools.equalBuckets(decoded, input));
   }
 
-  public void checkSuccessfulRoundTripRandomSplits(
+  void checkSuccessfulRoundTripRandomSplits(
       int keysize, Random random, Bucket input, Bucket output, Bucket decoded) throws IOException {
     byte[] key = new byte[keysize];
     random.nextBytes(key);
@@ -112,7 +112,7 @@ public class AEADStreamsTest {
    * @throws IOException
    */
   @Test
-  public void testCloseEarly() throws IOException {
+  void testCloseEarly() throws IOException {
     ArrayBucket input = new ArrayBucket();
     BucketTools.fill(input, 2048);
     int keysize = 16;
@@ -140,7 +140,7 @@ public class AEADStreamsTest {
    * @throws IOException
    */
   @Test
-  public void testGarbageAfterClose() throws IOException {
+  void testGarbageAfterClose() throws IOException {
     ArrayBucket input = new ArrayBucket();
     BucketTools.fill(input, 1024);
     int keysize = 16;
