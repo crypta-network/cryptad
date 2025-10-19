@@ -21,11 +21,7 @@ public class DSAPrivateKey extends CryptoKey {
       throw new IllegalArgumentException();
   }
 
-  // this is dangerous...  better to force people to construct the
-  // BigInteger themselves so they know what is going on with the sign
-  // public DSAPrivateKey(byte[] x) {
-  //    this.x = new BigInteger(1, x);
-  // }
+  // Intentionally no byte[] constructor to avoid sign confusions with BigInteger.
 
   public DSAPrivateKey(DSAGroup g, Random r) {
     BigInteger tempX;
@@ -35,6 +31,7 @@ public class DSAPrivateKey extends CryptoKey {
     this.x = tempX;
   }
 
+  @SuppressWarnings("unused")
   protected DSAPrivateKey() {
     // For serialization.
     x = null;
@@ -58,11 +55,7 @@ public class DSAPrivateKey extends CryptoKey {
     return "x=" + HexUtil.biToHex(x);
   }
 
-  // what?  why is DSAGroup passed in?
-  // public static CryptoKey readFromField(DSAGroup group, String field) {
-  //    //BigInteger x=Util.byteArrayToMPI(Util.hexToBytes(field));
-  //    return new DSAPrivateKey(new BigInteger(field, 16));
-  // }
+  // No readFromField() variant retained; callers should use read(InputStream, DSAGroup).
 
   @Override
   public byte[] asBytes() {
@@ -82,8 +75,8 @@ public class DSAPrivateKey extends CryptoKey {
 
   public static DSAPrivateKey create(SimpleFieldSet fs, DSAGroup group)
       throws IllegalBase64Exception {
-    BigInteger y = new BigInteger(1, Base64.decode(fs.get("x")));
-    if (y.bitLength() > 512) throw new IllegalBase64Exception("Probably a pubkey");
-    return new DSAPrivateKey(y, group);
+    BigInteger xDecoded = new BigInteger(1, Base64.decode(fs.get("x")));
+    if (xDecoded.bitLength() > 512) throw new IllegalBase64Exception("Probably a pubkey");
+    return new DSAPrivateKey(xDecoded, group);
   }
 }
