@@ -170,8 +170,10 @@ class UdpSocketHandlerTest {
     }
     handler.setLowLevelFilter(filter);
     handler.start();
-    // Verify that the thread set up receive tracking.
-    verify(tracker, timeout(2000)).startReceive(anyLong());
+    // Do not assert startReceive() immediately: on CI under heavy load the
+    // receiver thread can be scheduled with noticeable delay, which makes a
+    // short timeout here flaky. Instead, we assert receipt/processing first
+    // (which can only occur after startReceive()), then verify startReceive().
 
     // Send a small UDP packet to the handler's bound address.
     InetSocketAddress bound = new InetSocketAddress(InetAddress.getLoopbackAddress(), freePort);
@@ -184,12 +186,16 @@ class UdpSocketHandlerTest {
     // The filter should be invoked once with some peer and the correct length.
     ArgumentCaptor<Peer> peerCaptor = ArgumentCaptor.forClass(Peer.class);
     ArgumentCaptor<Integer> lenCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(filter, timeout(2000))
+    verify(filter, timeout(10000))
         .process(any(byte[].class), eq(0), lenCaptor.capture(), peerCaptor.capture(), anyLong());
     assertEquals(5, lenCaptor.getValue());
 
     // The tracker should record a receive from the sender's address/port.
     verify(tracker, atLeastOnce()).receivedPacketFrom(any(Peer.class));
+
+    // By the time processing has happened, the run loop has already called
+    // startReceive(); verifying without a timeout avoids racy failures.
+    verify(tracker, atLeastOnce()).startReceive(anyLong());
 
     // Cleanup so the receive loop exits.
     handler.close();

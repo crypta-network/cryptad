@@ -223,8 +223,8 @@ class BlockTransmitterTest {
       // no unsent
       unsentField.set(tx, new ArrayDeque<Integer>());
       // all bits set to true
-      BitArray bits = new BitArray(prb._packets);
-      for (int i = 0; i < prb._packets; i++) bits.setBit(i, true);
+      BitArray bits = new BitArray(prb.packets);
+      for (int i = 0; i < prb.packets; i++) bits.setBit(i, true);
       sentPacketsField.set(tx, bits);
       // no pending sends and completion acked with success
       pendingField.setInt(tx, 0);
