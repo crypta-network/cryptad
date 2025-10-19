@@ -1044,7 +1044,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     node.getRandom().nextBytes(myNonce);
     byte[] myExponential = ctx.getPublicKeyNetworkFormat();
     // Neg type 9 and later use ECDSA signature.
-    byte[] sig = ctx.ecdsaSig;
+    byte[] sig = ctx.getECDSASignature();
     if (sig.length != getSignatureLength(negType))
       throw new IllegalStateException(
           "This shouldn't happen: please report! We are attempting to send "
@@ -2640,7 +2640,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (LOG.isDebugEnabled())
       LOG.debug(
           "ECDSA Signature: "
-              + HexUtil.bytesToHex(ctx.ecdsaSig)
+              + HexUtil.bytesToHex(ctx.getECDSASignature())
               + " for "
               + HexUtil.bytesToHex(ctx.getPublicKeyNetworkFormat()));
     return ctx;
