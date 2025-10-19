@@ -966,7 +966,6 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
                 prb,
                 this,
                 node.getTicker(),
-                true,
                 realTimeFlag,
                 myTimeoutHandler,
                 true);
@@ -1292,7 +1291,6 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             prb,
             this,
             node.getTicker(),
-            true,
             realTimeFlag,
             myTimeoutHandler,
             true);
