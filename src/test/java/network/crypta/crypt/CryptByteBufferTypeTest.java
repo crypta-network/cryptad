@@ -3,7 +3,6 @@ package network.crypta.crypt;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -28,16 +27,12 @@ class CryptByteBufferTypeTest {
     for (CryptByteBufferType type : CryptByteBufferType.values()) {
       assertAll(
           type.name(),
-          () ->
-              assertTrue(
-                  type.hasIV() || type.ivSize == null, "hasIV must agree with ivSize nullness"),
+          () -> assertTrue(type.hasIV(), "hasIV must agree with ivSize nullness"),
           () -> {
-            if (type.hasIV()) {
-              assertNotNull(type.ivSize, "ivSize should not be null when hasIV is true");
-              assertTrue(type.ivSize > 0, "ivSize should be positive");
-            } else {
-              assertNull(type.ivSize, "ivSize should be null when hasIV is false");
-            }
+            // Current contract: all supported types require an IV/nonce and expose a non-null size.
+            // Therefore, assert ivSize is non-null and positive for every enum constant.
+            assertNotNull(type.ivSize, "ivSize should not be null when hasIV is true");
+            assertTrue(type.ivSize > 0, "ivSize should be positive");
           });
     }
   }
