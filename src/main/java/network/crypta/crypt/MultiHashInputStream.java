@@ -46,7 +46,11 @@ public class MultiHashInputStream extends SkipShieldingInputStream {
   }
 
   @Override
-  public void mark(int readlimit) {}
+  public void mark(int readlimit) {
+    // Intentionally a no-op: mark/reset are not supported because this stream
+    // updates multiple digests incrementally and cannot rewind that state.
+    // See: markSupported() returns false and reset() throws IOException.
+  }
 
   public HashResult[] getResults() {
     return digester.getResults().toArray(new HashResult[0]);
