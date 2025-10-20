@@ -52,7 +52,7 @@ class MasterSecretTest {
   void deriveKey_whenTypeValid_matchesExpectedDerivation(KeyType type) throws Exception {
     // Arrange
     MasterSecret ms = new MasterSecret(fixedSecret);
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, fixedSecret);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, fixedSecret);
 
     // Act
     SecretKey actual = ms.deriveKey(type);
@@ -71,7 +71,7 @@ class MasterSecretTest {
   void deriveIv_whenTypeValid_matchesExpectedDerivation(KeyType type) throws Exception {
     // Arrange
     MasterSecret ms = new MasterSecret(fixedSecret);
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, fixedSecret);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, fixedSecret);
 
     // Act
     IvParameterSpec actual = ms.deriveIv(type);
@@ -102,8 +102,8 @@ class MasterSecretTest {
   @DisplayName("deriveKey_whenDifferentTypes_producesDifferentMaterial")
   void deriveKey_whenDifferentTypes_producesDifferentMaterial() {
     MasterSecret ms = new MasterSecret(fixedSecret);
-    byte[] a = ms.deriveKey(KeyType.AES128).getEncoded();
-    byte[] b = ms.deriveKey(KeyType.AES256).getEncoded();
+    byte[] a = ms.deriveKey(KeyType.AES_128).getEncoded();
+    byte[] b = ms.deriveKey(KeyType.AES_256).getEncoded();
     assertFalse(Arrays.equals(a, b), "different types should derive different keys");
   }
 
@@ -111,8 +111,8 @@ class MasterSecretTest {
   @DisplayName("deriveKey_vs_deriveIv_forSameType_produceDifferentBytes")
   void deriveKey_vs_deriveIv_forSameType_produceDifferentBytes() {
     MasterSecret ms = new MasterSecret(fixedSecret);
-    byte[] key = ms.deriveKey(KeyType.HMACSHA512).getEncoded();
-    byte[] iv = ms.deriveIv(KeyType.HMACSHA512).getIV();
+    byte[] key = ms.deriveKey(KeyType.HMAC_SHA512).getEncoded();
+    byte[] iv = ms.deriveIv(KeyType.HMAC_SHA512).getIV();
     // Same size (64 bytes) but distinct KDF context strings → should differ
     assertFalse(Arrays.equals(key, iv), "key and iv derivations must differ");
   }
