@@ -161,9 +161,9 @@ public class DSAGroup extends CryptoKey {
    */
   @Override
   public byte[] asBytes() {
-    byte[] pb = Util.MPIbytes(p);
-    byte[] qb = Util.MPIbytes(q);
-    byte[] gb = Util.MPIbytes(g);
+    byte[] pb = Util.mpiBytes(p);
+    byte[] qb = Util.mpiBytes(q);
+    byte[] gb = Util.mpiBytes(g);
     byte[] tb = new byte[pb.length + qb.length + gb.length];
     System.arraycopy(pb, 0, tb, 0, pb.length);
     System.arraycopy(qb, 0, tb, pb.length, qb.length);
