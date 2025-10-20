@@ -82,7 +82,7 @@ public interface PersistentFileTracker extends DiskSpaceChecker {
    *
    * @return the canonical temporary directory managed by this tracker
    */
-  File getDir();
+  File dir();
 
   /**
    * Returns the filename generator bound to the persistent temporary directory.

@@ -945,7 +945,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
    * factory and does not alter other cryptographic components.
    */
   public static final EncryptedRandomAccessBufferType CRYPT_TYPE =
-      EncryptedRandomAccessBufferType.ChaCha128;
+      EncryptedRandomAccessBufferType.CHACHA_128;
 
   boolean runningCleaner = false;
 

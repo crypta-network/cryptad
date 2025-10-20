@@ -20,7 +20,7 @@ public class TrivialPersistentFileTracker implements PersistentFileTracker {
   }
 
   @Override
-  public File getDir() {
+  public File dir() {
     return dir;
   }
 

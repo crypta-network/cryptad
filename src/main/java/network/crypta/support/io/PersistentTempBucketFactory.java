@@ -203,7 +203,7 @@ public class PersistentTempBucketFactory implements BucketFactory, PersistentFil
 
   /** Get the directory we are creating temporary files in */
   @Override
-  public File getDir() {
+  public File dir() {
     return fg.getDir();
   }
 
