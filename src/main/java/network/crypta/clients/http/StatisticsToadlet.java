@@ -724,7 +724,8 @@ public class StatisticsToadlet extends Toadlet {
     jvmStatsList.addChild("li", l10n("osVersion", "version", System.getProperty("os.version")));
     jvmStatsList.addChild("li", l10n("osArch", "arch", System.getProperty("os.arch")));
     if (advancedModeEnabled) {
-      if (Rijndael.AesCtrProvider == null) jvmStatsList.addChild("li", l10n("cryptoUsingBuiltin"));
+      if (Rijndael.getAesCtrProvider() == null)
+        jvmStatsList.addChild("li", l10n("cryptoUsingBuiltin"));
       else
         jvmStatsList.addChild("li", l10n("cryptoUsingJCA", "provider", Rijndael.getProviderName()));
     }
