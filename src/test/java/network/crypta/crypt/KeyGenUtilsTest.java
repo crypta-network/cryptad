@@ -332,11 +332,11 @@ public class KeyGenUtilsTest {
 
   @Test
   public void testDeriveSecretKey() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     SecretKey buf1 =
-        KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.HMACSHA512);
+        KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.HMAC_SHA512);
     SecretKey buf2 =
-        KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.HMACSHA512);
+        KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.HMAC_SHA512);
     assertNotNull(buf1);
     assertEquals(buf1, buf2);
   }
@@ -344,7 +344,7 @@ public class KeyGenUtilsTest {
   @Test
   public void testDeriveSecretKeyLength() throws InvalidKeyException {
     for (KeyType type : keyTypes) {
-      SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+      SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
       SecretKey buf1 = KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, type);
 
       assertEquals(buf1.getEncoded().length, type.keySize >> 3);
@@ -356,28 +356,28 @@ public class KeyGenUtilsTest {
     SecretKey kdfKey = null;
     assertThrows(
         InvalidKeyException.class,
-        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128));
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveSecretKeyNullInput2() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
-        () -> KeyGenUtils.deriveSecretKey(kdfKey, null, kdfInput, KeyType.ChaCha128));
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, null, kdfInput, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveSecretKeyNullInput3() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
-        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128));
+        () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, null, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveSecretKeyNullInput4() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
         () -> KeyGenUtils.deriveSecretKey(kdfKey, KeyGenUtils.class, kdfInput, null));
@@ -385,11 +385,11 @@ public class KeyGenUtilsTest {
 
   @Test
   public void testDeriveIvParameterSpec() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     IvParameterSpec buf1 =
-        KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128);
+        KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, KeyType.CHACHA_128);
     IvParameterSpec buf2 =
-        KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128);
+        KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, KeyType.CHACHA_128);
     assertNotNull(buf1);
     assertArrayEquals(buf1.getIV(), buf2.getIV());
   }
@@ -397,7 +397,7 @@ public class KeyGenUtilsTest {
   @Test
   public void testDeriveIvParameterSpecLength() throws InvalidKeyException {
     for (KeyType type : keyTypes) {
-      SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+      SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
       IvParameterSpec buf1 =
           KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, type);
 
@@ -412,29 +412,29 @@ public class KeyGenUtilsTest {
         InvalidKeyException.class,
         () ->
             KeyGenUtils.deriveIvParameterSpec(
-                kdfKey, KeyGenUtils.class, kdfInput, KeyType.ChaCha128));
+                kdfKey, KeyGenUtils.class, kdfInput, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveIvParameterSpecNullInput2() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
-        () -> KeyGenUtils.deriveIvParameterSpec(kdfKey, null, kdfInput, KeyType.ChaCha128));
+        () -> KeyGenUtils.deriveIvParameterSpec(kdfKey, null, kdfInput, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveIvParameterSpecNullInput3() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
         () ->
-            KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, null, KeyType.ChaCha128));
+            KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, null, KeyType.CHACHA_128));
   }
 
   @Test
   public void testDeriveIvParameterSpecNullInput4() throws InvalidKeyException {
-    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, trueLengthSecretKeys[6]);
+    SecretKey kdfKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, trueLengthSecretKeys[6]);
     assertThrows(
         NullPointerException.class,
         () -> KeyGenUtils.deriveIvParameterSpec(kdfKey, KeyGenUtils.class, kdfInput, null));
