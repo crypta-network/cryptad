@@ -194,7 +194,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     try {
       final Class<ClientCHKBlock> clazz = ClientCHKBlock.class;
       final String algo = "HmacSHA256";
-      final Provider sun = JceLoader.SunJCE;
+      final Provider sun = JceLoader.getSunJCE();
       SecretKeySpec dummyKey = new SecretKeySpec(new byte[Node.SYMMETRIC_KEY_LENGTH], algo);
       Mac hmac = Mac.getInstance(algo);
       hmac.init(dummyKey); // resolve provider
