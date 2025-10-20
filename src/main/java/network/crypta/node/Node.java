@@ -5174,7 +5174,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     config.store();
 
     if (random instanceof PersistentRandomSource source) {
-      source.write_seed(true);
+      source.writeSeed(true);
     }
   }
 
