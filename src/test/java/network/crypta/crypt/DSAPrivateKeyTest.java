@@ -91,7 +91,7 @@ class DSAPrivateKeyTest {
   void asBytes_whenCalled_expectMPIEncoding() {
     BigInteger x = new BigInteger("1234", 16);
     DSAPrivateKey key = new DSAPrivateKey(x, GROUP);
-    assertArrayEquals(Util.MPIbytes(x), key.asBytes());
+    assertArrayEquals(Util.mpiBytes(x), key.asBytes());
   }
 
   @Test
@@ -100,7 +100,7 @@ class DSAPrivateKeyTest {
     DSAPrivateKey key = new DSAPrivateKey(x, GROUP);
 
     MessageDigest sha1 = HashType.SHA1.get();
-    sha1.update(Util.MPIbytes(x));
+    sha1.update(Util.mpiBytes(x));
     byte[] expected = sha1.digest();
 
     assertArrayEquals(expected, key.fingerprint());

@@ -245,7 +245,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
   @Override
   public byte[] asBytes() {
     byte[] groupBytes = getGroup().asBytes();
-    byte[] ybytes = Util.MPIbytes(y);
+    byte[] ybytes = Util.mpiBytes(y);
     byte[] bytes = new byte[groupBytes.length + ybytes.length];
     System.arraycopy(groupBytes, 0, bytes, 0, groupBytes.length);
     System.arraycopy(ybytes, 0, bytes, groupBytes.length, ybytes.length);

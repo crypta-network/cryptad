@@ -105,7 +105,7 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
   /**
    * Compute an SHA‑1 digest over the provided big‑integer quantities encoded as MPIs.
    *
-   * <p>Each quantity is converted via {@link Util#MPIbytes(BigInteger)} and fed to the digest in
+   * <p>Each quantity is converted via {@link Util#mpiBytes(BigInteger)} and fed to the digest in
    * order. The resulting digest is commonly used as a key fingerprint.
    *
    * @param quantities key parameters encoded as big integers, in deterministic order
@@ -115,7 +115,7 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
     // Digest MPI-encoded values using SHA-1 to produce a compact fingerprint.
     MessageDigest shactx = HashType.SHA1.get();
     for (BigInteger quantity : quantities) {
-      byte[] mpi = Util.MPIbytes(quantity);
+      byte[] mpi = Util.mpiBytes(quantity);
       shactx.update(mpi, 0, mpi.length);
     }
     return shactx.digest();

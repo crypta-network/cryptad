@@ -59,7 +59,7 @@ public class DSAPrivateKey extends CryptoKey {
 
   @Override
   public byte[] asBytes() {
-    return Util.MPIbytes(x);
+    return Util.mpiBytes(x);
   }
 
   @Override

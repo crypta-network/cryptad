@@ -80,7 +80,7 @@ class DSAGroupTest {
     BigInteger g = new BigInteger("2", 16); // 2
     DSAGroup grp = newGroup(p, q, g);
 
-    byte[] expected = concat(Util.MPIbytes(p), Util.MPIbytes(q), Util.MPIbytes(g));
+    byte[] expected = concat(Util.mpiBytes(p), Util.mpiBytes(q), Util.mpiBytes(g));
     assertArrayEquals(expected, grp.asBytes());
   }
 
@@ -92,9 +92,9 @@ class DSAGroupTest {
     DSAGroup grp = newGroup(p, q, g);
 
     MessageDigest sha1 = HashType.SHA1.get();
-    sha1.update(Util.MPIbytes(p));
-    sha1.update(Util.MPIbytes(q));
-    sha1.update(Util.MPIbytes(g));
+    sha1.update(Util.mpiBytes(p));
+    sha1.update(Util.mpiBytes(q));
+    sha1.update(Util.mpiBytes(g));
     byte[] expected = sha1.digest();
 
     assertArrayEquals(expected, grp.fingerprint());
@@ -164,7 +164,7 @@ class DSAGroupTest {
   @Test
   void read_withZeroValues_throwsCryptFormatException() {
     // Encode p=q=g=0 as MPI. Constructor rejects signum != 1, so read() wraps it.
-    byte[] mpiZero = Util.MPIbytes(BigInteger.ZERO);
+    byte[] mpiZero = Util.mpiBytes(BigInteger.ZERO);
     byte[] threeZeros = concat(mpiZero, mpiZero, mpiZero);
     ByteArrayInputStream bis = new ByteArrayInputStream(threeZeros);
     assertThrows(CryptFormatException.class, () -> DSAGroup.read(bis));
