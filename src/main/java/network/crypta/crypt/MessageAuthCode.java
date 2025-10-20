@@ -138,7 +138,7 @@ public final class MessageAuthCode {
    * @param encodedKey Key to check
    */
   private void checkPoly1305Key(byte[] encodedKey) {
-    if (type != MACType.Poly1305AES) {
+    if (type != MACType.POLY1305_AES) {
       throw new UnsupportedTypeException(type);
     }
     Poly1305KeyGenerator.checkKey(encodedKey);
