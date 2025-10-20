@@ -213,7 +213,6 @@ public class RealNodeULPRTest extends RealNodeTest {
                     false,
                     (short) -1,
                     buf.length,
-                    random,
                     COMPRESSOR_TYPE.DEFAULT_COMPRESSORDESCRIPTOR);
       } else {
         block =

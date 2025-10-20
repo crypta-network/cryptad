@@ -348,7 +348,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         pubkeyCache.cacheKey(
@@ -377,7 +376,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         sskBlock = (SSKBlock) block.getBlock();
         try {
@@ -409,7 +407,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
         pubkeyCache.cacheKey(
@@ -498,7 +495,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         pubkeyCache.cacheKey(
@@ -597,7 +593,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         pubkeyCache.cacheKey(
@@ -633,7 +628,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
         try {
@@ -1240,7 +1234,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         store.put(sskBlock, false, false);
@@ -1263,7 +1256,6 @@ public class CachingFreenetStoreTest {
                 false,
                 (short) -1,
                 bucket1.size(),
-                random,
                 Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
         SSKBlock sskBlock1 = (SSKBlock) block1.getBlock();
 
@@ -1339,13 +1331,7 @@ public class CachingFreenetStoreTest {
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     InsertableClientSSK ik = InsertableClientSSK.createRandom(random, test);
     return ik.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        random,
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+        bucket, false, false, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
   }
 
   class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {

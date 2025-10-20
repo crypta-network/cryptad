@@ -238,7 +238,6 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
                   false,
                   (short) -1,
                   buf.length,
-                  random,
                   COMPRESSOR_TYPE.DEFAULT_COMPRESSORDESCRIPTOR);
     } else {
       block =
