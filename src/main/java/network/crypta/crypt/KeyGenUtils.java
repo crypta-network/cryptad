@@ -379,7 +379,7 @@ public final class KeyGenUtils {
     if (kdfString == null) {
       throw new NullPointerException();
     }
-    MessageAuthCode kdf = new MessageAuthCode(MACType.HMACSHA512, kdfKey);
+    MessageAuthCode kdf = new MessageAuthCode(MACType.HMAC_SHA512, kdfKey);
     return kdf.genMac((c.getName() + kdfString).getBytes(StandardCharsets.UTF_8));
   }
 

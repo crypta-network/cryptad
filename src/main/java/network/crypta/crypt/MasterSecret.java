@@ -18,12 +18,12 @@ public final class MasterSecret implements Serializable {
 
   /** Creates a new MasterSecret. */
   public MasterSecret() {
-    masterKey = KeyGenUtils.genSecretKey(KeyType.HMACSHA512);
+    masterKey = KeyGenUtils.genSecretKey(KeyType.HMAC_SHA512);
   }
 
   public MasterSecret(byte[] secret) {
     if (secret.length != 64) throw new IllegalArgumentException();
-    masterKey = KeyGenUtils.getSecretKey(KeyType.HMACSHA512, secret);
+    masterKey = KeyGenUtils.getSecretKey(KeyType.HMAC_SHA512, secret);
   }
 
   /**
@@ -34,7 +34,8 @@ public final class MasterSecret implements Serializable {
    */
   public SecretKey deriveKey(KeyType type) {
     try {
-      return KeyGenUtils.deriveSecretKey(masterKey, getClass(), type.name() + " key", type);
+      // Use KeyType.kdfLabel to keep derived keys stable across enum renames
+      return KeyGenUtils.deriveSecretKey(masterKey, getClass(), type.kdfLabel + " key", type);
     } catch (InvalidKeyException e) {
       throw new IllegalStateException(e); // Definitely a bug.
     }
@@ -48,7 +49,8 @@ public final class MasterSecret implements Serializable {
    */
   public IvParameterSpec deriveIv(KeyType type) {
     try {
-      return KeyGenUtils.deriveIvParameterSpec(masterKey, getClass(), type.name() + " iv", type);
+      // Use KeyType.kdfLabel to keep derived IVs stable across enum renames
+      return KeyGenUtils.deriveIvParameterSpec(masterKey, getClass(), type.kdfLabel + " iv", type);
     } catch (InvalidKeyException e) {
       throw new IllegalStateException(e); // Definitely a bug.
     }

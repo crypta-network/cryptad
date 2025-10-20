@@ -36,7 +36,7 @@ public enum CryptByteBufferType implements Serializable {
    * <p>Key size is 256 bits (via {@link KeyType#AES256}); the IV/nonce length is 16 bytes. The JCE
    * transformation string is {@code AES/CTR/NOPADDING}.
    */
-  AESCTR(16, 16, "AES/CTR/NOPADDING", KeyType.AES256),
+  AESCTR(16, 16, "AES/CTR/NOPADDING", KeyType.AES_256),
 
   /**
    * ChaCha with a 128-bit key and 8-byte nonce.
@@ -45,7 +45,7 @@ public enum CryptByteBufferType implements Serializable {
    * that uses an 8-byte nonce; newer variants commonly use larger nonces but must remain compatible
    * with persisted data in this codebase.
    */
-  CHACHA_128(32, 8, "CHACHA", KeyType.ChaCha128),
+  CHACHA_128(32, 8, "CHACHA", KeyType.CHACHA_128),
 
   /**
    * ChaCha with a 256-bit key and 8-byte nonce.
@@ -53,7 +53,7 @@ public enum CryptByteBufferType implements Serializable {
    * <p>The JCE algorithm name is {@code CHACHA}. See {@link #CHACHA_128} for notes on nonce size
    * compatibility.
    */
-  CHACHA_256(64, 8, "CHACHA", KeyType.ChaCha256);
+  CHACHA_256(64, 8, "CHACHA", KeyType.CHACHA_256);
 
   /** Bitmask used when aggregating or filtering supported types. */
   public final int bitmask;

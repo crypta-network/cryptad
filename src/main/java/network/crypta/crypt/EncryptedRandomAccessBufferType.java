@@ -32,14 +32,14 @@ public enum EncryptedRandomAccessBufferType {
    * <p>The header format reserves 12 bytes for version and magic, then includes the encrypted base
    * key, IV/nonce, and a 32-byte MAC. See {@link #headerLen} for the total size in bytes.
    */
-  CHACHA_128(1, 12, CryptByteBufferType.CHACHA_128, MACType.HMACSHA256, 32),
+  CHACHA_128(1, 12, CryptByteBufferType.CHACHA_128, MACType.HMAC_SHA256, 32),
 
   /**
    * ChaCha with a 256-bit key and HMAC-SHA-256 for header authentication.
    *
    * <p>Same header structure as {@link #CHACHA_128} but with a 256-bit cipher key size.
    */
-  CHACHA_256(2, 12, CryptByteBufferType.CHACHA_256, MACType.HMACSHA256, 32);
+  CHACHA_256(2, 12, CryptByteBufferType.CHACHA_256, MACType.HMAC_SHA256, 32);
 
   /** Version bitmask written to persistent streams to identify this type. */
   public final int bitmask;

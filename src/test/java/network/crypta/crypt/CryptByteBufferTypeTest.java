@@ -83,7 +83,7 @@ class CryptByteBufferTypeTest {
             ALG_AES_CTR_NOPADDING,
             true,
             16,
-            KeyType.AES256,
+            KeyType.AES_256,
             "AES"),
         Arguments.of(
             CryptByteBufferType.CHACHA_128,
@@ -91,7 +91,7 @@ class CryptByteBufferTypeTest {
             ALG_CHACHA,
             true,
             8,
-            KeyType.ChaCha128,
+            KeyType.CHACHA_128,
             ALG_CHACHA),
         Arguments.of(
             CryptByteBufferType.CHACHA_256,
@@ -99,7 +99,7 @@ class CryptByteBufferTypeTest {
             ALG_CHACHA,
             true,
             8,
-            KeyType.ChaCha256,
+            KeyType.CHACHA_256,
             ALG_CHACHA));
   }
 
