@@ -122,7 +122,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       fast_pool_reseed();
       slow_pool_reseed();
     } else {
-      read_seed(seed);
+      readSeed(seed);
     }
   }
 
@@ -203,7 +203,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       readStartupEntropy(startupEntropy);
     }
 
-    read_seed(seed);
+    readSeed(seed);
   }
 
   protected void readStartupEntropy(EntropySource startupEntropy) {
@@ -217,7 +217,8 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   }
 
   /** Seed handling */
-  private void read_seed(File filename) {
+  @Override
+  public void readSeed(File filename) {
     try (FileInputStream fis = new FileInputStream(filename);
         BufferedInputStream bis = new BufferedInputStream(fis);
         DataInputStream dis = new DataInputStream(bis)) {
@@ -234,17 +235,17 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 
   private long timeLastWroteSeed = -1;
 
-  private void write_seed(File filename) {
-    write_seed(filename, false);
+  private void writeSeed(File filename) {
+    writeSeed(filename, false);
   }
 
   /** {@inheritDoc} */
   @Override
-  public void write_seed(boolean force) {
-    write_seed(seedfile, force);
+  public void writeSeed(boolean force) {
+    writeSeed(seedfile, force);
   }
 
-  private void write_seed(File filename, boolean force) {
+  private void writeSeed(File filename, boolean force) {
     if (!force)
       synchronized (this) {
         long now = System.currentTimeMillis();
@@ -482,7 +483,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       // Dont do this while synchronized on 'this' since
       // opening a file seems to be suprisingly slow on windows
       if (LOG.isDebugEnabled()) LOG.debug("Writing seedfile");
-      write_seed(seedfile);
+      writeSeed(seedfile);
       if (LOG.isDebugEnabled()) LOG.debug("Written seedfile");
     }
 
