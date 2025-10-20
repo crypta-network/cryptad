@@ -97,7 +97,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (key.cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
       return decodeOld(bf, maxLength, dontCompress);
     else if (key.cryptoAlgorithm == Key.ALGO_AES_CTR_256_SHA256) {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
+      if (Rijndael.getAesCtrProvider() == null || forceNoJCA)
         return decodeNewNoJCA(bf, maxLength, dontCompress);
       else return decodeNew(bf, maxLength, dontCompress);
     } else throw new UnsupportedOperationException();
@@ -252,7 +252,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
       throw new CHKDecodeException("Crypto key too short");
     try {
-      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
       cipher.init(
           Cipher.ENCRYPT_MODE,
           new SecretKeySpec(cryptoKey, "AES"),
@@ -364,7 +364,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
           data, CHKBlock.DATA_LENGTH, md256, cryptoKey, false, (short) -1, cryptoAlgorithm);
     else if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unknown crypto algorithm: " + cryptoAlgorithm);
-    if (Rijndael.AesCtrProvider == null) {
+    if (Rijndael.getAesCtrProvider() == null) {
       return encodeNewNoJCA(
           data,
           CHKBlock.DATA_LENGTH,
@@ -485,7 +485,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       return innerEncode(
           data, dataLength, md256, encKey, asMetadata, compressionAlgorithm, cryptoAlgorithm);
     else {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
+      if (Rijndael.getAesCtrProvider() == null || forceNoJCA)
         return encodeNewNoJCA(
             data,
             dataLength,
@@ -556,7 +556,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       SecretKey ckey = new SecretKeySpec(encKey, "AES");
       // CTR mode IV is only 16 bytes.
       // That's still plenty though. It will still be unique.
-      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
       cipher.init(Cipher.ENCRYPT_MODE, ckey, new IvParameterSpec(hash, 0, 16));
       byte[] cdata = new byte[data.length];
       int moved = cipher.update(data, 0, data.length, cdata);

@@ -7,5 +7,5 @@ public final class TestJca {
   private TestJca() {}
 
   /** Whether AES/CTR with unrestricted key sizes is available via JCA. */
-  public static final boolean AES_CTR_AVAILABLE = Rijndael.AesCtrProvider != null;
+  public static final boolean AES_CTR_AVAILABLE = Rijndael.getAesCtrProvider() != null;
 }

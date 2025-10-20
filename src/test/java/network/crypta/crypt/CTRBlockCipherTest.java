@@ -37,7 +37,7 @@ class CTRBlockCipherTest {
 
   // Helper to satisfy static analysis when the provider may be null at compile time.
   private static Cipher newAesCtrCipher() throws NoSuchPaddingException, NoSuchAlgorithmException {
-    java.security.Provider p = Rijndael.AesCtrProvider;
+    java.security.Provider p = Rijndael.getAesCtrProvider();
     return (p != null)
         ? Cipher.getInstance("AES/CTR/NOPADDING", p)
         : Cipher.getInstance("AES/CTR/NOPADDING");
