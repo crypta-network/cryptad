@@ -57,7 +57,7 @@ class MasterSecretTest {
     // Act
     SecretKey actual = ms.deriveKey(type);
     SecretKey expected =
-        KeyGenUtils.deriveSecretKey(kdfKey, MasterSecret.class, type.name() + " key", type);
+        KeyGenUtils.deriveSecretKey(kdfKey, MasterSecret.class, type.kdfLabel + " key", type);
 
     // Assert
     assertNotNull(actual, "derived SecretKey must not be null");
@@ -76,7 +76,7 @@ class MasterSecretTest {
     // Act
     IvParameterSpec actual = ms.deriveIv(type);
     IvParameterSpec expected =
-        KeyGenUtils.deriveIvParameterSpec(kdfKey, MasterSecret.class, type.name() + " iv", type);
+        KeyGenUtils.deriveIvParameterSpec(kdfKey, MasterSecret.class, type.kdfLabel + " iv", type);
 
     // Assert
     assertNotNull(actual, "derived IV must not be null");
