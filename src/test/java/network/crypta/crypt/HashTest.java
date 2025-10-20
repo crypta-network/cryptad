@@ -194,12 +194,11 @@ class HashTest {
     assertFalse(h.verify(HELLO_WORLD, HELLO_WORLD)); // wrong-sized "hash"
   }
 
-  @SuppressWarnings("DataFlowIssue")
-  @ParameterizedTest(name = "{0}: verify(null, data) -> NPE")
+  @ParameterizedTest(name = "{0}: verify(null, data) returns false")
   @EnumSource(HashType.class)
-  void verify_whenNullHash_expectNpe(HashType type) {
+  void verify_whenNullHash_expectFalse(HashType type) {
     Hash h = new Hash(type);
-    assertThrows(NullPointerException.class, () -> h.verify((byte[]) null, HELLO_WORLD));
+    assertFalse(h.verify((byte[]) null, HELLO_WORLD));
   }
 
   @ParameterizedTest(name = "{0}: verify(hash, null) -> NPE")
