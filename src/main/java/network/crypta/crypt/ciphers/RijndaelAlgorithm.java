@@ -8,8 +8,16 @@ import org.slf4j.LoggerFactory;
 
 // ...........................................................................
 /**
- * Rijndael --pronounced Reindaal-- is a variable block-size (128-, 192- and 256-bit), variable
- * key-size (128-, 192- and 256-bit) symmetric cipher.
+ * Implements the Rijndael block cipher.
+ *
+ * <p>Rijndael supports variable block sizes (128, 192, and 256 bits) and variable key sizes (128,
+ * 192, and 256 bits). The AES standard (FIPS‑197) corresponds to the 128‑bit block variant. This
+ * implementation provides optimized 128‑bit and 256‑bit block modes; the 192‑bit block mode is not
+ * implemented.
+ *
+ * <p>The class precomputes S‑boxes, inverse S‑boxes, round constants, and T/U tables during static
+ * initialization. After class loading, methods are stateless and thread‑safe. All arrays passed to
+ * the API must be non‑null and large enough to hold the requested block.
  *
  * <p>Rijndael was written by <a href="mailto:rijmen@esat.kuleuven.ac.be">Vincent Rijmen</a> and <a
  * href="mailto:Joan.Daemen@village.uunet.be">Joan Daemen</a>.
@@ -19,10 +27,10 @@ import org.slf4j.LoggerFactory;
  * href="http://www.systemics.com/docs/cryptix/">Cryptix Development Team</a>. <br>
  * All rights reserved.
  *
- * <p>
- *
  * @author Raif S. Naffah
  * @author Paulo S. L. M. Barreto
+ * @implNote This class exposes a small, package‑private API that higher‑level ciphers use. It is
+ *     not a general‑purpose {@code javax.crypto.Cipher} implementation.
  *     <p>License is apparently available from http://www.cryptix.org/docs/license.html
  */
 public final class RijndaelAlgorithm // implicit no-argument constructor
@@ -32,9 +40,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   //	Debugging methods and variables
   //	...........................................................................
 
-  // removed unused empty static initializer
-
-  // Legacy debug flags replaced by SLF4J level checks
+  // Logging is controlled by SLF4J. These flags gate additional verbose traces.
 
   static final String ALGORITHM = "Rijndael";
   static final double VERSION = 0.1;
@@ -44,10 +50,10 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   private static final boolean IN = true;
   private static final boolean OUT = false;
 
-  /** Must be enabled to see most (all?) of the logging */
+  /** When true, emit verbose internal state logs guarded by SLF4J levels. */
   private static final boolean RDEBUG = false;
 
-  /** Enable to see input and output of the API functions */
+  /** When true, trace input/output of top‑level API methods. */
   private static final boolean TRACE = false;
 
   private static final String TRACE_BLOCK_ENCRYPT = "blockEncrypt()";
@@ -69,10 +75,11 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   //	Constants and variables
   //	...........................................................................
 
+  /** Default block size in bytes (128‑bit blocks). */
   private static final int BLOCK_SIZE = 16; // default block size in bytes
 
   private static final int[] alog = new int[256];
-  // Renamed to avoid confusion with logger name LOG
+  // Discrete logarithm table (base 3) for GF(2^8) with modulus 0x11B.
   private static final int[] LOG_TABLE = new int[256];
 
   private static final byte[] S = new byte[256];
@@ -102,7 +109,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
   };
 
-  //	Static code - to intialise S-boxes and T-boxes
+  //	Static code - to initialize S‑boxes and T‑boxes
   //	...........................................................................
 
   static {
@@ -118,14 +125,14 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     int j;
 
     //
-    // produce log and alog tables, needed for multiplying in the
-    // field GF(2^m) (generator = 3)
+    // Produce log and antilog tables used for multiplication in GF(2^8)
+    // with generator 3 and irreducible polynomial 0x11B.
     //
     generateLogAndAlogTables(root);
     generateSBoxes();
 
     //
-    // T-boxes
+    // T‑boxes (combine SubBytes + MixColumns for speed)
     //
     byte[][] g =
         new byte[][] {
@@ -138,7 +145,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     generateTBoxes(g, iG);
 
     //
-    // round constants
+    // Round constants for the key schedule
     //
     rcon[0] = 1;
     int r = 1;
@@ -276,6 +283,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  /** Build base‑3 log/antilog tables for GF(2^8) using the given modulus. */
   private static void generateLogAndAlogTables(int root) {
     alog[0] = 1;
     for (int i = 1; i < 256; i++) {
@@ -286,6 +294,13 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int i = 1; i < 255; i++) LOG_TABLE[alog[i]] = i;
   }
 
+  /**
+   * Compute the forward and inverse S‑boxes.
+   *
+   * <p>Each S‑box entry is the multiplicative inverse in GF(2^8) (with 0 mapped to 0), followed by
+   * the affine transform defined by the Rijndael specification. The inverse S‑box {@code Si}
+   * satisfies {@code Si[S[x]] == x} for all bytes {@code x}.
+   */
   private static void generateSBoxes() {
     byte[][] aMatrix =
         new byte[][] {
@@ -301,7 +316,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     byte[] bVector = new byte[] {0, 1, 1, 0, 0, 0, 1, 1};
 
     //
-    // substitution box based on F^{-1}(x)
+    // Substitution box based on F^{-1}(x)
     //
     byte[][] box = new byte[256][8];
     box[1][7] = 1;
@@ -310,14 +325,14 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       for (int t = 0; t < 8; t++) box[i][t] = (byte) (j >>> 7 - t & 0x01);
     }
     //
-    // affine transform:  box[i] <- bVector + aMatrix*box[i]
+    // Affine transform:  box[i] <- bVector + aMatrix*box[i]
     //
     byte[][] cox = new byte[256][8];
     for (int i = 0; i < 256; i++)
       for (int t = 0; t < 8; t++) {
         cox[i][t] = bVector[t];
         for (int j = 0; j < 8; j++) {
-          // Avoid lossy implicit narrowing in compound assignment; operate in int then narrow once.
+          // Compute in the int domain and narrow once to avoid sign extension surprises.
           cox[i][t] =
               (byte)
                   ((cox[i][t] & 0xFF ^ (aMatrix[t][j] & 0xFF) * (box[i][j] & 0xFF) & 0xFF) & 0xFF);
@@ -329,13 +344,19 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int i = 0; i < 256; i++) {
       S[i] = (byte) ((cox[i][0] & 0xFF) << 7);
       for (int t = 1; t < 8; t++) {
-        // Avoid lossy implicit narrowing; compute as int and cast once.
+        // Compute as int and cast once to avoid lossy implicit narrowing.
         S[i] = (byte) ((S[i] & 0xFF ^ (cox[i][t] & 0xFF) << 7 - t & 0xFF) & 0xFF);
       }
       Si[S[i] & 0xFF] = (byte) i;
     }
   }
 
+  /**
+   * Invert the 4×4 MixColumns matrix in GF(2^8) via Gaussian elimination.
+   *
+   * @param gMatrix The MixColumns matrix.
+   * @return The inverse matrix {@code iG} such that {@code gMatrix * iG = I} in GF(2^8).
+   */
   private static byte[][] generateInvertedGMatrix(byte[][] gMatrix) {
     byte[][] aa = new byte[4][8];
     for (int i = 0; i < 4; i++) {
@@ -375,11 +396,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  /** Eliminate column {@code i} from all rows except {@code i} in-place (GF(2^8)). */
   private static void eliminateColumn(byte[][] aa, int i) {
     for (int t = 0; t < 4; t++) {
       if (i != t) {
         for (int j = i + 1; j < 8; j++) {
-          // Avoid lossy implicit narrowing; narrow the XOR result explicitly to byte.
+          // Narrow the XOR result explicitly to byte.
           aa[t][j] =
               (byte) ((aa[t][j] & 0xFF ^ mul(aa[i][j] & 0xFF, aa[t][i] & 0xFF) & 0xFF) & 0xFF);
         }
@@ -388,6 +410,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  /**
+   * Precompute the T/U tables.
+   *
+   * <p>T1..T4 combine SubBytes and MixColumns for encryption; T5..T8 and U1..U4 are the analogous
+   * tables for decryption and inverse MixColumns.
+   */
   private static void generateTBoxes(byte[][] g, byte[][] iG) {
     for (int t = 0; t < 256; t++) {
       int s = S[t];
@@ -409,12 +437,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
-  // multiply two elements of GF(2^m)
+  // Multiply two elements of GF(2^8) using log/antilog tables.
   private static int mul(int a, int b) {
     return a != 0 && b != 0 ? alog[(LOG_TABLE[a & 0xFF] + LOG_TABLE[b & 0xFF]) % 255] : 0;
   }
 
-  // convenience method used in generating Transposition boxes
+  // Multiply element 'a' by the 4‑vector 'b' in GF(2^8) and pack into a 32‑bit word.
   private static int mul4(int a, byte[] b) {
     if (a == 0) return 0;
     a = LOG_TABLE[a & 0xFF];
@@ -429,13 +457,15 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   //	...........................................................................
 
   /**
-   * Convenience method to encrypt exactly one block of plaintext, assuming Rijndael's default block
-   * size (128-bit).
+   * Encrypt one 128‑bit block.
    *
-   * @param in The plaintext.
-   * @param result The buffer into which to write the resulting ciphertext.
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for encryption.
+   * <p>This is the optimized path for the default block size. The {@code sessionKey} must be the
+   * object returned by {@link #makeKey(byte[], int)} for a 16‑byte block size.
+   *
+   * @param in The plaintext buffer.
+   * @param result The output buffer for the ciphertext; must have at least 16 writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key created with {@code blockSize == 16}.
    */
   private static void blockEncrypt(byte[] in, byte[] result, int inOffset, Object sessionKey) {
     if (RDEBUG)
@@ -542,13 +572,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Convenience method to encrypt exactly one block of plaintext, assuming Rijndael's non-standard
-   * block size 256 bit).
+   * Encrypt one 256‑bit block (Rijndael‑256; not standard AES).
    *
-   * @param in The plaintext.
-   * @param result The buffer into which to write the resulting ciphertext.
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for encryption.
+   * @param in The plaintext buffer.
+   * @param result The output buffer for the ciphertext; must have at least 32 writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key created with {@code blockSize == 32}.
    */
   private static void blockEncrypt256(byte[] in, byte[] result, int inOffset, Object sessionKey) {
     if (RDEBUG)
@@ -739,13 +768,15 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Convenience method to decrypt exactly one block of plaintext, assuming Rijndael's default block
-   * size (128-bit).
+   * Decrypt one 128‑bit block.
    *
-   * @param in The ciphertext.
-   * @param result the resulting ciphertext
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for decryption.
+   * <p>This is the optimized path for the default block size. The {@code sessionKey} must be the
+   * object returned by {@link #makeKey(byte[], int)} for a 16‑byte block size.
+   *
+   * @param in The ciphertext buffer.
+   * @param result The output buffer for the plaintext; must have at least 16 writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key created with {@code blockSize == 16}.
    */
   private static void blockDecrypt(byte[] in, byte[] result, int inOffset, Object sessionKey) {
     if (RDEBUG)
@@ -860,13 +891,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Convenience method to decrypt exactly one block of plaintext, assuming Rijndael's non-standard
-   * block size 256 bit.
+   * Decrypt one 256‑bit block (Rijndael‑256; not standard AES).
    *
-   * @param in The ciphertext.
-   * @param result the resulting ciphertext
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for decryption.
+   * @param in The ciphertext buffer.
+   * @param result The output buffer for the plaintext; must have at least 32 writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key created with {@code blockSize == 32}.
    */
   private static void blockDecrypt256(byte[] in, byte[] result, int inOffset, Object sessionKey) {
     if (RDEBUG)
@@ -1061,7 +1091,11 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     if (RDEBUG) trace(OUT, TRACE_BLOCK_DECRYPT);
   }
 
-  /** A basic symmetric encryption/decryption test. */
+  /**
+   * Run a basic encrypt/decrypt round‑trip test using the default block size.
+   *
+   * @return {@code true} if the round‑trip returns the original plaintext
+   */
   static boolean selfTest() {
     return selfTest(BLOCK_SIZE);
   }
@@ -1069,19 +1103,23 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   //	Rijndael own methods
   //	...........................................................................
 
-  /**
-   * @return The default length in bytes of the Algorithm input block.
-   */
+  /** Returns the default block size in bytes (16). */
   static int blockSize() {
     return BLOCK_SIZE;
   }
 
   /**
-   * Expand a user-supplied key material into a session key.
+   * Expand a user‑supplied key into an opaque session key.
    *
-   * @param k The 128/192/256-bit user-key to use.
-   * @param blockSize The block size in bytes of this Rijndael.
-   * @exception InvalidKeyException If the key is invalid.
+   * <p>The returned object must be passed unchanged to {@link #blockEncrypt(byte[], byte[], int,
+   * Object, int)} and {@link #blockDecrypt(byte[], byte[], int, Object, int)} with the same {@code
+   * blockSize}.
+   *
+   * @param k The 128‑, 192‑, or 256‑bit user key.
+   * @param blockSize Block size in bytes (supported: 16 or 32).
+   * @return An opaque session key object for use with {@code blockEncrypt}/{@code blockDecrypt}.
+   * @throws InvalidKeyException If {@code k} is {@code null}; if {@code k.length} is not 16, 24, or
+   *     32; or if {@code blockSize} is not supported.
    */
   static Object makeKey(byte[] k, int blockSize) throws InvalidKeyException {
     if (RDEBUG) trace(IN, "makeKey(" + Arrays.toString(k) + ", " + blockSize + ')');
@@ -1180,6 +1218,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  // Apply inverse MixColumns to intermediate decryption round keys (not to the first/last rounds).
   private static void inverseMixColumnsOnKd(int[][] kd, int rounds, int bc) {
     for (int r = 1; r < rounds; r++) {
       for (int j = 0; j < bc; j++) {
@@ -1248,13 +1287,17 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Encrypt exactly one block of plaintext.
+   * Encrypt exactly one block.
    *
-   * @param in The plaintext.
-   * @param result The buffer into which to write the resulting ciphertext.
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for encryption.
-   * @param blockSize The block size in bytes of this Rijndael.
+   * <p>Supports generic Rijndael block sizes. Optimized 128‑/256‑bit paths are used when possible.
+   *
+   * @param in The plaintext buffer.
+   * @param result The output buffer for the ciphertext; must have at least {@code blockSize}
+   *     writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key previously created by {@link #makeKey(byte[], int)} with the
+   *     same {@code blockSize}.
+   * @param blockSize Block size in bytes.
    */
   static void blockEncrypt(
       byte[] in, byte[] result, int inOffset, Object sessionKey, int blockSize) {
@@ -1325,13 +1368,17 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Decrypt exactly one block of ciphertext.
+   * Decrypt exactly one block.
    *
-   * @param in The ciphertext.
-   * @param result The resulting ciphertext.
-   * @param inOffset Index of in from which to start considering data.
-   * @param sessionKey The session key to use for decryption.
-   * @param blockSize The block size in bytes of this Rijndael.
+   * <p>Supports generic Rijndael block sizes. Optimized 128‑/256‑bit paths are used when possible.
+   *
+   * @param in The ciphertext buffer.
+   * @param result The output buffer for the plaintext; must have at least {@code blockSize}
+   *     writable bytes.
+   * @param inOffset Byte offset into {@code in} where the block starts.
+   * @param sessionKey A session key previously created by {@link #makeKey(byte[], int)} with the
+   *     same {@code blockSize}.
+   * @param blockSize Block size in bytes.
    */
   @SuppressWarnings("SameParameterValue")
   static void blockDecrypt(
@@ -1403,7 +1450,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     if (RDEBUG) trace(OUT, TRACE_BLOCK_DECRYPT);
   }
 
-  /** A basic symmetric encryption/decryption test for a given key size. */
+  /**
+   * Run a basic encrypt/decrypt round‑trip test for a given key size (in bytes).
+   *
+   * @param keysize Key size in bytes (16, 24, or 32).
+   * @return {@code true} if the round‑trip returns the original plaintext
+   */
   private static boolean selfTest(int keysize) {
     if (RDEBUG) trace(IN, "selfTest(" + keysize + ')');
     boolean ok;
@@ -1425,7 +1477,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       ok = encryptDecryptAndCompare(kb, pt);
       if (!ok) throw new IllegalStateException("Symmetric operation failed");
     } catch (Exception x) {
-      // Do not ignore unexpected runtime exceptions; always log at error level.
+      // Always log unexpected runtime exceptions at error level.
       LOG.error("Self-test failed for keysize {}", keysize, x);
       ok = false;
     }
@@ -1454,11 +1506,11 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Return The number of rounds for a given Rijndael's key and block sizes.
+   * Compute the number of rounds for a given key size and block size.
    *
-   * @param keySize The size of the user key material in bytes.
-   * @param blockSize The desired block size in bytes.
-   * @return The number of rounds for a given Rijndael's key and block sizes.
+   * @param keySize Key size in bytes (16, 24, or 32).
+   * @param blockSize Block size in bytes (16, 24, or 32).
+   * @return The number of rounds dictated by the Rijndael specification.
    */
   private static int getRounds(int keySize, int blockSize) {
     return switch (keySize) {
@@ -1500,7 +1552,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
-  //	utility static methods (from cryptix.util.core ArrayUtil and Hex classes)
+  //	Utility static methods (from cryptix.util.core ArrayUtil and Hex classes)
   //	...........................................................................
 
   /**
@@ -1573,9 +1625,17 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     return new String(buf);
   }
 
-  //	main(): use to generate the Intermediate Values KAT
+  //	main(): generate Intermediate Values KAT / quick self‑test hooks
   //	...........................................................................
 
+  /**
+   * Entry point for ad‑hoc testing.
+   *
+   * <p>Runs internal self‑tests for 128‑, 192‑, and 256‑bit keys using the default 128‑bit block
+   * size. Intended for developers; production code does not invoke this method.
+   *
+   * @param args Unused.
+   */
   public static void main(String[] args) {
     selfTest(16);
     selfTest(24);
