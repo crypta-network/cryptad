@@ -254,7 +254,6 @@ public class SaltedHashFreenetStoreTest {
             false,
             (short) -1,
             bucket.size(),
-            random,
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
     SSKBlock sskBlock = (SSKBlock) block.getBlock();
     store.put(sskBlock, false, false);
@@ -277,7 +276,6 @@ public class SaltedHashFreenetStoreTest {
             false,
             (short) -1,
             bucket1.size(),
-            random,
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
     SSKBlock sskBlock1 = (SSKBlock) block1.getBlock();
 
@@ -329,12 +327,6 @@ public class SaltedHashFreenetStoreTest {
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     InsertableClientSSK ik = InsertableClientSSK.createRandom(random, test);
     return ik.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        random,
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+        bucket, false, false, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
   }
 }

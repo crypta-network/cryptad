@@ -58,7 +58,6 @@ class ClientSSKBlockTest {
             true, // dontCompress
             (short) -1, // alreadyCompressedCodec
             src.size(),
-            rng,
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
 
     byte[] bytes;
@@ -95,7 +94,6 @@ class ClientSSKBlockTest {
             true, // dontCompress
             (short) -1,
             src.size(),
-            rng,
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
 
     // Before decode, calling isMetadata() should throw
@@ -115,7 +113,7 @@ class ClientSSKBlockTest {
     Bucket src = new SimpleReadOnlyArrayBucket("x".getBytes(StandardCharsets.UTF_8));
     ClientSSKBlock block =
         key.encode(
-            src, false, true, (short) -1, src.size(), rng, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
 
     assertThrows(IllegalStateException.class, block::isMetadata);
   }
@@ -128,11 +126,11 @@ class ClientSSKBlockTest {
 
     ClientSSKBlock a =
         key.encode(
-            src, false, true, (short) -1, src.size(), rng, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
     // Re-encode the same source with the same key → deterministic block
     ClientSSKBlock b =
         key.encode(
-            src, false, true, (short) -1, src.size(), rng, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
 
     assertNotSame(a, b);
     assertEquals(a, b);
@@ -142,13 +140,7 @@ class ClientSSKBlockTest {
     Bucket src2 = new SimpleReadOnlyArrayBucket("abcd".getBytes(StandardCharsets.UTF_8));
     ClientSSKBlock c =
         key.encode(
-            src2,
-            false,
-            true,
-            (short) -1,
-            src2.size(),
-            rng,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            src2, false, true, (short) -1, src2.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
     assertNotEquals(a, c);
   }
 
@@ -193,7 +185,7 @@ class ClientSSKBlockTest {
     Bucket src = new SimpleReadOnlyArrayBucket(text.getBytes(StandardCharsets.UTF_8));
     ClientSSKBlock block =
         key.encode(
-            src, false, true, (short) -1, src.size(), rng, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
 
     byte[] raw;
     try (Bucket b = block.decode(new ArrayBucketFactory(), 32768, true)) {

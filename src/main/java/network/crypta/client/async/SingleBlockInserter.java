@@ -212,7 +212,6 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
           compressionCodec == -1,
           compressionCodec,
           sourceLength,
-          random,
           compressorDescriptor);
     } else {
       throw new InsertException(
