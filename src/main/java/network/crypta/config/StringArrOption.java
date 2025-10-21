@@ -24,11 +24,7 @@ public class StringArrOption extends Option<String[]> {
         conf,
         optionName,
         cb,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
+        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
         Option.DataType.STRING_ARRAY);
     this.defaultValue = (defaultValue == null) ? new String[0] : defaultValue;
     this.currentValue = (defaultValue == null) ? new String[0] : defaultValue;

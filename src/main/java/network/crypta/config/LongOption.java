@@ -47,11 +47,7 @@ public class LongOption extends Option<Long> {
         conf,
         optionName,
         cb,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
+        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
         Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;

@@ -622,11 +622,7 @@ public class SubConfig implements Comparable<SubConfig> {
             @Override
             public void set(Void value) {}
           },
-          -1,
-          false,
-          false,
-          null,
-          null,
+          new Option.Meta(-1, false, false, null, null),
           null);
     }
 

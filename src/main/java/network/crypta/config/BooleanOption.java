@@ -18,11 +18,7 @@ public class BooleanOption extends Option<Boolean> {
         conf,
         optionName,
         cb,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
+        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
         Option.DataType.BOOLEAN);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
