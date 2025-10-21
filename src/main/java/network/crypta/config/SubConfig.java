@@ -897,11 +897,7 @@ public class SubConfig implements Comparable<SubConfig> {
               // Intentionally no-op: ignored option accepts no value updates.
             }
           },
-          -1,
-          false,
-          false,
-          null,
-          null,
+          new Option.Meta(-1, false, false, null, null),
           null);
     }
 
