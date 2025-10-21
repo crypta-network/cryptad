@@ -248,10 +248,10 @@ public class InsertableClientSSK extends ClientSSK {
     byte[] headers = new byte[SSKBlock.TOTAL_HEADERS_LENGTH];
     // First two bytes = hash algorithm ID.
     int x = 0;
-    headers[x++] = (byte) (KeyBlock.HASH_SHA256 >> 8);
+    headers[x++] = 0;
     headers[x++] = (byte) (KeyBlock.HASH_SHA256);
-    // Then crypto algorithm ID.
-    headers[x++] = (byte) (Key.ALGO_AES_PCFB_256_SHA256 >> 8);
+    // Then crypto algorithm ID (two bytes, big-endian).
+    headers[x++] = 0;
     headers[x++] = Key.ALGO_AES_PCFB_256_SHA256;
     // Then E(H(docname)) — already prepared in {@code ehDocname} by the superclass.
     System.arraycopy(ehDocname, 0, headers, x, ehDocname.length);

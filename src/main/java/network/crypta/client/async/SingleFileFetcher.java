@@ -196,7 +196,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     if (hasInitialMetadata) thisKey = FreenetURI.EMPTY_CHK_URI;
     else thisKey = key.getURI();
     if (origURI == null) throw new NullPointerException();
-    this.uri = persistent ? origURI.clone() : origURI;
+    this.uri = persistent ? new FreenetURI(origURI) : origURI;
     this.actx = actx;
     this.recursionLevel = recursionLevel + 1;
     if (recursionLevel > ctx.maxRecursionLevel)
@@ -271,7 +271,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     // call back into the original fetcher.
     this.decompressors = new LinkedList<>();
     if (fetcher.uri == null) throw new NullPointerException();
-    this.uri = persistent ? fetcher.uri.clone() : fetcher.uri;
+    this.uri = persistent ? new FreenetURI(fetcher.uri) : fetcher.uri;
     this.metaSnoop = fetcher.metaSnoop;
     this.bucketSnoop = fetcher.bucketSnoop;
     this.topDontCompress = fetcher.topDontCompress;
@@ -906,7 +906,7 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         } catch (MalformedURLException e) {
           throw new FetchException(FetchExceptionMode.INVALID_URI, e);
         }
-        ArrayList<String> newMetaStrings = newURI.listMetaStrings();
+        List<String> newMetaStrings = newURI.listMetaStrings();
 
         // Move any new meta strings to beginning of our list of remaining meta strings
         while (!newMetaStrings.isEmpty()) {
