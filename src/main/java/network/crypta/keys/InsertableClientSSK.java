@@ -169,10 +169,10 @@ public class InsertableClientSSK extends ClientSSK {
     byte[] headers = new byte[SSKBlock.TOTAL_HEADERS_LENGTH];
     // First two bytes = hash ID
     int x = 0;
-    headers[x++] = (byte) (KeyBlock.HASH_SHA256 >> 8);
+    headers[x++] = 0;
     headers[x++] = (byte) (KeyBlock.HASH_SHA256);
     // Then crypto ID
-    headers[x++] = (byte) (Key.ALGO_AES_PCFB_256_SHA256 >> 8);
+    headers[x++] = 0;
     headers[x++] = Key.ALGO_AES_PCFB_256_SHA256;
     // Then E(H(docname))
     // Copy to headers

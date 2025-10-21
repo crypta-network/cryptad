@@ -171,7 +171,7 @@ public class ClientCHK extends ClientKey implements Serializable {
   public static byte[] getExtra(
       byte cryptoAlgorithm, short compressionAlgorithm, boolean controlDocument) {
     byte[] extra = new byte[EXTRA_LENGTH];
-    extra[0] = (byte) (cryptoAlgorithm >> 8);
+    extra[0] = 0;
     extra[1] = cryptoAlgorithm;
     extra[2] = (byte) (controlDocument ? 2 : 0);
     extra[3] = (byte) (compressionAlgorithm >> 8);
