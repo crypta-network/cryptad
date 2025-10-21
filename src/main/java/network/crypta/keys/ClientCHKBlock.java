@@ -188,7 +188,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (key.cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
       return decodeOld(bf, maxLength, dontCompress);
     else if (key.cryptoAlgorithm == Key.ALGO_AES_CTR_256_SHA256) {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
+      if (Rijndael.getAesCtrProvider() == null || forceNoJCA)
         return decodeNewNoJCA(bf, maxLength, dontCompress);
       else return decodeNew(bf, maxLength, dontCompress);
     } else throw new UnsupportedOperationException();
@@ -333,7 +333,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throws CHKDecodeException, IOException {
     if (key.cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new UnsupportedOperationException();
-    if (Rijndael.AesCtrProvider == null) {
+    if (Rijndael.getAesCtrProvider() == null) {
       // Fallback for direct calls when no JCA provider is available.
       return decodeNewNoJCA(bf, maxLength, dontCompress);
     }
@@ -344,7 +344,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
       throw new CHKDecodeException("Crypto key too short");
     try {
-      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
       cipher.init(
           Cipher.ENCRYPT_MODE,
           new SecretKeySpec(cryptoKey, "AES"),
@@ -475,7 +475,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
           data, CHKBlock.DATA_LENGTH, md256, cryptoKey, false, (short) -1, cryptoAlgorithm);
     else if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unknown crypto algorithm: " + cryptoAlgorithm);
-    if (Rijndael.AesCtrProvider == null) {
+    if (Rijndael.getAesCtrProvider() == null) {
       return encodeNewNoJCA(
           data,
           CHKBlock.DATA_LENGTH,
@@ -601,7 +601,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       return innerEncode(
           data, dataLength, md256, encKey, asMetadata, compressionAlgorithm, cryptoAlgorithm);
     else {
-      if (Rijndael.AesCtrProvider == null || forceNoJCA)
+      if (Rijndael.getAesCtrProvider() == null || forceNoJCA)
         return encodeNewNoJCA(
             data,
             dataLength,
@@ -656,7 +656,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throws CHKEncodeException {
     if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unsupported crypto algorithm " + cryptoAlgorithm);
-    if (Rijndael.AesCtrProvider == null) {
+    if (Rijndael.getAesCtrProvider() == null) {
       // Fallback when no provider is available.
       return encodeNewNoJCA(
           data,
@@ -687,15 +687,10 @@ public class ClientCHKBlock implements ClientKeyBlock {
       header[0] = 0;
       header[1] = (byte) blockHashAlgorithm;
       System.arraycopy(hash, 0, header, 2, hash.length);
-
-      // Encrypt payload and the 2 length bytes using AES/CTR via provider (AES-NI capable).
-      javax.crypto.Cipher cipher =
-          javax.crypto.Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.AesCtrProvider);
-      cipher.init(
-          javax.crypto.Cipher.ENCRYPT_MODE,
-          new SecretKeySpec(encKey, "AES"),
-          new IvParameterSpec(hash, 0, 16));
-
+      SecretKeySpec ckey = new SecretKeySpec(encKey, "AES");
+      // CTR mode IV is 16 bytes; we derive it deterministically from the HMAC above.
+      Cipher cipher = Cipher.getInstance("AES/CTR/NOPADDING", Rijndael.getAesCtrProvider());
+      cipher.init(Cipher.ENCRYPT_MODE, ckey, new IvParameterSpec(hash, 0, 16));
       byte[] cdata = new byte[data.length];
       // Some providers (e.g., certain SunPKCS11 backends) may defer producing output until
       // doFinal(). Handle a short write from update() by collecting the remainder from doFinal()
