@@ -120,11 +120,7 @@ class PersistentConfigTest {
                             // No-op for test stub (intentionally empty)
                           }
                         },
-                        0,
-                        false,
-                        false,
-                        null,
-                        null,
+                        /* meta= */ null,
                         Option.DataType.STRING)
                     .defaultAnswer(org.mockito.Mockito.RETURNS_DEFAULTS));
 
