@@ -115,13 +115,8 @@ class CachingFreenetStoreTest {
     // Arrange
     CHKStore store = new CHKStore();
     File f = getStorePath("testSimpleCHK");
-<<<<<<< HEAD
     try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
       CachingFreenetStoreTracker tracker = newTracker(cachingFreenetStoreMaxSize);
-=======
-    try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
-      CachingFreenetStoreTracker tracker = newTracker(cachingFreenetStoreMaxSize);
->>>>>>> develop
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -160,13 +155,8 @@ class CachingFreenetStoreTest {
     // Arrange
     File f = getStorePath("testZeroSize");
     CHKStore store = new CHKStore();
-<<<<<<< HEAD
     try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
       CachingFreenetStoreTracker tracker = newTracker(0);
-=======
-    try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
-      CachingFreenetStoreTracker tracker = newTracker(0);
->>>>>>> develop
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -302,7 +292,6 @@ class CachingFreenetStoreTest {
       SSKStore store = new SSKStore(pubkeyCache);
       int sskBlockSize = store.getTotalBlockSize();
 
-<<<<<<< HEAD
       // Create a cache with size limit of 1.5 SSK's.
       File f = getStorePath("testCollisionsOverMaximumSize");
       try (SaltedHashFreenetStore<SSKBlock> saltStore =
@@ -316,7 +305,6 @@ class CachingFreenetStoreTest {
               SemiOrderedShutdownHook.get(),
               true,
               true,
-              ticker,
               null)) {
         WaitableCachingFreenetStoreTracker tracker =
             new WaitableCachingFreenetStoreTracker(
@@ -325,30 +313,6 @@ class CachingFreenetStoreTest {
             new CachingFreenetStore<>(store, saltStore, tracker)) {
           cachingStore.start(null, true);
           RandomSource random = new DummyRandomSource(12345);
-=======
-      // Create a cache with size limit of 1.5 SSK's.
-      File f = getStorePath("testCollisionsOverMaximumSize");
-      try (SaltedHashFreenetStore<SSKBlock> saltStore =
-          SaltedHashFreenetStore.construct(
-              f,
-              "testCachingFreenetStoreSSK",
-              store,
-              weakPRNG,
-              20,
-              true,
-              SemiOrderedShutdownHook.get(),
-              true,
-              true,
-              ticker,
-              null)) {
-        WaitableCachingFreenetStoreTracker tracker =
-            new WaitableCachingFreenetStoreTracker(
-                (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
-        try (CachingFreenetStore<SSKBlock> cachingStore =
-            new CachingFreenetStore<>(store, saltStore, tracker)) {
-          cachingStore.start(null, true);
-          RandomSource random = new DummyRandomSource(12345);
->>>>>>> develop
 
           final int CRYPTO_KEY_LENGTH = 32;
           byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
@@ -470,7 +434,6 @@ class CachingFreenetStoreTest {
       SSKStore store = new SSKStore(pubkeyCache);
       int sskBlockSize = store.getTotalBlockSize();
 
-<<<<<<< HEAD
       File f = getStorePath("testSimpleManualWrite");
       try (SaltedHashFreenetStore<SSKBlock> saltStore =
           SaltedHashFreenetStore.construct(
@@ -483,7 +446,6 @@ class CachingFreenetStoreTest {
               SemiOrderedShutdownHook.get(),
               true,
               true,
-              ticker,
               null)) {
         CachingFreenetStoreTracker tracker =
             new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
@@ -491,28 +453,6 @@ class CachingFreenetStoreTest {
             new CachingFreenetStore<>(store, saltStore, tracker)) {
           cachingStore.start(null, true);
           RandomSource random = new DummyRandomSource(12345);
-=======
-      File f = getStorePath("testSimpleManualWrite");
-      try (SaltedHashFreenetStore<SSKBlock> saltStore =
-          SaltedHashFreenetStore.construct(
-              f,
-              "testCachingFreenetStoreSSK",
-              store,
-              weakPRNG,
-              20,
-              true,
-              SemiOrderedShutdownHook.get(),
-              true,
-              true,
-              ticker,
-              null)) {
-        CachingFreenetStoreTracker tracker =
-            new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
-        try (CachingFreenetStore<SSKBlock> cachingStore =
-            new CachingFreenetStore<>(store, saltStore, tracker)) {
-          cachingStore.start(null, true);
-          RandomSource random = new DummyRandomSource(12345);
->>>>>>> develop
 
           final int CRYPTO_KEY_LENGTH = 32;
           byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
@@ -1204,7 +1144,6 @@ class CachingFreenetStoreTest {
         SemiOrderedShutdownHook.get(),
         true,
         true,
-        ticker,
         null);
   }
 
