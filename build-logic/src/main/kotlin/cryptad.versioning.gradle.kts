@@ -20,6 +20,9 @@ val gitrev: String =
   }
 
 val sourceSetsContainer = extensions.getByType(SourceSetContainer::class.java)
+// Also consider Kotlin source roots so the Version.kt template may live under src/*/kotlin/
+val kotlinExt =
+  extensions.findByType(org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension::class.java)
 
 val generateVersionSource by
   tasks.registering(Copy::class) {
@@ -27,7 +30,9 @@ val generateVersionSource by
     val buildVersion = project.version.toString()
 
     // Inputs: the template file and dynamic properties that impact content
-    val templateInputs = sourceSetsContainer["main"].java.srcDirs.map { it.resolve(versionSrc) }
+    val javaSrcDirs = sourceSetsContainer["main"].java.srcDirs
+    val kotlinSrcDirs = kotlinExt?.sourceSets?.getByName("main")?.kotlin?.srcDirs ?: emptySet()
+    val templateInputs = (javaSrcDirs + kotlinSrcDirs).map { it.resolve(versionSrc) }
     inputs.files(templateInputs)
     inputs.property("buildVersion", buildVersion)
     inputs.property("gitRevision", gitrev)
@@ -35,7 +40,7 @@ val generateVersionSource by
     // Output: the generated Version.kt in the build dir
     outputs.file(file(versionBuildDir.resolve(versionSrc)))
 
-    from(sourceSetsContainer["main"].java.srcDirs) {
+    from(javaSrcDirs + kotlinSrcDirs) {
       include(versionSrc)
       filter { line: String ->
         line.replace("@build_number@", buildVersion).replace("@git_rev@", gitrev)
