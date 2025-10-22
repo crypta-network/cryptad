@@ -366,6 +366,96 @@ class SaltedHashFreenetStoreTest {
     }
   }
 
+  @Test
+  @Tag("slow")
+  void put_whenAltStoreAlreadyHasBlock_reportsSuccessAndDoesNotOverwritePrimary() throws Exception {
+    File base = tempDir.resolve("alt-existing").toFile();
+    TestCallback cb = new TestCallback();
+    File aDir = new File(base, "A");
+    File bDir = new File(base, "B");
+
+    try (SaltedHashFreenetStore<TestBlock> a =
+            SaltedHashFreenetStore.construct(
+                aDir,
+                "a",
+                cb,
+                rnd,
+                1,
+                false,
+                SemiOrderedShutdownHook.get(),
+                false,
+                true,
+                new byte[32]);
+        SaltedHashFreenetStore<TestBlock> b =
+            SaltedHashFreenetStore.construct(
+                bDir,
+                "b",
+                cb,
+                rnd,
+                1,
+                false,
+                SemiOrderedShutdownHook.get(),
+                false,
+                true,
+                new byte[32])) {
+
+      a.start(ticker, true);
+      b.start(ticker, true);
+      a.setAltStore(b);
+
+      // Fill primary A with a different block so it is full.
+      byte[] dA = new byte[DATA_LEN];
+      byte[] hA = new byte[HEADER_LEN];
+      byte[] rkA = new byte[KEY_LEN];
+      byte[] fkA = new byte[KEY_LEN];
+      rnd.nextBytes(dA);
+      rnd.nextBytes(hA);
+      rnd.nextBytes(rkA);
+      rnd.nextBytes(fkA);
+      TestBlock bA = new TestBlock(rkA, fkA, dA, hA);
+      a.put(bA, dA, hA, false, false);
+
+      long aWritesBefore = a.writes();
+      long aKeysBefore = a.keyCount();
+
+      // Prepare a block that already exists in the alt store B.
+      byte[] dX = new byte[DATA_LEN];
+      byte[] hX = new byte[HEADER_LEN];
+      byte[] rkX = new byte[KEY_LEN];
+      byte[] fkX = new byte[KEY_LEN];
+      rnd.nextBytes(dX);
+      rnd.nextBytes(hX);
+      rnd.nextBytes(rkX);
+      rnd.nextBytes(fkX);
+      TestBlock bX = new TestBlock(rkX, fkX, dX, hX);
+
+      // Insert into alt store first.
+      b.put(bX, dX, hX, false, false);
+      long bWritesBefore = b.writes();
+
+      // Now attempt to put the SAME block via primary A while A is full.
+      // With the fix, A will try the alt store, which will confirm presence and report success,
+      // and A will NOT overwrite in its own store.
+      a.put(bX, dX, hX, false, false);
+
+      // Primary A should still contain its original block and should not have performed a new
+      // write.
+      assertEquals(aWritesBefore, a.writes(), "primary should not perform an overwrite write");
+      assertEquals(aKeysBefore, a.keyCount(), "primary key count unchanged");
+      assertNotNull(a.fetch(rkA, fkA, false, true, true, false, new BlockMetadata()));
+      assertNull(a.fetch(rkX, fkX, false, true, true, false, new BlockMetadata()));
+
+      // Alt store B still has the block; it may or may not update metadata, but should not lose it.
+      assertNotNull(b.fetch(rkX, fkX, false, true, true, false, new BlockMetadata()));
+      assertTrue(b.writes() >= bWritesBefore, "alt store writes should not decrease");
+
+      a.close();
+      b.close();
+      a.destruct();
+      b.destruct();
+    }
+  }
+
   // --- Minimal test block & callback used for this suite ---
 
   private static final class TestBlock implements StorableBlock {

@@ -658,7 +658,10 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @param overwrite whether to overwrite an existing non-identical entry
    * @param isOldBlock whether the entry should be marked as “old”
    * @param wrongStore whether the entry is being written to an alternate store
-   * @return {@code true} if the write succeeded, {@code false} if it was deferred due to locking
+   * @return {@code true} if the operation completed successfully in this store. This includes both
+   *     cases where bytes were written and cases where the identical entry already existed (and may
+   *     have had metadata updated). Returns {@code false} only when the operation was intentionally
+   *     deferred due to locking or scheduling semantics.
    * @throws IOException on I/O errors
    * @throws KeyCollisionException when a different entry with the same key exists and overwrite is
    *     not permitted
@@ -742,8 +745,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       throws IOException, KeyCollisionException {
     long oldOffset = oldEntry.curOffset;
     try {
-      if (!collisionPossible)
-        return updateNewBlockFlagIfNeeded(oldEntry, digestedKey, routingKey, oldOffset, isOldBlock);
+      if (!collisionPossible) {
+        // When collisions are impossible, confirming the existing entry is sufficient for callers
+        // (including alt-store writes) to consider the operation successful. Update metadata if
+        // needed, but always report success to avoid duplicate writes in the primary store.
+        updateNewBlockFlagIfNeeded(oldEntry, digestedKey, routingKey, oldOffset, isOldBlock);
+        return true;
+      }
       oldEntry.setHD(readHD(oldOffset)); // read from disk
       T oldBlock =
           oldEntry.getStorableBlock(
@@ -801,7 +809,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       oldEntry.storeSize = storeSize;
       writeEntry(oldEntry, digestedKey, oldOffset);
     }
-    return false; // already in store
+    // Report success: the block is already present (and metadata may have been updated).
+    return true;
   }
 
   private record WrongStoreScanResult(
