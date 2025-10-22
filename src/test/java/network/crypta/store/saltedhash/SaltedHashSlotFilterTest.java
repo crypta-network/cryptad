@@ -120,7 +120,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -141,7 +140,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -167,7 +165,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -190,7 +187,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -216,7 +212,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -238,7 +233,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -268,7 +262,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -279,7 +272,7 @@ public class SaltedHashSlotFilterTest {
 
     store = new CHKStore();
     // Now turn on slot filters. Does it still work?
-    SaltedHashFreenetStore.NO_CLEANER_SLEEP = true;
+    SaltedHashFreenetStore.setNoCleanerSleep(true);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -291,10 +284,9 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
-      saltStore.testingWaitForCleanerDone(50, 100);
+      saltStore.testingWaitForCleanerDone();
 
       checkStore(store, saltStore, TEST_COUNT);
     }
@@ -379,7 +371,6 @@ public class SaltedHashSlotFilterTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
