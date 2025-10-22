@@ -4087,7 +4087,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             shutdownHook,
             storePreallocate,
             storeSaltHashResizeOnStart && !lateStart,
-            lateStart ? ticker : null,
             clientCacheMasterKey);
     cb.setStore(fs);
     if (cachingFreenetStoreMaxSize > 0)

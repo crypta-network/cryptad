@@ -221,7 +221,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(
@@ -306,7 +305,6 @@ class CachingFreenetStoreTest {
               SemiOrderedShutdownHook.get(),
               true,
               true,
-              ticker,
               null)) {
         WaitableCachingFreenetStoreTracker tracker =
             new WaitableCachingFreenetStoreTracker(
@@ -448,7 +446,6 @@ class CachingFreenetStoreTest {
               SemiOrderedShutdownHook.get(),
               true,
               true,
-              ticker,
               null)) {
         CachingFreenetStoreTracker tracker =
             new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
@@ -542,7 +539,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       // Don't let the write complete until we say so...
       WriteBlockableFreenetStore<SSKBlock> delayStore =
@@ -683,7 +679,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(
@@ -739,7 +734,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -777,7 +771,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
@@ -838,7 +831,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
@@ -938,7 +930,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -975,7 +966,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
@@ -1046,7 +1036,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
@@ -1155,7 +1144,6 @@ class CachingFreenetStoreTest {
         SemiOrderedShutdownHook.get(),
         true,
         true,
-        ticker,
         null);
   }
 
@@ -1215,7 +1203,6 @@ class CachingFreenetStoreTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(

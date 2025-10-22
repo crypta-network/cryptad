@@ -265,7 +265,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -306,7 +305,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -342,7 +340,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       checkStandardTestBlocks(store, dummyValueActuallyStoredList, blockActuallyStoredList, true);
     }
@@ -394,7 +391,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(ticker, true);
 
@@ -421,7 +417,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(ticker, true);
       if (forceValidEmpty) saltStore.forceValidEmpty();
@@ -564,9 +559,7 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
-
       saltStore.start(null, true);
 
       List<String> dummyValueInsertedList = new ArrayList<>(keycount);
@@ -660,8 +653,7 @@ public class RAMSaltMigrationTest {
   @Test
   public void testSaltedStoreResize_useSlotFilter_1h_noAbort_noOpenNewSize()
       throws CHKEncodeException, CHKVerifyException, CHKDecodeException, IOException {
-    // Using the old size causes it to resize on startup back to the old size. This
-    // needs testing too, and revealed some odd bugs.
+    // Using the old size causes it to resize on startup back to the old size.
     checkSaltedStoreResize(
         5,
         10,
@@ -676,8 +668,7 @@ public class RAMSaltMigrationTest {
   @Test
   public void testSaltedStoreResize_useSlotFilter_1h_abort_openNewSize()
       throws CHKEncodeException, CHKVerifyException, CHKDecodeException, IOException {
-    // It will force to disk after resizing, so should still work even with a long
-    // write time.
+    // It will force to disk after resizing, so should still work even with a long write time.
     checkSaltedStoreResize(
         5,
         10,
@@ -718,7 +709,7 @@ public class RAMSaltMigrationTest {
     ResizablePersistentIntBuffer.setPersistenceTime(persistenceTime);
 
     CHKStore store = new CHKStore();
-    SaltedHashFreenetStore.NO_CLEANER_SLEEP = true;
+    SaltedHashFreenetStore.setNoCleanerSleep(true);
     List<String> dummyValueActuallyStoredList = new ArrayList<>(keycount);
     List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
@@ -732,7 +723,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(ticker, true);
 
@@ -741,9 +731,7 @@ public class RAMSaltMigrationTest {
       int collisions =
           insertStandardTestBlocksIntoStore(
               keycount, store, dummyValueInsertedList, blockInsertedList);
-
       saltStore.setMaxKeys(newSize, true);
-
       probeStoreBlocks(
           store,
           dummyValueInsertedList,
@@ -772,7 +760,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(ticker, true);
 
@@ -816,7 +803,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             null)) {
       saltStore.start(null, true);
 
@@ -862,7 +848,6 @@ public class RAMSaltMigrationTest {
             SemiOrderedShutdownHook.get(),
             true,
             true,
-            ticker,
             storeKey)) {
       saltStore.start(null, true);
 

@@ -54,7 +54,7 @@ class CipherManagerTest {
     Ticker ticker = new TrivialTicker(new PooledExecutor());
     // Minimal store, not started; used only to instantiate Entry via reflection.
     return SaltedHashFreenetStore.construct(
-        tmp, name, cb, weak, 2, false, SemiOrderedShutdownHook.get(), false, false, ticker, null);
+        tmp, name, cb, weak, 2, false, SemiOrderedShutdownHook.get(), false, false, null);
   }
 
   private SaltedHashFreenetStore<StubBlock>.Entry newEntry(
