@@ -110,43 +110,83 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
   public synchronized void put(
       T block, byte[] data, byte[] header, boolean overwrite, boolean isOldBlock)
       throws KeyCollisionException {
-    byte[] routingkey = block.getRoutingKey();
+    byte[] routingKey = block.getRoutingKey();
     byte[] fullKey = block.getFullKey();
 
     writes++;
-    ByteArrayWrapper key = new ByteArrayWrapper(routingkey);
-    Block oldBlock = blocksByRoutingKey.get(key);
+    ByteArrayWrapper key = new ByteArrayWrapper(routingKey);
+    Block existing = blocksByRoutingKey.get(key);
     boolean storeFullKeys = callback.storeFullKeys();
-    if (oldBlock != null) {
-      if (callback.collisionPossible()) {
-        boolean equals =
-            Arrays.equals(oldBlock.data, data)
-                && Arrays.equals(oldBlock.header, header)
-                && (!storeFullKeys || Arrays.equals(oldBlock.fullKey, fullKey));
-        if (equals) {
-          if (!isOldBlock) oldBlock.oldBlock = false;
-          return;
-        }
-        if (overwrite) {
-          oldBlock.data = data;
-          oldBlock.header = header;
-          if (storeFullKeys) oldBlock.fullKey = fullKey;
-          oldBlock.oldBlock = isOldBlock;
-        } else {
-          throw new KeyCollisionException();
-        }
-        return;
-      } else {
+
+    if (existing != null) {
+      handleExistingBlock(existing, data, header, overwrite, isOldBlock, storeFullKeys, fullKey);
+      return;
+    }
+
+    addNewBlock(key, data, header, isOldBlock, storeFullKeys, fullKey);
+    evictIfNecessary();
+  }
+
+  private boolean isSameContent(
+      Block oldBlock, byte[] data, byte[] header, boolean storeFullKeys, byte[] fullKey) {
+    return Arrays.equals(oldBlock.data, data)
+        && Arrays.equals(oldBlock.header, header)
+        && (!storeFullKeys || Arrays.equals(oldBlock.fullKey, fullKey));
+  }
+
+  private void overwriteExistingBlock(
+      Block oldBlock,
+      byte[] data,
+      byte[] header,
+      boolean storeFullKeys,
+      byte[] fullKey,
+      boolean isOldBlock) {
+    oldBlock.data = data;
+    oldBlock.header = header;
+    if (storeFullKeys) oldBlock.fullKey = fullKey;
+    oldBlock.oldBlock = isOldBlock;
+  }
+
+  private void handleExistingBlock(
+      Block oldBlock,
+      byte[] data,
+      byte[] header,
+      boolean overwrite,
+      boolean isOldBlock,
+      boolean storeFullKeys,
+      byte[] fullKey)
+      throws KeyCollisionException {
+    if (callback.collisionPossible()) {
+      if (isSameContent(oldBlock, data, header, storeFullKeys, fullKey)) {
         if (!isOldBlock) oldBlock.oldBlock = false;
         return;
       }
+      if (overwrite) {
+        overwriteExistingBlock(oldBlock, data, header, storeFullKeys, fullKey, isOldBlock);
+      } else {
+        throw new KeyCollisionException();
+      }
+      return;
     }
+    if (!isOldBlock) oldBlock.oldBlock = false;
+  }
+
+  private void addNewBlock(
+      ByteArrayWrapper key,
+      byte[] data,
+      byte[] header,
+      boolean isOldBlock,
+      boolean storeFullKeys,
+      byte[] fullKey) {
     Block storeBlock = new Block();
     storeBlock.data = data;
     storeBlock.header = header;
     if (storeFullKeys) storeBlock.fullKey = fullKey;
     storeBlock.oldBlock = isOldBlock;
     blocksByRoutingKey.push(key, storeBlock);
+  }
+
+  private void evictIfNecessary() {
     while (blocksByRoutingKey.size() > maxKeys) {
       blocksByRoutingKey.popKey();
     }
@@ -188,26 +228,31 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       byte[] routingKey = routingKeyWrapped.get();
       Block block = blocksByRoutingKey.get(routingKeyWrapped);
 
-      T ret;
-      try {
-        ret =
-            callback.construct(
-                block.data,
-                block.header,
-                routingKey,
-                block.fullKey,
-                canReadClientCache,
-                false,
-                null,
-                null);
-      } catch (KeyVerifyException e) {
-        LOG.error("Caught while migrating: {}", e.toString(), e);
-        continue;
+      boolean skip = (block == null);
+      T ret = null;
+      if (!skip) {
+        try {
+          ret =
+              callback.construct(
+                  block.data,
+                  block.header,
+                  routingKey,
+                  block.fullKey,
+                  canReadClientCache,
+                  false,
+                  null,
+                  null);
+        } catch (KeyVerifyException e) {
+          LOG.error("Caught while migrating: {}", e, e);
+          skip = true;
+        }
       }
-      try {
-        target.getStore().put(ret, block.data, block.header, false, block.oldBlock);
-      } catch (KeyCollisionException e) {
-        // Ignore
+      if (!skip) {
+        try {
+          target.getStore().put(ret, block.data, block.header, false, block.oldBlock);
+        } catch (KeyCollisionException e) {
+          // Ignore
+        }
       }
     }
   }
