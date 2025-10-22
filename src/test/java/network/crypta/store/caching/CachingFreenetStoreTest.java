@@ -1,10 +1,20 @@
 package network.crypta.store.caching;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import network.crypta.crypt.DSAGroup;
 import network.crypta.crypt.DSAPrivateKey;
@@ -39,12 +48,15 @@ import network.crypta.keys.SSKEncodeException;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.CHKStore;
+import network.crypta.store.FreenetStore;
 import network.crypta.store.GetPubkey;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.PubkeyStore;
 import network.crypta.store.RAMFreenetStore;
 import network.crypta.store.SSKStore;
 import network.crypta.store.SimpleGetPubkey;
+import network.crypta.store.StorableBlock;
+import network.crypta.store.StoreCallback;
 import network.crypta.store.WriteBlockableFreenetStore;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
@@ -63,17 +75,21 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * CachingFreenetStoreTest Test for CachingFreenetStore
  *
  * @author Simon Vocella <voxsim@gmail.com>
- *     <p>FIXME lots of repeated code, factor out.
  */
-public class CachingFreenetStoreTest {
+@SuppressWarnings("java:S100")
+@ExtendWith(MockitoExtension.class)
+class CachingFreenetStoreTest {
 
   @BeforeAll
-  public static void setupClass() {
+  static void setupClass() {
     FileUtil.removeAll(TEMP_DIR);
 
     if (!TEMP_DIR.mkdir()) {
@@ -82,49 +98,36 @@ public class CachingFreenetStoreTest {
   }
 
   @AfterAll
-  public static void cleanup() {
+  static void cleanup() {
     FileUtil.removeAll(TEMP_DIR);
   }
 
   @BeforeEach
-  public void setUpTest() {
+  void setUpTest() {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     exec.start();
   }
 
   /* Simple test with CHK for CachingFreenetStore */
   @Test
-  public void testSimpleCHK()
+  void putAndFetch_whenCHKInserted_expectCacheHitAndUnderlyingMiss()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
+    // Arrange
     CHKStore store = new CHKStore();
     File f = getStorePath("testSimpleCHK");
-    try (SaltedHashFreenetStore<CHKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null)) {
-      CachingFreenetStoreTracker tracker =
-          new CachingFreenetStoreTracker(
-              cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
+    try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
+      CachingFreenetStoreTracker tracker = newTracker(cachingFreenetStoreMaxSize);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-
+        // Act
         for (int i = 0; i < 5; i++) {
           String test = "test" + i;
           ClientCHKBlock block = encodeBlockCHK(test);
           store.put(block.getBlock(), false);
 
           ClientCHK key = block.getClientKey();
-          // Check that it's in the cache, *not* the underlying store.
+          // Assert: cache hit, underlying miss
           assertNull(
               saltStore.fetch(
                   key.getRoutingKey(),
@@ -147,37 +150,24 @@ public class CachingFreenetStoreTest {
    * than the key being cached), we will pass through immediately.
    */
   @Test
-  public void testZeroSize()
+  void put_whenCacheSizeZero_expectWriteThroughToUnderlying()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-
+    // Arrange
     File f = getStorePath("testZeroSize");
     CHKStore store = new CHKStore();
-    try (SaltedHashFreenetStore<CHKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null)) {
-      CachingFreenetStoreTracker tracker =
-          new CachingFreenetStoreTracker(0, cachingFreenetStorePeriod, ticker);
+    try (SaltedHashFreenetStore<CHKBlock> saltStore = newSaltedHashStore(f, store)) {
+      CachingFreenetStoreTracker tracker = newTracker(0);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-
+        // Act
         for (int i = 0; i < 5; i++) {
           String test = "test" + i;
           ClientCHKBlock block = encodeBlockCHK(test);
           store.put(block.getBlock(), false);
 
           ClientCHK key = block.getClientKey();
-          // It should pass straight through.
+          // Assert: write-through to underlying store
           assertNotNull(
               saltStore.fetch(
                   key.getRoutingKey(),
@@ -200,12 +190,13 @@ public class CachingFreenetStoreTest {
    * pushAll and all blocks is in the *underlying* store and the size is 0
    */
   @Test
-  public void testOverMaximumSize()
+  void put_whenExceedingMaxSize_expectUnderlyingContainsAndTrackerZero()
       throws IOException,
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
           InterruptedException {
+    // Arrange
     File f = getStorePath("testOverMaximumSize");
 
     String test = "test0";
@@ -240,7 +231,7 @@ public class CachingFreenetStoreTest {
         cachingStore.start(null, true);
         List<ClientCHKBlock> chkBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
-
+        // Act: insert enough blocks to exceed limit and trigger flush
         store.put(block.getBlock(), false);
         chkBlocks.add(block);
         tests.add(test);
@@ -255,7 +246,7 @@ public class CachingFreenetStoreTest {
         }
 
         tracker.waitForZero();
-
+        // Assert: data present in underlying store and decodable via cache
         boolean atLeastOneKey = false;
         for (int i = 0; i < howManyBlocks; i++) {
           test = tests.get(i);
@@ -276,7 +267,7 @@ public class CachingFreenetStoreTest {
           if (verifyInStore == null) {
             continue;
           }
-          // If its in the Store, it should be obtainable through the Cache
+          // If it's in the Store, it should be obtainable through the Cache
           CHKBlock verify = store.fetch(key.getNodeCHK(), false, false, null);
           String receivedData = decodeBlockCHK(verify, key);
           assertEquals(test, receivedData);
@@ -290,233 +281,230 @@ public class CachingFreenetStoreTest {
   }
 
   @Test
-  public void testCollisionsOverMaximumSize()
+  void put_whenSSKCollisionsAndExceedMax_expectEvictionAndCorrectWrites()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
           InterruptedException {
+    // Arrange
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<>(pk, 10);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
-    SSKStore store = new SSKStore(pubkeyCache);
-    int sskBlockSize = store.getTotalBlockSize();
+    try (RAMFreenetStore<DSAPublicKey> ignored = new RAMFreenetStore<>(pk, 10)) {
+      GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+      SSKStore store = new SSKStore(pubkeyCache);
+      int sskBlockSize = store.getTotalBlockSize();
 
-    // Create a cache with size limit of 1.5 SSK's.
-    File f = getStorePath("testCollisionsOverMaximumSize");
-    try (SaltedHashFreenetStore<SSKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreSSK",
-            store,
-            weakPRNG,
-            20,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null)) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(
-              (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
-      try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<>(store, saltStore, tracker)) {
-        cachingStore.start(null, true);
-        RandomSource random = new DummyRandomSource(12345);
+      // Create a cache with size limit of 1.5 SSK's.
+      File f = getStorePath("testCollisionsOverMaximumSize");
+      try (SaltedHashFreenetStore<SSKBlock> saltStore =
+          SaltedHashFreenetStore.construct(
+              f,
+              "testCachingFreenetStoreSSK",
+              store,
+              weakPRNG,
+              20,
+              true,
+              SemiOrderedShutdownHook.get(),
+              true,
+              true,
+              ticker,
+              null)) {
+        WaitableCachingFreenetStoreTracker tracker =
+            new WaitableCachingFreenetStoreTracker(
+                (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
+        try (CachingFreenetStore<SSKBlock> cachingStore =
+            new CachingFreenetStore<>(store, saltStore, tracker)) {
+          cachingStore.start(null, true);
+          RandomSource random = new DummyRandomSource(12345);
 
-        final int CRYPTO_KEY_LENGTH = 32;
-        byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
-        random.nextBytes(ckey);
-        DSAGroup g = Global.DSAgroupBigA;
-        DSAPrivateKey privKey = new DSAPrivateKey(g, random);
-        DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
-        byte[] pkHash = SHA256.digest(pubKey.asBytes());
-        String docName = "myDOC";
-        InsertableClientSSK ik =
-            new InsertableClientSSK(
-                docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
+          final int CRYPTO_KEY_LENGTH = 32;
+          byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
+          random.nextBytes(ckey);
+          DSAGroup g = Global.DSAgroupBigA;
+          DSAPrivateKey privKey = new DSAPrivateKey(g, random);
+          DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
+          byte[] pkHash = SHA256.digest(pubKey.asBytes());
+          String docName = "myDOC";
+          InsertableClientSSK ik =
+              new InsertableClientSSK(
+                  docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
 
-        // Write one key to the store.
+          // Act: write one key to the store.
+          String test = "test";
+          SimpleReadOnlyArrayBucket bucket =
+              new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
+          ClientSSKBlock block =
+              ik.encode(
+                  bucket,
+                  false,
+                  false,
+                  (short) -1,
+                  bucket.size(),
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+          SSKBlock sskBlock = (SSKBlock) block.getBlock();
+          pubkeyCache.cacheKey(
+              sskBlock.getKey().getPubKeyHash(),
+              sskBlock.getPubKey(),
+              false,
+              false,
+              false,
+              false,
+              false);
+          try {
+            store.put(sskBlock, false, false);
+          } catch (KeyCollisionException e1) {
+            fail();
+          }
 
-        String test = "test";
-        SimpleReadOnlyArrayBucket bucket =
-            new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
-        ClientSSKBlock block =
-            ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-        SSKBlock sskBlock = (SSKBlock) block.getBlock();
-        pubkeyCache.cacheKey(
-            sskBlock.getKey().getPubKeyHash(),
-            sskBlock.getPubKey(),
-            false,
-            false,
-            false,
-            false,
-            false);
-        try {
-          store.put(sskBlock, false, false);
-        } catch (KeyCollisionException e1) {
-          fail();
+          assertEquals(sskBlockSize, tracker.getSizeOfCache());
+
+          // Act: write a colliding key and then a second distinct key
+          test = "test1";
+          bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
+          block =
+              ik.encode(
+                  bucket,
+                  false,
+                  false,
+                  (short) -1,
+                  bucket.size(),
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+          sskBlock = (SSKBlock) block.getBlock();
+          try {
+            store.put(sskBlock, false, false);
+            fail();
+          } catch (KeyCollisionException e) {
+            // Expected.
+          }
+          try {
+            store.put(sskBlock, true, false);
+          } catch (KeyCollisionException e) {
+            fail();
+          }
+
+          // Size is still one key.
+          assertEquals(sskBlockSize, tracker.getSizeOfCache());
+
+          // Write a second key, should trigger write to disk.
+          DSAPrivateKey privKey2 = new DSAPrivateKey(g, random);
+          DSAPublicKey pubKey2 = new DSAPublicKey(g, privKey2);
+          byte[] pkHash2 = SHA256.digest(pubKey2.asBytes());
+          InsertableClientSSK ik2 =
+              new InsertableClientSSK(
+                  docName, pkHash2, pubKey2, privKey2, ckey, Key.ALGO_AES_PCFB_256_SHA256);
+          block =
+              ik2.encode(
+                  bucket,
+                  false,
+                  false,
+                  (short) -1,
+                  bucket.size(),
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+          SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
+          pubkeyCache.cacheKey(
+              sskBlock2.getKey().getPubKeyHash(),
+              sskBlock2.getPubKey(),
+              false,
+              false,
+              false,
+              false,
+              false);
+
+          try {
+            store.put(sskBlock2, false, false);
+          } catch (KeyCollisionException e) {
+            fail();
+          }
+
+          // Assert: after flush both keys are accessible via cache/backing
+          tracker.waitForZero();
+
+          assertEquals(store.fetch(sskBlock.getKey(), false, false, false, false, null), sskBlock);
+          assertEquals(
+              store.fetch(sskBlock2.getKey(), false, false, false, false, null), sskBlock2);
         }
-
-        assertEquals(sskBlockSize, tracker.getSizeOfCache());
-
-        // Write a colliding key.
-        test = "test1";
-        bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
-        block =
-            ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-        sskBlock = (SSKBlock) block.getBlock();
-        try {
-          store.put(sskBlock, false, false);
-          fail();
-        } catch (KeyCollisionException e) {
-          // Expected.
-        }
-        try {
-          store.put(sskBlock, true, false);
-        } catch (KeyCollisionException e) {
-          fail();
-        }
-
-        // Size is still one key.
-        assertEquals(sskBlockSize, tracker.getSizeOfCache());
-
-        // Write a second key, should trigger write to disk.
-        DSAPrivateKey privKey2 = new DSAPrivateKey(g, random);
-        DSAPublicKey pubKey2 = new DSAPublicKey(g, privKey2);
-        byte[] pkHash2 = SHA256.digest(pubKey2.asBytes());
-        InsertableClientSSK ik2 =
-            new InsertableClientSSK(
-                docName, pkHash2, pubKey2, privKey2, ckey, Key.ALGO_AES_PCFB_256_SHA256);
-        block =
-            ik2.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-        SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
-        pubkeyCache.cacheKey(
-            sskBlock2.getKey().getPubKeyHash(),
-            sskBlock2.getPubKey(),
-            false,
-            false,
-            false,
-            false,
-            false);
-
-        try {
-          store.put(sskBlock2, false, false);
-        } catch (KeyCollisionException e) {
-          fail();
-        }
-
-        // Wait for it to write to disk.
-        tracker.waitForZero();
-
-        assertEquals(store.fetch(sskBlock.getKey(), false, false, false, false, null), sskBlock);
-        assertEquals(store.fetch(sskBlock2.getKey(), false, false, false, false, null), sskBlock2);
       }
     }
   }
 
   @Test
-  public void testSimpleManualWrite()
-      throws IOException,
-          SSKEncodeException,
-          InvalidCompressionCodecException,
-          InterruptedException {
-
+  void pushLeastRecentlyBlock_whenSingleCached_expectWriteAndThenEmpty()
+      throws IOException, SSKEncodeException, InvalidCompressionCodecException {
+    // Arrange
     PubkeyStore pk = new PubkeyStore();
-    new RAMFreenetStore<>(pk, 10);
-    GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
-    SSKStore store = new SSKStore(pubkeyCache);
-    int sskBlockSize = store.getTotalBlockSize();
+    try (RAMFreenetStore<DSAPublicKey> ignored = new RAMFreenetStore<>(pk, 10)) {
+      GetPubkey pubkeyCache = new SimpleGetPubkey(pk);
+      SSKStore store = new SSKStore(pubkeyCache);
+      int sskBlockSize = store.getTotalBlockSize();
 
-    File f = getStorePath("testSimpleManualWrite");
-    try (SaltedHashFreenetStore<SSKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreSSK",
-            store,
-            weakPRNG,
-            20,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            ticker,
-            null)) {
-      CachingFreenetStoreTracker tracker =
-          new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
-      try (CachingFreenetStore<SSKBlock> cachingStore =
-          new CachingFreenetStore<>(store, saltStore, tracker)) {
-        cachingStore.start(null, true);
-        RandomSource random = new DummyRandomSource(12345);
+      File f = getStorePath("testSimpleManualWrite");
+      try (SaltedHashFreenetStore<SSKBlock> saltStore =
+          SaltedHashFreenetStore.construct(
+              f,
+              "testCachingFreenetStoreSSK",
+              store,
+              weakPRNG,
+              20,
+              true,
+              SemiOrderedShutdownHook.get(),
+              true,
+              true,
+              ticker,
+              null)) {
+        CachingFreenetStoreTracker tracker =
+            new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
+        try (CachingFreenetStore<SSKBlock> cachingStore =
+            new CachingFreenetStore<>(store, saltStore, tracker)) {
+          cachingStore.start(null, true);
+          RandomSource random = new DummyRandomSource(12345);
 
-        final int CRYPTO_KEY_LENGTH = 32;
-        byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
-        random.nextBytes(ckey);
-        DSAGroup g = Global.DSAgroupBigA;
-        DSAPrivateKey privKey = new DSAPrivateKey(g, random);
-        DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
-        byte[] pkHash = SHA256.digest(pubKey.asBytes());
-        String docName = "myDOC";
-        InsertableClientSSK ik =
-            new InsertableClientSSK(
-                docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
+          final int CRYPTO_KEY_LENGTH = 32;
+          byte[] ckey = new byte[CRYPTO_KEY_LENGTH];
+          random.nextBytes(ckey);
+          DSAGroup g = Global.DSAgroupBigA;
+          DSAPrivateKey privKey = new DSAPrivateKey(g, random);
+          DSAPublicKey pubKey = new DSAPublicKey(g, privKey);
+          byte[] pkHash = SHA256.digest(pubKey.asBytes());
+          String docName = "myDOC";
+          InsertableClientSSK ik =
+              new InsertableClientSSK(
+                  docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
 
-        // Nothing to write.
-        assertEquals(0, tracker.getSizeOfCache());
-        assert (cachingStore.pushLeastRecentlyBlock() == -1);
+          // Assert precondition: nothing to write yet
+          assertEquals(0, tracker.getSizeOfCache());
+          assert (cachingStore.pushLeastRecentlyBlock() == -1);
+          // Act: write one key to the cache
+          String test = "test";
+          SimpleReadOnlyArrayBucket bucket =
+              new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
+          ClientSSKBlock block =
+              ik.encode(
+                  bucket,
+                  false,
+                  false,
+                  (short) -1,
+                  bucket.size(),
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+          SSKBlock sskBlock = (SSKBlock) block.getBlock();
+          pubkeyCache.cacheKey(
+              sskBlock.getKey().getPubKeyHash(),
+              sskBlock.getPubKey(),
+              false,
+              false,
+              false,
+              false,
+              false);
+          try {
+            store.put(sskBlock, false, false);
+          } catch (KeyCollisionException e1) {
+            fail();
+          }
 
-        // Write one key to the store.
-
-        String test = "test";
-        SimpleReadOnlyArrayBucket bucket =
-            new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
-        ClientSSKBlock block =
-            ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-        SSKBlock sskBlock = (SSKBlock) block.getBlock();
-        pubkeyCache.cacheKey(
-            sskBlock.getKey().getPubKeyHash(),
-            sskBlock.getPubKey(),
-            false,
-            false,
-            false,
-            false,
-            false);
-        try {
-          store.put(sskBlock, false, false);
-        } catch (KeyCollisionException e1) {
-          fail();
+          // Assert: push writes one and empties cache
+          assertEquals(tracker.getSizeOfCache(), sskBlockSize);
+          assertEquals(cachingStore.pushLeastRecentlyBlock(), sskBlockSize);
+          // Assert: nothing left to write
+          assertEquals(-1, cachingStore.pushLeastRecentlyBlock());
         }
-
-        // Write.
-        assertEquals(tracker.getSizeOfCache(), sskBlockSize);
-        assertEquals(cachingStore.pushLeastRecentlyBlock(), sskBlockSize);
-
-        // Nothing to write.
-        assertEquals(cachingStore.pushLeastRecentlyBlock(), -1);
       }
     }
   }
@@ -527,13 +515,13 @@ public class CachingFreenetStoreTest {
    * }
    */
   @Test
-  public void testManualWriteCollision()
+  void pushLeastRecentlyBlock_whenConcurrentOverwrite_expectReturnZero()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
           InterruptedException,
           ExecutionException {
-
+    // Arrange
     PubkeyStore pk = new PubkeyStore();
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, 10);
     pk.setStore(ramFreenetStore);
@@ -578,11 +566,10 @@ public class CachingFreenetStoreTest {
             new InsertableClientSSK(
                 docName, pkHash, pubKey, privKey, ckey, Key.ALGO_AES_PCFB_256_SHA256);
 
-        // Nothing to write.
+        // Assert precondition: nothing to write yet
         assertEquals(0, tracker.getSizeOfCache());
-        assertEquals(cachingStore.pushLeastRecentlyBlock(), -1);
-
-        // Write one key to the cache. It will not be written through to disk.
+        assertEquals(-1, cachingStore.pushLeastRecentlyBlock());
+        // Act: write one key to the cache. It will not be written through to disk.
         String test = "test";
         SimpleReadOnlyArrayBucket bucket =
             new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
@@ -609,70 +596,74 @@ public class CachingFreenetStoreTest {
           fail();
         }
 
-        FutureTask<Long> future = new FutureTask<>(() -> cachingStore.pushLeastRecentlyBlock());
-        Executors.newCachedThreadPool().execute(future);
+        // Act: start a background push which will block
+        FutureTask<Long> future = new FutureTask<>(cachingStore::pushLeastRecentlyBlock);
+        try (AutoClosingExecutor pool =
+            new AutoClosingExecutor(java.util.concurrent.Executors.newCachedThreadPool())) {
+          pool.execute(future);
 
-        delayStore.waitForSomeBlocked();
+          delayStore.waitForSomeBlocked();
 
-        // Write colliding key. Should cause the write above to return 0: After it
-        // unlocks, it will see
-        // there is a new, different block for that key, and therefore it cannot remove
-        // the block, and
-        // thus must return 0.
-        test = "test1";
-        bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
-        block =
-            ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-        SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
-        try {
-          store.put(sskBlock2, false, false);
-          fail();
-        } catch (KeyCollisionException e) {
-          // Expected.
+          // Write colliding key. Should cause the write above to return 0: After it
+          // unlocks, it will see
+          // there is a new, different block for that key, and therefore it cannot remove
+          // the block, and
+          // thus must return 0.
+          test = "test1";
+          bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
+          block =
+              ik.encode(
+                  bucket,
+                  false,
+                  false,
+                  (short) -1,
+                  bucket.size(),
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+          SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
+          try {
+            store.put(sskBlock2, false, false);
+            fail();
+          } catch (KeyCollisionException e) {
+            // Expected.
+          }
+          try {
+            store.put(sskBlock2, true, false);
+          } catch (KeyCollisionException e) {
+            fail();
+          }
+
+          // Size is still one key.
+          assertEquals(tracker.getSizeOfCache(), sskBlockSize);
+
+          // Act: now let the write through and assert results
+          delayStore.setBlocked(false);
+
+          assertEquals(0L, future.get().longValue());
+          NodeSSK key = sskBlock.getKey();
+          assertEquals(
+              saltStore.fetch(
+                  key.getRoutingKey(), key.getFullKey(), false, false, false, false, null),
+              sskBlock);
+          assertEquals(store.fetch(key, false, false, false, false, null), sskBlock2);
+
+          // Still needs writing.
+          assertEquals(cachingStore.pushLeastRecentlyBlock(), sskBlockSize);
+          assertEquals(store.fetch(key, false, false, false, false, null), sskBlock2);
         }
-        try {
-          store.put(sskBlock2, true, false);
-        } catch (KeyCollisionException e) {
-          fail();
-        }
-
-        // Size is still one key.
-        assertEquals(tracker.getSizeOfCache(), sskBlockSize);
-
-        // Now let the write through.
-        delayStore.setBlocked(false);
-
-        assertEquals(future.get().longValue(), 0L);
-        NodeSSK key = sskBlock.getKey();
-        assertEquals(
-            saltStore.fetch(
-                key.getRoutingKey(), key.getFullKey(), false, false, false, false, null),
-            sskBlock);
-        assertEquals(store.fetch(key, false, false, false, false, null), sskBlock2);
-
-        // Still needs writing.
-        assertEquals(cachingStore.pushLeastRecentlyBlock(), sskBlockSize);
-        assertEquals(store.fetch(key, false, false, false, false, null), sskBlock2);
       }
     }
   }
 
   /* Simple test with SSK for CachingFreenetStore */
   @Test
-  public void testSimpleSSK()
+  void putAndFetch_whenSSKInserted_expectCacheHitAndUnderlyingMiss()
       throws IOException,
           KeyCollisionException,
           SSKVerifyException,
           KeyDecodeException,
           SSKEncodeException,
           InvalidCompressionCodecException {
-
+    // Arrange
     final int keys = 5;
     PubkeyStore pk = new PubkeyStore();
     RAMFreenetStore<DSAPublicKey> ramFreenetStore = new RAMFreenetStore<>(pk, keys);
@@ -701,7 +692,7 @@ public class CachingFreenetStoreTest {
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
-
+        // Act
         for (int i = 0; i < 5; i++) {
           String test = "test" + i;
           ClientSSKBlock block = encodeBlockSSK(test, random);
@@ -712,7 +703,7 @@ public class CachingFreenetStoreTest {
           NodeSSK ssk = (NodeSSK) key.getNodeKey();
           pubkeyCache.cacheKey(
               ssk.getPubKeyHash(), ssk.getPubKey(), false, false, false, false, false);
-          // Check that it's in the cache, *not* the underlying store.
+          // Assert: cache hit, underlying miss
           assertNull(
               saltStore.fetch(
                   ssk.getRoutingKey(), ssk.getFullKey(), false, false, false, false, null));
@@ -726,9 +717,9 @@ public class CachingFreenetStoreTest {
 
   /* Test to re-open after close */
   @Test
-  public void testOnCloseCHK()
+  void close_whenReopenCHK_expectBlocksPersistedInUnderlying()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-
+    // Arrange
     CHKStore store = new CHKStore();
     File f = getStorePath("testOnCloseCHK");
     List<String> tests = new ArrayList<>();
@@ -753,16 +744,14 @@ public class CachingFreenetStoreTest {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-
-        // Insert Keys
+        // Act: insert Keys then close store
         for (int i = 0; i < 5; i++) {
           String test = "test" + i;
           ClientCHKBlock block = encodeBlockCHK(test);
           store.put(block.getBlock(), false);
           tests.add(test);
           chkBlocks.add(block);
-
-          // Check that it's in the cache, *not* the underlying store.
+          // Assert during write phase: in cache only
           assertNull(
               saltStore.fetch(
                   block.getKey().getRoutingKey(),
@@ -793,7 +782,7 @@ public class CachingFreenetStoreTest {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
-
+        // Assert after reopen: data present in underlying
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
           ClientCHKBlock block = chkBlocks.get(i);
@@ -827,12 +816,13 @@ public class CachingFreenetStoreTest {
 
   /* Test whether stuff gets written to disk after the caching period expires */
   @Test
-  public void testTimeExpireCHK()
+  void pushOffThreadDelayed_whenDelayExpires_expectFlushedToUnderlyingCHK()
       throws IOException,
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
           InterruptedException {
+    // Arrange
     File f = getStorePath("testTimeExpireCHK");
     long delay = 100;
 
@@ -855,7 +845,7 @@ public class CachingFreenetStoreTest {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-
+        // Act: put five blocks and wait for flush
         List<ClientCHKBlock> chkBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
 
@@ -881,7 +871,7 @@ public class CachingFreenetStoreTest {
         }
 
         tracker.waitForZero();
-
+        // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
           String test = tests.get(i);
@@ -914,13 +904,14 @@ public class CachingFreenetStoreTest {
 
   /* Test with SSK to re-open after close */
   @Test
-  public void testOnCloseSSK()
+  void close_whenReopenSSK_expectBlocksPersistedInUnderlying()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
           KeyCollisionException,
           SSKVerifyException,
           KeyDecodeException {
+    // Arrange
     File f = getStorePath("testOnCloseSSK");
 
     final int keys = 5;
@@ -989,7 +980,7 @@ public class CachingFreenetStoreTest {
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
-
+        // Assert after reopen: data present in underlying
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
           String test = tests.removeFirst(); // get the first element
@@ -1026,7 +1017,7 @@ public class CachingFreenetStoreTest {
    * expires
    */
   @Test
-  public void testTimeExpireSSK()
+  void pushOffThreadDelayed_whenDelayExpires_expectFlushedToUnderlyingSSK()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
@@ -1034,6 +1025,7 @@ public class CachingFreenetStoreTest {
           SSKVerifyException,
           KeyDecodeException,
           InterruptedException {
+    // Arrange
     File f = getStorePath("testTimeExpireSSK");
 
     final int keys = 5;
@@ -1062,7 +1054,7 @@ public class CachingFreenetStoreTest {
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
-
+        // Act: enqueue blocks and wait for tracker to flush
         List<ClientSSKBlock> sskBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
 
@@ -1084,7 +1076,7 @@ public class CachingFreenetStoreTest {
         }
 
         tracker.waitForZero();
-
+        // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
           String test = tests.get(i);
@@ -1116,28 +1108,28 @@ public class CachingFreenetStoreTest {
   }
 
   @Test
-  public void testOnCollisionsSSK_useSlotFilter()
+  void collisions_whenUseSlotFilter_expectCacheComparisonNoThrow()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
           SSKVerifyException,
           KeyDecodeException,
           KeyCollisionException {
-    // With slot filters turned on, it should be cached, it should compare it, and
-    // still not throw if it's the same block.
+    // Arrange/Act/Assert: helper covers AAA with useSlotFilter=true.
+    // With slot filters on, it should be cached and not throw if same block.
     checkOnCollisionsSSK(true);
   }
 
   @Test
-  public void testOnCollisionsSSK_dontUseSlotFilter()
+  void collisions_whenDontUseSlotFilter_expectWriteThrough()
       throws IOException,
           SSKEncodeException,
           InvalidCompressionCodecException,
           SSKVerifyException,
           KeyDecodeException,
           KeyCollisionException {
-    // With slot filters turned off, it goes straight to disk, because
-    // probablyInStore() always returns true.
+    // Arrange/Act/Assert: helper covers AAA with useSlotFilter=false.
+    // With slot filters off, it goes straight to disk (probablyInStore() true).
     checkOnCollisionsSSK(false);
   }
 
@@ -1148,6 +1140,27 @@ public class CachingFreenetStoreTest {
       throw new IllegalStateException("Could not create temporary test store path: " + storePath);
     }
     return storePath;
+  }
+
+  // Common helper with constants used by the simple CHK tests
+  private <T extends StorableBlock> SaltedHashFreenetStore<T> newSaltedHashStore(
+      File dir, StoreCallback<T> frontStore) throws IOException {
+    return SaltedHashFreenetStore.construct(
+        dir,
+        "testCachingFreenetStoreCHK",
+        frontStore,
+        weakPRNG,
+        10L,
+        false,
+        SemiOrderedShutdownHook.get(),
+        true,
+        true,
+        ticker,
+        null);
+  }
+
+  private CachingFreenetStoreTracker newTracker(long maxSize) {
+    return new CachingFreenetStoreTracker(maxSize, cachingFreenetStorePeriod, ticker);
   }
 
   private String decodeBlockCHK(CHKBlock verify, ClientCHK key)
@@ -1334,7 +1347,7 @@ public class CachingFreenetStoreTest {
         bucket, false, false, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
   }
 
-  class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {
+  static class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {
     public WaitableCachingFreenetStoreTracker(
         long cachingFreenetStoreMaxSize, long cachingFreenetStorePeriod, Ticker ticker) {
       super(cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
@@ -1366,4 +1379,558 @@ public class CachingFreenetStoreTest {
   private final Ticker ticker = new TrivialTicker(exec);
   private final long cachingFreenetStoreMaxSize = Fields.parseLong("1M");
   private final long cachingFreenetStorePeriod = Fields.parseLong("300k");
+
+  // ------------------------------------------------------------
+  // Lightweight, Mockito-based unit tests for CachingFreenetStore
+  // ------------------------------------------------------------
+
+  // Simple concrete block used by the Mockito-focused tests in this class
+  static final class TestBlock implements StorableBlock {
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    TestBlock(byte[] routingKey, byte[] fullKey) {
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
+    @Override
+    public byte[] getRoutingKey() {
+      return routingKey;
+    }
+
+    @Override
+    public byte[] getFullKey() {
+      return fullKey;
+    }
+  }
+
+  // AutoCloseable wrapper for ExecutorService so we can use try-with-resources
+  private static final class AutoClosingExecutor implements AutoCloseable {
+    private final java.util.concurrent.ExecutorService delegate;
+
+    AutoClosingExecutor(java.util.concurrent.ExecutorService delegate) {
+      this.delegate = delegate;
+    }
+
+    void execute(Runnable task) {
+      delegate.execute(task);
+    }
+
+    @Override
+    public void close() {
+      delegate.shutdownNow();
+    }
+  }
+
+  private static int totalSize(byte[] data, byte[] header, byte[] fullKey, byte[] routingKey) {
+    return data.length + header.length + fullKey.length + routingKey.length;
+  }
+
+  @Test
+  void fetch_whenCacheHit_constructsAndReturns() throws Exception {
+    // Arrange
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1, 2, 3};
+    byte[] fk = new byte[] {9, 9};
+    byte[] data = new byte[] {10, 11, 12, 13};
+    byte[] header = new byte[] {5, 6};
+    TestBlock block = new TestBlock(rk, fk);
+    TestBlock constructed = new TestBlock(rk, fk);
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    // Broad stub for construct; verify arguments later via captors
+    org.mockito.Mockito.doReturn(constructed)
+        .when(callback)
+        .construct(
+            any(byte[].class),
+            any(byte[].class),
+            any(byte[].class),
+            any(byte[].class),
+            anyBoolean(),
+            anyBoolean(),
+            org.mockito.ArgumentMatchers.isNull(),
+            any());
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+
+    // Cache one entry via put (should not write through)
+    store.put(block, data, header, false, false);
+    verify(back, never()).put(any(), any(), any(), anyBoolean(), anyBoolean());
+
+    // Act
+    TestBlock fetched = store.fetch(rk, null, false, false, false, false, null);
+
+    // Assert
+    assertEquals(constructed, fetched);
+    // Ensure construct() saw the routingKey we requested and the cached fullKey
+    ArgumentCaptor<byte[]> rkCap = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> fkCap = ArgumentCaptor.forClass(byte[].class);
+    verify(callback, times(1))
+        .construct(
+            eq(data),
+            eq(header),
+            rkCap.capture(),
+            fkCap.capture(),
+            eq(false),
+            eq(false),
+            org.mockito.ArgumentMatchers.isNull(),
+            org.mockito.ArgumentMatchers.isNull());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(rk, rkCap.getValue());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(fk, fkCap.getValue());
+    verify(back, never())
+        .fetch(any(), any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
+  }
+
+  @Test
+  void fetch_whenCacheHit_constructThrows_fallsBackToDelegate() throws Exception {
+    // Arrange
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {42};
+    byte[] fk = new byte[] {7, 7};
+    byte[] data = new byte[] {1};
+    byte[] header = new byte[] {2};
+    TestBlock block = new TestBlock(rk, fk);
+    TestBlock delegateResult = new TestBlock(rk, fk);
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+    when(callback.construct(
+            eq(data),
+            eq(header),
+            any(),
+            any(),
+            anyBoolean(),
+            anyBoolean(),
+            org.mockito.ArgumentMatchers.isNull(),
+            any()))
+        .thenThrow(new network.crypta.keys.KeyVerifyException("boom"));
+    when(back.fetch(
+            eq(rk),
+            org.mockito.ArgumentMatchers.isNull(),
+            eq(false),
+            eq(false),
+            eq(false),
+            eq(false),
+            org.mockito.ArgumentMatchers.isNull()))
+        .thenReturn(delegateResult);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(block, data, header, false, false);
+
+    // Act
+    TestBlock out = store.fetch(rk, null, false, false, false, false, null);
+
+    // Assert
+    assertEquals(delegateResult, out);
+    verify(back, times(1))
+        .fetch(
+            eq(rk),
+            org.mockito.ArgumentMatchers.isNull(),
+            eq(false),
+            eq(false),
+            eq(false),
+            eq(false),
+            org.mockito.ArgumentMatchers.isNull());
+  }
+
+  @Test
+  void fetch_whenCacheMiss_delegatesToBack() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {4, 5};
+    TestBlock delegateResult = new TestBlock(rk, new byte[] {0});
+    when(back.fetch(
+            eq(rk),
+            org.mockito.ArgumentMatchers.isNull(),
+            eq(false),
+            eq(false),
+            eq(false),
+            eq(false),
+            org.mockito.ArgumentMatchers.isNull()))
+        .thenReturn(delegateResult);
+    when(callback.getTotalBlockSize()).thenReturn(0);
+    when(callback.collisionPossible()).thenReturn(false);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    TestBlock out = store.fetch(rk, null, false, false, false, false, null);
+    assertEquals(delegateResult, out);
+    verify(back, times(1))
+        .fetch(
+            eq(rk),
+            org.mockito.ArgumentMatchers.isNull(),
+            eq(false),
+            eq(false),
+            eq(false),
+            eq(false),
+            org.mockito.ArgumentMatchers.isNull());
+  }
+
+  @Test
+  void probablyInStore_whenCached_returnsTrueWithoutDelegate() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+
+    assertTrue(store.probablyInStore(rk));
+    verify(back, never()).probablyInStore(any());
+  }
+
+  @Test
+  void probablyInStore_whenNotCached_delegates() {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    when(callback.getTotalBlockSize()).thenReturn(0);
+    when(callback.collisionPossible()).thenReturn(false);
+    when(back.probablyInStore(rk)).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    assertTrue(store.probablyInStore(rk));
+    verify(back, times(1)).probablyInStore(rk);
+  }
+
+  @Test
+  void put_whenCollisionNotPossibleAndAddedToCache_doesNotWriteThrough() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {8};
+    byte[] fk = new byte[] {9};
+    byte[] data = new byte[] {10};
+    byte[] header = new byte[] {11};
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    assertTrue(store.isEmpty());
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    verify(back, never()).put(any(), any(), any(), anyBoolean(), anyBoolean());
+    assertFalse(store.isEmpty());
+  }
+
+  @Test
+  void put_whenTrackerRejects_writeThroughAndSkipCache() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(false);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    verify(back, times(1)).put(any(), eq(data), eq(header), eq(false), eq(false));
+    assertTrue(store.isEmpty());
+  }
+
+  @Test
+  void put_whenCollisionPossible_andSameBlockAlreadyCached_noop() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+    TestBlock same = new TestBlock(rk, fk);
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(true);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(same, data, header, false, false);
+    // Second put with same instance should no-op (no collision, no write-through)
+    store.put(same, data, header, false, false);
+    verify(back, never()).put(any(), any(), any(), anyBoolean(), anyBoolean());
+  }
+
+  @Test
+  void put_whenCollisionPossible_andDifferentInstanceWithSameKey_throwsKCE() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+    TestBlock first = new TestBlock(rk, fk);
+    TestBlock secondDifferentInstance = new TestBlock(rk, fk);
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(true);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(first, data, header, false, false);
+    assertThrows(
+        KeyCollisionException.class,
+        () -> store.put(secondDifferentInstance, data, header, false, false));
+  }
+
+  @Test
+  void put_whenCollisionPossible_andProbablyInStoreTrue_writeThrough() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(true);
+    when(back.probablyInStore(rk)).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    verify(back, times(1)).put(any(), eq(data), eq(header), eq(false), eq(false));
+    assertTrue(store.isEmpty());
+  }
+
+  @Test
+  void put_whenCollisionPossible_andProbablyInStoreFalse_addTrue_caches() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+
+    when(callback.getTotalBlockSize()).thenReturn(totalSize(data, header, fk, rk));
+    when(callback.collisionPossible()).thenReturn(true);
+    when(back.probablyInStore(rk)).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    verify(back, never()).put(any(), any(), any(), anyBoolean(), anyBoolean());
+    assertFalse(store.isEmpty());
+  }
+
+  @Test
+  void pushLeastRecentlyBlock_whenEmpty_returnsMinusOne() {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    when(callback.getTotalBlockSize()).thenReturn(0);
+    when(callback.collisionPossible()).thenReturn(false);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    assertEquals(-1, store.pushLeastRecentlyBlock());
+  }
+
+  @Test
+  void pushLeastRecentlyBlock_whenHasEntry_writesThroughAndEvicts() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3, 4};
+    byte[] header = new byte[] {5};
+    int size = totalSize(data, header, fk, rk);
+
+    when(callback.getTotalBlockSize()).thenReturn(size);
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    long written = store.pushLeastRecentlyBlock();
+    assertEquals(size, written);
+    verify(back, times(1)).put(any(), eq(data), eq(header), eq(false), eq(false));
+    assertTrue(store.isEmpty());
+  }
+
+  @Test
+  void pushLeastRecentlyBlock_whenBlockChangedDuringWrite_returnsZeroAndKeepsCached()
+      throws Exception {
+    // Arrange
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    byte[] rk = new byte[] {1};
+    byte[] fkA = new byte[] {2};
+    byte[] fkB = new byte[] {3};
+    byte[] dataA = new byte[] {10};
+    byte[] headerA = new byte[] {};
+    byte[] dataB = new byte[] {11};
+    byte[] headerB = new byte[] {12};
+    int size = totalSize(dataA, headerA, fkA, rk);
+
+    when(callback.getTotalBlockSize()).thenReturn(size);
+    when(callback.collisionPossible()).thenReturn(false);
+    when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    TestBlock a = new TestBlock(rk, fkA);
+    store.put(a, dataA, headerA, false, false);
+
+    // While pushLeastRecentlyBlock() calls delegate.put(a,...), replace the cached block with b
+    doAnswer(
+            inv -> {
+              // Simulate overwrite happening while write is in progress
+              TestBlock b = new TestBlock(rk, fkB);
+              store.put(b, dataB, headerB, true, false);
+              return null;
+            })
+        .when(back)
+        .put(a, dataA, headerA, false, false);
+
+    // Act
+    long result = store.pushLeastRecentlyBlock();
+
+    // Assert: changed during write => return 0 and keep cached entry
+    assertEquals(0, result);
+    assertFalse(store.isEmpty());
+  }
+
+  @Test
+  void start_whenCalled_registersWithTracker_andDelegates() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+    when(callback.getTotalBlockSize()).thenReturn(0);
+    when(callback.collisionPossible()).thenReturn(false);
+    when(back.start(org.mockito.ArgumentMatchers.isNull(), eq(true))).thenReturn(true);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    boolean ok = store.start(null, true);
+    assertTrue(ok);
+    verify(tracker, times(1)).registerCachingFS(store);
+    verify(back, times(1)).start(org.mockito.ArgumentMatchers.isNull(), eq(true));
+  }
+
+  @Test
+  void close_idempotent_unregistersAndClosesOnce_andWriteThroughAfterClose() throws Exception {
+    @SuppressWarnings("unchecked")
+    StoreCallback<TestBlock> callback =
+        (StoreCallback<TestBlock>) org.mockito.Mockito.mock(StoreCallback.class);
+    @SuppressWarnings("unchecked")
+    FreenetStore<TestBlock> back =
+        (FreenetStore<TestBlock>) org.mockito.Mockito.mock(FreenetStore.class);
+    CachingFreenetStoreTracker tracker = org.mockito.Mockito.mock(CachingFreenetStoreTracker.class);
+
+    when(callback.getTotalBlockSize()).thenReturn(0);
+    when(callback.collisionPossible()).thenReturn(false);
+
+    CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
+    store.close();
+    store.close();
+    verify(back, times(1)).close();
+    verify(tracker, times(1)).unregisterCachingFS(store);
+
+    // After close, put should not cache and must write through
+    byte[] rk = new byte[] {1};
+    byte[] fk = new byte[] {2};
+    byte[] data = new byte[] {3};
+    byte[] header = new byte[] {};
+    store.put(new TestBlock(rk, fk), data, header, false, false);
+    verify(back, times(1)).put(any(), eq(data), eq(header), eq(false), eq(false));
+  }
 }
