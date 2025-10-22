@@ -112,7 +112,7 @@ class SimpleGetPubkeyTest {
         hash, key, deep, canWriteClientCache, canWriteDatastore, forULPR, writeLocalToDatastore);
 
     // Assert
-    verify(store).put(same(hash), same(key), eq(false));
+    verify(store).put(same(key), eq(false));
     verifyNoMoreInteractions(store);
   }
 
@@ -122,11 +122,11 @@ class SimpleGetPubkeyTest {
     // Arrange
     byte[] hash = new byte[] {0x11, 0x22};
     DSAPublicKey key = org.mockito.Mockito.mock(DSAPublicKey.class);
-    doThrow(new IOException("write failed")).when(store).put(hash, key, false);
+    doThrow(new IOException("write failed")).when(store).put(key, false);
 
     // Act & Assert (no throw)
     subject.cacheKey(hash, key, false, false, false, false, false);
-    verify(store).put(same(hash), same(key), eq(false));
+    verify(store).put(same(key), eq(false));
     verifyNoMoreInteractions(store);
   }
 }
