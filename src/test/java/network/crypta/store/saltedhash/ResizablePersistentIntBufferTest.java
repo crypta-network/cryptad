@@ -43,12 +43,15 @@ class ResizablePersistentIntBufferTest {
     int size = 8;
 
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, size);
-
-    assertTrue(buf.isNew());
-    assertEquals(size, buf.size());
-    // All zeros by default
-    for (int i = 0; i < size; i++) {
-      assertEquals(0, buf.get(i));
+    try {
+      assertTrue(buf.isNew());
+      assertEquals(size, buf.size());
+      // All zeros by default
+      for (int i = 0; i < size; i++) {
+        assertEquals(0, buf.get(i));
+      }
+    } finally {
+      buf.shutdown();
     }
   }
 
@@ -63,7 +66,11 @@ class ResizablePersistentIntBufferTest {
     }
 
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 4);
-    assertFalse(buf.isNew());
+    try {
+      assertFalse(buf.isNew());
+    } finally {
+      buf.shutdown();
+    }
   }
 
   @Test
@@ -77,20 +84,28 @@ class ResizablePersistentIntBufferTest {
 
     // Expect length to be truncated to 2 ints when constructing with size=2
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 2);
-    assertEquals(2, buf.size());
-    assertEquals(11, buf.get(0));
-    assertEquals(22, buf.get(1));
-    assertEquals(2L * 4L, f.length());
+    try {
+      assertEquals(2, buf.size());
+      assertEquals(11, buf.get(0));
+      assertEquals(22, buf.get(1));
+      assertEquals(2L * 4L, f.length());
+    } finally {
+      buf.shutdown();
+    }
 
     // Also verify expanding reads available values and zero-fills the rest
     ResizablePersistentIntBuffer buf2 = new ResizablePersistentIntBuffer(f, 6);
-    assertEquals(6, buf2.size());
-    assertEquals(11, buf2.get(0));
-    assertEquals(22, buf2.get(1));
-    for (int i = 2; i < 6; i++) {
-      assertEquals(0, buf2.get(i));
+    try {
+      assertEquals(6, buf2.size());
+      assertEquals(11, buf2.get(0));
+      assertEquals(22, buf2.get(1));
+      for (int i = 2; i < 6; i++) {
+        assertEquals(0, buf2.get(i));
+      }
+      assertEquals(6L * 4L, f.length());
+    } finally {
+      buf2.shutdown();
     }
-    assertEquals(6L * 4L, f.length());
   }
 
   @Test
@@ -108,19 +123,22 @@ class ResizablePersistentIntBufferTest {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     File f = tempDir.resolve("immediate.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 3);
+    try {
+      buf.put(1, 123456789); // should write immediately at offset 4
+      assertEquals(0, readIntLE(f, 0));
+      assertEquals(123456789, readIntLE(f, 1));
+      assertEquals(0, readIntLE(f, 2));
 
-    buf.put(1, 123456789); // should write immediately at offset 4
-    assertEquals(0, readIntLE(f, 0));
-    assertEquals(123456789, readIntLE(f, 1));
-    assertEquals(0, readIntLE(f, 2));
+      // noWrite=true must not write immediately
+      buf.put(2, 555, true);
+      assertEquals(0, readIntLE(f, 2));
 
-    // noWrite=true must not write immediately
-    buf.put(2, 555, true);
-    assertEquals(0, readIntLE(f, 2));
-
-    // Forcing a write should persist the pending update
-    buf.forceWrite();
-    assertEquals(555, readIntLE(f, 2));
+      // Forcing a write should persist the pending update
+      buf.forceWrite();
+      assertEquals(555, readIntLE(f, 2));
+    } finally {
+      buf.shutdown();
+    }
   }
 
   @Test
@@ -130,24 +148,28 @@ class ResizablePersistentIntBufferTest {
     File f = tempDir.resolve("scheduled.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 4);
 
-    // Ticker attached before modifications: scheduling happens on first put only.
-    buf.start(ticker);
-    buf.put(0, 7);
-    buf.put(1, 9);
+    try {
+      // Ticker attached before modifications: scheduling happens on first put only.
+      buf.start(ticker);
+      buf.put(0, 7);
+      buf.put(1, 9);
 
-    ArgumentCaptor<Runnable> captor = ArgumentCaptor.forClass(Runnable.class);
-    verify(ticker, times(1)).queueTimedJob(captor.capture(), eq(1000L));
+      ArgumentCaptor<Runnable> captor = ArgumentCaptor.forClass(Runnable.class);
+      verify(ticker, times(1)).queueTimedJob(captor.capture(), eq(1000L));
 
-    // Not written yet
-    assertEquals(0, readIntLE(f, 0));
-    assertEquals(0, readIntLE(f, 1));
+      // Not written yet
+      assertEquals(0, readIntLE(f, 0));
+      assertEquals(0, readIntLE(f, 1));
 
-    // Run the scheduled writer; it writes the whole buffer
-    captor.getValue().run();
-    assertEquals(7, readIntLE(f, 0));
-    assertEquals(9, readIntLE(f, 1));
-    assertEquals(0, readIntLE(f, 2));
-    assertEquals(0, readIntLE(f, 3));
+      // Run the scheduled writer; it writes the whole buffer
+      captor.getValue().run();
+      assertEquals(7, readIntLE(f, 0));
+      assertEquals(9, readIntLE(f, 1));
+      assertEquals(0, readIntLE(f, 2));
+      assertEquals(0, readIntLE(f, 3));
+    } finally {
+      buf.shutdown();
+    }
   }
 
   @Test
@@ -156,17 +178,21 @@ class ResizablePersistentIntBufferTest {
     File f = tempDir.resolve("start-schedules.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 2);
 
-    // Mark as dirty first; no ticker attached yet
-    buf.put(0, 42);
-    // Now attach ticker; should schedule once
-    buf.start(ticker);
+    try {
+      // Mark as dirty first; no ticker attached yet
+      buf.put(0, 42);
+      // Now attach ticker; should schedule once
+      buf.start(ticker);
 
-    ArgumentCaptor<Runnable> captor = ArgumentCaptor.forClass(Runnable.class);
-    verify(ticker, times(1)).queueTimedJob(captor.capture(), eq(500L));
+      ArgumentCaptor<Runnable> captor = ArgumentCaptor.forClass(Runnable.class);
+      verify(ticker, times(1)).queueTimedJob(captor.capture(), eq(500L));
 
-    // Execute scheduled writer to persist
-    captor.getValue().run();
-    assertEquals(42, readIntLE(f, 0));
+      // Execute scheduled writer to persist
+      captor.getValue().run();
+      assertEquals(42, readIntLE(f, 0));
+    } finally {
+      buf.shutdown();
+    }
   }
 
   @Test
@@ -207,42 +233,50 @@ class ResizablePersistentIntBufferTest {
     File f = tempDir.resolve("resize.dat").toFile();
     ResizablePersistentIntBuffer.setPersistenceTime(0); // no background scheduling
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 2);
-    buf.put(0, 1);
-    buf.put(1, 2);
+    try {
+      buf.put(0, 1);
+      buf.put(1, 2);
 
-    // Grow to 5
-    buf.resize(5);
-    assertEquals(5, buf.size());
-    assertEquals(1, buf.get(0));
-    assertEquals(2, buf.get(1));
-    assertEquals(0, buf.get(2));
-    assertEquals(0, buf.get(3));
-    assertEquals(0, buf.get(4));
-    assertEquals(5L * 4L, f.length());
-    // Persistence after resize
-    assertEquals(1, readIntLE(f, 0));
-    assertEquals(2, readIntLE(f, 1));
+      // Grow to 5
+      buf.resize(5);
+      assertEquals(5, buf.size());
+      assertEquals(1, buf.get(0));
+      assertEquals(2, buf.get(1));
+      assertEquals(0, buf.get(2));
+      assertEquals(0, buf.get(3));
+      assertEquals(0, buf.get(4));
+      assertEquals(5L * 4L, f.length());
+      // Persistence after resize
+      assertEquals(1, readIntLE(f, 0));
+      assertEquals(2, readIntLE(f, 1));
 
-    // Shrink to 1
-    buf.resize(1);
-    assertEquals(1, buf.size());
-    //noinspection PointlessArithmeticExpression
-    assertEquals(1L * 4L, f.length());
-    assertEquals(1, readIntLE(f, 0));
+      // Shrink to 1
+      buf.resize(1);
+      assertEquals(1, buf.size());
+      //noinspection PointlessArithmeticExpression
+      assertEquals(1L * 4L, f.length());
+      assertEquals(1, readIntLE(f, 0));
+    } finally {
+      buf.shutdown();
+    }
   }
 
   @Test
   void replaceAllEntries_replacesMatchingValues() throws IOException {
     File f = tempDir.resolve("replace.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 6);
-    int[] vals = {3, 3, 1, 3, 2, 3};
-    for (int i = 0; i < vals.length; i++) {
-      buf.put(i, vals[i]);
-    }
-    buf.replaceAllEntries(3, 9);
-    int[] expected = {9, 9, 1, 9, 2, 9};
-    for (int i = 0; i < expected.length; i++) {
-      assertEquals(expected[i], buf.get(i));
+    try {
+      int[] vals = {3, 3, 1, 3, 2, 3};
+      for (int i = 0; i < vals.length; i++) {
+        buf.put(i, vals[i]);
+      }
+      buf.replaceAllEntries(3, 9);
+      int[] expected = {9, 9, 1, 9, 2, 9};
+      for (int i = 0; i < expected.length; i++) {
+        assertEquals(expected[i], buf.get(i));
+      }
+    } finally {
+      buf.shutdown();
     }
   }
 
@@ -250,9 +284,13 @@ class ResizablePersistentIntBufferTest {
   void fill_setsAllValues() throws IOException {
     File f = tempDir.resolve("fill.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 4);
-    buf.fill(77);
-    for (int i = 0; i < buf.size(); i++) {
-      assertEquals(77, buf.get(i));
+    try {
+      buf.fill(77);
+      for (int i = 0; i < buf.size(); i++) {
+        assertEquals(77, buf.get(i));
+      }
+    } finally {
+      buf.shutdown();
     }
   }
 
@@ -260,8 +298,12 @@ class ResizablePersistentIntBufferTest {
   void put_whenIndexOutOfBounds_throwsArrayIndexOutOfBounds() throws IOException {
     File f = tempDir.resolve("bounds.dat").toFile();
     ResizablePersistentIntBuffer buf = new ResizablePersistentIntBuffer(f, 2);
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> buf.put(2, 1));
-    assertThrows(ArrayIndexOutOfBoundsException.class, () -> buf.get(2));
+    try {
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> buf.put(2, 1));
+      assertThrows(ArrayIndexOutOfBoundsException.class, () -> buf.get(2));
+    } finally {
+      buf.shutdown();
+    }
   }
 
   // Utility: read one int stored little-endian at index
