@@ -11,6 +11,7 @@ some Kotlin components.
 
 - Primary language: Kotlin/Java
     - New files should be always in Kotlin
+    - Kotlin source location: place all Kotlin sources under `src/*/kotlin/` (e.g., `src/main/kotlin`, `src/test/kotlin`). Do not add Kotlin files under `src/*/java/`.
     - Prefer top-level functions over wrapping in objects/classes when appropriate (idiomatic Kotlin)
 - Code style:
     - Kotlin: Official coding convention described [here](https://kotlinlang.org/docs/coding-conventions.html)
