@@ -92,7 +92,7 @@ public class SimpleGetPubkey implements GetPubkey {
       boolean forULPR,
       boolean writeLocalToDatastore) {
     try {
-      store.put(hash, key, false);
+      store.put(key, false);
     } catch (IOException e) {
       LOG.error("Caught {} storing pubkey for {}", e, HexUtil.bytesToHex(hash));
     }
