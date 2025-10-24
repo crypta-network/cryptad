@@ -6,6 +6,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageFilter;
+import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
@@ -15,16 +16,32 @@ import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Sends or forwards an Opennet announce request carrying a node reference ("noderef").
+ *
+ * <p>The sender chooses successive peers that are closer to a target location and relays replies
+ * back to the request source. It manages the initial handshake, HTL (hop-to-live) decrementing,
+ * acceptance/rejection handling, and final completion or route-not-found signaling. Byte accounting
+ * is reported via {@link ByteCounter}.
+ *
+ * <p>Threading: an instance is designed to be executed once on the node's executor. Incoming
+ * AnnouncementReply payloads are validated and relayed on background tasks; before emitting a
+ * terminal message (Completed or RouteNotFound) the instance waits for those background tasks to
+ * finish to avoid dropping late replies.
+ */
 public class AnnounceSender implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(AnnounceSender.class);
+  private static final String LOG_REJECTING_NODEREF = "Rejecting noderef: {}";
+  private static final String LOG_FAILED_PARSE_REPLY = "Failed to parse reply: {}";
+  private static final String PARSE_FAILED_PREFIX = "parse failed: ";
 
-  // Constants
+  // Timeouts (milliseconds)
   static final int ACCEPTED_TIMEOUT = 10000;
   static final int ANNOUNCE_TIMEOUT =
-      120000; // longer than a regular request as have to transfer noderefs hop by hop etc
+      120000; // Longer than a regular request: noderefs transfer hop-by-hop.
   static final int END_TIMEOUT =
-      30000; // After received the completion message, wait 30 seconds for any late reordered
-  // replies
+      30000; // After receiving Completed, wait for late, possibly reordered replies.
+  // Replies may arrive slightly after completion due to reordering.
 
   private final PeerNode source;
   private final long uid;
@@ -40,6 +57,20 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private final PeerNode onlyNode;
   private int forwardedRefs;
 
+  /**
+   * Creates a sender used while forwarding an incoming announce from another peer.
+   *
+   * @param target Location key we route toward (unitless, implementation-specific).
+   * @param htl Starting hop-to-live. Decrements as the request is forwarded.
+   * @param uid Announce UID. Used to correlate protocol messages.
+   * @param source Upstream peer that originated the request we are forwarding.
+   * @param om Opennet manager for protocol helpers and crypto.
+   * @param node Local node services and executors.
+   * @param xferUID Transfer UID for the noderef blob sent by {@code source}.
+   * @param noderefLength Unpadded noderef length (bytes).
+   * @param paddedLength Padded noderef length (bytes).
+   * @param cb Optional callback for progress notifications; may be {@code null}.
+   */
   public AnnounceSender(
       double target,
       short htl,
@@ -64,6 +95,19 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     this.cb = cb;
   }
 
+  /**
+   * Creates a sender for an origin announcement initiated by this node.
+   *
+   * <p>The noderef to broadcast is taken from our crypto state. When {@code onlyNode} is supplied,
+   * the announce is attempted only to that peer; otherwise the routing chooses successive closer
+   * peers.
+   *
+   * @param target Location key we route toward.
+   * @param om Opennet manager for protocol helpers and crypto.
+   * @param node Local node services and executors.
+   * @param cb Optional callback for progress notifications; may be {@code null}.
+   * @param onlyNode If non-null, restricts sending to this single peer.
+   */
   public AnnounceSender(
       double target, OpennetManager om, Node node, AnnouncementCallback cb, PeerNode onlyNode) {
     source = null;
@@ -82,13 +126,21 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     this.noderefLength = 0;
   }
 
+  /**
+   * Executes the announce routing loop.
+   *
+   * <p>Always performs cleanup and stats reporting on exit, including notifying the tracker and
+   * completing the {@link AnnouncementCallback} when provided. All exceptions are caught and logged
+   * to avoid tearing down the executor thread.
+   */
   @Override
+  @SuppressWarnings("java:S1181")
   public void run() {
     try {
       realRun();
       node.getNodeStats().reportAnnounceForwarded(forwardedRefs, source);
     } catch (Throwable t) {
-      LOG.error("Caught {} announcing {} from {}", t.toString(), Long.valueOf(uid), source, t);
+      LOG.error("Caught {} announcing {} from {}", t, uid, source, t);
     } finally {
       if (source != null) {
         source.completedAnnounce(uid);
@@ -100,413 +152,472 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private void realRun() {
-    boolean hasForwarded = false;
-    if (source != null) {
-      try {
-        source.sendAsync(DMT.createFNPAccepted(uid), null, this);
-      } catch (NotConnectedException e) {
-        return;
-      }
-      if (!transferNoderef()) return;
-    }
-
-    // Now route it.
+    if (!initialHandshakeAndMaybeTransfer()) return;
 
     HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
-    PeerNode next = null;
+    PeerNode last = null;
+    boolean hasForwarded = false;
+
     while (true) {
-      if (LOG.isDebugEnabled()) LOG.debug("htl={}", Short.valueOf(htl));
-      /*
-       * If we haven't routed to any node yet, decrement according to the source.
-       * If we have, decrement according to the node which just failed.
-       * Because:
-       * 1) If we always decrement according to source then we can be at max or min HTL
-       * for a long time while we visit *every* peer node. This is BAD!
-       * 2) The node which just failed can be seen as the requestor for our purposes.
-       */
-      // Decrement at this point so we can DNF immediately on reaching HTL 0.
-      if (onlyNode == null) htl = node.decrementHTL(hasForwarded ? next : source, htl);
+      if (LOG.isDebugEnabled()) LOG.debug("htl={}", htl);
 
-      if (htl == 0) {
-        // No more nodes.
+      updateHtl(hasForwarded, last);
+
+      if (shouldCompleteNow()) {
         complete();
         return;
       }
 
-      if (!node.isOpennetEnabled()) {
-        complete();
-        return;
-      }
-
-      if (onlyNode == null) {
-        // Route it
-        next =
-            node.getPeers()
-                .closerPeer(
-                    source,
-                    nodesRoutedTo,
-                    target,
-                    true,
-                    node.isAdvancedModeEnabled(),
-                    -1,
-                    null,
-                    null,
-                    htl,
-                    0,
-                    source == null,
-                    false,
-                    false);
-      } else {
-        next = onlyNode;
-        if (nodesRoutedTo.contains(onlyNode)) {
-          rnf(onlyNode);
-          return;
-        }
-      }
-
+      PeerNode next = chooseNextNode(nodesRoutedTo);
       if (next == null) {
-        // Backtrack
-        rnf(next);
-        return;
-      }
-      if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
-      if (onlyNode == null)
-        next.reportRoutedTo(target, source == null, false, source, nodesRoutedTo, htl);
-      nodesRoutedTo.add(next);
-
-      long xferUID = sendTo(next);
-      if (xferUID == -1) continue;
-
-      hasForwarded = true;
-
-      Message msg = null;
-
-      while (true) {
-
-        /**
-         * What are we waiting for? FNPAccepted - continue FNPRejectedLoop - go to another node
-         * FNPRejectedOverload - go to another node
-         */
-        MessageFilter mfAccepted =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ACCEPTED_TIMEOUT)
-                .setType(DMT.FNPAccepted);
-        MessageFilter mfRejectedLoop =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ACCEPTED_TIMEOUT)
-                .setType(DMT.FNPRejectedLoop);
-        MessageFilter mfRejectedOverload =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ACCEPTED_TIMEOUT)
-                .setType(DMT.FNPRejectedOverload);
-        MessageFilter mfOpennetDisabled =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ACCEPTED_TIMEOUT)
-                .setType(DMT.FNPOpennetDisabled);
-
-        // The order of these filters is performance critical. The last or-filter is checked first.
-        // So the last filter in the or-"chain" must be the filter which matches most frequently.
-        MessageFilter mf =
-            mfRejectedOverload.or(mfRejectedLoop.or(mfOpennetDisabled.or(mfAccepted)));
-
-        try {
-          msg = node.getUSM().waitFor(mf, this);
-          if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
-        } catch (DisconnectedException e) {
-          LOG.info(
-              "Disconnected from {} while waiting for Accepted on {}", next, Long.valueOf(uid));
-          break;
-        }
-
-        if (msg == null) {
-          if (LOG.isDebugEnabled()) LOG.debug("Timeout waiting for Accepted");
-          // Try next node
-          msg = null;
-          break;
-        }
-
-        if (msg.getSpec() == DMT.FNPRejectedLoop) {
-          if (LOG.isDebugEnabled()) LOG.debug("Rejected loop");
-          // Find another node to route to
-          msg = null;
-          break;
-        }
-
-        if (msg.getSpec() == DMT.FNPRejectedOverload) {
-          if (LOG.isDebugEnabled()) LOG.debug("Rejected: overload");
-          // Give up on this one, try another
-          msg = null;
-          break;
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetDisabled) {
-          if (LOG.isDebugEnabled()) LOG.debug("Opennet disabled");
-          msg = null;
-          break;
-        }
-
-        if (msg.getSpec() != DMT.FNPAccepted) {
-          LOG.error("Unrecognized message: {}", msg);
-          continue;
-        }
-
-        break;
+        if (onlyNode == null) rnf(null);
+        return; // rnf() may already have been sent when appropriate
       }
 
-      if ((msg == null) || (msg.getSpec() != DMT.FNPAccepted)) {
-        // Try another node
-        continue;
-      }
-
-      if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
-
-      if (cb != null) cb.acceptedSomewhere();
-
-      // Send the rest
-
-      try {
-        sendRest(next, xferUID);
-      } catch (NotConnectedException e1) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not connected while sending noderef on {}", next);
-        continue;
-      }
-
-      // Otherwise, must be Accepted
-
-      // So wait...
-
-      while (true) {
-
-        MessageFilter mfAnnounceCompleted =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPOpennetAnnounceCompleted);
-        MessageFilter mfRouteNotFound =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPRouteNotFound);
-        MessageFilter mfRejectedOverload =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPRejectedOverload);
-        MessageFilter mfAnnounceReply =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPOpennetAnnounceReply);
-        MessageFilter mfOpennetDisabled =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPOpennetDisabled);
-        MessageFilter mfNotWanted =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPOpennetAnnounceNodeNotWanted);
-        MessageFilter mfOpennetNoderefRejected =
-            MessageFilter.create()
-                .setSource(next)
-                .setField(DMT.UID, uid)
-                .setTimeout(ANNOUNCE_TIMEOUT)
-                .setType(DMT.FNPOpennetNoderefRejected);
-        MessageFilter mf =
-            mfAnnounceCompleted.or(
-                mfRouteNotFound.or(
-                    mfRejectedOverload.or(
-                        mfAnnounceReply.or(
-                            mfOpennetDisabled.or(mfNotWanted.or(mfOpennetNoderefRejected))))));
-
-        try {
-          msg = node.getUSM().waitFor(mf, this);
-        } catch (DisconnectedException e) {
-          LOG.info("Disconnected from {} while waiting for announcement", next);
-          break;
-        }
-
-        if (LOG.isDebugEnabled()) LOG.debug("second part got {}", msg);
-
-        if (msg == null) {
-          // Fatal timeout, must be terminal (IS_LOCAL==true)
-          timedOut(next);
+      NodeProcessResult result = routeOnce(nodesRoutedTo, next);
+      switch (result) {
+        case TERMINATE:
           return;
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetNoderefRejected) {
-          int reason = msg.getInt(DMT.REJECT_CODE);
-          LOG.info("Announce rejected by {} : {}", next, DMT.getOpennetRejectedCode(reason));
-          msg = null;
+        case CONTINUE_FORWARDED:
+          hasForwarded = true;
+          last = next;
           break;
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetAnnounceCompleted) {
-          // Send the completion on immediately. We don't want to accumulate 30 seconds per hop!
-          complete();
-          mfAnnounceReply.setTimeout(END_TIMEOUT).setTimeoutRelativeToCreation(true);
-          mfNotWanted.setTimeout(END_TIMEOUT).setTimeoutRelativeToCreation(true);
-          mfAnnounceReply.clearOr();
-          mfNotWanted.clearOr();
-          mf = mfAnnounceReply.or(mfNotWanted);
-          while (true) {
-            try {
-              msg = node.getUSM().waitFor(mf, this);
-            } catch (DisconnectedException e) {
-              return;
-            }
-            if (msg == null) return;
-            if (msg.getSpec() == DMT.FNPOpennetAnnounceReply) {
-              validateForwardReply(msg, next);
-              continue;
-            }
-            if (msg.getSpec() == DMT.FNPOpennetAnnounceNodeNotWanted) {
-              if (cb != null) cb.nodeNotWanted();
-              if (source != null) {
-                try {
-                  sendNotWanted();
-                } catch (NotConnectedException e) {
-                  LOG.warn("Lost connection to source (announce completed)");
-                  return;
-                }
-              }
-            }
-          }
-        }
-
-        if (msg.getSpec() == DMT.FNPRouteNotFound) {
-          // Backtrack within available hops
-          short newHtl = msg.getShort(DMT.HTL);
-          if (newHtl < 0) newHtl = 0;
-          if (newHtl < htl) htl = newHtl;
+        case CONTINUE_NO_FORWARD:
+          // Track the attempted peer even if we failed to send/forward.
+          // This keeps HTL decrement attribution consistent with the peer we just tried.
+          last = next;
           break;
-        }
+      }
+      // else: no forward this iteration, keep previous 'last' and hasForwarded
+    }
+  }
 
-        if (msg.getSpec() == DMT.FNPRejectedOverload) {
-          // Give up on this one, try another
+  private enum NodeProcessResult {
+    TERMINATE,
+    CONTINUE_NO_FORWARD,
+    CONTINUE_FORWARDED
+  }
+
+  private NodeProcessResult routeOnce(HashSet<PeerNode> nodesRoutedTo, PeerNode next) {
+    if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
+    if (onlyNode == null)
+      next.reportRoutedTo(target, source == null, false, source, nodesRoutedTo, htl);
+    nodesRoutedTo.add(next);
+
+    long transferUID = sendTo(next);
+    if (transferUID == -1) {
+      return NodeProcessResult.CONTINUE_NO_FORWARD;
+    }
+
+    if (!waitForAccepted(next)) {
+      return NodeProcessResult.CONTINUE_FORWARDED;
+    }
+
+    if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
+    if (cb != null) cb.acceptedSomewhere();
+
+    if (!sendRestSafely(next, transferUID)) {
+      return NodeProcessResult.CONTINUE_FORWARDED;
+    }
+
+    if (waitForFinalResponses(next) == Flow.TERMINATE) {
+      return NodeProcessResult.TERMINATE;
+    }
+
+    return NodeProcessResult.CONTINUE_FORWARDED;
+  }
+
+  private boolean shouldCompleteNow() {
+    return (htl == 0) || !node.isOpennetEnabled();
+  }
+
+  private void updateHtl(boolean hasForwarded, PeerNode last) {
+    if (onlyNode == null) {
+      // Decrement at this point so HTL==0 is detected before routing the next hop.
+      htl = node.decrementHTL(hasForwarded ? last : source, htl);
+    }
+  }
+
+  private PeerNode chooseNextNode(HashSet<PeerNode> routed) {
+    if (onlyNode == null) {
+      return node.getPeers()
+          .closerPeer(
+              source,
+              routed,
+              target,
+              true,
+              node.isAdvancedModeEnabled(),
+              -1,
+              null,
+              null,
+              htl,
+              0,
+              source == null,
+              false,
+              false);
+    }
+    if (routed.contains(onlyNode)) {
+      rnf(onlyNode);
+      return null;
+    }
+    return onlyNode;
+  }
+
+  private boolean initialHandshakeAndMaybeTransfer() {
+    if (source == null) return true;
+    try {
+      source.sendAsync(DMT.createFNPAccepted(uid), null, this);
+    } catch (NotConnectedException e) {
+      return false;
+    }
+    return transferNoderef();
+  }
+
+  private enum Flow {
+    CONTINUE,
+    TERMINATE
+  }
+
+  private boolean waitForAccepted(PeerNode next) {
+    while (true) {
+      MessageFilter mf = buildAcceptedWaitFilter(next);
+      Message msg;
+      try {
+        msg = node.getUSM().waitFor(mf, this);
+        if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
+      } catch (DisconnectedException e) {
+        LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
+        return false;
+      }
+
+      AcceptWaitOutcome outcome = evaluateAcceptedMessage(msg);
+      if (outcome == AcceptWaitOutcome.ACCEPTED) return true;
+      if (outcome == AcceptWaitOutcome.TRY_ANOTHER) return false;
+      // KEEP_WAITING: loop again
+    }
+  }
+
+  private enum AcceptWaitOutcome {
+    ACCEPTED,
+    TRY_ANOTHER,
+    KEEP_WAITING
+  }
+
+  private MessageFilter buildAcceptedWaitFilter(PeerNode next) {
+    MessageFilter mfAccepted =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ACCEPTED_TIMEOUT)
+            .setType(DMT.FNPAccepted);
+    // Build alternative message filters in priority order; all constrain the same UID.
+    MessageFilter mfRejectedLoop =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ACCEPTED_TIMEOUT)
+            .setType(DMT.FNPRejectedLoop);
+    MessageFilter mfRejectedOverload =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ACCEPTED_TIMEOUT)
+            .setType(DMT.FNPRejectedOverload);
+    MessageFilter mfOpennetDisabled =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ACCEPTED_TIMEOUT)
+            .setType(DMT.FNPOpennetDisabled);
+    return mfRejectedOverload.or(mfRejectedLoop.or(mfOpennetDisabled.or(mfAccepted)));
+  }
+
+  private AcceptWaitOutcome evaluateAcceptedMessage(Message msg) {
+    if (msg == null) {
+      if (LOG.isDebugEnabled()) LOG.debug("Timeout waiting for Accepted");
+      return AcceptWaitOutcome.TRY_ANOTHER;
+    }
+    if (msg.getSpec() == DMT.FNPRejectedLoop) {
+      if (LOG.isDebugEnabled()) LOG.debug("Rejected loop");
+      return AcceptWaitOutcome.TRY_ANOTHER;
+    } else if (msg.getSpec() == DMT.FNPRejectedOverload) {
+      if (LOG.isDebugEnabled()) LOG.debug("Rejected: overload");
+      return AcceptWaitOutcome.TRY_ANOTHER;
+    } else if (msg.getSpec() == DMT.FNPOpennetDisabled) {
+      if (LOG.isDebugEnabled()) LOG.debug("Opennet disabled");
+      return AcceptWaitOutcome.TRY_ANOTHER;
+    } else if (msg.getSpec() == DMT.FNPAccepted) {
+      return AcceptWaitOutcome.ACCEPTED;
+    }
+    LOG.error("Unrecognized message: {}", msg);
+    return AcceptWaitOutcome.KEEP_WAITING;
+  }
+
+  private boolean sendRestSafely(PeerNode next, long xferUID) {
+    try {
+      sendRest(next, xferUID);
+      return true;
+    } catch (NotConnectedException e1) {
+      if (LOG.isDebugEnabled()) LOG.debug("Not connected while sending noderef on {}", next);
+      return false;
+    }
+  }
+
+  private Flow waitForFinalResponses(PeerNode next) {
+    while (true) {
+      Message msg;
+      MessageFilter mf = buildFinalWaitFilter(next);
+      try {
+        msg = node.getUSM().waitFor(mf, this);
+      } catch (DisconnectedException e) {
+        LOG.info("Disconnected from {} while waiting for announcement", next);
+        return Flow.CONTINUE;
+      }
+      if (LOG.isDebugEnabled()) LOG.debug("second part got {}", msg);
+
+      FinalOutcome outcome = evaluateFinalMessage(msg, next);
+      switch (outcome) {
+        case TERMINATE:
+          return Flow.TERMINATE;
+        case CONTINUE:
+          // Exit the final-response wait loop and try another peer.
+          return Flow.CONTINUE;
+        case COMPLETED:
+          handleCompletedSequence(next);
+          return Flow.TERMINATE;
+        case KEEP_WAITING:
+          // Keep waiting on this peer for more replies or completion.
           break;
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetDisabled) {
-          LOG.debug("Opennet disabled");
-          msg = null;
-          break;
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetAnnounceReply) {
-          validateForwardReply(msg, next);
-          continue; // There may be more
-        }
-
-        if (msg.getSpec() == DMT.FNPOpennetAnnounceNodeNotWanted) {
-          if (cb != null) cb.nodeNotWanted();
-          if (source != null) {
-            try {
-              sendNotWanted();
-            } catch (NotConnectedException e) {
-              LOG.warn("Lost connection to source (announce not wanted)");
-              return;
-            }
-          }
-          continue; // This message is propagated, they will send a Completed or RNF
-        }
-
-        LOG.error("Unexpected message: {}", msg);
       }
     }
   }
 
+  private enum FinalOutcome {
+    TERMINATE,
+    CONTINUE,
+    COMPLETED,
+    KEEP_WAITING
+  }
+
+  private MessageFilter buildFinalWaitFilter(PeerNode next) {
+    MessageFilter mfAnnounceCompleted =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPOpennetAnnounceCompleted);
+    MessageFilter mfRouteNotFound =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPRouteNotFound);
+    MessageFilter mfRejectedOverload =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPRejectedOverload);
+    MessageFilter mfAnnounceReply =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPOpennetAnnounceReply);
+    MessageFilter mfOpennetDisabled =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPOpennetDisabled);
+    MessageFilter mfNotWanted =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPOpennetAnnounceNodeNotWanted);
+    MessageFilter mfOpennetNoderefRejected =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(ANNOUNCE_TIMEOUT)
+            .setType(DMT.FNPOpennetNoderefRejected);
+    return mfAnnounceCompleted.or(
+        mfRouteNotFound.or(
+            mfRejectedOverload.or(
+                mfAnnounceReply.or(
+                    mfOpennetDisabled.or(mfNotWanted.or(mfOpennetNoderefRejected))))));
+  }
+
+  private FinalOutcome evaluateFinalMessage(Message msg, PeerNode next) {
+    if (msg == null) {
+      timedOut(next);
+      return FinalOutcome.TERMINATE;
+    }
+
+    MessageType spec = msg.getSpec();
+    java.util.function.BiFunction<Message, PeerNode, FinalOutcome> handler = handlerFor(spec);
+    if (handler != null) {
+      return handler.apply(msg, next);
+    }
+
+    LOG.error("Unexpected message: {}", msg);
+    return FinalOutcome.KEEP_WAITING;
+  }
+
+  private java.util.function.BiFunction<Message, PeerNode, FinalOutcome> handlerFor(
+      MessageType spec) {
+    if (spec == DMT.FNPOpennetNoderefRejected) return this::handleNoderefRejected;
+    if (spec == DMT.FNPOpennetAnnounceCompleted) return (m, n) -> FinalOutcome.COMPLETED;
+    if (spec == DMT.FNPRouteNotFound) return this::handleRouteNotFound;
+    if (spec == DMT.FNPRejectedOverload) return this::handleRejectedOverload;
+    if (spec == DMT.FNPOpennetDisabled) return this::handleOpennetDisabled;
+    if (spec == DMT.FNPOpennetAnnounceReply) return this::handleAnnounceReply;
+    if (spec == DMT.FNPOpennetAnnounceNodeNotWanted) return (m, n) -> handleNodeNotWanted();
+    return null;
+  }
+
+  private FinalOutcome handleNoderefRejected(Message msg, PeerNode next) {
+    int reason = msg.getInt(DMT.REJECT_CODE);
+    LOG.atInfo()
+        .addArgument(next)
+        .addArgument(() -> DMT.getOpennetRejectedCode(reason))
+        .log("Announce rejected by {} : {}");
+    return FinalOutcome.CONTINUE;
+  }
+
+  private FinalOutcome handleRouteNotFound(Message msg, PeerNode next) {
+    backtrackWithinHops(msg);
+    return FinalOutcome.CONTINUE;
+  }
+
+  private FinalOutcome handleRejectedOverload(Message msg, PeerNode next) {
+    if (onlyNode != null) {
+      rnf(next);
+      return FinalOutcome.TERMINATE;
+    }
+    return FinalOutcome.CONTINUE;
+  }
+
+  private FinalOutcome handleOpennetDisabled(Message msg, PeerNode next) {
+    LOG.debug("Opennet disabled");
+    return FinalOutcome.CONTINUE;
+  }
+
+  private FinalOutcome handleAnnounceReply(Message msg, PeerNode next) {
+    validateForwardReply(msg, next);
+    // Keep waiting on this peer for more replies or completion
+    return FinalOutcome.KEEP_WAITING;
+  }
+
+  private FinalOutcome handleNodeNotWanted() {
+    if (cb != null) cb.nodeNotWanted();
+    if (source != null) {
+      try {
+        sendNotWanted();
+      } catch (NotConnectedException e) {
+        LOG.warn("Lost connection to source (announce not wanted)");
+        return FinalOutcome.TERMINATE;
+      }
+    }
+    // Keep waiting for the downstream terminal message (Completed/RNF).
+    return FinalOutcome.KEEP_WAITING;
+  }
+
+  private void backtrackWithinHops(Message msg) {
+    short newHtl = msg.getShort(DMT.HTL);
+    if (newHtl < 0) newHtl = 0;
+    if (newHtl < htl) htl = newHtl;
+  }
+
+  private void handleCompletedSequence(PeerNode next) {
+    complete();
+    MessageFilter followup = buildCompletionFollowupFilter(next);
+    waitForCompletionFollowups(next, followup);
+  }
+
+  private MessageFilter buildCompletionFollowupFilter(PeerNode next) {
+    MessageFilter mfAnnounceReply =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(END_TIMEOUT)
+            .setTimeoutRelativeToCreation(true)
+            .setType(DMT.FNPOpennetAnnounceReply);
+    MessageFilter mfNotWanted =
+        MessageFilter.create()
+            .setSource(next)
+            .setField(DMT.UID, uid)
+            .setTimeout(END_TIMEOUT)
+            .setTimeoutRelativeToCreation(true)
+            .setType(DMT.FNPOpennetAnnounceNodeNotWanted);
+    mfAnnounceReply.clearOr();
+    mfNotWanted.clearOr();
+    return mfAnnounceReply.or(mfNotWanted);
+  }
+
+  private void waitForCompletionFollowups(PeerNode next, MessageFilter mf) {
+    while (true) {
+      Message msg;
+      try {
+        msg = node.getUSM().waitFor(mf, this);
+      } catch (DisconnectedException e) {
+        return;
+      }
+      if (!processCompletionFollowup(msg, next)) return;
+    }
+  }
+
+  private boolean processCompletionFollowup(Message msg, PeerNode next) {
+    if (msg == null) return false;
+    if (msg.getSpec() == DMT.FNPOpennetAnnounceReply) {
+      validateForwardReply(msg, next);
+      return true; // keep waiting; there may be more
+    }
+    if (msg.getSpec() == DMT.FNPOpennetAnnounceNodeNotWanted) {
+      if (cb != null) cb.nodeNotWanted();
+      if (source != null) {
+        try {
+          sendNotWanted();
+        } catch (NotConnectedException e) {
+          LOG.warn("Lost connection to source (announce completed)");
+          return false;
+        }
+      }
+      return true;
+    }
+    // Unexpected message; keep waiting.
+    return true;
+  }
+
   private int waitingForTransfers = 0;
 
+  // Tracks the number of background reply-transfer tasks in flight. The sender blocks on this
+  // counter before emitting terminal messages so upstream peers do not miss late AnnouncementReply
+  // relays.
+
   /**
-   * Validate a reply, and relay it back to the source.
+   * Validates an incoming {@code AnnouncementReply} and relays it upstream or adds the node.
    *
-   * @param msg2 The AnnouncementReply message.
-   * @return True unless we lost the connection to our request source.
+   * <p>The reply body (noderef) is received asynchronously on a background task. While that task
+   * runs, {@code waitingForTransfers} is incremented to prevent premature completion.
    */
+  @SuppressWarnings("java:S1181")
   private void validateForwardReply(Message msg, final PeerNode next) {
-    final long xferUID = msg.getLong(DMT.TRANSFER_UID);
-    final int noderefLength = msg.getInt(DMT.NODEREF_LENGTH);
-    final int paddedLength = msg.getInt(DMT.PADDED_LENGTH);
+    final long replyTransferUID = msg.getLong(DMT.TRANSFER_UID);
+    final int replyNoderefLength = msg.getInt(DMT.NODEREF_LENGTH);
+    final int replyPaddedLength = msg.getInt(DMT.PADDED_LENGTH);
     synchronized (this) {
       waitingForTransfers++;
     }
     Runnable r =
-        new Runnable() {
-
-          @Override
-          public void run() {
-            try {
-              byte[] noderefBuf =
-                  OpennetManager.innerWaitForOpennetNoderef(
-                      xferUID,
-                      paddedLength,
-                      noderefLength,
-                      next,
-                      false,
-                      uid,
-                      true,
-                      AnnounceSender.this,
-                      node);
-              if (noderefBuf == null) {
-                return; // Don't relay
-              }
-              SimpleFieldSet fs =
-                  OpennetManager.validateNoderef(noderefBuf, 0, noderefLength, next, false);
-              if (fs == null) {
-                if (cb != null) cb.bogusNoderef("invalid noderef");
-                return; // Don't relay
-              }
-              if (source != null) {
-                // Now relay it
-                try {
-                  forwardedRefs++;
-                  om.sendAnnouncementReply(uid, source, noderefBuf, AnnounceSender.this);
-                  if (cb != null) {
-                    cb.relayedNoderef();
-                  }
-                } catch (NotConnectedException e) {
-                  // Hmmm...!
-                }
-              } else {
-                // Add it
-                try {
-                  OpennetPeerNode pn = node.addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
-                  if (cb != null) {
-                    if (pn != null) cb.addedNode(pn);
-                    else cb.nodeNotAdded();
-                  }
-                } catch (FSParseException e) {
-                  LOG.info("Failed to parse reply: {}", e.toString(), e);
-                  if (cb != null) cb.bogusNoderef("parse failed: " + e);
-                } catch (PeerParseException e) {
-                  LOG.info("Failed to parse reply: {}", e.toString(), e);
-                  if (cb != null) cb.bogusNoderef("parse failed: " + e);
-                } catch (ReferenceSignatureVerificationException e) {
-                  LOG.info("Failed to parse reply: {}", e.toString(), e);
-                  if (cb != null) cb.bogusNoderef("parse failed: " + e);
-                }
-              }
-            } finally {
-              synchronized (AnnounceSender.this) {
-                waitingForTransfers--;
-                AnnounceSender.this.notifyAll();
-              }
+        () -> {
+          try {
+            processAnnouncementReply(replyTransferUID, replyPaddedLength, replyNoderefLength, next);
+          } finally {
+            synchronized (AnnounceSender.this) {
+              waitingForTransfers--;
+              AnnounceSender.this.notifyAll();
             }
           }
         };
@@ -519,11 +630,54 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     }
   }
 
+  private void processAnnouncementReply(
+      long transferUID, int paddedLen, int length, PeerNode from) {
+    byte[] buf =
+        OpennetManager.innerWaitForOpennetNoderef(
+            transferUID, paddedLen, length, from, false, uid, true, this, node);
+    if (buf == null) {
+      return; // Don't relay
+    }
+    SimpleFieldSet fs = OpennetManager.validateNoderef(buf, 0, length, from, false);
+    if (fs == null) {
+      if (cb != null) cb.bogusNoderef("invalid noderef");
+      return; // Don't relay
+    }
+    if (source != null) {
+      relayToSource(buf);
+      return;
+    }
+    addNodeFromFs(fs);
+  }
+
+  private void relayToSource(byte[] buf) {
+    try {
+      forwardedRefs++;
+      om.sendAnnouncementReply(uid, source, buf, this);
+      if (cb != null) cb.relayedNoderef();
+    } catch (NotConnectedException e) {
+      // ignore
+    }
+  }
+
+  private void addNodeFromFs(SimpleFieldSet fs) {
+    try {
+      OpennetPeerNode pn = node.addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
+      if (cb != null) {
+        if (pn != null) cb.addedNode(pn);
+        else cb.nodeNotAdded();
+      }
+    } catch (FSParseException | ReferenceSignatureVerificationException | PeerParseException e) {
+      LOG.info(LOG_FAILED_PARSE_REPLY, e, e);
+      if (cb != null) cb.bogusNoderef(PARSE_FAILED_PREFIX + e);
+    }
+  }
+
   /**
-   * Send an AnnouncementRequest.
+   * Sends the first part of an announcement request to {@code next}.
    *
-   * @param next The node to send the announcement to.
-   * @return True if the announcement was successfully sent.
+   * @param next Destination peer.
+   * @return Transfer UID used for the noderef payload, or {@code -1} if disconnected.
    */
   private long sendTo(PeerNode next) {
     try {
@@ -535,11 +689,11 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   /**
-   * Send an AnnouncementRequest.
+   * Sends the remaining announcement payload (the noderef) after an Accepted.
    *
-   * @param next The node to send the announcement to.
-   * @return True if the announcement was successfully sent.
-   * @throws NotConnectedException
+   * @param next Destination peer.
+   * @param xferUID Transfer UID obtained from {@link #sendTo(PeerNode)}.
+   * @throws NotConnectedException if {@code next} disconnects before the payload is sent.
    */
   private void sendRest(PeerNode next, long xferUID) throws NotConnectedException {
     om.finishSentAnnouncementRequest(next, noderefBuf, this, xferUID);
@@ -562,7 +716,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       try {
         wait();
       } catch (InterruptedException e) {
-        // Ignore.
+        Thread.currentThread().interrupt();
       }
     }
   }
@@ -595,9 +749,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     }
   }
 
-  /**
-   * @return True unless the noderef is bogus.
-   */
+  /** Returns {@code true} when the upstream noderef was received and validated. */
   private boolean transferNoderef() {
     noderefBuf =
         OpennetManager.innerWaitForOpennetNoderef(
@@ -620,16 +772,8 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         sendNotWanted();
         // Okay, just route it.
       }
-    } catch (FSParseException e) {
-      LOG.warn("Rejecting noderef: {}", e.toString(), e);
-      OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
-      return false;
-    } catch (PeerParseException e) {
-      LOG.warn("Rejecting noderef: {}", e.toString(), e);
-      OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
-      return false;
-    } catch (ReferenceSignatureVerificationException e) {
-      LOG.warn("Rejecting noderef: {}", e.toString(), e);
+    } catch (FSParseException | ReferenceSignatureVerificationException | PeerParseException e) {
+      LOG.warn(LOG_REJECTING_NODEREF, e, e);
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
     } catch (NotConnectedException e) {
@@ -648,22 +792,30 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     om.sendAnnouncementReply(uid, next, ref, this);
   }
 
+  /** Reports sent bytes to the announce byte counter. */
   @Override
   public void sentBytes(int x) {
     node.getNodeStats().announceByteCounter.sentBytes(x);
   }
 
+  /** Reports received bytes to the announce byte counter. */
   @Override
   public void receivedBytes(int x) {
     node.getNodeStats().announceByteCounter.receivedBytes(x);
   }
 
+  /** Reports payload bytes; not counted toward the total byte counter. */
   @Override
   public void sentPayload(int x) {
     node.getNodeStats().announceByteCounter.sentPayload(x);
     // Doesn't count.
   }
 
+  /**
+   * Returns the thread priority used when scheduling this runnable.
+   *
+   * @return {@link NativeThread.PriorityLevel#HIGH_PRIORITY} numeric value.
+   */
   @Override
   public int getPriority() {
     return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
