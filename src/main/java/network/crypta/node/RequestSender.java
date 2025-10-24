@@ -64,8 +64,8 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Side effects and external interactions: updates the {@link FailureTable}, accumulates
- * statistics via {@link network.crypta.node.stats.NodeStats}, writes to client cache and/or
- * datastore when allowed, and may forward {@code RejectedOverload} to the originator.
+ * statistics via {@link network.crypta.node.NodeStats}, writes to client cache and/or datastore
+ * when allowed, and may forward {@code RejectedOverload} to the originator.
  *
  * @author amphibian
  */
@@ -300,7 +300,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /**
    * Route requests. Method is responsible for its own completion, e.g. finish or chaining to
    * MainLoopCallback, i.e. the caller isn't going to do more stuff relevant to the request
-   * afterwards.
+   * afterward.
    */
   protected void routeRequests() {
 
@@ -1110,11 +1110,11 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   /**
    * Tries offers. If we succeed or fatally fail, end the request. If an offer is being transferred
-   * asynchronously, set the receivingAsync flag and return. Otherwise we have run out of offers
+   * asynchronously, set the receivingAsync flag and return. Otherwise, we have run out of offers
    * without succeeding, so chain to startRequests().
    *
    * @param pn If this and status are non-null, we have just tried an offer, and these two contain
-   *     its status. This should be handled before we try to do any more.
+   *     its status. This should be handled before we try to do anymore.
    */
   private void tryOffers(final OfferList offers, PeerNode pn, OFFER_STATUS status) {
     while (true) {
@@ -1802,7 +1802,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /**
    * Complete the request. Note that if the request was forked (which unfortunately is possible
    * because of timeouts awaiting Accepted/Rejected), it is *possible* that there are other forks
-   * still running; UIDTag will wait for them. Hence a fork that fails should NOT call this method,
+   * still running; UIDTag will wait for them. Hence, a fork that fails should NOT call this method,
    * however a fork that succeeds SHOULD call it.
    *
    * @param code The completion code.
@@ -2256,7 +2256,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   public void addListener(RequestSenderListener l) {
     // Only call here if we've already called for the other listeners.
-    // Therefore the callbacks will only be called once.
+    // Therefore, the callbacks will only be called once.
     boolean reject;
     boolean transfer;
     boolean sentFinished;
@@ -2264,7 +2264,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     int resultStatus;
     // LOCKING: We add the new listener. We check each notification.
     // If it has already been sent when we add the new listener, we need to send it here.
-    // Otherwise we don't, it will be called by the thread processing that event, even if it's
+    // Otherwise, we don't, it will be called by the thread processing that event, even if it's
     // already happened.
     synchronized (listeners) {
       listeners.add(l);
@@ -2389,7 +2389,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
          * The data receive has failed. A block timed out. The PRB will be cancelled as soon as we
          * return, and that will cause the source node to consider the request finished. Meantime we
          * don't know whether the upstream node has finished or not. So we reassign the request to
-         * ourself, and then wait for the second timeout.
+         * ourselves, and then wait for the second timeout.
          */
         @Override
         public void onFirstTimeout() {
@@ -2416,7 +2416,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   // impact
   // the decision; this may risk over-disclosure. Given existing signals, it is probably acceptable.
   // When starting the request locally we still want to finish it even if incoming RequestHandler's
-  // are coalesced with it and they fail onward transfers.
+  // are coalesced with it, and they fail onward transfers.
 
   private boolean transferCoalesced;
 
