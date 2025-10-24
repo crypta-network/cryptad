@@ -4957,7 +4957,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             this,
             prb,
             fromStore,
-            canWriteClientCache,
             forkOnCacheable,
             preferInsert,
             ignoreLowBackoff,
