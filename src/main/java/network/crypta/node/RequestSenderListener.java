@@ -1,26 +1,53 @@
 package network.crypta.node;
 
-/** All these methods should return quickly! */
+/**
+ * Listener for asynchronous events emitted by {@link RequestSender} during request processing.
+ *
+ * <p>All callbacks must return quickly. The caller may invoke them on I/O or scheduler threads;
+ * offload any blocking or lengthy work to your own threads or an executor to avoid stalling
+ * networking and scheduling.
+ */
 public interface RequestSenderListener {
-  /** Should return quickly, allocate a thread if it needs to block etc */
+  /**
+   * Notified when a reject-overload condition is received for the request.
+   *
+   * <p>Return immediately; perform any retry or backoff logic outside of this callback.
+   */
   void onReceivedRejectOverload();
 
-  /** Should return quickly, allocate a thread if it needs to block etc */
+  /**
+   * Notified when a CHK (content-hash key) transfer for the request begins.
+   *
+   * <p>Use this to initialize progress tracking or UI hooks. Must return quickly.
+   */
   void onCHKTransferBegins();
 
-  /** Should return quickly, allocate a thread if it needs to block etc */
+  /**
+   * Notified when the sender finishes processing the request (success, failure, or cancellation).
+   *
+   * @param status implementation-defined completion status code; see {@link RequestSender}.
+   * @param fromOfferedKey indicates how completion was achieved as defined by {@link
+   *     RequestSender}. The specific meaning of an "offered key" is implementation-dependent.
+   * @param rs the sender instance associated with this callback.
+   */
   void onRequestSenderFinished(int status, boolean fromOfferedKey, RequestSender rs);
 
   /**
-   * Not called by RequestSender, but called if localOnly is true and the data is not in the store.
+   * Called when a request is not started because it was restricted to a local-only lookup and the
+   * data was not present in the store.
    *
-   * @param internalError If true, something broke severely.
+   * <p>Not invoked by {@link RequestSender}.
+   *
+   * @param internalError {@code true} if the condition is due to an internal error rather than the
+   *     absence of data.
    */
   void onNotStarted(boolean internalError);
 
   /**
-   * Not called by RequestSender, but called if the data was in the store. tripPendingKey should
-   * already have been called.
+   * Called when the requested data is found locally and no remote request is started.
+   *
+   * <p>Not invoked by {@link RequestSender}. The pending-key trip (if applicable) has already
+   * occurred before this callback.
    */
   void onDataFoundLocally();
 }

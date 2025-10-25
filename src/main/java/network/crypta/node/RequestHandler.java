@@ -861,7 +861,7 @@ public class RequestHandler
       sendTerminal(DMT.createFNPOpennetCompletedTimeout(uid));
       return;
     }
-    if (noderef == null) {
+    if (noderef == null || noderef.length == 0) {
       if (LOG.isDebugEnabled()) LOG.debug("Not relaying as no noderef on " + this);
       finishOpennetNoRelayInner(om);
       return;
@@ -959,7 +959,7 @@ public class RequestHandler
   }
 
   private void finishOpennetNoRelayInner(OpennetManager om, byte[] noderef) {
-    if (noderef == null) return;
+    if (noderef == null || noderef.length == 0) return;
 
     SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, 0, noderef.length, source, false);
 
