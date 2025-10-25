@@ -139,6 +139,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       tag.handlerThrew(t);
     } finally {
       if (LOG.isDebugEnabled()) LOG.debug("Exiting CHKInsertHandler.run() for {}", uid);
+      // Clear any interrupt left set by DataReceiveCompletion to avoid leaking
+      // interrupt status back into the executor thread pool.
+      // Thread.interrupted() returns the current status and clears it.
+      Thread.interrupted();
       tag.unlockHandler();
     }
   }
