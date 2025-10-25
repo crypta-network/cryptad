@@ -1,15 +1,15 @@
 [versions]
-kotlin = "2.2.20"
+kotlin = "2.2.21"
 coroutines = "1.10.2"
 bcprov = "2.73.9"
-jna = "5.17.0"
+jna = "5.18.1"
 commonsCompress = "1.28.0"
 commonsLang = "3.19.0"
 pebble = "3.2.4"
 unbescape = "1.1.6.RELEASE"
 slf4j = "2.0.17"
-logback = "1.5.18"
-mockito = "5.19.0"
+logback = "1.5.20"
+mockito = "5.20.0"
 hamcrest = "3.0"
 objenesis = "3.4"
 picocli = "4.7.7"
@@ -19,10 +19,10 @@ jsystemTheme = "ea2f8582ea"
 dbusJava = "5.1.1"
 junitJupiter = "6.0.0"
 junitPlatform = "6.0.0"
-sonarqube = "6.3.1.5724"
-remalSonarlint = "7.0.0-rc-2"
+sonarqube = "7.0.0.6105"
+remalSonarlint = "7.0.0-rc-4"
 #noinspection UnusedVersionCatalogEntry
-jacoco = "0.8.13"
+jacoco = "0.8.14"
 
 [libraries]
 bcprov = { group = "org.bouncycastle", name = "bcprov-lts8on", version.ref = "bcprov" }
