@@ -537,7 +537,7 @@ public class FailureTable {
   }
 
   private void removeEntryIfEmpty(FailureTableEntry entry, Key key, long now) {
-    if (entry.isEmpty(now)) {
+    if (entry.isEmpty()) {
       synchronized (this) {
         entriesByKey.removeKey(key);
       }
@@ -896,7 +896,7 @@ public class FailureTable {
       entry = entriesByKey.get(key);
       if (entry == null) return false; // Nobody cares
     }
-    return entry.othersWant(apartFrom);
+    return entry.othersWant();
   }
 
   /**
