@@ -12,14 +12,32 @@ import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Periodically persists throttle state provided by a {@link Persistable} to disk.
+ *
+ * <p>This helper writes the current throttling configuration to a temporary file and then moves it
+ * to the target path. It schedules itself at a fixed interval and also registers a shutdown hook to
+ * persist one last snapshot on JVM exit. Errors during persistence are logged; the next run is
+ * still queued.
+ *
+ * <p>Threading: {@link #start()} is idempotent and synchronized on {@code this}. The periodic
+ * execution is driven by a {@link Ticker} instance, which calls {@link #run()} on the daemon thread
+ * it manages. Callers must initialize file paths before starting.
+ */
 class Persister implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(Persister.class);
 
-  static {
-  }
-
+  /** Interval between scheduled persistence attempts (milliseconds). */
   static final long PERIOD = MINUTES.toMillis(15);
 
+  /**
+   * Creates a persister with explicit file destinations.
+   *
+   * @param t source that can serialize throttle state to a {@link SimpleFieldSet}
+   * @param persistTemp temporary file written first; moved to the target on success
+   * @param persistTarget destination file that should replace any previous snapshot
+   * @param ps scheduler used to queue periodic executions
+   */
   Persister(Persistable t, File persistTemp, File persistTarget, Ticker ps) {
     this.persistable = t;
     this.persistTemp = persistTemp;
@@ -27,37 +45,50 @@ class Persister implements Runnable {
     this.ps = ps;
   }
 
-  // Subclass must set the others later
+  // Subclasses must initialize persistTemp and persistTarget before start().
+  /**
+   * Protected ctor for subclasses that provide file locations later.
+   *
+   * <p>Implementations must assign {@link #persistTemp} and {@link #persistTarget} before calling
+   * {@link #start()}.
+   *
+   * @param t source that can serialize throttle state
+   * @param ps scheduler used to queue periodic executions
+   */
   protected Persister(Persistable t, Ticker ps) {
     this.persistable = t;
     this.ps = ps;
   }
 
+  /** Source of throttle state to persist. */
   final Persistable persistable;
+
   private final Ticker ps;
+  // Paths are package-private so subclasses in this package can set them before start().
   File persistTemp;
   File persistTarget;
   private boolean started;
 
-  void interrupt() {
-    synchronized (this) {
-      notifyAll();
-    }
-  }
-
+  /**
+   * Performs one persistence cycle and re-schedules the next run.
+   *
+   * <p>All throwables are caught and logged to keep the scheduling loop alive.
+   *
+   * @see #persistThrottle()
+   */
   @Override
+  @SuppressWarnings("java:S1181")
   public void run() {
     try {
       persistThrottle();
-    } catch (Throwable t) {
-      LOG.error("Caught in ThrottlePersister: " + t, t);
-      System.err.println("Caught in ThrottlePersister: " + t);
-      t.printStackTrace();
-      System.err.println("Will restart ThrottlePersister...");
+    } catch (Throwable e) {
+      LOG.error("Caught in ThrottlePersister: {}", e, e);
+      LOG.warn("Will restart ThrottlePersister...");
     }
     ps.queueTimedJob(this, PERIOD);
   }
 
+  // Write to a temp file first, then move to the target to minimize partial writes being observed.
   private void persistThrottle() {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Trying to persist throttles...");
@@ -66,17 +97,30 @@ class Persister implements Runnable {
     try (FileOutputStream fos = new FileOutputStream(persistTemp)) {
       fs.writeToBigBuffer(fos);
     } catch (FileNotFoundException e) {
-      LOG.error("Could not store throttle data to disk: " + e, e);
+      LOG.error("Could not store throttle data to disk: {}", e, e);
     } catch (IOException e) {
-      persistTemp.delete();
+      try {
+        java.nio.file.Files.delete(persistTemp.toPath());
+      } catch (IOException ex) {
+        LOG.debug("Failed to delete temp file after write failure: {}", persistTemp, ex);
+      }
     }
     try {
       FileUtil.moveTo(persistTemp, persistTarget);
     } catch (Exception e) {
-      LOG.error("Could not move temp file to target: " + e, e);
+      LOG.error("Could not move temp file to target: {}", e, e);
     }
   }
 
+  /**
+   * Loads the last successfully persisted throttle state from disk.
+   *
+   * <p>Attempts to read {@link #persistTarget} first and falls back to {@link #persistTemp} when
+   * the target is missing or unreadable. Failures are logged. When no snapshot exists, this method
+   * returns {@code null}.
+   *
+   * @return a parsed {@link SimpleFieldSet}, or {@code null} if none is available
+   */
   public SimpleFieldSet read() {
     SimpleFieldSet throttleFS = null;
     try {
@@ -85,24 +129,27 @@ class Persister implements Runnable {
       try {
         throttleFS = SimpleFieldSet.readFrom(persistTemp, false, true);
       } catch (FileNotFoundException e1) {
-        // Ignore
+        // Expected when no snapshot has been written yet.
       } catch (IOException e1) {
         if (persistTarget.length() > 0 || persistTemp.length() > 0)
           LOG.error(
-              "Could not read "
-                  + persistTarget
-                  + " ("
-                  + e
-                  + ") and could not read "
-                  + persistTemp
-                  + " either ("
-                  + e1
-                  + ')');
+              "Could not read {} ({}) and could not read {} either ({})",
+              persistTarget,
+              e,
+              persistTemp,
+              e1,
+              e1);
       }
     }
     return throttleFS;
   }
 
+  /**
+   * Starts periodic persistence and registers a shutdown write.
+   *
+   * <p>Subsequent calls are ignored after the first successful start. The first persistence happens
+   * immediately in the calling thread; later runs are scheduled via the supplied {@link Ticker}.
+   */
   public void start() {
     synchronized (this) {
       if (started) {
@@ -113,13 +160,11 @@ class Persister implements Runnable {
     }
     SemiOrderedShutdownHook.get()
         .addEarlyJob(
-            new Thread() {
-
-              public void run() {
-                System.out.println("Writing " + persistTarget + " on shutdown");
-                persistThrottle();
-              }
-            });
+            new Thread(
+                () -> {
+                  LOG.info("Writing {} on shutdown", persistTarget);
+                  persistThrottle();
+                }));
     run();
   }
 }
