@@ -175,7 +175,7 @@ public class NodeStarter implements WrapperListener {
       plug.start();
     }
 
-    DNSRequester.DISABLE = noDNS;
+    DNSRequester.disable = noDNS;
 
     return random;
   }
