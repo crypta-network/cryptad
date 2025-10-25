@@ -3,7 +3,7 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -122,8 +122,8 @@ class DNSRequesterTest {
     runRealRunOnceAndInterrupt(requester);
 
     // Assert: no DNS update attempted
-    verify(p1, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
-    verify(p2, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
+    verify(p1, never()).maybeUpdateHandshakeIPs(anyBoolean());
+    verify(p2, never()).maybeUpdateHandshakeIPs(anyBoolean());
   }
 
   @Test
@@ -165,8 +165,8 @@ class DNSRequesterTest {
 
     // Assert
     verify(p1).maybeUpdateHandshakeIPs(false);
-    verify(p0, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
-    verify(p2, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
+    verify(p0, never()).maybeUpdateHandshakeIPs(anyBoolean());
+    verify(p2, never()).maybeUpdateHandshakeIPs(anyBoolean());
   }
 
   @Test
@@ -278,8 +278,8 @@ class DNSRequesterTest {
     t.join(2000);
 
     verify(unconnectedA).maybeUpdateHandshakeIPs(false);
-    verify(unconnectedB, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
-    verify(connected, never()).maybeUpdateHandshakeIPs(any(Boolean.class));
+    verify(unconnectedB, never()).maybeUpdateHandshakeIPs(anyBoolean());
+    verify(connected, never()).maybeUpdateHandshakeIPs(anyBoolean());
   }
 
   // Helpers
