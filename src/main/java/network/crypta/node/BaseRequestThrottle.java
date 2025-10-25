@@ -7,23 +7,14 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * Defines the minimal contract for request throttling.
  *
  * <p>Implementations expose a current inter-request delay and typically use the provided constants
- * as conventional bounds and defaults. The delay represents the time a caller should wait between
- * scheduling or issuing consecutive requests.
+ * as conventional bounds. The delay represents the time a caller should wait between scheduling or
+ * issuing consecutive requests.
  *
  * <p>Unless otherwise specified by an implementation, values are expressed in milliseconds. The
  * method may be called frequently and from multiple threads; implementations commonly make it
  * thread-safe and may vary the returned value over time in response to load or policy.
  */
 public interface BaseRequestThrottle {
-
-  /**
-   * Default inter-request delay in milliseconds.
-   *
-   * <p>Intended as a reasonable initial value for throttling policies before any adaptive logic
-   * takes effect. Implementations may choose another default, but many use this constant as a
-   * starting point.
-   */
-  long DEFAULT_DELAY = MILLISECONDS.toMillis(200);
 
   /**
    * Maximum recommended inter-request delay in milliseconds.
