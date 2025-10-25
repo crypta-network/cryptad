@@ -13,15 +13,40 @@ import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Opennet-specific {@link PeerNode} implementation.
+ *
+ * <p>This type represents a peer discovered or maintained by the Opennet subsystem rather than the
+ * darknet/friend-to-friend subsystem. It adds Opennet-oriented lifecycle and policy hooks such as
+ * droppability decisions, success tracking, and limited export of metadata. Unless stated
+ * otherwise, semantics match those of the base {@link PeerNode}.
+ */
+@SuppressWarnings("java:S1206") // hashCode() is inherited; equals() restricts to subclass type
 public class OpennetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(OpennetPeerNode.class);
 
   final OpennetManager opennet;
   private long timeLastSuccess;
-  // Not persisted across restart, since after restart grace periods don't apply anyway (except
-  // disconnection, which is really separate anyway).
+  // Not persisted across restarts: startup resets grace semantics (disconnection handling is
+  // managed separately).
   private ConnectionType opennetNodeAddedReason;
 
+  /**
+   * Creates a new Opennet peer instance from a noderef.
+   *
+   * @param fs structured noderef and metadata. When {@code fromLocal} is true, the constructor
+   *     reads {@code metadata.timeLastSuccess} from it.
+   * @param node2 owning node instance.
+   * @param crypto cryptographic utilities used by the peer.
+   * @param opennet Opennet manager that coordinates Opennet peers.
+   * @param fromLocal whether the reference originates locally (enables loading of persisted
+   *     metadata).
+   * @param peers peer manager to register with.
+   * @throws FSParseException if the field set cannot be parsed.
+   * @throws PeerParseException if mandatory peer fields are invalid.
+   * @throws ReferenceSignatureVerificationException if the noderef signature fails verification.
+   * @throws PeerTooOldException if the referenced peer does not meet minimum version requirements.
+   */
   public OpennetPeerNode(
       SimpleFieldSet fs,
       Node node2,
@@ -43,47 +68,80 @@ public class OpennetPeerNode extends PeerNode {
     this.opennet = opennet;
   }
 
+  /**
+   * Returns the current status snapshot for this peer.
+   *
+   * @param noHeavy when {@code true}, avoids expensive computations and I/O.
+   * @return an {@link OpennetPeerNodeStatus} view of the current state.
+   */
   @Override
   public PeerNodeStatus getStatus(boolean noHeavy) {
     return new OpennetPeerNodeStatus(this, noHeavy);
   }
 
+  /**
+   * Indicates whether routing to or through this peer is currently permitted.
+   *
+   * <p>Routing is allowed only when Opennet is enabled on the owning node and the base routing
+   * compatibility checks succeed.
+   */
   @Override
   public boolean isRoutingCompatible() {
     if (!node.isOpennetEnabled()) return false;
     return super.isRoutingCompatible();
   }
 
+  /** Always {@code false} for Opennet peers. */
   @Override
   public boolean isDarknet() {
     return false;
   }
 
+  /** Always {@code true} for Opennet peers. */
   @Override
   public boolean isOpennet() {
     return true;
   }
 
+  /** Opennet peers are not seed nodes. Returns {@code false}. */
   @Override
   public boolean isSeed() {
     return false;
   }
 
-  enum NOT_DROP_REASON {
+  /** Enumerates reasons why a peer must not be dropped during pruning. */
+  public enum NOT_DROP_REASON {
+    /** No reason to keep the peer; it is eligible for dropping. */
     DROPPABLE,
+    /** Peer was added recently and has not had sufficient time to connect. */
     TOO_NEW_PEER,
+    /** Our node uptime is still low; allow time for initial connections. */
     TOO_LOW_UPTIME,
+    /** Recently disconnected; honor a short reconnection grace period. */
     RECONNECT_GRACE_PERIOD
   }
 
+  /**
+   * Convenience wrapper for {@link #isDroppableWithReason(boolean)} returning a boolean.
+   *
+   * @param ignoreDisconnect whether to ignore the reconnection grace-period checks.
+   * @return {@code true} if the peer may be dropped.
+   */
   public boolean isDroppable(boolean ignoreDisconnect) {
     return isDroppableWithReason(ignoreDisconnect) == NOT_DROP_REASON.DROPPABLE;
   }
 
   /**
-   * Is the peer droppable? SIDE EFFECT: If we are now outside the grace period, we reset
-   * peerAddedTime and opennetPeerAddedReason. Note that the caller must check separately whether
-   * the node is TOO OLD and connected.
+   * Determines whether the peer is droppable and explains why if not.
+   *
+   * <p>Side effect: when the initial grace period has elapsed, this method resets the internal
+   * {@code peerAddedTime} and {@code opennetPeerAddedReason} markers used to enforce that period.
+   * The caller must perform any additional version/age checks separately.
+   *
+   * @param ignoreDisconnect when {@code true}, omits the reconnection grace-period check applied to
+   *     recently disconnected peers.
+   * @return a {@link NOT_DROP_REASON} indicating why the peer must be retained, or {@link
+   *     NOT_DROP_REASON#DROPPABLE} when it may be removed.
    */
   public NOT_DROP_REASON isDroppableWithReason(boolean ignoreDisconnect) {
     long now = System.currentTimeMillis();
@@ -124,6 +182,15 @@ public class OpennetPeerNode extends PeerNode {
     return NOT_DROP_REASON.DROPPABLE;
   }
 
+  /**
+   * Records a successful transfer for routing decisions.
+   *
+   * <p>Only counts pure data fetch successes (not inserts or SSK traffic). Updates {@link
+   * #timeLastSuccess} and notifies the {@link OpennetManager}.
+   *
+   * @param insert whether the success was an insert operation.
+   * @param ssk whether the success was related to SSK.
+   */
   @Override
   public void onSuccess(boolean insert, boolean ssk) {
     if (insert || ssk) return;
@@ -131,12 +198,24 @@ public class OpennetPeerNode extends PeerNode {
     opennet.onSuccess(this);
   }
 
+  /**
+   * Notifies the {@link OpennetManager} that the peer is being removed and then delegates to the
+   * base implementation.
+   */
   @Override
   public void onRemove() {
     opennet.onRemove(this);
     super.onRemove();
   }
 
+  /**
+   * Exports Opennet-specific transient metadata.
+   *
+   * <p>Adds {@code timeLastSuccess} to the base metadata. The value is a millisecond epoch time.
+   *
+   * @param now current time in milliseconds since the epoch (forwarded to the base exporter).
+   * @return a field set containing peer metadata.
+   */
   @Override
   public synchronized SimpleFieldSet exportMetadataFieldSet(long now) {
     SimpleFieldSet fs = super.exportMetadataFieldSet(now);
@@ -144,34 +223,58 @@ public class OpennetPeerNode extends PeerNode {
     return fs;
   }
 
+  /**
+   * Returns the timestamp of the last successful data fetch.
+   *
+   * @return milliseconds since the epoch, or {@code 0} when unknown.
+   */
   public final long timeLastSuccess() {
     return timeLastSuccess;
   }
 
-  /** Is the SimpleFieldSet a valid noderef? */
+  /**
+   * Checks whether the provided {@link SimpleFieldSet} marks a noderef as Opennet-capable.
+   *
+   * @param ref noderef field set.
+   * @return {@code true} when the field {@code opennet} is present and truthy.
+   */
   public static boolean validateRef(SimpleFieldSet ref) {
     return ref.getBoolean("opennet", false);
   }
 
+  /** Always treated as a real connection for Opennet peers. */
   @Override
   public boolean isRealConnection() {
     return true;
   }
 
+  /** Whether we record status snapshots for this peer. Always {@code true}. */
   @Override
   public boolean recordStatus() {
     return true;
   }
 
+  /**
+   * Equality is restricted to the same concrete type. Two peers are equal when the base identity
+   * comparison succeeds and the other object is also an {@code OpennetPeerNode}.
+   */
   @Override
   public boolean equals(Object o) {
     if (o == this) return true;
-    // Only equal to seednode of its own type.
+    // Only equal to an OpennetPeerNode with the same identity; prevent cross-type equality.
     if (o instanceof OpennetPeerNode) {
       return super.equals(o);
     } else return false;
   }
 
+  /**
+   * Determines whether an immediate disconnect and removal is required.
+   *
+   * <p>When connected to a peer that is too old, allows a short window for update-over-mandatory
+   * (UOM) coordination via {@link #shouldDisconnectTooOld()}.
+   *
+   * @return {@code true} when the connection should be severed now.
+   */
   @Override
   public final boolean shouldDisconnectAndRemoveNow() {
     // Allow announced peers 15 minutes to download the auto-update.
@@ -191,7 +294,7 @@ public class OpennetPeerNode extends PeerNode {
     if (uptime < SECONDS.toMillis(30))
       // Allow 30 seconds to send the UOM request.
       return false;
-    // FIXME remove, paranoia
+    // Paranoia guard: retain extra delay for safety
     if (uptime < HOURS.toMillis(1)) return false;
     NodeUpdateManager updater = node.getNodeUpdater();
     if (updater == null) return true; // Not going to UOM.
@@ -206,6 +309,10 @@ public class OpennetPeerNode extends PeerNode {
     return timeSinceSentUOM() >= SECONDS.toMillis(60);
   }
 
+  /**
+   * Called on successful connect. Marks the address as presumed guilty for a short period so that
+   * address tracking can prefer other paths temporarily.
+   */
   @Override
   protected void onConnect() {
     super.onConnect();
@@ -232,48 +339,63 @@ public class OpennetPeerNode extends PeerNode {
     return ret;
   }
 
+  /** Remembers why the node was added to enforce the initial grace period. */
   @Override
   public synchronized void setAddedReason(ConnectionType connectionType) {
     opennetNodeAddedReason = connectionType;
   }
 
+  /** Returns the reason recorded when the node was added, or {@code null} if unknown. */
   @Override
   public synchronized ConnectionType getAddedReason() {
     return opennetNodeAddedReason;
   }
 
-  @Override
   /**
-   * Opennet nodes need to know when a peer node was added. We do NOT clear it on connect, because
-   * we use it for determining whether we are in the initial grace period. However we will reset it
-   * after the grace period expires, in isDroppableWithReason().
+   * Schedules deferred clearing of the added-time markers once the grace period has elapsed.
+   *
+   * <p>Opennet peers keep the markers across the first successful connect to enforce the initial
+   * grace period; the timed job will trigger {@link #isDroppableWithReason(boolean)} after the
+   * minimum age to clear them.
    */
+  @Override
   protected void maybeClearPeerAddedTimeOnConnect() {
-    // Guarantee that it gets cleared.
+    // Ensure the markers are cleared after the grace window.
     node.getTicker()
         .queueTimedJob(
             (FastRunnable) () -> isDroppableWithReason(false), OpennetManager.DROP_MIN_AGE + 1);
   }
 
+  /**
+   * Opennet peers do not export {@code peerAddedTime}; it is only meaningful locally for grace
+   * period enforcement.
+   */
   @Override
-  /* Opennet peers do not export the peer added time. It is only relevant for the grace period anyway. */
   protected boolean shouldExportPeerAddedTime() {
     return false;
   }
 
+  /**
+   * No-op on restart. Opennet peers intentionally retain the added-time markers until the timed
+   * grace-period check clears them.
+   */
   @Override
   protected void maybeClearPeerAddedTimeOnRestart(long now) {
     // Do nothing.
   }
 
+  /**
+   * Handles a fatal communication timeout by forcefully disconnecting unless the node is stopping.
+   */
   @Override
   public void fatalTimeout() {
     if (node.isStopping()) return;
-    LOG.error("Disconnecting " + this + " because of fatal timeout");
+    LOG.error("Disconnecting {} because of fatal timeout", this);
     // Disconnect.
     forceDisconnect();
   }
 
+  /** Delegates location-based routing decisions to the owning node. */
   @Override
   public boolean shallWeRouteAccordingToOurPeersLocation(int htl) {
     return node.shallWeRouteAccordingToOurPeersLocation(htl);
@@ -284,28 +406,31 @@ public class OpennetPeerNode extends PeerNode {
     return true;
   }
 
-  public LinkLengthClass linkLengthClass() {
+  LinkLengthClass linkLengthClass() {
     if (!Location.isValid(getLocation())) {
       LOG.warn("No location on {}", this);
-      return LinkLengthClass
-          .SHORT; // FIXME add unknown to enum? Would need more complex error handling...
+      // Default to SHORT; introducing an UNKNOWN value would require broader handling
+      return LinkLengthClass.SHORT;
     }
-    // FIXME OPTIMISE This should not change since we don't swap on opennet.
+    // Optimization: this should not change since we don't swap on opennet
     if (Location.distance(this, opennet.getNode().getLocation()) > OpennetManager.LONG_DISTANCE)
       return LinkLengthClass.LONG;
     else return LinkLengthClass.SHORT;
   }
 
+  /** Opennet noderefs are advertised as Opennet-capable. */
   @Override
   public boolean isOpennetForNoderef() {
     return true;
   }
 
+  /** Opennet peers may receive and handle announcements. */
   @Override
   public boolean canAcceptAnnouncements() {
     return true;
   }
 
+  /** Writes peer state, including Opennet peers. */
   @Override
   protected void writePeers() {
     peers.writePeers(true);

@@ -68,7 +68,7 @@ import org.slf4j.LoggerFactory;
  * flows. Methods that modify persisted peer metadata notify {@link PeerManager} so the on-disk
  * peers list remains consistent.
  */
-@SuppressWarnings("java:S2160") // Equality and hashing are inherited from PeerNode
+@SuppressWarnings("java:S2160") // hashCode() is inherited; equals() restricts to subclass type
 public class DarknetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
 
@@ -2580,5 +2580,14 @@ public class DarknetPeerNode extends PeerNode {
   @Override
   protected void writePeers() {
     peers.writePeers(false);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) return true;
+    // Only equal to a DarknetPeerNode with the same identity; prevent cross-type equality.
+    if (o instanceof DarknetPeerNode) {
+      return super.equals(o);
+    } else return false;
   }
 }
