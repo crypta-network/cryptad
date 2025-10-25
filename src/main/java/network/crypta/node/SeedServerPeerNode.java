@@ -21,12 +21,13 @@ import org.slf4j.LoggerFactory;
 public class SeedServerPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(SeedServerPeerNode.class);
 
-  public SeedServerPeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal)
+  public SeedServerPeerNode(
+      SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal, PeerManager peers)
       throws FSParseException,
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal);
+    super(fs, node2, crypto, fromLocal, peers);
   }
 
   @Override

@@ -14,12 +14,12 @@ import network.crypta.support.SimpleFieldSet;
  */
 public class SeedClientPeerNode extends PeerNode {
 
-  public SeedClientPeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto)
+  public SeedClientPeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto, PeerManager peers)
       throws FSParseException,
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, false);
+    super(fs, node2, crypto, false, peers);
   }
 
   @Override

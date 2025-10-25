@@ -9,12 +9,13 @@ import network.crypta.support.SimpleFieldSet;
  */
 public class SeedServerTestPeerNode extends SeedServerPeerNode {
 
-  public SeedServerTestPeerNode(SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal)
+  public SeedServerTestPeerNode(
+      SimpleFieldSet fs, Node node2, NodeCrypto crypto, boolean fromLocal, PeerManager peers)
       throws FSParseException,
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal);
+    super(fs, node2, crypto, fromLocal, peers);
   }
 
   @Override

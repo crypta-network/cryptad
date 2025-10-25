@@ -482,7 +482,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
         if (request.isPartSet("node_" + pn.hashCode())) {
           if ((pn.timeLastConnectionCompleted()
                   < (System.currentTimeMillis() - 1000 * 60 * 60 * 24 * 7) /* one week */)
-              || (pn.peerNodeStatus == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED)
+              || (pn.getPeerNodeStatus() == PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED)
               || request.isPartSet("forceit")) {
             this.node.removePeerConnection(pn);
             if (LOG.isDebugEnabled()) LOG.debug("Removed node: node_" + pn.hashCode());

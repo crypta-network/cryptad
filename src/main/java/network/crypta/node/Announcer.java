@@ -307,7 +307,8 @@ public class Announcer {
 
   private boolean processSeedFromFieldSet(SimpleFieldSet fs) {
     try {
-      SeedServerPeerNode seed = new SeedServerPeerNode(fs, node, om.getCrypto(), false);
+      SeedServerPeerNode seed =
+          new SeedServerPeerNode(fs, node, om.getCrypto(), false, node.getPeers());
       if (shouldSkipSeed(seed)) return false;
       if (LOG.isDebugEnabled()) LOG.debug("Trying to connect to seednode {}", seed);
       boolean added = node.getPeers().addPeer(seed);

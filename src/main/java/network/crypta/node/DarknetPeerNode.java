@@ -172,12 +172,13 @@ public class DarknetPeerNode extends PeerNode {
       NodeCrypto crypto,
       boolean fromLocal,
       FRIEND_TRUST trust,
-      FRIEND_VISIBILITY visibility2)
+      FRIEND_VISIBILITY visibility2,
+      PeerManager peers)
       throws FSParseException,
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal);
+    super(fs, node2, crypto, fromLocal, peers);
 
     String name = fs.get("myName");
     if (name == null) throw new FSParseException("No name");
@@ -2198,6 +2199,6 @@ public class DarknetPeerNode extends PeerNode {
 
   @Override
   protected void writePeers() {
-    node.getPeers().writePeers(false);
+    peers.writePeers(false);
   }
 }

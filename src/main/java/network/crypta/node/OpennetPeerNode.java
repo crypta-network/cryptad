@@ -23,12 +23,17 @@ public class OpennetPeerNode extends PeerNode {
   private ConnectionType opennetNodeAddedReason;
 
   public OpennetPeerNode(
-      SimpleFieldSet fs, Node node2, NodeCrypto crypto, OpennetManager opennet, boolean fromLocal)
+      SimpleFieldSet fs,
+      Node node2,
+      NodeCrypto crypto,
+      OpennetManager opennet,
+      boolean fromLocal,
+      PeerManager peers)
       throws FSParseException,
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal);
+    super(fs, node2, crypto, fromLocal, peers);
 
     if (fromLocal) {
       SimpleFieldSet metadata = fs.subset("metadata");
@@ -303,6 +308,6 @@ public class OpennetPeerNode extends PeerNode {
 
   @Override
   protected void writePeers() {
-    node.getPeers().writePeers(true);
+    peers.writePeers(true);
   }
 }

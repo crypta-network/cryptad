@@ -17,6 +17,10 @@ public class FSParseException extends Exception {
     super(msg);
   }
 
+  public FSParseException(String msg, Throwable cause) {
+    super(msg, cause);
+  }
+
   public FSParseException(String msg, NumberFormatException e) {
     super(msg + " : " + e);
     initCause(e);

@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -278,7 +279,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
       expectedAcceptState =
           next.outputLoadTracker(realTimeFlag)
-              .tryRouteTo(origTag, RequestLikelyAcceptedState.LIKELY, false);
+              .tryRouteTo(origTag, RequestLikelyAcceptedState.LIKELY);
 
       if (expectedAcceptState == RequestLikelyAcceptedState.UNKNOWN) {
         // No stats, old style, just go for it.
@@ -332,7 +333,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           }
           waitedForLoadManagement = true;
           if (waiter == null) {
-            waiter = PeerNode.createSlotWaiter(origTag, type, false, realTimeFlag, source);
+            waiter = PeerNode.createSlotWaiter(origTag, type, realTimeFlag, source);
           }
           if (next != null) {
             if (!waiter.addWaitingFor(next)) {
@@ -354,7 +355,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               // Wait for another one if the first is low capacity.
               // Nodes we were waiting for that then became backed off will have been removed from
               // the list.
-              HashSet<PeerNode> exclude = waiter.waitingForList();
+              Set<PeerNode> exclude = waiter.waitingForList();
               exclude.addAll(nodesRoutedTo);
               PeerNode alsoWaitFor = closerPeer(exclude, now, true);
               if (alsoWaitFor != null) {
@@ -402,7 +403,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           // Wait for another one if realtime.
           // Nodes we were waiting for that then became backed off will have been removed from the
           // list.
-          HashSet<PeerNode> exclude = waiter.waitingForList();
+          Set<PeerNode> exclude = waiter.waitingForList();
           exclude.addAll(nodesRoutedTo);
           PeerNode alsoWaitFor = closerPeer(exclude, now, true);
           if (alsoWaitFor != null) {
@@ -448,7 +449,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           // Wait for another one if realtime.
           // Nodes we were waiting for that then became backed off will have been removed from the
           // list.
-          HashSet<PeerNode> exclude = waiter.waitingForList();
+          Set<PeerNode> exclude = waiter.waitingForList();
           exclude.addAll(nodesRoutedTo);
           PeerNode alsoWaitFor = closerPeer(exclude, now, true);
           if (alsoWaitFor != null) {
@@ -487,7 +488,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             // However after adding it once, we will wait for as long as it takes.
             maxWait = getShortSlotWaiterTimeout();
           }
-          HashSet<PeerNode> waitedFor = waiter.waitingForList();
+          Set<PeerNode> waitedFor = waiter.waitingForList();
           PeerNode waited;
           // FIXME figure out a way to wake-up mid-wait if origTag.hasSourceRestarted().
           try {
@@ -658,7 +659,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     onAccepted(next);
   }
 
-  private PeerNode closerPeer(HashSet<PeerNode> exclude, long now, boolean newLoadManagement) {
+  private PeerNode closerPeer(Set<PeerNode> exclude, long now, boolean newLoadManagement) {
     return node.getPeers()
         .closerPeer(
             sourceForRouting(),
@@ -684,7 +685,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     return source;
   }
 
-  private double getLoad(HashSet<PeerNode> waitedFor) {
+  private double getLoad(Set<PeerNode> waitedFor) {
     double total = 0;
     for (PeerNode pn : waitedFor) {
       total += pn.outputLoadTracker(realTimeFlag).proportionTimingOutFatallyInWait();
