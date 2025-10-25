@@ -5,7 +5,7 @@ package network.crypta.node;
  *
  * <p>This type augments {@link PeerNodeStatus} with the timestamp of the last successful
  * interaction as reported by the associated {@link OpennetPeerNode}. Instances represent a snapshot
- * taken at construction time and do not update afterwards.
+ * taken at construction time and do not update afterward.
  *
  * <p>Immutability note: the fields declared in this class are {@code final}. The overall snapshot
  * semantics and identity behavior are inherited from {@link PeerNodeStatus}.
