@@ -796,7 +796,9 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private DO handleReceivedMessage(
       Message msg, RequestLikelyAcceptedState expectedAcceptState, PeerNode next, UIDTag origTag) {
-    if (msg.getSpec() == DMT.FNPAccepted) {
+    // Delegate acceptance detection to isAccepted(...) so subclasses can define
+    // protocol-specific Accepted messages (e.g., FNPSSKAccepted for SSK inserts).
+    if (isAccepted(msg)) {
       next.resetMandatoryBackoff(realTimeFlag);
       next.outputLoadTracker(realTimeFlag).clearDontSendUnlessGuaranteed();
       return DO.FINISHED;
