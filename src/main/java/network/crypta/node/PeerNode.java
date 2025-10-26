@@ -3227,7 +3227,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     for (String phys : physical) {
       if (phys.indexOf(',') >= 0) {
         // Apply the same compatibility splitting we use for local parsing.
-        for (Peer p : parsePeerEntryCompat(phys, /*fromLocal=*/ false)) {
+        for (Peer p : parsePeerEntryCompat(phys, /* fromLocal= */ false)) {
           if (p != null && !list.contains(p)) list.add(p);
         }
         continue;
