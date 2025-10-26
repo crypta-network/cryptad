@@ -1,9 +1,14 @@
 package network.crypta.support.transport.ip;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.Inet6Address;
+import network.crypta.io.AddressIdentifier;
+import network.crypta.io.AddressIdentifier.AddressType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -93,8 +98,10 @@ class HostnameUtilTest {
           "2001:db8::ffff:192.0.2.1",
           // IPv4-compatible (deprecated, but should still parse as a literal)
           "::192.0.2.1",
-          // With percent scope id (syntactic only)
-          "2001:db8::ffff:192.0.2.1%1"
+          // With percent scope id (syntactic only; accepts numeric and interface-name scopes)
+          "2001:db8::ffff:192.0.2.1%1",
+          "2001:db8::ffff:192.0.2.1%abc",
+          "2001:db8::ffff:192.0.2.1%1234"
         })
     void isValidHostname_whenIpsAllowed_ipv6EmbeddedIPv4_returnTrue(String ip) {
       assertTrue(HostnameUtil.isValidHostname(ip, true));
@@ -108,9 +115,7 @@ class HostnameUtilTest {
           // Invalid IPv4 tail
           "2001:db8::ffff:192.0.256.1",
           "2001:db8::ffff:192.0.2",
-          // Invalid percent scope id (non-numeric or too long or empty)
-          "2001:db8::ffff:192.0.2.1%abc",
-          "2001:db8::ffff:192.0.2.1%1234",
+          // Invalid percent scope id: empty only (non-empty names and longer numeric are allowed)
           "2001:db8::ffff:192.0.2.1%",
           // Bracketed forms are not recognized by this utility
           "[::ffff:192.0.2.1]"
@@ -167,5 +172,21 @@ class HostnameUtilTest {
     void isValidHostname_whenIpsAllowed_invalidHostnames_returnFalse(String domain) {
       assertFalse(HostnameUtil.isValidHostname(domain, true));
     }
+  }
+
+  @Test
+  void ipv6_with_interface_name_scope_is_classified_as_ipv6_and_valid() {
+    String s = "fe80::1%eth0";
+    AddressType t = AddressIdentifier.getAddressType(s, /* allowIPv6PercentScopeID= */ true);
+    assertSame(AddressType.IPV6, t, "expected IPV6 literal classification");
+    assertTrue(HostnameUtil.isValidHostname(s, /* allowIPAddress= */ true));
+  }
+
+  @Test
+  void toNoderefHost_prefers_numeric_scope_when_available() throws Exception {
+    byte[] bytes = new byte[] {(byte) 0xFE, (byte) 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    Inet6Address addr = Inet6Address.getByAddress(null, bytes, /* scope_id= */ 3);
+    String s = HostnameUtil.toNoderefHost(addr);
+    assertEquals("fe80:0:0:0:0:0:0:1%3", s, "got=" + s);
   }
 }

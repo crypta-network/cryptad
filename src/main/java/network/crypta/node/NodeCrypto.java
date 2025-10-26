@@ -412,8 +412,14 @@ public class NodeCrypto {
       // IP addresses
       Peer[] ips = detector.detectPrimaryPeers();
       if (ips != null) {
-        for (Peer ip : ips)
-          fs.putAppend("physical.udp", ip.toString()); // Keep; important that node know all our IPs
+        for (Peer ip : ips) {
+          // Normalize IPv6 link-local zone to numeric index to keep read-side validator happy.
+          java.net.InetAddress a = ip.getFreenetAddress().getAddress();
+          String host = network.crypta.support.transport.ip.HostnameUtil.toNoderefHost(a);
+          String value =
+              (host != null ? host : ip.getFreenetAddress().toString()) + ':' + ip.getPort();
+          fs.putAppend("physical.udp", value); // important that node know all our IPs
+        }
       }
     } // Don't include IPs for anonymous initiator.
     // Negotiation types

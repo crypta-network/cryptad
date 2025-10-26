@@ -133,9 +133,43 @@ public class HostnameUtil {
     int pct = s.indexOf('%');
     if (pct < 0) return s;
     String scope = s.substring(pct + 1);
-    if (scope.isEmpty() || scope.length() > 3) return null; // conservative numeric scope length
-    for (int i = 0; i < scope.length(); i++) if (!Character.isDigit(scope.charAt(i))) return null;
+    // Accept numeric and common interface-name scopes (1–32 of [0-9A-Za-z._-])
+    if (scope.isEmpty() || scope.length() > 32) return null;
+    for (int i = 0; i < scope.length(); i++) {
+      char c = scope.charAt(i);
+      boolean ok =
+          (c >= '0' && c <= '9')
+              || (c >= 'A' && c <= 'Z')
+              || (c >= 'a' && c <= 'z')
+              || c == '.'
+              || c == '_'
+              || c == '-';
+      if (!ok) return null;
+    }
     return s.substring(0, pct);
+  }
+
+  /**
+   * Produces a noderef-friendly textual host for an {@link java.net.InetAddress}.
+   *
+   * <p>- For IPv4, returns the dotted-quad. - For IPv6, returns the literal; if a zone is present
+   * and the JVM exposes a numeric scope ID, replaces the interface-name zone with the numeric ID
+   * (e.g., "%eth0" -> "%3").
+   */
+  public static String toNoderefHost(java.net.InetAddress addr) {
+    if (addr == null) return null;
+    if (addr instanceof java.net.Inet6Address i6) {
+      String s = i6.getHostAddress();
+      int pct = s.indexOf('%');
+      if (pct >= 0) {
+        int scopeId = i6.getScopeId();
+        if (scopeId > 0) {
+          return s.substring(0, pct + 1) + scopeId;
+        }
+      }
+      return s;
+    }
+    return addr.getHostAddress();
   }
 
   private static boolean hasAtMostOneDoubleColon(String addr) {
