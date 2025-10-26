@@ -240,7 +240,7 @@ public class PacketSender implements Runnable {
           updateVersionRoutablity() on all our peers. We don't disconnect the peer, but mark it
           as being incompatible.
           */
-          pn.invalidate(now);
+          pn.invalidate();
           LOG.info(
               "shouldDisconnectNow has returned true : marking the peer as incompatible: " + pn);
           continue;

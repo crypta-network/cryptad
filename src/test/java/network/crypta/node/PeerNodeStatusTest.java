@@ -97,9 +97,19 @@ class PeerNodeStatusTest {
     when(pn.getMessageQueueLengthBytes()).thenReturn(999L);
     when(pn.getProbableSendQueueTime()).thenReturn(555L);
     when(pn.getIncomingLoadStats(true))
-        .thenReturn(new PeerNode.IncomingLoadSummaryStats(1, 2, 3, 4, 5, 6, 7, 8, 9));
+        .thenReturn(
+            new PeerNode.IncomingLoadSummaryStats(
+                1,
+                new PeerNode.Limits(2, 3, 4, 5),
+                new PeerNode.Usage(6, 7),
+                new PeerNode.Usage(8, 9)));
     when(pn.getIncomingLoadStats(false))
-        .thenReturn(new PeerNode.IncomingLoadSummaryStats(10, 20, 30, 40, 50, 60, 70, 80, 90));
+        .thenReturn(
+            new PeerNode.IncomingLoadSummaryStats(
+                10,
+                new PeerNode.Limits(20, 30, 40, 50),
+                new PeerNode.Usage(60, 70),
+                new PeerNode.Usage(80, 90)));
     when(pn.hasFullNoderef()).thenReturn(true);
     when(pn.selectionRate()).thenReturn(0.123);
 
