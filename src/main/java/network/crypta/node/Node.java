@@ -2301,9 +2301,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     failureTable = new FailureTable(this);
 
-    nodeStats =
-        new NodeStats(
-            this, sortOrder, config.createSubConfig("node.load"), obwLimit, ibwLimit, lastVersion);
+    nodeStats = new NodeStats(this, sortOrder, config.createSubConfig("node.load"));
 
     // clientCore needs new load management and other settings from stats.
     clientCore =

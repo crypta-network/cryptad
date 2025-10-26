@@ -370,8 +370,8 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
     bwlimitDelayTime = (int) n.getBwlimitDelayTime();
     nodeAveragePingTime = (int) n.getNodeAveragePingTime();
     oldestNeverConnectedPeerAge = (int) n.peers.getOldestNeverConnectedDarknetPeerAge();
-    bwlimitDelayAlertRelevant = n.bwlimitDelayAlertRelevant;
-    nodeAveragePingAlertRelevant = n.nodeAveragePingAlertRelevant;
+    bwlimitDelayAlertRelevant = n.isBwlimitDelayAlertRelevant();
+    nodeAveragePingAlertRelevant = n.isNodeAveragePingAlertRelevant();
     isOutdated = calculateIsOutdated();
     // FIXME move PeerManager.updatePMUserAlert here.
     // FIXME then make this subscribe to PeerManager's listener thingy.
