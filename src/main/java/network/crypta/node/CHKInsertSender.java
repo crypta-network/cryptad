@@ -1142,7 +1142,9 @@ public final class CHKInsertSender extends BaseSender
           backgroundTransfers.wait(SECONDS.toMillis(100));
         } catch (InterruptedException e) {
           // Record and break out so higher-level shutdown paths can react promptly.
-          // Restore the interrupt status after exiting the loop (see finally below).
+          // Re-assert interrupt here to satisfy static analysis and preserve signal.
+          Thread.currentThread().interrupt();
+          // We'll exit the loop and return promptly; callers can decide how to react.
           interrupted = true;
           break;
         }
@@ -1220,32 +1222,82 @@ public final class CHKInsertSender extends BaseSender
    * in this class. Callers should not synchronize on the sender instance directly; use this helper
    * instead to avoid synchronizing on parameters.
    */
+  @SuppressWarnings(
+      "java:S2142") // Intentionally ignore interrupts to avoid busy-spin of polling loops
   void waitIfNotFinished(long millis) {
+    if (millis < 0) throw new IllegalArgumentException("timeout value is negative");
     synchronized (this) {
-      if (status == NOT_FINISHED) {
-        try {
-          this.wait(millis);
-        } catch (InterruptedException e) {
-          // Intentionally swallow interrupts here so callers that poll using
-          // wait/notify do not busy-spin with an already-set interrupt flag.
-          // Shutdown/cancellation paths may interrupt these threads; we still
-          // prefer to block until status changes to a terminal state.
+      if (millis == 0) {
+        while (status == NOT_FINISHED) {
+          try {
+            this.wait(0); // indefinite wait
+          } catch (InterruptedException e) {
+            // See rationale above: ignore to avoid busy-spin in polling callers.
+          }
         }
+        return;
+      }
+      long deadlineNanos =
+          System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+      long remainingNanos = deadlineNanos - System.nanoTime();
+      while (status == NOT_FINISHED && remainingNanos > 0) {
+        try {
+          long waitMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remainingNanos);
+          int waitNanos =
+              (int)
+                  (remainingNanos - java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(waitMillis));
+          if (waitMillis == 0L && waitNanos > 0) {
+            this.wait(0L, waitNanos);
+          } else {
+            this.wait(waitMillis, waitNanos);
+          }
+        } catch (InterruptedException e) {
+          // Intentionally swallow interrupts here so callers that poll using wait/notify
+          // do not busy-spin with an already-set interrupt flag. Shutdown/cancellation paths
+          // may interrupt these threads; we still prefer to wait for a terminal status.
+        }
+        remainingNanos = deadlineNanos - System.nanoTime();
       }
     }
   }
 
   /** Waits up to {@code millis} while background transfers are not fully completed. */
+  @SuppressWarnings("java:S2142") // Intentionally ignore interrupts for the same reason as above
   void waitIfNotCompleted(long millis) {
+    if (millis < 0) throw new IllegalArgumentException("timeout value is negative");
     synchronized (this) {
-      if (!completed()) {
-        try {
-          this.wait(millis);
-        } catch (InterruptedException e) {
-          // See comment in waitIfNotFinished(): ignore interrupts to avoid
-          // immediate InterruptedException on subsequent wait() calls which
-          // would otherwise cause tight-loop spinning in callers.
+      if (millis == 0) {
+        while (!completed()) {
+          try {
+            this.wait(0); // indefinite wait
+          } catch (InterruptedException e) {
+            // See comment in waitIfNotFinished(): ignore interrupts to avoid immediate
+            // InterruptedException on subsequent wait() calls which would otherwise
+            // cause tight-loop spinning in callers.
+          }
         }
+        return;
+      }
+      long deadlineNanos =
+          System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+      long remainingNanos = deadlineNanos - System.nanoTime();
+      while (!completed() && remainingNanos > 0) {
+        try {
+          long waitMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remainingNanos);
+          int waitNanos =
+              (int)
+                  (remainingNanos - java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(waitMillis));
+          if (waitMillis == 0L && waitNanos > 0) {
+            this.wait(0L, waitNanos);
+          } else {
+            this.wait(waitMillis, waitNanos);
+          }
+        } catch (InterruptedException e) {
+          // See comment in waitIfNotFinished(): ignore interrupts to avoid immediate
+          // InterruptedException on subsequent wait() calls which would otherwise
+          // cause tight-loop spinning in callers.
+        }
+        remainingNanos = deadlineNanos - System.nanoTime();
       }
     }
   }

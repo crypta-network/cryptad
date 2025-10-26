@@ -724,15 +724,41 @@ public class SSKInsertSender extends BaseSender
    * <p>Uses the sender's intrinsic monitor and mirrors the notify pattern within this class to
    * avoid external synchronization on the parameter object.
    */
+  @SuppressWarnings(
+      "java:S2142") // Intentionally ignore interrupts to avoid busy-spin of polling loops
   void waitIfNotFinished(long millis) {
+    if (millis < 0) throw new IllegalArgumentException("timeout value is negative");
     synchronized (this) {
-      if (status == NOT_FINISHED) {
-        try {
-          this.wait(millis);
-        } catch (InterruptedException e) {
-          // Intentionally swallow interrupts to avoid tight-loop spinning
-          // when callers repeatedly wait on this monitor during shutdown.
+      if (millis == 0) {
+        while (status == NOT_FINISHED) {
+          try {
+            this.wait(0); // indefinite wait
+          } catch (InterruptedException e) {
+            // Intentionally swallow interrupts to avoid tight-loop spinning when callers
+            // repeatedly wait on this monitor during shutdown/cancellation.
+          }
         }
+        return;
+      }
+      long deadlineNanos =
+          System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+      long remainingNanos = deadlineNanos - System.nanoTime();
+      while (status == NOT_FINISHED && remainingNanos > 0) {
+        try {
+          long waitMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remainingNanos);
+          int waitNanos =
+              (int)
+                  (remainingNanos - java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(waitMillis));
+          if (waitMillis == 0L && waitNanos > 0) {
+            this.wait(0L, waitNanos);
+          } else {
+            this.wait(waitMillis, waitNanos);
+          }
+        } catch (InterruptedException e) {
+          // Intentionally swallow interrupts to avoid tight-loop spinning when callers
+          // repeatedly wait on this monitor during shutdown/cancellation.
+        }
+        remainingNanos = deadlineNanos - System.nanoTime();
       }
     }
   }
