@@ -1797,7 +1797,6 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       SimpleFieldSet ref = OpennetManager.validateNoderef(hisRef, 0, hisRef.length, null, true);
       if (ref == null) {
         LOG.error("Invalid noderef");
-        // Note: consider sending an explicit rejection message.
         return null;
       }
       PeerNode seed = createSeedClientPeer(ref, from);
