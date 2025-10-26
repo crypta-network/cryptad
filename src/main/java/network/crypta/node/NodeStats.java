@@ -281,7 +281,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   public double furthestCacheSSKSuccess = 0.0;
   public double furthestClientCacheSSKSuccess = 0.0;
   public double furthestSlashdotCacheSSKSuccess = 0.0;
-  protected final Persister persister;
+  private final Persister persister;
 
   protected final DecayingKeyspaceAverage avgRequestLocation;
 

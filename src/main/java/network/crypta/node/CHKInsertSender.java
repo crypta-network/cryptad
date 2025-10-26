@@ -1133,6 +1133,7 @@ public final class CHKInsertSender extends BaseSender
   private boolean waitForBackgroundTransfers(BackgroundTransfer[] transfers) {
     long start = System.currentTimeMillis();
     long deadline = start + transferCompletionTimeout * 3;
+    boolean interrupted = false;
     while (System.currentTimeMillis() <= deadline) {
       synchronized (backgroundTransfers) {
         int state = evaluateWaitState(transfers);
@@ -1140,9 +1141,19 @@ public final class CHKInsertSender extends BaseSender
         try {
           backgroundTransfers.wait(SECONDS.toMillis(100));
         } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
+          // Record and break out so higher-level shutdown paths can react promptly.
+          // Restore the interrupt status after exiting the loop (see finally below).
+          interrupted = true;
+          break;
         }
       }
+    }
+    if (interrupted) {
+      // Re‑assert interrupt so callers observe it (java:S2142) and return promptly.
+      Thread.currentThread().interrupt();
+      if (LOG.isDebugEnabled())
+        LOG.debug("Interrupted while waiting for background transfers; exiting early: {}", this);
+      return false;
     }
     LOG.info(
         "Timed out waiting for background transfers! Probably caused by async filter not"
@@ -1200,6 +1211,43 @@ public final class CHKInsertSender extends BaseSender
    */
   public byte[] getPubkeyHash() {
     return headers;
+  }
+
+  /**
+   * Waits up to {@code millis} for the sender to transition out of {@link #NOT_FINISHED}.
+   *
+   * <p>Thread-safety: uses the sender's intrinsic monitor which is also used for notify/notifyAll
+   * in this class. Callers should not synchronize on the sender instance directly; use this helper
+   * instead to avoid synchronizing on parameters.
+   */
+  void waitIfNotFinished(long millis) {
+    synchronized (this) {
+      if (status == NOT_FINISHED) {
+        try {
+          this.wait(millis);
+        } catch (InterruptedException e) {
+          // Intentionally swallow interrupts here so callers that poll using
+          // wait/notify do not busy-spin with an already-set interrupt flag.
+          // Shutdown/cancellation paths may interrupt these threads; we still
+          // prefer to block until status changes to a terminal state.
+        }
+      }
+    }
+  }
+
+  /** Waits up to {@code millis} while background transfers are not fully completed. */
+  void waitIfNotCompleted(long millis) {
+    synchronized (this) {
+      if (!completed()) {
+        try {
+          this.wait(millis);
+        } catch (InterruptedException e) {
+          // See comment in waitIfNotFinished(): ignore interrupts to avoid
+          // immediate InterruptedException on subsequent wait() calls which
+          // would otherwise cause tight-loop spinning in callers.
+        }
+      }
+    }
   }
 
   /**
