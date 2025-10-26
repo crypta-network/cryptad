@@ -3225,6 +3225,13 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   private List<Peer> collectPeersFromPhysical(String[] physical) {
     List<Peer> list = new ArrayList<>(physical.length);
     for (String phys : physical) {
+      if (phys.indexOf(',') >= 0) {
+        // Apply the same compatibility splitting we use for local parsing.
+        for (Peer p : parsePeerEntryCompat(phys, /*fromLocal=*/ false)) {
+          if (p != null && !list.contains(p)) list.add(p);
+        }
+        continue;
+      }
       Peer p = tryParsePeer(phys);
       if (p != null && !list.contains(p)) list.add(p);
     }
