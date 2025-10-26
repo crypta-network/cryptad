@@ -42,7 +42,9 @@ class HourlyStatsRecordTest {
     // Assert: one HTL row per index 0..max inclusive, and 16 distance buckets
     assertEquals(5, countOccurrences(txt, "HourlyStats: HTL\t"), "HTL rows");
     assertEquals(16, countOccurrences(txt, "HourlyStats: logDist\t"), "distance rows");
-    assertTrue(txt.contains("CompleteHour: false\tFinished: false"), "flags present");
+    // The toString() flags were renamed to tab-separated keys: "completeHour" and "finished".
+    assertTrue(
+        txt.contains("completeHour\tfalse\tfinished\tfalse"), "flags present with updated labels");
   }
 
   @Test
