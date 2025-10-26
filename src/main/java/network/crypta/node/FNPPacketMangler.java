@@ -1815,7 +1815,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
   private PeerNode createSeedClientPeer(SimpleFieldSet ref, Peer from) {
     try {
-      return new SeedClientPeerNode(ref, node, crypto);
+      return new SeedClientPeerNode(ref, node, crypto, node.getPeers());
     } catch (FSParseException
         | PeerParseException
         | ReferenceSignatureVerificationException
