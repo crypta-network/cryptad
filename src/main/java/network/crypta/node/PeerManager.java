@@ -2330,7 +2330,7 @@ public class PeerManager {
 
   void incrementSelectionSamples(long now, PeerNode pn) {
     // TODO: reimplement with a bit field to spare memory
-    pn.incrementNumberOfSelections(now);
+    pn.incrementNumberOfSelections();
   }
 
   /** Notifies the listeners about status change */

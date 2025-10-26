@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -421,7 +422,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         state
             .next
             .outputLoadTracker(realTimeFlag)
-            .tryRouteTo(origTag, RequestLikelyAcceptedState.LIKELY, false);
+            .tryRouteTo(origTag, RequestLikelyAcceptedState.LIKELY);
 
     if (state.expectedAcceptState == RequestLikelyAcceptedState.UNKNOWN) {
       if (LOG.isDebugEnabled()) LOG.debug("No load stats for {}", state.next);
@@ -494,7 +495,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     LOG.debug("Cannot send to {} realtime={}", state.next, realTimeFlag);
     state.waitedForLoadManagement = true;
     if (state.waiter == null) {
-      state.waiter = PeerNode.createSlotWaiter(origTag, state.type, false, realTimeFlag, source);
+      state.waiter = PeerNode.createSlotWaiter(origTag, state.type, realTimeFlag, source);
     }
     if (!state.waiter.addWaitingFor(state.next)) {
       dontDecrementHTLThisTime = true;
@@ -535,7 +536,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   private void tryAddAnother(NlmState state, int canWaitFor) {
     if (!state.canRerouteWhileWaiting) return;
     if (state.waiter.waitingForCount() > canWaitFor) return;
-    HashSet<PeerNode> exclude = state.waiter.waitingForList();
+    Set<PeerNode> exclude = state.waiter.waitingForList();
     exclude.addAll(nodesRoutedTo);
     PeerNode alsoWaitFor = closerPeer(exclude, state.now);
     if (alsoWaitFor == null) return;
@@ -566,7 +567,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     long maxWait = getLongSlotWaiterTimeout();
     if (!addedExtraNode) maxWait = getShortSlotWaiterTimeout();
 
-    HashSet<PeerNode> waitedFor = state.waiter.waitingForList();
+    Set<PeerNode> waitedFor = state.waiter.waitingForList();
     try {
       PeerNode waited = state.waiter.waitForAny(maxWait, addedExtraNode);
       if (waited == null) {
@@ -654,7 +655,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     }
   }
 
-  private PeerNode closerPeer(HashSet<PeerNode> exclude, long now) {
+  private PeerNode closerPeer(Set<PeerNode> exclude, long now) {
     return node.getPeers()
         .closerPeer(
             sourceForRouting(),
@@ -688,7 +689,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     return source;
   }
 
-  private double getLoad(HashSet<PeerNode> waitedFor) {
+  private double getLoad(Set<PeerNode> waitedFor) {
     if (waitedFor == null || waitedFor.isEmpty()) return 0.0;
     double total = 0.0;
     for (PeerNode pn : waitedFor) {

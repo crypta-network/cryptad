@@ -5554,7 +5554,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    return new DarknetPeerNode(fs, this, darknetCrypto, false, trust, visibility);
+    return new DarknetPeerNode(fs, this, darknetCrypto, false, trust, visibility, getPeers());
   }
 
   public OpennetPeerNode createNewOpennetNode(SimpleFieldSet fs)
@@ -5564,7 +5564,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           ReferenceSignatureVerificationException,
           PeerTooOldException {
     if (opennet == null) throw new OpennetDisabledException("Opennet is not currently enabled");
-    return new OpennetPeerNode(fs, this, opennet.getCrypto(), opennet, false);
+    return new OpennetPeerNode(fs, this, opennet.getCrypto(), opennet, false, getPeers());
   }
 
   public SeedServerTestPeerNode createNewSeedServerTestPeerNode(SimpleFieldSet fs)
@@ -5574,7 +5574,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           ReferenceSignatureVerificationException,
           PeerTooOldException {
     if (opennet == null) throw new OpennetDisabledException("Opennet is not currently enabled");
-    return new SeedServerTestPeerNode(fs, this, opennet.getCrypto(), true);
+    return new SeedServerTestPeerNode(fs, this, opennet.getCrypto(), true, getPeers());
   }
 
   public OpennetPeerNode addNewOpennetNode(SimpleFieldSet fs, ConnectionType connectionType)
