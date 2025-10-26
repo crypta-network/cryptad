@@ -114,15 +114,25 @@ public class SeedServerTestPeerNode extends SeedServerPeerNode {
   public void onRemove() {
     long lastReceivedDataPacketTime = lastReceivedDataPacketTime();
     if (lastReceivedDataPacketTime <= 0 && timeLastConnectionCompleted() > 0) {
-      LOG.warn(
-          "{} : REMOVED: TIMEOUT: NO PACKETS RECEIVED AFTER SUCCESSFUL CONNECTION SETUP",
-          this.getIdentityString());
+      printRemovalReason("TIMEOUT: NO PACKETS RECEIVED AFTER SUCCESSFUL CONNECTION SETUP");
     } else if (timeLastConnectionCompleted() <= 0) {
-      LOG.warn("{} : REMOVED: NEVER CONNECTED", this.getIdentityString());
+      printRemovalReason("NEVER CONNECTED");
     } else {
-      LOG.warn("{} : REMOVED: UNKNOWN CAUSE", this.getIdentityString());
+      printRemovalReason("UNKNOWN CAUSE");
     }
     super.onRemove();
+  }
+
+  /**
+   * Mirrors the removal reason to both stderr and the structured logger.
+   *
+   * <p>This class is used exclusively by seed-server tests. Tests capture {@code System.err} to
+   * assert on the textual classification, so we emit to both the console and the logger.
+   */
+  private void printRemovalReason(String reason) {
+    String msg = this.getIdentityString() + " : REMOVED: " + reason;
+    System.err.println(msg);
+    LOG.warn(msg);
   }
 
   /**
