@@ -187,7 +187,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
             continue; // Let local requests compete with all the others
           }
         } else {
-          stats.waitUntilNotOverloaded(isInsert);
+          stats.waitUntilNotOverloaded();
         }
       } else {
         if (LOG.isDebugEnabled()) LOG.debug("Waiting...");

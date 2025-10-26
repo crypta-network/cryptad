@@ -5807,9 +5807,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         loadStats = lastIncomingLoadStats;
       }
       RunningRequestsSnapshot runningRequests =
-          node.getNodeStats()
-              .getRunningRequestsTo(
-                  PeerNode.this, loadStats.averageTransfersOutPerInsert, realTime);
+          node.getNodeStats().getRunningRequestsTo(PeerNode.this, realTime);
       RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
       boolean ignoreLocalVsRemoteBandwidthLiability =
           node.getNodeStats().ignoreLocalVsRemoteBandwidthLiability();
@@ -5861,9 +5859,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         if (dontSendUnlessGuaranteed) worstAcceptable = RequestLikelyAcceptedState.GUARANTEED;
         // Requests already running to this node
         RunningRequestsSnapshot runningRequests =
-            node.getNodeStats()
-                .getRunningRequestsTo(
-                    PeerNode.this, loadStats.averageTransfersOutPerInsert, realTime);
+            node.getNodeStats().getRunningRequestsTo(PeerNode.this, realTime);
         runningRequests.log(PeerNode.this);
         // Requests running from its other peers
         RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
@@ -6122,9 +6118,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         }
         if (LOG.isDebugEnabled()) LOG.debug("Checking slot waiters for {}", type);
         RunningRequestsSnapshot runningRequests =
-            node.getNodeStats()
-                .getRunningRequestsTo(
-                    PeerNode.this, loadStats.averageTransfersOutPerInsert, realTime);
+            node.getNodeStats().getRunningRequestsTo(PeerNode.this, realTime);
         runningRequests.log(PeerNode.this);
         RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
         acceptState =

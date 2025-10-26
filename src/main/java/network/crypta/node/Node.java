@@ -2301,9 +2301,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     failureTable = new FailureTable(this);
 
-    nodeStats =
-        new NodeStats(
-            this, sortOrder, config.createSubConfig("node.load"), obwLimit, ibwLimit, lastVersion);
+    nodeStats = new NodeStats(this, sortOrder, config.createSubConfig("node.load"));
 
     // clientCore needs new load management and other settings from stats.
     clientCore =
@@ -2314,8 +2312,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             installConfig,
             getDarknetPortNumber(),
             sortOrder,
-            oldConfig,
-            fproxyConfig,
             toadlets,
             databaseKey,
             persistentSecret);
@@ -3676,11 +3672,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (clientCore.loadedDatabase()) return;
     System.out.println("Starting late database initialisation");
 
-    try {
-      if (!clientCore.lateInitDatabase(databaseKey)) failLateInitDatabase();
-    } catch (NodeInitException e) {
-      failLateInitDatabase();
-    }
+    if (!clientCore.lateInitDatabase(databaseKey)) failLateInitDatabase();
   }
 
   private void failLateInitDatabase() {
@@ -4160,7 +4152,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (!NativeThread.HAS_ENOUGH_NICE_LEVELS)
       clientCore.getAlerts().register(new NotEnoughNiceLevelsUserAlert());
 
-    this.clientCore.start(config);
+    this.clientCore.start();
 
     tracker.startDeadUIDChecker();
 

@@ -719,6 +719,25 @@ public class SSKInsertSender extends BaseSender
   }
 
   /**
+   * Waits up to {@code millis} for the sender to transition out of {@link #NOT_FINISHED}.
+   *
+   * <p>Uses the sender's intrinsic monitor and mirrors the notify pattern within this class to
+   * avoid external synchronization on the parameter object.
+   */
+  void waitIfNotFinished(long millis) {
+    synchronized (this) {
+      if (status == NOT_FINISHED) {
+        try {
+          this.wait(millis);
+        } catch (InterruptedException e) {
+          // Intentionally swallow interrupts to avoid tight-loop spinning
+          // when callers repeatedly wait on this monitor during shutdown.
+        }
+      }
+    }
+  }
+
+  /**
    * Returns whether this sender has forwarded the request to any peer yet.
    *
    * <p>Useful to distinguish {@link #ROUTE_NOT_FOUND} from {@link #ROUTE_REALLY_NOT_FOUND}.

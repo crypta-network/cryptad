@@ -395,13 +395,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       if (reject != null) {
         LOG.info("Rejecting FNPGetOfferedKey from {} for {} : {}", source, key, reject);
         Message rejected = DMT.createFNPRejectedOverload(uid, true);
-        if (reject.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
+        if (reject.soft()) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
         try {
           source.sendAsync(rejected, null, node.getFailureTable().senderCounter);
         } catch (NotConnectedException e) {
           LOG.info("Rejecting (overload) data request from {}: {}", source.getPeer(), e.toString());
         }
-        tag.unlockHandler(reject.soft);
+        tag.unlockHandler(reject.soft());
         return true;
       }
 
@@ -537,14 +537,14 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           source.getPeer(),
           rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);
-      if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
+      if (rejectReason.soft()) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
         LOG.info("Rejecting (overload) data request from {}: {}", source.getPeer(), e.toString());
       }
       tag.setRejected();
-      tag.unlockHandler(rejectReason.soft);
+      tag.unlockHandler(rejectReason.soft());
       // Do not tell failure table.
       // Otherwise an attacker can flood us with requests very cheaply and purge our
       // failure table even though we didn't accept any of them.
@@ -603,13 +603,13 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (rejectReason != null) {
       LOG.info("Rejecting insert from {} preemptively because {}", source.getPeer(), rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);
-      if (rejectReason.soft) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
+      if (rejectReason.soft()) rejected.addSubMessage(DMT.createFNPRejectIsSoft());
       try {
         source.sendAsync(rejected, null, ctr);
       } catch (NotConnectedException e) {
         LOG.info("Rejecting (overload) insert request from {}: {}", source.getPeer(), e.toString());
       }
-      tag.unlockHandler(rejectReason.soft);
+      tag.unlockHandler(rejectReason.soft());
       return;
     }
     long now = System.currentTimeMillis();
