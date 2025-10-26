@@ -132,7 +132,7 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
       return DECODED.DECODED;
     }
 
-    DECODED decoded = mangler.process(buf, offset, length, peer, opn, now);
+    DECODED decoded = mangler.process(buf, offset, length, peer, opn);
     if (decoded == DECODED.DECODED) {
       incrementDecoded();
       return DECODED.DECODED;

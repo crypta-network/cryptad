@@ -95,7 +95,7 @@ class IncomingPacketFilterImplTest {
     // Should gather timer entropy with the expected bias
     verify(randomSource, times(1)).acceptTimerEntropy(any(), eq(0.25d));
     // Mangler should not be invoked if the owning PeerNode handled the packet
-    verify(mangler, never()).process(any(), anyInt(), anyInt(), eq(peer), eq(opn), eq(now));
+    verify(mangler, never()).process(any(), anyInt(), anyInt(), eq(peer), eq(opn));
   }
 
   @Test
@@ -103,13 +103,13 @@ class IncomingPacketFilterImplTest {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
     when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
-    when(mangler.process(buf, 0, buf.length, peer, null, now)).thenReturn(DECODED.DECODED);
+    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.DECODED);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
 
     assertSame(DECODED.DECODED, result);
     verify(randomSource, times(1)).acceptTimerEntropy(any(), eq(0.25d));
-    verify(mangler, times(1)).process(buf, 0, buf.length, peer, null, now);
+    verify(mangler, times(1)).process(buf, 0, buf.length, peer, null);
   }
 
   // --- process() fallback paths --------------------------------------------
@@ -119,7 +119,7 @@ class IncomingPacketFilterImplTest {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
     when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
-    when(mangler.process(buf, 0, buf.length, peer, null, now)).thenReturn(DECODED.NOT_DECODED);
+    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.NOT_DECODED);
 
     PeerNode pn1 = Mockito.mock(PeerNode.class);
     PeerNode pn2 = Mockito.mock(PeerNode.class);
@@ -140,7 +140,7 @@ class IncomingPacketFilterImplTest {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
     when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
-    when(mangler.process(buf, 0, buf.length, peer, null, now)).thenReturn(DECODED.NOT_DECODED);
+    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.NOT_DECODED);
 
     PeerNode pn1 = Mockito.mock(PeerNode.class);
     PeerNode pn2 = Mockito.mock(PeerNode.class);
@@ -161,7 +161,7 @@ class IncomingPacketFilterImplTest {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
     when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
-    when(mangler.process(buf, 0, buf.length, peer, null, now)).thenReturn(DECODED.SHUTTING_DOWN);
+    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.SHUTTING_DOWN);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
 
