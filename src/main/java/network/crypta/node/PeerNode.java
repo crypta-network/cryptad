@@ -796,8 +796,9 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     String[] physical = fs.getAll(SFS_KEY_PHYSICAL_UDP);
     if (physical != null) {
       for (String phys : physical) {
-        Peer p = tryParsePeerForNominal(phys, fromLocal);
-        if (p != null && !nominalPeer.contains(p)) nominalPeer.add(p);
+        for (Peer p : parsePeerEntryCompat(phys, fromLocal)) {
+          if (p != null && !nominalPeer.contains(p)) nominalPeer.add(p);
+        }
       }
     }
     if (nominalPeer.isEmpty()) {
@@ -810,10 +811,59 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     updateShortToString();
   }
 
-  private Peer tryParsePeerForNominal(String phys, boolean fromLocal) {
+  /**
+   * Parses a physical.udp entry. In addition to the standard "host:port" form, tolerates a
+   * comma-separated host list with a shared port suffix (e.g., "A,B:port") or multiple comma-
+   * separated full entries (e.g., "A:port,B:port"). Returns zero or more parsed peers.
+   */
+  private List<Peer> parsePeerEntryCompat(String phys, boolean fromLocal) {
+    ArrayList<Peer> out = new ArrayList<>(2);
     try {
-      return new Peer(phys, true, true);
+      out.add(new Peer(phys, true, true));
+      return out;
     } catch (HostnameSyntaxException | PeerParseException | UnknownHostException e) {
+      // Try compatibility forms only if a comma appears.
+      if (phys.indexOf(',') >= 0) {
+        // Pattern: A,B,C:port → apply trailing port to each host
+        int lastColon = phys.lastIndexOf(':');
+        if (lastColon > 0 && lastColon < phys.length() - 1) {
+          String portStr = phys.substring(lastColon + 1);
+          boolean portOk = true;
+          try {
+            int p = Integer.parseInt(portStr);
+            if (p < 0 || p > 65535) portOk = false;
+          } catch (NumberFormatException nfe) {
+            portOk = false;
+          }
+          if (portOk) {
+            String hostList = phys.substring(0, lastColon);
+            String[] hosts = hostList.split(",");
+            for (String h : hosts) {
+              String cand = h.trim() + ":" + portStr;
+              try {
+                out.add(new Peer(cand, true, true));
+              } catch (Exception ignored) {
+                // try next
+              }
+            }
+          }
+        }
+        // Additionally try: split by comma and parse each token as-is (covers A:port,B:port)
+        for (String token : phys.split(",")) {
+          String cand = token.trim();
+          if (cand.isEmpty()) continue;
+          try {
+            Peer parsed = new Peer(cand, true, true);
+            if (!out.contains(parsed)) out.add(parsed);
+          } catch (Exception ignored) {
+            // continue
+          }
+        }
+        if (!out.isEmpty()) {
+          LOG.info("Parsed {} into {} peer(s) via compatibility split", phys, out.size());
+          return out;
+        }
+      }
       if (fromLocal) {
         LOG.error(
             "Invalid hostname or IP Address syntax error while parsing peer reference in local"
@@ -823,7 +873,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         LOG.warn(
             "Invalid hostname or IP Address syntax error while parsing peer reference: {}", phys);
       }
-      return null;
+      return out;
     }
   }
 
@@ -3175,6 +3225,13 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   private List<Peer> collectPeersFromPhysical(String[] physical) {
     List<Peer> list = new ArrayList<>(physical.length);
     for (String phys : physical) {
+      if (phys.indexOf(',') >= 0) {
+        // Apply the same compatibility splitting we use for local parsing.
+        for (Peer p : parsePeerEntryCompat(phys, /*fromLocal=*/ false)) {
+          if (p != null && !list.contains(p)) list.add(p);
+        }
+        continue;
+      }
       Peer p = tryParsePeer(phys);
       if (p != null && !list.contains(p)) list.add(p);
     }
@@ -3198,7 +3255,16 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   private Peer tryParsePeer(String phys) {
     try {
       return new Peer(phys, true, true);
-    } catch (HostnameSyntaxException | PeerParseException | UnknownHostException e) {
+    } catch (UnknownHostException e) {
+      // Host appears syntactically valid but cannot be resolved here (e.g., link‑local scope name
+      // not present on this host). Lower severity to INFO to avoid noisy logs.
+      LOG.info(
+          STR_INVALID_HOST_OR_IP_WHILE_PARSING
+              + "{} (unresolvable here; likely host-local scope or transient DNS)",
+          phys);
+      return null;
+    } catch (HostnameSyntaxException | PeerParseException e) {
+      // True syntax issues: keep ERROR to surface malformed noderefs.
       LOG.error(STR_INVALID_HOST_OR_IP_WHILE_PARSING + "{}", phys);
       return null;
     }

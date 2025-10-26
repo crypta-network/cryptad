@@ -192,6 +192,36 @@ class DarknetPeerNodeTest {
     assertFalse(node.shouldSendHandshake());
   }
 
+  @Test
+  void parse_physicalUdp_comma_hosts_with_shared_port() throws Exception {
+    SimpleFieldSet sfs =
+        minimalDarknetNoderef("CompatA", new String[] {"198.51.100.10,2001:db8::1:4711"});
+    DarknetPeerNode pn =
+        new DarknetPeerNode(
+            sfs, mockNode, mockCrypto, true, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.YES, mockPeers);
+
+    SimpleFieldSet out = pn.exportFieldSet();
+    java.util.Set<String> all =
+        new java.util.HashSet<>(java.util.Arrays.asList(out.getAll("physical.udp")));
+    assertTrue(all.contains("198.51.100.10:4711"), "actual=" + all);
+    assertTrue(all.contains("2001:db8:0:0:0:0:0:1:4711"), "actual=" + all);
+  }
+
+  @Test
+  void parse_physicalUdp_comma_separated_full_entries() throws Exception {
+    SimpleFieldSet sfs =
+        minimalDarknetNoderef("CompatB", new String[] {"198.51.100.11:14444,2001:db8::2:14444"});
+    DarknetPeerNode pn =
+        new DarknetPeerNode(
+            sfs, mockNode, mockCrypto, true, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.YES, mockPeers);
+
+    SimpleFieldSet out = pn.exportFieldSet();
+    java.util.Set<String> all =
+        new java.util.HashSet<>(java.util.Arrays.asList(out.getAll("physical.udp")));
+    assertTrue(all.contains("198.51.100.11:14444"), "actual=" + all);
+    assertTrue(all.contains("2001:db8:0:0:0:0:0:2:14444"), "actual=" + all);
+  }
+
   // --- Helpers ---
 
   private DarknetPeerNode newPeer(String name, String[] addresses) throws Exception {

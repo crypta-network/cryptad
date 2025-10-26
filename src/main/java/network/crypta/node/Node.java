@@ -1158,6 +1158,13 @@ public class Node implements TimeSkewDetectorCallback {
         Peer p;
         try {
           p = new Peer(udpAddr, false, true);
+        } catch (UnknownHostException e) {
+          LOG.info(
+              "Unknown host while parsing our darknet node reference: {} (likely host-local scope"
+                  + " or transient DNS)",
+              udpAddr);
+          System.err.println("Unknown host while parsing our darknet node reference: " + udpAddr);
+          continue;
         } catch (HostnameSyntaxException e) {
           LOG.error(
               "Invalid hostname or IP Address syntax error while parsing our darknet node"

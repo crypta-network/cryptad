@@ -40,16 +40,15 @@ public class AddressIdentifier {
   public static final Pattern ipv6Pattern;
 
   /**
-   * Like {@link #ipv6Pattern} but allows an optional numeric percent scope ID suffix (for example,
-   * {@code fe80::1%2}). The scope ID is limited to 1–3 ASCII digits; interface names are not
-   * matched by design. Intended for whole-input matching via {@link
+   * Like {@link #ipv6Pattern} but allows an optional percent scope ID suffix (for example, {@code
+   * fe80::1%2} or {@code fe80::1%eth0}). Intended for whole-input matching via {@link
    * java.util.regex.Matcher#matches()}.
    */
   public static final Pattern ipv6PatternWithPercentScopeID;
 
   /**
    * Precompiled, case-insensitive regex for detecting IPv6 ISATAP addresses as defined in
-   * RFC&nbsp;4214. The pattern permits an optional numeric percent scope ID. Use via {@link
+   * RFC&nbsp;4214. The pattern permits an optional percent scope ID. Use via {@link
    * java.util.regex.Matcher#matches()} and prefer the convenience method {@link
    * #isAnISATAPIPv6Address(String)} for boolean checks.
    */
@@ -76,7 +75,8 @@ public class AddressIdentifier {
     ipv4Pattern = Pattern.compile(ipv4AddressRegex);
 
     String wordRegex = "(?>[0-9a-f]{1,4})"; // single hex word; atomic to limit backtracking
-    String percentScopeIDRegex = "(?>%\\d{1,3})?"; // numeric zone index only, by design
+    // Accept numeric or interface-name zone indices: 1–32 of [0-9A-Za-z._-]
+    String percentScopeIDRegex = "(?>%[0-9A-Za-z._-]{1,32})?";
     /*
      * IPv6 recognition in compressed/expanded forms. The following alternatives cover the legal
      * positions of the double-colon run and remaining words (X = hex word):
