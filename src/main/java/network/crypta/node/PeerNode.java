@@ -3077,13 +3077,14 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       SimpleFieldSet fs, boolean forARK, boolean forDiffNodeRef, boolean forFullNodeRef)
       throws FSParseException {
     boolean changedAnything;
-    validateIdentity(fs, forDiffNodeRef);
+    validateIdentity(fs, forDiffNodeRef, forFullNodeRef);
     changedAnything = updateVersionInfo(fs, forARK, forDiffNodeRef, forFullNodeRef);
     updateVersionRoutablity();
     return changedAnything;
   }
 
-  private void validateIdentity(SimpleFieldSet fs, boolean forDiffNodeRef) throws FSParseException {
+  private void validateIdentity(SimpleFieldSet fs, boolean forDiffNodeRef, boolean forFullNodeRef)
+      throws FSParseException {
     String identityString = fs.get(SFS_KEY_IDENTITY);
     if (identityString != null) {
       try {
@@ -3092,7 +3093,11 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       } catch (NumberFormatException | IllegalBase64Exception e) {
         throw new FSParseException(e);
       }
-    } else if (!forDiffNodeRef) {
+      return;
+    }
+    // Missing identity is allowed for differential or partial noderefs (e.g., during handshake).
+    // Only full noderefs must include identity.
+    if (forFullNodeRef && !forDiffNodeRef) {
       if (isDarknet()) throw new FSParseException("No identity!");
       else if (LOG.isDebugEnabled())
         LOG.debug("didn't send an identity; let's assume it's pre-1471");
