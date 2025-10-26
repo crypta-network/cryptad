@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
+import network.crypta.io.comm.MessageCore;
+import network.crypta.io.comm.MessageFilter;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.support.io.NativeThread;
@@ -19,7 +21,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -241,6 +245,77 @@ class SSKInsertSenderTest {
     // Call with the other variant just to ensure it returns true (no exception); internal flag
     // effect is exercised indirectly via behavior, which is outside this unit-scope.
     assertTrue(sender.isAccepted(acceptedNoPk));
+  }
+
+  @Test
+  void baseSender_usesIsAcceptedHook_forSSKAccepted_andCallsOnAccepted() throws Exception {
+    // Arrange a sender in bulk mode (realtime=false) so we hit BaseSender.innerRouteRequestsOld.
+    prepareCommonStubs();
+
+    // Node collaborators
+    MessageCore usm = Mockito.mock(MessageCore.class);
+    when(node.getUSM()).thenReturn(usm);
+
+    PeerManager peerManager = Mockito.mock(PeerManager.class);
+    when(node.getPeers()).thenReturn(peerManager);
+
+    // Request tracker needed by a real InsertTag instance
+    RequestTracker tracker = Mockito.mock(RequestTracker.class);
+    when(node.getTracker()).thenReturn(tracker);
+
+    // Real tag with uid=42 matching the SSKInsertSender below
+    InsertTag tag = new InsertTag(true, InsertTag.START.REMOTE, source, false, 42L, node);
+
+    // Peer and its load tracker used by BaseSender on acceptance
+    PeerNode next = Mockito.mock(PeerNode.class);
+    PeerNode.OutputLoadTracker olt = Mockito.mock(PeerNode.OutputLoadTracker.class);
+    when(next.outputLoadTracker(false)).thenReturn(olt);
+    when(next.outputLoadTracker(true)).thenReturn(olt);
+
+    // USM returns: first the SSK-accepted, then a final InsertReply
+    Message accepted = DMT.createFNPSSKAccepted(42L, /* needPubKey= */ false);
+    Message finalReply = DMT.createFNPInsertReply(42L);
+    when(usm.waitFor(ArgumentMatchers.any(MessageFilter.class), ArgumentMatchers.any()))
+        .thenReturn(accepted)
+        .thenReturn(finalReply);
+
+    // Construct the sender with uid=42 and realtime=false (bulk)
+    SSKInsertSender sender =
+        new SSKInsertSender(
+            block,
+            42L,
+            tag,
+            (short) 10,
+            source,
+            node,
+            /* fromStore */ false,
+            /* forkOnCacheable */ true,
+            /* preferInsert */ false,
+            /* ignoreLowBackoff */ false,
+            /* realtime */ false);
+
+    // Act: drive a single routing attempt directly
+    sender.innerRouteRequests(next, tag);
+
+    // Assert: onAccepted path executed — headers and data were sent
+    Mockito.verify(next)
+        .sendAsync(
+            ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestHeaders),
+            ArgumentMatchers.isNull(),
+            ArgumentMatchers.eq(sender));
+
+    Mockito.verify(next)
+        .sendSync(
+            ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestData),
+            ArgumentMatchers.eq(sender),
+            ArgumentMatchers.eq(false));
+
+    // BaseSender’s acceptance branch should reset backoff and clear the guard
+    Mockito.verify(next).resetMandatoryBackoff(false);
+    Mockito.verify(olt).clearDontSendUnlessGuaranteed();
+
+    // Final outcome should be success
+    assertEquals("SUCCESS", sender.getStatusString());
   }
 
   @Test
