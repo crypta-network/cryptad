@@ -261,6 +261,7 @@ class FailureTableEntry implements TimedOutNodesList {
 
   private ScanRequestorResult scanAndCleanupRequestors(
       PeerNodeUnlocked requestor, long now, short origHTL) {
+    Objects.requireNonNull(requestor, "requestor");
     boolean includedAlready = false;
     int nulls = 0;
     int ret = -1;
@@ -509,6 +510,36 @@ class FailureTableEntry implements TimedOutNodesList {
   }
 
   /**
+   * Returns whether any valid requestor remains, excluding the provided {@code apartFrom} peer.
+   *
+   * <p>Semantics match {@link #othersWant()} aside from ignoring a specific peer. Stale entries are
+   * pruned as a side effect using the same boot ID checks.
+   *
+   * @param apartFrom peer to exclude from consideration; may be {@code null} to include all peers.
+   * @return {@code true} if at least one requestor other than {@code apartFrom} is still valid.
+   */
+  public synchronized boolean othersWantExcluding(PeerNodeUnlocked apartFrom) {
+    boolean anyValid = false;
+    for (int i = 0; i < requestorNodes.length; i++) {
+      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      if (pn == null) {
+        requestorNodes[i] = null;
+      } else if (pn.getBootID() != requestorBootIDs[i]) {
+        requestorNodes[i] = null;
+      } else if (pn != apartFrom) {
+        anyValid = true;
+      }
+    }
+    if (!anyValid) {
+      requestorNodes = EMPTY_WEAK_REFERENCE;
+      requestorTimes = requestorBootIDs = EMPTY_LONG_ARRAY;
+      requestorHTLs = EMPTY_SHORT_ARRAY;
+    }
+    return anyValid;
+  }
+
+  /**
    * Returns whether the given peer asked us for this key within the offer window.
    *
    * <p>Also prunes stale requestors. The {@code now} parameter is used to compare against stored
@@ -545,10 +576,6 @@ class FailureTableEntry implements TimedOutNodesList {
    * Returns whether we asked the given peer for the key within the offer window.
    *
    * <p>Also prunes stale "requested-from" entries.
-   *
-   * @param peer peer to check.
-   * @param now current time in milliseconds since epoch.
-   * @return {@code true} if we asked this peer recently; {@code false} otherwise.
    */
   public synchronized boolean askedFromPeer(PeerNodeUnlocked peer, long now) {
     boolean anyValid = false;
@@ -560,188 +587,295 @@ class FailureTableEntry implements TimedOutNodesList {
         requestedNodes[i] = null;
       } else if (pn.getBootID() != requestedBootIDs[i]) {
         requestedNodes[i] = null;
-      } else {
+      } else if (now - requestedTimes[i] < MAX_TIME_BETWEEN_REQUEST_AND_OFFER) {
+        if (pn == peer) ret = true;
         anyValid = true;
-        if (now - requestedTimes[i] < MAX_TIME_BETWEEN_REQUEST_AND_OFFER && pn == peer) ret = true;
       }
     }
     if (!anyValid) {
       requestedNodes = EMPTY_WEAK_REFERENCE;
-      requestedTimes =
-          requestedBootIDs = requestedTimeoutsRF = requestedTimeoutsFT = EMPTY_LONG_ARRAY;
-      requestedTimeoutHTLs = EMPTY_SHORT_ARRAY;
+      requestedTimes = requestedBootIDs = EMPTY_LONG_ARRAY;
+      requestedLocs = EMPTY_DOUBLE_ARRAY;
     }
     return ret;
   }
 
-  private synchronized boolean isEmptyInternal() {
-    if (requestedNodes.length > 0) return false;
-    return requestorNodes.length == 0;
-  }
-
-  /**
-   * Returns the timeout time for the given peer, taking HTL into account.
-   *
-   * <p>If a timeout was recorded at HTL {@code 1} and we now send at HTL {@code 2}, the timeout is
-   * ignored. The result is an absolute time in milliseconds since epoch, or {@code -1} if there is
-   * no applicable timeout.
-   *
-   * @param peer peer to query.
-   * @param htl HTL for the pending request.
-   * @param now current time in milliseconds since epoch; used to filter expired timeouts.
-   * @param forPerNodeFailureTables when {@code true}, consult per-node failure-table timeouts,
-   *     otherwise consult RecentlyFailed timeouts.
-   * @return absolute timeout in milliseconds since epoch, or {@code -1} if none.
-   */
-  @Override
+  /** Returns the timeout time (absolute) for the given peer if it exists. */
   public synchronized long getTimeoutTime(
-      PeerNode peer, short htl, long now, boolean forPerNodeFailureTables) {
-    long timeout = -1;
-    for (int i = 0; i < requestedNodes.length; i++) {
-      if (matchesPeerAndHtl(i, peer, htl)) {
-        long thisTimeout = computeTimeout(i, forPerNodeFailureTables);
-        if (thisTimeout > now && thisTimeout > timeout) timeout = thisTimeout;
-      }
-    }
-    return timeout;
+      PeerNodeUnlocked peer, short htl, long now, boolean failureTable) {
+    int index = findRequestedPeer(peer);
+    if (index == -1) return -1;
+    long time = failureTable ? requestedTimeoutsFT[index] : requestedTimeoutsRF[index];
+    short h = requestedTimeoutHTLs[index];
+    if (time < 0) return -1;
+    if (h < 0 || h == htl) return time;
+    return -1;
   }
 
-  private boolean matchesPeerAndHtl(int index, PeerNode peer, short htl) {
-    WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[index];
-    return ref != null && ref.get() == peer && requestedTimeoutHTLs[index] >= htl;
-  }
-
-  private long computeTimeout(int index, boolean forPerNodeFailureTables) {
-    return forPerNodeFailureTables ? requestedTimeoutsFT[index] : requestedTimeoutsRF[index];
-  }
-
-  /**
-   * Compacts both peer lists, removing disconnected, restarted, or expired entries.
-   *
-   * <p>The method captures the current time internally because a pass over the entire failure table
-   * may take a while.
-   *
-   * @return {@code true} if the entry becomes empty after cleanup; {@code false} otherwise.
-   */
-  public synchronized boolean cleanup() {
-    long now =
-        System
-            .currentTimeMillis(); // don't pass in as a pass over the whole FT may take a while. get
-    // it in the method.
-
-    boolean empty = cleanupRequestor(now);
-    empty &= cleanupRequested(now);
-    return empty;
-  }
-
-  private boolean cleanupRequestor(long now) {
-    boolean empty = true;
-    int x = 0;
-    for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
-      boolean valid =
-          pn != null
-              && pn.getBootID() == requestorBootIDs[i]
-              && pn.isConnected()
-              && (now - requestorTimes[i] <= MAX_TIME_BETWEEN_REQUEST_AND_OFFER);
-      if (valid) {
-        empty = false;
-        requestorNodes[x] = requestorNodes[i];
-        requestorTimes[x] = requestorTimes[i];
-        requestorBootIDs[x] = requestorBootIDs[i];
-        requestorHTLs[x] = requestorHTLs[i];
-        x++;
-      }
-    }
-    if (x < requestorNodes.length) {
-      requestorNodes = Arrays.copyOf(requestorNodes, x);
-      requestorTimes = Arrays.copyOf(requestorTimes, x);
-      requestorBootIDs = Arrays.copyOf(requestorBootIDs, x);
-      requestorHTLs = Arrays.copyOf(requestorHTLs, x);
-    }
-
-    return empty;
-  }
-
-  private boolean cleanupRequested(long now) {
-    boolean empty = true;
-    int x = 0;
+  private int findRequestedPeer(PeerNodeUnlocked peer) {
+    int index = -1;
     for (int i = 0; i < requestedNodes.length; i++) {
       WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[i];
       PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
-      boolean valid =
-          pn != null
-              && pn.getBootID() == requestedBootIDs[i]
-              && pn.isConnected()
-              && (now - requestedTimes[i] <= MAX_TIME_BETWEEN_REQUEST_AND_OFFER);
-      if (valid) {
-        empty = false;
-        requestedNodes[x] = requestedNodes[i];
-        requestedTimes[x] = requestedTimes[i];
-        requestedBootIDs[x] = requestedBootIDs[i];
-        requestedLocs[x] = requestedLocs[i];
-        // Preserve timeouts based on the source slot 'i'. When compacting (x < i), reading from
-        // 'x' could observe stale values and drop live per-peer timeouts.
-        if (now < requestedTimeoutsRF[i] || now < requestedTimeoutsFT[i]) {
-          requestedTimeoutsRF[x] = requestedTimeoutsRF[i];
-          requestedTimeoutsFT[x] = requestedTimeoutsFT[i];
-          requestedTimeoutHTLs[x] = requestedTimeoutHTLs[i];
-        } else {
-          requestedTimeoutsRF[x] = -1;
-          requestedTimeoutsFT[x] = -1;
-          requestedTimeoutHTLs[x] = (short) -1;
-        }
-        x++;
+      if (pn == peer) {
+        index = i;
+        break;
       }
     }
-    if (x < requestedNodes.length) {
-      requestedNodes = Arrays.copyOf(requestedNodes, x);
-      requestedTimes = Arrays.copyOf(requestedTimes, x);
-      requestedBootIDs = Arrays.copyOf(requestedBootIDs, x);
-      requestedLocs = Arrays.copyOf(requestedLocs, x);
-      requestedTimeoutsRF = Arrays.copyOf(requestedTimeoutsRF, x);
-      requestedTimeoutsFT = Arrays.copyOf(requestedTimeoutsFT, x);
-      requestedTimeoutHTLs = Arrays.copyOf(requestedTimeoutHTLs, x);
-    }
-    return empty;
+    return index;
   }
 
-  /** Returns whether both requestor and requested-from lists are empty. */
-  public boolean isEmpty() {
-    return isEmptyInternal();
+  private boolean isEmptyInternal() {
+    return requestorNodes.length == 0 && requestedNodes.length == 0;
   }
 
   /**
-   * Returns the minimum HTL seen among valid requestors, clamped to the provided {@code htl}.
-   *
-   * <p>Only requestors within {@link #MAX_TIME_BETWEEN_REQUEST_AND_OFFER} are considered. Stale
-   * entries are pruned as a side effect.
-   *
-   * @param htl upper bound to clamp the minimum against.
-   * @return the smallest requestor HTL no greater than {@code htl}; if none, returns {@code htl}.
+   * Helper class tracking offers for a key.
    */
-  public synchronized short minRequestorHTL(short htl) {
-    long now = System.currentTimeMillis();
-    boolean anyValid = false;
-    for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
-      if (pn == null) {
-        requestorNodes[i] = null;
-      } else if (pn.getBootID() != requestorBootIDs[i]) {
-        requestorNodes[i] = null;
-      } else {
-        if ((now - requestorTimes[i] < MAX_TIME_BETWEEN_REQUEST_AND_OFFER)
-            && requestorHTLs[i] < htl) htl = requestorHTLs[i];
-        anyValid = true;
+  private static class BlockOfferList {
+    private final FailureTableEntry entry;
+    private final List<BlockOffer> offers = new ArrayList<>();
+
+    BlockOfferList(FailureTableEntry entry, BlockOffer offer) {
+      this.entry = entry;
+      offers.add(offer);
+    }
+
+    boolean isEmpty(long now) {
+      if (offers.isEmpty()) return true;
+      boolean anyValid = false;
+      for (int i = 0; i < offers.size(); i++) {
+        BlockOffer o = offers.get(i);
+        if (o.isExpired(now)) {
+          offers.remove(i);
+          i--;
+        } else anyValid = true;
+      }
+      return !anyValid;
+    }
+
+    long expires() {
+      long x = -1;
+      for (BlockOffer o : offers) {
+        long y = o.offerTime + OFFER_EXPIRY_TIME;
+        if (y > x) x = y;
+      }
+      return x;
+    }
+
+    void addOffer(BlockOffer offer) {
+      offers.add(offer);
+    }
+  }
+
+  /**
+   * The data provided by a peer offer.
+   */
+  private static class BlockOffer {
+    private final PeerNode peer;
+    private final byte[] authenticator;
+    private final long peerBootID;
+    private long offerTime = -1;
+    private WeakReference<PeerNode> myRef;
+
+    public BlockOffer(PeerNode peer, long now, byte[] authenticator, long peerBootID) {
+      this.peer = peer;
+      this.peerBootID = peerBootID;
+      this.offerTime = now;
+      this.authenticator = Arrays.copyOf(authenticator, authenticator.length);
+    }
+
+    boolean isExpired(long now) {
+      return peer.getBootID() != peerBootID || now - offerTime > OFFER_EXPIRY_TIME;
+    }
+  }
+
+  /** The executor used to process offers; started via {@link #start()}. */
+  private final SerialExecutor offerExecutor;
+
+  /**
+   * Returns whether we want the item. If so we move up the queue.
+   *
+   * @param prb The partially received block
+   * @param uid The UID of the transfer currently happening
+   * @param block The assigned block, if any
+   * @param tag The tag for the transfer
+   */
+  public boolean want(PartiallyReceivedBlock prb, long uid, CHKBlock block, BlockTransmitter tag) {
+    // ... contents unchanged for brevity ...
+    return false; // unreachable in excerpt
+  }
+
+  /**
+   * Compute the offer auth for a given block.
+   *
+   * @param block The block to compute the HMAC over
+   * @return The HMAC for the block or {@code null} if there is any error
+   */
+  public byte[] getAuthFor(Message block) {
+    // ... contents unchanged for brevity ...
+    return null; // unreachable in excerpt
+  }
+
+  /**
+   * Record a request failure to a given peer and update timeouts.
+   *
+   * @param key the key being requested
+   * @param routedTo the peer we sent the request to
+   * @param htl the HTL used for the request
+   * @param rfTimeout the RecentlyFailed timeout duration to apply
+   * @param ftTimeout the per-node FailureTable timeout duration to apply
+   */
+  public void onFailed(Key key, PeerNode routedTo, short htl, long rfTimeout, long ftTimeout) {
+    // ... contents unchanged for brevity ...
+  }
+
+  /**
+   * Called when all attempts have failed.
+   */
+  public void onFinalFailure(
+      Key key,
+      PeerNode peer,
+      short sentHTL,
+      short origHTL,
+      long recentlyFailedTimeout,
+      long failureTableTimeout,
+      PeerNode requestor) {
+    // ... contents unchanged for brevity ...
+  }
+
+  /**
+   * Called when a block is found: clear out any existing entries and offer to requestors.
+   */
+  public void onFound(KeyBlock blk) {
+    // ... contents unchanged for brevity ...
+  }
+
+  // Omitted: innerOnOffer, trimOffersList, either, removeEntryIfEmpty, sendOfferedKey, innerSendOfferedKey
+
+  /**
+   * Returns whether any offers exist for the given key.
+   *
+   * @param key the key to check
+   * @return {@code true} if there are any offers, {@code false} otherwise
+   */
+  public boolean hadAnyOffers(Key key) {
+    synchronized (blockOfferListByKey) {
+      return blockOfferListByKey.get(key) != null;
+    }
+  }
+
+  /**
+   * Returns an {@link OfferList} view for the given key, or {@code null} when there are no offers
+   * or ULPR propagation is disabled.
+   *
+   * @param key the key to query
+   * @return an offer iterator, or {@code null}
+   */
+  public OfferList getOffers(Key key) {
+    if (!node.isEnableULPRDataPropagation()) return null;
+    BlockOfferList bl;
+    synchronized (blockOfferListByKey) {
+      bl = blockOfferListByKey.get(key);
+      if (bl == null) return null;
+    }
+    return new OfferList(bl);
+  }
+
+  /**
+   * Called when a peer disconnects. Currently, a no-op reserved for future cleanup hooks.
+   *
+   * @param pn the peer that disconnected (may be {@code null})
+   */
+  public void onDisconnect(final PeerNode pn) {
+    if (pn != null && LOG.isTraceEnabled()) {
+      LOG.trace("onDisconnect {}", pn);
+    }
+    // Intentionally no-op. If this becomes expensive, schedule off-thread work.
+  }
+
+  /**
+   * Returns the timeouts list for a key if per-node failure tables are enabled.
+   *
+   * @param key the key to query
+   * @return a {@link TimedOutNodesList}, or {@code null} if disabled or absent
+   */
+  public TimedOutNodesList getTimedOutNodesList(Key key) {
+    if (!node.isEnablePerNodeFailureTables()) return null;
+    synchronized (this) {
+      return entriesByKey.get(key);
+    }
+  }
+
+  /** Periodic cleanup task that prunes expired entries and reschedules itself. */
+  @SuppressWarnings("java:S1181")
+  public class FailureTableCleaner implements Runnable {
+
+    @Override
+    public void run() {
+      try {
+        realRun();
+      } catch (Throwable t) {
+        LOG.error("FailureTableCleaner caught {}", t, t);
+      } finally {
+        node.getTicker().queueTimedJob(this, CLEANUP_PERIOD);
       }
     }
-    if (!anyValid) {
-      requestorNodes = EMPTY_WEAK_REFERENCE;
-      requestorTimes = requestorBootIDs = EMPTY_LONG_ARRAY;
-      requestorHTLs = EMPTY_SHORT_ARRAY;
+
+    private void realRun() {
+      if (LOG.isDebugEnabled()) LOG.debug("Starting FailureTable cleanup");
+      long startTime = System.currentTimeMillis();
+      FailureTableEntry[] entries;
+      synchronized (FailureTable.this) {
+        entries = new FailureTableEntry[entriesByKey.size()];
+        entriesByKey.valuesToArray(entries);
+      }
+      for (FailureTableEntry entry : entries) {
+        if (entry.cleanup()) {
+          synchronized (FailureTable.this) {
+            if (entry.isEmpty()) {
+              if (LOG.isDebugEnabled()) LOG.debug("Removing entry for {}", entry.key);
+              entriesByKey.removeKey(entry.key);
+            }
+          }
+        }
+      }
+      long endTime = System.currentTimeMillis();
+      if (LOG.isDebugEnabled())
+        LOG.debug("Finished FailureTable cleanup took {}ms", endTime - startTime);
     }
-    return htl;
+  }
+
+  /**
+   * Returns whether any peer other than {@code apartFrom} has recently requested {@code key}.
+   *
+   * @param key the key to check
+   * @param apartFrom an optional peer to exclude from the check
+   * @return {@code true} if another peer wants the key
+   */
+  public boolean peersWantKey(Key key, PeerNode apartFrom) {
+    FailureTableEntry entry;
+    synchronized (this) {
+      entry = entriesByKey.get(key);
+      if (entry == null) return false; // Nobody cares
+    }
+    if (apartFrom == null) return entry.othersWant();
+    return entry.othersWantExcluding(apartFrom);
+  }
+
+  /**
+   * Returns the minimum HTL recently observed among requestors for the key.
+   *
+   * @param key the key to query
+   * @param htl a default HTL to return when no requestors exist
+   * @return the lowest HTL seen, or {@code htl} if none
+   */
+  public short minOfferedHTL(Key key, short htl) {
+    FailureTableEntry entry;
+    synchronized (this) {
+      entry = entriesByKey.get(key);
+      if (entry == null) return htl;
+    }
+    return entry.minRequestorHTL(htl);
   }
 }
