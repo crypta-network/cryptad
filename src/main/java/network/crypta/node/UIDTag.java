@@ -8,16 +8,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Base class for tags representing a running request. These store enough information to detect
- * whether they are finished; if they are still in the list, this normally represents a bug.
+ * Base class for tags that represent a single in‑flight request.
+ *
+ * <p>A tag tracks routing state (peers we contacted or are contacting), handler state (whether the
+ * incoming side has completed), and bookkeeping required to decide when it is safe to release the
+ * unique identifier (UID) for reuse. Subclasses define request‑specific behavior and logging.
+ *
+ * <p>Concurrency: many methods are {@code synchronized} on {@code this}. Callers must respect the
+ * locking comments on helpers that assume the monitor is already held. The class itself is not
+ * immutable.
+ *
+ * <p>Lifetime: a tag is created when a request is accepted or initiated and is unlocked when both
+ * the handler (incoming) and all outstanding outbound activities are complete, or when ownership is
+ * reassigned locally as part of timeout handling.
  *
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public abstract class UIDTag {
   private static final Logger LOG = LoggerFactory.getLogger(UIDTag.class);
+  private static final String DEBUG_EXCEPTION_MESSAGE = "debug";
 
-  static {
-  }
+  // No static initialization required.
 
   final long createdTime;
   final boolean wasLocal;
@@ -27,22 +38,23 @@ public abstract class UIDTag {
   protected boolean accepted;
   protected boolean sourceRestarted;
 
-  /** Nodes we have routed to at some point */
+  /** Nodes we routed to at any point during this tag's lifetime. */
   private HashSet<PeerNode> routedTo = null;
 
   /**
-   * Nodes we are currently talking to i.e. which have not yet removed our UID from the list of
-   * active requests.
+   * Nodes we are currently talking to (their side has not yet removed our UID from active
+   * requests).
    */
   private HashSet<PeerNode> currentlyRoutingTo = null;
 
-  /** Node we are currently doing an offered-key-fetch from */
+  /** Nodes we are currently fetching an offered key from. */
   private HashSet<PeerNode> fetchingOfferedKeyFrom = null;
 
   /**
-   * We are waiting for two stage timeouts from these nodes. If the handler is unlocked and there
-   * are still nodes in the above two, we will log an error; but if those nodes are here too, we
-   * will reassignTagToSelf and not log an error.
+   * Peers for which we are in the two‑stage timeout grace. When the handler is unlocked while any
+   * peers remain in {@link #currentlyRoutingTo} or {@link #fetchingOfferedKeyFrom}, we log an
+   * error; if those peers are also present here, we reassign the tag locally instead of logging an
+   * error.
    */
   private HashSet<PeerNode> handlingTimeouts = null;
 
@@ -62,10 +74,18 @@ public abstract class UIDTag {
     this.realTimeFlag = realTimeFlag;
     this.tracker = node.getTracker();
     this.uid = uid;
-    if (LOG.isDebugEnabled()) LOG.debug("Created " + this);
-    if (wasLocal) accepted = true; // FIXME remove, but it's always true at the moment.
+    if (LOG.isDebugEnabled()) LOG.debug("Create tag {}", this);
+    // For locally originated requests, acceptance is immediate by design.
+    if (wasLocal) accepted = true;
   }
 
+  /**
+   * Log that this tag still exists after the request timeout threshold.
+   *
+   * <p>Subclasses decide the logging level and include any identifiers they control.
+   *
+   * @param uid Optional UID to include in the log; may be {@code null} when not applicable.
+   */
   public abstract void logStillPresent(Long uid);
 
   long age() {
@@ -73,21 +93,23 @@ public abstract class UIDTag {
   }
 
   /**
-   * Notify that we are routing to, or fetching an offered key from, a specific node. This should be
-   * called before we send the actual request message, to avoid us thinking we have more outgoing
-   * capacity than we actually have on a specific peer.
+   * Mark that we route to, or fetch an offered key from, a peer. Call before sending the outbound
+   * message so per‑peer capacity accounting is accurate.
    *
-   * @param peer The peer we are routing to.
-   * @param offeredKey If true, we are fetching an offered key, if false we are routing a normal
-   *     request. Fetching an offered key is quite distinct, notably it has much shorter timeouts.
-   * @return True if we were already routing to (or fetching an offered key from, depending on
-   *     offeredKey) the peer.
+   * @param peer Peer we route to or fetch from.
+   * @param offeredKey {@code true} for an offered‑key fetch; {@code false} for a normal route.
+   *     Offered‑key fetches use shorter timeouts.
+   * @return {@code true} if the peer was newly added to the corresponding set; {@code false} if it
+   *     was already present.
    */
   public synchronized boolean addRoutedTo(PeerNode peer, boolean offeredKey) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Routing to " + peer + " on " + this + (offeredKey ? " (offered)" : ""),
-          new Exception("debug"));
+          "Route to {} on {}{}",
+          peer,
+          this,
+          offeredKey ? " (offered)" : "",
+          new Exception(DEBUG_EXCEPTION_MESSAGE));
     if (routedTo == null) routedTo = new HashSet<>();
     routedTo.add(peer);
     if (offeredKey) {
@@ -99,38 +121,55 @@ public abstract class UIDTag {
     }
   }
 
+  /**
+   * Whether we have ever routed to the given peer for this tag.
+   *
+   * @param peer Peer to test.
+   * @return {@code true} if {@code peer} has been recorded in {@link #routedTo} at least once.
+   */
+  @SuppressWarnings("unused")
   public synchronized boolean hasRoutedTo(PeerNode peer) {
     if (routedTo == null) return false;
     return routedTo.contains(peer);
   }
 
+  /**
+   * Whether we are currently routing to the given peer.
+   *
+   * @param peer Peer to test.
+   * @return {@code true} if {@code peer} is present in {@link #currentlyRoutingTo}.
+   */
   public synchronized boolean currentlyRoutingTo(PeerNode peer) {
     if (currentlyRoutingTo == null) return false;
     return currentlyRoutingTo.contains(peer);
   }
 
-  // Note that these don't actually get removed until the request is finished, unless there is a
-  // disconnection or similar. But that
-  // is generally not a problem as they complete quickly and successfully mostly.
-  // The alternative would be to remove when the transfer is finished, but that does not
-  // guarantee the UID has been freed; we can only safely (for load management purposes)
-  // remove once we have an acknowledgement which is sent after the UID is removed.
+  // We do not remove peers from these sets until the request finishes, unless a disconnection or
+  // similar event occurs. This is acceptable because most transfers complete quickly. Removing on
+  // transfer completion would not guarantee the UID has been freed; removal is safe only after
+  // receiving an acknowledgement sent after the UID is cleared.
 
+  /**
+   * Whether we are currently fetching an offered key from the given peer.
+   *
+   * @param peer Peer to test.
+   * @return {@code true} if {@code peer} is present in {@link #fetchingOfferedKeyFrom}.
+   */
   public synchronized boolean currentlyFetchingOfferedKeyFrom(PeerNode peer) {
     if (fetchingOfferedKeyFrom == null) return false;
     return fetchingOfferedKeyFrom.contains(peer);
   }
 
   /**
-   * Notify that we are no longer fetching an offered key from a specific node. Must be called only
-   * when we are sure the next node doesn't think we are routing to it any more. See
-   * removeRoutingTo() explanation for more detail. When we are not routing to any nodes, and not
-   * fetching from, and the handler has also been unlocked, the UID is unlocked.
+   * Notify that we no longer fetch an offered key from a peer. Call only when the peer no longer
+   * believes we route to it; see {@link #removeRoutingTo(PeerNode)} for rationale. When we are not
+   * routing to any peers, not fetching offered keys, and the handler is unlocked, the UID is
+   * released.
    *
-   * @param next The node we are no longer fetching an offered key from.
+   * @param next Peer we are no longer fetching an offered key from.
    */
   public void removeFetchingOfferedKeyFrom(PeerNode next) {
-    boolean noRecordUnlock;
+    boolean localNoRecordUnlock;
     synchronized (this) {
       if (fetchingOfferedKeyFrom == null) return;
       fetchingOfferedKeyFrom.remove(next);
@@ -138,55 +177,58 @@ public abstract class UIDTag {
         handlingTimeouts.remove(next);
       }
       if (!mustUnlock()) return;
-      noRecordUnlock = this.noRecordUnlock;
+      localNoRecordUnlock = this.noRecordUnlock;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Unlocking " + this);
-    innerUnlock(noRecordUnlock);
+    if (LOG.isDebugEnabled()) LOG.debug("Unlock tag {}", this);
+    innerUnlock(localNoRecordUnlock);
   }
 
   /**
-   * Notify that we are no longer routing to a specific node. When we are not routing to (or
-   * fetching offered keys from) any nodes, and the handler side has also been unlocked, the whole
-   * tag is unlocked (note that this is only relevant to incoming requests; outgoing requests only
-   * care about what we are routing to). We should not call this method until we are reasonably sure
-   * that the node in question no longer thinks we are routing to it. Whereas we unlock the handler
-   * as soon as possible, without waiting for acknowledgement of our completion notice. Be cautious
-   * (late) in what you send, and generous (early) in what you accept! This avoids problems with the
-   * previous node thinking we've finished when we haven't, or us thinking the next node has
-   * finished when it hasn't.
+   * Notify that we no longer route to a peer. When we are not routing to any peers (or fetching
+   * offered keys) and the handler is unlocked, the tag is fully unlocked. This is most relevant to
+   * incoming requests; outgoing requests only consider outbound routing.
    *
-   * @param next The node we are no longer routing to.
+   * <p>Do not call until the peer is reasonably certain we stopped routing to it. We unlock the
+   * handler as early as possible, without waiting for acknowledgement of our completion notice.
+   * Late on sending and early on accepting avoids the peer thinking we finished when we did not, or
+   * us thinking the next peer finished when it did not.
+   *
+   * @param next Peer we are no longer routing to.
    */
   public void removeRoutingTo(PeerNode next) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("No longer routing to {} on {}", next, this);
+      LOG.debug("Stop routing to {} on {}", next, this);
     }
-    boolean noRecordUnlock;
+    boolean localNoRecordUnlock;
     synchronized (this) {
       if (currentlyRoutingTo == null) {
         return;
       }
-      if (!currentlyRoutingTo.remove(next)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Removing wrong node or removing twice? on {} : {}", this, next);
-        }
+      if (!currentlyRoutingTo.remove(next) && LOG.isDebugEnabled()) {
+        LOG.debug("Unexpected remove in {} for node {}", this, next);
       }
       if (handlingTimeouts != null) {
         handlingTimeouts.remove(next);
       }
       if (!mustUnlock()) return;
-      noRecordUnlock = this.noRecordUnlock;
+      localNoRecordUnlock = this.noRecordUnlock;
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Unlocking " + this);
+      LOG.debug("Unlock tag {}", this);
     }
-    innerUnlock(noRecordUnlock);
+    innerUnlock(localNoRecordUnlock);
   }
 
   protected void innerUnlock(boolean noRecordUnlock) {
     tracker.unlockUID(this, false, noRecordUnlock);
   }
 
+  /**
+   * Called after {@link #innerUnlock(boolean)} to notify peers that tracked this tag.
+   *
+   * <p>Best‑effort; missing peers are ignored.
+   */
+  @SuppressWarnings("unused")
   public void postUnlock() {
     PeerNode[] peers;
     synchronized (this) {
@@ -197,29 +239,30 @@ public abstract class UIDTag {
   }
 
   /**
-   * Add up the expected transfers in.
+   * Estimate expected inbound transfers attributed to this tag.
    *
-   * @param ignoreLocalVsRemote If true, pretend that the request is remote even if it's local.
-   * @param outwardTransfersPerInsert Expected number of outward transfers for an insert.
-   * @param forAccept If true, we are deciding whether to accept a request. If false, we are
-   *     deciding whether to SEND a request. We need to be more careful for the latter than the
-   *     former, to avoid unnecessary rejections and mandatory backoffs.
+   * @param ignoreLocalVsRemote When {@code true}, treat the request as remote even if local.
+   * @param outwardTransfersPerInsert Expected number of outbound transfers per insert operation.
+   * @param forAccept When {@code true}, compute for admission control; when {@code false}, compute
+   *     for sending decisions where we must be more conservative to avoid avoidable rejections and
+   *     mandatory backoffs.
    */
   public abstract int expectedTransfersIn(
       boolean ignoreLocalVsRemote, int outwardTransfersPerInsert, boolean forAccept);
 
   /**
-   * Add up the expected transfers out.
+   * Estimate expected outbound transfers attributed to this tag.
    *
-   * @param ignoreLocalVsRemote If true, pretend that the request is remote even if it's local.
-   * @param outwardTransfersPerInsert Expected number of outward transfers for an insert.
-   * @param forAccept If true, we are deciding whether to accept a request. If false, we are
-   *     deciding whether to SEND a request. We need to be more careful for the latter than the
-   *     former, to avoid unnecessary rejections and mandatory backoffs.
+   * @param ignoreLocalVsRemote When {@code true}, treat the request as remote even if local.
+   * @param outwardTransfersPerInsert Expected number of outbound transfers per insert operation.
+   * @param forAccept When {@code true}, compute for admission control; when {@code false}, compute
+   *     for sending decisions where we must be more conservative to avoid avoidable rejections and
+   *     mandatory backoffs.
    */
   public abstract int expectedTransfersOut(
       boolean ignoreLocalVsRemote, int outwardTransfersPerInsert, boolean forAccept);
 
+  /** Mark that this request will not be routed further downstream. */
   public synchronized void setNotRoutedOnwards() {
     this.notRoutedOnwards = true;
   }
@@ -227,8 +270,10 @@ public abstract class UIDTag {
   private boolean reassigned;
 
   /**
-   * Get the effective source node (e.g. for load management). This is null if the tag was
-   * reassigned to us.
+   * Get the effective source node for load management.
+   *
+   * @return The original source {@link PeerNode}, or {@code null} if the tag has been reassigned
+   *     locally or originated locally.
    */
   public synchronized PeerNode getSource() {
     if (reassigned) return null;
@@ -236,21 +281,18 @@ public abstract class UIDTag {
     return sourceRef.get();
   }
 
-  /** Reassign the tag to us rather than its original sender. */
+  /** Reassign the tag locally rather than attributing it to the original sender. */
   public synchronized void reassignToSelf() {
     if (wasLocal) return;
     reassigned = true;
   }
 
-  /**
-   * Was the request originated locally? This returns the original answer: It is not affected by
-   * reassigning to self.
-   */
+  /** Whether the request originated locally. Not affected by {@link #reassignToSelf()}. */
   public boolean wasLocal() {
     return wasLocal;
   }
 
-  /** Is the request local now? I.e. was it either originated locally or reassigned to self? */
+  /** Whether the request is considered local now (originated locally or reassigned to self). */
   public boolean isLocal() {
     if (wasLocal) return true;
     synchronized (this) {
@@ -258,87 +300,103 @@ public abstract class UIDTag {
     }
   }
 
+  /**
+   * @return {@code true} if this tag represents an SSK request.
+   */
   public abstract boolean isSSK();
 
+  /**
+   * @return {@code true} if this tag represents an insert request.
+   */
   public abstract boolean isInsert();
 
+  /**
+   * @return {@code true} if this tag represents a reply to an offer.
+   */
   public abstract boolean isOfferReply();
 
   /**
-   * Caller must call innerUnlock(noRecordUnlock) immediately if this returns true. Hence derived
+   * Caller must call innerUnlock(noRecordUnlock) immediately if this returns true. Hence, derived
    * versions should call mustUnlock() only after they have checked their own unlock blockers.
    */
   protected synchronized boolean mustUnlock() {
-    if (hasUnlocked) return false;
-    if (!unlockedHandler) return false;
-    if (currentlyRoutingTo != null && !currentlyRoutingTo.isEmpty()) {
-      if (!(reassigned || wasLocal || sourceRestarted || timedOutButContinued)) {
-        boolean expected = false;
-        if (handlingTimeouts != null) {
-          expected = true;
-          for (PeerNode pn : currentlyRoutingTo) {
-            if (handlingTimeouts.contains(pn)) {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "Still waiting for "
-                        + pn.shortToString()
-                        + " but expected because handling timeout in unlockHandler - will reassign"
-                        + " to self to resolve timeouts");
-              break;
-            }
-            expected = false;
-          }
-        }
-        if (!expected) {
-          if (handlingTimeouts != null)
-            LOG.info(
-                "Unlocked handler but still routing to "
-                    + currentlyRoutingTo
-                    + " - expected because have timed out so a fork might have succeeded and we"
-                    + " might be waiting for the original");
-          else
-            LOG.error(
-                "Unlocked handler but still routing to "
-                    + currentlyRoutingTo
-                    + " yet not reassigned on "
-                    + this,
-                new Exception("debug"));
-        } else reassignToSelf();
-      }
+    if (hasUnlocked || !unlockedHandler) {
       return false;
     }
-    if (fetchingOfferedKeyFrom != null && !fetchingOfferedKeyFrom.isEmpty()) {
-      if (!(reassigned || wasLocal)) {
-        boolean expected = false;
-        if (handlingTimeouts != null) {
-          expected = true;
-          for (PeerNode pn : fetchingOfferedKeyFrom) {
-            if (handlingTimeouts.contains(pn)) {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "Still waiting for "
-                        + pn.shortToString()
-                        + " but expected because handling timeout in unlockHandler - will reassign"
-                        + " to self to resolve timeouts");
-              break;
-            }
-            expected = false;
-          }
-        }
-        if (!expected)
-          // Fork succeeds can't happen for fetch-offered-keys.
-          LOG.error(
-              "Unlocked handler but still fetching offered keys from "
-                  + fetchingOfferedKeyFrom
-                  + " yet not reassigned on "
-                  + this,
-              new Exception("debug"));
-        else reassignToSelf();
-      }
+    if (hasOutstandingRoutingTo()) {
+      return false;
+    }
+    if (hasOutstandingOfferedKeyFetches()) {
       return false;
     }
     hasUnlocked = true;
     return true;
+  }
+
+  // Helper assumes the monitor on this tag is already held by the caller.
+  private boolean hasOutstandingRoutingTo() {
+    if (currentlyRoutingTo == null || currentlyRoutingTo.isEmpty()) {
+      return false;
+    }
+    if (!(reassigned || wasLocal || sourceRestarted || timedOutButContinued)) {
+      boolean expected = isAnyHandlingTimeout(currentlyRoutingTo);
+      if (!expected) {
+        if (handlingTimeouts != null) {
+          LOG.info(
+              "Unlock handler but still routing to {} - expected due to timeout; fork may succeed"
+                  + " while waiting for original",
+              currentlyRoutingTo);
+        } else {
+          LOG.error(
+              "Unlock handler but still routing to {} without reassignment on {}",
+              currentlyRoutingTo,
+              this,
+              new Exception(DEBUG_EXCEPTION_MESSAGE));
+        }
+      } else {
+        reassignToSelf();
+      }
+    }
+    return true;
+  }
+
+  // Helper assumes the monitor on this tag is already held by the caller.
+  private boolean hasOutstandingOfferedKeyFetches() {
+    if (fetchingOfferedKeyFrom == null || fetchingOfferedKeyFrom.isEmpty()) {
+      return false;
+    }
+    if (!(reassigned || wasLocal)) {
+      boolean expected = isAnyHandlingTimeout(fetchingOfferedKeyFrom);
+      if (!expected) {
+        // Fork succeeds can't happen for fetch-offered-keys.
+        LOG.error(
+            "Unlock handler but still fetching offered keys from {} without reassignment on {}",
+            fetchingOfferedKeyFrom,
+            this,
+            new Exception(DEBUG_EXCEPTION_MESSAGE));
+      } else {
+        reassignToSelf();
+      }
+    }
+    return true;
+  }
+
+  private boolean isAnyHandlingTimeout(HashSet<PeerNode> peers) {
+    if (handlingTimeouts == null) {
+      return false;
+    }
+    for (PeerNode pn : peers) {
+      if (handlingTimeouts.contains(pn)) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
+              "Still wait for {} due to handling timeout in unlockHandler; reassign to self to"
+                  + " resolve",
+              pn.shortToString());
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -359,7 +417,7 @@ public abstract class UIDTag {
     }
     if (canUnlock) innerUnlock(noRecordUnlock);
     else {
-      LOG.info("Cannot unlock yet in unlockHandler, still sending requests");
+      LOG.info("Defer unlock in unlockHandler; still sending requests");
     }
   }
 
@@ -367,10 +425,8 @@ public abstract class UIDTag {
     unlockHandler(false);
   }
 
-  // LOCKING: Synchronized because of access to currentlyRoutingTo i.e. to avoid
-  // ConcurrentModificationException.
-  // UIDTag lock is always taken last anyway so this is safe.
-  // Also it is only used in logging anyway.
+  // LOCKING: Synchronized to avoid ConcurrentModificationException when reading sets for logging.
+  // The UIDTag lock is always taken last in callers.
   @Override
   public synchronized String toString() {
     StringBuilder sb = new StringBuilder();
@@ -397,11 +453,11 @@ public abstract class UIDTag {
   }
 
   /**
-   * Mark a peer as handling a timeout. Hence if when the handler is unlocked, this peer is still
-   * marked as routing to (or fetching offered keys from), rather than logging an error, we will
-   * reassign this tag to self, to wait for the fatal timeout.
+   * Mark that we are handling a timeout for the given peer. If the handler later unlocks while the
+   * peer still appears in routing/fetching sets, we will reassign this tag locally (rather than log
+   * an error) and wait for the fatal timeout.
    *
-   * @param next
+   * @param next Peer for which a timeout is being handled.
    */
   public synchronized void handlingTimeout(PeerNode next) {
     if (handlingTimeouts == null) handlingTimeouts = new HashSet<>();
@@ -411,6 +467,12 @@ public abstract class UIDTag {
   private long loggedStillPresent;
   private static final long LOGGED_STILL_PRESENT_INTERVAL = SECONDS.toMillis(60);
 
+  /**
+   * Log that the tag is still present after the request timeout, at most once per interval.
+   *
+   * @param now Current time in milliseconds since the epoch.
+   * @param uid Optional UID to include in the subclass log; may be {@code null}.
+   */
   public void maybeLogStillPresent(long now, Long uid) {
     if (now - createdTime > RequestTracker.TIMEOUT) {
       synchronized (this) {
@@ -421,6 +483,7 @@ public abstract class UIDTag {
     }
   }
 
+  /** Mark this request as accepted by the handler. */
   public synchronized void setAccepted() {
     accepted = true;
   }
@@ -436,7 +499,7 @@ public abstract class UIDTag {
     timedOutButContinued = true;
   }
 
-  /** The handler disconnected or restarted. */
+  /** Mark that the handler disconnected or restarted. */
   public synchronized void onRestartOrDisconnectSource() {
     sourceRestarted = true;
   }
@@ -454,19 +517,26 @@ public abstract class UIDTag {
     return sourceRestarted || timedOutButContinued;
   }
 
-  /** Should we send messages to the source? */
+  /** Whether we should continue sending messages to the source. */
   public synchronized boolean hasSourceReallyRestarted() {
     return sourceRestarted;
   }
 
   /**
-   * Should we stop the request as soon as is convenient? Normally this happens when the source is
+   * Whether we should stop the request as soon as convenient. Normally {@code true} when the source
    * restarted or disconnected.
    */
   public synchronized boolean shouldStop() {
     return sourceRestarted || timedOutButContinued;
   }
 
+  /**
+   * Whether the given peer is the original source of this tag.
+   *
+   * @param pn Peer to compare.
+   * @return {@code true} if {@code pn} is the original source and the tag was not reassigned and is
+   *     not local.
+   */
   public synchronized boolean isSource(PeerNode pn) {
     if (reassigned) return false;
     if (wasLocal) return false;
@@ -474,23 +544,28 @@ public abstract class UIDTag {
     return sourceRef == pn.myRef;
   }
 
+  /** Indicate that the tag is waiting for an outbound slot. */
   public synchronized void setWaitingForSlot() {
-    // FIXME use a counter on Node.
-    // We'd need to ensure it ALWAYS gets unset when some wierd
+    // Consider using a counter on Node.
+    // We must ensure it ALWAYS gets unset when some weird
     // error happens.
     if (waitingForSlot) return;
     waitingForSlot = true;
   }
 
+  /** Clear the waiting‑for‑slot state. */
   public synchronized void clearWaitingForSlot() {
-    // FIXME use a counter on Node.
-    // We'd need to ensure it ALWAYS gets unset when some wierd
+    // Consider using a counter on Node.
+    // We must ensure it ALWAYS gets unset when some weird
     // error happens.
-    // Probably we can do this just by calling clearWaitingForSlot() when unlocking???
+    // Clearing on unlock may suffice depending on call paths.
     if (!waitingForSlot) return;
     waitingForSlot = false;
   }
 
+  /**
+   * @return {@code true} if the tag is currently waiting for an outbound slot.
+   */
   public synchronized boolean isWaitingForSlot() {
     return waitingForSlot;
   }
