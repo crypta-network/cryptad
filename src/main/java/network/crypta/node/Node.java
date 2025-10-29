@@ -5295,31 +5295,31 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   public int getSwaps() {
-    return LocationManager.swaps;
+    return LocationManager.getSwaps();
   }
 
   public int getNoSwaps() {
-    return LocationManager.noSwaps;
+    return LocationManager.getNoSwaps();
   }
 
   public int getStartedSwaps() {
-    return LocationManager.startedSwaps;
+    return LocationManager.getStartedSwaps();
   }
 
   public int getSwapsRejectedAlreadyLocked() {
-    return LocationManager.swapsRejectedAlreadyLocked;
+    return LocationManager.getSwapsRejectedAlreadyLocked();
   }
 
   public int getSwapsRejectedNowhereToGo() {
-    return LocationManager.swapsRejectedNowhereToGo;
+    return LocationManager.getSwapsRejectedNowhereToGo();
   }
 
   public int getSwapsRejectedRateLimit() {
-    return LocationManager.swapsRejectedRateLimit;
+    return LocationManager.getSwapsRejectedRateLimit();
   }
 
   public int getSwapsRejectedRecognizedID() {
-    return LocationManager.swapsRejectedRecognizedID;
+    return LocationManager.getSwapsRejectedRecognizedID();
   }
 
   public PeerNode[] getPeerNodes() {
