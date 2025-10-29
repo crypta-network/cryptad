@@ -509,6 +509,40 @@ class FailureTableEntry implements TimedOutNodesList {
   }
 
   /**
+   * Returns whether any valid requestor other than {@code apartFrom} remains within the offer
+   * window.
+   *
+   * <p>Also prunes stale requestors. The {@code now} parameter is used to compare against stored
+   * request times.
+   *
+   * @param apartFrom peer to exclude from consideration; may be {@code null}.
+   * @param now current time in milliseconds since epoch.
+   * @return {@code true} if at least one other peer wants the key; {@code false} otherwise.
+   */
+  public synchronized boolean othersWantExcept(PeerNodeUnlocked apartFrom, long now) {
+    boolean anyValid = false;
+    boolean anyOther = false;
+    for (int i = 0; i < requestorNodes.length; i++) {
+      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      if (pn == null) {
+        requestorNodes[i] = null;
+      } else if (pn.getBootID() != requestorBootIDs[i]) {
+        requestorNodes[i] = null;
+      } else if (now - requestorTimes[i] < MAX_TIME_BETWEEN_REQUEST_AND_OFFER) {
+        anyValid = true;
+        if (pn != apartFrom) anyOther = true;
+      }
+    }
+    if (!anyValid) {
+      requestorNodes = EMPTY_WEAK_REFERENCE;
+      requestorTimes = requestorBootIDs = EMPTY_LONG_ARRAY;
+      requestorHTLs = EMPTY_SHORT_ARRAY;
+    }
+    return anyOther;
+  }
+
+  /**
    * Returns whether the given peer asked us for this key within the offer window.
    *
    * <p>Also prunes stale requestors. The {@code now} parameter is used to compare against stored
