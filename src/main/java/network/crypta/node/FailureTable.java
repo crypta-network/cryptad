@@ -479,10 +479,10 @@ public class FailureTable {
       if (LOG.isDebugEnabled())
         //noinspection ConstantValue
         LOG.debug("Not propagating key: weAsked={} heAsked={}", weAsked, heAsked);
-      removeEntryIfEmpty(entry, key, now);
+      removeEntryIfEmpty(entry, key);
       return;
     }
-    removeEntryIfEmpty(entry, key, now);
+    removeEntryIfEmpty(entry, key);
 
     // Valid offer.
 
@@ -536,7 +536,7 @@ public class FailureTable {
     return a || b;
   }
 
-  private void removeEntryIfEmpty(FailureTableEntry entry, Key key, long now) {
+  private void removeEntryIfEmpty(FailureTableEntry entry, Key key) {
     if (entry.isEmpty()) {
       synchronized (this) {
         entriesByKey.removeKey(key);
@@ -896,7 +896,11 @@ public class FailureTable {
       entry = entriesByKey.get(key);
       if (entry == null) return false; // Nobody cares
     }
-    return entry.othersWant();
+    if (apartFrom == null) {
+      return entry.othersWant();
+    }
+    long now = System.currentTimeMillis();
+    return entry.othersWantExcept(apartFrom, now);
   }
 
   /**
