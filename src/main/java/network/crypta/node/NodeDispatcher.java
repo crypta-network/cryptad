@@ -272,7 +272,8 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     }
 
     if (spec == DMT.FNPSwapRequest) {
-      return node.getLocationManager().handleSwapRequest(m, source);
+      node.getLocationManager().handleSwapRequest(m, source);
+      return true;
     } else if (spec == DMT.FNPSwapReply) {
       return node.getLocationManager().handleSwapReply(m, source);
     } else if (spec == DMT.FNPSwapRejected) {

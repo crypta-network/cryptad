@@ -121,9 +121,9 @@ public class RealNodeRoutingTest extends RealNodeTest {
       for (int i = 0; i < nodes.length; i++) {
         System.err.println("Cycle " + cycleNumber + " node " + i + ": " + nodes[i].getLocation());
       }
-      int newSwaps = LocationManager.swaps;
-      int totalStarted = LocationManager.startedSwaps;
-      int noSwaps = LocationManager.noSwaps;
+      int newSwaps = LocationManager.getSwaps();
+      int totalStarted = LocationManager.getStartedSwaps();
+      int noSwaps = LocationManager.getNoSwaps();
       System.err.println("Swaps: " + (newSwaps - lastSwaps));
       System.err.println(
           "\nTotal swaps: Started*2: "
@@ -141,14 +141,15 @@ public class RealNodeRoutingTest extends RealNodeTest {
               + ((double) (noSwaps - lastNoSwaps)) / ((double) (newSwaps - lastSwaps)));
       lastNoSwaps = noSwaps;
       System.err.println(
-          "Swaps rejected (already locked): " + LocationManager.swapsRejectedAlreadyLocked);
+          "Swaps rejected (already locked): " + LocationManager.getSwapsRejectedAlreadyLocked());
       System.err.println(
-          "Swaps rejected (nowhere to go): " + LocationManager.swapsRejectedNowhereToGo);
-      System.err.println("Swaps rejected (rate limit): " + LocationManager.swapsRejectedRateLimit);
+          "Swaps rejected (nowhere to go): " + LocationManager.getSwapsRejectedNowhereToGo());
       System.err.println(
-          "Swaps rejected (recognized ID):" + LocationManager.swapsRejectedRecognizedID);
-      System.err.println("Swaps failed:" + LocationManager.noSwaps);
-      System.err.println("Swaps succeeded:" + LocationManager.swaps);
+          "Swaps rejected (rate limit): " + LocationManager.getSwapsRejectedRateLimit());
+      System.err.println(
+          "Swaps rejected (recognized ID):" + LocationManager.getSwapsRejectedRecognizedID());
+      System.err.println("Swaps failed:" + LocationManager.getNoSwaps());
+      System.err.println("Swaps succeeded:" + LocationManager.getSwaps());
 
       double totalSwapInterval = 0.0;
       double totalSwapTime = 0.0;
@@ -245,17 +246,20 @@ public class RealNodeRoutingTest extends RealNodeTest {
         System.err.println("Maximum HTL: " + MAX_HTL);
         System.err.println(
             "Average path length for successful requests: " + totalHopsTaken / successes);
-        System.err.println("Total started swaps: " + LocationManager.startedSwaps);
+        System.err.println("Total started swaps: " + LocationManager.getStartedSwaps());
         System.err.println(
-            "Total rejected swaps (already locked): " + LocationManager.swapsRejectedAlreadyLocked);
+            "Total rejected swaps (already locked): "
+                + LocationManager.getSwapsRejectedAlreadyLocked());
         System.err.println(
-            "Total swaps rejected (nowhere to go): " + LocationManager.swapsRejectedNowhereToGo);
+            "Total swaps rejected (nowhere to go): "
+                + LocationManager.getSwapsRejectedNowhereToGo());
         System.err.println(
-            "Total swaps rejected (rate limit): " + LocationManager.swapsRejectedRateLimit);
+            "Total swaps rejected (rate limit): " + LocationManager.getSwapsRejectedRateLimit());
         System.err.println(
-            "Total swaps rejected (recognized ID):" + LocationManager.swapsRejectedRecognizedID);
-        System.err.println("Total swaps failed:" + LocationManager.noSwaps);
-        System.err.println("Total swaps succeeded:" + LocationManager.swaps);
+            "Total swaps rejected (recognized ID):"
+                + LocationManager.getSwapsRejectedRecognizedID());
+        System.err.println("Total swaps failed:" + LocationManager.getNoSwaps());
+        System.err.println("Total swaps succeeded:" + LocationManager.getSwaps());
         return;
       }
     }
