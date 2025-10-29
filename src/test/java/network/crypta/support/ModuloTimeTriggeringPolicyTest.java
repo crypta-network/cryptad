@@ -125,8 +125,8 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    ZonedDateTime zdtCall =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Compute expectation from the same instant the policy uses to avoid races.
+    ZonedDateTime zdtCall = ZonedDateTime.ofInstant(Instant.ofEpochMilli(boundary), zone);
     boolean expected = (zdtCall.getHour() % multiple) == 0 && zdtCall.getMinute() == 0;
     assertEquals(policy.isTriggeringEvent(null, null), expected);
   }
@@ -153,8 +153,8 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    ZonedDateTime zdtCall =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Compute expectation from the same instant the policy uses to avoid races.
+    ZonedDateTime zdtCall = ZonedDateTime.ofInstant(Instant.ofEpochMilli(boundary), zone);
     long epochDay = zdtCall.toLocalDate().toEpochDay();
     boolean expected =
         (epochDay % multiple) == 0 && zdtCall.getHour() == 0 && zdtCall.getMinute() == 0;
@@ -183,8 +183,8 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    ZonedDateTime zdtCall =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Compute expectation from the same instant the policy uses to avoid races.
+    ZonedDateTime zdtCall = ZonedDateTime.ofInstant(Instant.ofEpochMilli(boundary), zone);
     long epochDay = zdtCall.toLocalDate().toEpochDay();
     long isoWeekIndex = Math.floorDiv(epochDay + 3, 7);
     boolean expected =
@@ -217,8 +217,8 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    ZonedDateTime zdtCall =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Compute expectation from the same instant the policy uses to avoid races.
+    ZonedDateTime zdtCall = ZonedDateTime.ofInstant(Instant.ofEpochMilli(boundary), zone);
     int monthIndex = zdtCall.getYear() * 12 + (zdtCall.getMonthValue() - 1);
     boolean expected =
         (monthIndex % multiple) == 0
@@ -250,8 +250,8 @@ class ModuloTimeTriggeringPolicyTest {
     assertFalse(policy.isTriggeringEvent(null, null));
     policy.setCurrentTimePublic(boundary);
 
-    ZonedDateTime zdtCall =
-        ZonedDateTime.ofInstant(Instant.ofEpochMilli(System.currentTimeMillis()), zone);
+    // Compute expectation from the same instant the policy uses to avoid races.
+    ZonedDateTime zdtCall = ZonedDateTime.ofInstant(Instant.ofEpochMilli(boundary), zone);
     boolean expected =
         (zdtCall.getYear() % multiple) == 0
             && zdtCall.getDayOfYear() == 1
