@@ -669,14 +669,17 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
     Decision urgentDecision = decideUrgentWhenNoConnections(stats, now);
     if (urgentDecision == Decision.TRUE) return true;
-    if (urgentDecision == Decision.FALSE) return false;
 
+    // Always evaluate the 6-minute mass-disconnect override, even when the
+    // hourly throttle would suppress an "urgent" detect decision.
     if (hasNoPeers(stats)) return shouldDetectNoPeers(now);
+    if (shouldDetectAfterRecentDisconnects(stats, now)) return true;
+
+    if (urgentDecision == Decision.FALSE) return false;
 
     logNotUrgent(conns, peers);
 
-    return shouldDetectAfterRecentDisconnects(stats, now)
-        || (detector.maybeSymmetric && lastDetectAttemptEndedTime <= 0);
+    return detector.maybeSymmetric && lastDetectAttemptEndedTime <= 0;
   }
 
   private boolean hasNoPeers(PeerStats stats) {

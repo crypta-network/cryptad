@@ -416,4 +416,58 @@ class IPDetectorPluginManagerTest {
     assertEquals(0, realConnections);
     assertEquals(0, realDisconnected);
   }
+
+  @Test
+  void massDisconnectsAfterSixMinutes_bypassesHourlyThrottle_andStartsDetect() throws Exception {
+    IPDetectorPluginManager mgr = newManager();
+
+    // Ensure we have a plugin so startDetect() schedules a runner.
+    FredPluginIPDetector plugin = mock(FredPluginIPDetector.class);
+    when(plugin.getAddress()).thenReturn(new DetectedIP[0]);
+    mgr.registerDetectorPlugin(plugin);
+
+    // Peer manager reports some peers overall (none currently connected).
+    when(peerManager.countValidPeers()).thenReturn(3);
+
+    // Build three eligible, recently-disconnected peers to trigger the override.
+    long now = System.currentTimeMillis();
+    PeerNode p1 = mock(PeerNode.class);
+    PeerNode p2 = mock(PeerNode.class);
+    PeerNode p3 = mock(PeerNode.class);
+    for (PeerNode p : new PeerNode[] {p1, p2, p3}) {
+      when(p.isDisabled()).thenReturn(false);
+      when(p.isConnected()).thenReturn(false);
+      when(p.lastReceivedPacketTime()).thenReturn(now - 60_000L); // recently connected
+
+      Peer peer = mock(Peer.class);
+      when(p.getPeer()).thenReturn(peer);
+      network.crypta.io.comm.FreenetInetAddress fna =
+          mock(network.crypta.io.comm.FreenetInetAddress.class);
+      when(peer.getFreenetAddress()).thenReturn(fna);
+      // Valid InetAddress to pass eligibility check
+      when(fna.getAddress(false)).thenReturn(java.net.InetAddress.getByName("198.51.100.10"));
+    }
+    when(node.getPeerNodes()).thenReturn(new PeerNode[] {p1, p2, p3});
+    when(node.getConnectedPeers()).thenReturn(new PeerNode[0]);
+
+    // Set last detect attempt to 7 minutes ago: hourly throttle active, but 6-minute override
+    // applies.
+    var f = IPDetectorPluginManager.class.getDeclaredField("lastDetectAttemptEndedTime");
+    f.setAccessible(true);
+    f.setLong(mgr, now - 7 * 60_000L);
+
+    // Mark manager as started so maybeRun() is effective without wiring alerts
+    var fs = IPDetectorPluginManager.class.getDeclaredField("started");
+    fs.setAccessible(true);
+    fs.setBoolean(mgr, true);
+
+    // Capture startDetect via executor scheduling.
+    reset(executor);
+    doAnswer(inv -> null).when(executor).execute(any(Runnable.class), any(String.class));
+
+    mgr.maybeRun();
+
+    // Expect a detection run to be scheduled despite the hourly throttle.
+    verify(executor, times(1)).execute(any(Runnable.class), any(String.class));
+  }
 }
