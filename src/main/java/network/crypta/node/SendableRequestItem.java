@@ -1,24 +1,38 @@
 package network.crypta.node;
 
 /**
- * A SendableRequest may include many SendableRequestItem's. Typically for requests, these are just
- * an integer indicating which key to fetch. But for inserts, these will often include the actual
- * data to insert, or some means of getting it without access to the database.
+ * Describes a unit of work that a higher-level request can send.
+ *
+ * <p>A single {@code SendableRequest} may comprise multiple items. For fetch operations, an item is
+ * often a small token such as an index or position indicating which key to retrieve. For insert
+ * operations, an item may carry the data to insert or a handle that allows the sender to obtain the
+ * data without direct database access.
+ *
+ * <p>Implementations should keep instances lightweight so they can be queued and tracked
+ * efficiently. Use {@link #getKey()} to supply a compact identity suitable for hash-based
+ * collections when deduplicating or checking membership.
  *
  * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
  */
 public interface SendableRequestItem {
 
   /**
-   * Called when a request is abandoned. Whether this is called on a successful request is up to the
-   * SendableRequestSender.
+   * Releases resources when the associated request is abandoned.
+   *
+   * <p>Invocation timing is controlled by the sender; some senders may also call this after a
+   * successful completion. Implementations should make this method safe to call at most once and
+   * avoid throwing exceptions. Prefer freeing transient memory and closing any streams or handles
+   * owned solely by this item.
    */
   void dump();
 
   /**
-   * Get a lightweight object for tracking which SendableRequestItem's are queued. This will usually
-   * be "return this", but if creating your SendableRequest is expensive, you may want to define a
-   * separate key type (especially for transient inserts).
+   * Returns a lightweight key that identifies the item in queues and sets.
+   *
+   * <p>This frequently returns {@code this}. If constructing the item is expensive or large, return
+   * a dedicated {@link SendableRequestItemKey} implementation instead (commonly used for transient
+   * inserts). The key should define stable {@link Object#equals(Object)} and {@link
+   * Object#hashCode()} semantics that reflect the item's logical identity.
    */
   SendableRequestItemKey getKey();
 }
