@@ -29,7 +29,7 @@ public class DarknetAddRefToadlet extends Toadlet {
     if (!ctx.checkFullAccess(this)) return;
 
     String path = uri.getPath();
-    if (path.endsWith(NodeFile.InstallerWindows.getFilename())) {
+    if (path.endsWith(NodeFile.INSTALLER_WINDOWS.getFilename())) {
       File installer = node.getNodeUpdater().getInstallerWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
@@ -38,7 +38,7 @@ public class DarknetAddRefToadlet extends Toadlet {
       }
     }
 
-    if (path.endsWith(NodeFile.InstallerNonWindows.getFilename())) {
+    if (path.endsWith(NodeFile.INSTALLER_NON_WINDOWS.getFilename())) {
       File installer = node.getNodeUpdater().getInstallerNonWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
@@ -65,7 +65,7 @@ public class DarknetAddRefToadlet extends Toadlet {
     boxContent.addChild("p", l10n("explainBox2"));
 
     File installer = node.getNodeUpdater().getInstallerWindows();
-    String shortFilename = NodeFile.InstallerWindows.getFilename();
+    String shortFilename = NodeFile.INSTALLER_WINDOWS.getFilename();
 
     HTMLNode p = boxContent.addChild("p");
 
@@ -89,7 +89,7 @@ public class DarknetAddRefToadlet extends Toadlet {
               });
 
     installer = node.getNodeUpdater().getInstallerNonWindows();
-    shortFilename = NodeFile.InstallerNonWindows.getFilename();
+    shortFilename = NodeFile.INSTALLER_NON_WINDOWS.getFilename();
 
     boxContent.addChild("#", " ");
 

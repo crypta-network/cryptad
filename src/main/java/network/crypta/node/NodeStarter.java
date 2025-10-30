@@ -570,7 +570,7 @@ public class NodeStarter implements WrapperListener {
       // Ensure seednodes.fref exists at node.install.nodeDir. Install from packaged resource if
       // missing.
       try {
-        File seedFile = NodeFile.Seednodes.getFile(node);
+        File seedFile = NodeFile.SEEDNODES.getFile(node);
         if (!seedFile.exists()) {
           try (java.io.InputStream in =
               NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {

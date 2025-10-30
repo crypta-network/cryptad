@@ -369,7 +369,7 @@ public class NodeUpdateManager {
   }
 
   public File getInstallerWindows() {
-    File f = NodeFile.InstallerWindows.getFile(node);
+    File f = NodeFile.INSTALLER_WINDOWS.getFile(node);
     if (!(f.exists() && f.canRead() && f.length() > 0)) {
       return null;
     } else {
@@ -378,7 +378,7 @@ public class NodeUpdateManager {
   }
 
   public File getInstallerNonWindows() {
-    File f = NodeFile.InstallerNonWindows.getFile(node);
+    File f = NodeFile.INSTALLER_NON_WINDOWS.getFile(node);
     if (!(f.exists() && f.canRead() && f.length() > 0)) {
       return null;
     } else {
@@ -411,23 +411,23 @@ public class NodeUpdateManager {
     // Fetch seednodes to the nodeDir.
     if (updateSeednodes) {
 
-      SimplePuller seedrefsGetter = new SimplePuller(getSeednodesURI(), NodeFile.Seednodes);
+      SimplePuller seedrefsGetter = new SimplePuller(getSeednodesURI(), NodeFile.SEEDNODES);
       seedrefsGetter.start(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, MAX_SEEDNODES_LENGTH);
     }
 
     // Fetch installers and IP-to-country files to the runDir.
     if (updateInstallers) {
       SimplePuller installerGetter =
-          new SimplePuller(getInstallerNonWindowsURI(), NodeFile.InstallerNonWindows);
+          new SimplePuller(getInstallerNonWindowsURI(), NodeFile.INSTALLER_NON_WINDOWS);
       SimplePuller wininstallerGetter =
-          new SimplePuller(getInstallerWindowsURI(), NodeFile.InstallerWindows);
+          new SimplePuller(getInstallerWindowsURI(), NodeFile.INSTALLER_WINDOWS);
 
       installerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_JAVA_INSTALLER_LENGTH);
       wininstallerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_WINDOWS_INSTALLER_LENGTH);
     }
 
     // FIXME make updateIPToCountry configurable
-    SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPv4ToCountry);
+    SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPV4_TO_COUNTRY);
     ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
   }
 

@@ -1377,7 +1377,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
     HTMLNode addressRow = peerRow.addChild("td", "class", "peer-address");
     // Ip to country + Flags
-    IPConverter ipc = IPConverter.getInstance(NodeFile.IPv4ToCountry.getFile(node));
+    IPConverter ipc = IPConverter.getInstance(NodeFile.IPV4_TO_COUNTRY.getFile(node));
     byte[] addr = peerNodeStatus.getPeerAddressBytes();
 
     Country country = ipc.locateIP(addr);

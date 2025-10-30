@@ -172,7 +172,7 @@ public class Announcer {
     if (!node.isOpennetEnabled()) return;
     boolean announceNow;
     if (LOG.isDebugEnabled()) LOG.debug("Connecting some seednodes...");
-    List<SimpleFieldSet> seeds = Announcer.readSeednodes(NodeFile.Seednodes.getFile(node));
+    List<SimpleFieldSet> seeds = Announcer.readSeednodes(NodeFile.SEEDNODES.getFile(node));
     LOG.info("Trying to connect to {} seednodes...", seeds.size());
     long now = System.currentTimeMillis();
     if (prepareSeedsAndRegister(seeds, now)) return;
@@ -351,7 +351,7 @@ public class Announcer {
    * <p>The parser continues after recoverable I/O errors and logs them; successfully parsed entries
    * that follow are still returned. Resources are closed on exit.
    *
-   * @param file path to the seed nodes file (for example, {@code NodeFile.Seednodes.getFile(node)})
+   * @param file path to the seed nodes file (for example, {@code NodeFile.SEEDNODES.getFile(node)})
    * @return a list of parsed {@link SimpleFieldSet} objects; empty if the file is missing or could
    *     not be read
    */
