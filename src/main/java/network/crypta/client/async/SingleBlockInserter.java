@@ -558,7 +558,6 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
           try {
             core.getNode().store(b, false, req.canWriteClientCache, true, false);
           } catch (KeyCollisionException e) {
-            LowLevelPutException failed = new LowLevelPutException(LowLevelPutException.COLLISION);
             KeyBlock collided =
                 core.getNode()
                     .fetch(k.getNodeKey(), true, req.canWriteClientCache, false, false, null);
@@ -576,8 +575,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
               }
             }
 
-            failed.setCollidedBlock(collided);
-            throw failed;
+            throw new LowLevelPutException(collided);
           }
         else
           core.realPut(

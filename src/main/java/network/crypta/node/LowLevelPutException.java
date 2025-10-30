@@ -27,7 +27,7 @@ public class LowLevelPutException extends Exception {
   /** Failure code */
   public final int code;
 
-  private KeyBlock collidedBlock;
+  private final transient KeyBlock collidedBlock;
 
   static String getMessage(int reason) {
     return switch (reason) {
@@ -44,24 +44,22 @@ public class LowLevelPutException extends Exception {
   public LowLevelPutException(int code, String message, Throwable t) {
     super(message, t);
     this.code = code;
+    this.collidedBlock = null;
   }
 
   public LowLevelPutException(int reason) {
     super(getMessage(reason));
     this.code = reason;
+    this.collidedBlock = null;
   }
 
   public LowLevelPutException(KeyBlock collided) {
     super(getMessage(COLLISION));
     this.code = COLLISION;
-    collidedBlock = collided;
+    this.collidedBlock = collided;
   }
 
-  public synchronized void setCollidedBlock(KeyBlock block) {
-    collidedBlock = block;
-  }
-
-  public synchronized KeyBlock getCollidedBlock() {
+  public KeyBlock getCollidedBlock() {
     return collidedBlock;
   }
 }
