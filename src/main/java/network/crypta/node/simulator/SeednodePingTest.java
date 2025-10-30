@@ -81,7 +81,7 @@ public class SeednodePingTest extends RealNodeTest {
       // Connect & ping
       List<SeedServerTestPeerNode> seedNodes = new ArrayList<>();
       List<SimpleFieldSet> seedNodesAsSFS =
-          Announcer.readSeednodes(new File("/tmp/", NodeFile.Seednodes.getFilename()));
+          Announcer.readSeednodes(new File("/tmp/", NodeFile.SEEDNODES.getFilename()));
       int numberOfNodesInTheFile = 0;
       for (SimpleFieldSet sfs : seedNodesAsSFS) {
         numberOfNodesInTheFile++;
