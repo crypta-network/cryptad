@@ -34,8 +34,26 @@ import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Configures runtime logging for the node using Logback.
+ *
+ * <p>This handler wires the node's {@link SubConfig} options to Logback at runtime. It supports
+ * enabling/disabling emission, switching the log directory, applying a size-and-time based rolling
+ * policy (including a total on-disk size cap), and per-logger priority overrides. The class
+ * interacts with the Logback root logger and expects an {@code ASYNC_FILE} appender with a {@link
+ * RollingFileAppender} child to be present in the active configuration. When that structure is
+ * missing, methods return without side effects.
+ *
+ * <p>Thread-safety: mutations that toggle overall emission synchronize on an internal lock. Other
+ * reconfiguration methods perform best-effort updates and are designed to be safe to call from
+ * configuration callbacks.
+ *
+ * <p>Side effects: updates the system property {@code crypta.log.dir}, manipulates Logback policies
+ * and the root logger level, and writes to {@code System.err} for early/guarded errors. No
+ * application logger is used inside this class to avoid recursion during reconfiguration.
+ */
 public class LoggingConfigHandler {
-  // No class-level logger needed; we log via System.err in guarded spots.
+  // Intentionally no SLF4J logger; use System.err only for guarded errors.
 
   // String literals used at least 3 times (java:S1192)
   private static final String LVL_TRACE = "TRACE";
@@ -96,7 +114,7 @@ public class LoggingConfigHandler {
   }
 
   private static final String SYS_PROP_LOG_DIR = "crypta.log.dir";
-  // New, clearer name: total disk usage cap for rotated/archived logs
+  // Total on-disk usage cap for rotated/archived logs.
   private static final String CONF_LOGS_TOTAL_SIZE_CAP = "logsTotalSizeCap";
   private static final long MIN_LOGS_TOTAL_SIZE_CAP_BYTES = 50L * 1024L * 1024L; // 50 MiB
   private static final String CONF_PRIORITY = "priority";
@@ -109,7 +127,7 @@ public class LoggingConfigHandler {
   private static final String UNIT_WEEK_OF_YEAR = "WEEK_OF_YEAR"; // alias normalized to WEEK
   private static final String PATTERN_HOURLY = "yyyy-MM-dd_HH";
   private final SubConfig config;
-  // Pure SLF4J/Logback path; no LoggerHook chain
+  // Controls Logback directly; no legacy LoggerHook path.
   private boolean loggerEnabled;
   private File logDir;
   private long logsTotalSizeCap;
@@ -117,11 +135,22 @@ public class LoggingConfigHandler {
   private long maxCachedLogBytes;
   private int maxCachedLogLines;
   private long maxBacklogNotBusy;
-  // No executor required; logging configuration is independent
-  // Std stream capture removed; SLF4J/Logback handles console output directly
+  // No executor needed; configuration is synchronous and local.
+  // Stdout/stderr capture is not used; Logback owns console handling.
   private final Set<String> appliedLoggerNames = new HashSet<>();
   private String priorityDetailRaw = "";
 
+  /**
+   * Creates a handler and registers logging-related options against the provided configuration.
+   *
+   * <p>Reads initial values, applies them to Logback (including the log directory and rolling
+   * policy), and enables or disables emission according to the {@code enabled} flag.
+   *
+   * @param loggingConfig the {@link SubConfig} subsection that carries logging options; must not be
+   *     {@code null}
+   * @throws InvalidConfigValueException if the initial log directory is invalid or cannot be
+   *     created
+   */
   public LoggingConfigHandler(SubConfig loggingConfig) throws InvalidConfigValueException {
     this.config = loggingConfig;
 
@@ -148,7 +177,7 @@ public class LoggingConfigHandler {
     if (loggingEnabled) {
       enableLogger();
     } else {
-      // Ensure SLF4J/Logback does not emit logs when disabled at startup
+      // Ensure SLF4J/Logback does not emit logs when disabled at startup.
       disableLogger();
     }
     config.finishedInitialization();
@@ -213,18 +242,18 @@ public class LoggingConfigHandler {
         });
 
     logDir = new File(config.getString("dirname"));
-    // Initialize SLF4J rolling file location to mirror FileLoggerHook directory
+    // Initialize Logback rolling file location to match the configured directory.
     System.setProperty(SYS_PROP_LOG_DIR, logDir.getAbsolutePath());
-    // Ensure Logback's file appender targets the initial directory
+    // Ensure Logback's file appender targets the initial directory.
     reconfigureLogbackFileDirectory(logDir);
     if (loggingEnabled) {
       preSetLogDir(logDir);
     }
-    // => enableLogger must run preSetLogDir
+    // Note: enabling the logger invokes preSetLogDir as well.
   }
 
   private void registerLogsTotalSizeCap() {
-    // Total disk space used by rotated/archived logs
+    // Total disk space used by rotated/archived logs (bytes).
     config.register(
         CONF_LOGS_TOTAL_SIZE_CAP,
         "200M",
@@ -245,7 +274,7 @@ public class LoggingConfigHandler {
             // Enforce minimum of 50 MiB to keep rolling policy sane relative to maxFileSize.
             if (val < MIN_LOGS_TOTAL_SIZE_CAP_BYTES) val = MIN_LOGS_TOTAL_SIZE_CAP_BYTES;
             logsTotalSizeCap = val;
-            // Apply to Logback rolling policy immediately
+            // Apply to Logback rolling policy immediately.
             updateLogbackTotalSizeCap(logsTotalSizeCap);
           }
         },
@@ -255,7 +284,7 @@ public class LoggingConfigHandler {
     long initial = config.getLong(CONF_LOGS_TOTAL_SIZE_CAP);
     if (initial < MIN_LOGS_TOTAL_SIZE_CAP_BYTES) initial = MIN_LOGS_TOTAL_SIZE_CAP_BYTES;
     logsTotalSizeCap = initial;
-    // Ensure Logback picks up the configured cap at startup
+    // Ensure Logback picks up the configured cap at startup.
     updateLogbackTotalSizeCap(logsTotalSizeCap);
   }
 
@@ -294,7 +323,7 @@ public class LoggingConfigHandler {
   }
 
   private void registerInterval() {
-    // interval (kept for compatibility; handled by Logback)
+    // Interval (kept for compatibility; Logback handles rotation).
     config.register(
         "interval",
         "1HOUR",
@@ -312,18 +341,18 @@ public class LoggingConfigHandler {
           @Override
           public void set(String val) {
             logRotateInterval = val;
-            // Apply new interval to Logback rolling pattern immediately
+            // Apply new interval to Logback rolling pattern immediately.
             reconfigureLogbackFileDirectory(logDir);
           }
         });
 
     logRotateInterval = config.getString("interval");
-    // Apply current interval to Logback pattern at startup
+    // Apply current interval to Logback pattern at startup.
     reconfigureLogbackFileDirectory(logDir);
   }
 
   private void registerMaxCachedBytes() {
-    // max cached bytes in RAM
+    // Maximum cached bytes in RAM (not used by Logback path).
     config.register(
         "maxCachedBytes",
         "1M",
@@ -343,7 +372,7 @@ public class LoggingConfigHandler {
             if (val < 0) val = 0L;
             if (val == maxCachedLogBytes) return;
             maxCachedLogBytes = val;
-            // No-op under SLF4J/Logback
+            // No-op under SLF4J/Logback.
           }
         },
         true);
@@ -352,7 +381,7 @@ public class LoggingConfigHandler {
   }
 
   private void registerMaxCachedLines() {
-    // max cached lines in RAM
+    // Maximum cached lines in RAM (legacy; requires restart to take effect).
     config.register(
         "maxCachedLines",
         "10k",
@@ -372,7 +401,7 @@ public class LoggingConfigHandler {
             if (val < 0) val = 0;
             if (val == maxCachedLogLines) return;
             maxCachedLogLines = val;
-            throw new NodeNeedRestartException("logger.maxCachedLogLines");
+            throw new NodeNeedRestartException("logger.maxCachedLogLines"); // documented restart
           }
         },
         Dimension.NOT);
@@ -411,13 +440,13 @@ public class LoggingConfigHandler {
 
   private final Object enableLoggerLock = new Object();
 
-  /** Turn on the logger. */
+  /** Turn on log emission and apply current configuration. */
   @SuppressWarnings({"java:S106", "java:S4507", "CallToPrintStackTrace"})
   private void enableLogger() {
     try {
       preSetLogDir(logDir);
     } catch (InvalidConfigValueException e3) {
-      System.err.println("Cannot set log dir: " + logDir + ": " + e3);
+      System.err.println("Set log directory failed (path=" + logDir + "): " + e3);
       e3.printStackTrace();
     }
     synchronized (enableLoggerLock) {
@@ -427,8 +456,7 @@ public class LoggingConfigHandler {
         config.forceUpdate("priorityDetail");
       } catch (InvalidConfigValueException e2) {
         System.err.println(
-            "Invalid config value for logger.priority in config file: "
-                + config.getString(CONF_PRIORITY));
+            "Invalid logger.priority in configuration: " + config.getString(CONF_PRIORITY));
       } catch (NodeNeedRestartException e) {
         // not expected for priority updates
       }
@@ -437,10 +465,7 @@ public class LoggingConfigHandler {
     }
   }
 
-  /**
-   * Reconfigure Logback's rolling file appender to point to a new directory without restarting the
-   * JVM.
-   */
+  /** Reconfigure the rolling file appender to use a new directory without a JVM restart. */
   @SuppressWarnings("java:S106")
   private void reconfigureLogbackFileDirectory(File newDir) {
     try {
@@ -459,7 +484,7 @@ public class LoggingConfigHandler {
 
       applyRollingPolicyUpdate(ctx, rfa, newFile, newPattern);
     } catch (Exception e) {
-      System.err.println("Failed to reconfigure Logback file directory: " + e);
+      System.err.println("Logback file directory reconfiguration failed: " + e);
     }
   }
 
@@ -551,7 +576,7 @@ public class LoggingConfigHandler {
     return def;
   }
 
-  /** Apply configured total size cap to Logback rolling policy (if present). */
+  /** Apply the configured total size cap to Logback's rolling policy when present. */
   @SuppressWarnings("java:S106")
   private void updateLogbackTotalSizeCap(long bytes) {
     try {
@@ -580,12 +605,12 @@ public class LoggingConfigHandler {
         }
       }
     } catch (Exception e) {
-      System.err.println("Failed to update Logback totalSizeCap: " + e);
+      System.err.println("Update of Logback totalSizeCap failed: " + e);
     }
   }
 
   /**
-   * Map "logger.interval" to a Logback date pattern. Multipliers (>1) are rounded down to base
+   * Maps {@code logger.interval} to a Logback date pattern; multipliers round down to the base
    * unit.
    */
   private String datePatternForInterval(String configured) {
@@ -643,6 +668,13 @@ public class LoggingConfigHandler {
     }
   }
 
+  /**
+   * Disables log emission by setting the root level to {@link Level#OFF} and clearing any
+   * per-logger overrides so they inherit from root again.
+   *
+   * <p>Thread-safety: synchronizes on an internal lock to serialize disable with other state
+   * transitions.
+   */
   @SuppressWarnings("java:S106")
   protected void disableLogger() {
     synchronized (enableLoggerLock) {
@@ -661,15 +693,20 @@ public class LoggingConfigHandler {
           root.setLevel(Level.OFF);
         }
       } catch (Exception e) {
-        System.err.println("Failed to disable logging via Logback: " + e);
+        System.err.println("Disable logging via Logback failed: " + e);
       }
       // Mark as disabled even if we were already disabled
       loggerEnabled = false;
     }
   }
 
-  // no helper needed; the weak ref is replaced directly when enabling logger
-
+  /**
+   * Validates or creates the target log directory before any Logback reconfiguration.
+   *
+   * @param f directory to use for log files; must refer to a directory path
+   * @throws InvalidConfigValueException when the path refers to a non-directory or cannot be
+   *     created
+   */
   protected void preSetLogDir(File f) throws InvalidConfigValueException {
     boolean exists = f.exists();
     if (exists && !f.isDirectory())
