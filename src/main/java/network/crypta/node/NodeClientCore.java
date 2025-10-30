@@ -2356,7 +2356,6 @@ public class NodeClientCore implements Persistable {
     try {
       node.storeInsert(block, deep, false, canWriteClientCache, false);
     } catch (KeyCollisionException e) {
-      LowLevelPutException failed = new LowLevelPutException(LowLevelPutException.COLLISION);
       NodeSSK key = block.getKey();
       KeyBlock collided = node.fetch(key, true, canWriteClientCache, false, false, null);
       if (collided == null) {
@@ -2371,8 +2370,7 @@ public class NodeClientCore implements Persistable {
               e);
         }
       }
-      failed.setCollidedBlock(collided);
-      throw failed;
+      throw new LowLevelPutException(collided);
     }
   }
 
