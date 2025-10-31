@@ -14,47 +14,41 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * @author amphibian
- *     <p>Thread that sends a packet whenever: - A packet needs to be resent immediately -
- *     Acknowledgments or resend requests need to be sent urgently.
+ * Sends outgoing packets for peers on a dedicated high‑priority thread.
+ *
+ * <p>Responsibilities: - Drain per‑peer queues and decide what to send next (full packets, acks,
+ * handshakes). - Minimize latency by prioritizing overdue items while respecting output throttling.
+ * - Coordinate with the {@link PeerManager} and the node ticker for periodic maintenance.
+ *
+ * <p>Threading and lifecycle: - Runs on a daemon {@link Thread} created via {@link NativeThread}. -
+ * The main loop is resilient: it logs and continues on unexpected {@link Throwable}s. - Wake‑ups
+ * use {@link #wakeUp()} which {@code notifyAll()}s on this instance.
+ *
+ * <p>Timing and units: - Time values are in milliseconds unless otherwise noted. - {@link
+ * #MAX_COALESCING_DELAY} bounds per‑message coalescing for realtime traffic; bulk coalescing uses
+ * {@link #MAX_COALESCING_DELAY_BULK}.
+ *
+ * <p>Inputs/outputs: - Reads peer state via {@link PeerNode} accessors; writes by invoking
+ * send/handshake methods. - Emits structured logs for diagnostics; does not expose public
+ * callbacks.
  */
-// j16sdiz (22-Dec-2008):
-// FIXME this is the only class implements Ticker, everbody is using this as
-// a generic task scheduler. Either rename this class, or create another tricker for non-Packet
-// tasks
+// Historical note: This component once doubled as an ad‑hoc scheduler. Today, recurring work is
+// delegated to the Ticker; PacketSender focuses on send decisions and timing.
 public class PacketSender implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(PacketSender.class);
 
-  static {
-  }
-
-  /** Maximum time we will queue a message for in milliseconds */
+  /** Maximum time to queue a message before sending (milliseconds). */
   static final long MAX_COALESCING_DELAY = MILLISECONDS.toMillis(100);
 
   /**
-   * Maximum time we will queue a message for in milliseconds if it is bulk data. Note that we will
-   * send the data immediately anyway because it will normally be big enough to send a full packet.
-   * However this impacts the choice of whether to send realtime or bulk data, see
-   * PeerMessageQueue.addMessages().
+   * Maximum time to queue bulk data before sending (milliseconds).
+   *
+   * <p>Bulk payloads typically fill a packet and are sent immediately; this value still influences
+   * realtime vs bulk selection (see {@code PeerMessageQueue.addMessages()}).
    */
   static final long MAX_COALESCING_DELAY_BULK = SECONDS.toMillis(5);
 
-  /**
-   * If opennet is enabled, and there are fewer than this many connections, we MAY attempt to
-   * contact old opennet peers (opennet peers we have dropped from the routing table but kept around
-   * in case we can't connect).
-   */
-  static final int MIN_CONNECTIONS_TRY_OLD_OPENNET_PEERS = 5;
-
-  /**
-   * We send connect attempts to old-opennet-peers no more than once every this many milliseconds.
-   */
-  static final long MIN_OLD_OPENNET_CONNECT_DELAY_NO_CONNS = SECONDS.toMillis(10);
-
-  /**
-   * We send connect attempts to old-opennet-peers no more than once every this many milliseconds.
-   */
-  static final long MIN_OLD_OPENNET_CONNECT_DELAY = SECONDS.toMillis(60);
+  // Unused legacy thresholds for opennet connect timing were removed.
 
   final NativeThread myThread;
   final Node node;
@@ -75,10 +69,14 @@ public class PacketSender implements Runnable {
     localRandom = node.createRandom();
   }
 
+  /**
+   * Starts the sender thread and records the {@link NodeStats} sink.
+   *
+   * @param stats destination for periodic statistics updates; must be non‑{@code null}
+   */
   void start(NodeStats stats) {
     this.stats = stats;
-    LOG.info("Starting PacketSender");
-    System.out.println("Starting PacketSender");
+    LOG.info("Start PacketSender");
     myThread.start();
   }
 
@@ -92,7 +90,7 @@ public class PacketSender implements Runnable {
               public void run() {
                 try {
                   long now = System.currentTimeMillis();
-                  if (LOG.isDebugEnabled()) LOG.debug("Starting shedulePeriodicJob() at " + now);
+                  if (LOG.isDebugEnabled()) LOG.debug("Start schedulePeriodicJob at {}", now);
                   PeerManager pm = node.getPeers();
                   pm.maybeLogPeerNodeStatusSummary(now);
                   pm.maybeUpdateOldestNeverConnectedDarknetPeerAge(now);
@@ -101,8 +99,7 @@ public class PacketSender implements Runnable {
                   pm.maybeUpdatePeerNodeRoutableConnectionStats(now);
 
                   if (LOG.isDebugEnabled())
-                    LOG.debug(
-                        "Finished running shedulePeriodicJob() at " + System.currentTimeMillis());
+                    LOG.debug("Complete schedulePeriodicJob at {}", System.currentTimeMillis());
                 } finally {
                   node.getTicker().queueTimedJob(this, 1000);
                 }
@@ -111,23 +108,26 @@ public class PacketSender implements Runnable {
             1000);
   }
 
+  /**
+   * Runs the main send loop.
+   *
+   * <p>Behavior: - Schedules periodic maintenance via the node ticker. - Iterates indefinitely,
+   * selecting and sending work for peers, then sleeping until the next action time. - Logs and
+   * continues on unexpected {@link Throwable}s so the thread remains alive.
+   */
   @Override
+  @SuppressWarnings({"java:S2189", "java:S1181", "InfiniteLoopStatement"})
   public void run() {
     if (LOG.isDebugEnabled()) LOG.debug("In PacketSender.run()");
 
     schedulePeriodicJob();
-    /*
-     * Index of the point in the nodes list at which we sent a packet and then
-     * ran out of bandwidth. We start the loop from here next time.
-     */
+    // Process peers, perform the selected action, then sleep until the next action time.
     while (true) {
       lastReceivedPacketFromAnyNode = lastReportedNoPackets;
       try {
         realRun();
       } catch (Throwable t) {
-        LOG.error("Caught in PacketSender: " + t, t);
-        System.err.println("Caught in PacketSender: " + t);
-        t.printStackTrace();
+        LOG.error("Unhandled throwable in PacketSender: {}", t, t);
       }
     }
   }
@@ -146,367 +146,361 @@ public class PacketSender implements Runnable {
    */
   private void realRun() {
     long now = System.currentTimeMillis();
-    PeerManager pm;
-    PeerNode[] nodes;
+    PeerManager pm = node.getPeers();
+    PeerNode[] nodes = pm.myPeers();
 
-    pm = node.getPeers();
-    nodes = pm.myPeers();
+    RunState state = initRunState(now);
 
+    PeerAggregation agg = new PeerAggregation();
+    agg.nextActionTime = state.nextActionTime;
+    agg.oldTempNow = now;
+
+    for (PeerNode pn : nodes) {
+      now = System.currentTimeMillis();
+      processPeer(pn, now, state.canSendThrottled, agg);
+    }
+
+    Selection sel = selectNextAction(now, agg);
+    performSelection(now, sel, agg);
+
+    updateNextActionFromAggregates(agg);
+
+    processOldOpennetPeers(now);
+
+    sleepUntilNextAction(now, agg.nextActionTime);
+  }
+
+  private record RunState(boolean canSendThrottled, long nextActionTime) {}
+
+  private RunState initRunState(long now) {
     long nextActionTime = Long.MAX_VALUE;
-    long oldTempNow = now;
+    boolean canSendThrottled;
 
-    final boolean canSendThrottled;
-
-    int MAX_PACKET_SIZE = node.getDarknetCrypto().getSocket().getMaxPacketSize();
+    int maxPacketSize = node.getDarknetCrypto().getSocket().getMaxPacketSize();
     long count = node.getOutputThrottle().getCount();
-    if (count > MAX_PACKET_SIZE) canSendThrottled = true;
-    else {
-      long canSendAt = node.getOutputThrottle().getNanosPerTick() * (MAX_PACKET_SIZE - count);
+    if (count > maxPacketSize) {
+      canSendThrottled = true;
+    } else {
+      long canSendAt = node.getOutputThrottle().getNanosPerTick() * (maxPacketSize - count);
       canSendAt = MILLISECONDS.convert(canSendAt + MILLISECONDS.toNanos(1) - 1, NANOSECONDS);
-      if (LOG.isDebugEnabled()) LOG.debug("Can send throttled packets in " + canSendAt + "ms");
+      if (LOG.isDebugEnabled()) LOG.debug("Can send throttled packets in {} ms", canSendAt);
       nextActionTime = Math.min(nextActionTime, now + canSendAt);
       canSendThrottled = false;
     }
 
-    /**
-     * The earliest time at which a peer needs to send a packet, which is before now. Throttled if
-     * canSendThrottled, otherwise not throttled. Note: we only use it to sort the full-packed peers
-     * by priority, don't rely on it when setting nextActionTime!
-     */
+    return new RunState(canSendThrottled, nextActionTime);
+  }
+
+  private static final class PeerAggregation {
     long lowestUrgentSendTime = Long.MAX_VALUE;
-    /** The peer(s) which lowestUrgentSendTime is referring to */
     ArrayList<PeerNode> urgentSendPeers = null;
-    /**
-     * The earliest time at which a peer needs to send a packet, which is after now, where there is
-     * a full packet's worth of data to send. Throttled if canSendThrottled, otherwise not
-     * throttled.
-     */
+
     long lowestFullPacketSendTime = Long.MAX_VALUE;
-    /** The peer(s) which lowestFullPacketSendTime is referring to */
     ArrayList<PeerNode> urgentFullPacketPeers = null;
-    /** The earliest time at which a peer needs to send an ack, before now. */
+
     long lowestAckTime = Long.MAX_VALUE;
-    /** The peer(s) which lowestAckTime is referring to */
     ArrayList<PeerNode> ackPeers = null;
-    /** The earliest time at which a peer needs to handshake. */
+
     long lowestHandshakeTime = Long.MAX_VALUE;
-    /** The peer(s) which lowestHandshakeTime is referring to */
     ArrayList<PeerNode> handshakePeers = null;
 
-    for (PeerNode pn : nodes) {
-      now = System.currentTimeMillis();
+    long nextActionTime = Long.MAX_VALUE;
+    long oldTempNow;
+  }
 
-      // Basic peer maintenance.
-
-      // For purposes of detecting not having received anything, which indicates a
-      // serious connectivity problem, we want to look for *any* packets received,
-      // including auth packets.
-      lastReceivedPacketFromAnyNode =
-          Math.max(pn.lastReceivedPacketTime(), lastReceivedPacketFromAnyNode);
-      pn.maybeOnConnect();
-      if (pn.shouldDisconnectAndRemoveNow() && !pn.isDisconnecting()) {
-        // Might as well do it properly.
-        node.getPeers().disconnectAndRemove(pn, true, true, false);
-      }
-
-      if (pn.isConnected()) {
-
-        boolean shouldThrottle = pn.shouldThrottle();
-
-        pn.checkForLostPackets();
-
-        // Is the node dead?
-        // It might be disconnected in terms of FNP but trying to reconnect via JFK's, so we need to
-        // use the time when we last got a *data* packet.
-        if (now - pn.lastReceivedDataPacketTime() > pn.maxTimeBetweenReceivedPackets()) {
-          LOG.info("Disconnecting from " + pn + " - haven't received packets recently");
-          // Hopefully this is a transient network glitch, but stuff will have already started to
-          // timeout, so lets dump the pending messages.
-          pn.disconnected(true, false);
-          continue;
-        } else if (now - pn.lastReceivedAckTime() > pn.maxTimeBetweenReceivedAcks()
-            && !pn.isDisconnecting()) {
-          // FIXME better to disconnect immediately??? Or check canSend()???
-          LOG.info("Disconnecting from " + pn + " - haven't received acks recently");
-          // Do it properly.
-          // There appears to be connectivity from them to us but not from us to them.
-          // So it is helpful for them to know that we are disconnecting.
-          node.getPeers().disconnect(pn, true, true, false, true, false, SECONDS.toMillis(5));
-          continue;
-        } else if (pn.isRoutable() && pn.noLongerRoutable()) {
-          /*
-          NOTE: Whereas isRoutable() && noLongerRoutable() are generally mutually exclusive, this
-          code will only execute because of the scheduled-runnable in start() which executes
-          updateVersionRoutablity() on all our peers. We don't disconnect the peer, but mark it
-          as being incompatible.
-          */
-          pn.invalidate();
-          LOG.info(
-              "shouldDisconnectNow has returned true : marking the peer as incompatible: " + pn);
-          continue;
-        }
-
-        // The peer is connected.
-
-        if (canSendThrottled || !shouldThrottle) {
-          // We can send to this peer.
-          long sendTime = pn.getNextUrgentTime(now);
-          if (sendTime != Long.MAX_VALUE) {
-            if (sendTime <= now) {
-              // Message is urgent.
-              if (sendTime < lowestUrgentSendTime) {
-                lowestUrgentSendTime = sendTime;
-                if (urgentSendPeers != null) urgentSendPeers.clear();
-                else urgentSendPeers = new ArrayList<>();
-              }
-              if (sendTime <= lowestUrgentSendTime) urgentSendPeers.add(pn);
-            } else if (pn.fullPacketQueued()) {
-              if (sendTime < lowestFullPacketSendTime) {
-                lowestFullPacketSendTime = sendTime;
-                if (urgentFullPacketPeers != null) urgentFullPacketPeers.clear();
-                else urgentFullPacketPeers = new ArrayList<>();
-              }
-              if (sendTime <= lowestFullPacketSendTime) urgentFullPacketPeers.add(pn);
-            }
-          }
-        } else if (shouldThrottle && !canSendThrottled) {
-          long ackTime = pn.timeSendAcks();
-          if (ackTime != Long.MAX_VALUE) {
-            if (ackTime <= now) {
-              if (ackTime < lowestAckTime) {
-                lowestAckTime = ackTime;
-                if (ackPeers != null) ackPeers.clear();
-                else ackPeers = new ArrayList<>();
-              }
-              if (ackTime <= lowestAckTime) ackPeers.add(pn);
-            }
-          }
-        }
-
-        if (canSendThrottled || !shouldThrottle) {
-          long urgentTime = pn.getNextUrgentTime(now);
-          // Should spam the logs, unless there is a deadlock
-          if (urgentTime < Long.MAX_VALUE && LOG.isDebugEnabled())
-            LOG.debug(
-                "Next urgent time: " + urgentTime + "(in " + (urgentTime - now) + ") for " + pn);
-          nextActionTime = Math.min(nextActionTime, urgentTime);
-        } else {
-          nextActionTime = Math.min(nextActionTime, pn.timeCheckForLostPackets());
-        }
-      } else
-      // Not connected
-
-      if (pn.noContactDetails()) pn.startARKFetcher();
-
-      long handshakeTime = pn.timeSendHandshake(now);
-      if (handshakeTime != Long.MAX_VALUE) {
-        if (handshakeTime < lowestHandshakeTime) {
-          lowestHandshakeTime = handshakeTime;
-          if (handshakePeers != null) handshakePeers.clear();
-          else handshakePeers = new ArrayList<>();
-        }
-        if (handshakeTime <= lowestHandshakeTime) handshakePeers.add(pn);
-      }
-
-      long tempNow = System.currentTimeMillis();
-      if ((tempNow - oldTempNow) > SECONDS.toMillis(5))
-        LOG.error(
-            "tempNow is more than 5 seconds past oldTempNow ("
-                + (tempNow - oldTempNow)
-                + ") in PacketSender working with "
-                + pn.userToString());
-      oldTempNow = tempNow;
-    }
-
-    // We may send a packet, send an ack-only packet, or send a handshake.
-
-    PeerNode toSendPacket = null;
-    PeerNode toSendAckOnly = null;
-    PeerNode toSendHandshake = null;
-
-    long t = Long.MAX_VALUE;
-
-    if (lowestUrgentSendTime <= now) {
-      // We need to send a full packet.
-      toSendPacket = urgentSendPeers.get(localRandom.nextInt(urgentSendPeers.size()));
-      t = lowestUrgentSendTime;
-    } else if (lowestFullPacketSendTime < Long.MAX_VALUE) {
-      toSendPacket = urgentFullPacketPeers.get(localRandom.nextInt(urgentFullPacketPeers.size()));
-      t = lowestFullPacketSendTime;
-    } else if (lowestAckTime <= now) {
-      // We need to send an ack
-      toSendAckOnly = ackPeers.get(localRandom.nextInt(ackPeers.size()));
-      t = lowestAckTime;
-    }
-
-    if (lowestHandshakeTime <= now && t > lowestHandshakeTime) {
-      toSendHandshake = handshakePeers.get(localRandom.nextInt(handshakePeers.size()));
-      toSendPacket = null;
-      toSendAckOnly = null;
-    }
-
-    if (toSendPacket != null) {
-      try {
-        if (toSendPacket.maybeSendPacket(now, false)) {
-          // Round-robin over the loop to update nextActionTime appropriately
-          nextActionTime = now;
-        }
-      } catch (BlockedTooLongException e) {
-        LOG.error(
-            "Waited too long: "
-                + TimeUtil.formatTime(e.delta)
-                + " to allocate a packet number to send to "
-                + toSendPacket
-                + " : "
-                + ("(new packet format)")
-                + " (version "
-                + toSendPacket.getBuildNumber()
-                + ") - DISCONNECTING!");
-        toSendPacket.forceDisconnect();
-      }
-    } else if (toSendAckOnly != null) {
-      try {
-        if (toSendAckOnly.maybeSendPacket(now, true)) {
-          // Round-robin over the loop to update nextActionTime appropriately
-          nextActionTime = now;
-        }
-      } catch (BlockedTooLongException e) {
-        LOG.error(
-            "Waited too long: "
-                + TimeUtil.formatTime(e.delta)
-                + " to allocate a packet number to send to "
-                + toSendAckOnly
-                + " : "
-                + ("(new packet format)")
-                + " (version "
-                + toSendAckOnly.getBuildNumber()
-                + ") - DISCONNECTING!");
-        toSendAckOnly.forceDisconnect();
-      }
-    }
-
-    /* Estimating of nextActionTime logic:
-     * FullPackets:
-     *  - A full packet available, bandwidth available  -->> now
-     *  - A full packet available for non-throttled peer -->> now
-     *  - A full packet available, no bandwidth -->> wait till bandwidth available
-     *  - No packet -->> don't care, will wake up anyway when one arrives, goto Nothing
-     * UrgentMessages: Only applies when there's enough bandwidth to send a full packet, Includes any urgent acks
-     *  - There's an urgent message, deadline(urgentMessage) > now -->> deadline(urgentMessage)
-     *  - There's an urgent message, deadline(urgentMessage) <= now -->> now
-     *  - There's an urgent message, but there's not enough bandwidth for a full packet -->> wait till bandwidth available
-     *  - There's no urgent message -->> don't care, goto Nothing
-     * Nothing:
-     *  -->> timeCheckForLostPackets
-     */
-
-    if (toSendHandshake != null) {
-      // Send handshake if necessary
-      long beforeHandshakeTime = System.currentTimeMillis();
-      toSendHandshake.getOutgoingMangler().sendHandshake(toSendHandshake, false);
-      long afterHandshakeTime = System.currentTimeMillis();
-      if ((afterHandshakeTime - beforeHandshakeTime) > SECONDS.toMillis(2))
-        LOG.error(
-            "afterHandshakeTime is more than 2 seconds past beforeHandshakeTime ("
-                + (afterHandshakeTime - beforeHandshakeTime)
-                + ") in PacketSender working with "
-                + toSendHandshake.userToString());
-    }
-
-    // All of these take into account whether the data can be sent already.
-    // So we can include them in nextActionTime.
-    nextActionTime = Math.min(nextActionTime, lowestUrgentSendTime);
-    nextActionTime = Math.min(nextActionTime, lowestFullPacketSendTime);
-    nextActionTime = Math.min(nextActionTime, lowestAckTime);
-    nextActionTime = Math.min(nextActionTime, lowestHandshakeTime);
-
-    // FIXME: If we send something we will have to go around the loop again.
-    // OPTIMISATION: We could track the second best, and check how many are in the array.
-
-    /* Attempt to connect to old-opennet-peers.
-     * Constantly send handshake packets, in order to get through a NAT.
-     * Most JFK(1)'s are less than 300 bytes. 25*300/15 = avg 500B/sec bandwidth cost.
-     * Well worth it to allow us to reconnect more quickly. */
-
-    OpennetManager om = node.getOpennet();
-    if (om != null && node.getUptime() > SECONDS.toMillis(30)) {
-      OpennetPeerNode[] peers = om.getOldPeers();
-
-      for (OpennetPeerNode pn : peers) {
-        long lastConnected = pn.timeLastConnected(now);
-        if (lastConnected <= 0)
-          LOG.error("Last connected is zero or negative for old-opennet-peer " + pn);
-        // Will be removed by next line.
-        if (now - lastConnected > OpennetManager.MAX_TIME_ON_OLD_OPENNET_PEERS) {
-          om.purgeOldOpennetPeer(pn);
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "Removing old opennet peer (too old): "
-                    + pn
-                    + " age is "
-                    + TimeUtil.formatTime(now - lastConnected));
-          continue;
-        }
-        if (pn.isConnected()) continue; // Race condition??
-        if (pn.noContactDetails()) {
-          pn.startARKFetcher();
-          continue;
-        }
-        if (pn.shouldSendHandshake()) {
-          // Send handshake if necessary
-          long beforeHandshakeTime = System.currentTimeMillis();
-          pn.getOutgoingMangler().sendHandshake(pn, true);
-          long afterHandshakeTime = System.currentTimeMillis();
-          if ((afterHandshakeTime - beforeHandshakeTime) > SECONDS.toMillis(2))
-            LOG.error(
-                "afterHandshakeTime is more than 2 seconds past beforeHandshakeTime ("
-                    + (afterHandshakeTime - beforeHandshakeTime)
-                    + ") in PacketSender working with "
-                    + pn.userToString());
-        }
-      }
-    }
-
-    long oldNow = now;
-
-    // Send may have taken some time
-    now = System.currentTimeMillis();
-
-    if ((now - oldNow) > SECONDS.toMillis(10))
-      LOG.error("now is more than 10 seconds past oldNow (" + (now - oldNow) + ") in PacketSender");
-
-    long sleepTime = nextActionTime - now;
-
-    // MAX_COALESCING_DELAYms maximum sleep time - same as the maximum coalescing delay
-    sleepTime = Math.min(sleepTime, MAX_COALESCING_DELAY);
-
-    if (now - node.getStartupTime() > MINUTES.toMillis(5))
-      if (now - lastReceivedPacketFromAnyNode > Node.ALARM_TIME) {
-        LOG.error(
-            "Have not received any packets from any node in last "
-                + SECONDS.convert(Node.ALARM_TIME, MILLISECONDS)
-                + " seconds");
-        lastReportedNoPackets = now;
-      }
-
-    if (sleepTime > 0) {
-      // Update logging only when have time to do so
-      try {
-        if (LOG.isDebugEnabled()) LOG.debug("Sleeping for " + sleepTime);
-        synchronized (this) {
-          wait(sleepTime);
-        }
-      } catch (InterruptedException e) {
-        // Ignore, just wake up. Probably we got interrupt()ed
-        // because a new packet came in.
-      }
+  private void processPeer(PeerNode pn, long now, boolean canSendThrottled, PeerAggregation agg) {
+    preProcessPeer(pn);
+    if (pn.isConnected()) {
+      handleConnectedPeer(pn, now, canSendThrottled, agg);
     } else {
-      if (LOG.isTraceEnabled())
-        LOG.trace("Next urgent time is " + (now - nextActionTime) + "ms in the past");
+      handleDisconnectedPeer(pn, now, agg);
+    }
+    updatePeerTiming(pn, agg);
+  }
+
+  private void preProcessPeer(PeerNode pn) {
+    lastReceivedPacketFromAnyNode =
+        Math.max(pn.lastReceivedPacketTime(), lastReceivedPacketFromAnyNode);
+    pn.maybeOnConnect();
+    if (pn.shouldDisconnectAndRemoveNow() && !pn.isDisconnecting()) {
+      node.getPeers().disconnectAndRemove(pn, true, true, false);
     }
   }
 
-  /** Wake up, and send any queued packets. */
+  private void handleConnectedPeer(
+      PeerNode pn, long now, boolean canSendThrottled, PeerAggregation agg) {
+    boolean shouldThrottle = pn.shouldThrottle();
+    pn.checkForLostPackets();
+
+    if (isNodeDead(now, pn)) {
+      pn.disconnected(true, false);
+      return;
+    }
+    if (shouldDisconnectDueToAcks(now, pn)) {
+      node.getPeers().disconnect(pn, true, true, false, true, false, SECONDS.toMillis(5));
+      return;
+    }
+    if (pn.isRoutable() && pn.noLongerRoutable()) {
+      pn.invalidate();
+      LOG.info("Mark peer incompatible (no longer routable): {}", pn);
+      return;
+    }
+
+    if (canSendThrottled || !shouldThrottle) {
+      considerUrgentSend(now, pn, agg);
+    } else {
+      considerAck(now, pn, agg);
+    }
+
+    if (canSendThrottled || !shouldThrottle) {
+      long urgentTime = pn.getNextUrgentTime(now);
+      if (urgentTime < Long.MAX_VALUE && LOG.isDebugEnabled())
+        LOG.debug("Next urgent time {} ms (in {} ms) for {}", urgentTime, urgentTime - now, pn);
+      agg.nextActionTime = Math.min(agg.nextActionTime, urgentTime);
+    } else {
+      agg.nextActionTime = Math.min(agg.nextActionTime, pn.timeCheckForLostPackets());
+    }
+  }
+
+  private static void considerAck(long now, PeerNode pn, PeerAggregation agg) {
+    long ackTime = pn.timeSendAcks();
+    if (ackTime != Long.MAX_VALUE && ackTime <= now) {
+      if (ackTime < agg.lowestAckTime) {
+        agg.lowestAckTime = ackTime;
+        if (agg.ackPeers != null) agg.ackPeers.clear();
+        else agg.ackPeers = new ArrayList<>();
+      }
+      if (ackTime <= agg.lowestAckTime) agg.ackPeers.add(pn);
+    }
+  }
+
+  private static void handleDisconnectedPeer(PeerNode pn, long now, PeerAggregation agg) {
+    if (pn.noContactDetails()) pn.startARKFetcher();
+    long handshakeTime = pn.timeSendHandshake(now);
+    if (handshakeTime != Long.MAX_VALUE) {
+      if (handshakeTime < agg.lowestHandshakeTime) {
+        agg.lowestHandshakeTime = handshakeTime;
+        if (agg.handshakePeers != null) agg.handshakePeers.clear();
+        else agg.handshakePeers = new ArrayList<>();
+      }
+      if (handshakeTime <= agg.lowestHandshakeTime) agg.handshakePeers.add(pn);
+    }
+  }
+
+  private static void updatePeerTiming(PeerNode pn, PeerAggregation agg) {
+    long tempNow = System.currentTimeMillis();
+    if ((tempNow - agg.oldTempNow) > SECONDS.toMillis(5)) {
+      LOG.atError()
+          .addArgument(tempNow - agg.oldTempNow)
+          .addArgument(pn::userToString)
+          .log("Time gap {} ms exceeds 5000 ms (peer={})");
+    }
+    agg.oldTempNow = tempNow;
+  }
+
+  private static boolean isNodeDead(long now, PeerNode pn) {
+    if (now - pn.lastReceivedDataPacketTime() > pn.maxTimeBetweenReceivedPackets()) {
+      LOG.info("Disconnect peer due to inactivity (no packets): {}", pn);
+      return true;
+    }
+    return false;
+  }
+
+  private static boolean shouldDisconnectDueToAcks(long now, PeerNode pn) {
+    if (now - pn.lastReceivedAckTime() > pn.maxTimeBetweenReceivedAcks() && !pn.isDisconnecting()) {
+      LOG.info("Disconnect peer due to missing acks: {}", pn);
+      return true;
+    }
+    return false;
+  }
+
+  private static void considerUrgentSend(long now, PeerNode pn, PeerAggregation agg) {
+    long sendTime = pn.getNextUrgentTime(now);
+    if (sendTime == Long.MAX_VALUE) return;
+    if (sendTime <= now) {
+      recordUrgentPeer(sendTime, pn, agg);
+      return;
+    }
+    if (!pn.fullPacketQueued()) return;
+    recordFullPacketPeer(sendTime, pn, agg);
+  }
+
+  private static void recordUrgentPeer(long sendTime, PeerNode pn, PeerAggregation agg) {
+    if (sendTime < agg.lowestUrgentSendTime) {
+      agg.lowestUrgentSendTime = sendTime;
+      if (agg.urgentSendPeers != null) agg.urgentSendPeers.clear();
+      else agg.urgentSendPeers = new ArrayList<>();
+    }
+    if (sendTime <= agg.lowestUrgentSendTime) agg.urgentSendPeers.add(pn);
+  }
+
+  private static void recordFullPacketPeer(long sendTime, PeerNode pn, PeerAggregation agg) {
+    if (sendTime < agg.lowestFullPacketSendTime) {
+      agg.lowestFullPacketSendTime = sendTime;
+      if (agg.urgentFullPacketPeers != null) agg.urgentFullPacketPeers.clear();
+      else agg.urgentFullPacketPeers = new ArrayList<>();
+    }
+    if (sendTime <= agg.lowestFullPacketSendTime) agg.urgentFullPacketPeers.add(pn);
+  }
+
+  private static final class Selection {
+    PeerNode toSendPacket;
+    PeerNode toSendAckOnly;
+    PeerNode toSendHandshake;
+  }
+
+  private Selection selectNextAction(long now, PeerAggregation agg) {
+    Selection sel = new Selection();
+    long t = Long.MAX_VALUE;
+
+    if (agg.lowestUrgentSendTime <= now && agg.urgentSendPeers != null) {
+      sel.toSendPacket = agg.urgentSendPeers.get(localRandom.nextInt(agg.urgentSendPeers.size()));
+      t = agg.lowestUrgentSendTime;
+    } else if (agg.lowestFullPacketSendTime < Long.MAX_VALUE && agg.urgentFullPacketPeers != null) {
+      sel.toSendPacket =
+          agg.urgentFullPacketPeers.get(localRandom.nextInt(agg.urgentFullPacketPeers.size()));
+      t = agg.lowestFullPacketSendTime;
+    } else if (agg.lowestAckTime <= now && agg.ackPeers != null) {
+      sel.toSendAckOnly = agg.ackPeers.get(localRandom.nextInt(agg.ackPeers.size()));
+      t = agg.lowestAckTime;
+    }
+
+    if (agg.lowestHandshakeTime <= now
+        && t > agg.lowestHandshakeTime
+        && agg.handshakePeers != null) {
+      sel.toSendHandshake = agg.handshakePeers.get(localRandom.nextInt(agg.handshakePeers.size()));
+      sel.toSendPacket = null;
+      sel.toSendAckOnly = null;
+    }
+    return sel;
+  }
+
+  private void performSelection(long now, Selection sel, PeerAggregation agg) {
+    if (sel.toSendPacket != null) {
+      try {
+        if (sel.toSendPacket.maybeSendPacket(now, false)) {
+          agg.nextActionTime = now;
+        }
+      } catch (BlockedTooLongException e) {
+        LOG.error(
+            "Packet number allocation blocked {} (peer={}, version={}) - disconnecting",
+            TimeUtil.formatTime(e.delta),
+            sel.toSendPacket,
+            sel.toSendPacket.getBuildNumber());
+        sel.toSendPacket.forceDisconnect();
+      }
+    } else if (sel.toSendAckOnly != null) {
+      try {
+        if (sel.toSendAckOnly.maybeSendPacket(now, true)) {
+          agg.nextActionTime = now;
+        }
+      } catch (BlockedTooLongException e) {
+        LOG.error(
+            "Packet number allocation blocked {} (peer={}, version={}) - disconnecting",
+            TimeUtil.formatTime(e.delta),
+            sel.toSendAckOnly,
+            sel.toSendAckOnly.getBuildNumber());
+        sel.toSendAckOnly.forceDisconnect();
+      }
+    }
+
+    if (sel.toSendHandshake != null) {
+      long beforeHandshakeTime = System.currentTimeMillis();
+      sel.toSendHandshake.getOutgoingMangler().sendHandshake(sel.toSendHandshake, false);
+      long afterHandshakeTime = System.currentTimeMillis();
+      if ((afterHandshakeTime - beforeHandshakeTime) > SECONDS.toMillis(2))
+        LOG.atError()
+            .addArgument(afterHandshakeTime - beforeHandshakeTime)
+            .addArgument(() -> sel.toSendHandshake.userToString())
+            .log("Handshake duration {} ms exceeds 2000 ms (peer={})");
+    }
+  }
+
+  private void updateNextActionFromAggregates(PeerAggregation agg) {
+    agg.nextActionTime = Math.min(agg.nextActionTime, agg.lowestUrgentSendTime);
+    agg.nextActionTime = Math.min(agg.nextActionTime, agg.lowestFullPacketSendTime);
+    agg.nextActionTime = Math.min(agg.nextActionTime, agg.lowestAckTime);
+    agg.nextActionTime = Math.min(agg.nextActionTime, agg.lowestHandshakeTime);
+  }
+
+  private void processOldOpennetPeers(long now) {
+    // If we send something we will have to go around the loop again.
+    // Optimisation possibility: Track the second best, and check how many are in the array.
+    OpennetManager om = node.getOpennet();
+    if (om == null || node.getUptime() <= SECONDS.toMillis(30)) return;
+
+    OpennetPeerNode[] peers = om.getOldPeers();
+    for (OpennetPeerNode pn : peers) {
+      long lastConnected = pn.timeLastConnected(now);
+      if (lastConnected <= 0) LOG.error("Old opennet peer lastConnected <= 0 (peer={})", pn);
+
+      if (now - lastConnected > OpennetManager.MAX_TIME_ON_OLD_OPENNET_PEERS) {
+        om.purgeOldOpennetPeer(pn);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "Remove old opennet peer: {} age={}", pn, TimeUtil.formatTime(now - lastConnected));
+      } else if (!pn.isConnected()) {
+        if (pn.noContactDetails()) {
+          pn.startARKFetcher();
+        } else if (pn.shouldSendHandshake()) {
+          sendOpennetHandshake(pn);
+        }
+      }
+    }
+  }
+
+  private static void sendOpennetHandshake(OpennetPeerNode pn) {
+    long beforeHandshakeTime = System.currentTimeMillis();
+    pn.getOutgoingMangler().sendHandshake(pn, true);
+    long afterHandshakeTime = System.currentTimeMillis();
+    if ((afterHandshakeTime - beforeHandshakeTime) > SECONDS.toMillis(2))
+      LOG.atError()
+          .addArgument(afterHandshakeTime - beforeHandshakeTime)
+          .addArgument(pn::userToString)
+          .log("Handshake duration {} ms exceeds 2000 ms (peer={})");
+  }
+
+  @SuppressWarnings("java:S2142")
+  private void sleepUntilNextAction(long nowBeforeSend, long nextActionTime) {
+    long now = System.currentTimeMillis();
+    if ((now - nowBeforeSend) > SECONDS.toMillis(10))
+      LOG.error("Loop delay {} ms exceeds 10000 ms in PacketSender", now - nowBeforeSend);
+
+    long sleepTime = Math.min(nextActionTime - now, MAX_COALESCING_DELAY);
+
+    if ((now - node.getStartupTime()) > MINUTES.toMillis(5)
+        && (now - lastReceivedPacketFromAnyNode) > Node.ALARM_TIME) {
+      LOG.error(
+          "No packets received from any node in {} seconds",
+          SECONDS.convert(Node.ALARM_TIME, MILLISECONDS));
+      lastReportedNoPackets = now;
+    }
+
+    if (sleepTime > 0) {
+      if (LOG.isDebugEnabled()) LOG.debug("Sleep {} ms", sleepTime);
+      final long deadline = System.currentTimeMillis() + sleepTime;
+      synchronized (this) {
+        long remaining;
+        try {
+          while ((remaining = deadline - System.currentTimeMillis()) > 0) {
+            wait(remaining);
+          }
+        } catch (InterruptedException e) {
+          // Swallow to treat interrupt as a wake-up without latching the flag.
+        }
+      }
+    } else {
+      if (LOG.isTraceEnabled())
+        LOG.trace("Next urgent time is {} ms in the past", now - nextActionTime);
+    }
+  }
+
+  /**
+   * Notifies the sender to re‑check pending work.
+   *
+   * <p>Signals the monitor used by {@link #sleepUntilNextAction(long, long)} so the thread can
+   * resume early and decide whether to send immediately.
+   */
   void wakeUp() {
     // Wake up if needed
     synchronized (this) {
@@ -514,10 +508,26 @@ public class PacketSender implements Runnable {
     }
   }
 
+  /**
+   * Returns a localized message for PacketSender keys.
+   *
+   * @param key message key under the {@code PacketSender.} namespace
+   * @param patterns substitution patterns; may be {@code null}
+   * @param values substitution values; may be {@code null}
+   * @return localized string resolved from the node resource bundle
+   */
   protected String l10n(String key, String[] patterns, String[] values) {
     return NodeL10n.getBase().getString("PacketSender." + key, patterns, values);
   }
 
+  /**
+   * Returns a localized message for a single pattern/value pair.
+   *
+   * @param key message key under the {@code PacketSender.} namespace
+   * @param pattern placeholder pattern
+   * @param value value to substitute for the pattern
+   * @return localized string resolved from the node resource bundle
+   */
   protected String l10n(String key, String pattern, String value) {
     return NodeL10n.getBase().getString("PacketSender." + key, pattern, value);
   }
