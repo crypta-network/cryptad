@@ -39,6 +39,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1063,7 +1064,7 @@ public class PeerManager {
       boolean ignoreTimeout,
       long now,
       boolean newLoadManagement) {
-    CloserPeerContext ctx = initCloserPeerContext(pn, routedTo, target, ignoreSelf, key, now);
+    CloserPeerContext ctx = initCloserPeerContext(pn, routedTo, target, ignoreSelf, key);
     evaluateCandidatesInContext(
         ctx,
         pn,
@@ -1123,20 +1124,19 @@ public class PeerManager {
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (!(o instanceof SelectionRates that)) return false;
-      return Double.compare(that.total, total) == 0 && java.util.Arrays.equals(rates, that.rates);
+      if (!(o instanceof SelectionRates(double[] rates1, double total1))) return false;
+      return Double.compare(total1, total) == 0 && java.util.Arrays.equals(rates, rates1);
     }
 
     @Override
     public int hashCode() {
       int result = java.util.Arrays.hashCode(rates);
-      long temp = Double.doubleToLongBits(total);
-      result = 31 * result + (int) (temp ^ (temp >>> 32));
+      result = 31 * result + Double.hashCode(total);
       return result;
     }
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return "SelectionRates[rates=" + java.util.Arrays.toString(rates) + ", total=" + total + "]";
     }
   }
@@ -1176,7 +1176,7 @@ public class PeerManager {
   }
 
   private CloserPeerContext initCloserPeerContext(
-      PeerNode pn, Set<PeerNode> routedTo, double target, boolean ignoreSelf, Key key, long now) {
+      PeerNode pn, Set<PeerNode> routedTo, double target, boolean ignoreSelf, Key key) {
     PeerNode[] peers = connectedPeers();
     Key effectiveKey = node.isEnablePerNodeFailureTables() ? key : null;
     if (LOG.isDebugEnabled())
