@@ -280,8 +280,8 @@ public class PeerManager {
 
     List<PeerNode> createdNodes =
         createPeerNodesFromEntries(peerEntries, crypto, opennet, droppedOldPeers);
-    someBroken = (createdNodes == null);
-    if (createdNodes == null) createdNodes = new ArrayList<>();
+    // Consider the file "broken" if we could not create all peers (parse errors or too-old entries)
+    someBroken = (createdNodes.size() != peerEntries.size());
     applyCreatedNodes(createdNodes, opennet, oldOpennetPeers);
     if (someBroken) {
       try {
@@ -312,7 +312,6 @@ public class PeerManager {
       NodeCrypto crypto,
       OpennetManager opennet,
       DroppedOldPeersUserAlert droppedOldPeers) {
-    boolean broken = false;
     List<PeerNode> created = new ArrayList<>();
     for (SimpleFieldSet fs : peerEntries) {
       try {
@@ -322,9 +321,7 @@ public class PeerManager {
           | ReferenceSignatureVerificationException
           | RuntimeException e2) {
         handlePeerCreationException(e2, fs);
-        broken = true;
       } catch (PeerTooOldException e) {
-        broken = true;
         if (crypto.isOpennet()) {
           LOG.error("Dropping too-old opennet peer");
         } else {
@@ -332,7 +329,8 @@ public class PeerManager {
         }
       }
     }
-    return broken ? null : created;
+    // Always return successfully parsed peers; callers decide whether some entries were broken.
+    return created;
   }
 
   private void applyCreatedNodes(
