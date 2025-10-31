@@ -10,17 +10,29 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.LRUMap;
 import network.crypta.support.io.InetAddressComparator;
 
-/** Tracks announcements by IP address to identify nodes that announce repeatedly. */
+/**
+ * Tracks announce activity per IP address to identify and de-prioritize peers that repeatedly
+ * request seed node references.
+ *
+ * <p>This tracker maintains lightweight, per-address counters in an {@link LRUMap}. It applies a
+ * simple probabilistic gate to throttle excessive announce requests from the same address and
+ * periodically resets its state to bound memory and decay history. All mutations are synchronized
+ * on the instance to provide thread safety.
+ *
+ * <p>State is in-memory only and not persisted across process restarts.
+ */
 public class SeedAnnounceTracker {
 
   private final LRUMap<InetAddress, TrackerItem> itemsByIP =
       LRUMap.createSafeMap(InetAddressComparator.COMPARATOR);
 
-  // This should be plenty for now and limits memory usage to something reasonable.
+  // Bound the number of distinct IP entries to cap memory usage.
   private static final int MAX_SIZE = 100 * 1000;
+  // Limit the number of rows shown in the stats table.
+  private static final int TOP_ITEMS_COUNT = 20;
 
-  /** A single IP address's behaviour */
-  private class TrackerItem {
+  /** Per-address counters and last observed version. */
+  private static class TrackerItem {
 
     private TrackerItem(InetAddress addr) {
       this.addr = addr;
@@ -58,15 +70,28 @@ public class SeedAnnounceTracker {
     }
   }
 
-  // Reset every 2 hours.
-  // FIXME implement something smoother.
+  // Reset counters every 2 hours to decay history and bound memory; no smoothing is applied.
   static final long RESET_TIME = HOURS.toMillis(2);
 
-  private long lastReset;
+  private long lastReset = System.currentTimeMillis();
 
   /**
-   * If the IP has had at least 5 noderefs, and is out of date, 80% chance of rejection. If the IP
-   * has had 10 noderefs, 75% chance of rejection.
+   * Decides whether to accept an announce from the given seed client and updates per-address
+   * counters.
+   *
+   * <p>Heuristics: if the IP has received more than 5 node references and the peer runs an
+   * unrouteable older version, it is rejected with an 80% probability. If the IP has received more
+   * than 10 node references (any version), it is rejected with a 75% probability. Otherwise, the
+   * announce is accepted. Decisions are randomized using the provided {@link Random}.
+   *
+   * <p>Thread safety: this method synchronizes on {@code this}. It may clear internal state when
+   * the reset interval elapses.
+   *
+   * @param source the announcing peer (provides IP address and build number); must not be null
+   * @param fastRandom a non-cryptographic random source used for probabilistic throttling; must not
+   *     be null
+   * @return {@code true} if the announce is accepted, {@code false} if it is rejected based on the
+   *     current counters and heuristics
    */
   public boolean acceptAnnounce(SeedClientPeerNode source, Random fastRandom) {
     InetAddress addr = source.getPeer().getAddress();
@@ -74,7 +99,7 @@ public class SeedAnnounceTracker {
     boolean badVersion = source.isUnroutableOlderVersion();
     long now = System.currentTimeMillis();
     synchronized (this) {
-      if (lastReset - now > RESET_TIME) {
+      if (now - lastReset > RESET_TIME) {
         itemsByIP.clear();
         lastReset = now;
       }
@@ -82,11 +107,13 @@ public class SeedAnnounceTracker {
       if (item == null) {
         item = new TrackerItem(addr);
       } else {
+        boolean reject = false;
         if (item.totalSentRefs > 5 && badVersion) {
-          if (fastRandom.nextInt(5) != 0) return false;
+          reject = fastRandom.nextInt(5) != 0;
         } else if (item.totalSentRefs > 10) {
-          if (fastRandom.nextInt(4) != 0) return false;
+          reject = fastRandom.nextInt(4) != 0;
         }
+        if (reject) return false;
       }
       item.acceptedAnnounce();
       item.setVersion(ver);
@@ -96,6 +123,14 @@ public class SeedAnnounceTracker {
     }
   }
 
+  /**
+   * Records a rejected announce for the given peer address and updates the last seen version.
+   *
+   * <p>Thread safety: synchronizes on {@code this}. The map may evict the least-recently-used entry
+   * to maintain {@link #MAX_SIZE}.
+   *
+   * @param source the announcing peer for which an announce was rejected; must not be null
+   */
   public void rejectedAnnounce(SeedClientPeerNode source) {
     InetAddress addr = source.getPeer().getAddress();
     int ver = source.getBuildNumber();
@@ -109,6 +144,14 @@ public class SeedAnnounceTracker {
     }
   }
 
+  /**
+   * Records a seed connection from the given peer and updates the last seen version.
+   *
+   * <p>Thread safety: synchronizes on {@code this}. The map may evict the least-recently-used entry
+   * to maintain {@link #MAX_SIZE}.
+   *
+   * @param source the peer that connected to the seed; must not be null
+   */
   public void onConnectSeed(SeedClientPeerNode source) {
     InetAddress addr = source.getPeer().getAddress();
     int ver = source.getBuildNumber();
@@ -122,6 +165,15 @@ public class SeedAnnounceTracker {
     }
   }
 
+  /**
+   * Records a completed announce and the number of forwarded node references for the given peer.
+   *
+   * <p>Thread safety: synchronizes on {@code this}. The map may evict the least-recently-used entry
+   * to maintain {@link #MAX_SIZE}.
+   *
+   * @param source the peer that completed the announce; must not be null
+   * @param forwardedRefs number of node references forwarded to the peer; must be non-negative
+   */
   public void completedAnnounce(SeedClientPeerNode source, int forwardedRefs) {
     InetAddress addr = source.getPeer().getAddress();
     int ver = source.getBuildNumber();
@@ -135,8 +187,20 @@ public class SeedAnnounceTracker {
     }
   }
 
+  /**
+   * Renders a summary table of the most active IP addresses into the provided HTML node.
+   *
+   * <p>The table includes columns for IP address, connection and announce counts, accept/completion
+   * counts, forwarded references, and the last observed build number. Column headers are resolved
+   * via {@link NodeL10n} keys.
+   *
+   * <p>Thread safety: obtains a snapshot via {@link #getTopTrackerItems()} and renders it without
+   * holding internal locks.
+   *
+   * @param content the container node to which the table is appended; must not be null
+   */
   public void drawSeedStats(HTMLNode content) {
-    TrackerItem[] topItems = getTopTrackerItems(20);
+    TrackerItem[] topItems = getTopTrackerItems();
     if (topItems.length == 0) return;
     HTMLNode table = content.addChild("table", "border", "0");
     HTMLNode row = table.addChild("tr");
@@ -159,7 +223,8 @@ public class SeedAnnounceTracker {
     }
   }
 
-  private synchronized TrackerItem[] getTopTrackerItems(int count) {
+  // Returns the most active items sorted by activity; synchronized to snapshot a stable view.
+  private synchronized TrackerItem[] getTopTrackerItems() {
     TrackerItem[] items = new TrackerItem[itemsByIP.size()];
     itemsByIP.valuesToArray(items);
     Arrays.sort(
@@ -180,10 +245,11 @@ public class SeedAnnounceTracker {
           }
           return 0;
         });
-    int topLength = Math.min(count, items.length);
+    int topLength = Math.min(TOP_ITEMS_COUNT, items.length);
     return Arrays.copyOfRange(items, items.length - topLength, items.length);
   }
 
+  /** Returns a localized statistics label for the given key. */
   private String l10nStats(String key) {
     return NodeL10n.getBase().getString("StatisticsToadlet." + key);
   }
