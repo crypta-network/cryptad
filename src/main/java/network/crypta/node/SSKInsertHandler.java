@@ -333,19 +333,14 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       if (senderRef.hasRecentlyCollided()) handleRecentCollision(senderRef);
       int status = senderRef.getStatus();
       if (status == SSKInsertSender.NOT_FINISHED) continue;
-      if (handleTerminalStatuses(senderRef, status)) return;
+      handleTerminalStatuses(senderRef, status);
+      return;
     }
   }
 
   private void awaitStatusChange(SSKInsertSender senderRef) {
-    final SSKInsertSender local = senderRef;
-    synchronized (local) {
-      try {
-        if (local.getStatus() == SSKInsertSender.NOT_FINISHED) local.wait(5000);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    }
+    // Delegate waiting to the sender's intrinsic monitor to avoid synchronizing on parameters.
+    senderRef.waitIfNotFinished(5000);
   }
 
   private boolean forwardRejectedOverloadIfAny(SSKInsertSender senderRef) {
@@ -376,21 +371,20 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     }
   }
 
-  private boolean handleTerminalStatuses(SSKInsertSender senderRef, int status) {
+  private void handleTerminalStatuses(SSKInsertSender senderRef, int status) {
     if (isOverloadOrInternal(status)) {
       handleOverloadStatus(status);
-      return true;
+      return;
     }
     if (isRouteNotFound(status)) {
       handleRouteNotFoundStatus(senderRef, status);
-      return true;
+      return;
     }
     if (status == SSKInsertSender.SUCCESS) {
       handleSuccessStatus(status);
-      return true;
+      return;
     }
     handleUnexpectedStatus(senderRef, status);
-    return true;
   }
 
   private boolean isOverloadOrInternal(int status) {
