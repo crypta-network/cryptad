@@ -54,16 +54,16 @@ public class RealNodePingTest {
             random,
             executor,
             params -> {
-              params.port = DARKNET_PORT1;
-              params.opennetPort = 0;
-              params.disableProbabilisticHTLs = true;
-              params.maxHTL = Node.DEFAULT_MAX_HTL;
-              params.threadLimit = 1000;
-              params.storeSize = 65536;
-              params.ramStore = true;
-              params.enablePacketCoalescing = true;
-              params.outputBandwidthLimit = 0;
-              params.longPingTimes = true;
+              params.setPort(DARKNET_PORT1);
+              params.setOpennetPort(0);
+              params.setDisableProbabilisticHTLs(true);
+              params.setMaxHTL(Node.DEFAULT_MAX_HTL);
+              params.setThreadLimit(1000);
+              params.setStoreSize(65536);
+              params.setRamStore(true);
+              params.setEnablePacketCoalescing(true);
+              params.setOutputBandwidthLimit(0);
+              params.setLongPingTimes(true);
             });
     Node node1 = NodeStarter.createTestNode(node1Params);
     TestNodeParameters node2Params =
@@ -72,16 +72,16 @@ public class RealNodePingTest {
             random,
             executor,
             params -> {
-              params.port = DARKNET_PORT2;
-              params.opennetPort = 0;
-              params.disableProbabilisticHTLs = true;
-              params.maxHTL = Node.DEFAULT_MAX_HTL;
-              params.threadLimit = 1000;
-              params.storeSize = 65536;
-              params.ramStore = true;
-              params.enablePacketCoalescing = true;
-              params.outputBandwidthLimit = 0;
-              params.longPingTimes = true;
+              params.setPort(DARKNET_PORT2);
+              params.setOpennetPort(0);
+              params.setDisableProbabilisticHTLs(true);
+              params.setMaxHTL(Node.DEFAULT_MAX_HTL);
+              params.setThreadLimit(1000);
+              params.setStoreSize(65536);
+              params.setRamStore(true);
+              params.setEnablePacketCoalescing(true);
+              params.setOutputBandwidthLimit(0);
+              params.setLongPingTimes(true);
             });
     Node node2 = NodeStarter.createTestNode(node2Params);
     // Connect

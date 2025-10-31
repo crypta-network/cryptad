@@ -68,11 +68,11 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     dir.mkdir();
     NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
-    params.random = new DummyRandomSource(253121);
-    params.ramStore = true;
-    params.storeSize = FILE_SIZE * 3;
-    params.baseDirectory = dir;
-    params.executor = executor;
+    params.setRandom(new DummyRandomSource(253121));
+    params.setRamStore(true);
+    params.setStoreSize(FILE_SIZE * 3);
+    params.setBaseDirectory(dir);
+    params.setExecutor(executor);
     Node node = NodeStarter.createTestNode(params);
     node.start(false);
     HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);

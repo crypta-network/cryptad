@@ -122,23 +122,23 @@ public class RealNodeULPRTest extends RealNodeTest {
               random,
               executor,
               p -> {
-                p.port = port;
-                p.opennetPort = 0;
-                p.disableProbabilisticHTLs = true;
-                p.maxHTL = MAX_HTL;
-                p.dropProb = 20;
-                p.threadLimit = 500 * NUMBER_OF_NODES;
-                p.storeSize = 1024L * 1024L;
-                p.ramStore = true;
-                p.enableSwapping = ENABLE_SWAPPING;
-                p.enableULPRs = ENABLE_ULPRS;
-                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
-                p.enableSwapQueueing = true;
-                p.enablePacketCoalescing = true;
-                p.outputBandwidthLimit = 0;
-                p.enableFOAF = ENABLE_FOAF;
-                p.connectToSeednodes = false;
-                p.longPingTimes = true;
+                p.setPort(port);
+                p.setOpennetPort(0);
+                p.setDisableProbabilisticHTLs(true);
+                p.setMaxHTL(MAX_HTL);
+                p.setDropProb(20);
+                p.setThreadLimit(500 * NUMBER_OF_NODES);
+                p.setStoreSize(1024L * 1024L);
+                p.setRamStore(true);
+                p.setEnableSwapping(ENABLE_SWAPPING);
+                p.setEnableULPRs(ENABLE_ULPRS);
+                p.setEnablePerNodeFailureTables(ENABLE_PER_NODE_FAILURE_TABLES);
+                p.setEnableSwapQueueing(true);
+                p.setEnablePacketCoalescing(true);
+                p.setOutputBandwidthLimit(0);
+                p.setEnableFOAF(ENABLE_FOAF);
+                p.setConnectToSeednodes(false);
+                p.setLongPingTimes(true);
               });
       nodes[i] = NodeStarter.createTestNode(params);
       LOG.info("Created node " + i);

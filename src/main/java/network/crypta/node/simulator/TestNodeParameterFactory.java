@@ -21,9 +21,9 @@ public final class TestNodeParameterFactory {
     Objects.requireNonNull(customizer, "customizer");
 
     TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.random = random;
-    params.executor = executor;
+    params.setBaseDirectory(baseDirectory);
+    params.setRandom(random);
+    params.setExecutor(executor);
     customizer.accept(params);
     return params;
   }

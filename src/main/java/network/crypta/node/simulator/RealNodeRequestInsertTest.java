@@ -111,26 +111,26 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
               random,
               executor,
               p -> {
-                p.port = port;
-                p.opennetPort = 0;
-                p.disableProbabilisticHTLs = DISABLE_PROBABILISTIC_HTLS;
-                p.maxHTL = MAX_HTL;
-                p.dropProb = 20;
-                p.threadLimit = 500 * NUMBER_OF_NODES;
-                p.storeSize = 256L * 1024;
-                p.ramStore = true;
-                p.enableSwapping = ENABLE_SWAPPING;
-                p.enableARKs = false;
-                p.enableULPRs = ENABLE_ULPRS;
-                p.enablePerNodeFailureTables = ENABLE_PER_NODE_FAILURE_TABLES;
-                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
-                p.enablePacketCoalescing = ENABLE_PACKET_COALESCING;
-                p.outputBandwidthLimit = BWLIMIT;
-                p.enableFOAF = ENABLE_FOAF;
-                p.connectToSeednodes = false;
-                p.longPingTimes = true;
-                p.useSlashdotCache = USE_SLASHDOT_CACHE;
-                p.enableFCP = false;
+                p.setPort(port);
+                p.setOpennetPort(0);
+                p.setDisableProbabilisticHTLs(DISABLE_PROBABILISTIC_HTLS);
+                p.setMaxHTL(MAX_HTL);
+                p.setDropProb(20);
+                p.setThreadLimit(500 * NUMBER_OF_NODES);
+                p.setStoreSize(256L * 1024);
+                p.setRamStore(true);
+                p.setEnableSwapping(ENABLE_SWAPPING);
+                p.setEnableARKs(false);
+                p.setEnableULPRs(ENABLE_ULPRS);
+                p.setEnablePerNodeFailureTables(ENABLE_PER_NODE_FAILURE_TABLES);
+                p.setEnableSwapQueueing(ENABLE_SWAP_QUEUEING);
+                p.setEnablePacketCoalescing(ENABLE_PACKET_COALESCING);
+                p.setOutputBandwidthLimit(BWLIMIT);
+                p.setEnableFOAF(ENABLE_FOAF);
+                p.setConnectToSeednodes(false);
+                p.setLongPingTimes(true);
+                p.setUseSlashdotCache(USE_SLASHDOT_CACHE);
+                p.setEnableFCP(false);
               });
       nodes[i] = NodeStarter.createTestNode(params);
       LOG.info("Created node " + i);

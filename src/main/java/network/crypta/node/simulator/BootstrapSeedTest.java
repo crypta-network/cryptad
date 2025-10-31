@@ -61,21 +61,21 @@ public class BootstrapSeedTest {
               random,
               executor,
               p -> {
-                p.port = DARKNET_PORT;
-                p.opennetPort = OPENNET_PORT;
-                p.maxHTL = Node.DEFAULT_MAX_HTL;
-                p.threadLimit = 1000;
-                p.storeSize = 5 * 1024 * 1024;
-                p.ramStore = true;
-                p.enableSwapping = true;
-                p.enableARKs = true;
-                p.enableULPRs = true;
-                p.enablePerNodeFailureTables = true;
-                p.enableSwapQueueing = true;
-                p.enablePacketCoalescing = true;
-                p.outputBandwidthLimit = 12 * 1024;
-                p.connectToSeednodes = true;
-                p.ipAddressOverride = ipOverrideFinal;
+                p.setPort(DARKNET_PORT);
+                p.setOpennetPort(OPENNET_PORT);
+                p.setMaxHTL(Node.DEFAULT_MAX_HTL);
+                p.setThreadLimit(1000);
+                p.setStoreSize(5 * 1024 * 1024);
+                p.setRamStore(true);
+                p.setEnableSwapping(true);
+                p.setEnableARKs(true);
+                p.setEnableULPRs(true);
+                p.setEnablePerNodeFailureTables(true);
+                p.setEnableSwapQueueing(true);
+                p.setEnablePacketCoalescing(true);
+                p.setOutputBandwidthLimit(12 * 1024);
+                p.setConnectToSeednodes(true);
+                p.setIpAddressOverride(ipOverrideFinal);
               });
       node = NodeStarter.createTestNode(params);
       // NodeCrypto.DISABLE_GROUP_STRIP = true;
