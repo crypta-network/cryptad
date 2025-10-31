@@ -1063,110 +1063,212 @@ public class PeerManager {
       boolean ignoreTimeout,
       long now,
       boolean newLoadManagement) {
+    CloserPeerContext ctx = initCloserPeerContext(pn, routedTo, target, ignoreSelf, key, now);
+    evaluateCandidatesInContext(
+        ctx,
+        pn,
+        routedTo,
+        minVersion,
+        now,
+        realTime,
+        ignoreTimeout,
+        outgoingHTL,
+        target,
+        maxDistance,
+        ignoreSelf,
+        addUnpickedLocsTo,
+        ignoreBackoffUnder,
+        newLoadManagement);
+
+    BestCandidate bestCand = selectBestCandidate(ctx.st, ctx.key);
+    if (recentlyFailed != null && LOG.isDebugEnabled())
+      LOG.debug("Count waiting: {}", ctx.st.countWaiting);
+
+    PeerNode best =
+        handleRecentlyFailedIfNeeded(
+            bestCand.best,
+            bestCand.bestDistance,
+            recentlyFailed,
+            ctx,
+            pn,
+            routedTo,
+            target,
+            ignoreSelf,
+            minVersion,
+            maxDistance,
+            outgoingHTL,
+            ignoreBackoffUnder,
+            isLocal,
+            realTime,
+            now,
+            newLoadManagement);
+    if (best == null) return null;
+
+    reportBackoffPercentIfNeeded(calculateMisrouting);
+    postSelectionUpdate(best, calculateMisrouting, addUnpickedLocsTo, ctx.st);
+    return best;
+  }
+
+  private void reportBackoffPercentIfNeeded(boolean calculateMisrouting) {
+    if (!calculateMisrouting) return;
+    int connected = getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, false);
+    int backedOff = getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
+    if (backedOff + connected > 0)
+      node.getNodeStats()
+          .backedOffPercent
+          .report((double) backedOff / (double) (backedOff + connected));
+  }
+
+  private static record SelectionRates(double[] rates, double total) {}
+
+  private static final class CloserPeerContext {
+    final PeerNode[] peers;
+    final Key key;
+    final double myLoc;
+    final double maxDiff;
+    final double prevLoc;
+    final TimedOutNodesList entry;
+    final SelectionRates selection;
+    final boolean enableFOAFMitigationHack;
+    final Set<Double> excludeLocations;
+    final PeerSelectionState st = new PeerSelectionState();
+
+    CloserPeerContext(
+        PeerNode[] peers,
+        Key key,
+        double myLoc,
+        double maxDiff,
+        double prevLoc,
+        TimedOutNodesList entry,
+        SelectionRates selection,
+        boolean enableFOAFMitigationHack,
+        Set<Double> excludeLocations) {
+      this.peers = peers;
+      this.key = key;
+      this.myLoc = myLoc;
+      this.maxDiff = maxDiff;
+      this.prevLoc = prevLoc;
+      this.entry = entry;
+      this.selection = selection;
+      this.enableFOAFMitigationHack = enableFOAFMitigationHack;
+      this.excludeLocations = excludeLocations;
+    }
+  }
+
+  private CloserPeerContext initCloserPeerContext(
+      PeerNode pn, Set<PeerNode> routedTo, double target, boolean ignoreSelf, Key key, long now) {
     PeerNode[] peers = connectedPeers();
-    if (!node.isEnablePerNodeFailureTables()) key = null;
+    Key effectiveKey = node.isEnablePerNodeFailureTables() ? key : null;
     if (LOG.isDebugEnabled())
-      LOG.debug("Choosing closest peer (connectedPeers={}, key={})", peers.length, key);
+      LOG.debug("Choosing closest peer (connectedPeers={}, key={})", peers.length, effectiveKey);
 
     double myLoc = node.getLocation();
     double maxDiff = ignoreSelf ? Double.MAX_VALUE : Location.distance(myLoc, target);
     double prevLoc = (pn != null) ? pn.getLocation() : -1.0;
-
     TimedOutNodesList entry =
-        (key != null) ? node.getFailureTable().getTimedOutNodesList(key) : null;
-    double[] selectionRates = new double[peers.length];
-    double totalSelectionRate = 0.0;
+        (effectiveKey != null) ? node.getFailureTable().getTimedOutNodesList(effectiveKey) : null;
+    SelectionRates selection = computeSelectionRates(peers);
+    boolean enableFOAF = (peers.length >= PeerNode.SELECTION_MIN_PEERS) && (selection.total > 0.0);
+    Set<Double> exclude = buildExcludeLocations(myLoc, prevLoc, routedTo);
+    return new CloserPeerContext(
+        peers, effectiveKey, myLoc, maxDiff, prevLoc, entry, selection, enableFOAF, exclude);
+  }
+
+  private SelectionRates computeSelectionRates(PeerNode[] peers) {
+    double[] rates = new double[peers.length];
+    double total = 0.0;
     for (int i = 0; i < peers.length; i++) {
-      selectionRates[i] = peers[i].selectionRate();
-      totalSelectionRate += selectionRates[i];
+      rates[i] = peers[i].selectionRate();
+      total += rates[i];
     }
-    boolean enableFOAFMitigationHack =
-        (peers.length >= PeerNode.SELECTION_MIN_PEERS) && (totalSelectionRate > 0.0);
+    return new SelectionRates(rates, total);
+  }
 
-    Set<Double> excludeLocations = buildExcludeLocations(myLoc, prevLoc, routedTo);
-
-    PeerSelectionState st = new PeerSelectionState();
-    for (int i = 0; i < peers.length; i++) {
+  private void evaluateCandidatesInContext(
+      CloserPeerContext ctx,
+      PeerNode pn,
+      Set<PeerNode> routedTo,
+      int minVersion,
+      long now,
+      boolean realTime,
+      boolean ignoreTimeout,
+      short outgoingHTL,
+      double target,
+      double maxDistance,
+      boolean ignoreSelf,
+      List<Double> addUnpickedLocsTo,
+      long ignoreBackoffUnder,
+      boolean newLoadManagement) {
+    for (int i = 0; i < ctx.peers.length; i++) {
       evaluateCandidate(
-          st,
-          peers[i],
+          ctx.st,
+          ctx.peers[i],
           i,
           pn,
           routedTo,
           minVersion,
-          enableFOAFMitigationHack,
-          selectionRates,
-          totalSelectionRate,
+          ctx.enableFOAFMitigationHack,
+          ctx.selection.rates,
+          ctx.selection.total,
           now,
           realTime,
-          entry,
+          ctx.entry,
           ignoreTimeout,
           outgoingHTL,
           target,
-          excludeLocations,
+          ctx.excludeLocations,
           maxDistance,
           ignoreSelf,
-          maxDiff,
+          ctx.maxDiff,
           addUnpickedLocsTo,
           ignoreBackoffUnder,
           newLoadManagement);
     }
+  }
 
-    BestCandidate bestCand = selectBestCandidate(st, key);
-
-    if (recentlyFailed != null && LOG.isDebugEnabled())
-      LOG.debug("Count waiting: {}", st.countWaiting);
-
-    PeerNode best = bestCand.best;
-    double bestDistance = bestCand.bestDistance;
-
-    if (recentlyFailed != null
-        && st.countWaiting >= maxCountWaiting(peers)
-        && node.isEnableULPRDataPropagation()) {
-      PeerNode maybeNull =
-          maybeHandleRecentlyFailed(
-              pn,
-              routedTo,
-              target,
-              ignoreSelf,
-              minVersion,
-              maxDistance,
-              key,
-              outgoingHTL,
-              ignoreBackoffUnder,
-              isLocal,
-              realTime,
-              now,
-              newLoadManagement,
-              entry,
-              st,
-              best,
-              bestDistance,
-              myLoc,
-              prevLoc,
-              recentlyFailed);
-      if (maybeNull == null) return null;
-      best = maybeNull;
-    }
-
-    // DO NOT PUT A ELSE HERE: we need to re-check the value!
-    if (best != null) {
-      // racy... getLocation() could have changed
-      if (calculateMisrouting) {
-        int numberOfConnected = getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, false);
-        int numberOfRoutingBackedOff =
-            getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
-        if (numberOfRoutingBackedOff + numberOfConnected > 0)
-          node.getNodeStats()
-              .backedOffPercent
-              .report(
-                  (double) numberOfRoutingBackedOff
-                      / (double) (numberOfRoutingBackedOff + numberOfConnected));
-      }
-    }
-
-    postSelectionUpdate(best, calculateMisrouting, addUnpickedLocsTo, st);
-    return best;
+  private PeerNode handleRecentlyFailedIfNeeded(
+      PeerNode best,
+      double bestDistance,
+      RecentlyFailedReturn recentlyFailed,
+      CloserPeerContext ctx,
+      PeerNode pn,
+      Set<PeerNode> routedTo,
+      double target,
+      boolean ignoreSelf,
+      int minVersion,
+      double maxDistance,
+      short outgoingHTL,
+      long ignoreBackoffUnder,
+      boolean isLocal,
+      boolean realTime,
+      long now,
+      boolean newLoadManagement) {
+    if (recentlyFailed == null) return best;
+    if (ctx.st.countWaiting < maxCountWaiting(ctx.peers)) return best;
+    if (!node.isEnableULPRDataPropagation()) return best;
+    PeerNode maybeNull =
+        maybeHandleRecentlyFailed(
+            pn,
+            routedTo,
+            target,
+            ignoreSelf,
+            minVersion,
+            maxDistance,
+            ctx.key,
+            outgoingHTL,
+            ignoreBackoffUnder,
+            isLocal,
+            realTime,
+            now,
+            newLoadManagement,
+            ctx.entry,
+            ctx.st,
+            best,
+            bestDistance,
+            ctx.myLoc,
+            ctx.prevLoc,
+            recentlyFailed);
+    return (maybeNull == null) ? null : maybeNull;
   }
 
   private static final class PeerSelectionState {
