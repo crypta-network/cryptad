@@ -10,9 +10,7 @@ import org.slf4j.LoggerFactory;
 public class SendableGetRequestSender implements SendableRequestSender {
   private static final Logger LOG = LoggerFactory.getLogger(SendableGetRequestSender.class);
 
-  static {
-  }
-
+  @Override
   public boolean sendIsBlocking() {
     return false;
   }
@@ -42,33 +40,27 @@ public class SendableGetRequestSender implements SendableRequestSender {
       return false;
     }
     try {
-      try {
-        final Key k = key.getNodeKey();
-        core.asyncGet(
-            k,
-            false,
-            new RequestCompletionListener() {
+      final Key k = key.getNodeKey();
+      core.asyncGet(
+          k,
+          false,
+          new RequestCompletionListener() {
 
-              @Override
-              public void onSucceeded() {
-                req.onFetchSuccess(context);
-              }
+            @Override
+            public void onSucceeded() {
+              req.onFetchSuccess(context);
+            }
 
-              @Override
-              public void onFailed(LowLevelGetException e) {
-                req.onFailure(e, context);
-              }
-            },
-            !req.ignoreStore,
-            req.canWriteClientCache,
-            req.realTimeFlag,
-            req.localRequestOnly,
-            req.ignoreStore);
-      } catch (Throwable t) {
-        LOG.error("Caught " + t, t);
-        req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
-        return true;
-      }
+            @Override
+            public void onFailed(LowLevelGetException e) {
+              req.onFailure(e, context);
+            }
+          },
+          !req.ignoreStore,
+          req.canWriteClientCache,
+          req.realTimeFlag,
+          req.localRequestOnly,
+          req.ignoreStore);
     } catch (Throwable t) {
       LOG.error("Caught " + t, t);
       req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
