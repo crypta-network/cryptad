@@ -15,23 +15,51 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Simple SendableInsert implementation. No feedback, no retries, just insert the block. Not
- * designed for use by the client layer (and not persistent). Used by the node layer for the 1 in
- * every 200 successful requests which starts an insert.
+ * Inserts a single block without retries or client feedback.
+ *
+ * <p>This lightweight {@link SendableInsert} variant is used internally by the node to
+ * opportunistically insert one block roughly once per 200 successful requests. It is not persistent
+ * and is not intended for the external client API.
+ *
+ * <p>Behavior:
+ *
+ * <ul>
+ *   <li>Schedules exactly one block ({@link #block}).
+ *   <li>Runs synchronously from the sender ({@code sendIsBlocking() == true}).
+ *   <li>Does not retry on failure and does not emit client callbacks.
+ * </ul>
+ *
+ * <p>Threading and state: the {@code finished} flag gates rescheduling and cancelation. Several
+ * key-count and selection methods are synchronized to avoid racing with cancelation.
  */
 public class SimpleSendableInsert extends SendableInsert {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleSendableInsert.class);
 
   @Serial private static final long serialVersionUID = 1L;
+
+  /** The block to be inserted (CHK or SSK). Never null. */
   public final KeyBlock block;
+
+  /** Priority class as interpreted by the scheduler. */
   public final short prioClass;
+
   private boolean finished;
+
+  /** Non-persistent client used for internal bulk inserts. */
   public final RequestClient client;
+
+  /** Scheduler responsible for this insert; must be an insert scheduler. */
   public final ClientRequestScheduler scheduler;
 
-  static {
-  }
-
+  /**
+   * Creates a simple insert bound to the appropriate bulk put scheduler.
+   *
+   * @param core node client core used to resolve client and schedulers
+   * @param block block to insert; must be a {@link CHKBlock} or {@link SSKBlock}
+   * @param prioClass scheduler priority class
+   * @throws IllegalArgumentException if {@code block} is of an unsupported type
+   * @throws IllegalStateException if the resolved scheduler is not an insert scheduler
+   */
   public SimpleSendableInsert(NodeClientCore core, KeyBlock block, short prioClass) {
     super(false, false);
     this.block = block;
@@ -44,6 +72,14 @@ public class SimpleSendableInsert extends SendableInsert {
       throw new IllegalStateException("Scheduler " + scheduler + " is not an insert scheduler!");
   }
 
+  /**
+   * Creates a simple insert with explicit client and scheduler.
+   *
+   * @param block block to insert (CHK or SSK)
+   * @param prioClass scheduler priority class
+   * @param client request client to attribute the work to
+   * @param scheduler scheduler used to run this insert; must be an insert scheduler
+   */
   public SimpleSendableInsert(
       KeyBlock block, short prioClass, RequestClient client, ClientRequestScheduler scheduler) {
     super(false, false);
@@ -55,13 +91,13 @@ public class SimpleSendableInsert extends SendableInsert {
 
   @Override
   public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
-    // Yay!
-    if (LOG.isDebugEnabled()) LOG.debug("Finished insert of " + block);
+    // Successful completion; no client-visible feedback.
+    if (LOG.isDebugEnabled()) LOG.debug("Insert completed for {}", block);
   }
 
   @Override
   public void onFailure(LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Failed insert of " + block + ": " + e);
+    if (LOG.isDebugEnabled()) LOG.debug("Insert failed for {}: {}", block, e, e);
   }
 
   @Override
@@ -76,10 +112,10 @@ public class SimpleSendableInsert extends SendableInsert {
       @Override
       public boolean send(
           NodeClientCore core, RequestScheduler sched, ClientContext context, ChosenBlock req) {
-        // Ignore keyNum, key, since this is a single block
+        // Ignore keyNum/key; this insert handles a single block.
         try {
-          if (LOG.isDebugEnabled()) LOG.debug("Starting request: " + this);
-          // FIXME bulk flag
+          if (LOG.isDebugEnabled()) LOG.debug("Starting request: {}", this);
+          // FIXME: bulk flag — clarify whether background inserts should set bulk=true
           core.realPut(
               block,
               req.canWriteClientCache,
@@ -89,12 +125,12 @@ public class SimpleSendableInsert extends SendableInsert {
               false);
         } catch (LowLevelPutException e) {
           onFailure(e, req.token, context);
-          if (LOG.isDebugEnabled()) LOG.debug("Request failed: " + this + " for " + e);
+          if (LOG.isDebugEnabled()) LOG.debug("Request failed for {}: {}", this, e, e);
           return true;
         } finally {
           finished = true;
         }
-        if (LOG.isDebugEnabled()) LOG.debug("Request succeeded: " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Request succeeded: {}", this);
         onSuccess(req.token, null, context);
         sched.removeRunningInsert(SimpleSendableInsert.this, req.token.getKey());
         return true;
@@ -132,11 +168,24 @@ public class SimpleSendableInsert extends SendableInsert {
     return finished;
   }
 
+  /**
+   * Registers this insert with the scheduler.
+   *
+   * <p>Resets the internal {@code finished} flag to allow scheduling again and enqueues the insert
+   * with the configured {@link #scheduler}.
+   */
   public void schedule() {
     finished = false; // can reschedule
     scheduler.registerInsert(this, false);
   }
 
+  /**
+   * Cancels the insert if it has not yet completed.
+   *
+   * <p>Marks the insert as finished and unregisters from queues using the base implementation.
+   *
+   * @param context request context used for unregister bookkeeping
+   */
   public void cancel(ClientContext context) {
     synchronized (this) {
       if (finished) return;
@@ -157,7 +206,7 @@ public class SimpleSendableInsert extends SendableInsert {
     return 1;
   }
 
-  // FIXME share with SingleBlockInserter???
+  // FIXME: share with SingleBlockInserter to avoid duplication?
   private static class MySendableRequestItem
       implements SendableRequestItem, SendableRequestItemKey {
 
@@ -169,7 +218,7 @@ public class SimpleSendableInsert extends SendableInsert {
 
     @Override
     public void dump() {
-      // Ignore.
+      // No-op for this single-block insert type.
     }
 
     @Override
@@ -223,7 +272,7 @@ public class SimpleSendableInsert extends SendableInsert {
 
   @Override
   public void onEncode(SendableRequestItem token, ClientKey key, ClientContext context) {
-    // Ignore.
+    // No-op; nothing to encode for this insert.
   }
 
   @Override
@@ -231,8 +280,16 @@ public class SimpleSendableInsert extends SendableInsert {
     return false;
   }
 
+  /**
+   * No-op resume hook.
+   *
+   * <p>This insert is not persistent and does not support resuming.
+   *
+   * @param context request context (unused)
+   * @throws InsertException never thrown by this implementation
+   */
   @Override
   protected void innerOnResume(ClientContext context) throws InsertException {
-    // Do nothing.
+    // No-op: non-persistent insert does not resume.
   }
 }
