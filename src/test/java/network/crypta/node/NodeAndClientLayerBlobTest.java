@@ -50,11 +50,11 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     dir.mkdir();
     NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
-    params.random = new DummyRandomSource(253121);
-    params.ramStore = true;
-    params.storeSize = FILE_SIZE * 3;
-    params.baseDirectory = dir;
-    params.executor = executor;
+    params.setRandom(new DummyRandomSource(253121));
+    params.setRamStore(true);
+    params.setStoreSize(FILE_SIZE * 3);
+    params.setBaseDirectory(dir);
+    params.setExecutor(executor);
     Node node = NodeStarter.createTestNode(params);
     node.start(false);
     HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
@@ -80,12 +80,12 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     assertTrue(blobBucket.size() > 0);
     // Now bootstrap a second node, and fetch using the blob on that node.
     params = new TestNodeParameters();
-    params.random = new DummyRandomSource(253121);
-    params.ramStore = true;
-    params.storeSize = FILE_SIZE * 3;
-    params.baseDirectory = new File(dir, "fetchNode");
-    params.baseDirectory.mkdir();
-    params.executor = executor;
+    params.setRandom(new DummyRandomSource(253121));
+    params.setRamStore(true);
+    params.setStoreSize(FILE_SIZE * 3);
+    params.setBaseDirectory(new File(dir, "fetchNode"));
+    params.getBaseDirectory().mkdir();
+    params.setExecutor(executor);
     Node node2 = NodeStarter.createTestNode(params);
     node2.start(false);
     HighLevelSimpleClient client2 = node.getClientCore().makeClient((short) 0, false, false);

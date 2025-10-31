@@ -256,24 +256,24 @@ public class LongTermPushPullCHKTest extends LongTermTest {
       boolean enableFoaf,
       boolean connectToSeednodes) {
     TestNodeParameters params = new TestNodeParameters();
-    params.baseDirectory = baseDirectory;
-    params.port = darknetPort;
-    params.opennetPort = opennetPort;
-    params.maxHTL = Node.DEFAULT_MAX_HTL;
-    params.random = random;
-    params.executor = executor;
-    params.threadLimit = 1000;
-    params.storeSize = storeSize;
-    params.ramStore = true;
-    params.enableSwapping = true;
-    params.enableARKs = true;
-    params.enableULPRs = true;
-    params.enablePerNodeFailureTables = true;
-    params.enableSwapQueueing = true;
-    params.enablePacketCoalescing = true;
-    params.outputBandwidthLimit = outputBandwidthLimit;
-    params.enableFOAF = enableFoaf;
-    params.connectToSeednodes = connectToSeednodes;
+    params.setBaseDirectory(baseDirectory);
+    params.setPort(darknetPort);
+    params.setOpennetPort(opennetPort);
+    params.setMaxHTL(Node.DEFAULT_MAX_HTL);
+    params.setRandom(random);
+    params.setExecutor(executor);
+    params.setThreadLimit(1000);
+    params.setStoreSize(storeSize);
+    params.setRamStore(true);
+    params.setEnableSwapping(true);
+    params.setEnableARKs(true);
+    params.setEnableULPRs(true);
+    params.setEnablePerNodeFailureTables(true);
+    params.setEnableSwapQueueing(true);
+    params.setEnablePacketCoalescing(true);
+    params.setOutputBandwidthLimit(outputBandwidthLimit);
+    params.setEnableFOAF(enableFoaf);
+    params.setConnectToSeednodes(connectToSeednodes);
     return params;
   }
 

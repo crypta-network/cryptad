@@ -43,17 +43,18 @@ import org.tanukisoftware.wrapper.WrapperManager;
 import picocli.CommandLine;
 
 /**
+ * Bridges the Tanuki Wrapper lifecycle and the Crypta node.
+ *
+ * <p>NodeStarter wires process lifecycle callbacks (start, stop, control events) from the native
+ * Wrapper into the Java node. It also provides helpers for test environments and OSGi entry points.
+ * Only one instance is created per JVM.
+ *
  * @author nextgens
- *     <p>A class to tie the wrapper and the node (needed for self-restarting support).
- *     <p>There will only ever be one instance of NodeStarter.
  */
 public class NodeStarter implements WrapperListener {
   private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
 
-  /*
-  (File.separatorChar == '\\') &&
-  (System.getProperty("os.arch").toLowerCase().matches("(i?[x0-9]86_64|amd64)")) ? 6 : 2;
-   */
+  // Platform-dependent legacy constant removed; source control retains history.
 
   /*---------------------------------------------------------------
    * Constructors
@@ -63,7 +64,15 @@ public class NodeStarter implements WrapperListener {
     JceLoader.dumpLoaded();
   }
 
-  /** If false, this is some sort of multi-node testing VM */
+  /**
+   * Returns whether this JVM was initialized for testing via {@link #globalTestInit}.
+   *
+   * <p>When {@code true}, the process is in a test/simulator VM. When {@code false}, it is a
+   * regular node process. This method is valid only after startup has begun.
+   *
+   * @return {@code true} when running in a testing VM; otherwise {@code false}
+   * @throws IllegalStateException if called before startup initializes the flag
+   */
   public static synchronized boolean isTestingVM() {
     if (isStarted) {
       return isTestingVM;
@@ -75,38 +84,38 @@ public class NodeStarter implements WrapperListener {
   /*---------------------------------------------------------------
    * Main Method
    *-------------------------------------------------------------*/
+  /**
+   * Process entrypoint. Delegates to the native Wrapper which invokes {@link #start(String[])}.
+   *
+   * @param args command-line arguments forwarded to the application
+   */
   public static void main(String[] args) {
-    // Immediately try entering background mode. This way also class
-    //  loading will be subject to reduced priority.
+    // Enter background mode early so class loading also uses reduced priority.
     ProcessPriority.enterBackgroundMode();
 
-    // Start the application.  If the JVM was launched from the native
-    //  Wrapper then the application will wait for the native Wrapper to
-    //  call the application's start method.  Otherwise the start method
-    //  will be called immediately.
+    // Start the application. If launched by the native Wrapper, it will call start(); otherwise
+    // start() is called immediately here.
     WrapperManager.start(new NodeStarter(), args);
   }
 
   /**
-   * VM-specific init. Not Node-specific; many nodes may be created later.
+   * Initializes a testing VM. This is VM-scoped state; multiple nodes may be created afterward.
    *
-   * @param baseDirectory The directory in which the test data will be placed. Will be created
-   *     automatically if it does not exist. You should use the same one in {@link
-   *     TestNodeParameters#baseDirectory} afterwards for each individual test node as long as it
-   *     has a distinct port. See its JavaDoc.<br>
-   *     The function will NOT fail if the directory exists already. You should make sure on your
-   *     own to delete this before and after tests to ensure a clean state. Notice that JUnit
-   *     provides a mechanism for automatic creation and deletion of test directories
-   *     (TemporaryFolder).
-   * @param RandomSource The random number generator of the Node. Null for the default of {@link
-   *     Yarrow}. <br>
-   *     You might want to use a {@link DummyRandomSource} in unit tests:<br>
-   *     - Unlike Yarrow, it won't block startup waiting for entropy.<br>
-   *     - It allows you to specify a seed which you then can print to stdout so randomized unit
-   *     tests are reproducible.<br>
-   *     - It should be a lot faster than Yarrow.<br>
-   * @return If you passed a {@link RandomSource}, the same one is returned. Otherwise, a new {@link
-   *     Yarrow} is returned.
+   * @param baseDirectory directory for test data; created if missing (caller cleans up)
+   * @param enablePlug when {@code true}, starts a background keep-alive thread
+   * @param logThreshold minimum log level for test logging
+   * @param details optional logging details string (may be {@code null})
+   * @param noDNS when {@code true}, disables DNS requests in tests
+   * @param randomSource random source to use; when {@code null}, a new {@link Yarrow} is created
+   * @return the {@link RandomSource} in use (either {@code randomSource} or a new {@link Yarrow})
+   * @throws IllegalStateException if called more than once per JVM
+   *     <p>Side effects:
+   *     <ul>
+   *       <li>Bootstraps logging for test/simulator environments.
+   *       <li>Sets {@code networkaddress.cache.ttl} and {@code networkaddress.cache.negative.ttl}
+   *           to {@code 0} to avoid DNS caching.
+   *       <li>Optionally spawns a keep-alive thread to prevent idle exits.
+   *     </ul>
    */
   public static RandomSource globalTestInit(
       File baseDirectory,
@@ -124,55 +133,20 @@ public class NodeStarter implements WrapperListener {
       isTestingVM = true;
     }
 
-    if ((!baseDirectory.mkdir()) && ((!baseDirectory.exists()) || (!baseDirectory.isDirectory()))) {
+    ensureDirectoryExists(baseDirectory);
 
-      System.err.println("Cannot create directory for test");
-      System.exit(NodeInitException.EXIT_TEST_ERROR);
-    }
-
-    // Configure SLF4J logging for tests/simulator environments
+    // Configure SLF4J logging for tests/simulator environments.
     Logging.bootstrap(logThreshold, details);
 
-    // set Java's DNS cache not to cache forever, since many people
-    // use dyndns hostnames
+    // Do not cache DNS results; tests often rely on dynamic hostnames.
     Security.setProperty("networkaddress.cache.ttl", "0");
     Security.setProperty("networkaddress.cache.negative.ttl", "0");
 
-    // Setup RNG
+    // Initialize RNG, defaulting to Yarrow if none supplied.
     RandomSource random = randomSource != null ? randomSource : new Yarrow();
 
     if (enablePlug) {
-
-      // Thread to keep the node up.
-      // JVM deadlocks losing a lock when two threads of different types (daemon|app)
-      // are contended for the same lock. So make USM daemon, and use useless to keep the JVM
-      // up.
-      // http://forum.java.sun.com/thread.jspa?threadID=343023&messageID=2942637 - last message
-      Runnable useless =
-          new Runnable() {
-
-            @Override
-            public void run() {
-              while (true) {
-                try {
-                  Thread.sleep(MINUTES.toMillis(60));
-                } catch (InterruptedException e) {
-                  // Ignore
-                } catch (Throwable t) {
-                  try {
-                    LOG.error("Caught " + t, t);
-                  } catch (Throwable t1) {
-                    // Ignore
-                  }
-                }
-              }
-            }
-          };
-      Thread plug = new Thread(useless, "Plug");
-      // Not daemon, but doesn't do anything.
-      // Keeps the JVM alive.
-      plug.setDaemon(false);
-      plug.start();
+      startKeepAlivePlugThread();
     }
 
     DNSRequester.disable = noDNS;
@@ -180,11 +154,44 @@ public class NodeStarter implements WrapperListener {
     return random;
   }
 
+  private static void ensureDirectoryExists(File dir) {
+    if (!dir.mkdir() && (!dir.exists() || !dir.isDirectory())) {
+      LOG.error("Cannot create test directory");
+      System.exit(NodeInitException.EXIT_TEST_ERROR);
+    }
+  }
+
+  @SuppressWarnings("java:S1181")
+  private static void startKeepAlivePlugThread() {
+    Runnable useless =
+        () -> {
+          while (true) {
+            try {
+              //noinspection BusyWait
+              Thread.sleep(MINUTES.toMillis(60));
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            } catch (Exception t) {
+              try {
+                LOG.error("Keep-alive thread caught {}", t, t);
+              } catch (Throwable ignored) {
+                // Ignore
+              }
+            }
+          }
+        };
+    Thread plug = new Thread(useless, "Plug");
+    plug.setDaemon(false);
+    plug.start();
+  }
+
   /**
-   * Create a test node.
+   * Creates a node configured for tests using {@link TestNodeParameters}.
    *
-   * @throws NodeInitException If the node cannot start up for some reason, most likely a config
-   *     problem.
+   * @param params test parameters including ports, store size, and feature toggles
+   * @return a newly created {@link Node} not yet connected to any peers
+   * @throws NodeInitException if startup cannot proceed due to configuration problems
    */
   public static Node createTestNode(TestNodeParameters params) throws NodeInitException {
 
@@ -194,32 +201,32 @@ public class NodeStarter implements WrapperListener {
       }
     }
 
-    File baseDir = params.baseDirectory;
-    File portDir = new File(baseDir, Integer.toString(params.port));
+    File baseDir = params.getBaseDirectory();
+    File portDir = new File(baseDir, Integer.toString(params.getPort()));
     if ((!portDir.mkdir()) && ((!portDir.exists()) || (!portDir.isDirectory()))) {
-      System.err.println("Cannot create directory for test");
+      LOG.error("Cannot create test directory");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
-    // Set up config for testing
-    SimpleFieldSet configFS = new SimpleFieldSet(false); // only happens once in entire simulation
-    if (params.outputBandwidthLimit > 0) {
-      configFS.put("node.outputBandwidthLimit", params.outputBandwidthLimit);
+    // Set up config for testing.
+    SimpleFieldSet configFS = new SimpleFieldSet(false); // Built once per simulation run.
+    if (params.getOutputBandwidthLimit() > 0) {
+      configFS.put("node.outputBandwidthLimit", params.getOutputBandwidthLimit());
       configFS.put("node.throttleLocalTraffic", true);
     } else {
-      // Even with throttleLocalTraffic=false, requests still count in NodeStats.
-      // So set outputBandwidthLimit to something insanely high.
+      // Even with throttleLocalTraffic=false, requests count in NodeStats.
+      // Set an extremely high outputBandwidthLimit to avoid throttling.
       configFS.put("node.outputBandwidthLimit", 16 * 1024 * 1024);
       configFS.put("node.throttleLocalTraffic", false);
     }
-    configFS.put("node.useSlashdotCache", params.useSlashdotCache);
-    configFS.put("node.listenPort", params.port);
-    configFS.put("node.disableProbabilisticHTLs", params.disableProbabilisticHTLs);
+    configFS.put("node.useSlashdotCache", params.isUseSlashdotCache());
+    configFS.put("node.listenPort", params.getPort());
+    configFS.put("node.disableProbabilisticHTLs", params.isDisableProbabilisticHTLs());
     configFS.put("fproxy.enabled", false);
-    configFS.put("fcp.enabled", params.enableFCP);
+    configFS.put("fcp.enabled", params.isEnableFCP());
     configFS.put("fcp.port", 9481);
     configFS.put("fcp.ssl", false);
-    configFS.put("pluginmanager.enabled", params.enablePlugins);
+    configFS.put("pluginmanager.enabled", params.isEnablePlugins());
     configFS.put("console.enabled", false);
     configFS.putSingle("pluginmanager.loadplugin", "");
     configFS.put("node.updater.enabled", false);
@@ -231,38 +238,38 @@ public class NodeStarter implements WrapperListener {
     configFS.putSingle("node.install.userDir", portDir.toString());
     configFS.putSingle("node.install.runDir", portDir.toString());
     configFS.putSingle("node.install.cfgDir", portDir.toString());
-    configFS.put("node.maxHTL", params.maxHTL);
-    configFS.put("node.testingDropPacketsEvery", params.dropProb);
+    configFS.put("node.maxHTL", params.getMaxHTL());
+    configFS.put("node.testingDropPacketsEvery", params.getDropProb());
     configFS.put("node.alwaysAllowLocalAddresses", true);
     configFS.put("node.includeLocalAddressesInNoderefs", true);
     configFS.put("node.enableARKs", false);
-    configFS.put("node.load.threadLimit", params.threadLimit);
-    if (params.ramStore) {
+    configFS.put("node.load.threadLimit", params.getThreadLimit());
+    if (params.isRamStore()) {
       configFS.putSingle("node.storeType", "ram");
     }
-    configFS.put("node.storeSize", params.storeSize);
+    configFS.put("node.storeSize", params.getStoreSize());
     configFS.put("node.disableHangCheckers", true);
-    configFS.put("node.enableSwapping", params.enableSwapping);
-    configFS.put("node.enableSwapQueueing", params.enableSwapQueueing);
-    configFS.put("node.enableARKs", params.enableARKs);
-    configFS.put("node.enableULPRDataPropagation", params.enableULPRs);
-    configFS.put("node.enablePerNodeFailureTables", params.enablePerNodeFailureTables);
-    configFS.put("node.enablePacketCoalescing", params.enablePacketCoalescing);
-    configFS.put("node.publishOurPeersLocation", params.enableFOAF);
-    configFS.put("node.routeAccordingToOurPeersLocation", params.enableFOAF);
-    configFS.put("node.opennet.enabled", params.opennetPort > 0);
-    configFS.put("node.opennet.listenPort", params.opennetPort);
+    configFS.put("node.enableSwapping", params.isEnableSwapping());
+    configFS.put("node.enableSwapQueueing", params.isEnableSwapQueueing());
+    configFS.put("node.enableARKs", params.isEnableARKs());
+    configFS.put("node.enableULPRDataPropagation", params.isEnableULPRs());
+    configFS.put("node.enablePerNodeFailureTables", params.isEnablePerNodeFailureTables());
+    configFS.put("node.enablePacketCoalescing", params.isEnablePacketCoalescing());
+    configFS.put("node.publishOurPeersLocation", params.isEnableFOAF());
+    configFS.put("node.routeAccordingToOurPeersLocation", params.isEnableFOAF());
+    configFS.put("node.opennet.enabled", params.getOpennetPort() > 0);
+    configFS.put("node.opennet.listenPort", params.getOpennetPort());
     configFS.put("node.opennet.alwaysAllowLocalAddresses", true);
     configFS.put("node.opennet.oneConnectionPerIP", false);
     configFS.put("node.opennet.assumeNATed", true);
-    configFS.put("node.opennet.connectToSeednodes", params.connectToSeednodes);
+    configFS.put("node.opennet.connectToSeednodes", params.isConnectToSeednodes());
     configFS.put("node.encryptTempBuckets", false);
     configFS.put("node.encryptPersistentTempBuckets", false);
     configFS.put("node.enableRoutedPing", true);
-    if (params.ipAddressOverride != null) {
-      configFS.putSingle("node.ipAddressOverride", params.ipAddressOverride);
+    if (params.getIpAddressOverride() != null) {
+      configFS.putSingle("node.ipAddressOverride", params.getIpAddressOverride());
     }
-    if (params.longPingTimes) {
+    if (params.isLongPingTimes()) {
       configFS.put("node.maxPingTime", 100000);
       configFS.put("node.subMaxPingTime", 50000);
     }
@@ -276,7 +283,8 @@ public class NodeStarter implements WrapperListener {
 
     PersistentConfig config = new PersistentConfig(configFS);
 
-    Node node = new Node(config, params.random, params.random, null, null, params.executor);
+    Node node =
+        new Node(config, params.getRandom(), params.getRandom(), null, null, params.getExecutor());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -285,7 +293,8 @@ public class NodeStarter implements WrapperListener {
     return node;
   }
 
-  // experimental osgi support
+  // Experimental OSGi support.
+  @SuppressWarnings({"unused", "java:S100"})
   public static void start_osgi(String[] args) {
     nodestarter_osgi = new NodeStarter();
     nodestarter_osgi.start(args);
@@ -295,13 +304,22 @@ public class NodeStarter implements WrapperListener {
    * WrapperListener Methods
    *-------------------------------------------------------------*/
 
-  // experimental osgi support
+  // Experimental OSGi support.
+  @SuppressWarnings({"unused", "java:S100"})
   public static void stop_osgi(int exitCode) {
     nodestarter_osgi.stop(exitCode);
     nodestarter_osgi = null;
   }
 
-  /** Get the memory limit in MB. Return -1 if we don't know, -2 for unlimited. */
+  /**
+   * Returns the memory limit in mebibytes.
+   *
+   * <p>Special values: {@code -1} when unknown, {@code -2} when unlimited. Values round down to the
+   * nearest MiB. Extremely large limits above {@code Integer.MAX_VALUE} MiB are reported as
+   * unknown.
+   *
+   * @return memory limit in MiB, {@code -1} unknown, or {@code -2} unlimited
+   */
   public static long getMemoryLimitMB() {
     long limit = getMemoryLimitBytes();
     if (limit <= 0) {
@@ -312,13 +330,19 @@ public class NodeStarter implements WrapperListener {
     }
     limit /= (1024 * 1024);
     if (limit > Integer.MAX_VALUE) {
-      return -1; // Seems unlikely. FIXME 2TB limit!
+      // Note: values above ~2TB are reported as unknown (-1) due to int return limits.
+      return -1;
     }
     return limit;
   }
 
   /**
-   * Get the memory limit in bytes. Return -1 if we don't know. Compensate for odd JVMs' behaviour.
+   * Returns the JVM memory limit in bytes, or {@code -1} when unknown.
+   *
+   * <p>Some JVMs historically reported the limit in MiB. This method compensates by treating small
+   * values as MiB and converting to bytes.
+   *
+   * @return memory limit in bytes, or {@code -1} when unknown
    */
   public static long getMemoryLimitBytes() {
     long maxMemory = Runtime.getRuntime().maxMemory();
@@ -336,8 +360,12 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * check whether the OS, JVM and wrapper are 64bits On Windows this will be always true (the
-   * wrapper we deploy is 32bits)
+   * Heuristic 32-bit check for the runtime environment.
+   *
+   * <p>Returns {@code true} when indicators suggest a 32-bit setup. On Windows this may always
+   * return {@code true} due to wrapper specifics.
+   *
+   * @return {@code true} if a 32-bit environment is detected
    */
   public static boolean isSomething32bits() {
     Properties wrapperProperties = WrapperManager.getProperties();
@@ -345,6 +373,11 @@ public class NodeStarter implements WrapperListener {
         && !wrapperProperties.getProperty("wrapper.java.additional.auto_bits").startsWith("32");
   }
 
+  /**
+   * Returns a lazily-initialized process-wide {@link SecureRandom} and ensures it seeds eagerly.
+   *
+   * @return shared {@link SecureRandom} instance
+   */
   public static synchronized SecureRandom getGlobalSecureRandom() {
     if (globalSecureRandom == null) {
       globalSecureRandom = new SecureRandom();
@@ -354,6 +387,11 @@ public class NodeStarter implements WrapperListener {
     return globalSecureRandom;
   }
 
+  /**
+   * Returns this instance. Used by environments that require a direct reference (e.g., OSGi).
+   *
+   * @return this {@link NodeStarter}
+   */
   public NodeStarter get() {
     return this;
   }
@@ -365,17 +403,25 @@ public class NodeStarter implements WrapperListener {
    */
   private static void printResolvedDirectories(Resolved r, File configFile, boolean serviceMode) {
     try {
-      System.out.println(
-          "\nResolved directories (" + (serviceMode ? "service" : "user") + " mode):");
-      System.out.println("  Config file:  " + configFile.getAbsolutePath());
-      System.out.println("  Config dir:   " + r.getConfigDir());
-      System.out.println("  Data dir:     " + r.getDataDir());
-      System.out.println("  Cache dir:    " + r.getCacheDir());
-      System.out.println("  Run dir:      " + r.getRunDir());
-      System.out.println("  Logs dir:     " + r.getLogsDir());
-      System.out.println();
+      LOG.info(
+          """
+          Resolved directories ({} mode):
+            Config file:  {}
+            Config dir:   {}
+            Data dir:     {}
+            Cache dir:    {}
+            Run dir:      {}
+            Logs dir:     {}
+          """,
+          (serviceMode ? "service" : "user"),
+          configFile.getAbsolutePath(),
+          r.getConfigDir(),
+          r.getDataDir(),
+          r.getCacheDir(),
+          r.getRunDir(),
+          r.getLogsDir());
     } catch (Throwable t) {
-      // Do not fail startup due to printing
+      // Do not fail startup due to logging
     }
   }
 
@@ -384,8 +430,8 @@ public class NodeStarter implements WrapperListener {
    * it can start its application. This method call is expected to return, so a new thread should be
    * launched if necessary.
    *
-   * <p>CLI is powered by picocli for a better user experience. Standard help and version flags are
-   * supported, along with intuitive options for directory overrides and mode selection.
+   * <p>CLI uses picocli. Standard help/version flags are supported, plus options for directory
+   * overrides and service/user mode selection.
    *
    * <p>Supported CLI options: - <code>-h</code>, <code>--help</code>: Show usage help - <code>-V
    * </code>, <code>--version</code>: Show version information - <code>-c</code>, <code>
@@ -412,25 +458,13 @@ public class NodeStarter implements WrapperListener {
       isStarted = true;
       isTestingVM = false;
     }
-    // Parse CLI using picocli for a better UX
+
     NodeCli cli = new NodeCli();
     CommandLine cmd = new CommandLine(cli);
     cmd.setExecutionExceptionHandler(new NodeCli.PrettyExceptionHandler());
-    try {
-      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
-      if (parseResult.isVersionHelpRequested()) {
-        cmd.printVersionHelp(System.out);
-        return 0;
-      }
-      if (parseResult.isUsageHelpRequested()) {
-        cmd.usage(System.out);
-        return 0;
-      }
-    } catch (CommandLine.ParameterException ex) {
-      cmd.getErr().println("Error: " + ex.getMessage());
-      cmd.getErr().println();
-      cmd.usage(cmd.getErr());
-      return CommandLine.ExitCode.USAGE;
+    Integer earlyExit = handleCliAndMaybeExit(args, cmd);
+    if (earlyExit != null) {
+      return earlyExit;
     }
 
     Map<String, String> overrides = cli.directoryOverrides();
@@ -439,24 +473,92 @@ public class NodeStarter implements WrapperListener {
     if (serviceModeOverride != null) {
       System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase());
     }
+
     AppEnv appEnv = new AppEnv();
     boolean serviceMode = appEnv.isServiceMode();
-    Path configDirPath;
-    if (serviceMode) {
-      ServiceDirs svc = new ServiceDirs(overrides);
-      Resolved r = svc.resolve();
-      configDirPath = r.getConfigDir();
-    } else {
-      AppDirs dirs = new AppDirs(overrides);
-      Resolved r = dirs.resolve();
-      configDirPath = r.getConfigDir();
-    }
-    File configFilename;
-    configFilename =
+    Path configDirPath = resolveConfigDirPath(overrides, serviceMode);
+    File configFilename =
         Objects.requireNonNullElseGet(
             explicitConfigFile, () -> configDirPath.resolve("cryptad.ini").toFile());
 
-    // Migrate config if needed and create defaults
+    migrateConfigQuietly(overrides, serviceMode);
+
+    // Do not cache DNS results; nodes are often accessed via dynamic hostnames.
+    Security.setProperty("networkaddress.cache.ttl", "0");
+    Security.setProperty("networkaddress.cache.negative.ttl", "0");
+
+    FreenetFilePersistentConfig cfg;
+    try {
+      LOG.info("Loading configuration from {}", configFilename);
+      cfg = loadConfig(configFilename, overrides, serviceMode, appEnv);
+    } catch (IOException e) {
+      LOG.error("Configuration load failed: {}", e, e);
+      return -1;
+    }
+
+    LoggingConfigHandler logConfigHandler;
+    try {
+      logConfigHandler = setupLogging(cfg);
+    } catch (InvalidConfigValueException e) {
+      LOG.error("Logging setup failed: {}", e.getMessage(), e);
+      return -2;
+    }
+
+    PooledExecutor executor = startExecutor();
+
+    // Extend wrapper startup timeout to 500000 ms. Diffie-Hellman init can be slow on some hosts.
+    WrapperManager.signalStarting(500000);
+
+    startKeepAliveNativePlugThread();
+
+    initSSL(cfg);
+
+    try {
+      node = new Node(cfg, null, null, logConfigHandler, this, executor);
+      installSeednodesIfMissing(node);
+      node.start(false);
+      LOG.info("Node initialization completed");
+    } catch (NodeInitException e) {
+      LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
+      System.exit(e.exitCode);
+    }
+
+    return null;
+  }
+
+  private Integer handleCliAndMaybeExit(String[] args, CommandLine cmd) {
+    try {
+      CommandLine.ParseResult parseResult = cmd.parseArgs(args);
+      if (parseResult.isVersionHelpRequested()) {
+        cmd.printVersionHelp(cmd.getOut());
+        return 0;
+      }
+      if (parseResult.isUsageHelpRequested()) {
+        cmd.usage(cmd.getOut());
+        return 0;
+      }
+      return null;
+    } catch (CommandLine.ParameterException ex) {
+      cmd.getErr().println("Error: " + ex.getMessage());
+      cmd.getErr().println();
+      cmd.usage(cmd.getErr());
+      return CommandLine.ExitCode.USAGE;
+    }
+  }
+
+  private static Path resolveConfigDirPath(Map<String, String> overrides, boolean serviceMode) {
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      Resolved r = svc.resolve();
+      return r.getConfigDir();
+    } else {
+      AppDirs dirs = new AppDirs(overrides);
+      Resolved r = dirs.resolve();
+      return r.getConfigDir();
+    }
+  }
+
+  private void migrateConfigQuietly(Map<String, String> overrides, boolean serviceMode) {
     try {
       Resolved ar;
       if (serviceMode) {
@@ -469,144 +571,104 @@ public class NodeStarter implements WrapperListener {
       Path exeDir = getExecutableDir();
       ConfigMigrator.migrateIfNeeded(ar, exeDir);
     } catch (Exception e) {
-      System.err.println("Warning: migration encountered an error: " + e.getMessage());
+      LOG.warn("Config migration error: {}", e.getMessage());
     }
+  }
 
-    // set Java's DNS cache not to cache forever, since many people
-    // use dyndns hostnames
-    Security.setProperty("networkaddress.cache.ttl", "0");
-    Security.setProperty("networkaddress.cache.negative.ttl", "0");
-
-    FreenetFilePersistentConfig cfg;
-    try {
-      System.out.println("Loading config from " + configFilename);
-      Path cfgPath = configFilename.toPath();
-      Resolved resolved;
-      if (serviceMode) {
-        ServiceDirs svc = new ServiceDirs(overrides);
-        resolved = svc.resolve();
-      } else {
-        Map<String, String> sysMap = new HashMap<>();
-        Properties props = System.getProperties();
-        for (Entry<Object, Object> e : props.entrySet()) {
-          sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-        }
-        // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
-        AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
-        resolved = dirs.resolve();
+  private static FreenetFilePersistentConfig loadConfig(
+      File configFilename, Map<String, String> overrides, boolean serviceMode, AppEnv appEnv)
+      throws IOException {
+    Path cfgPath = configFilename.toPath();
+    Resolved resolved;
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      resolved = svc.resolve();
+    } else {
+      Map<String, String> sysMap = new HashMap<>();
+      Properties props = System.getProperties();
+      for (Entry<Object, Object> e : props.entrySet()) {
+        sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
       }
-      // Inform the user where data and logs will be stored.
-      printResolvedDirectories(resolved, configFilename, serviceMode);
-      SimpleFieldSet sfs =
-          CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
-      File tmp = new File(configFilename.getPath() + ".tmp");
-      cfg = new FreenetFilePersistentConfig(sfs, configFilename, tmp);
-    } catch (IOException e) {
-      System.out.println("Error : " + e);
-      e.printStackTrace();
-      return -1;
+      // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
+      AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+      resolved = dirs.resolve();
     }
+    printResolvedDirectories(resolved, configFilename, serviceMode);
+    SimpleFieldSet sfs =
+        CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
+    File tmp = new File(configFilename.getPath() + ".tmp");
+    return new FreenetFilePersistentConfig(sfs, configFilename, tmp);
+  }
 
-    // First, set up logging. It is global, and may be shared between several nodes.
+  private static LoggingConfigHandler setupLogging(FreenetFilePersistentConfig cfg)
+      throws InvalidConfigValueException {
+    LOG.info("Creating logger configuration...");
     SubConfig loggingConfig = cfg.createSubConfig("logger");
+    return new LoggingConfigHandler(loggingConfig);
+  }
 
+  private static PooledExecutor startExecutor() {
+    LOG.info("Starting executor");
     PooledExecutor executor = new PooledExecutor();
-
-    LoggingConfigHandler logConfigHandler;
-    try {
-      System.out.println("Creating logger...");
-      logConfigHandler = new LoggingConfigHandler(loggingConfig);
-    } catch (InvalidConfigValueException e) {
-      System.err.println("Error: could not set up logging: " + e.getMessage());
-      e.printStackTrace();
-      return -2;
-    }
-
-    System.out.println("Starting executor...");
     executor.start();
+    return executor;
+  }
 
-    // Prevent timeouts for a while. The DiffieHellman init for example could take some time on a
-    // very slow system.
-    WrapperManager.signalStarting(500000);
-
-    // Thread to keep the node up.
-    // JVM deadlocks losing a lock when two threads of different types (daemon|app)
-    // are contended for the same lock. So make USM daemon, and use useless to keep the JVM
-    // up.
-    // http://forum.java.sun.com/thread.jspa?threadID=343023&messageID=2942637 - last message
-    Runnable useless =
-        new Runnable() {
-
-          @Override
-          public void run() {
-            while (true) {
+  @SuppressWarnings("java:S1181")
+  private static void startKeepAliveNativePlugThread() {
+    Runnable r =
+        () -> {
+          while (true) {
+            try {
+              //noinspection BusyWait
+              Thread.sleep(MINUTES.toMillis(60));
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              return;
+            } catch (Exception t) {
               try {
-                Thread.sleep(MINUTES.toMillis(60));
-              } catch (InterruptedException e) {
+                LOG.error("Keep-alive thread caught {}", t, t);
+              } catch (Throwable ignored) {
                 // Ignore
-              } catch (Throwable t) {
-                try {
-                  LOG.error("Caught " + t, t);
-                } catch (Throwable t1) {
-                  // Ignore
-                }
               }
             }
           }
         };
     NativeThread plug =
-        new NativeThread(useless, "Plug", NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
-    // Not daemon, but doesn't do anything.
-    // Keeps the JVM alive.
+        new NativeThread(r, "Plug", NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
     plug.setDaemon(false);
     plug.start();
+  }
 
-    // Initialize SSL
+  private static void initSSL(FreenetFilePersistentConfig cfg) {
     SubConfig sslConfig = cfg.createSubConfig("ssl");
     SSL.init(sslConfig);
+  }
 
+  @SuppressWarnings("java:S1181")
+  private static void installSeednodesIfMissing(Node node) {
     try {
-      node = new Node(cfg, null, null, logConfigHandler, this, executor);
-      // Ensure seednodes.fref exists at node.install.nodeDir. Install from packaged resource if
-      // missing.
-      try {
-        File seedFile = NodeFile.SEEDNODES.getFile(node);
-        if (!seedFile.exists()) {
-          try (java.io.InputStream in =
-              NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
-            if (in != null) {
-              java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
-              java.nio.file.Files.copy(in, seedFile.toPath());
-              System.out.println(
-                  "Installed default seednodes from resource at " + seedFile.getAbsolutePath());
-            } else {
-              System.err.println(
-                  "Warning: No default seednodes.fref found in resources; opennet bootstrap may be"
-                      + " delayed.");
-            }
+      File seedFile = NodeFile.SEEDNODES.getFile(node);
+      if (!seedFile.exists()) {
+        try (java.io.InputStream in =
+            NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
+          if (in != null) {
+            java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
+            java.nio.file.Files.copy(in, seedFile.toPath());
+            LOG.info("Installed default seednodes from resource at {}", seedFile.getAbsolutePath());
+          } else {
+            LOG.warn(
+                "No default seednodes.fref found in resources; opennet bootstrap may be delayed.");
           }
         }
-      } catch (Throwable t) {
-        // Always print a concise warning to stdout for immediate visibility
-        System.out.printf(
-            "Warning: failed to install seednodes.fref: %s: %s%n",
-            t.getClass().getSimpleName(), t.getMessage());
-        // Log full stack trace for debugging instead of only the message
-        try {
-          LOG.error("Warning: failed to install seednodes.fref", t);
-        } catch (Throwable ignored) {
-          // ignored
-        }
       }
-      node.start(false);
-      System.out.println("Node initialization completed.");
-    } catch (NodeInitException e) {
-      System.err.println("Failed to load node: " + e.exitCode + " : " + e.getMessage());
-      e.printStackTrace();
-      System.exit(e.exitCode);
+    } catch (Throwable t) {
+      try {
+        LOG.error("Default seednodes install failed", t);
+      } catch (Throwable ignored) {
+        // ignored
+      }
     }
-
-    return null;
   }
 
   private Path getExecutableDir() {
@@ -624,7 +686,7 @@ public class NodeStarter implements WrapperListener {
 
   /**
    * Called when the application is shutting down. The Wrapper assumes that this method will return
-   * fairly quickly. If the shutdown code code could potentially take a long time, then
+   * fairly quickly. If the shutdown code could take a long time, then
    * WrapperManager.signalStopping() should be called to extend the timeout period. If for some
    * reason, the stop method can not return, then it must call WrapperManager.stopped() to avoid
    * warning messages from the Wrapper.
@@ -636,9 +698,9 @@ public class NodeStarter implements WrapperListener {
    */
   @Override
   public int stop(int exitCode) {
-    System.err.println("Shutting down with exit code " + exitCode);
+    LOG.info("Shutting down with exit code {}", exitCode);
     node.park();
-    // see #354
+    // Extend wrapper shutdown timeout to 120000 ms (see #354).
     WrapperManager.signalStopping(120000);
 
     return exitCode;
@@ -660,9 +722,9 @@ public class NodeStarter implements WrapperListener {
   public void controlEvent(int event) {
     if (WrapperManager.isControlledByNativeWrapper()) {
       // The Wrapper will take care of this event
-    } else
-    // We are not being controlled by the Wrapper, so
-    //  handle the event ourselves.
+      return;
+    }
+    // We are not being controlled by the Wrapper, so handle the event ourselves.
     if ((event == WrapperManager.WRAPPER_CTRL_C_EVENT)
         || (event == WrapperManager.WRAPPER_CTRL_CLOSE_EVENT)
         || (event == WrapperManager.WRAPPER_CTRL_SHUTDOWN_EVENT)) {
@@ -670,57 +732,246 @@ public class NodeStarter implements WrapperListener {
     }
   }
 
-  /** TODO FIXME: Someone who understands all the parameters please add sane defaults. */
+  /**
+   * Parameters for constructing a test node.
+   *
+   * <p>All fields are optional unless otherwise noted. Defaults favor a lightweight, local-only
+   * configuration suitable for simulations.
+   */
   public static final class TestNodeParameters {
 
-    /** The UDP port number. Each test node must have a different port number. */
-    public int port;
+    private int port;
+    private int opennetPort;
+    private File baseDirectory = new File("crypta-test-node-" + UUID.randomUUID());
+    private boolean disableProbabilisticHTLs;
+    private short maxHTL;
+    private int dropProb;
+    private RandomSource random;
+    private PriorityAwareExecutor executor;
+    private int threadLimit = 500;
+    private long storeSize;
+    private boolean ramStore;
+    private boolean enableSwapping;
+    private boolean enableARKs;
+    private boolean enableULPRs;
+    private boolean enablePerNodeFailureTables;
+    private boolean enableSwapQueueing;
+    private boolean enablePacketCoalescing;
+    private int outputBandwidthLimit;
+    private boolean enableFOAF;
+    private boolean connectToSeednodes;
+    private boolean longPingTimes;
+    private boolean useSlashdotCache;
+    private String ipAddressOverride;
+    private boolean enableFCP;
+    private boolean enablePlugins;
 
-    /** The UDP opennet port number. Each test node must have a different port number. */
-    public int opennetPort;
+    public int getPort() {
+      return port;
+    }
 
-    /**
-     * The directory where the test node will put all its data. <br>
-     * Will be created automatically if it does not exist.<br>
-     * {@link NodeStarter#createTestNode(TestNodeParameters)} will NOT fail if this exists. You
-     * should make sure on your own to delete this before and after tests to ensure a clean state.
-     * Notice that JUnit provides a mechanism for automatic creation and deletion of test
-     * directories (TemporaryFolder).<br>
-     * Notice that a subdirectory with the name being the port number of the node will be created
-     * there, and all data of the node will be put into it. So you can and should use the same
-     * baseDirectory when calling {@link NodeStarter#globalTestInit(File, boolean, LogLevel, String,
-     * boolean, RandomSource)} (which you have to do once for each Java VM): Each one will start
-     * with a fresh empty subdirectory for as long as each of them uses a unique port number.
-     */
-    public File baseDirectory = new File("crypta-test-node-" + UUID.randomUUID());
+    public void setPort(int port) {
+      this.port = port;
+    }
 
-    public boolean disableProbabilisticHTLs;
-    public short maxHTL;
-    public int dropProb;
-    public RandomSource random;
-    public PriorityAwareExecutor executor;
-    public int threadLimit = 500;
-    public long storeSize;
-    public boolean ramStore;
-    public boolean enableSwapping;
-    public boolean enableARKs;
-    public boolean enableULPRs;
-    public boolean enablePerNodeFailureTables;
-    public boolean enableSwapQueueing;
-    public boolean enablePacketCoalescing;
-    public int outputBandwidthLimit;
-    public boolean enableFOAF;
-    public boolean connectToSeednodes;
-    public boolean longPingTimes;
-    public boolean useSlashdotCache;
-    public String ipAddressOverride;
-    public boolean enableFCP;
-    public boolean enablePlugins;
+    public int getOpennetPort() {
+      return opennetPort;
+    }
+
+    public void setOpennetPort(int opennetPort) {
+      this.opennetPort = opennetPort;
+    }
+
+    public File getBaseDirectory() {
+      return baseDirectory;
+    }
+
+    public void setBaseDirectory(File baseDirectory) {
+      this.baseDirectory = baseDirectory;
+    }
+
+    public boolean isDisableProbabilisticHTLs() {
+      return disableProbabilisticHTLs;
+    }
+
+    public void setDisableProbabilisticHTLs(boolean v) {
+      this.disableProbabilisticHTLs = v;
+    }
+
+    public short getMaxHTL() {
+      return maxHTL;
+    }
+
+    public void setMaxHTL(short maxHTL) {
+      this.maxHTL = maxHTL;
+    }
+
+    public int getDropProb() {
+      return dropProb;
+    }
+
+    public void setDropProb(int dropProb) {
+      this.dropProb = dropProb;
+    }
+
+    public RandomSource getRandom() {
+      return random;
+    }
+
+    public void setRandom(RandomSource random) {
+      this.random = random;
+    }
+
+    public PriorityAwareExecutor getExecutor() {
+      return executor;
+    }
+
+    public void setExecutor(PriorityAwareExecutor executor) {
+      this.executor = executor;
+    }
+
+    public int getThreadLimit() {
+      return threadLimit;
+    }
+
+    public void setThreadLimit(int threadLimit) {
+      this.threadLimit = threadLimit;
+    }
+
+    public long getStoreSize() {
+      return storeSize;
+    }
+
+    public void setStoreSize(long storeSize) {
+      this.storeSize = storeSize;
+    }
+
+    public boolean isRamStore() {
+      return ramStore;
+    }
+
+    public void setRamStore(boolean ramStore) {
+      this.ramStore = ramStore;
+    }
+
+    public boolean isEnableSwapping() {
+      return enableSwapping;
+    }
+
+    public void setEnableSwapping(boolean enableSwapping) {
+      this.enableSwapping = enableSwapping;
+    }
+
+    public boolean isEnableARKs() {
+      return enableARKs;
+    }
+
+    public void setEnableARKs(boolean enableARKs) {
+      this.enableARKs = enableARKs;
+    }
+
+    public boolean isEnableULPRs() {
+      return enableULPRs;
+    }
+
+    public void setEnableULPRs(boolean enableULPRs) {
+      this.enableULPRs = enableULPRs;
+    }
+
+    public boolean isEnablePerNodeFailureTables() {
+      return enablePerNodeFailureTables;
+    }
+
+    public void setEnablePerNodeFailureTables(boolean v) {
+      this.enablePerNodeFailureTables = v;
+    }
+
+    public boolean isEnableSwapQueueing() {
+      return enableSwapQueueing;
+    }
+
+    public void setEnableSwapQueueing(boolean enableSwapQueueing) {
+      this.enableSwapQueueing = enableSwapQueueing;
+    }
+
+    public boolean isEnablePacketCoalescing() {
+      return enablePacketCoalescing;
+    }
+
+    public void setEnablePacketCoalescing(boolean enablePacketCoalescing) {
+      this.enablePacketCoalescing = enablePacketCoalescing;
+    }
+
+    public int getOutputBandwidthLimit() {
+      return outputBandwidthLimit;
+    }
+
+    public void setOutputBandwidthLimit(int outputBandwidthLimit) {
+      this.outputBandwidthLimit = outputBandwidthLimit;
+    }
+
+    public boolean isEnableFOAF() {
+      return enableFOAF;
+    }
+
+    public void setEnableFOAF(boolean enableFOAF) {
+      this.enableFOAF = enableFOAF;
+    }
+
+    public boolean isConnectToSeednodes() {
+      return connectToSeednodes;
+    }
+
+    public void setConnectToSeednodes(boolean connectToSeednodes) {
+      this.connectToSeednodes = connectToSeednodes;
+    }
+
+    public boolean isLongPingTimes() {
+      return longPingTimes;
+    }
+
+    public void setLongPingTimes(boolean longPingTimes) {
+      this.longPingTimes = longPingTimes;
+    }
+
+    public boolean isUseSlashdotCache() {
+      return useSlashdotCache;
+    }
+
+    public void setUseSlashdotCache(boolean useSlashdotCache) {
+      this.useSlashdotCache = useSlashdotCache;
+    }
+
+    public String getIpAddressOverride() {
+      return ipAddressOverride;
+    }
+
+    public void setIpAddressOverride(String ipAddressOverride) {
+      this.ipAddressOverride = ipAddressOverride;
+    }
+
+    public boolean isEnableFCP() {
+      return enableFCP;
+    }
+
+    public void setEnableFCP(boolean enableFCP) {
+      this.enableFCP = enableFCP;
+    }
+
+    public boolean isEnablePlugins() {
+      return enablePlugins;
+    }
+
+    @SuppressWarnings("unused")
+    public void setEnablePlugins(boolean enablePlugins) {
+      this.enablePlugins = enablePlugins;
+    }
   }
 
-  static SemiOrderedShutdownHook shutdownHook;
   // experimental osgi support
+  @SuppressWarnings("java:S3008")
   private static NodeStarter nodestarter_osgi = null;
+
   private static boolean isTestingVM;
   private static boolean isStarted;
 

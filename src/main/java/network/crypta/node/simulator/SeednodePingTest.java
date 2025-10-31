@@ -67,16 +67,16 @@ public class SeednodePingTest extends RealNodeTest {
       // Create one node
       PriorityAwareExecutor executor = new PooledExecutor();
       TestNodeParameters params = new TestNodeParameters();
-      params.baseDirectory = baseDir;
-      params.port = DARKNET_PORT;
-      params.opennetPort = OPENNET_PORT;
-      params.maxHTL = Node.DEFAULT_MAX_HTL;
-      params.random = random;
-      params.executor = executor;
-      params.threadLimit = 1000;
-      params.storeSize = 5 * 1024 * 1024;
-      params.ramStore = true;
-      params.outputBandwidthLimit = 0;
+      params.setBaseDirectory(baseDir);
+      params.setPort(DARKNET_PORT);
+      params.setOpennetPort(OPENNET_PORT);
+      params.setMaxHTL(Node.DEFAULT_MAX_HTL);
+      params.setRandom(random);
+      params.setExecutor(executor);
+      params.setThreadLimit(1000);
+      params.setStoreSize(5 * 1024 * 1024);
+      params.setRamStore(true);
+      params.setOutputBandwidthLimit(0);
       node = NodeStarter.createTestNode(params);
       // Connect & ping
       List<SeedServerTestPeerNode> seedNodes = new ArrayList<>();

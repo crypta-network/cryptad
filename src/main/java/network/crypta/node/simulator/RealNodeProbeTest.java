@@ -73,26 +73,26 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
               random,
               executor,
               p -> {
-                p.port = port;
-                p.opennetPort = 0;
-                p.disableProbabilisticHTLs = true;
-                p.maxHTL = MAX_HTL;
-                p.dropProb = 0;
-                p.threadLimit = 500 * NUMBER_OF_NODES;
-                p.storeSize = 256L * 1024;
-                p.ramStore = true;
-                p.enableSwapping = ENABLE_SWAPPING;
-                p.enableARKs = false;
-                p.enableULPRs = false;
-                p.enablePerNodeFailureTables = false;
-                p.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
-                p.enablePacketCoalescing = true;
-                p.outputBandwidthLimit = OUTPUT_BANDWIDTH_LIMIT;
-                p.enableFOAF = ENABLE_FOAF;
-                p.connectToSeednodes = false;
-                p.longPingTimes = true;
-                p.useSlashdotCache = false;
-                p.enableFCP = enableFcp;
+                p.setPort(port);
+                p.setOpennetPort(0);
+                p.setDisableProbabilisticHTLs(true);
+                p.setMaxHTL(MAX_HTL);
+                p.setDropProb(0);
+                p.setThreadLimit(500 * NUMBER_OF_NODES);
+                p.setStoreSize(256L * 1024);
+                p.setRamStore(true);
+                p.setEnableSwapping(ENABLE_SWAPPING);
+                p.setEnableARKs(false);
+                p.setEnableULPRs(false);
+                p.setEnablePerNodeFailureTables(false);
+                p.setEnableSwapQueueing(ENABLE_SWAP_QUEUEING);
+                p.setEnablePacketCoalescing(true);
+                p.setOutputBandwidthLimit(OUTPUT_BANDWIDTH_LIMIT);
+                p.setEnableFOAF(ENABLE_FOAF);
+                p.setConnectToSeednodes(false);
+                p.setLongPingTimes(true);
+                p.setUseSlashdotCache(false);
+                p.setEnableFCP(enableFcp);
               });
       nodes[i] = NodeStarter.createTestNode(params);
       LOG.info("Created node " + i);

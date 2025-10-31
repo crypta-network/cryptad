@@ -199,25 +199,25 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
       // Create one node
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
-      params.port = DARKNET_PORT1;
-      params.opennetPort = OPENNET_PORT1;
-      params.baseDirectory = dir;
-      params.disableProbabilisticHTLs = false;
-      params.maxHTL = Node.DEFAULT_MAX_HTL;
-      params.random = random;
-      params.executor = new PooledExecutor();
-      params.threadLimit = 1000;
-      params.storeSize = 4L * 1024 * 1024;
-      params.ramStore = true;
-      params.enableSwapping = true;
-      params.enableARKs = true;
-      params.enableULPRs = true;
-      params.enablePerNodeFailureTables = true;
-      params.enableSwapQueueing = true;
-      params.enablePacketCoalescing = true;
-      params.outputBandwidthLimit = 12 * 1024;
-      params.enableFOAF = true;
-      params.connectToSeednodes = true;
+      params.setPort(DARKNET_PORT1);
+      params.setOpennetPort(OPENNET_PORT1);
+      params.setBaseDirectory(dir);
+      params.setDisableProbabilisticHTLs(false);
+      params.setMaxHTL(Node.DEFAULT_MAX_HTL);
+      params.setRandom(random);
+      params.setExecutor(new PooledExecutor());
+      params.setThreadLimit(1000);
+      params.setStoreSize(4L * 1024 * 1024);
+      params.setRamStore(true);
+      params.setEnableSwapping(true);
+      params.setEnableARKs(true);
+      params.setEnableULPRs(true);
+      params.setEnablePerNodeFailureTables(true);
+      params.setEnableSwapQueueing(true);
+      params.setEnablePacketCoalescing(true);
+      params.setOutputBandwidthLimit(12 * 1024);
+      params.setEnableFOAF(true);
+      params.setConnectToSeednodes(true);
       node = NodeStarter.createTestNode(params);
       Logging.setRootLevel(org.slf4j.event.Level.ERROR);
 

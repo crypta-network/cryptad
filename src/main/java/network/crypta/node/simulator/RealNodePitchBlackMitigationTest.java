@@ -101,21 +101,21 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       System.err.println("Creating node " + i);
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
-      params.port = DARKNET_PORT_BASE + i;
-      params.opennetPort = 0;
-      params.baseDirectory = wd;
-      params.disableProbabilisticHTLs = true;
-      params.maxHTL = MAX_HTL;
-      params.random = random;
-      params.executor = executor;
-      params.threadLimit = 500 * NUMBER_OF_NODES;
-      params.storeSize = 4_000_000L;
-      params.ramStore = true;
-      params.enableSwapping = ENABLE_SWAPPING;
-      params.enableSwapQueueing = ENABLE_SWAP_QUEUEING;
-      params.enablePacketCoalescing = true;
-      params.enableFOAF = ENABLE_FOAF;
-      params.longPingTimes = true;
+      params.setPort(DARKNET_PORT_BASE + i);
+      params.setOpennetPort(0);
+      params.setBaseDirectory(wd);
+      params.setDisableProbabilisticHTLs(true);
+      params.setMaxHTL(MAX_HTL);
+      params.setRandom(random);
+      params.setExecutor(executor);
+      params.setThreadLimit(500 * NUMBER_OF_NODES);
+      params.setStoreSize(4_000_000L);
+      params.setRamStore(true);
+      params.setEnableSwapping(ENABLE_SWAPPING);
+      params.setEnableSwapQueueing(ENABLE_SWAP_QUEUEING);
+      params.setEnablePacketCoalescing(true);
+      params.setEnableFOAF(ENABLE_FOAF);
+      params.setLongPingTimes(true);
       nodes[i] = NodeStarter.createTestNode(params);
       LOG.info("Created node " + i);
     }
