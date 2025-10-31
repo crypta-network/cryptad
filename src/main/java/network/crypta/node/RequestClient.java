@@ -1,24 +1,33 @@
 package network.crypta.node;
 
 /**
- * Must be implemented by any client object returned by SendableRequest.getClient(). Mostly this is
- * for scheduling, but it does have one key purpose: to identify whether a request is persistent or
- * not.
+ * Describes client-level attributes used by the scheduler to classify and prioritize a request.
  *
- * <p>Use a {@link RequestClientBuilder} to conveniently build {@code RequestClient}s.
+ * <p>Implementations are returned by {@code SendableRequest.getClient()} and provide stable
+ * metadata that guides scheduling decisions. The results of {@link #persistent()} and {@link
+ * #realTimeFlag()} must remain constant for the lifetime of the enclosing request. Methods are side
+ * effect free and expected to execute quickly.
+ *
+ * <p>Use a {@link RequestClientBuilder} to conveniently build {@code RequestClient} instances.
  *
  * @author toad
  */
 public interface RequestClient {
 
-  /** Is this request persistent? **Must not change!** */
+  /**
+   * Returns whether the request is persistent. The value is consulted by the scheduler to treat the
+   * request as durable versus ephemeral and must not change once constructed.
+   *
+   * @return {@code true} if the request is persistent; {@code false} otherwise
+   */
   boolean persistent();
 
   /**
-   * Send the request with the real time flag enabled? Real-time requests are given a higher
-   * priority in data transfers, but fewer of them are accepted. They are optimised for latency
-   * rather than throughput, and are expected to be bursty rather than continual. **Must not
-   * change!**
+   * Returns whether the request uses the real-time flag. Real-time requests receive latency-
+   * oriented handling and a higher priority in data transfers, but fewer are admitted and overall
+   * throughput may be lower. The value must not change over the lifetime of the request.
+   *
+   * @return {@code true} for real-time scheduling; {@code false} for normal scheduling
    */
   boolean realTimeFlag();
 }

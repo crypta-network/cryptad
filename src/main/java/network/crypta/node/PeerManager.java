@@ -1149,6 +1149,22 @@ public class PeerManager {
       best = maybeNull;
     }
 
+    // DO NOT PUT A ELSE HERE: we need to re-check the value!
+    if (best != null) {
+      // racy... getLocation() could have changed
+      if (calculateMisrouting) {
+        int numberOfConnected = getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, false);
+        int numberOfRoutingBackedOff =
+            getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
+        if (numberOfRoutingBackedOff + numberOfConnected > 0)
+          node.getNodeStats()
+              .backedOffPercent
+              .report(
+                  (double) numberOfRoutingBackedOff
+                      / (double) (numberOfRoutingBackedOff + numberOfConnected));
+      }
+    }
+
     postSelectionUpdate(best, calculateMisrouting, addUnpickedLocsTo, st);
     return best;
   }
