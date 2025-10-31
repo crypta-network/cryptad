@@ -1,32 +1,54 @@
 package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import network.crypta.crypt.DummyRandomSource;
+import network.crypta.io.comm.AsyncMessageCallback;
+import network.crypta.io.comm.DMT;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-public class PeerMessageQueueTest {
+@SuppressWarnings("java:S100")
+@ExtendWith(MockitoExtension.class)
+class PeerMessageQueueTest {
   @Test
-  public void testUrgentTimeEmpty() {
+  void getNextUrgentTime_whenEmpty_returnsMaxValue() {
+    // Arrange
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-    assertEquals(Long.MAX_VALUE, pmq.getNextUrgentTime(Long.MAX_VALUE, System.currentTimeMillis()));
+    long now = System.currentTimeMillis();
+
+    // Act
+    long urgentTime = pmq.getNextUrgentTime(Long.MAX_VALUE, now);
+
+    // Assert
+    assertEquals(Long.MAX_VALUE, urgentTime);
   }
 
   @Test
-  public void testUrgentTime() {
+  void getNextUrgentTime_whenSingleQueued_returnsSubmittedPlusTimeoutWithinRange() {
+    // Arrange
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-
-    // Constructor might take some time, so grab a range
     long start = System.currentTimeMillis();
     MessageItem item = new MessageItem(new byte[1024], null, false, null, (short) 0);
     long end = System.currentTimeMillis();
-
     pmq.queueAndEstimateSize(item, 1024);
 
-    // The timeout for item should be within (start + 100) and (end + 100)
+    // Act
     long urgentTime = pmq.getNextUrgentTime(Long.MAX_VALUE, System.currentTimeMillis());
+
+    // Assert
     if (!((urgentTime >= (start + 100)) && (urgentTime <= (end + 100)))) {
       fail(
           "Timeout not in expected range. Expected: "
@@ -39,64 +61,176 @@ public class PeerMessageQueueTest {
   }
 
   /* Test that getNextUrgentTime() returns the correct value, even when the items on the queue
-   * aren't ordered by their timeout value, eg. when an item was readded because we couldn't send
+   * aren't ordered by their timeout value, e.g. when an item was readded because we couldn't send
    * it. */
   @Test
-  public void testUrgentTimeQueuedWrong() {
+  void getNextUrgentTime_whenQueuedOrderWrong_returnsMostUrgentTimeoutWithinRange() {
+    // Arrange
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-
-    // Constructor might take some time, so grab a range
-    long start = System.currentTimeMillis();
     MessageItem itemUrgent = new MessageItem(new byte[1024], null, false, null, (short) 0);
-    long end = System.currentTimeMillis();
-
-    // Sleep for a little while to get a later timeout
-    try {
-      Thread.sleep(1);
-    } catch (InterruptedException e) {
-
-    }
-
     MessageItem itemNonUrgent = new MessageItem(new byte[1024], null, false, null, (short) 0);
-
-    // Queue the least urgent item first to get the wrong order
     pmq.queueAndEstimateSize(itemNonUrgent, 1024);
     pmq.queueAndEstimateSize(itemUrgent, 1024);
 
-    // getNextUrgentTime() should return the timeout of itemUrgent, which is within (start + 100)
-    // and (end + 100)
+    // Act
     long urgentTime = pmq.getNextUrgentTime(Long.MAX_VALUE, System.currentTimeMillis());
-    if (!((urgentTime >= (start + 100)) && (urgentTime <= (end + 100)))) {
-      fail(
-          "Timeout not in expected range. Expected: "
-              + (start + 100)
-              + "->"
-              + (end + 100)
-              + ", actual: "
-              + urgentTime);
-    }
+
+    // Assert
+    long expected =
+        Math.min(itemUrgent.submitted, itemNonUrgent.submitted) + PacketSender.MAX_COALESCING_DELAY;
+    assertEquals(expected, urgentTime);
   }
 
   @Test
-  public void testGrabQueuedMessageItem() {
+  void grabQueuedMessageItem_whenMostUrgentQueuedLast_returnsMostUrgentFirst() {
+    // Arrange
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-
     MessageItem itemUrgent = new MessageItem(new byte[1024], null, false, null, (short) 0);
-
-    // Sleep for a little while to get a later timeout
-    try {
-      Thread.sleep(1);
-    } catch (InterruptedException e) {
-
-    }
-
     MessageItem itemNonUrgent = new MessageItem(new byte[1024], null, false, null, (short) 0);
-
-    // Queue the least urgent item first to get the wrong order
     pmq.queueAndEstimateSize(itemNonUrgent, 1024);
     pmq.queueAndEstimateSize(itemUrgent, 1024);
 
-    // grabQueuedMessageItem() should return the most urgent item, even though it was queued last
-    assertSame(itemUrgent, pmq.grabQueuedMessageItem(0));
+    // Act
+    MessageItem chosen = pmq.grabQueuedMessageItem(0);
+
+    // Assert
+    MessageItem expectedFirst =
+        (itemUrgent.submitted < itemNonUrgent.submitted) ? itemUrgent : itemNonUrgent;
+    assertSame(expectedFirst, chosen);
+  }
+
+  // New tests follow (JUnit 6 + Mockito; deterministic, no sleeps)
+
+  @Test
+  void queueAndEstimateSize_withSingleItem_returnsLengthPlusOverhead() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(7));
+    byte[] payload = new byte[10];
+    MessageItem item = new MessageItem(payload, null, false, null, DMT.PRIORITY_UNSPECIFIED);
+
+    // Act
+    int estimate = pmq.queueAndEstimateSize(item, 1024);
+
+    // Assert
+    assertEquals(12, estimate); // 10 bytes + 2 bytes overhead
+  }
+
+  @Test
+  void grabQueuedMessageItems_whenMultipleQueued_returnsAllAndClears() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(42));
+    MessageItem a = new MessageItem(new byte[5], null, false, null, DMT.PRIORITY_HIGH);
+    MessageItem b = new MessageItem(new byte[7], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    MessageItem c = new MessageItem(new byte[9], null, false, null, DMT.PRIORITY_BULK_DATA);
+    pmq.queueAndEstimateSize(a, 1024);
+    pmq.queueAndEstimateSize(b, 1024);
+    pmq.queueAndEstimateSize(c, 1024);
+
+    // Act
+    MessageItem[] firstBatch = pmq.grabQueuedMessageItems();
+    MessageItem[] secondBatch = pmq.grabQueuedMessageItems();
+
+    // Assert
+    assertEquals(3, firstBatch.length);
+    Set<MessageItem> seen = new HashSet<>(Arrays.asList(firstBatch));
+    assertTrue(seen.contains(a));
+    assertTrue(seen.contains(b));
+    assertTrue(seen.contains(c));
+    assertNotNull(secondBatch);
+    assertEquals(0, secondBatch.length);
+  }
+
+  @Test
+  void mustSendSize_whenExceedsMax_returnsTrue() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1));
+    MessageItem item = new MessageItem(new byte[5], null, false, null, DMT.PRIORITY_LOW);
+    pmq.queueAndEstimateSize(item, 1024);
+
+    // Act
+    boolean result = pmq.mustSendSize(2, 6); // 2 + 5 > 6
+
+    // Assert
+    assertTrue(result);
+  }
+
+  @Test
+  void grabQueuedMessageItem_whenRealtimeAndBulkPresent_prefersRealtime() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(99));
+    MessageItem realtime =
+        new MessageItem(new byte[3], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    MessageItem bulk = new MessageItem(new byte[3], null, false, null, DMT.PRIORITY_BULK_DATA);
+    pmq.queueAndEstimateSize(realtime, 1024);
+    pmq.queueAndEstimateSize(bulk, 1024);
+
+    // Act
+    MessageItem chosen = pmq.grabQueuedMessageItem(0);
+
+    // Assert
+    assertNotNull(chosen);
+    assertEquals(DMT.PRIORITY_REALTIME_DATA, chosen.getPriority());
+  }
+
+  @Test
+  void pushfrontPrioritizedMessageItem_onRoundRobin_givesImmediatePrecedence() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(100));
+    MessageItem a = new MessageItem(new byte[2], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    MessageItem b = new MessageItem(new byte[2], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    pmq.pushfrontPrioritizedMessageItem(a); // goes to urgent list for the (synthetic) UID
+    pmq.queueAndEstimateSize(b, 1024); // non-urgent in same priority
+
+    // Act
+    MessageItem first = pmq.grabQueuedMessageItem(0);
+
+    // Assert
+    assertSame(a, first);
+  }
+
+  @Test
+  void getMessageQueueLengthBytes_withOnlyNonUrgent_returnsZero() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(5));
+    MessageItem item = new MessageItem(new byte[4], null, false, null, DMT.PRIORITY_UNSPECIFIED);
+    pmq.queueAndEstimateSize(item, 1024);
+
+    // Act
+    long urgentBytes = pmq.getMessageQueueLengthBytes();
+
+    // Assert
+    assertEquals(0L, urgentBytes); // nothing has been promoted to urgent
+  }
+
+  @Test
+  void removeMessage_whenQueued_invokesOnFailed(@Mock AsyncMessageCallback cb) {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(11));
+    MessageItem item =
+        new MessageItem(
+            new byte[8], new AsyncMessageCallback[] {cb}, false, null, DMT.PRIORITY_UNSPECIFIED);
+    pmq.queueAndEstimateSize(item, 1024);
+
+    // Act
+    boolean removed = pmq.removeMessage(item);
+
+    // Assert
+    assertTrue(removed);
+    verify(cb, times(1)).fatalError();
+  }
+
+  @Test
+  void removeMessage_whenNotQueued_returnsFalse(@Mock AsyncMessageCallback cb) {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(12));
+    MessageItem item =
+        new MessageItem(
+            new byte[6], new AsyncMessageCallback[] {cb}, false, null, DMT.PRIORITY_LOW);
+
+    // Act
+    boolean removed = pmq.removeMessage(item);
+
+    // Assert
+    assertFalse(removed);
   }
 }
