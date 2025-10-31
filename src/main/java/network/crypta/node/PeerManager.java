@@ -1317,7 +1317,7 @@ public class PeerManager {
                   until = now + FailureTable.RECENTLY_FAILED_TIME;
                 }
                 if (!node.getFailureTable().hadAnyOffers(key)) {
-                  recentlyFailed.fail(countWaiting, until);
+                  recentlyFailed.fail(until);
                   return null;
                 } else {
                   if (LOG.isDebugEnabled())
