@@ -8,8 +8,6 @@ import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
-import network.crypta.io.comm.PeerRestartedException;
-import network.crypta.io.xfer.WaitedTooLongException;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
@@ -237,25 +235,9 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     if ((storedBlock != null) && !storedBlock.equals(block)) {
       try {
         RequestHandler.sendSSK(
-            storedBlock.getRawHeaders(),
-            storedBlock.getRawData(),
-            false,
-            pubKey,
-            source,
-            uid,
-            this,
-            realTimeFlag);
+            storedBlock.getRawHeaders(), storedBlock.getRawData(), source, uid, this, realTimeFlag);
       } catch (NotConnectedException e1) {
         if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on " + uid);
-        return;
-      } catch (WaitedTooLongException e1) {
-        LOG.error("Took too long to send ssk datareply to " + uid + " (because of throttling)");
-        return;
-      } catch (PeerRestartedException e) {
-        if (LOG.isDebugEnabled()) LOG.debug("Source restarted on " + uid);
-        return;
-      } catch (SyncSendWaitedTooLongException e) {
-        LOG.error("Took too long to send ssk datareply to " + uid);
         return;
       }
       block = storedBlock;
@@ -315,18 +297,9 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
           throw new Error("Impossible: " + e1, e1);
         }
         try {
-          RequestHandler.sendSSK(headers, data, false, pubKey, source, uid, this, realTimeFlag);
+          RequestHandler.sendSSK(headers, data, source, uid, this, realTimeFlag);
         } catch (NotConnectedException e1) {
           if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on " + uid);
-          return;
-        } catch (WaitedTooLongException e1) {
-          LOG.error("Took too long to send ssk datareply to " + uid + " because of bwlimiting");
-          return;
-        } catch (PeerRestartedException e) {
-          LOG.error("Peer restarted on " + uid);
-          return;
-        } catch (SyncSendWaitedTooLongException e) {
-          LOG.error("Took too long to send ssk datareply to " + uid);
           return;
         }
       }
