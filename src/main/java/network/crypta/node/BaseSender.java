@@ -243,7 +243,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       next.sendSync(req, this, realTimeFlag);
       next.reportRoutedTo(
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
-      node.getPeers().incrementSelectionSamples(System.currentTimeMillis(), next);
+      node.getPeers().incrementSelectionSamples(next);
     } catch (NotConnectedException e) {
       LOG.debug("Not connected");
       next.noLongerRoutingTo(origTag, false);
@@ -621,7 +621,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       state.next.sendSync(req, this, realTimeFlag);
       state.next.reportRoutedTo(
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
-      node.getPeers().incrementSelectionSamples(System.currentTimeMillis(), state.next);
+      node.getPeers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException e) {
       LOG.debug("Not connected");

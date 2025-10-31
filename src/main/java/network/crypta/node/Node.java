@@ -5460,11 +5460,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    peers.connect(
-        node.darknetCrypto.exportPublicFieldSet(),
-        darknetCrypto.getPacketMangler(),
-        trust,
-        visibility);
+    peers.connect(node.darknetCrypto.exportPublicFieldSet(), trust, visibility);
   }
 
   public short maxHTL() {
