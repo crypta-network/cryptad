@@ -1266,29 +1266,27 @@ public class PeerManager {
     if (recentlyFailed == null) return best;
     if (ctx.st.countWaiting < maxCountWaiting(ctx.peers)) return best;
     if (!node.isEnableULPRDataPropagation()) return best;
-    PeerNode maybeNull =
-        maybeHandleRecentlyFailed(
-            pn,
-            routedTo,
-            target,
-            ignoreSelf,
-            minVersion,
-            maxDistance,
-            ctx.key,
-            outgoingHTL,
-            ignoreBackoffUnder,
-            isLocal,
-            realTime,
-            now,
-            newLoadManagement,
-            ctx.entry,
-            ctx.st,
-            best,
-            bestDistance,
-            ctx.myLoc,
-            ctx.prevLoc,
-            recentlyFailed);
-    return maybeNull;
+    return maybeHandleRecentlyFailed(
+        pn,
+        routedTo,
+        target,
+        ignoreSelf,
+        minVersion,
+        maxDistance,
+        ctx.key,
+        outgoingHTL,
+        ignoreBackoffUnder,
+        isLocal,
+        realTime,
+        now,
+        newLoadManagement,
+        ctx.entry,
+        ctx.st,
+        best,
+        bestDistance,
+        ctx.myLoc,
+        ctx.prevLoc,
+        recentlyFailed);
   }
 
   private static final class PeerSelectionState {
