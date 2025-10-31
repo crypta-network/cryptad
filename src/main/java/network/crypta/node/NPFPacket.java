@@ -13,6 +13,16 @@ import network.crypta.crypt.Util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Packet encoder/decoder for the node wire format.
+ *
+ * <p>Holds parsed state (sequence number, ACKs, message fragments, and per-packet lossy messages),
+ * exposes helpers to append content with size accounting, and serializes the packet back to bytes.
+ * Parsing sets an internal error flag when the input is malformed or truncated; callers can inspect
+ * it via {@link #getError()}.
+ *
+ * <p>Instances are not thread-safe.
+ */
 class NPFPacket {
   private static final Logger LOG = LoggerFactory.getLogger(NPFPacket.class);
 
@@ -21,9 +31,10 @@ class NPFPacket {
   private final List<MessageFragment> fragments = new ArrayList<>();
 
   /**
-   * Messages that are specific to a single packet and can be happily lost if it is lost. They must
-   * be processed before the rest of the messages. With early versions, these might be bogus, so be
-   * careful parsing them.
+   * Per-packet lossy payloads.
+   *
+   * <p>Receivers process these before regular fragments and may drop them without affecting
+   * correctness. Older peers can emit unexpected data here; callers should validate as needed.
    */
   private final List<byte[]> lossyMessages = new LinkedList<>();
 
@@ -144,7 +155,7 @@ class NPFPacket {
         return tryParseLossyMessages(packet, plaintext, offset);
       }
       if (res < 0) return -1;
-      // Update prevFragmentID: last added fragment's messageID is at the end of list
+      // Update prevFragmentID: the last added fragment's messageID is at the end of the list.
       prevFragmentID = packet.fragments.getLast().messageID;
       offset = res;
     }
@@ -291,11 +302,9 @@ class NPFPacket {
         offset += 2;
       }
 
-      // We need to know if it was the first fragment; flag was at the header byte, which is kept
-      // intact by callers when passing `shortMessage`/`isFragmented`. Since callers already
-      // determined `firstFragment`, they will set messageLength or fragmentOffset appropriately
-      // after this method returns. To keep behavior identical, we expose both values; the caller
-      // chooses which to use.
+      // Caller already decoded flags from the header and knows whether this is the first fragment.
+      // Expose both values; the caller uses messageLength for first fragments, and fragmentOffset
+      // otherwise.
 
       // By contract with caller: first fragment uses messageLength=value, otherwise fragmentOffset
       messageLength = value;
@@ -416,6 +425,8 @@ class NPFPacket {
   }
 
   private List<AckRange> computeAckRanges() {
+    // Coalesce contiguous ACKs into ranges; ranges hold start/end and a delta from the previous
+    // range to allow compact encoding (or a far-range marker when out of window).
     List<AckRange> out = new ArrayList<>();
     Iterator<Integer> it = acks.iterator();
     if (!it.hasNext()) return out;
@@ -493,7 +504,7 @@ class NPFPacket {
     }
 
     if (fragment.isFragmented) {
-      // If firstFragment is true, add total message length. Else, add fragment offset
+      // If firstFragment is true, encode total message length; otherwise encode fragment offset.
       int value;
       if (fragment.firstFragment) {
         value = fragment.messageLength;
@@ -530,11 +541,11 @@ class NPFPacket {
   }
 
   private static void writePadding(byte[] buf, int offset, Random paddingGen) {
-    // More room, so add padding
+    // Fill remaining space with random padding when capacity remains.
     Util.randomBytes(paddingGen, buf, offset, buf.length - offset);
 
-    byte b = (byte) (buf[offset] & 0x9F); // Make sure firstFragment and isFragmented isn't set
-    if (b == 0x1F) b = (byte) 0x9F; // Make sure it doesn't match the pattern for lossy messages
+    byte b = (byte) (buf[offset] & 0x9F); // Clear firstFragment/isFragmented bits in padding byte.
+    if (b == 0x1F) b = (byte) 0x9F; // Avoid the lossy message marker (0x1F) in padding.
     buf[offset] = b;
   }
 
@@ -572,8 +583,8 @@ class NPFPacket {
       acks.remove(ack);
       return false;
     }
-    //              (start + offset) + (rangeCount-1)    *(1byte deltaFromPrevios + length) +
-    // farRangeCount*(flag + 4byte packetSequenceNumber + length)
+    //              (start + offset) + (rangeCount-1)    *(1 byte deltaFromPrevious + length) +
+    // farRangeCount*(flag + 4-byte packetSequenceNumber + length)
     int blockSize = 5 + (nearRangeCount - 1) * 2 + farRangeCount * 6;
     int finalLength = length + blockSize - ackBlockByteSize;
     if (finalLength > maxPacketSize) {
@@ -785,6 +796,11 @@ class NPFPacket {
     }
   }
 
+  /**
+   * Return a string representation of the current fragment list.
+   *
+   * <p>For diagnostics only.
+   */
   @SuppressWarnings("unused")
   String fragmentsAsString() {
     return Arrays.toString(fragments.toArray());
