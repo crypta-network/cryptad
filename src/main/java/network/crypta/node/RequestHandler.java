@@ -871,8 +871,7 @@ public class RequestHandler
       // Check whether it is actually the noderef of the peer.
       // If so, we need to relay it anyway.
 
-      SimpleFieldSet ref =
-          OpennetManager.validateNoderef(noderef, 0, noderef.length, source, false);
+      SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, source, false);
 
       if (ref == null || om.alreadyHaveOpennetNode(ref)) {
         // Okay, let it through.
@@ -961,7 +960,7 @@ public class RequestHandler
   private void finishOpennetNoRelayInner(OpennetManager om, byte[] noderef) {
     if (noderef == null || noderef.length == 0) return;
 
-    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, 0, noderef.length, source, false);
+    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, source, false);
 
     if (ref == null) return;
 
@@ -1027,8 +1026,7 @@ public class RequestHandler
 
               // Send it forward to the data source, if it is valid.
 
-              if (OpennetManager.validateNoderef(newNoderef, 0, newNoderef.length, source, false)
-                  != null) {
+              if (OpennetManager.validateNoderef(newNoderef, source, false) != null) {
                 try {
                   if (LOG.isDebugEnabled())
                     LOG.debug(
