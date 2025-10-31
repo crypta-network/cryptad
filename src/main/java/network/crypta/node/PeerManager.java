@@ -1588,7 +1588,7 @@ public class PeerManager {
     }
     long decidedUntil = decideRecentlyFailedUntil(until, now, key);
     if (decidedUntil >= 0) {
-      recentlyFailed.fail(st.countWaiting, decidedUntil);
+      recentlyFailed.fail(decidedUntil);
       return null;
     } else {
       if (LOG.isDebugEnabled())
