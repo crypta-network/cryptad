@@ -1522,7 +1522,7 @@ public class OpennetManager {
    * @param uid The unique ID of the request chain involved.
    * @param peer The node to send the noderef to. Not necessarily an OpennetPeerNode, as path
    *     folding and possibly announcement can pass through darknet.
-   * @param cs The full compressed noderef to send.
+   * @param noderef The full compressed noderef to send.
    * @throws NotConnectedException If the peer becomes disconnected while we are trying to send the
    *     noderef.
    */
