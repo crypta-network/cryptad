@@ -112,6 +112,31 @@ class SendableGetRequestSenderTest {
   }
 
   @Test
+  void send_whenCancelled_failureCallbackThrows_isCaughtAndStillReturnsFalse() {
+    // Arrange
+    SendableGetRequestSender sender = newSender();
+    SendableRequestItem token = mock(SendableRequestItem.class);
+    ClientKey ckey = mock(ClientKey.class);
+    ChosenBlock req = newChosenBlock(token, ckey, false, false, false, false);
+    when(req.isCancelled()).thenReturn(true);
+    // Make the failure callback throw
+    doThrow(new RuntimeException("boom-cancel"))
+        .when(req)
+        .onFailure(any(LowLevelGetException.class), eq(context));
+
+    // Act
+    boolean result = sender.send(core, scheduler, context, req);
+
+    // Assert
+    assertFalse(result);
+    verifyNoInteractions(core);
+    ArgumentCaptor<LowLevelGetException> captor =
+        ArgumentCaptor.forClass(LowLevelGetException.class);
+    verify(req).onFailure(captor.capture(), eq(context));
+    assertEquals(LowLevelGetException.CANCELLED, captor.getValue().code);
+  }
+
+  @Test
   void send_whenAsyncGetSucceeds_invokesFetchSuccessCallback() {
     // Arrange
     SendableGetRequestSender sender = newSender();
@@ -201,6 +226,32 @@ class SendableGetRequestSenderTest {
     when(ckey.getNodeKey()).thenThrow(new RuntimeException("boom"));
     ChosenBlock req = newChosenBlock(token, ckey, false, false, false, false);
     when(req.isCancelled()).thenReturn(false);
+
+    // Act
+    boolean result = sender.send(core, scheduler, context, req);
+
+    // Assert
+    assertTrue(result);
+    verifyNoInteractions(core);
+    ArgumentCaptor<LowLevelGetException> captor =
+        ArgumentCaptor.forClass(LowLevelGetException.class);
+    verify(req).onFailure(captor.capture(), eq(context));
+    assertEquals(LowLevelGetException.INTERNAL_ERROR, captor.getValue().code);
+  }
+
+  @Test
+  void send_whenInternalError_failureCallbackThrows_isCaughtAndStillReturnsTrue() {
+    // Arrange
+    SendableGetRequestSender sender = newSender();
+    SendableRequestItem token = mock(SendableRequestItem.class);
+    ClientKey ckey = mock(ClientKey.class);
+    when(ckey.getNodeKey()).thenThrow(new RuntimeException("boom-internal"));
+    ChosenBlock req = newChosenBlock(token, ckey, false, false, false, false);
+    when(req.isCancelled()).thenReturn(false);
+    // Make the failure callback throw
+    doThrow(new RuntimeException("boom-callback"))
+        .when(req)
+        .onFailure(any(LowLevelGetException.class), eq(context));
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);

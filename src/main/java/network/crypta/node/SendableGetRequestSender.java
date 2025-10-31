@@ -81,7 +81,11 @@ public class SendableGetRequestSender implements SendableRequestSender {
     if (LOG.isDebugEnabled()) LOG.debug("Submit GET (token={}, key={})", keyNum, key);
     if (req.isCancelled()) {
       if (LOG.isDebugEnabled()) LOG.debug("Request cancelled: {}", req);
-      req.onFailure(new LowLevelGetException(LowLevelGetException.CANCELLED), context);
+      try {
+        req.onFailure(new LowLevelGetException(LowLevelGetException.CANCELLED), context);
+      } catch (RuntimeException | Error callbackEx) {
+        LOG.error("Failure callback threw (CANCELLED): {}", callbackEx, callbackEx);
+      }
       return false;
     }
     try {
@@ -114,7 +118,11 @@ public class SendableGetRequestSender implements SendableRequestSender {
     } catch (RuntimeException | Error t) {
       // Convert unexpected throwables into a failure callback to keep the scheduler healthy.
       LOG.error("Unhandled throwable in send: {}", t, t);
-      req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
+      try {
+        req.onFailure(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR), context);
+      } catch (RuntimeException | Error callbackEx) {
+        LOG.error("Failure callback threw (INTERNAL_ERROR): {}", callbackEx, callbackEx);
+      }
       return true;
     }
     return true;
