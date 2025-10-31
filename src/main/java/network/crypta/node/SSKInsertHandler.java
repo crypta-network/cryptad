@@ -36,6 +36,9 @@ import org.slf4j.LoggerFactory;
  */
 public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(SSKInsertHandler.class);
+  private static final String MSG_CONN_CLOSED = "Connection to source closed";
+  private static final String MSG_LOST_CONN_UID = "Lost connection to source on {}";
+  private static final String MSG_SEND_TIMEOUT_TO = "Send timeout for {} to {}";
 
   static final int DATA_INSERT_TIMEOUT = 30000;
 
@@ -112,6 +115,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
    * failure.
    */
   @Override
+  @SuppressWarnings("java:S1181")
   public void run() {
     try {
       realRun();
@@ -124,118 +128,159 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   private void realRun() {
-    // Send Accepted: acknowledge the insert and indicate whether a public key is required.
-    Message accepted = DMT.createFNPSSKAccepted(uid, pubKey == null);
+    if (!sendAccepted()) return;
+    if (!receiveRequiredParts()) return;
+    if (!assembleBlock()) return;
+    handleStoredBlock();
+    if (LOG.isDebugEnabled()) LOG.debug("Assembled SSK block (key={}, uid={})", key, uid);
+    if (htl > 0) createSender();
+    processSenderResults();
+  }
 
+  private boolean sendAccepted() {
+    Message accepted = DMT.createFNPSSKAccepted(uid, pubKey == null);
     try {
       source.sendAsync(accepted, null, this);
+      return true;
     } catch (NotConnectedException e1) {
-      if (LOG.isDebugEnabled()) LOG.debug("Connection to source closed");
-      return;
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      return false;
     }
+  }
 
-    while (headers == null || data == null || pubKey == null) {
-      // Build a composite filter to wait for whichever required part arrives first, including a
-      // terminal rejection from the peer.
-      MessageFilter mf =
+  private boolean receiveRequiredParts() {
+    while ((headers == null) || (data == null) || (pubKey == null)) {
+      Message msg;
+      try {
+        msg = node.getUSM().waitFor(buildWaitFilter(), this);
+      } catch (DisconnectedException e) {
+        if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+        return false;
+      }
+      if (!processIncomingMessage(msg)) return false;
+    }
+    return true;
+  }
+
+  private MessageFilter buildWaitFilter() {
+    MessageFilter mf =
+        MessageFilter.create()
+            .setType(DMT.FNPDataInsertRejected)
+            .setField(DMT.UID, uid)
+            .setSource(source)
+            .setTimeout(DATA_INSERT_TIMEOUT);
+    if (headers == null) {
+      MessageFilter m =
           MessageFilter.create()
-              .setType(DMT.FNPDataInsertRejected)
+              .setType(DMT.FNPSSKInsertRequestHeaders)
               .setField(DMT.UID, uid)
               .setSource(source)
               .setTimeout(DATA_INSERT_TIMEOUT);
-      if (headers == null) {
-        MessageFilter m =
-            MessageFilter.create()
-                .setType(DMT.FNPSSKInsertRequestHeaders)
-                .setField(DMT.UID, uid)
-                .setSource(source)
-                .setTimeout(DATA_INSERT_TIMEOUT);
-        mf = m.or(mf);
-      }
-      if (data == null) {
-        MessageFilter m =
-            MessageFilter.create()
-                .setType(DMT.FNPSSKInsertRequestData)
-                .setField(DMT.UID, uid)
-                .setSource(source)
-                .setTimeout(DATA_INSERT_TIMEOUT);
-        mf = m.or(mf);
-      }
-      if (pubKey == null) {
-        MessageFilter m =
-            MessageFilter.create()
-                .setType(DMT.FNPSSKPubKey)
-                .setField(DMT.UID, uid)
-                .setSource(source)
-                .setTimeout(DATA_INSERT_TIMEOUT);
-        mf = m.or(mf);
-      }
-      Message msg;
-      try {
-        msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
-        if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on {}", uid);
-        return;
-      }
-      if (msg == null) {
-        LOG.info(
-            "Did not receive all parts (data={} headers={} pk={}) for {}",
-            data == null ? "null" : "ok",
-            headers == null ? "null" : "ok",
-            pubKey,
-            uid);
-        Message failed =
-            DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
-        try {
-          source.sendSync(failed, this, realTimeFlag);
-        } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
-          // Ignore
-        }
-        return;
-      } else if (msg.getSpec() == DMT.FNPSSKInsertRequestHeaders) {
-        headers = ((ShortBuffer) msg.getObject(DMT.BLOCK_HEADERS)).getData();
-      } else if (msg.getSpec() == DMT.FNPSSKInsertRequestData) {
-        data = ((ShortBuffer) msg.getObject(DMT.DATA)).getData();
-      } else if (msg.getSpec() == DMT.FNPSSKPubKey) {
-        byte[] pubkeyAsBytes = ((ShortBuffer) msg.getObject(DMT.PUBKEY_AS_BYTES)).getData();
-        try {
-          pubKey = DSAPublicKey.create(pubkeyAsBytes);
-          if (LOG.isDebugEnabled()) LOG.debug("Receive pubkey for {}: {}", uid, pubKey);
-          Message confirm = DMT.createFNPSSKPubKeyAccepted(uid);
-          try {
-            source.sendAsync(confirm, null, this);
-          } catch (NotConnectedException e) {
-            if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on {}", uid);
-            return;
-          }
-        } catch (CryptFormatException e) {
-          LOG.error("Invalid pubkey from {} for {}", source, uid);
-          msg = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_SSK_ERROR);
-          try {
-            source.sendSync(msg, this, realTimeFlag);
-          } catch (NotConnectedException | SyncSendWaitedTooLongException ee) {
-            // Ignore
-          }
-          return;
-        }
-      } else if (msg.getSpec() == DMT.FNPDataInsertRejected) {
-        try {
-          source.sendAsync(
-              DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
-              null,
-              this);
-        } catch (NotConnectedException e) {
-          // Ignore.
-        }
-        return;
-      } else {
-        LOG.error("Unexpected message {} (handler={})", msg, this);
-      }
+      mf = m.or(mf);
     }
+    if (data == null) {
+      MessageFilter m =
+          MessageFilter.create()
+              .setType(DMT.FNPSSKInsertRequestData)
+              .setField(DMT.UID, uid)
+              .setSource(source)
+              .setTimeout(DATA_INSERT_TIMEOUT);
+      mf = m.or(mf);
+    }
+    if (pubKey == null) {
+      MessageFilter m =
+          MessageFilter.create()
+              .setType(DMT.FNPSSKPubKey)
+              .setField(DMT.UID, uid)
+              .setSource(source)
+              .setTimeout(DATA_INSERT_TIMEOUT);
+      mf = m.or(mf);
+    }
+    return mf;
+  }
 
+  private boolean processIncomingMessage(Message msg) {
+    if (msg == null) {
+      LOG.info(
+          "Did not receive all parts (data={} headers={} pk={}) for {}",
+          data == null ? "null" : "ok",
+          headers == null ? "null" : "ok",
+          pubKey,
+          uid);
+
+      Message failed =
+          DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
+      try {
+        source.sendSync(failed, this, realTimeFlag);
+      } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
+        // Ignore
+      }
+      return false;
+    }
+    if (msg.getSpec() == DMT.FNPSSKInsertRequestHeaders) {
+      headers = ((ShortBuffer) msg.getObject(DMT.BLOCK_HEADERS)).getData();
+      return true;
+    }
+    if (msg.getSpec() == DMT.FNPSSKInsertRequestData) {
+      data = ((ShortBuffer) msg.getObject(DMT.DATA)).getData();
+      return true;
+    }
+    if (msg.getSpec() == DMT.FNPSSKPubKey) {
+      return handlePubKeyMessage(msg);
+    }
+    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+      try {
+        source.sendAsync(
+            DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
+            null,
+            this);
+      } catch (NotConnectedException e) {
+        // Ignore
+      }
+      return false;
+    }
+    LOG.error("Unexpected message {} (handler={})", msg, this);
+    return true;
+  }
+
+  private boolean handlePubKeyMessage(Message msg) {
+    if (!createPubKeyFromMessage(msg)) return false;
+    return ackPubKey();
+  }
+
+  private boolean createPubKeyFromMessage(Message msg) {
+    byte[] pubkeyAsBytes = ((ShortBuffer) msg.getObject(DMT.PUBKEY_AS_BYTES)).getData();
+    try {
+      pubKey = DSAPublicKey.create(pubkeyAsBytes);
+      if (LOG.isDebugEnabled()) LOG.debug("Receive pubkey for {}: {}", uid, pubKey);
+      return true;
+    } catch (CryptFormatException e) {
+      LOG.error("Invalid pubkey from {} for {}", source, uid);
+      Message rej = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_SSK_ERROR);
+      try {
+        source.sendSync(rej, this, realTimeFlag);
+      } catch (NotConnectedException | SyncSendWaitedTooLongException ee) {
+        // Ignore
+      }
+      return false;
+    }
+  }
+
+  private boolean ackPubKey() {
+    try {
+      sendPubKeyAccepted();
+      return true;
+    } catch (NotConnectedException e) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+      return false;
+    }
+  }
+
+  private boolean assembleBlock() {
     try {
       key.setPubKey(pubKey);
       block = new SSKBlock(data, headers, key, false);
+      return true;
     } catch (SSKVerifyException e1) {
       LOG.error("Invalid SSK block from {}", source, e1);
       Message msg = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_SSK_ERROR);
@@ -244,166 +289,185 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
         // Ignore
       }
-      return;
+      return false;
     }
+  }
 
+  private void handleStoredBlock() {
     SSKBlock storedBlock = node.fetch(key, false, false, false, canWriteDatastore, false, null);
-
     if ((storedBlock != null) && !storedBlock.equals(block)) {
       try {
         RequestHandler.sendSSK(
             storedBlock.getRawHeaders(), storedBlock.getRawData(), source, uid, this, realTimeFlag);
       } catch (NotConnectedException e1) {
-        if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on {}", uid);
+        if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
         return;
       }
       block = storedBlock;
     }
+  }
 
-    if (LOG.isDebugEnabled()) LOG.debug("Assembled SSK block (key={}, uid={})", key, uid);
+  private void createSender() {
+    sender =
+        node.makeInsertSender(
+            block,
+            htl,
+            uid,
+            tag,
+            source,
+            false,
+            false,
+            canWriteDatastore,
+            forkOnCacheable,
+            preferInsert,
+            ignoreLowBackoff,
+            realTimeFlag);
+  }
 
-    if (htl > 0)
-      sender =
-          node.makeInsertSender(
-              block,
-              htl,
-              uid,
-              tag,
-              source,
-              false,
-              false,
-              canWriteDatastore,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
-
-    boolean receivedRejectedOverload = false;
-
-    // Synchronize on a final local reference to avoid locking on a non-final field.
+  private void processSenderResults() {
+    boolean forwardedOverload = false;
     final SSKInsertSender senderRef = sender;
-
     while (true) {
-      synchronized (senderRef) {
-        try {
-          if (senderRef.getStatus() == SSKInsertSender.NOT_FINISHED) senderRef.wait(5000);
-        } catch (InterruptedException e) {
-          // Ignore
-        }
-      }
-
-      if ((!receivedRejectedOverload) && senderRef.receivedRejectedOverload()) {
-        receivedRejectedOverload = true;
-        // Forward it. Non-terminal; asynchronous send is sufficient.
-        Message m = DMT.createFNPRejectedOverload(uid, false);
-        try {
-          source.sendAsync(m, null, this);
-        } catch (NotConnectedException e) {
-          if (LOG.isDebugEnabled()) LOG.debug("Connection to source closed");
-          return;
-        }
-      }
-
-      if (senderRef.hasRecentlyCollided()) {
-        // Forward collision
-        data = senderRef.getData();
-        headers = senderRef.getHeaders();
-        collided = true;
-        try {
-          block = new SSKBlock(data, headers, key, true);
-        } catch (SSKVerifyException e1) {
-          // Verified elsewhere; construction here should not fail.
-          throw new Error("Impossible: " + e1, e1);
-        }
-        try {
-          RequestHandler.sendSSK(headers, data, source, uid, this, realTimeFlag);
-        } catch (NotConnectedException e1) {
-          if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source on {}", uid);
-          return;
-        }
-      }
-
+      awaitStatusChange(senderRef);
+      if (!forwardedOverload) forwardedOverload = forwardRejectedOverloadIfAny(senderRef);
+      if (senderRef.hasRecentlyCollided()) handleRecentCollision(senderRef);
       int status = senderRef.getStatus();
+      if (status == SSKInsertSender.NOT_FINISHED) continue;
+      if (handleTerminalStatuses(senderRef, status)) return;
+    }
+  }
 
-      if (status == SSKInsertSender.NOT_FINISHED) {
-        continue;
-      }
-
-      // Local RejectedOverload (fatal).
-      // Treat internal errors as overload to avoid a long timeout that yields the same outcome.
-      // Frequent RejectedOverload responses from certain peers remain a known operational issue.
-      if ((status == SSKInsertSender.TIMED_OUT)
-          || (status == SSKInsertSender.GENERATED_REJECTED_OVERLOAD)
-          || (status == SSKInsertSender.INTERNAL_ERROR)) {
-        // Unlock early for originator, late for target; see UIDTag comments.
-        tag.unlockHandler();
-        Message msg = DMT.createFNPRejectedOverload(uid, true);
-        try {
-          source.sendSync(msg, this, realTimeFlag);
-        } catch (NotConnectedException e) {
-          if (LOG.isDebugEnabled()) LOG.debug("Connection to source closed");
-          return;
-        } catch (SyncSendWaitedTooLongException e) {
-          LOG.error("Send timeout for {} to {}", msg, source);
-          return;
-        }
-        // Might as well store it anyway.
-        if ((status == SSKInsertSender.TIMED_OUT)
-            || (status == SSKInsertSender.GENERATED_REJECTED_OVERLOAD)) canCommit = true;
-        finish(status);
-        return;
-      }
-
-      if ((status == SSKInsertSender.ROUTE_NOT_FOUND)
-          || (status == SSKInsertSender.ROUTE_REALLY_NOT_FOUND)) {
-        // Unlock early for originator, late for target; see UIDTag comments.
-        tag.unlockHandler();
-        Message msg = DMT.createFNPRouteNotFound(uid, senderRef.getHTL());
-        try {
-          source.sendSync(msg, this, realTimeFlag);
-        } catch (NotConnectedException e) {
-          if (LOG.isDebugEnabled()) LOG.debug("Connection to source closed");
-          return;
-        } catch (SyncSendWaitedTooLongException e) {
-          LOG.error("Send timeout for {} to source", msg);
-        }
-        canCommit = true;
-        finish(status);
-        return;
-      }
-
-      if (status == SSKInsertSender.SUCCESS) {
-        // Unlock early for originator, late for target; see UIDTag comments.
-        tag.unlockHandler();
-        Message msg = DMT.createFNPInsertReply(uid);
-        try {
-          source.sendSync(msg, this, realTimeFlag);
-        } catch (NotConnectedException e) {
-          if (LOG.isDebugEnabled()) LOG.debug("Connection to source closed");
-          return;
-        } catch (SyncSendWaitedTooLongException e) {
-          LOG.error("Send timeout for {} to {}", msg, source);
-        }
-        canCommit = true;
-        finish(status);
-        return;
-      }
-
-      // Otherwise...?
-      LOG.error("Unexpected status: {}", senderRef.getStatusString());
-      // Unlock early for originator, late for target; see UIDTag comments.
-      tag.unlockHandler();
-      Message msg = DMT.createFNPRejectedOverload(uid, true);
+  private void awaitStatusChange(SSKInsertSender senderRef) {
+    final SSKInsertSender local = senderRef;
+    synchronized (local) {
       try {
-        source.sendSync(msg, this, realTimeFlag);
-      } catch (NotConnectedException e) {
-        // Ignore
-      } catch (SyncSendWaitedTooLongException e) {
-        LOG.error("Send timeout for {} to {}", msg, source);
+        if (local.getStatus() == SSKInsertSender.NOT_FINISHED) local.wait(5000);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
-      finish(status);
+    }
+  }
+
+  private boolean forwardRejectedOverloadIfAny(SSKInsertSender senderRef) {
+    if (!senderRef.receivedRejectedOverload()) return false;
+    Message m = DMT.createFNPRejectedOverload(uid, false);
+    try {
+      source.sendAsync(m, null, this);
+      return true;
+    } catch (NotConnectedException e) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      return true; // treat as forwarded to break loop on connection loss
+    }
+  }
+
+  private void handleRecentCollision(SSKInsertSender senderRef) {
+    data = senderRef.getData();
+    headers = senderRef.getHeaders();
+    collided = true;
+    try {
+      block = new SSKBlock(data, headers, key, true);
+    } catch (SSKVerifyException e1) {
+      throw new IllegalStateException("Impossible: " + e1, e1);
+    }
+    try {
+      RequestHandler.sendSSK(headers, data, source, uid, this, realTimeFlag);
+    } catch (NotConnectedException e1) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+    }
+  }
+
+  private boolean handleTerminalStatuses(SSKInsertSender senderRef, int status) {
+    if (isOverloadOrInternal(status)) {
+      handleOverloadStatus(status);
+      return true;
+    }
+    if (isRouteNotFound(status)) {
+      handleRouteNotFoundStatus(senderRef, status);
+      return true;
+    }
+    if (status == SSKInsertSender.SUCCESS) {
+      handleSuccessStatus(status);
+      return true;
+    }
+    handleUnexpectedStatus(senderRef, status);
+    return true;
+  }
+
+  private boolean isOverloadOrInternal(int status) {
+    return (status == SSKInsertSender.TIMED_OUT)
+        || (status == SSKInsertSender.GENERATED_REJECTED_OVERLOAD)
+        || (status == SSKInsertSender.INTERNAL_ERROR);
+  }
+
+  private boolean isRouteNotFound(int status) {
+    return (status == SSKInsertSender.ROUTE_NOT_FOUND)
+        || (status == SSKInsertSender.ROUTE_REALLY_NOT_FOUND);
+  }
+
+  private void handleOverloadStatus(int status) {
+    tag.unlockHandler();
+    Message msg = DMT.createFNPRejectedOverload(uid, true);
+    try {
+      source.sendSync(msg, this, realTimeFlag);
+    } catch (NotConnectedException e) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      return;
+    } catch (SyncSendWaitedTooLongException e) {
+      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
       return;
     }
+    if ((status == SSKInsertSender.TIMED_OUT)
+        || (status == SSKInsertSender.GENERATED_REJECTED_OVERLOAD)) canCommit = true;
+    finish(status);
+  }
+
+  private void handleRouteNotFoundStatus(SSKInsertSender senderRef, int status) {
+    tag.unlockHandler();
+    Message msg = DMT.createFNPRouteNotFound(uid, senderRef.getHTL());
+    try {
+      source.sendSync(msg, this, realTimeFlag);
+    } catch (NotConnectedException e) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      return;
+    } catch (SyncSendWaitedTooLongException e) {
+      LOG.error("Send timeout for {} to source", msg);
+    }
+    canCommit = true;
+    finish(status);
+  }
+
+  private void handleSuccessStatus(int status) {
+    tag.unlockHandler();
+    Message msg = DMT.createFNPInsertReply(uid);
+    try {
+      source.sendSync(msg, this, realTimeFlag);
+    } catch (NotConnectedException e) {
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      return;
+    } catch (SyncSendWaitedTooLongException e) {
+      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
+    }
+    canCommit = true;
+    finish(status);
+  }
+
+  private void handleUnexpectedStatus(SSKInsertSender senderRef, int status) {
+    LOG.error("Unexpected status: {}", senderRef.getStatusString());
+    tag.unlockHandler();
+    Message msg = DMT.createFNPRejectedOverload(uid, true);
+    try {
+      source.sendSync(msg, this, realTimeFlag);
+    } catch (NotConnectedException e) {
+      // Ignore
+    } catch (SyncSendWaitedTooLongException e) {
+      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
+    }
+    finish(status);
+  }
+
+  private void sendPubKeyAccepted() throws NotConnectedException {
+    Message confirm = DMT.createFNPSSKPubKeyAccepted(uid);
+    source.sendAsync(confirm, null, this);
   }
 
   /** If allowed and all data verifies, commit the block to the datastore. */
