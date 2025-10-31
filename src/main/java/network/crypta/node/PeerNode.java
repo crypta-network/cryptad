@@ -6686,7 +6686,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
             ? node.getNodeStats().routingMissDistanceRT
             : node.getNodeStats().routingMissDistanceBulk)
         .report(distance);
-    node.getPeers().incrementSelectionSamples(System.currentTimeMillis(), this);
+    node.getPeers().incrementSelectionSamples(this);
   }
 
   private long maxPeerPingTime() {

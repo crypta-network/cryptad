@@ -620,7 +620,8 @@ public class NodeCrypto {
   public void maybeBootConnection(PeerNode peerNode, FreenetInetAddress address) {
     if (detector.includes(address)) return;
     if (!address.isRealInternetAddress(false, false, false)) return;
-    ArrayList<PeerNode> possibleMatches = node.getPeers().getAllConnectedByAddress(address, true);
+    java.util.List<PeerNode> possibleMatches =
+        node.getPeers().getAllConnectedByAddress(address, true);
     if (possibleMatches == null) return;
     for (PeerNode pn : possibleMatches) {
       if (pn == peerNode || pn.equals(peerNode)) continue;
