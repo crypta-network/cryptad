@@ -131,7 +131,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     if (!sendAccepted()) return;
     if (!receiveRequiredParts()) return;
     if (!assembleBlock()) return;
-    handleStoredBlock();
+    if (!handleStoredBlock()) return;
     if (LOG.isDebugEnabled()) LOG.debug("Assembled SSK block (key={}, uid={})", key, uid);
     if (htl > 0) createSender();
     processSenderResults();
@@ -293,7 +293,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     }
   }
 
-  private void handleStoredBlock() {
+  private boolean handleStoredBlock() {
     SSKBlock storedBlock = node.fetch(key, false, false, false, canWriteDatastore, false, null);
     if ((storedBlock != null) && !storedBlock.equals(block)) {
       try {
@@ -301,10 +301,13 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
             storedBlock.getRawHeaders(), storedBlock.getRawData(), source, uid, this, realTimeFlag);
       } catch (NotConnectedException e1) {
         if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
-        return;
+        // Preserve historical behavior: abort the handler when the source disconnects while
+        // resending an existing stored block back to the originator.
+        return false;
       }
       block = storedBlock;
     }
+    return true;
   }
 
   private void createSender() {
