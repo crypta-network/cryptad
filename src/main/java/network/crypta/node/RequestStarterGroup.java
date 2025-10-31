@@ -20,15 +20,14 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates request starters and client schedulers for CHK/SSK fetches and inserts.
  *
- * <p>This class wires four logical flows for each key type (CHK and SSK): fetch (request) vs
- * insert, and bulk vs real-time. Each flow has its own {@link RequestStarter}, {@link
- * BaseRequestThrottle} implementation, and {@link ClientRequestScheduler}. It also tracks several
- * {@link ThrottleWindowManager} instances used to adapt concurrency over time based on observed
- * round-trip times and overload events.
+ * <p>Wires four flows per key type (CHK and SSK): fetch (request) vs insert, and bulk vs real-time.
+ * Each flow has its own {@link RequestStarter}, {@link BaseRequestThrottle} and {@link
+ * ClientRequestScheduler}. The group also maintains several {@link ThrottleWindowManager} instances
+ * that adapt concurrency based on observed round-trip times (RTT) and overload events.
  *
  * <p>Thread-safety: public methods are safe to call from the node's scheduling threads. The inner
- * throttle uses synchronization on its own instance where required. Methods that only read state
- * are not synchronized.
+ * throttle synchronizes state changes where required. Methods that only read state are not
+ * synchronized.
  */
 public class RequestStarterGroup {
   private static final Logger LOG = LoggerFactory.getLogger(RequestStarterGroup.class);
@@ -313,8 +312,10 @@ public class RequestStarterGroup {
   }
 
   /**
-   * Starts all request starters. After calling this, schedulers may begin launching requests when
-   * capacity is available according to their throttles and windows.
+   * Starts all request starters.
+   *
+   * <p>After this call, schedulers may launch requests when capacity is available according to
+   * their throttles and windows.
    */
   public void start() {
     chkRequestStarterRT.start();
@@ -359,7 +360,7 @@ public class RequestStarterGroup {
     }
 
     /**
-     * Computes an inter-request delay based on the current RTT and window size.
+     * Computes an inter-request delay from the current RTT and window size.
      *
      * <p>Result is clamped to {@code MIN_DELAY..MAX_DELAY} (milliseconds).
      *
@@ -384,7 +385,7 @@ public class RequestStarterGroup {
     }
 
     /**
-     * Reports a successful completion to update the RTT average.
+     * Reports a successful completion and updates the RTT average.
      *
      * @param rtt observed round-trip time in milliseconds; values below 10 ms are normalized to 10
      *     ms to avoid overreacting to very small samples
@@ -393,7 +394,7 @@ public class RequestStarterGroup {
       roundTripTime.report(Math.max(rtt, 10));
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Reported successful completion: {} on {} avg {}",
+            "Request completed: rtt={} ms, throttle={}, avg={}",
             rtt,
             this,
             roundTripTime.currentValue());
@@ -530,7 +531,7 @@ public class RequestStarterGroup {
   }
 
   /**
-   * Records a request rejection due to overload to reduce future concurrency.
+   * Records a request rejection due to overload and reduces future concurrency.
    *
    * @param isSSK whether the request was for SSK; CHK otherwise
    * @param isInsert whether the request was an insert; fetch otherwise
@@ -548,8 +549,8 @@ public class RequestStarterGroup {
     fs.put("ThrottleWindow", throttleWindowBulk.exportFieldSet(false));
     fs.put("ThrottleWindowRT", throttleWindowRT.exportFieldSet(false));
     fs.put("ThrottleWindowCHK", throttleWindowCHK.exportFieldSet(false));
-    // FIXME: This writes CHK window under "ThrottleWindowSSK"; verify whether
-    // throttleWindowSSK.exportFieldSet(false) is the intended source.
+    // FIXME: This writes CHK window under "ThrottleWindowSSK"; use
+    // throttleWindowSSK.exportFieldSet(false) if SSK is intended. Confirm and correct mapping.
     fs.put("ThrottleWindowSSK", throttleWindowCHK.exportFieldSet(false));
     fs.put("CHKRequestThrottle", chkRequestThrottleBulk.exportFieldSet());
     fs.put("SSKRequestThrottle", sskRequestThrottleBulk.exportFieldSet());
