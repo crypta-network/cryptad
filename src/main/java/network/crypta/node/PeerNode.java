@@ -1644,7 +1644,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (!dumpMessageQueue) queueDelayedDropMessages(now);
     // Tell opennet manager even if this is darknet, because we may need more opennet peers now.
     OpennetManager om = node.getOpennet();
-    if (om != null) om.onDisconnect(this);
+    if (om != null) om.onDisconnect();
     outputLoadTrackerRealTime.failSlotWaiters();
     outputLoadTrackerBulk.failSlotWaiters();
     return st.ret;

@@ -634,11 +634,14 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       long transferUID, int paddedLen, int length, PeerNode from) {
     byte[] buf =
         OpennetManager.innerWaitForOpennetNoderef(
-            transferUID, paddedLen, length, from, false, uid, true, this, node);
+            transferUID,
+            paddedLen,
+            length,
+            new OpennetManager.NoderefTransferCtx(from, false, uid, true, this, node));
     if (buf == null) {
       return; // Don't relay
     }
-    SimpleFieldSet fs = OpennetManager.validateNoderef(buf, 0, length, from, false);
+    SimpleFieldSet fs = OpennetManager.validateNoderef(buf, from, false);
     if (fs == null) {
       if (cb != null) cb.bogusNoderef("invalid noderef");
       return; // Don't relay
@@ -753,11 +756,14 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private boolean transferNoderef() {
     noderefBuf =
         OpennetManager.innerWaitForOpennetNoderef(
-            xferUID, paddedLength, noderefLength, source, false, uid, true, this, node);
+            xferUID,
+            paddedLength,
+            noderefLength,
+            new OpennetManager.NoderefTransferCtx(source, false, uid, true, this, node));
     if (noderefBuf == null) {
       return false;
     }
-    SimpleFieldSet fs = OpennetManager.validateNoderef(noderefBuf, 0, noderefLength, source, false);
+    SimpleFieldSet fs = OpennetManager.validateNoderef(noderefBuf, source, false);
     if (fs == null) {
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;

@@ -2013,7 +2013,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           PeerParseException,
           ReferenceSignatureVerificationException,
           NotConnectedException {
-    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, 0, noderef.length, next, false);
+    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, next, false);
     if (ref == null) {
       ackOpennet(next);
       return false;
