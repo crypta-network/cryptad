@@ -1288,7 +1288,7 @@ public class PeerManager {
             ctx.myLoc,
             ctx.prevLoc,
             recentlyFailed);
-    return (maybeNull == null) ? null : maybeNull;
+    return maybeNull;
   }
 
   private static final class PeerSelectionState {
