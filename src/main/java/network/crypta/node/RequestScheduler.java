@@ -115,6 +115,7 @@ public interface RequestScheduler {
    *
    * @param request the request to remove from the running set
    */
+  @SuppressWarnings("unused")
   void removeRunningRequest(SendableRequest request);
 
   /**
@@ -136,6 +137,7 @@ public interface RequestScheduler {
    * @param persistent whether the waiter is persistent
    * @return {@code true} if the key is currently being fetched
    */
+  @SuppressWarnings("unused")
   boolean hasFetchingKey(Key key, BaseSendableGet getterWaiting, boolean persistent);
 
   /**
