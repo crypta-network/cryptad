@@ -1119,7 +1119,27 @@ public class PeerManager {
           .report((double) backedOff / (double) (backedOff + connected));
   }
 
-  private static record SelectionRates(double[] rates, double total) {}
+  private record SelectionRates(double[] rates, double total) {
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o instanceof SelectionRates that)) return false;
+      return Double.compare(that.total, total) == 0 && java.util.Arrays.equals(rates, that.rates);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = java.util.Arrays.hashCode(rates);
+      long temp = Double.doubleToLongBits(total);
+      result = 31 * result + (int) (temp ^ (temp >>> 32));
+      return result;
+    }
+
+    @Override
+    public String toString() {
+      return "SelectionRates[rates=" + java.util.Arrays.toString(rates) + ", total=" + total + "]";
+    }
+  }
 
   private static final class CloserPeerContext {
     final PeerNode[] peers;
