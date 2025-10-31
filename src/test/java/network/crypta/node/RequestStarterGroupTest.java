@@ -148,9 +148,8 @@ class RequestStarterGroupTest {
   @DisplayName("getRTT()/getDelay() return expected defaults for CHK/SSK and RT/Bulk")
   void getDelayAndRTT_whenDefaults_expectConsistentValues() throws Exception {
     // With one peer and default window=2.0, delay is rtt/2
-    when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.countNonBackedOffPeers(true)).thenReturn(1);
-    when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
+    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
     RequestStarterGroup group = newGroup();
 
     // CHK Request Bulk: rtt=5000, delay=2500
@@ -258,5 +257,119 @@ class RequestStarterGroupTest {
     assertNotNull(fs.subset("SSKRequestThrottleRT"));
     assertNotNull(fs.subset("CHKInsertThrottleRT"));
     assertNotNull(fs.subset("SSKInsertThrottleRT"));
+  }
+
+  @Test
+  @DisplayName("MyRequestThrottle.successfulCompletion() floors RTT and clamps delay")
+  @org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
+  void myRequestThrottle_successfulCompletion_belowFloor_clampsDelayAndUpdatesRTT()
+      throws Exception {
+    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
+    RequestStarterGroup group = newGroup();
+
+    // CHK Request Bulk throttle: initial rtt=5000ms, window=2 -> delay=2500
+    RequestStarterGroup.MyRequestThrottle throttle = group.getThrottle(false, false, false);
+    assertEquals(2500L, throttle.getDelay());
+
+    // Report too-small RTT; should be normalized to 10ms internally
+    throttle.successfulCompletion(5);
+    assertEquals(10.0, throttle.getRTT(), 1e-9);
+    assertEquals(BaseRequestThrottle.MIN_DELAY, throttle.getDelay());
+
+    // Rate = (1000/delay)*size = (1000/20)*32768 = 1,638,400
+    assertEquals(1_638_400L, throttle.getRate());
+    assertTrue(throttle.toString().contains("RT=false"));
+
+    // Export contains RoundTripTime sub-structure
+    SimpleFieldSet tf = throttle.exportFieldSet();
+    assertNotNull(tf.subset("RoundTripTime"));
+  }
+
+  @Test
+  @DisplayName("PrioritySchedulerCallback applies values case-insensitively to both schedulers")
+  void priorityCallback_whenValidValues_appliesToBothSchedulers() throws Exception {
+    ClientRequestScheduler csRT = mock(ClientRequestScheduler.class);
+    ClientRequestScheduler csBulk = mock(ClientRequestScheduler.class);
+    // get() consulted during init(); return SOFT first, then HARD after set
+    when(csBulk.getChoosenPriorityScheduler())
+        .thenReturn(ClientRequestScheduler.PRIORITY_SOFT)
+        .thenReturn(ClientRequestScheduler.PRIORITY_HARD)
+        .thenReturn(ClientRequestScheduler.PRIORITY_SOFT);
+
+    RequestStarterGroup.PrioritySchedulerCallback cb =
+        new RequestStarterGroup.PrioritySchedulerCallback();
+    cb.init(csRT, csBulk, "HARD");
+    verify(csRT, times(1)).setPriorityScheduler(ClientRequestScheduler.PRIORITY_HARD);
+    verify(csBulk, times(1)).setPriorityScheduler(ClientRequestScheduler.PRIORITY_HARD);
+
+    // Change back to soft with mixed case
+    cb.set("soft");
+    verify(csRT, times(1)).setPriorityScheduler(ClientRequestScheduler.PRIORITY_SOFT);
+    verify(csBulk, times(1)).setPriorityScheduler(ClientRequestScheduler.PRIORITY_SOFT);
+
+    // Null is a no-op
+    cb.set(null);
+    // No further interactions expected
+  }
+
+  @Test
+  @DisplayName("countQueuedRequests() is zero on a fresh group")
+  void countQueuedRequests_whenFresh_isZero() throws Exception {
+    RequestStarterGroup group = newGroup();
+    assertEquals(0L, group.countQueuedRequests());
+  }
+
+  @Test
+  @DisplayName("diagnosticThrottlesLine() shows either Request/Insert or CHK/SSK windows")
+  void diagnosticThrottlesLine_whenModeSwitches_containsExpectedLabels() throws Exception {
+    RequestStarterGroup group = newGroup();
+    String reqIns = group.diagnosticThrottlesLine(true);
+    assertTrue(reqIns.contains("Request window:"));
+    assertTrue(reqIns.contains(", Insert window:"));
+
+    String chkSsk = group.diagnosticThrottlesLine(false);
+    assertTrue(chkSsk.contains("CHK window:"));
+    assertTrue(chkSsk.contains(", SSK window:"));
+  }
+
+  @Test
+  @DisplayName("getWindow() uses at least one peer when none are routable")
+  void getWindow_whenZeroPeers_usesFloorOfOne() throws Exception {
+    when(node.getPeers()).thenReturn(peerManager);
+    when(peerManager.countNonBackedOffPeers(false)).thenReturn(0);
+    RequestStarterGroup group = newGroup();
+    // Default simulated window = 2.0; Math.max(1, 0 peers) = 1 -> 2 * 1
+    assertEquals(2.0, group.getWindow(false), 1e-9);
+  }
+
+  @Test
+  @DisplayName("MyRequestThrottle.getRate() computes bytes/sec for SSK request")
+  void myRequestThrottle_getRate_forSSK() throws Exception {
+    when(node.getPeers()).thenReturn(peerManager);
+    when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
+    RequestStarterGroup group = newGroup();
+    // SSK Request Bulk uses size=1024 and rtt=5000 => delay=2500, rate=(1000/2500)*1024=409
+    RequestStarterGroup.MyRequestThrottle sskReq = group.getThrottle(true, false, false);
+    assertEquals(409L, sskReq.getRate());
+  }
+
+  @Test
+  @DisplayName("requestCompleted() only changes the matching realtime/bulk window")
+  void requestCompleted_affectsOnlySelectedModeWindow() throws Exception {
+    RequestStarterGroup group = newGroup();
+    double bulkBefore = group.getRealWindow(false);
+    double rtBefore = group.getRealWindow(true);
+
+    Key key = mock(Key.class);
+    when(key.toNormalizedDouble()).thenReturn(0.1);
+
+    group.requestCompleted(false, false, key, true); // realtime path
+
+    double bulkAfter = group.getRealWindow(false);
+    double rtAfter = group.getRealWindow(true);
+
+    assertEquals(bulkBefore, bulkAfter, 1e-12, "Bulk window should be unchanged");
+    assertTrue(rtAfter > rtBefore, "Realtime window should increase");
   }
 }
