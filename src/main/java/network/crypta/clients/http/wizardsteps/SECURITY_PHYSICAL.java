@@ -356,28 +356,7 @@ public class SECURITY_PHYSICAL implements Step {
       throws IOException {
     core.getNode().getSecurityLevels().setThreatLevel(newThreatLevel);
     core.storeConfig();
-    try {
-      core.getNode().lateSetupDatabase(null);
-    } catch (MasterKeysWrongPasswordException e) {
-      // Ignore, impossible???
-      System.err.println(
-          "Failed starting up database while switching physical security level to "
-              + newThreatLevel
-              + " from "
-              + oldThreatLevel
-              + " : wrong password - this is impossible, it should have been handled by the other"
-              + " cases, suggest you remove master.keys");
-    } catch (MasterKeysFileSizeException e) {
-      System.err.println(
-          "Failed starting up database while switching physical security level to "
-              + newThreatLevel
-              + " from "
-              + oldThreatLevel
-              + " : "
-              + core.getNode().getMasterPasswordFile()
-              + " is too "
-              + e.sizeToString());
-    }
+    core.getNode().lateSetupDatabase(null);
   }
 
   private void addBackToPhysicalSeclevelsButton(HTMLNode form) {
