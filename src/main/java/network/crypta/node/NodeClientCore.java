@@ -1021,13 +1021,8 @@ public class NodeClientCore implements Persistable {
         });
   }
 
-  private TextModeClientInterfaceServer initTmci(Config config) throws NodeInitException {
-    try {
-      return TextModeClientInterfaceServer.maybeCreate(node, this, config);
-    } catch (IOException e) {
-      throw new NodeInitException(
-          NodeInitException.EXIT_COULD_NOT_START_TMCI, "Could not start TMCI: " + e);
-    }
+  private TextModeClientInterfaceServer initTmci(Config config) {
+    return TextModeClientInterfaceServer.maybeCreate(node, this, config);
   }
 
   private FCPServer initFcp(Node node) throws NodeInitException {
