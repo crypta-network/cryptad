@@ -68,7 +68,7 @@ class DatastoreUtilTest {
     available = available / 2; // 50%
     long slots = available / 4; // 4 bytes/slot
     slots = slots / 3; // 3 key types
-    return slots * Node.sizePerKey;
+    return slots * Node.SIZE_PER_KEY;
   }
 
   private static Path resolveDataDirPath() {
