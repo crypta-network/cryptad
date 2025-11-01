@@ -3,8 +3,8 @@ package network.crypta.node.stats;
 /**
  * Immutable descriptor identifying a single logical data store instance.
  *
- * <p>A {@code DataStoreInstanceType} pairs a {@link DataStoreKeyType key type} with a {@link
- * DataStoreType store type} to describe which class of keys is kept in which kind of store (for
+ * <p>A {@code DataStoreInstanceType} pairs a {@link DataStoreKeyType} key type with a {@link
+ * DataStoreType} store type to describe which class of keys is kept in which kind of store (for
  * example, {@code CHK} entries in the main {@code STORE}, or {@code SSK} entries in the {@code
  * CACHE}). Code that aggregates statistics, maintains per-store counters, or routes operations can
  * use this value object as a compact, strongly-typed identifier.
