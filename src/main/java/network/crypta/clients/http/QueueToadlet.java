@@ -3621,7 +3621,6 @@ public class QueueToadlet extends Toadlet
           true,
           NodeL10n.getBase().getString("UserAlert.hide"),
           true,
-          null,
           completedGets);
       this.identifier = identifier;
       this.uri = uri;
@@ -3698,7 +3697,6 @@ public class QueueToadlet extends Toadlet
           true,
           NodeL10n.getBase().getString("UserAlert.hide"),
           true,
-          null,
           completedPuts);
       this.identifier = identifier;
       this.uri = uri;
@@ -3775,7 +3773,6 @@ public class QueueToadlet extends Toadlet
           true,
           NodeL10n.getBase().getString("UserAlert.hide"),
           true,
-          null,
           completedPutDirs);
       this.identifier = identifier;
       this.uri = uri;

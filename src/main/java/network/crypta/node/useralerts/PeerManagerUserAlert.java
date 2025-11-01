@@ -6,6 +6,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class PeerManagerUserAlert extends AbstractUserAlert {
@@ -62,13 +63,9 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
         false,
         null,
         null,
-        null,
-        null,
         (short) 0,
         true,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        false,
-        null);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), false));
     this.n = n;
     this.nodeUpdater = nodeUpdater;
   }

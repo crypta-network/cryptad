@@ -1,6 +1,8 @@
 package network.crypta.node.useralerts;
 
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class RevocationKeyFoundUserAlert extends AbstractUserAlert {
@@ -8,14 +10,13 @@ public class RevocationKeyFoundUserAlert extends AbstractUserAlert {
     super(
         false,
         getTitle(disabledNotBlown),
-        getText(disabledNotBlown, msg),
-        getText(disabledNotBlown, msg),
-        getHTML(disabledNotBlown, msg),
+        Body.of(
+            getText(disabledNotBlown, msg),
+            getText(disabledNotBlown, msg),
+            getHTML(disabledNotBlown, msg)),
         UserAlert.CRITICAL_ERROR,
         true,
-        null,
-        false,
-        null);
+        new DismissOptions(null, false));
   }
 
   private static HTMLNode getHTML(boolean disabledNotBlown, String msg) {

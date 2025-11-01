@@ -1,6 +1,8 @@
 package network.crypta.node.useralerts;
 
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class SimpleUserAlert extends AbstractUserAlert {
@@ -20,14 +22,10 @@ public class SimpleUserAlert extends AbstractUserAlert {
     super(
         canDismiss,
         title,
-        text,
-        shortText,
-        new HTMLNode("div", text),
+        Body.of(text, shortText, new HTMLNode("div", text)),
         type,
         true,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        true,
-        userIdentifier);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), true));
   }
 
   @Override

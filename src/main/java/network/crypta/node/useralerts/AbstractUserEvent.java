@@ -1,5 +1,7 @@
 package network.crypta.node.useralerts;
 
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class AbstractUserEvent extends AbstractUserAlert implements UserEvent {
@@ -16,19 +18,14 @@ public class AbstractUserEvent extends AbstractUserAlert implements UserEvent {
       short priorityClass,
       boolean valid,
       String dismissButtonText,
-      boolean shouldUnregisterOnDismiss,
-      Object userIdentifier) {
+      boolean shouldUnregisterOnDismiss) {
     super(
         userCanDismiss,
         title,
-        text,
-        shortText,
-        htmlText,
+        Body.of(text, shortText, htmlText),
         priorityClass,
         valid,
-        dismissButtonText,
-        shouldUnregisterOnDismiss,
-        userIdentifier);
+        new DismissOptions(dismissButtonText, shouldUnregisterOnDismiss));
     this.eventType = eventType;
   }
 

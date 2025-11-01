@@ -8,6 +8,7 @@ import network.crypta.clients.fcp.TextFeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.PeerNode;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 // Node To Node Text Message User Alert
@@ -30,7 +31,7 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
       long sentTime,
       long receivedTime,
       long msgid) {
-    super(true, null, null, null, null, UserAlert.MINOR, true, null, true, null);
+    super(true, null, null, UserAlert.MINOR, true, new DismissOptions(null, true));
     this.messageText = message;
     this.fileNumber = fileNumber;
     this.composedTime = composedTime;

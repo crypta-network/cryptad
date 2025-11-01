@@ -1,6 +1,7 @@
 package network.crypta.node.useralerts;
 
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -19,13 +20,9 @@ public class TimeSkewDetectedUserAlert extends AbstractUserAlert {
         false,
         null,
         null,
-        null,
-        null,
         UserAlert.CRITICAL_ERROR,
         false,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        false,
-        null);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), false));
   }
 
   @Override

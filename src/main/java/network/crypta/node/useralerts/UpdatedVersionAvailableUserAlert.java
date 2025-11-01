@@ -5,6 +5,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.node.updater.RevocationChecker;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
@@ -20,13 +21,9 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
         false,
         null,
         null,
-        null,
-        null,
         (short) 0,
         false,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        false,
-        null);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), false));
     this.updater = updater;
   }
 

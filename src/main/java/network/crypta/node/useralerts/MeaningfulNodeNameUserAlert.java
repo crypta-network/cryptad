@@ -4,6 +4,7 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class MeaningfulNodeNameUserAlert extends AbstractUserAlert {
@@ -14,13 +15,9 @@ public class MeaningfulNodeNameUserAlert extends AbstractUserAlert {
         true,
         null,
         null,
-        null,
-        null,
         UserAlert.WARNING,
         true,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        true,
-        null);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), true));
     this.node = n;
   }
 

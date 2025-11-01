@@ -1,6 +1,7 @@
 package network.crypta.node.useralerts;
 
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.JVMVersion;
 
@@ -15,13 +16,9 @@ public class JVMVersionAlert extends AbstractUserAlert {
         true,
         null,
         null,
-        null,
-        null,
         UserAlert.WARNING,
         true,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        true,
-        null);
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), true));
   }
 
   @Override

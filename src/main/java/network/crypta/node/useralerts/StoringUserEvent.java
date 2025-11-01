@@ -25,7 +25,6 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
       boolean valid,
       String dismissButtonText,
       boolean shouldUnregisterOnDismiss,
-      Object userIdentifier,
       Map<String, T> events) {
     super(
         eventType,
@@ -37,8 +36,7 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
         priorityClass,
         valid,
         dismissButtonText,
-        shouldUnregisterOnDismiss,
-        userIdentifier);
+        shouldUnregisterOnDismiss);
     this.events = events;
   }
 

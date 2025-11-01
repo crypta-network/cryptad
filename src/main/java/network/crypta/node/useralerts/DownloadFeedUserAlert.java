@@ -7,6 +7,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.node.PeerNode;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNodeMessageUserAlert {
@@ -27,7 +28,7 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
       long composed,
       long sent,
       long received) {
-    super(true, null, null, null, null, UserAlert.MINOR, true, null, true, null);
+    super(true, null, null, UserAlert.MINOR, true, new DismissOptions(null, true));
     this.description = description;
     this.uri = uri;
     this.fileNumber = fileNumber;

@@ -4,12 +4,13 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.support.HTMLNode;
 
 public class InvalidAddressOverrideUserAlert extends AbstractUserAlert {
 
   public InvalidAddressOverrideUserAlert(Node n) {
-    super(false, null, null, null, null, (short) 0, true, null, false, null);
+    super(false, null, null, (short) 0, true, new DismissOptions(null, false));
     this.node = n;
   }
 

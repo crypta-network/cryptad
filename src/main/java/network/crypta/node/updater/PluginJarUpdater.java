@@ -10,6 +10,8 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.AbstractUserAlert;
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
@@ -171,14 +173,13 @@ public class PluginJarUpdater extends NodeUpdater {
               new AbstractUserAlert(
                   true,
                   l10n("pluginUpdatedTitle", "name", pluginName),
-                  l10n("pluginUpdatedText", "name", pluginName),
-                  l10n("pluginUpdatedShortText", "name", pluginName),
-                  null,
+                  Body.of(
+                      l10n("pluginUpdatedText", "name", pluginName),
+                      l10n("pluginUpdatedShortText", "name", pluginName),
+                      null),
                   UserAlert.ERROR,
                   true,
-                  NodeL10n.getBase().getString("UserAlert.hide"),
-                  true,
-                  this) {
+                  new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), true)) {
 
                 @Override
                 public void onDismiss() {
