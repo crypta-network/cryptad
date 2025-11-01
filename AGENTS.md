@@ -476,7 +476,7 @@ Notes
 ## Important Notes
 
 - Requires Java 21+ to compile and run
-- Updater supports automatic updates and includes legacy-related utilities (e.g., `LegacyJarFetcher`)
+- Updater supports automatic updates and includes legacy-related utilities
 - Custom crypto implementations; avoid changes without review
 - Network protocol changes must consider backward compatibility
 - Simulator components exist for network behavior testing
