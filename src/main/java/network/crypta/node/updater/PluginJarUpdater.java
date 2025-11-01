@@ -103,7 +103,14 @@ public class PluginJarUpdater extends NodeUpdater {
   @Override
   protected void maybeParseManifest(FetchResult result, int build) {
     requiredNodeVersion = -1;
-    parseManifest(result);
+    // Prefer parsing from the fresh FetchResult so compatibility checks run even when the
+    // temporary blob cannot be renamed to the finalized .fblob on disk.
+    if (result != null && result.size() > 0) {
+      parseManifest(result);
+    } else {
+      // Fallback to the finalized blob if result is unexpectedly empty.
+      parseManifest();
+    }
     if (requiredNodeVersion != -1) {
       System.err.println(
           "Required node version for plugin " + pluginName + ": " + requiredNodeVersion);
