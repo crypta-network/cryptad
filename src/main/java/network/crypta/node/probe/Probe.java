@@ -30,17 +30,42 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Handles starting, routing, and responding to Metropolis-Hastings corrected probes.
+ * Handles starting, routing, and responding to probes corrected via the Metropolis–Hastings
+ * algorithm.
  *
- * <p>Possible future additions to these probes' results include:
+ * <p>This component provides a small, privacy-aware request/response mechanism that samples
+ * characteristics of remote peers without exposing the initiating node. A probe is created with a
+ * hops-to-live (HTL) value and a {@code Type}, then forwarded through the network using
+ * Metropolis–Hastings correction to achieve a more uniform endpoint distribution. When forwarding
+ * is not possible or HTL reaches zero, the current node may produce a local response if allowed by
+ * configuration. Results cover operational metrics such as output bandwidth limit, uptime
+ * percentages, datastore size, link-length statistics, location, build number, and selected
+ * rejection statistics.
+ *
+ * <p>Typical usage is:
+ *
+ * <ol>
+ *   <li>Construct a {@code Probe} with the running {@code Node} instance.
+ *   <li>Call {@link #start(byte, long, Type, Listener)} with an appropriate HTL and a listener.
+ *   <li>Await exactly one result or a terminal error callback on the listener.
+ * </ol>
+ *
+ * <p>Concurrency and rate-limiting: incoming probes are accepted per peer using a short rolling
+ * window; a background {@link java.util.Timer} releases slots after a minute. Local responses may
+ * be delayed by a small randomized wait to obscure whether a reply was produced locally at HTL=1.
+ * Thread-safety for acceptance is achieved with a synchronized map guarding per-peer counters.
+ *
+ * <p>Notable behaviors:
  *
  * <ul>
- *   <li>Starting a regular request for a key.
- *   <li>Success rates for remote requests by HTL; perhaps over some larger amount of time than the
- *       past hour.
+ *   <li>HTL decrements probabilistically at {@code HTL==1} to protect the responding node.
+ *   <li>Forwarding attempts are bounded; timeouts scale with HTL.
+ *   <li>Returned measurements incorporate small multiplicative noise to reduce identifiability.
  * </ul>
  *
- * @see freenet.node.probe Explanation of Metropolis-Hastings correction
+ * @see <a href=
+ *     "https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm">Metropolis–Hastings
+ *     algorithm</a>
  */
 public class Probe implements ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(Probe.class);
@@ -50,33 +75,75 @@ public class Probe implements ByteCounter {
   private static final String SOURCE_DISCONNECT =
       "Previous step in probe chain no longer connected.";
 
-  /** Maximum hopsToLive value to clamp requests to. */
+  private static final String IDENTIFIER_KEY = "identifier";
+
+  /**
+   * Maximum hops‑to‑live (HTL) value to which inbound and locally originated probe requests are
+   * clamped.
+   *
+   * <p>Requests specifying an HTL greater than this limit are interpreted at this bound before any
+   * routing occurs. This prevents excessively long walks and limits exposure while preserving
+   * meaningful sampling depth on large networks.
+   */
   public static final byte MAX_HTL = 70;
 
-  /** Maximum number of forwarding attempts to make before failing with DISCONNECTED. */
+  /**
+   * Maximum number of forwarding attempts before giving up and reporting a forwarding failure.
+   *
+   * <p>The routing loop bounds the number of candidate selections to avoid pathological retries
+   * when the Metropolis–Hastings correction repeatedly rejects peers or when connectivity is
+   * transient. When the cap is reached, the listener receives {@code CANNOT_FORWARD}.
+   */
   public static final int MAX_SEND_ATTEMPTS = 50;
 
-  /** Probability of HTL decrement at HTL = 1. */
+  /**
+   * Probability that HTL decrements at {@code HTL==1} rather than forwarding.
+   *
+   * <p>This small chance protects the responding node by avoiding deterministic behavior at the
+   * final hop while keeping overall walk length distribution stable.
+   */
   public static final float DECREMENT_PROBABILITY = 0.2f;
 
-  /** In ms, per HTL above HTL = 1. */
+  /**
+   * Per‑hop timeout contribution, in milliseconds, for {@code HTL > 1}.
+   *
+   * <p>The overall timeout budget scales approximately linearly with HTL, and this constant anchors
+   * that scaling for hops above the last probabilistic step.
+   */
   public static final long TIMEOUT_PER_HTL = SECONDS.toMillis(3);
 
-  /** In ms, to account for probabilistic decrement at HTL = 1. */
+  /**
+   * Timeout component, in milliseconds, to account for the probabilistic decrement at {@code
+   * HTL==1}.
+   *
+   * <p>Because the final hop does not always forward, its timing characteristics differ from the
+   * simple per‑hop budget. This value expands the last‑hop allowance accordingly.
+   */
   public static final long TIMEOUT_HTL1 = (long) (TIMEOUT_PER_HTL / DECREMENT_PROBABILITY);
 
   /**
-   * To make the timing less obvious when a node responds with a local result instead of forwarding
-   * at HTL = 1, delay for a number of milliseconds, specifically an exponential distribution with
-   * this constant as its mean.
+   * Mean of the exponential jitter (milliseconds) applied to local responses at {@code HTL==1}.
+   *
+   * <p>The randomized delay obscures whether a reply was produced locally or after another hop. The
+   * generated wait is truncated by {@link #WAIT_MAX} to cap end‑to‑end latency.
    */
   public static final long WAIT_BASE = SECONDS.toMillis(1);
 
-  /** Maximum number of milliseconds to wait before sending a response. */
+  /**
+   * Upper bound (milliseconds) for randomized waits before emitting a response.
+   *
+   * <p>Used with {@link #WAIT_BASE} to limit the exponential jitter range. Prevents excessive
+   * latency while still masking local responses effectively.
+   */
   public static final long WAIT_MAX = SECONDS.toMillis(2);
 
-  /** Maximum number of probes accepted from a single peer in the past minute. */
-  public final int COUNTER_MAX_PEER = 10;
+  /**
+   * Per‑peer acceptance limit for probe requests within a rolling minute.
+   *
+   * <p>Incoming requests exceeding this threshold are rejected with {@code OVERLOAD}. This setting
+   * protects resources and improves fairness across connected peers.
+   */
+  public static final int COUNTER_MAX_PEER = 10;
 
   /**
    * Maximum number of probes started locally in the past minute. This is the maximum conceivable
@@ -85,7 +152,8 @@ public class Probe implements ByteCounter {
    * remote OVERLOADs may start coming in, which are not useful. The Metropolis-Hastings correction
    * makes behavior potentially inconsistent, so keeping an eye on remote OVERLOADs is wise.
    */
-  public final int COUNTER_MAX_LOCAL = COUNTER_MAX_PEER * OpennetManager.MAX_PEERS_FOR_SCALING;
+  public static final int COUNTER_MAX_LOCAL =
+      COUNTER_MAX_PEER * OpennetManager.MAX_PEERS_FOR_SCALING;
 
   /** Number of accepted probes in the last minute, keyed by peer. */
   private final Map<PeerNode, Counter> accepted;
@@ -144,8 +212,20 @@ public class Probe implements ByteCounter {
    * @param bytes Ignored.
    */
   @Override
-  public void sentPayload(int bytes) {}
+  public void sentPayload(int bytes) {
+    // Intentionally empty: probes carry no payload.
+  }
 
+  /**
+   * Creates a new probe helper bound to a running {@code Node} instance.
+   *
+   * <p>The instance reads configuration keys under the {@code node} section to determine which
+   * probe types are permitted to respond locally, initializes a per-peer acceptance map used for
+   * short-term rate limiting, and starts a daemon {@link Timer} used to release acceptance slots.
+   *
+   * @param node the owning node that provides configuration, routing, statistics, and randomness;
+   *     must be a live instance for forwarding and response generation
+   */
   public Probe(final Node node) {
     this.node = node;
     this.accepted = Collections.synchronizedMap(new HashMap<>());
@@ -289,8 +369,7 @@ public class Probe implements ByteCounter {
           }
 
           @Override
-          public void set(Boolean val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
+          public void set(Boolean val) {
             respondUptime = val;
           }
         });
@@ -310,8 +389,7 @@ public class Probe implements ByteCounter {
           }
 
           @Override
-          public void set(Boolean val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
+          public void set(Boolean val) {
             respondRejectStats = val;
           }
         });
@@ -333,8 +411,7 @@ public class Probe implements ByteCounter {
           }
 
           @Override
-          public void set(Boolean val)
-              throws InvalidConfigValueException, NodeNeedRestartException {
+          public void set(Boolean val) {
             respondOverallBulkOutputCapacityUsage = val;
           }
         });
@@ -342,9 +419,9 @@ public class Probe implements ByteCounter {
         nodeConfig.getBoolean("probeOverallBulkOutputCapacityUsage");
 
     nodeConfig.register(
-        "identifier",
+        IDENTIFIER_KEY,
         -1,
-        sortOrder++,
+        sortOrder,
         true,
         true,
         "Node.probeIdentifierShort",
@@ -363,7 +440,7 @@ public class Probe implements ByteCounter {
           }
         },
         false);
-    probeIdentifier = nodeConfig.getLong("identifier");
+    probeIdentifier = nodeConfig.getLong(IDENTIFIER_KEY);
 
     /*
      * set() is not used when setting up an option with its default value, so do so manually to avoid using
@@ -371,13 +448,10 @@ public class Probe implements ByteCounter {
      */
     try {
       if (probeIdentifier == -1) {
-        nodeConfig.getOption("identifier").setValue("-1");
-        // TODO: Store config here as it has changed?
+        nodeConfig.getOption(IDENTIFIER_KEY).setValue("-1");
         node.getConfig().store();
       }
-    } catch (InvalidConfigValueException e) {
-      LOG.error("node.identifier set() unexpectedly threw.", e);
-    } catch (NodeNeedRestartException e) {
+    } catch (InvalidConfigValueException | NodeNeedRestartException e) {
       LOG.error("node.identifier set() unexpectedly threw.", e);
     }
   }
@@ -385,8 +459,23 @@ public class Probe implements ByteCounter {
   /**
    * Sends an outgoing probe request.
    *
-   * @param htl htl for this outgoing probe: should be [1, MAX_HTL]
-   * @param listener will be called with results.
+   * <p>The request is created with the provided HTL and {@code Type} and routed using
+   * Metropolis–Hastings correction. The {@code listener} receives at most one terminal callback: a
+   * successful result for the requested type, or an error/refusal. HTL values outside the supported
+   * range are clamped or rejected according to protocol rules.
+   *
+   * <pre>{@code
+   * // Example: request the remote output bandwidth class
+   * probe.start((byte) 5, 12345L, Type.BANDWIDTH, listener);
+   * }</pre>
+   *
+   * @param htl hop budget for the request; valid range is 1..{@link #MAX_HTL}; values above the
+   *     maximum are interpreted as {@link #MAX_HTL}
+   * @param uid an application-provided opaque identifier echoed by responses for correlation; treat
+   *     as unique per outstanding probe
+   * @param type the kind of probe to run; selects which metric the remote endpoint should return
+   * @param listener callback interface that receives exactly one terminal response or error; must
+   *     be non-null and thread-safe if shared
    * @see Listener
    */
   public void start(final byte htl, final long uid, final Type type, final Listener listener) {
@@ -394,22 +483,25 @@ public class Probe implements ByteCounter {
   }
 
   /**
-   * Processes an incoming probe request; relays results back to source. If the probe has a positive
-   * HTL, routes with MH correction and probabilistically decrements HTL. If the probe comes to have
-   * an HTL of zero: (an incoming HTL of less than one is discarded.) Returns (as node settings
-   * allow) exactly one of:
+   * Processes an incoming probe request and relays results back to the source.
+   *
+   * <p>If the probe has a positive HTL, it is forwarded using Metropolis–Hastings correction and
+   * may probabilistically decrement at HTL=1. If HTL reaches zero (or forwarding fails), the node
+   * may produce a local response depending on its configuration. A single result or a terminal
+   * error is emitted via the internal relay listener.
    *
    * <ul>
-   *   <li>unique identifier and integer 7-day uptime percentage
-   *   <li>uptime: 48-hour percentage or 7-day percentage
-   *   <li>output bandwidth
-   *   <li>store size
-   *   <li>link lengths
-   *   <li>location
-   *   <li>build number
+   *   <li>Unique identifier and 7‑day uptime percentage
+   *   <li>48‑hour or 7‑day uptime percentage
+   *   <li>Output bandwidth
+   *   <li>Store size
+   *   <li>Link lengths
+   *   <li>Location
+   *   <li>Build number
    * </ul>
    *
-   * @param message probe request, containing HTL
+   * @param message probe request message containing HTL and type metadata; must be well-formed
+   * @param source peer from which the request was received; {@code null} when locally originated
    */
   public void request(Message message, PeerNode source) {
     request(message, source, new ResultRelay(source, message.getLong(DMT.UID)));
@@ -423,90 +515,18 @@ public class Probe implements ByteCounter {
    * @param listener listener for probe response.
    */
   private void request(final Message message, final PeerNode source, final Listener listener) {
-    final Long uid = message.getLong(DMT.UID);
-    final byte typeCode = message.getByte(DMT.TYPE);
-    final Type type;
-    if (Type.isValid(typeCode)) {
-      type = Type.valueOf(typeCode);
-      if (LOG.isTraceEnabled()) LOG.trace("Probe type is " + type.name() + ".");
-    } else {
-      if (LOG.isDebugEnabled()) LOG.debug("Invalid probe type " + typeCode + ".");
-      listener.onError(Error.UNRECOGNIZED_TYPE, typeCode, true);
-      return;
-    }
-    byte htl = message.getByte(DMT.HTL);
-    if (htl < 1) {
-      if (LOG.isWarnEnabled()) {
-        LOG.warn(
-            "Received out-of-bounds HTL of "
-                + htl
-                + " from "
-                + source.getIdentityString()
-                + " ("
-                + source.userToString()
-                + "); discarding.");
-      }
-      return;
-    } else if (htl > MAX_HTL) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug(
-            "Received out-of-bounds HTL of "
-                + htl
-                + " from "
-                + source.getIdentityString()
-                + " ("
-                + source.userToString()
-                + "); interpreting as "
-                + MAX_HTL
-                + ".");
-      }
-      htl = MAX_HTL;
-    }
-    boolean availableSlot = true;
-    TimerTask task = null;
-    // Allocate one of this peer's probe request slots for 60 seconds; send an overload if none are
-    // available.
-    synchronized (accepted) {
-      // If no counter exists for the current source, add one.
-      if (!accepted.containsKey(source)) {
-        // Null source is started locally.
-        accepted.put(source, new Counter(source == null ? COUNTER_MAX_LOCAL : COUNTER_MAX_PEER));
-      }
-      final Counter counter = accepted.get(source);
-      if (counter.value() == counter.maxAccepted) {
-        // Set a flag instead of sending inside the lock.
-        availableSlot = false;
-      } else {
-        // There's a free slot; increment the counter.
-        counter.increment();
-        task =
-            new TimerTask() {
-              @Override
-              public void run() {
-                synchronized (accepted) {
-                  counter.decrement();
-                  /* Once the counter hits zero, there's no reason to keep it around as it
-                   * can just be recreated when this peer sends another probe request
-                   * without changing behavior. To do otherwise would accumulate counters
-                   * at zero over time.
-                   */
-                  if (counter.value() == 0) {
-                    accepted.remove(source);
-                  }
-                }
-              }
-            };
-      }
-    }
-    if (!availableSlot) {
-      // Send an overload error back to the source.
-      if (LOG.isTraceEnabled())
-        LOG.trace("Already accepted maximum number of probes; rejecting incoming.");
-      listener.onError(Error.OVERLOAD, null, true);
-      return;
-    }
+    final long uid = message.getLong(DMT.UID);
+    final Type type = resolveTypeOrSendError(message, listener);
+    if (type == null) return;
+
+    byte htl = normalizeHtlOrReturnSentinel(message, source);
+    if (htl == Byte.MIN_VALUE) return;
+
+    final TimerTask releaseTask = acquireSlotOrSendOverload(source, listener);
+    if (releaseTask == null) return;
+
     // One-minute window on acceptance; free up this probe slot in 60 seconds.
-    timer.schedule(task, MINUTES.toMillis(1));
+    timer.schedule(releaseTask, MINUTES.toMillis(1));
 
     /*
      * Route to a peer, using Metropolis-Hastings correction and ignoring backoff to get a more uniform
@@ -530,6 +550,71 @@ public class Probe implements ByteCounter {
     }
   }
 
+  private Type resolveTypeOrSendError(final Message message, final Listener listener) {
+    final byte typeCode = message.getByte(DMT.TYPE);
+    if (Type.isValid(typeCode)) {
+      final Type type = Type.valueOf(typeCode);
+      LOG.trace("Probe type is {}.", type.name());
+      return type;
+    }
+    LOG.debug("Invalid probe type {}.", typeCode);
+    listener.onError(Error.UNRECOGNIZED_TYPE, typeCode, true);
+    return null;
+  }
+
+  private byte normalizeHtlOrReturnSentinel(final Message message, final PeerNode source) {
+    byte htl = message.getByte(DMT.HTL);
+    if (htl < 1) {
+      if (LOG.isWarnEnabled()) {
+        LOG.warn(
+            "Received out-of-bounds HTL of {} from {} ({}); discarding.",
+            htl,
+            source.getIdentityString(),
+            source.userToString());
+      }
+      return Byte.MIN_VALUE;
+    } else if (htl > MAX_HTL) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Received out-of-bounds HTL of {} from {} ({}); interpreting as {}.",
+            htl,
+            source.getIdentityString(),
+            source.userToString(),
+            MAX_HTL);
+      }
+      return MAX_HTL;
+    }
+    return htl;
+  }
+
+  private TimerTask acquireSlotOrSendOverload(final PeerNode source, final Listener listener) {
+    final Counter counter;
+    synchronized (accepted) {
+      if (!accepted.containsKey(source)) {
+        accepted.put(source, new Counter(source == null ? COUNTER_MAX_LOCAL : COUNTER_MAX_PEER));
+      }
+      counter = accepted.get(source);
+      if (counter.value() < counter.maxAccepted) {
+        counter.increment();
+        return new TimerTask() {
+          @Override
+          public void run() {
+            synchronized (accepted) {
+              counter.decrement();
+              if (counter.value() == 0) {
+                accepted.remove(source);
+              }
+            }
+          }
+        };
+      }
+    }
+    if (LOG.isTraceEnabled())
+      LOG.trace("Already accepted maximum number of probes; rejecting incoming.");
+    listener.onError(Error.OVERLOAD, null, true);
+    return null;
+  }
+
   /**
    * Attempts to route the message to a peer. If the maximum number of send attempts is exceeded,
    * fails with the error CANNOT_FORWARD.
@@ -540,83 +625,68 @@ public class Probe implements ByteCounter {
   private boolean route(final Type type, final long uid, byte htl, final Listener listener) {
     // Recreate the request so that any sub-messages or unintended fields are not forwarded.
     final Message message = DMT.createProbeRequest(htl, uid, type);
-    PeerNode[] peers;
-    // Degree of the local node.
-    int degree;
-    PeerNode candidate;
-    /*
-     * Attempt to forward until success or until reaching the send attempt limit.
-     */
     for (int sendAttempts = 0; sendAttempts < MAX_SEND_ATTEMPTS; sendAttempts++) {
-      peers = node.getConnectedPeers();
-      degree = peers.length;
-      // Can't handle a probe request if not connected to peers.
-      if (degree == 0) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Aborting probe request: no connections.");
-        }
+      final PeerNode[] peers = node.getConnectedPeers();
+      final int degree = peers.length;
+      if (handleNoPeers(degree, listener)) return true;
 
-        /*
-         * If this is a locally-started request, not a relayed one, give an error.
-         * Otherwise, in this case there's nowhere to send the error.
-         */
-        listener.onError(Error.DISCONNECTED, null, true);
-        return true;
+      final PeerNode candidate = peers[node.getRandom().nextInt(degree)];
+      if (!candidate.isConnected()) {
+        LOG.debug("Peer in connectedPeers was not connected.");
+        continue;
       }
 
-      candidate = peers[node.getRandom().nextInt(degree)];
-
-      if (candidate.isConnected()) {
-        // acceptProbability is the MH correction.
-        float acceptProbability;
-        int candidateDegree = candidate.getDegree();
-        /* Candidate's degree is unknown; fall back to random walk by accepting this candidate
-         * regardless of its degree.
-         */
-        if (candidateDegree == 0) acceptProbability = 1.0f;
-        else acceptProbability = (float) degree / candidateDegree;
-
-        if (LOG.isTraceEnabled()) LOG.trace("acceptProbability is " + acceptProbability);
-        if (node.getRandom().nextFloat() < acceptProbability) {
-          if (LOG.isTraceEnabled()) LOG.trace("Accepted candidate.");
-          // Filter for response to this probe with requested result type.
-          final MessageFilter filter = createResponseFilter(type, candidate, uid, htl);
-          message.set(DMT.HTL, htl);
-          try {
-            node.getUSM().addAsyncFilter(filter, new ResultListener(listener), this);
-            if (LOG.isTraceEnabled()) LOG.trace("Sending.");
-            candidate.sendAsync(message, null, this);
-            return true;
-          } catch (NotConnectedException e) {
-            if (LOG.isDebugEnabled())
-              LOG.debug("Peer became disconnected between check and send attempt.", e);
-            // Peer no longer connected - sending was not successful. Try again.
-          } catch (DisconnectedException e) {
-            if (LOG.isDebugEnabled())
-              LOG.debug("Peer became disconnected while attempting to add filter.", e);
-            // Peer no longer connected - cannot send. Try again.
-          }
-        } else {
-          /*
-           * Metropolis-Hastings correction rejected - decrement HTL so that it can run out depending on
-           * relative degrees.
-           */
-          htl = probabilisticDecrement(htl);
-
-          if (htl == 0) return false;
+      final float acceptProbability = acceptProbability(degree, candidate.getDegree());
+      LOG.trace("acceptProbability is {}", acceptProbability);
+      if (node.getRandom().nextFloat() < acceptProbability) {
+        LOG.trace("Accepted candidate.");
+        if (trySendToCandidate(candidate, type, uid, htl, message, listener)) {
+          return true;
         }
+        // Else: candidate disconnected during send/filter; try again.
       } else {
-        if (LOG.isDebugEnabled()) LOG.debug("Peer in connectedPeers was not connected.");
+        htl = probabilisticDecrement(htl);
+        if (htl == 0) return false;
       }
     }
 
-    // Send attempt limit reached.
-    if (LOG.isWarnEnabled()) {
-      LOG.warn("Aborting probe request: send attempt limit reached.");
-    }
-
+    LOG.warn("Aborting probe request: send attempt limit reached.");
     listener.onError(Error.CANNOT_FORWARD, null, true);
     return true;
+  }
+
+  private boolean handleNoPeers(final int degree, final Listener listener) {
+    if (degree != 0) return false;
+    LOG.debug("Aborting probe request: no connections.");
+    listener.onError(Error.DISCONNECTED, null, true);
+    return true;
+  }
+
+  private float acceptProbability(final int localDegree, final int candidateDegree) {
+    if (candidateDegree == 0) return 1.0f;
+    return (float) localDegree / candidateDegree;
+  }
+
+  private boolean trySendToCandidate(
+      final PeerNode candidate,
+      final Type type,
+      final long uid,
+      final byte htl,
+      final Message message,
+      final Listener listener) {
+    final MessageFilter filter = createResponseFilter(type, candidate, uid, htl);
+    message.set(DMT.HTL, htl);
+    try {
+      node.getUSM().addAsyncFilter(filter, new ResultListener(listener), this);
+      LOG.trace("Sending.");
+      candidate.sendAsync(message, null, this);
+      return true;
+    } catch (NotConnectedException e) {
+      LOG.debug("Peer became disconnected between check and send attempt.", e);
+    } catch (DisconnectedException e) {
+      LOG.debug("Peer became disconnected while attempting to add filter.", e);
+    }
+    return false;
   }
 
   /**
@@ -650,8 +720,7 @@ public class Probe implements ByteCounter {
       case STORE_SIZE:
         filter.setType(DMT.ProbeStoreSize);
         break;
-      case UPTIME_48H:
-      case UPTIME_7D:
+      case UPTIME_48H, UPTIME_7D:
         filter.setType(DMT.ProbeUptime);
         break;
       case REJECT_STATS:
@@ -796,29 +865,17 @@ public class Probe implements ByteCounter {
   }
 
   private boolean respondTo(Type type) {
-    switch (type) {
-      case BANDWIDTH:
-        return respondBandwidth;
-      case BUILD:
-        return respondBuild;
-      case IDENTIFIER:
-        return respondIdentifier;
-      case LINK_LENGTHS:
-        return respondLinkLengths;
-      case LOCATION:
-        return respondLocation;
-      case STORE_SIZE:
-        return respondStoreSize;
-      case UPTIME_48H:
-      case UPTIME_7D:
-        return respondUptime;
-      case REJECT_STATS:
-        return respondRejectStats;
-      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE:
-        return respondOverallBulkOutputCapacityUsage;
-      default:
-        throw new UnsupportedOperationException("Missing permissions check for " + type.name());
-    }
+    return switch (type) {
+      case BANDWIDTH -> respondBandwidth;
+      case BUILD -> respondBuild;
+      case IDENTIFIER -> respondIdentifier;
+      case LINK_LENGTHS -> respondLinkLengths;
+      case LOCATION -> respondLocation;
+      case STORE_SIZE -> respondStoreSize;
+      case UPTIME_48H, UPTIME_7D -> respondUptime;
+      case REJECT_STATS -> respondRejectStats;
+      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE -> respondOverallBulkOutputCapacityUsage;
+    };
   }
 
   /**
@@ -841,7 +898,7 @@ public class Probe implements ByteCounter {
    * Filter listener which determines the type of result and calls the appropriate probe listener
    * method.
    */
-  private class ResultListener implements AsyncMessageFilterCallback {
+  private static class ResultListener implements AsyncMessageFilterCallback {
 
     private final Listener listener;
 
@@ -865,7 +922,7 @@ public class Probe implements ByteCounter {
      */
     @Override
     public void onMatched(Message message) {
-      if (LOG.isTraceEnabled()) LOG.trace("Matched " + message.getSpec().getName());
+      LOG.trace("Matched {}", message.getSpec().getName());
       if (message.getSpec().equals(DMT.ProbeBandwidth)) {
         listener.onOutputBandwidth(message.getFloat(DMT.OUTPUT_BANDWIDTH_UPPER_LIMIT));
       } else if (message.getSpec().equals(DMT.ProbeBuild)) {
@@ -903,7 +960,9 @@ public class Probe implements ByteCounter {
     }
 
     @Override
-    public void onRestarted(PeerContext context) {}
+    public void onRestarted(PeerContext context) {
+      // Intentionally empty: no special handling needed on restart for probes.
+    }
 
     @Override
     public void onTimeout() {
@@ -942,9 +1001,9 @@ public class Probe implements ByteCounter {
         if (LOG.isDebugEnabled()) LOG.debug(SOURCE_DISCONNECT);
         return;
       }
-      if (LOG.isDebugEnabled())
-        LOG.debug(
-            "Relaying " + message.getSpec().getName() + " back" + " to " + source.userToString());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Relaying {} back to {}", message.getSpec().getName(), source.userToString());
+      }
       try {
         source.sendAsync(message, null, Probe.this);
       } catch (NotConnectedException e) {
@@ -1000,7 +1059,7 @@ public class Probe implements ByteCounter {
     @Override
     public void onRejectStats(byte[] stats) {
       if (stats.length < 4) {
-        LOG.warn("Unknown length for stats: " + stats.length);
+        LOG.warn("Unknown length for stats: {}", stats.length);
         onError(Error.UNKNOWN, Error.UNKNOWN.code, true);
       } else {
         if (stats.length > 4) stats = Arrays.copyOf(stats, 4);
@@ -1014,8 +1073,6 @@ public class Probe implements ByteCounter {
       send(
           DMT.createProbeOverallBulkOutputCapacityUsage(
               uid, bandwidthClassForCapacityUsage, capacityUsage));
-      // TODO Auto-generated method stub
-
     }
   }
 }
