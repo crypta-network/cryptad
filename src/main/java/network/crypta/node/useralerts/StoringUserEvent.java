@@ -6,14 +6,86 @@ import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.support.HTMLNode;
 
+/**
+ * Base class for user alerts that keep a live collection of related, dismissible events.
+ *
+ * <p>This type stores events in a shared {@link Map} and provides common behavior to render a
+ * combined HTML view, emit an FCP feed message, and coordinate dismissal. Subclasses typically add
+ * the domain-specific fields that describe a single event and implement {@link #getEventText()} and
+ * {@link #getEventHTMLText()} to produce textual and structured HTML representations respectively.
+ *
+ * <p>The backing collection is supplied by the caller and is not copied. This class synchronizes on
+ * that map when iterating and mutating it, so all accesses performed here are serialized against
+ * the same monitor. Callers should avoid mutating the map from other locations without using the
+ * same synchronization strategy. Instances are otherwise immutable with respect to their
+ * descriptive metadata; only the shared map’s contents change over time.
+ *
+ * <p>Typical usage is to construct a subclass instance for a new event, put it in the shared map
+ * under a stable key, and rely on the framework to query {@link #getHTMLText()} for an aggregated
+ * view or call {@link #onDismiss()} to clear the collection. Dismissal cascades to each stored
+ * event via {@link #onEventDismiss()}, allowing a subclass to release resources or unregister
+ * listeners before removal.
+ *
+ * <ul>
+ *   <li>Aggregates HTML for all stored events in the order reported by the map.
+ *   <li>Builds a minimal {@code FeedMessage} from the plain-text representation.
+ *   <li>Removes all events on dismiss, invoking per-event cleanup hooks.
+ * </ul>
+ *
+ * @param <T> the concrete subtype, enabling type-safe storage of homogeneous events
+ * @see AbstractUserEvent
+ * @see network.crypta.clients.fcp.FCPMessage
+ * @see network.crypta.support.HTMLNode
+ */
 public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends AbstractUserEvent {
 
+  /**
+   * Backing collection of currently active events indexed by an implementation-defined key.
+   *
+   * <p>The map is owned externally but accessed by this instance inside synchronized blocks using
+   * the map object as the monitor. Implementations should ensure the same synchronization
+   * discipline is used when mutating the map elsewhere. Keys are expected to be stable identifiers;
+   * values are instances of the concrete subtype parameter {@code T}.
+   */
   protected final Map<String, T> events;
 
+  /**
+   * Convenience constructor for subclasses that supply only the storage map and configure the
+   * remaining metadata elsewhere.
+   *
+   * <p>The supplied map is not defensively copied. This instance will synchronize on it when
+   * iterating or removing elements. Passing a non-null, consistently used map is required for
+   * correct behavior.
+   *
+   * @param events storage of active events; must be non-null and stable for the lifetime of this
+   *     instance; ownership remains with the caller
+   */
+  @SuppressWarnings("unused")
   protected StoringUserEvent(Map<String, T> events) {
     this.events = events;
   }
 
+  /**
+   * Full constructor used by subclasses to populate user-visible metadata and supply the event
+   * collection.
+   *
+   * <p>All arguments are consumed as-is and are not validated beyond normal Java nullability
+   * contracts. The {@code events} map is kept by reference and is used as the synchronization
+   * monitor when aggregating HTML, checking validity, and dismissing entries.
+   *
+   * @param eventType the high-level event type used by the alert system for categorization
+   * @param userCanDismiss whether the UI should expose a dismiss control for the user
+   * @param title short title shown to users; kept verbatim and may be null when not applicable
+   * @param text plain-text body; used in feed messages; may be null when HTML is provided
+   * @param shortText concise summary variant; shown in compact contexts; may be null
+   * @param htmlText structured HTML body for richer rendering; may be null when text is sufficient
+   * @param priorityClass small integer describing display priority; higher values surface earlier
+   * @param valid initial validity flag; invalid events are typically hidden from presentation
+   * @param dismissButtonText label for the dismiss control; null selects a default provided by UI
+   * @param shouldUnregisterOnDismiss when true, unregisters the source upon dismissal where
+   *     supported
+   * @param events storage of active events; must be non-null; synchronized on by this instance
+   */
   protected StoringUserEvent(
       Type eventType,
       boolean userCanDismiss,
@@ -37,10 +109,38 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
     this.events = events;
   }
 
+  /**
+   * Returns the plain-text representation for this single stored event instance.
+   *
+   * <p>Implementations should return a human-readable description suitable for logs, feed entries,
+   * and other plain-text channels. The text should not contain HTML markup and should be reasonably
+   * concise to fit compact UI surfaces. The returned value is used as the title and body in the
+   * generated {@code FeedMessage}.
+   *
+   * @return descriptive text for this event instance; never includes HTML tags
+   */
   public abstract String getEventText();
 
+  /**
+   * Returns the structured HTML node for this single event instance.
+   *
+   * <p>The node is inserted as a direct child of the container generated by {@link #getHTMLText()}.
+   * Implementations should avoid expensive tree construction on every call and may reuse immutable
+   * nodes where appropriate. Callers must not modify the returned node after it has been handed to
+   * the rendering pipeline.
+   *
+   * @return an {@link HTMLNode} representing this event’s HTML content; never {@code null}
+   */
   public abstract HTMLNode getEventHTMLText();
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>This implementation aggregates the HTML for all currently stored events by appending each
+   * event’s {@link #getEventHTMLText()} as a child of a container {@code div}. Iteration and access
+   * are synchronized on the shared {@link #events} map to maintain a consistent snapshot during
+   * rendering.
+   */
   @Override
   public HTMLNode getHTMLText() {
     HTMLNode text = new HTMLNode("div");
@@ -52,12 +152,25 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
     return text;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>This implementation builds a minimal {@link FeedMessage} using the same text for the
+   * subject, summary, and body. Priority and update time are taken from this event’s metadata.
+   */
   @Override
   public FCPMessage getFCPMessage() {
     return new FeedMessage(
         getEventText(), getEventText(), getEventText(), getPriorityClass(), getUpdatedTime());
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>This implementation iterates over the stored events, invoking {@link #onEventDismiss()} on
+   * each and removing it from the backing map within the same synchronized block. The operation is
+   * best-effort and proceeds through all entries.
+   */
   @Override
   public void onDismiss() {
     synchronized (events) {
@@ -69,6 +182,12 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The event is considered valid while the backing {@link #events} map is non-empty. The check
+   * is performed under synchronization with the same monitor used for mutations.
+   */
   @Override
   public boolean isValid() {
     boolean valid;
@@ -78,5 +197,12 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
     return valid;
   }
 
+  /**
+   * Cleanup hook invoked when this individual event is being dismissed.
+   *
+   * <p>Subclasses should release resources, unregister any listeners, or update related state so
+   * the event can be safely discarded. Implementations should be idempotent and must not throw
+   * unchecked exceptions; failures should be handled internally where possible.
+   */
   public abstract void onEventDismiss();
 }
