@@ -30,13 +30,10 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
         eventType,
         userCanDismiss,
         title,
-        text,
-        shortText,
-        htmlText,
+        Body.of(text, shortText, htmlText),
         priorityClass,
         valid,
-        dismissButtonText,
-        shouldUnregisterOnDismiss);
+        new DismissOptions(dismissButtonText, shouldUnregisterOnDismiss));
     this.events = events;
   }
 
