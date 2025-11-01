@@ -158,6 +158,33 @@ import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
 
 /**
+ * Core node implementation coordinating all major subsystems (routing, storage, peers, and
+ * services).
+ *
+ * <p>The {@code Node} class wires together the network stack (darknet/opennet crypto and sockets),
+ * request/insert schedulers, datastores and caches (CHK/SSK/public key), the HTTP UI (FProxy),
+ * plugins, and diagnostics. A typical lifecycle is: create a {@code Node} via {@link NodeStarter},
+ * call {@link #start(boolean)} to initialize active components, interact with the node (e.g.,
+ * enqueue requests/inserts), and finally call {@link #park()} to quiesce and shut down. Most
+ * methods are designed for internal coordination and are not stable APIs for external callers;
+ * public methods are documented for their observable effects.
+ *
+ * <p>Invariants and state model:
+ *
+ * <ul>
+ *   <li>The node owns multiple persistent stores plus short‑lived caches; sizing and placement are
+ *       configured at startup and may change only through well‑defined callbacks.
+ *   <li>Networking is asynchronous; dispatchers, tickers, and executors coordinate background work.
+ *       Many operations complete later on the ticker thread.
+ *   <li>Security levels (network/physical) influence routing, caching, and persistence behavior at
+ *       runtime.
+ * </ul>
+ *
+ * <p>Concurrency: the node uses thread‑safe helpers (executors, synchronized fields) and avoids
+ * blocking I/O on critical routing threads. Methods explicitly state when they may block or when
+ * they trigger background activity. Mutability is confined to configuration/state holders and
+ * caches; key objects and block payloads are treated as immutable once published.
+ *
  * @author amphibian
  */
 public class Node implements TimeSkewDetectorCallback {
@@ -190,6 +217,13 @@ public class Node implements TimeSkewDetectorCallback {
   /** L10n key for SecurityLevels enter password message. */
   private static final String SECURITYLEVELS_ENTER_PASSWORD_KEY = "SecurityLevels.enterPassword";
 
+  /**
+   * Background migrator that copies data from a previously active store into the new one.
+   *
+   * <p>Used when delayed initialization is enabled or when client‑cache/password state changes.
+   * Migration runs on a background thread and logs progress; failures are logged and do not abort
+   * node startup.
+   */
   public class MigrateOldStoreData implements Runnable {
 
     private final boolean clientCache;
@@ -289,6 +323,11 @@ public class Node implements TimeSkewDetectorCallback {
 
   private final AtomicReference<SSKStore> oldSSKClientCache = new AtomicReference<>();
 
+  /**
+   * Closes and securely destroys an old salted‑hash store used during migration.
+   *
+   * @param old callback whose underlying store will be closed and destroyed when applicable.
+   */
   public <T extends StorableBlock> void closeOldStore(StoreCallback<T> old) {
     FreenetStore<T> store = old.getStore();
     if (store instanceof SaltedHashFreenetStore<T> saltstore) {
@@ -302,6 +341,12 @@ public class Node implements TimeSkewDetectorCallback {
   private final MeaningfulNodeNameUserAlert nodeNameUserAlert;
   private static TimeSkewDetectedUserAlert timeSkewDetectedUserAlert;
 
+  /**
+   * Config callback for the node's display name.
+   *
+   * <p>Validates and persists the name, and notifies peers using a differential node reference so
+   * UI components can reflect changes promptly.
+   */
   public class NodeNameCallback extends StringCallback {
     NodeNameCallback() {}
 
@@ -478,48 +523,80 @@ public class Node implements TimeSkewDetectorCallback {
   private final PersistentConfig config;
 
   // Static stuff related to logger
-  /** Log config constants and behavior are managed by LoggingConfigHandler. */
+  /** Number of packets per transfer block used in link‑layer processing. */
   public static final int PACKETS_IN_BLOCK = 32;
 
+  /** Default transport packet payload size in bytes. */
   public static final int PACKET_SIZE = 1024;
+
+  /** Probability of decrementing at the minimum HTL boundary. */
   public static final double DECREMENT_AT_MIN_PROB = 0.25;
+
+  /** Probability of decrementing at the maximum HTL boundary. */
   public static final double DECREMENT_AT_MAX_PROB = 0.5;
+
   // Send keepalives every 7-14 seconds. Will be acked and if necessary resent.
-  // Old behaviour was keepalives every 14-28. Even that was adequate for a 30 second
+  // Old behaviour was keepalives every 14-28. Even that was adequate for a 30-second
   // timeout. Most nodes don't need to send keepalives because they are constantly busy,
   // this is only an issue for disabled darknet connections, very quiet private networks
   // etc.
+  /** Interval for sending keep‑alive packets on idle connections (milliseconds). */
   public static final long KEEPALIVE_INTERVAL = SECONDS.toMillis(7);
+
   // If no activity for 30 seconds, node is dead
-  // 35 seconds allows plenty of time for resends etc even if above is 14 sec as it is on older
+  // 35 seconds allows plenty of time for resends etc. even if above is 14 sec as it is on older
   // nodes.
+  /** Inactivity timeout after which a peer is considered dead (milliseconds). */
   public static final long MAX_PEER_INACTIVITY = SECONDS.toMillis(35);
 
-  /** Time after which a handshake is assumed to have failed. */
+  /** Time budget in milliseconds for completing a handshake exchange. */
   public static final int HANDSHAKE_TIMEOUT =
-      (int) MILLISECONDS.toMillis(4800); // Keep the below within the 30 second assumed timeout.
+      (int) MILLISECONDS.toMillis(4800); // Keep the below within the 30-second assumed timeout.
 
   // Inter-handshake time must be at least 2x handshake timeout
+  /** Minimum interval between handshake attempts (milliseconds). */
   public static final int MIN_TIME_BETWEEN_HANDSHAKE_SENDS = HANDSHAKE_TIMEOUT * 2; // 10-20 secs
+
+  /** Randomized extra delay between handshake attempts (milliseconds). */
   public static final int RANDOMIZED_TIME_BETWEEN_HANDSHAKE_SENDS =
       HANDSHAKE_TIMEOUT * 2; // avoid overlap when the two handshakes are at the same time
+
+  /** Minimum interval between version probes (milliseconds). */
   public static final int MIN_TIME_BETWEEN_VERSION_PROBES = HANDSHAKE_TIMEOUT * 4;
+
+  /** Randomized extra delay between version probes (milliseconds). */
   public static final int RANDOMIZED_TIME_BETWEEN_VERSION_PROBES =
       HANDSHAKE_TIMEOUT * 2; // 20-30 secs
+
+  /** Minimum interval between sending version announcements (milliseconds). */
   public static final int MIN_TIME_BETWEEN_VERSION_SENDS = HANDSHAKE_TIMEOUT * 4;
+
+  /** Randomized extra delay between version announcements (milliseconds). */
   public static final int RANDOMIZED_TIME_BETWEEN_VERSION_SENDS =
       HANDSHAKE_TIMEOUT * 2; // 20-30 secs
+
+  /** Minimum interval between grouped handshake bursts (milliseconds). */
   public static final int MIN_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS =
       HANDSHAKE_TIMEOUT * 24; // 2-5 minutes
+
+  /** Randomized extra delay between grouped handshake bursts (milliseconds). */
   public static final int RANDOMIZED_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS =
       HANDSHAKE_TIMEOUT * 36;
+
+  /** Minimum count of handshakes sent per burst. */
   public static final int MIN_BURSTING_HANDSHAKE_BURST_SIZE = 1; // 1-4 handshake sends per burst
+
+  /** Additional randomized count added to bursting handshake size. */
   public static final int RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE = 3;
+
   // If we don't receive any packets at all in this period, from any node, tell the user
+  /** Time without any traffic that triggers a user‑visible alarm (milliseconds). */
   public static final long ALARM_TIME = MINUTES.toMillis(1);
 
   static final long MIN_INTERVAL_BETWEEN_INCOMING_SWAP_REQUESTS = MILLISECONDS.toMillis(900);
   static final long MIN_INTERVAL_BETWEEN_INCOMING_PROBE_REQUESTS = MILLISECONDS.toMillis(1000);
+
+  /** Length in bytes for symmetric keys used by the node (e.g., AES‑256). */
   public static final int SYMMETRIC_KEY_LENGTH =
       32; // 256 bits - note that this isn't used everywhere to determine it
 
@@ -533,7 +610,7 @@ public class Node implements TimeSkewDetectorCallback {
   private boolean storeSaltHashResizeOnStart;
   private int storeSaltHashSlotFilterPersistenceTime;
 
-  /** Minimum total datastore size */
+  /** Absolute minimum store size in bytes accepted by configuration. */
   public static final long MIN_STORE_SIZE = 32L * 1024 * 1024;
 
   /** Default datastore size (must be at least MIN_STORE_SIZE) */
@@ -551,10 +628,7 @@ public class Node implements TimeSkewDetectorCallback {
   /** Default slashdot cache size (must be at least MIN_SLASHDOT_CACHE_SIZE) */
   static final long DEFAULT_SLASHDOT_CACHE_SIZE = 10L * 1024 * 1024;
 
-  /**
-   * The number of bytes per key total in all the different datastores. All the datastores are
-   * always the same size in number of keys.
-   */
+  /** Estimated total bytes per logical key across all stores (sizing heuristic). */
   public static final int SIZE_PER_KEY =
       CHKBlock.DATA_LENGTH
           + CHKBlock.TOTAL_HEADERS_LENGTH
@@ -648,7 +722,7 @@ public class Node implements TimeSkewDetectorCallback {
 
   /**
    * If true, we write stuff to the datastore even though we shouldn't because the HTL is too high.
-   * However it is flagged as old so it won't be included in the Bloom filter for sharing purposes.
+   * However, it is flagged as old so it won't be included in the Bloom filter for sharing purposes.
    */
   private boolean writeLocalToDatastore;
 
@@ -675,9 +749,14 @@ public class Node implements TimeSkewDetectorCallback {
   private long swapIdentifier;
 
   /**
-   * Returns the semi-unique identifier used for swap requests so that the topology can be
-   * reconstructed. The value is derived from our identity hash and may change when identity
+   * Returns the semi‑unique identifier used for swap requests so that the topology can be
+   * reconstructed. The value is derived from the node's identity hash and may change when identity
    * material changes.
+   *
+   * <p>The identifier is intended only for correlating swap activity within a running cohort and is
+   * not guaranteed to be globally unique or stable across restarts if identity material changes.
+   *
+   * @return the current swap identifier value used in swap routing and diagnostics.
    */
   @SuppressWarnings("unused")
   public long getSwapIdentifier() {
@@ -691,16 +770,16 @@ public class Node implements TimeSkewDetectorCallback {
   /** My peers */
   private final PeerManager peers;
 
-  /** Node-reference directory (node identity, peers, etc) */
+  /** Node-reference directory (node identity, peers, etc.) */
   private final ProgramDirectory nodeDir;
 
   /** Config directory (l10n overrides, etc) */
   final ProgramDirectory cfgDir;
 
-  /** User data directory (bookmarks, download lists, etc) */
+  /** User data directory (bookmarks, download lists, etc.) */
   final ProgramDirectory userDir;
 
-  /** Run-time state directory (bootID, PRNG seed, etc) */
+  /** Run-time state directory (bootID, PRNG seed, etc.) */
   final ProgramDirectory runDir;
 
   /** Plugin directory */
@@ -787,59 +866,67 @@ public class Node implements TimeSkewDetectorCallback {
 
   private boolean enablePacketCoalescing;
 
+  /** Default maximum hop‑to‑live (HTL) used when no explicit value is configured. */
   public static final short DEFAULT_MAX_HTL = (short) 18;
+
   private short maxHTL;
   private boolean skipWrapperWarning;
   private int maxPacketSize;
 
-  /** Should inserts ignore low backoff times by default? */
+  /** Default policy for ignoring low backoff during inserts. */
   public static final boolean IGNORE_LOW_BACKOFF_DEFAULT = false;
 
-  /** Definition of "low backoff times" for above. */
+  /** Threshold in milliseconds defining a "low" backoff period for inserts. */
   public static final long LOW_BACKOFF = SECONDS.toMillis(30);
 
-  /** Should inserts be fairly blatently prioritised on accept by default? */
+  /** Default policy for prioritizing inserts on accept. */
   public static final boolean PREFER_INSERT_DEFAULT = false;
 
-  /** Should inserts fork when the HTL reaches cacheability? */
+  /** Default policy for forking insert when an item becomes cacheable. */
   public static final boolean FORK_ON_CACHEABLE_DEFAULT = true;
 
   private final IOStatisticCollector collector;
 
-  /** Type identifier for fproxy node to node messages, as sent on DMT.nodeToNodeMessage's */
+  /** Node‑to‑node message category used for FProxy messages. */
   public static final int N2N_MESSAGE_TYPE_FPROXY = 1;
 
-  /**
-   * Type identifier for differential node reference messages, as sent on DMT.nodeToNodeMessage's
-   */
+  /** Node‑to‑node message category for differential node references. */
   public static final int N2N_MESSAGE_TYPE_DIFFNODEREF = 2;
 
-  /**
-   * Identifier within fproxy messages for simple, short text messages to be displayed on the
-   * homepage as useralerts
-   */
+  /** FProxy text sub‑type for user alerts. */
   public static final int N2N_TEXT_MESSAGE_TYPE_USERALERT = 1;
 
-  /** Identifier within fproxy messages for an offer to transfer a file */
+  /** FProxy text sub‑type for a file offer. */
   public static final int N2N_TEXT_MESSAGE_TYPE_FILE_OFFER = 2;
 
-  /** Identifier within fproxy messages for accepting an offer to transfer a file */
+  /** FProxy text sub‑type signaling a file‑offer acceptance. */
   public static final int N2N_TEXT_MESSAGE_TYPE_FILE_OFFER_ACCEPTED = 3;
 
-  /** Identifier within fproxy messages for rejecting an offer to transfer a file */
+  /** FProxy text sub‑type signaling a file‑offer rejection. */
   public static final int N2N_TEXT_MESSAGE_TYPE_FILE_OFFER_REJECTED = 4;
 
-  /** Identified within friend feed for the recommendation of a bookmark */
+  /** FProxy text sub‑type recommending a bookmark. */
   public static final int N2N_TEXT_MESSAGE_TYPE_BOOKMARK = 5;
 
-  /** Identified within friend feed for the recommendation of a file */
+  /** FProxy text sub‑type recommending a file download. */
   public static final int N2N_TEXT_MESSAGE_TYPE_DOWNLOAD = 6;
 
+  /** Extra‑peer‑data category for node‑to‑node message payloads. */
   public static final int EXTRA_PEER_DATA_TYPE_N2NTM = 1;
+
+  /** Extra‑peer‑data category for peer notes. */
   public static final int EXTRA_PEER_DATA_TYPE_PEER_NOTE = 2;
+
+  /** Extra‑peer‑data category for queued outbound node‑to‑node messages. */
   public static final int EXTRA_PEER_DATA_TYPE_QUEUED_TO_SEND_N2NM = 3;
+
+  /** Extra‑peer‑data category for bookmarked content. */
   public static final int EXTRA_PEER_DATA_TYPE_BOOKMARK = 4;
+
+  /** Extra‑peer‑data category for download metadata. */
   public static final int EXTRA_PEER_DATA_TYPE_DOWNLOAD = 5;
+
+  /** Peer‑note sub‑type for private darknet comments. */
   public static final int PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT = 1;
 
   /**
@@ -875,6 +962,7 @@ public class Node implements TimeSkewDetectorCallback {
   private final PluginManager pluginManager;
 
   // Helpers
+  /** Localhost IPv4/IPv6 address used for internal bindings and diagnostics. */
   public final InetAddress localhostAddress;
 
   private final FreenetInetAddress fLocalhostAddress;
@@ -930,8 +1018,17 @@ public class Node implements TimeSkewDetectorCallback {
   }
 
   /**
-   * Dispatches a probe request with the specified settings
+   * Dispatches a network probe with the specified parameters.
    *
+   * <p>Probes are routed similar to requests and can be used by diagnostics and tooling to assess
+   * reachability or measure path characteristics. This method is non‑blocking; completion is
+   * reported asynchronously to the provided {@code listener}.
+   *
+   * @param htl hop‑to‑live used for the probe. Values greater than zero traverse the network; zero
+   *     is not valid for a routed probe. Must be in the same range as regular request HTLs.
+   * @param uid application‑provided correlation identifier to match callbacks and log entries.
+   * @param type the probe {@link Type}; determines behavior and payload of the message.
+   * @param listener callback that receives probe results and progress events; must be non‑null.
    * @see Probe#start(byte, long, Type, Listener)
    */
   public void startProbe(final byte htl, final long uid, final Type type, final Listener listener) {
@@ -939,7 +1036,7 @@ public class Node implements TimeSkewDetectorCallback {
   }
 
   /**
-   * Read all storable settings (identity etc) from the node file.
+   * Read all storable settings (identity etc.) from the node file.
    *
    * @param filename The name of the file to read from.
    * @throws IOException throw when I/O error occur
@@ -1295,10 +1392,11 @@ public class Node implements TimeSkewDetectorCallback {
   }
 
   /**
-   * Read the config file from the arguments. Then create a node. Anything that needs static init
-   * should ideally be in here.
+   * Entry point delegating to {@link NodeStarter}. Parses CLI arguments and boots the wrapper‑
+   * managed node process.
    *
-   * @param args
+   * @param args command‑line arguments passed to the node launcher. Unknown options are forwarded
+   *     to {@link NodeStarter} and may control wrapper behavior, config paths, or startup mode.
    */
   public static void main(String[] args) {
     NodeStarter.main(args);
@@ -1319,7 +1417,7 @@ public class Node implements TimeSkewDetectorCallback {
    * @param r The random number generator for this node. Passed in because we may want to use a
    *     non-secure RNG for e.g. one-JVM live-code simulations. Should be a Yarrow in a production
    *     node. Yarrow will be used if that parameter is null
-   * @param weakRandom The fast random number generator the node will use. If null a MT instance
+   * @param weakRandom The fast random number generator the node will use. If null an MT instance
    *     will be used, seeded from the secure PRNG.
    * @param ns NodeStarter
    * @param executor Executor
@@ -1899,7 +1997,7 @@ public class Node implements TimeSkewDetectorCallback {
     // Add them at a rate determined by the obwLimit.
     // Maximum forced bytes 80%, in other words, 20% of the bandwidth is reserved for
     // block transfers, so we will use that 20% for block transfers even if more than 80% of the
-    // limit is used for non-limited data (resends etc).
+    // limit is used for non-limited data (resends etc.).
     int bucketSize = obwLimit / 2;
     // Must have at least space for ONE PACKET.
     // Make compatible with alternate transports if needed.
@@ -2085,7 +2183,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     File nodeFileBackup = nodeDir.file(NODE_FILE_PREFIX + getDarknetPortNumber() + ".bak");
     // After we have set up testnet and IP address, load the node file
     try {
-      // May take file directly in future.
+      // May take file directly in the future.
       readNodeFile(nodeFile.getPath());
     } catch (IOException e) {
       try {
@@ -2486,7 +2584,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             } catch (IOException e) {
               LOG.error("Caught exception resizing the datastore", e);
             }
-            // Perhaps a bit hackish...? Seems like this should be near it's definition in
+            // Perhaps a bit hackish...? Seems like this should be near its definition in
             // NodeStats.
             nodeStats.avgStoreCHKLocation.changeMaxReports((int) maxStoreKeys);
             nodeStats.avgCacheCHKLocation.changeMaxReports((int) maxCacheKeys);
@@ -3417,7 +3515,24 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
-  /** * Sets up a program directory using the config value defined by the given * parameters. */
+  /**
+   * Sets up a program directory from configuration.
+   *
+   * <p>Registers a path option in the provided {@link SubConfig}, applies defaults when the option
+   * is missing, and attempts to move/create the directory on disk. The option is persisted (forced
+   * write) so installers and first‑run wizards can pin locations reliably. Failures to create or
+   * move the directory surface as {@link NodeInitException} with a user‑oriented message.
+   *
+   * @param installConfig configuration section to register and read the directory option from.
+   * @param cfgKey option key under which the directory path is stored.
+   * @param defaultValue default path used when the option is unset; may be absolute or relative.
+   * @param shortdesc i18n key for a short description shown to users.
+   * @param longdesc i18n key for a longer description shown to users.
+   * @param moveErrMsg message used when emitting errors during directory creation/move; may be
+   *     {@code null}.
+   * @return a {@link ProgramDirectory} bound to the resolved path and callbacks.
+   * @throws NodeInitException if the directory cannot be created or set up.
+   */
   public ProgramDirectory setupProgramDir(
       SubConfig installConfig,
       String cfgKey,
@@ -3954,7 +4069,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return NodeL10n.getBase().getString(L10N_PREFIX_NODE + key, pattern, value);
   }
 
-  /** Export volatile data about the node as a SimpleFieldSet */
+  /**
+   * Exports volatile runtime metrics and state as a {@link SimpleFieldSet}.
+   *
+   * @return a snapshot of node statistics suitable for lightweight diagnostics and UI display.
+   */
   public SimpleFieldSet exportVolatileFieldSet() {
     return nodeStats.exportVolatileFieldSet();
   }
@@ -3994,12 +4113,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @param key The key to fetch.
    * @param uid The UID of the request (for logging only).
-   * @param promoteCache Whether to promote the key if found.
    * @param canReadClientCache If the request is local, we can read the client cache.
    * @param canWriteClientCache If the request is local, and the client hasn't turned off writing to
    *     the client cache, we can write to the client cache.
    * @param canWriteDatastore If the request HTL is too high, including if it is local, we cannot
    *     write to the datastore.
+   * @param offersOnly When true, accept only offered blocks without triggering new retrieval work.
    * @return A KeyBlock for the key requested or null.
    */
   private KeyBlock makeRequestLocal(
@@ -4062,14 +4181,21 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Check the datastore, then if the key is not in the store, check whether another node is
-   * requesting the same key at the same HTL, and if all else fails, create a new RequestSender for
-   * the key/htl.
+   * Options controlling how a request attempt is made when fetching a key.
    *
-   * @param closestLocation The closest location to the key so far.
-   * @param localOnly If true, only check the datastore.
-   * @return A KeyBlock if the data is in the store, otherwise a RequestSender, unless the HTL is 0,
-   *     in which case NULL. RequestSender.
+   * <p>The node first attempts a local lookup (client cache, caches, then stores) and only creates
+   * a network {@code RequestSender} when allowed by the provided flags. These options are captured
+   * as a compact value object to make call‑sites explicit and easy to extend in the future.
+   *
+   * @param localOnly when {@code true}, restrict resolution to local stores and caches; no routing
+   *     occurs.
+   * @param ignoreStore when {@code true}, skip checking the persistent store and rely on caches and
+   *     routing.
+   * @param offersOnly when {@code true}, only accept already offered blocks; do not trigger new
+   *     retrievals that would increase load.
+   * @param canReadClientCache allow the local client cache to be consulted when present.
+   * @param canWriteClientCache allow populating the local client cache on successful resolution.
+   * @param realTimeFlag when {@code true}, prefer real‑time queues and low‑latency scheduling.
    */
   public record RequestSenderOptions(
       boolean localOnly,
@@ -4096,6 +4222,24 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Creates a sender for a request or returns a locally available result.
+   *
+   * <p>The method first attempts a local resolution based on {@code opts}. If the key is present in
+   * client caches or the main stores (subject to the flags) a {@link KeyBlock} is returned. When no
+   * local copy exists and remote routing is permitted, it constructs and starts a {@link
+   * RequestSender} to fetch the data asynchronously. If {@code htl} is zero, routing is not
+   * possible and {@code null} is returned.
+   *
+   * @param key the key to resolve; must be a {@link NodeCHK} or {@link NodeSSK} instance.
+   * @param htl current hop‑to‑live; values greater than zero enable routing, zero prevents it.
+   * @param uid correlation identifier used in logs and for matching responses.
+   * @param tag request owner used by schedulers; associates callbacks and cancellation.
+   * @param source upstream peer for forwarded requests, or {@code null} for local originators.
+   * @param opts options controlling local checks, cache read/write, and scheduling behavior.
+   * @return a {@link KeyBlock} when found locally; a started {@link RequestSender} when routing is
+   *     initiated; or {@code null} if neither applies (e.g., {@code htl == 0}).
+   */
   public Object makeRequestSender(
       Key key, short htl, long uid, RequestTag tag, PeerNode source, RequestSenderOptions opts) {
     boolean canWriteDatastore = canWriteDatastoreRequest(htl);
@@ -4181,18 +4325,22 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Fetch a block from the datastore.
+   * Fetches a block from local stores and caches according to the provided flags.
    *
-   * @param key
-   * @param canReadClientCache
-   * @param canWriteClientCache
-   * @param canWriteDatastore
-   * @param forULPR
-   * @param mustBeMarkedAsPostCachingChanges If true, the key must have the ENTRY_NEW_BLOCK flag (if
-   *     saltedhash), indicating that it a) has been added since the caching changes in 1224 (since
-   *     we didn't delete the stores), and b) that it wasn't added due to low network security
-   *     caching everything, unless we are currently in low network security mode. Only applies to
-   *     main store.
+   * <p>No network routing is performed here. When the block is not present locally callers should
+   * use {@link #makeRequestSender(Key, short, long, RequestTag, PeerNode, RequestSenderOptions)} to
+   * initiate a routed fetch.
+   *
+   * @param key key to fetch; supports both {@link NodeCHK} and {@link NodeSSK} keys.
+   * @param canReadClientCache whether to consult the client cache that stores results of local
+   *     operations.
+   * @param canWriteClientCache whether to populate the client cache when a block is found.
+   * @param canWriteDatastore whether persistent store writes are allowed as a side effect of the
+   *     lookup (promotion); typically governed by HTL.
+   * @param forULPR whether the access is part of ULPR processing; enables slashdot caches.
+   * @param meta optional metadata sink used by stores to return provenance and flags; may be {@code
+   *     null}.
+   * @return the {@link KeyBlock} if found; otherwise {@code null}.
    */
   public KeyBlock fetch(
       Key key,
@@ -4212,6 +4360,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     };
   }
 
+  /**
+   * Fetches an SSK block from local stores and caches according to flags.
+   *
+   * @param key node SSK key to locate.
+   * @param dontPromote when {@code true}, avoid promoting into hotter tiers.
+   * @param canReadClientCache whether the client cache may be consulted.
+   * @param canWriteClientCache whether the client cache may be updated.
+   * @param canWriteDatastore whether the datastore may be updated (subject to policy).
+   * @param forULPR whether this access is part of ULPR handling.
+   * @param meta optional metadata sink; may be {@code null}.
+   * @return the {@link SSKBlock} if found; otherwise {@code null}.
+   */
   public SSKBlock fetch(
       NodeSSK key,
       boolean dontPromote,
@@ -4391,6 +4551,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return block;
   }
 
+  /**
+   * Fetches a CHK block from local stores and caches according to flags.
+   *
+   * @param key node CHK key to locate.
+   * @param dontPromote when {@code true}, avoid promoting into hotter tiers.
+   * @param canReadClientCache whether the client cache may be consulted.
+   * @param canWriteClientCache whether the client cache may be updated.
+   * @param canWriteDatastore whether the datastore may be updated (subject to policy).
+   * @param forULPR whether this access is part of ULPR handling.
+   * @param meta optional metadata sink; may be {@code null}.
+   * @return the {@link CHKBlock} if found; otherwise {@code null}.
+   */
   public CHKBlock fetch(
       NodeCHK key,
       boolean dontPromote,
@@ -4573,6 +4745,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   long timeLastDumpedHits;
 
+  /** Logs aggregate hit/miss statistics for stores and caches for debugging. */
   public void dumpStoreHits() {
     long now = System.currentTimeMillis();
     if (now - timeLastDumpedHits > 5000) {
@@ -4608,12 +4781,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Store a datum.
+   * Stores a block to caches and/or persistent store based on flags and policy.
    *
-   * @param block a KeyBlock
-   * @param deep If true, insert to the store rather than the cache. Do not set this to true unless
-   *     the store results from an insert, and this node is the closest node to the target; see the
-   *     description of chkDatastore.
+   * <p>This entry point accepts either CHK or SSK blocks and delegates to the type‑specific
+   * implementation. Promotion into the persistent store is guarded by HTL and sink checks.
+   *
+   * @param block the block to store; CHK or SSK.
+   * @param deep when {@code true}, writes to the main store if allowed; otherwise to the cache.
+   * @param canWriteClientCache whether the client cache may be updated.
+   * @param canWriteDatastore whether the persistent store may be updated (subject to policy).
+   * @param forULPR whether this write originates from ULPR processing (enables slashdot cache).
+   * @throws KeyCollisionException if a conflicting entry exists and overwrite is not permitted for
+   *     the specific block type.
    */
   public void store(
       KeyBlock block,
@@ -4681,7 +4860,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     clientCore.getRequestStarters().chkFetchSchedulerRT.tripPendingKey(block);
   }
 
-  /** Store the block if this is a sink. Call for inserts. */
+  /**
+   * Stores the SSK block if this node is a sink according to routing policy.
+   *
+   * @param block the SSK block to store.
+   * @param deep when {@code true}, attempt to write to the main store; otherwise cache only.
+   * @param overwrite whether to overwrite an existing entry when hashes collide.
+   * @param canWriteClientCache whether the client cache may be updated.
+   * @param canWriteDatastore whether the persistent store may be updated.
+   * @throws KeyCollisionException if a collision occurs and {@code overwrite} is {@code false}.
+   */
   public void storeInsert(
       SSKBlock block,
       boolean deep,
@@ -4693,8 +4881,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Store only to the cache, and not the store. Called by requests, as only inserts cause data to
-   * be added to the store.
+   * Stores to caches only (never to the main store).
+   *
+   * <p>Used by fetch paths where only cache promotion is desired. Persistent store writes are never
+   * performed by this method regardless of flags.
+   *
+   * @param block the SSK block to cache.
+   * @param canWriteClientCache whether the client cache may be updated.
+   * @param canWriteDatastore whether the datastore write flag is set; ignored here (never used).
+   * @param fromULPR whether the write originates from ULPR processing; enables slashdot cache.
+   * @throws KeyCollisionException if the cache write detects a key collision.
    */
   public void storeShallow(
       SSKBlock block, boolean canWriteClientCache, boolean canWriteDatastore, boolean fromULPR)
@@ -4770,8 +4966,15 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   final boolean decrementAtMin;
 
   /**
-   * Decrement the HTL according to the policy of the given NodePeer if it is non-null, or do
-   * something else if it is null.
+   * Decrements the HTL according to policy for the given source.
+   *
+   * <p>Edges (minimum/maximum) may be decremented probabilistically to reduce routing artifacts.
+   * When a {@code source} is present, the per‑peer policy is applied; otherwise a node‑level policy
+   * is used. The returned value is never negative.
+   *
+   * @param source peer that forwarded the request, or {@code null} for locally originated traffic.
+   * @param htl current hop‑to‑live value before decrement.
+   * @return the decremented HTL, bounded between zero and {@code maxHTL}.
    */
   public short decrementHTL(PeerNode source, short htl) {
     if (source != null) return source.decrementHTL(htl);
@@ -4792,15 +4995,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Fetch or create an CHKInsertSender for a given key/htl.
+   * Options for CHK insert senders.
    *
-   * @param key The key to be inserted.
-   * @param htl The current HTL. We can't coalesce inserts across HTL's.
-   * @param uid The UID of the caller's request chain, or a new one. This is obviously not used if
-   *     there is already an CHKInsertSender running.
-   * @param source The node that sent the InsertRequest, or null if it originated locally.
-   * @param ignoreLowBackoff
-   * @param preferInsert
+   * <p>These flags influence how a {@link CHKInsertSender} is created and how it behaves during an
+   * insert operation (e.g., cache eligibility, coalescing, and backoff handling). Instances are
+   * immutable; use the builder‑style {@code withXxx(...)} methods to derive modified copies.
    */
   public static final class ChkInsertOptions {
     public final byte[] headers;
@@ -4873,6 +5072,21 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Fetches or creates a {@link CHKInsertSender} for a given key and HTL.
+   *
+   * <p>If an existing sender for the same key and scheduling class exists, it will be reused with
+   * transfer coalescing; otherwise a new sender is constructed, started, and returned. The method
+   * is non‑blocking and immediately returns the sender instance.
+   *
+   * @param key the CHK to insert; must not be {@code null}.
+   * @param htl the current hop‑to‑live for the insert; affects sink decisions and routing.
+   * @param uid caller‑supplied correlation identifier used in logs and metrics.
+   * @param tag insert owner used by schedulers for tracking and cancellation.
+   * @param source upstream peer that initiated the insert, or {@code null} for local.
+   * @param opts immutable options controlling cache writes, fork‑on‑cacheable, and backoff policy.
+   * @return a started {@link CHKInsertSender} coordinating the insert on background threads.
+   */
   public CHKInsertSender makeInsertSender(
       NodeCHK key, short htl, long uid, InsertTag tag, PeerNode source, ChkInsertOptions opts) {
     if (LOG.isDebugEnabled())
@@ -4899,15 +5113,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Fetch or create an SSKInsertSender for a given key/htl.
+   * Options for SSK insert senders.
    *
-   * @param key The key to be inserted.
-   * @param htl The current HTL. We can't coalesce inserts across HTL's.
-   * @param uid The UID of the caller's request chain, or a new one. This is obviously not used if
-   *     there is already an SSKInsertSender running.
-   * @param source The node that sent the InsertRequest, or null if it originated locally.
-   * @param ignoreLowBackoff
-   * @param preferInsert
+   * <p>These flags influence how a {@link SSKInsertSender} is created and how it behaves during an
+   * insert operation (e.g., cache/store writes, forking, and backoff handling). Instances are
+   * immutable; use the builder‑style {@code withXxx(...)} methods to derive modified copies.
    */
   public static final class SskInsertOptions {
     public final boolean fromStore;
@@ -4989,6 +5199,21 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Fetches or creates a {@link SSKInsertSender} for a given block and HTL.
+   *
+   * <p>If a sender for the same key and scheduling class exists, it may be reused via transfer
+   * coalescing; otherwise a new sender is constructed, started, and returned. Public keys required
+   * for the insert are cached locally before the sender is created.
+   *
+   * @param block the SSK block to insert; must contain a non‑null public key.
+   * @param htl the current hop‑to‑live for the insert; affects sink decisions and routing.
+   * @param uid caller‑supplied correlation identifier used in logs and metrics.
+   * @param tag insert owner used by schedulers for tracking and cancellation.
+   * @param source upstream peer that initiated the insert, or {@code null} for local.
+   * @param opts immutable options controlling cache/store writes, forking, and backoff policy.
+   * @return a started {@link SSKInsertSender} coordinating the insert on background threads.
+   */
   public SSKInsertSender makeInsertSender(
       SSKBlock block, short htl, long uid, InsertTag tag, PeerNode source, SskInsertOptions opts) {
     NodeSSK key = block.getKey();
@@ -5025,7 +5250,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * @return Some status information.
+   * Returns a human‑readable summary of current node status.
+   *
+   * @return a multi‑line textual summary including peer and transfer information.
    */
   public String getStatus() {
     StringBuilder sb = new StringBuilder();
@@ -5037,7 +5264,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * @return TMCI peer list
+   * Returns a textual list of peers formatted for TMCI.
+   *
+   * @return a string containing the current TMCI peer listing.
    */
   public String getTMCIPeerList() {
     StringBuilder sb = new StringBuilder();
@@ -5046,6 +5275,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return sb.toString();
   }
 
+  /**
+   * Fetches a client key (CHK or SSK) from local caches/stores.
+   *
+   * @param key client‑level key wrapper.
+   * @param canReadClientCache allow consulting the client cache.
+   * @param canWriteClientCache allow promoting results into the client cache.
+   * @param canWriteDatastore allow promoting results into the persistent store (policy permitting).
+   * @return a {@link ClientKeyBlock} when found locally; otherwise {@code null}.
+   * @throws KeyVerifyException if block verification fails for the specific key type.
+   */
   @SuppressWarnings("unused")
   public ClientKeyBlock fetchKey(
       ClientKey key,
@@ -5060,6 +5299,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     };
   }
 
+  /**
+   * Fetches an SSK for a client key from local caches/stores.
+   *
+   * @param clientSSK client key wrapper; the public key will be resolved if missing.
+   * @param canReadClientCache allow consulting the client cache.
+   * @param canWriteClientCache allow promoting results into the client cache.
+   * @param canWriteDatastore allow promoting results into the persistent store (policy permitting).
+   * @return a constructed {@link ClientSSKBlock} when found; otherwise {@code null}.
+   * @throws SSKVerifyException when verification fails or the public key is not valid.
+   */
   public ClientKeyBlock fetch(
       ClientSSK clientSSK,
       boolean canReadClientCache,
@@ -5098,6 +5347,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return ClientSSKBlock.construct(block, clientSSK);
   }
 
+  /**
+   * Fetches a CHK for a client key from local caches/stores.
+   *
+   * @param clientCHK client key wrapper.
+   * @param canReadClientCache allow consulting the client cache.
+   * @param canWriteClientCache allow promoting results into the client cache.
+   * @param canWriteDatastore allow promoting results into the persistent store (policy permitting).
+   * @return a constructed {@link ClientCHKBlock} when found; otherwise {@code null}.
+   * @throws CHKVerifyException when verification fails.
+   */
   private ClientKeyBlock fetch(
       ClientCHK clientCHK,
       boolean canReadClientCache,
@@ -5117,6 +5376,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return new ClientCHKBlock(block, clientCHK);
   }
 
+  /**
+   * Attempts a graceful shutdown and then exits the JVM with the given code.
+   *
+   * @param reason exit status code to return to the OS.
+   */
   @SuppressWarnings("finally")
   public void exit(int reason) {
     try {
@@ -5127,6 +5391,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Attempts a graceful shutdown and then exits the JVM (status 0).
+   *
+   * @param reason textual reason recorded in logs.
+   */
   @SuppressWarnings("finally")
   public void exit(String reason) {
     try {
@@ -5138,8 +5407,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Returns true if the node is shutting down. The packet receiver calls this for every packet, and
-   * boolean is atomic, so this method is not synchronized.
+   * Reports whether the node is in the process of shutting down.
+   *
+   * @return {@code true} when shutdown has begun and new work should not be scheduled.
    */
   public boolean isStopping() {
     return isStopping;
@@ -5178,10 +5448,21 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return nodeUpdater;
   }
 
+  /**
+   * Returns the current list of darknet peer connections.
+   *
+   * @return array of active darknet peers.
+   */
   public DarknetPeerNode[] getDarknetConnections() {
     return peers.getDarknetPeers();
   }
 
+  /**
+   * Adds a peer to the connection set and persists the peer list.
+   *
+   * @param pn peer to add.
+   * @return {@code true} if added; {@code false} if it already existed.
+   */
   @SuppressWarnings("BooleanMethodIsAlwaysInverted")
   public boolean addPeerConnection(PeerNode pn) {
     boolean retval = peers.addPeer(pn);
@@ -5189,6 +5470,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return retval;
   }
 
+  /**
+   * Disconnects and removes a peer connection.
+   *
+   * @param pn peer to disconnect and remove.
+   */
   public void removePeerConnection(PeerNode pn) {
     peers.disconnectAndRemove(pn, true, false, false);
   }
@@ -5198,6 +5484,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     ipDetector.onConnectedPeer();
   }
 
+  /**
+   * Returns the local darknet FNP UDP port.
+   *
+   * @return local UDP port number for the darknet socket.
+   */
   public int getFNPPort() {
     return this.getDarknetPortNumber();
   }
@@ -5213,7 +5504,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     n2nmListeners.put(type, listener);
   }
 
-  /** Handle a received node to node message */
+  /**
+   * Handles a received node‑to‑node message provided by the transport layer.
+   *
+   * @param m the decoded message wrapper, including type and payload objects.
+   * @param src the peer that sent the message.
+   */
   public void receivedNodeToNodeMessage(Message m, PeerNode src) {
     int type = (Integer) m.getObject(DMT.NODE_TO_NODE_MESSAGE_TYPE);
     ShortBuffer messageData = (ShortBuffer) m.getObject(DMT.NODE_TO_NODE_MESSAGE_DATA);
@@ -5242,9 +5538,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Handle a node to node text message SimpleFieldSet
+   * Handles a node‑to‑node text message formatted as a {@link SimpleFieldSet}.
    *
-   * @throws FSParseException
+   * @param fs the parsed field set payload; ownership is not transferred.
+   * @param source the darknet peer that sent the message.
+   * @param fileNumber extra‑peer‑data file index used to reference persisted metadata.
+   * @throws FSParseException if the field set does not conform to the expected schema.
    */
   public void handleNodeToNodeTextMessageSimpleFieldSet(
       SimpleFieldSet fs, DarknetPeerNode source, int fileNumber) throws FSParseException {
@@ -5327,7 +5626,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return peers.connectedPeers();
   }
 
-  /** Return a peer of the node given its ip and port, name or identity, as a String */
+  /**
+   * Finds a peer node by identity string, name (darknet), or "host:port" text.
+   *
+   * @param nodeIdentifier peer selector: identity string, configured name (darknet only), or
+   *     address in {@code host:port} format.
+   * @return the matching peer node when found; otherwise {@code null}.
+   */
   public PeerNode getPeerNode(String nodeIdentifier) {
     for (PeerNode pn : peers.myPeers()) {
       Peer peer = pn.getPeer();
@@ -5376,6 +5681,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return lm.getLocChangeSession();
   }
 
+  /**
+   * Returns the average outgoing swap completion time in milliseconds.
+   *
+   * @return moving average of swap completion time.
+   */
   public int getAverageOutgoingSwapTime() {
     return lm.getAverageSwapTime();
   }
@@ -5443,11 +5753,26 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return usm.getUnclaimedFIFOSize();
   }
 
-  /** Connect this node to another node (for purposes of testing) */
+  /**
+   * Connects this node to a seed server peer (testing only).
+   *
+   * @param node seed peer to connect for controlled testing scenarios.
+   */
   public void connectToSeednode(SeedServerTestPeerNode node) {
     peers.addPeer(node, false, false);
   }
 
+  /**
+   * Connects to another node using the supplied reference and friend settings.
+   *
+   * @param node target node to connect to.
+   * @param trust initial friend trust level.
+   * @param visibility visibility setting for the friend.
+   * @throws FSParseException on reference parse errors.
+   * @throws PeerParseException if peer fields are malformed.
+   * @throws ReferenceSignatureVerificationException if the reference signature is invalid.
+   * @throws PeerTooOldException if the peer does not meet minimum version requirements.
+   */
   public void connect(Node node, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility)
       throws FSParseException,
           PeerParseException,
@@ -5460,6 +5785,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return maxHTL;
   }
 
+  /**
+   * Returns the darknet UDP port number in use.
+   *
+   * @return UDP port number.
+   */
   public int getDarknetPortNumber() {
     return darknetCrypto.getPortNumber();
   }
@@ -5474,7 +5804,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * @return total datastore size in bytes.
+   * Returns the configured total datastore size in bytes.
+   *
+   * @return total byte capacity allocated for all persistent stores combined.
    */
   public synchronized long getStoreSize() {
     return maxTotalDatastoreSize;
@@ -5488,54 +5820,126 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Returns the node directory root (identity and peer files).
+   *
+   * @return node directory path.
+   */
   public File getNodeDir() {
     return nodeDir.dir();
   }
 
+  /**
+   * Returns the configuration directory root.
+   *
+   * @return configuration directory path.
+   */
   public File getCfgDir() {
     return cfgDir.dir();
   }
 
+  /**
+   * Returns the user data directory root.
+   *
+   * @return user data directory path.
+   */
   public File getUserDir() {
     return userDir.dir();
   }
 
+  /**
+   * Returns the runtime state directory root.
+   *
+   * @return runtime state directory path.
+   */
   public File getRunDir() {
     return runDir.dir();
   }
 
+  /**
+   * Returns the datastore base directory.
+   *
+   * @return datastore base directory path.
+   */
   public File getStoreDir() {
     return storeDir.dir();
   }
 
+  /**
+   * Returns the plugin directory root.
+   *
+   * @return plugin directory path.
+   */
   public File getPluginDir() {
     return pluginDir.dir();
   }
 
+  /**
+   * ProgramDirectory handle for the node directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory nodeDir() {
     return nodeDir;
   }
 
+  /**
+   * ProgramDirectory handle for the configuration directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory cfgDir() {
     return cfgDir;
   }
 
+  /**
+   * ProgramDirectory handle for the user data directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory userDir() {
     return userDir;
   }
 
+  /**
+   * ProgramDirectory handle for the runtime state directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory runDir() {
     return runDir;
   }
 
+  /**
+   * ProgramDirectory handle for the datastore base directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory storeDir() {
     return storeDir;
   }
 
+  /**
+   * ProgramDirectory handle for the plugin directory.
+   *
+   * @return program directory handle.
+   */
   public ProgramDirectory pluginDir() {
     return pluginDir;
   }
 
+  /**
+   * Creates a new darknet peer from a reference.
+   *
+   * @param fs parsed darknet reference.
+   * @param trust initial friend trust level.
+   * @param visibility visibility setting for the friend.
+   * @return constructed {@link DarknetPeerNode} not yet connected.
+   * @throws FSParseException if the reference cannot be parsed.
+   * @throws PeerParseException if peer fields are malformed.
+   * @throws ReferenceSignatureVerificationException if the signature on the reference is invalid.
+   * @throws PeerTooOldException if the peer does not meet minimum version requirements.
+   */
   public DarknetPeerNode createNewDarknetNode(
       SimpleFieldSet fs, FRIEND_TRUST trust, FRIEND_VISIBILITY visibility)
       throws FSParseException,
@@ -5545,6 +5949,17 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return new DarknetPeerNode(fs, this, darknetCrypto, false, trust, visibility, getPeers());
   }
 
+  /**
+   * Creates a new opennet peer from a reference.
+   *
+   * @param fs parsed opennet reference; must belong to a compatible peer.
+   * @return constructed {@link OpennetPeerNode} not yet connected.
+   * @throws FSParseException on parse errors.
+   * @throws OpennetDisabledException if opennet is not enabled on this node.
+   * @throws PeerParseException if peer fields are malformed.
+   * @throws ReferenceSignatureVerificationException if the signature on the reference is invalid.
+   * @throws PeerTooOldException if the peer does not meet minimum version requirements.
+   */
   public OpennetPeerNode createNewOpennetNode(SimpleFieldSet fs)
       throws FSParseException,
           OpennetDisabledException,
@@ -5555,6 +5970,17 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return new OpennetPeerNode(fs, this, opennet.getCrypto(), opennet, false, getPeers());
   }
 
+  /**
+   * Creates a seed‑server test peer from a reference (testing).
+   *
+   * @param fs parsed opennet reference.
+   * @return a {@link SeedServerTestPeerNode} instance used for local testing.
+   * @throws FSParseException on parse errors.
+   * @throws OpennetDisabledException if opennet is not enabled on this node.
+   * @throws PeerParseException if peer fields are malformed.
+   * @throws ReferenceSignatureVerificationException if the signature on the reference is invalid.
+   * @throws PeerTooOldException if the peer does not meet minimum version requirements.
+   */
   public SeedServerTestPeerNode createNewSeedServerTestPeerNode(SimpleFieldSet fs)
       throws FSParseException,
           OpennetDisabledException,
@@ -5565,6 +5991,16 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return new SeedServerTestPeerNode(fs, this, opennet.getCrypto(), true, getPeers());
   }
 
+  /**
+   * Adds a new opennet peer to the manager.
+   *
+   * @param fs parsed opennet reference.
+   * @param connectionType desired connection type.
+   * @return the created {@link OpennetPeerNode} or {@code null} if opennet is disabled.
+   * @throws FSParseException on parse errors.
+   * @throws PeerParseException if peer fields are malformed.
+   * @throws ReferenceSignatureVerificationException if the signature on the reference is invalid.
+   */
   public OpennetPeerNode addNewOpennetNode(SimpleFieldSet fs, ConnectionType connectionType)
       throws FSParseException, PeerParseException, ReferenceSignatureVerificationException {
     // Perhaps this should throw OpennetDisabledExcemption rather than returning false
@@ -5572,37 +6008,74 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return opennet.addNewOpennetNode(fs, connectionType, false);
   }
 
+  /**
+   * Returns the opennet ECDSA public key hash.
+   *
+   * @return 32‑byte public key hash.
+   */
   public byte[] getOpennetPubKeyHash() {
     return opennet.getCrypto().getEcdsaPubKeyHash();
   }
 
+  /**
+   * Returns the darknet ECDSA public key hash.
+   *
+   * @return 32‑byte public key hash.
+   */
   public byte[] getDarknetPubKeyHash() {
     return darknetCrypto.getEcdsaPubKeyHash();
   }
 
+  /**
+   * Indicates whether opennet is currently enabled.
+   *
+   * @return {@code true} when opennet is enabled.
+   */
   public synchronized boolean isOpennetEnabled() {
     return opennet != null;
   }
 
+  /**
+   * Exports the darknet public reference for this node.
+   *
+   * @return field set describing the public darknet reference.
+   */
   public SimpleFieldSet exportDarknetPublicFieldSet() {
     return darknetCrypto.exportPublicFieldSet();
   }
 
+  /**
+   * Exports the opennet public reference for this node.
+   *
+   * @return field set describing the public opennet reference.
+   */
   public SimpleFieldSet exportOpennetPublicFieldSet() {
     return opennet.getCrypto().exportPublicFieldSet();
   }
 
+  /**
+   * Exports the darknet private reference for this node.
+   *
+   * @return field set containing private darknet information.
+   */
   public SimpleFieldSet exportDarknetPrivateFieldSet() {
     return darknetCrypto.exportPrivateFieldSet();
   }
 
+  /**
+   * Exports the opennet private reference for this node.
+   *
+   * @return field set containing private opennet information.
+   */
   public SimpleFieldSet exportOpennetPrivateFieldSet() {
     return opennet.getCrypto().exportPrivateFieldSet();
   }
 
   /**
-   * Should the IP detection code only use the IP address override and the bindTo information,
-   * rather than doing a full detection?
+   * Indicates whether IP detection should be skipped in favor of explicit bindings.
+   *
+   * @return {@code true} when all in‑use ports have explicit {@code bindTo} values; otherwise
+   *     {@code false}.
    */
   public synchronized boolean dontDetect() {
     // Only return true if bindTo is set on all ports which are in use
@@ -5690,9 +6163,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Returns true if the packet receiver should try to decode/process packets that are not from a
-   * peer (i.e. from a seed connection) The packet receiver calls this upon receiving an
-   * unrecognized packet.
+   * Determines whether anonymous authentication should be attempted for unknown packets.
+   *
+   * @param isOpennet {@code true} if the packet arrived on the opennet transport.
+   * @return {@code true} when anonymous auth should be attempted on the given transport.
    */
   public boolean wantAnonAuth(boolean isOpennet) {
     if (isOpennet) return opennet != null && acceptSeedConnections;
@@ -5717,6 +6191,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return crypto.definitelyPortForwarded();
   }
 
+  /**
+   * Reports whether the darknet socket is definitely port‑forwarded.
+   *
+   * @return {@code true} if external reachability is confirmed; otherwise {@code false}.
+   */
   public boolean darknetDefinitelyPortForwarded() {
     if (darknetCrypto == null) return false;
     return darknetCrypto.definitelyPortForwarded();
@@ -5729,7 +6208,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     else return fetch((NodeSSK) key, true, canReadClientCache, false, false, forULPR, null) != null;
   }
 
-  /** Warning: does not announce change in location! */
+  /**
+   * Sets the node's location without broadcasting a change to peers.
+   *
+   * @param loc new normalized location value.
+   */
   public void setLocation(double loc) {
     lm.setLocation(loc);
   }
@@ -5756,8 +6239,15 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Can be called to decrypt client.dat* etc, or can be called when switching from another security
-   * level to HIGH.
+   * Sets or unlocks the master password used for encrypted client material.
+   *
+   * @param password clear‑text password entered by the user.
+   * @param inFirstTimeWizard {@code true} when called during the first‑time setup wizard.
+   * @throws AlreadySetPasswordException if a password is already set; use changeMasterPassword().
+   * @throws MasterKeysWrongPasswordException if the provided password does not unlock existing
+   *     material.
+   * @throws MasterKeysFileSizeException if the master key file has an invalid size.
+   * @throws IOException on I/O errors while reading or writing key material.
    */
   public void setMasterPassword(String password, boolean inFirstTimeWizard)
       throws AlreadySetPasswordException,
@@ -5824,6 +6314,17 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     executor.execute(migrate, "Migrate data from previous store");
   }
 
+  /**
+   * Changes the master password protecting client material.
+   *
+   * @param oldPassword the old password; may be empty when not previously set.
+   * @param newPassword the new password to set for protecting client materials.
+   * @param inFirstTimeWizard whether invoked from the first‑time wizard.
+   * @throws MasterKeysWrongPasswordException if the old password is incorrect.
+   * @throws MasterKeysFileSizeException if the master keys file has an invalid size.
+   * @throws IOException on I/O errors while writing new key material.
+   * @throws AlreadySetPasswordException if a password is already configured.
+   */
   public void changeMasterPassword(
       String oldPassword, String newPassword, boolean inFirstTimeWizard)
       throws MasterKeysWrongPasswordException,
@@ -5846,6 +6347,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /** Thrown when a master password is already configured and a new one is set. */
   public static class AlreadySetPasswordException extends Exception {
 
     @Serial private static final long serialVersionUID = -7328456475029374032L;
@@ -5874,11 +6376,17 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // persistent-temp will be cleaned on restart.
   }
 
+  /** Requests a wrapper restart after a panic and exits the current JVM. */
   public void finishPanic() {
     WrapperManager.restart();
     System.exit(0);
   }
 
+  /**
+   * Indicates whether the node is awaiting a password to unlock client materials.
+   *
+   * @return {@code true} when either the client cache or database requires a password.
+   */
   public boolean awaitingPassword() {
     if (clientCacheAwaitingPassword) return true;
     return databaseAwaitingPassword;
@@ -5897,34 +6405,27 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * @return canonical path of the database file in use.
+   * Returns the canonical path of the currently active database file.
+   *
+   * @return absolute canonical path string for the node database in use.
    */
   public String getDatabasePath() {
     return clientCore.getClientLayerPersister().getWriteFilename().toString();
   }
 
   /**
-   * Should we commit the block to the store rather than the cache?
+   * Determines whether a block should be stored in the main store (deep) rather than a cache.
    *
-   * <p>We used to check whether we are a sink by checking whether any peer has a closer location
-   * than we do. Then we made low-uptime nodes exempt from this calculation: if we route to a low
-   * uptime node with a closer location, we want to store it anyway since he may go offline. The
-   * problem was that if we routed to a low-uptime node, and there was another option that wasn't
-   * low-uptime but was closer to the target than we were, then we would not store in the store.
-   * Also, routing isn't always by the closest peer location: FOAF and per-node failure tables
-   * change it. So now, we consider the nodes we have actually routed to:
+   * <p>The decision is based on relative proximity to the target key compared with the source and
+   * the set of peers the request was routed to, discounting low‑uptime peers. This approximates the
+   * behavior of storing at the best available sink while avoiding premature store writes that would
+   * bias Bloom filters and traffic patterns.
    *
-   * <p>Store in datastore if our location is closer to the target than:
-   *
-   * <ol>
-   *   <li>the source location (if any, and ignoring if low-uptime)
-   *   <li>the locations of the nodes we just routed to (ditto)
-   * </ol>
-   *
-   * @param key
-   * @param source
-   * @param routedTo
-   * @return
+   * @param key the key being inserted or fetched.
+   * @param source the previous hop (may be {@code null} for local originators).
+   * @param routedTo peers selected for onward routing of the request.
+   * @return {@code true} if the node is closer to the target than the considered peers and should
+   *     therefore store deeply; {@code false} otherwise.
    */
   public boolean shouldStoreDeep(Key key, PeerNode source, PeerNode[] routedTo) {
     double myLoc = getLocation();
@@ -6055,13 +6556,23 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return TESTNET_ENABLED;
   }
 
-  /** Create a thread-safe random generator with a random seed for non-cryptographic use. */
+  /**
+   * Creates a thread‑safe {@link MersenneTwister} seeded from the node RNG (non‑cryptographic).
+   *
+   * @return a synchronized PRNG suitable for simulations and randomized scheduling.
+   */
   public MersenneTwister createRandom() {
     byte[] buf = new byte[16];
     random.nextBytes(buf);
     return MersenneTwister.createSynchronized(buf);
   }
 
+  /**
+   * Enables new load management instrumentation for the specified scheduling class.
+   *
+   * @param realTimeFlag when {@code true}, enables for real‑time queues; otherwise bulk.
+   * @return {@code true} if enabled; {@code false} if stats are not initialized yet.
+   */
   public boolean enableNewLoadManagement(boolean realTimeFlag) {
     NodeStats stats = this.nodeStats;
     if (stats == null) {
@@ -6073,7 +6584,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return stats.enableNewLoadManagement(realTimeFlag);
   }
 
-  /** Consider moving to Probe.java. */
+  /**
+   * Indicates whether routed pings are enabled on this node.
+   *
+   * @return {@code true} when routed probes are allowed; {@code false} otherwise.
+   */
   public boolean enableRoutedPing() {
     return enableRoutedPing;
   }
@@ -6109,6 +6624,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     else return null;
   }
 
+  /**
+   * Returns the plugin manager instance.
+   *
+   * @return plugin manager.
+   */
   public PluginManager getPluginManager() {
     return pluginManager;
   }
@@ -6117,114 +6637,254 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return databaseKey;
   }
 
+  /**
+   * Returns the node diagnostics facility.
+   *
+   * @return diagnostics facade.
+   */
   public NodeDiagnostics getNodeDiagnostics() {
     return nodeDiagnostics;
   }
 
+  /**
+   * Indicates whether diagnostics gathering is enabled.
+   *
+   * @return {@code true} when diagnostics are enabled.
+   */
   public boolean isNodeDiagnosticsEnabled() {
     return enableNodeDiagnostics;
   }
 
+  /**
+   * Returns the aggregate node statistics collector.
+   *
+   * @return node statistics.
+   */
   public NodeStats getNodeStats() {
     return nodeStats;
   }
 
+  /**
+   * Returns the persistent configuration entry point.
+   *
+   * @return persistent config instance.
+   */
   public PersistentConfig getConfig() {
     return config;
   }
 
+  /**
+   * Returns the helper responsible for public‑key caching and retrieval.
+   *
+   * @return pubkey helper.
+   */
   public NodeGetPubkey getGetPubKey() {
     return getPubKey;
   }
 
+  /**
+   * Returns the IP detector managing local/external address discovery.
+   *
+   * @return IP detector.
+   */
   public NodeIPDetector getIpDetector() {
     return ipDetector;
   }
 
+  /**
+   * Indicates whether probabilistic HTL decrementing is disabled.
+   *
+   * @return {@code true} when disabled.
+   */
   public boolean isDisableProbabilisticHTLs() {
     return disableProbabilisticHTLs;
   }
 
+  /**
+   * Returns the request tracker coordinating in‑flight operations.
+   *
+   * @return request tracker.
+   */
   public RequestTracker getTracker() {
     return tracker;
   }
 
+  /**
+   * Returns the peer manager overseeing all connections.
+   *
+   * @return peer manager.
+   */
   public PeerManager getPeers() {
     return peers;
   }
 
+  /**
+   * Returns the node's strong random source.
+   *
+   * @return strong random source.
+   */
   public RandomSource getRandom() {
     return random;
   }
 
+  /**
+   * Returns the JCA {@link SecureRandom} instance used for crypto operations.
+   *
+   * @return secure random instance.
+   */
   public SecureRandom getSecureRandom() {
     return secureRandom;
   }
 
+  /**
+   * Returns a fast, weak PRNG for non‑cryptographic tasks.
+   *
+   * @return weak PRNG.
+   */
   public Random getFastWeakRandom() {
     return fastWeakRandom;
   }
 
+  /**
+   * Returns the darknet crypto/session manager.
+   *
+   * @return darknet crypto manager.
+   */
   public NodeCrypto getDarknetCrypto() {
     return darknetCrypto;
   }
 
+  /**
+   * Returns the primary executor used for background work.
+   *
+   * @return executor instance.
+   */
   public PriorityAwareExecutor getExecutor() {
     return executor;
   }
 
+  /**
+   * Returns the transport packet sender.
+   *
+   * @return packet sender.
+   */
   public PacketSender getPacketSender() {
     return ps;
   }
 
+  /**
+   * Returns the DNS requester used by the node.
+   *
+   * @return DNS requester.
+   */
   public DNSRequester getDNSRequester() {
     return dnsr;
   }
 
+  /**
+   * Returns the node dispatcher responsible for message handling.
+   *
+   * @return dispatcher.
+   */
   public NodeDispatcher getDispatcher() {
     return dispatcher;
   }
 
+  /**
+   * Returns the uptime estimator for the running node.
+   *
+   * @return uptime estimator.
+   */
   public UptimeEstimator getUptimeEstimator() {
     return uptime;
   }
 
+  /**
+   * Returns the outbound bandwidth throttle.
+   *
+   * @return output throttle.
+   */
   public OutputThrottle getOutputThrottle() {
     return outputThrottle;
   }
 
+  /**
+   * Indicates whether local traffic is throttled.
+   *
+   * @return {@code true} when local traffic throttling is enabled.
+   */
   public boolean isThrottleLocalData() {
     return throttleLocalData;
   }
 
+  /**
+   * Indicates whether ARKs are enabled.
+   *
+   * @return {@code true} when ARKs are enabled.
+   */
   public boolean isEnableARKs() {
     return enableARKs;
   }
 
+  /**
+   * Indicates whether per‑node failure tables are enabled.
+   *
+   * @return {@code true} when enabled.
+   */
   public boolean isEnablePerNodeFailureTables() {
     return enablePerNodeFailureTables;
   }
 
+  /**
+   * Indicates whether ULPR data propagation is enabled.
+   *
+   * @return {@code true} when enabled.
+   */
   public boolean isEnableULPRDataPropagation() {
     return enableULPRDataPropagation;
   }
 
+  /**
+   * Indicates whether swapping is enabled.
+   *
+   * @return {@code true} when enabled.
+   */
   public boolean isEnableSwapping() {
     return enableSwapping;
   }
 
+  /**
+   * Indicates whether swap queueing is enabled.
+   *
+   * @return {@code true} when enabled.
+   */
   public boolean isEnableSwapQueueing() {
     return enableSwapQueueing;
   }
 
+  /**
+   * Indicates whether packet coalescing is enabled.
+   *
+   * @return {@code true} when enabled.
+   */
   public boolean isEnablePacketCoalescing() {
     return enablePacketCoalescing;
   }
 
+  /**
+   * Returns the IO statistics collector for transport metrics and diagnostics.
+   *
+   * @return IO stats collector instance.
+   */
   public IOStatisticCollector getCollector() {
     return collector;
   }
 
+  /**
+   * Returns the node's client core, exposing high‑level client APIs and UI hooks.
+   *
+   * @return client core instance.
+   */
   public NodeClientCore getClientCore() {
     return clientCore;
   }
@@ -6241,18 +6901,38 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return securityLevels;
   }
 
+  /**
+   * Returns the localhost address as a {@link FreenetInetAddress} helper.
+   *
+   * @return localhost freenet address wrapper.
+   */
   public FreenetInetAddress getFreenetLocalhostAddress() {
     return fLocalhostAddress;
   }
 
+  /**
+   * Returns the {@link FetchContext} used for ARK retrievals.
+   *
+   * @return the ARK fetch context.
+   */
   public FetchContext getArkFetcherContext() {
     return arkFetcherContext;
   }
 
+  /**
+   * Returns the boot identifier of the previous clean start (or -1 when unknown).
+   *
+   * @return last recorded boot identifier, or -1 if unavailable.
+   */
   public long getLastBootId() {
     return lastBootID;
   }
 
+  /**
+   * Returns the randomly generated boot identifier for this process start.
+   *
+   * @return boot identifier value.
+   */
   public long getBootId() {
     return bootID;
   }
