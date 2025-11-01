@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -23,10 +24,10 @@ class RevocationKeyFoundUserAlertTest {
   }
 
   @Test
-  void constructor_whenDisabledNotBlownTrue_buildsCriticalNonDismissibleAlertWithDisabledTextAndHtml() {
+  void
+      constructor_whenDisabledNotBlownTrue_buildsCriticalNonDismissibleAlertWithDisabledTextAndHtml() {
     // Arrange
-    String message = "Key revoked: C\\\
-temp\\file and $HOME";
+    String message = "Key revoked: C:\\temp\\file and $HOME";
 
     String expectedTitle =
         NodeL10n.getBase().getString("RevocationKeyFoundUserAlert.titleDisabled");
@@ -50,7 +51,7 @@ temp\\file and $HOME";
         () -> assertEquals(expectedText, alert.getText()),
         () -> assertEquals(expectedText, alert.getShortText()),
         () -> assertEquals(Integer.toString(alert.hashCode()), alert.anchor()),
-        () -> assertEquals(null, alert.dismissButtonText()),
+        () -> assertNull(alert.dismissButtonText()),
         () -> assertFalse(alert.shouldUnregisterOnDismiss()));
 
     HTMLNode html = alert.getHTMLText();
@@ -71,15 +72,15 @@ temp\\file and $HOME";
   }
 
   @Test
-  void constructor_whenDisabledNotBlownFalse_buildsCriticalNonDismissibleAlertWithActiveTextAndHtml() {
+  void
+      constructor_whenDisabledNotBlownFalse_buildsCriticalNonDismissibleAlertWithActiveTextAndHtml() {
     // Arrange
     String message = "Update feed compromised (nonce=$N, path=/var/lib)";
 
     String expectedTitle = NodeL10n.getBase().getString("RevocationKeyFoundUserAlert.title");
     String expectedFirstP = NodeL10n.getBase().getString("RevocationKeyFoundUserAlert.text");
     String expectedSecondP =
-        NodeL10n.getBase()
-            .getString("RevocationKeyFoundUserAlert.textDetail", "message", message);
+        NodeL10n.getBase().getString("RevocationKeyFoundUserAlert.textDetail", "message", message);
     String expectedText = expectedFirstP + " " + expectedSecondP;
 
     // Act
@@ -100,8 +101,12 @@ temp\\file and $HOME";
     assertEquals(2, html.getChildren().size());
     assertEquals("p", html.getChildren().get(0).getName());
     assertEquals("p", html.getChildren().get(1).getName());
-    assertEquals(expectedFirstP, html.getChildren().get(0).generateChildren());
-    assertEquals(expectedSecondP, html.getChildren().get(1).generateChildren());
+    // HTML nodes encode text content; compare against encoded expectations.
+    assertEquals(
+        network.crypta.support.HTMLEncoder.encode(expectedFirstP),
+        html.getChildren().get(0).generateChildren());
+    assertEquals(
+        network.crypta.support.HTMLEncoder.encode(expectedSecondP),
+        html.getChildren().get(1).generateChildren());
   }
 }
-
