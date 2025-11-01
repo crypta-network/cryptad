@@ -3611,7 +3611,7 @@ public class QueueToadlet extends Toadlet
 
     public GetCompletedEvent(String identifier, FreenetURI uri, long size) {
       super(
-          Type.GetCompleted,
+          Type.GET_COMPLETED,
           true,
           null,
           null,
@@ -3687,7 +3687,7 @@ public class QueueToadlet extends Toadlet
 
     public PutCompletedEvent(String identifier, FreenetURI uri, long size) {
       super(
-          Type.PutCompleted,
+          Type.PUT_COMPLETED,
           true,
           null,
           null,
@@ -3763,7 +3763,7 @@ public class QueueToadlet extends Toadlet
 
     public PutDirCompletedEvent(String identifier, FreenetURI uri, long size, int files) {
       super(
-          Type.PutDirCompleted,
+          Type.PUT_DIR_COMPLETED,
           true,
           null,
           null,
