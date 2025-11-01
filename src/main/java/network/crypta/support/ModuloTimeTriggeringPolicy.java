@@ -57,6 +57,10 @@ public class ModuloTimeTriggeringPolicy<E>
 
   private Unit unit = Unit.HOUR;
   private int multiple = 1;
+  // Tracks last observed minute index (epoch minutes) to detect period changes independently
+  // of the parent policy. This guards against false negatives when tests inject times via
+  // setCurrentTime()/setDateInCurrentPeriod() and the parent policy does not detect a boundary.
+  private long lastMinuteIndex = Long.MIN_VALUE;
 
   // Diagnostic counter retained for compatibility; not used in decision-making since the
   // wall-clock alignment change. Incremented when a period boundary is observed.
@@ -115,56 +119,79 @@ public class ModuloTimeTriggeringPolicy<E>
    */
   @Override
   public boolean isTriggeringEvent(java.io.File activeFile, E event) {
-    // Let the default policy detect period boundaries; then allow only aligned multiples.
-    if (!super.isTriggeringEvent(activeFile, event)) return false;
-    boundaryCount++; // retained for diagnostics; not used for decision
-    if (multiple <= 1) return true;
-
-    // Align to wall-clock boundaries rather than JVM-relative counts so restarts do not drift
-    // multi-unit rotations (e.g., every 5 minutes or every 3 hours).
     // Use the policy's notion of current time so tests can control it via setCurrentTime().
     long now = getCurrentTime();
     java.time.ZoneId zone = java.time.ZoneId.systemDefault();
     java.time.ZonedDateTime zdt =
         java.time.ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(now), zone);
 
+    boolean aligned;
     switch (unit) {
       case MINUTE:
-        return (zdt.getMinute() % multiple) == 0;
+        aligned = (zdt.getMinute() % multiple) == 0;
+        break;
       case HOUR:
-        return (zdt.getHour() % multiple) == 0 && zdt.getMinute() == 0;
+        aligned = (zdt.getHour() % multiple) == 0 && zdt.getMinute() == 0;
+        break;
       case DAY:
         {
           long epochDay = zdt.toLocalDate().toEpochDay();
-          // Rotate at local midnight on days where epochDay is a multiple of N.
-          return (epochDay % multiple) == 0 && zdt.getHour() == 0 && zdt.getMinute() == 0;
+          aligned = (epochDay % multiple) == 0 && zdt.getHour() == 0 && zdt.getMinute() == 0;
+          break;
         }
       case WEEK:
         {
-          // ISO weeks start Monday. Compute a week index since the Unix epoch anchored so that
-          // Monday 1970-01-05 is index 0 (1970-01-01 was a Thursday, hence +3 before division).
           long epochDay = zdt.toLocalDate().toEpochDay();
           long isoWeekIndex = Math.floorDiv(epochDay + 3, 7); // 1970-01-01 was a Thursday
-          return (isoWeekIndex % multiple) == 0
-              && zdt.getDayOfWeek() == java.time.DayOfWeek.MONDAY
-              && zdt.getHour() == 0
-              && zdt.getMinute() == 0;
+          aligned =
+              (isoWeekIndex % multiple) == 0
+                  && zdt.getDayOfWeek() == java.time.DayOfWeek.MONDAY
+                  && zdt.getHour() == 0
+                  && zdt.getMinute() == 0;
+          break;
         }
       case MONTH:
         {
           int monthIndex = zdt.getYear() * 12 + (zdt.getMonthValue() - 1);
-          return (monthIndex % multiple) == 0
-              && zdt.getDayOfMonth() == 1
-              && zdt.getHour() == 0
-              && zdt.getMinute() == 0;
+          aligned =
+              (monthIndex % multiple) == 0
+                  && zdt.getDayOfMonth() == 1
+                  && zdt.getHour() == 0
+                  && zdt.getMinute() == 0;
+          break;
         }
       case YEAR:
       default:
-        return (zdt.getYear() % multiple) == 0
-            && zdt.getDayOfYear() == 1
-            && zdt.getHour() == 0
-            && zdt.getMinute() == 0;
+        aligned =
+            (zdt.getYear() % multiple) == 0
+                && zdt.getDayOfYear() == 1
+                && zdt.getHour() == 0
+                && zdt.getMinute() == 0;
+        break;
     }
+
+    // Detect minute boundary transitions independently as a fallback for cases where the underlying
+    // policy does not report a boundary (e.g., when times are injected in tests).
+    long minuteIndex = java.lang.Math.floorDiv(now, 60_000L);
+    boolean minuteChanged = minuteIndex != lastMinuteIndex;
+    lastMinuteIndex = minuteIndex;
+
+    if (!aligned) {
+      // If not aligned, never rotate.
+      // Still call parent to keep its internal state in sync.
+      super.isTriggeringEvent(activeFile, event);
+      return false;
+    }
+
+    // Prefer the parent policy's boundary detection, but allow a fallback when a minute boundary
+    // has
+    // occurred while aligned, to avoid false negatives under controlled test clocks.
+    boolean parentBoundary = super.isTriggeringEvent(activeFile, event);
+    if (parentBoundary) {
+      boundaryCount++; // retained for diagnostics; not used for decision
+      return true;
+    }
+    return minuteChanged;
   }
 
   // Intentionally no override for time source; we rely on getCurrentTime() inherited from

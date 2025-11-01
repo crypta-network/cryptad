@@ -182,7 +182,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     @Override
     public void run() {
-      System.err.println("Migrating old " + (clientCache ? "client cache" : "datastore"));
+      LOG.info("Migrating old {}", (clientCache ? "client cache" : "datastore"));
       if (clientCache) {
         migrateOldStore(oldCHKClientCache, chkClientcache, true);
         StoreCallback<? extends StorableBlock> old;
@@ -217,40 +217,28 @@ public class Node implements TimeSkewDetectorCallback {
         migrateOldStore(oldSSKCache, sskDatacache, false);
         oldSSKCache = null;
       }
-      System.err.println("Finished migrating old " + (clientCache ? "client cache" : "datastore"));
+      LOG.info("Finished migrating old {}", (clientCache ? "client cache" : "datastore"));
     }
   }
 
   volatile CHKStore oldCHK;
 
-  /**
-   * @deprecated Use {@link #getOldPK()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  volatile PubkeyStore oldPK;
+  /** */
+  private volatile PubkeyStore oldPK;
 
   volatile SSKStore oldSSK;
 
   volatile CHKStore oldCHKCache;
 
-  /**
-   * @deprecated Use {@link #getOldPKCache()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  volatile PubkeyStore oldPKCache;
+  /** */
+  private volatile PubkeyStore oldPKCache;
 
   volatile SSKStore oldSSKCache;
 
   volatile CHKStore oldCHKClientCache;
 
-  /**
-   * @deprecated Use {@link #getOldPKClientCache()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  volatile PubkeyStore oldPKClientCache;
+  /** */
+  private volatile PubkeyStore oldPKClientCache;
 
   volatile SSKStore oldSSKClientCache;
 
@@ -261,7 +249,7 @@ public class Node implements TimeSkewDetectorCallback {
       try {
         ramstore.migrateTo(newStore, canReadClientCache);
       } catch (IOException e) {
-        LOG.error("Caught migrating old store: " + e, e);
+        LOG.error("Caught migrating old store: {}", e, e);
       }
       ramstore.clear();
     } else if (store instanceof SaltedHashFreenetStore) {
@@ -403,8 +391,6 @@ public class Node implements TimeSkewDetectorCallback {
             initSaltHashClientCacheFS(suffix, true, key);
           } catch (NodeInitException e) {
             LOG.error("Unable to create new store", e);
-            System.err.println("Unable to create new store: " + e);
-            e.printStackTrace();
             // FIXME l10n both on the NodeInitException and the wrapper message
             throw new InvalidConfigValueException("Unable to create new store: " + e);
           }
@@ -458,23 +444,11 @@ public class Node implements TimeSkewDetectorCallback {
    */
   private MasterKeys keys;
 
-  /**
-   * Stats
-   *
-   * @deprecated Use {@link #getNodeStats()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final NodeStats nodeStats;
+  /** Stats */
+  private final NodeStats nodeStats;
 
-  /**
-   * Config object for the whole node.
-   *
-   * @deprecated Use {@link #getConfig()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PersistentConfig config;
+  /** Config object for the whole node. */
+  private final PersistentConfig config;
 
   // Static stuff related to logger
 
@@ -659,47 +633,21 @@ public class Node implements TimeSkewDetectorCallback {
    */
   private boolean writeLocalToDatastore;
 
-  /**
-   * @deprecated Use {@link #getGetPubKey()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final NodeGetPubkey getPubKey;
+  private final NodeGetPubkey getPubKey;
 
-  /**
-   * FetchContext for ARKs
-   *
-   * @deprecated Use {@link #getArkFetcherContext()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final FetchContext arkFetcherContext;
+  /** FetchContext for ARKs */
+  private final FetchContext arkFetcherContext;
 
-  /**
-   * IP detector
-   *
-   * @deprecated Use {@link #getIpDetector()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final NodeIPDetector ipDetector;
+  /** IP detector */
+  private final NodeIPDetector ipDetector;
 
   /**
    * For debugging/testing, set this to true to stop the probabilistic decrement at the edges of the
    * HTLs.
-   *
-   * @deprecated Use {@link #isDisableProbabilisticHTLs()} instead of accessing this directly.
    */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  boolean disableProbabilisticHTLs;
+  private boolean disableProbabilisticHTLs;
 
-  /**
-   * @deprecated Use {@link #getTracker()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final RequestTracker tracker;
+  private final RequestTracker tracker;
 
   /**
    * Semi-unique ID for swap requests. Used to identify us so that the topology can be
@@ -709,30 +657,13 @@ public class Node implements TimeSkewDetectorCallback {
 
   private String myName;
 
-  /**
-   * @deprecated Use {@link #getLocationManager()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final LocationManager lm;
+  private final LocationManager lm;
 
-  /**
-   * My peers
-   *
-   * @deprecated Use {@link #getPeers()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PeerManager peers;
+  /** My peers */
+  private final PeerManager peers;
 
-  /**
-   * Node-reference directory (node identity, peers, etc)
-   *
-   * @deprecated Use {@link #getNodeDir()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final ProgramDirectory nodeDir;
+  /** Node-reference directory (node identity, peers, etc) */
+  private final ProgramDirectory nodeDir;
 
   /** Config directory (l10n overrides, etc) */
   final ProgramDirectory cfgDir;
@@ -754,51 +685,24 @@ public class Node implements TimeSkewDetectorCallback {
 
   private volatile boolean hasPanicked;
 
-  /**
-   * Strong RNG
-   *
-   * @deprecated Use {@link #getRandom()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final RandomSource random;
+  /** Strong RNG */
+  private final RandomSource random;
 
   /**
    * JCA-compliant strong RNG. WARNING: DO NOT CALL THIS ON THE MAIN NETWORK HANDLING THREADS! In
    * some configurations it can block, potentially forever, on nextBytes()!
-   *
-   * @deprecated Use {@link #getSecureRandom()} instead of accessing this directly.
    */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final SecureRandom secureRandom;
+  private final SecureRandom secureRandom;
 
-  /**
-   * Weak but fast RNG
-   *
-   * @deprecated Use {@link #getFastWeakRandom()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final Random fastWeakRandom;
+  /** Weak but fast RNG */
+  private final Random fastWeakRandom;
 
-  /**
-   * The object which handles incoming messages and allows us to wait for them
-   *
-   * @deprecated Use {@link #getUSM()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final MessageCore usm;
+  /** The object which handles incoming messages and allows us to wait for them */
+  private final MessageCore usm;
 
   // Darknet stuff
 
-  /**
-   * @deprecated Use {@link #getDarknetCrypto()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  NodeCrypto darknetCrypto;
+  private NodeCrypto darknetCrypto;
 
   // Back compat
   private boolean showFriendsVisibilityAlert;
@@ -807,12 +711,7 @@ public class Node implements TimeSkewDetectorCallback {
 
   private final NodeCryptoConfig opennetCryptoConfig;
 
-  /**
-   * @deprecated Use {@link #getOpennet()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  OpennetManager opennet;
+  private OpennetManager opennet;
 
   private volatile boolean isAllowedToConnectToSeednodes;
   private int maxOpennetPeers;
@@ -821,61 +720,21 @@ public class Node implements TimeSkewDetectorCallback {
 
   // General stuff
 
-  /**
-   * @deprecated Use {@link #getExecutor()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PriorityAwareExecutor executor;
+  private final PriorityAwareExecutor executor;
 
-  /**
-   * @deprecated Use {@link #getPacketSender()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PacketSender ps;
+  private final PacketSender ps;
 
-  /**
-   * @deprecated Use {@link #getTicker()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PrioritizedTicker ticker;
+  private final PrioritizedTicker ticker;
 
-  /**
-   * @deprecated Use {@link #getDNSRequester()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final DNSRequester dnsr;
+  private final DNSRequester dnsr;
 
-  /**
-   * @deprecated Use {@link #getDispatcher()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final NodeDispatcher dispatcher;
+  private final NodeDispatcher dispatcher;
 
-  /**
-   * @deprecated Use {@link #getUptimeEstimator()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final UptimeEstimator uptime;
+  private final UptimeEstimator uptime;
 
-  /**
-   * @deprecated Use {@link #getOutputThrottle()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final OutputThrottle outputThrottle;
+  private final OutputThrottle outputThrottle;
 
-  /**
-   * @deprecated Use {@link #isThrottleLocalData()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public boolean throttleLocalData;
+  private boolean throttleLocalData;
 
   private int outputBandwidthLimit;
   private int inputBandwidthLimit;
@@ -884,50 +743,20 @@ public class Node implements TimeSkewDetectorCallback {
   private boolean connectionSpeedDetection;
   boolean inputLimitDefault;
 
-  /**
-   * @deprecated Use {@link #isEnableARKs()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final boolean enableARKs;
+  private final boolean enableARKs;
 
-  /**
-   * @deprecated Use {@link #isEnablePerNodeFailureTables()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final boolean enablePerNodeFailureTables;
+  private final boolean enablePerNodeFailureTables;
 
-  /**
-   * @deprecated Use {@link #isEnableULPRDataPropagation()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final boolean enableULPRDataPropagation;
+  private final boolean enableULPRDataPropagation;
 
-  /**
-   * @deprecated Use {@link #isEnableSwapping()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final boolean enableSwapping;
+  private final boolean enableSwapping;
 
   private volatile boolean publishOurPeersLocation;
   private volatile boolean routeAccordingToOurPeersLocation;
 
-  /**
-   * @deprecated Use {@link #isEnableSwapQueueing()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  boolean enableSwapQueueing;
+  private boolean enableSwapQueueing;
 
-  /**
-   * @deprecated Use {@link #isEnablePacketCoalescing()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  boolean enablePacketCoalescing;
+  private boolean enablePacketCoalescing;
 
   public static final short DEFAULT_MAX_HTL = (short) 18;
   private short maxHTL;
@@ -946,12 +775,7 @@ public class Node implements TimeSkewDetectorCallback {
   /** Should inserts fork when the HTL reaches cacheability? */
   public static final boolean FORK_ON_CACHEABLE_DEFAULT = true;
 
-  /**
-   * @deprecated Use {@link #getCollector()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final IOStatisticCollector collector;
+  private final IOStatisticCollector collector;
 
   /** Type identifier for fproxy node to node messages, as sent on DMT.nodeToNodeMessage's */
   public static final int N2N_MESSAGE_TYPE_FPROXY = 1;
@@ -994,89 +818,37 @@ public class Node implements TimeSkewDetectorCallback {
    * problems, or we suspect that the node has been booted and not written the file e.g. if we can't
    * write it. So if we want to compare data gathered in the last session and only recorded to disk
    * on a clean shutdown to data we have now, we just include the lastBootID.
-   *
-   * @deprecated Use {@link #getLastBootId()} instead of accessing this directly.
    */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final long lastBootID;
+  private final long lastBootID;
 
-  /**
-   * @deprecated Use {@link #getBootId()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final long bootID;
+  private final long bootID;
 
-  /**
-   * @deprecated Use {@link #getStartupTime()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final long startupTime;
+  private final long startupTime;
 
-  /**
-   * @deprecated Use {@link #getClientCore()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final NodeClientCore clientCore;
+  private final NodeClientCore clientCore;
 
   // ULPRs, RecentlyFailed, per node failure tables, are all managed by FailureTable.
 
-  /**
-   * @deprecated Use {@link #getFailureTable()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  final FailureTable failureTable;
+  private final FailureTable failureTable;
 
-  /**
-   * The version we were before we restarted.
-   *
-   * @deprecated Use {@link #getLastVersion()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public int lastVersion;
+  /** The version we were before we restarted. */
+  private int lastVersion;
 
-  /**
-   * NodeUpdater
-   *
-   * @deprecated Use {@link #getNodeUpdater()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final NodeUpdateManager nodeUpdater;
+  /** NodeUpdater */
+  private final NodeUpdateManager nodeUpdater;
 
-  /**
-   * @deprecated Use {@link #getSecurityLevels()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final SecurityLevels securityLevels;
+  private final SecurityLevels securityLevels;
 
   /** Diagnostics */
   private final DefaultNodeDiagnostics nodeDiagnostics;
 
-  /**
-   * Things that's needed to keep track of
-   *
-   * @deprecated Use {@link #getPluginManager()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final PluginManager pluginManager;
+  /** Things that's needed to keep track of */
+  private final PluginManager pluginManager;
 
   // Helpers
   public final InetAddress localhostAddress;
 
-  /**
-   * @deprecated Use {@link #getFreenetLocalhostAddress()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final FreenetInetAddress fLocalhostAddress;
+  private final FreenetInetAddress fLocalhostAddress;
 
   // The node starter
   private static NodeStarter nodeStarter;
@@ -1163,17 +935,12 @@ public class Node implements TimeSkewDetectorCallback {
               "Unknown host while parsing our darknet node reference: {} (likely host-local scope"
                   + " or transient DNS)",
               udpAddr);
-          System.err.println("Unknown host while parsing our darknet node reference: " + udpAddr);
           continue;
         } catch (HostnameSyntaxException e) {
           LOG.error(
               "Invalid hostname or IP Address syntax error while parsing our darknet node"
-                  + " reference: "
-                  + udpAddr);
-          System.err.println(
-              "Invalid hostname or IP Address syntax error while parsing our darknet node"
-                  + " reference: "
-                  + udpAddr);
+                  + " reference: {}",
+              udpAddr);
           continue;
         } catch (PeerParseException e) {
           throw new IOException(e);
@@ -1201,7 +968,6 @@ public class Node implements TimeSkewDetectorCallback {
     String verString = fs.get("version");
     if (verString == null) {
       LOG.error("No version!");
-      System.err.println("No version!");
     } else {
       lastVersion = Version.parseBuildNumberFromVersionStr(verString, -1);
     }
@@ -1214,8 +980,6 @@ public class Node implements TimeSkewDetectorCallback {
         initSaltHashFS(suffix, true, null);
       } catch (NodeInitException e) {
         LOG.error("Unable to create new store", e);
-        System.err.println("Unable to create new store: " + e);
-        e.printStackTrace();
         // FIXME l10n both on the NodeInitException and the wrapper message
         throw new InvalidConfigValueException("Unable to create new store: " + e);
       }
@@ -1256,7 +1020,7 @@ public class Node implements TimeSkewDetectorCallback {
       fs.writeTo(fos);
       FileUtil.moveTo(backup, orig);
     } catch (IOException ioe) {
-      LOG.error("IOE :" + ioe.getMessage(), ioe);
+      LOG.error("IOE :{}", ioe.getMessage(), ioe);
     }
   }
 
@@ -1327,7 +1091,7 @@ public class Node implements TimeSkewDetectorCallback {
             + ' '
             + new network.crypta.fs.AppEnv().osVersionRaw();
     LOG.info(tmp);
-    System.out.println(tmp);
+    // Avoid direct stdout; already logged above
     collector = new IOStatisticCollector();
     this.executor = executor;
     nodeStarter = ns;
@@ -1434,14 +1198,11 @@ public class Node implements TimeSkewDetectorCallback {
       fproxyConfig.finishedInitialization();
       toadlets.start();
     } catch (IOException e4) {
-      LOG.error("Could not start web interface: " + e4, e4);
-      System.err.println("Could not start web interface: " + e4);
-      e4.printStackTrace();
+      LOG.error("Could not start web interface", e4);
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_START_FPROXY, "Could not start FProxy: " + e4);
     } catch (InvalidConfigValueException e4) {
-      System.err.println("Invalid config value, cannot start web interface: " + e4);
-      e4.printStackTrace();
+      LOG.error("Invalid config value, cannot start web interface", e4);
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_START_FPROXY, "Could not start FProxy: " + e4);
     }
@@ -1472,13 +1233,13 @@ public class Node implements TimeSkewDetectorCallback {
                 } catch (InterruptedException e) {
                 }
                 if (isPRNGReady) return;
-                System.out.println("Not enough entropy available.");
-                System.out.println("Trying to gather entropy (randomness) by reading the disk...");
+                LOG.warn("Not enough entropy available.");
+                LOG.warn("Trying to gather entropy (randomness) by reading the disk...");
                 if (File.separatorChar == '/') {
                   if (new File("/dev/hwrng").exists())
-                    System.out.println("/dev/hwrng exists - have you installed rng-tools?");
+                    LOG.warn("/dev/hwrng exists - have you installed rng-tools?");
                   else
-                    System.out.println(
+                    LOG.warn(
                         "You should consider installing a better random number generator e.g."
                             + " haveged.");
                 }
@@ -1637,7 +1398,7 @@ public class Node implements TimeSkewDetectorCallback {
         persistentSecret = keys.getPersistentMasterSecret();
         databaseKey = keys.createDatabaseKey();
         if (securityLevels.getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.HIGH) {
-          System.err.println(
+          LOG.warn(
               "Physical threat level is set to HIGH but no password, resetting to NORMAL - probably"
                   + " timing glitch");
           securityLevels.resetPhysicalThreatLevel(PHYSICAL_THREAT_LEVEL.NORMAL);
@@ -1646,12 +1407,11 @@ public class Node implements TimeSkewDetectorCallback {
       } catch (MasterKeysWrongPasswordException e) {
         break;
       } catch (MasterKeysFileSizeException e) {
-        System.err.println(
-            "Impossible: master keys file "
-                + masterKeysFile
-                + " too "
-                + e.sizeToString()
-                + "! Deleting to enable startup, but you will lose your client cache.");
+        LOG.error(
+            "Impossible: master keys file {} too {}! Deleting to enable startup, but you will lose"
+                + " your client cache.",
+            masterKeysFile,
+            e.sizeToString());
         masterKeysFile.delete();
       } catch (IOException e) {
         break;
@@ -1685,8 +1445,7 @@ public class Node implements TimeSkewDetectorCallback {
       }
       String s = HexUtil.bytesToHex(Fields.longToBytes(bootID));
       byte[] buf = s.getBytes(StandardCharsets.ISO_8859_1);
-      if (buf.length != BOOT_FILE_LENGTH)
-        System.err.println("Not 16 bytes for boot ID " + bootID + " - WTF??");
+      if (buf.length != BOOT_FILE_LENGTH) LOG.warn("Not 16 bytes for boot ID {} - WTF??", bootID);
       raf.write(buf);
     } catch (IOException e) {
       oldBootID = -1;
@@ -1778,8 +1537,7 @@ public class Node implements TimeSkewDetectorCallback {
     try {
       trafficClass = TrafficClass.fromNameOrValue(trafficClassValue);
     } catch (IllegalArgumentException e) {
-      LOG.error(
-          "Invalid trafficClass:" + trafficClassValue + " resetting the value to default.", e);
+      LOG.error("Invalid trafficClass:{} resetting the value to default.", trafficClassValue, e);
       trafficClass = TrafficClass.getDefault();
     }
 
@@ -2164,9 +1922,9 @@ public class Node implements TimeSkewDetectorCallback {
               if (amountOfDataToCheckCompressionRatio < 0
                   || amountOfDataToCheckCompressionRatio > 100 * 1024 * 1024) {
                 LOG.info(
-                    "Amount of data to check for compression should be 100 MiB max, "
-                        + amountOfDataToCheckCompressionRatio
-                        + " bytes selected");
+                    "Amount of data to check for compression should be 100 MiB max, {} bytes"
+                        + " selected",
+                    amountOfDataToCheckCompressionRatio);
                 return;
               }
 
@@ -2197,8 +1955,8 @@ public class Node implements TimeSkewDetectorCallback {
             synchronized (Node.this) {
               if (minimumCompressionPercentage < 0 || minimumCompressionPercentage > 100) {
                 LOG.info(
-                    "Wrong minimum compression percentage: must be between 0 and 100, but is "
-                        + minimumCompressionPercentage);
+                    "Wrong minimum compression percentage: must be between 0 and 100, but is {}",
+                    minimumCompressionPercentage);
                 return;
               }
 
@@ -2268,7 +2026,6 @@ Note that this version of Crypta is still a very early alpha, and may well have 
 In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on your requests with relatively little difficulty at present (correlation attacks etc).\
 """;
     LOG.info(s);
-    System.err.println(s);
 
     File nodeFile = nodeDir.file("node-" + getDarknetPortNumber());
     File nodeFileBackup = nodeDir.file("node-" + getDarknetPortNumber() + ".bak");
@@ -2278,18 +2035,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       readNodeFile(nodeFile.getPath());
     } catch (IOException e) {
       try {
-        System.err.println("Trying to read node file backup ...");
+        LOG.info("Trying to read node file backup ...");
         readNodeFile(nodeFileBackup.getPath());
       } catch (IOException e1) {
         if (nodeFile.exists() || nodeFileBackup.exists()) {
-          System.err.println("No node file or cannot read, (re)initialising crypto etc");
-          System.err.println(e1);
-          e1.printStackTrace();
-          System.err.println("After:");
-          System.err.println(e);
-          e.printStackTrace();
+          LOG.error("No node file or cannot read, (re)initialising crypto etc", e1);
+          LOG.error("After:", e);
         } else {
-          System.err.println("Creating new cryptographic keys...");
+          LOG.info("Creating new cryptographic keys...");
         }
         initNodeFileSettings();
       }
@@ -2332,11 +2085,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // Node updater support
 
-    System.out.println("Initializing Node Updater");
+    LOG.info("Initializing Node Updater");
     try {
       nodeUpdater = NodeUpdateManager.maybeCreate(this, config);
     } catch (InvalidConfigValueException e) {
-      e.printStackTrace();
+      LOG.error("Could not create Updater", e);
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_START_UPDATER, "Could not create Updater: " + e);
     }
@@ -2450,7 +2203,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     maxOpennetPeers = opennetConfig.getInt("maxOpennetPeers");
     if (maxOpennetPeers > OpennetManager.MAX_PEERS_FOR_SCALING) {
-      LOG.error("maxOpennetPeers may not be over " + OpennetManager.MAX_PEERS_FOR_SCALING);
+      LOG.error("maxOpennetPeers may not be over {}", OpennetManager.MAX_PEERS_FOR_SCALING);
       maxOpennetPeers = OpennetManager.MAX_PEERS_FOR_SCALING;
     }
 
@@ -2498,7 +2251,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                                 isAllowedToConnectToSeednodes);
                   } catch (NodeInitException e) {
                     opennet = null;
-                    LOG.error("UNABLE TO ENABLE OPENNET: " + e, e);
+                    LOG.error("UNABLE TO ENABLE OPENNET: {}", e, e);
                     clientCore
                         .getAlerts()
                         .register(
@@ -2682,9 +2435,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskDatacache.setMaxKeys(maxCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              LOG.error("Caught " + e + " resizing the datastore", e);
-              System.err.println("Caught " + e + " resizing the datastore");
-              e.printStackTrace();
+              LOG.error("Caught exception resizing the datastore", e);
             }
             // Perhaps a bit hackish...? Seems like this should be near it's definition in
             // NodeStats.
@@ -2881,8 +2632,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                 clientCore.getClientLayerPersister().deleteAllFiles();
               } catch (IOException e) {
                 masterKeysFile.delete();
-                LOG.error("Unable to securely delete " + masterKeysFile);
-                System.err.println(
+                LOG.error("Unable to securely delete {}", masterKeysFile);
+                LOG.error(
                     NodeL10n.getBase()
                         .getString(
                             "SecurityLevels.cantDeletePasswordFile",
@@ -2913,11 +2664,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                 }
                 keys.changePassword(masterKeysFile, "", secureRandom);
               } catch (IOException e) {
-                LOG.error(
-                    "Unable to create encryption keys file: " + masterKeysFile + " : " + e, e);
-                System.err.println(
-                    "Unable to create encryption keys file: " + masterKeysFile + " : " + e);
-                e.printStackTrace();
+                LOG.error("Unable to create encryption keys file: {}", masterKeysFile, e);
               }
             }
           }
@@ -2929,7 +2676,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       } catch (IOException e) {
         String msg =
             "Unable to securely delete old master.keys file when switching to MAXIMUM seclevel!!";
-        System.err.println(msg);
+        LOG.error(msg);
         throw new NodeInitException(NodeInitException.EXIT_CANT_WRITE_MASTER_KEYS, msg);
       }
     }
@@ -3018,9 +2765,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     boolean shouldWriteConfig = false;
 
     if (storeType.equals("bdb-index")) {
-      System.err.println("Old format Berkeley DB datastore detected.");
-      System.err.println("This datastore format is no longer supported.");
-      System.err.println("The old datastore will be securely deleted.");
+      LOG.warn("Old format Berkeley DB datastore detected.");
+      LOG.warn("This datastore format is no longer supported.");
+      LOG.warn("The old datastore will be securely deleted.");
       storeType = "salt-hash";
       shouldWriteConfig = true;
       deleteOldBDBIndexStoreFiles();
@@ -3082,9 +2829,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskClientcache.setMaxKeys(maxClientCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              LOG.error("Caught " + e + " resizing the clientcache", e);
-              System.err.println("Caught " + e + " resizing the clientcache");
-              e.printStackTrace();
+              LOG.error("Caught exception resizing the clientcache", e);
             }
           }
         },
@@ -3103,7 +2848,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     if (clientCacheType.equals("salt-hash")) {
       if (clientCacheKey == null) {
-        System.err.println("Cannot open client-cache, it is passworded");
+        LOG.warn("Cannot open client-cache, it is passworded");
         setClientCacheAwaitingPassword();
       } else {
         initSaltHashClientCacheFS(suffix, false, clientCacheKey);
@@ -3122,14 +2867,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       try {
         lateSetupDatabase(databaseKey);
       } catch (MasterKeysWrongPasswordException e2) {
-        System.err.println("Impossible: " + e2);
-        e2.printStackTrace();
+        LOG.error("Impossible while loading database (wrong password)", e2);
       } catch (MasterKeysFileSizeException e2) {
-        System.err.println("Impossible: " + e2);
-        e2.printStackTrace();
+        LOG.error("Impossible while loading database (file size)", e2);
       } catch (IOException e2) {
-        System.err.println("Unable to load database: " + e2);
-        e2.printStackTrace();
+        LOG.error("Unable to load database", e2);
       }
     }
 
@@ -3245,9 +2987,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               sskSlashdotcache.setMaxKeys(maxSlashdotCacheKeys, storeForceBigShrinks);
             } catch (IOException e) {
               // FIXME we need to be able to tell the user.
-              LOG.error("Caught " + e + " resizing the slashdotcache", e);
-              System.err.println("Caught " + e + " resizing the slashdotcache");
-              e.printStackTrace();
+              LOG.error("Caught exception resizing the slashdotcache", e);
             }
           }
         },
@@ -3457,7 +3197,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // Initialize the plugin manager
     LOG.info("Initializing Plugin Manager");
-    System.out.println("Initializing Plugin Manager");
     pluginManager = new PluginManager(this, lastVersion);
 
     shutdownHook.addEarlyJob(
@@ -3499,11 +3238,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           @Override
           public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
             if (!fromDarknet) {
-              LOG.error("Got N2NTM from non-darknet node ?!?!?!: from " + src);
+              LOG.error("Got N2NTM from non-darknet node ?!?!?!: from {}", src);
               return;
             }
             DarknetPeerNode darkSource = (DarknetPeerNode) src;
-            LOG.info("Received N2NTM from '" + darkSource.getPeer() + "'");
+            LOG.info("Received N2NTM from '{}'", darkSource.getPeer());
             SimpleFieldSet fs = null;
             try {
               fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
@@ -3517,7 +3256,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             int fileNumber = darkSource.writeNewExtraPeerDataFile(fs, EXTRA_PEER_DATA_TYPE_N2NTM);
             if (fileNumber == -1) {
               LOG.error(
-                  "Failed to write N2NTM to extra peer data file for peer " + darkSource.getPeer());
+                  "Failed to write N2NTM to extra peer data file for peer {}",
+                  darkSource.getPeer());
             }
             // Keep track of the fileNumber so we can potentially delete the extra peer data file
             // later, the file is authoritative
@@ -3536,7 +3276,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           @Override
           public void handleMessage(byte[] data, boolean fromDarknet, PeerNode src, int type) {
             LOG.info(
-                "Received differential node reference node to node message from " + src.getPeer());
+                "Received differential node reference node to node message from {}", src.getPeer());
             SimpleFieldSet fs = null;
             try {
               fs = new SimpleFieldSet(new String(data, StandardCharsets.UTF_8), false, true, false);
@@ -3566,7 +3306,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
 
     LOG.info("Node constructor completed");
-    System.out.println("Node constructor completed");
 
     new BandwidthManager(this).start();
 
@@ -3626,12 +3365,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (f.isFile()
           && name.toLowerCase()
               .matches("((chk)|(ssk)|(pubkey))-[0-9]*\\.((store)|(cache))(\\.((keys)|(lru)))?")) {
-        System.out.println("Deleting old datastore file \"" + f + "\"");
+        LOG.info("Deleting old datastore file \"{}\"", f);
         try {
           FileUtil.secureDelete(f);
         } catch (IOException e) {
-          System.err.println("Failed to delete old datastore file \"" + f + "\": " + e);
-          e.printStackTrace();
+          LOG.warn("Failed to delete old datastore file \"{}\"", f, e);
         }
       }
     }
@@ -3677,13 +3415,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   public void lateSetupDatabase(DatabaseKey databaseKey)
       throws MasterKeysWrongPasswordException, MasterKeysFileSizeException, IOException {
     if (clientCore.loadedDatabase()) return;
-    System.out.println("Starting late database initialisation");
+    LOG.info("Starting late database initialisation");
 
     if (!clientCore.lateInitDatabase(databaseKey)) failLateInitDatabase();
   }
 
   private void failLateInitDatabase() {
-    System.err.println("Failed late initialisation of database, closing...");
+    LOG.error("Failed late initialisation of database, closing...");
   }
 
   public void killMasterKeysFile() throws IOException {
@@ -3885,7 +3623,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
       if (delay) {
 
-        System.err.println("Delayed init of datastore");
+        LOG.info("Delayed init of datastore");
 
         initRAMFS();
 
@@ -3897,7 +3635,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
                   @Override
                   public void run() {
-                    System.err.println("Starting delayed init of datastore");
+                    LOG.info("Starting delayed init of datastore");
                     try {
                       chkDataFS.start(ticker, true);
                       chkCacheFS.start(ticker, true);
@@ -3906,9 +3644,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                       sskDataFS.start(ticker, true);
                       sskCacheFS.start(ticker, true);
                     } catch (IOException e) {
-                      LOG.error("Failed to start datastore: " + e, e);
-                      System.err.println("Failed to start datastore: " + e);
-                      e.printStackTrace();
+                      LOG.error("Failed to start datastore", e);
                       return;
                     }
 
@@ -3922,7 +3658,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
                     finishInitSaltHashFS(suffix, clientCore);
 
-                    System.err.println("Finishing delayed init of datastore");
+                    LOG.info("Finishing delayed init of datastore");
                     migrate.run();
                   }
                 },
@@ -3962,8 +3698,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
 
     } catch (IOException e) {
-      System.err.println("Could not open store: " + e);
-      e.printStackTrace();
+      LOG.error("Could not open store", e);
       throw new NodeInitException(NodeInitException.EXIT_STORE_OTHER, e.getMessage());
     }
   }
@@ -3991,7 +3726,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
       if (delay) {
 
-        System.err.println("Delayed init of client-cache");
+        LOG.info("Delayed init of client-cache");
 
         initRAMClientCacheFS();
 
@@ -4003,15 +3738,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
                   @Override
                   public void run() {
-                    System.err.println("Starting delayed init of client-cache");
+                    LOG.info("Starting delayed init of client-cache");
                     try {
                       chkDataFS.start(ticker, true);
                       pubkeyDataFS.start(ticker, true);
                       sskDataFS.start(ticker, true);
                     } catch (IOException e) {
-                      LOG.error("Failed to start client-cache: " + e, e);
-                      System.err.println("Failed to start client-cache: " + e);
-                      e.printStackTrace();
+                      LOG.error("Failed to start client-cache", e);
                       return;
                     }
                     Node.this.chkClientcache = chkClientcache;
@@ -4019,7 +3752,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                     getPubKey.setLocalDataStore(pubKeyClientcache);
                     Node.this.sskClientcache = sskClientcache;
 
-                    System.err.println("Finishing delayed init of client-cache");
+                    LOG.info("Finishing delayed init of client-cache");
                     migrate.run();
                   }
                 },
@@ -4035,8 +3768,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
 
     } catch (IOException e) {
-      System.err.println("Could not open store: " + e);
-      e.printStackTrace();
+      LOG.error("Could not open store", e);
       throw new NodeInitException(NodeInitException.EXIT_STORE_OTHER, e.getMessage());
     }
   }
@@ -4072,8 +3804,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean lateStart,
       byte[] clientCacheMasterKey)
       throws IOException {
-    LOG.info("Initializing " + type + " Data" + store);
-    System.out.println("Initializing " + type + " Data" + store + " (" + maxStoreKeys + " keys)");
+    LOG.info("Initializing {} Data{} ({} keys)", type, store, maxStoreKeys);
 
     SaltedHashFreenetStore<T> fs =
         SaltedHashFreenetStore.construct(
@@ -4119,21 +3850,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     usm.start(ticker);
 
     if (isUsingWrapper()) {
-      LOG.info("Using wrapper correctly: " + nodeStarter);
-      System.out.println("Using wrapper correctly: " + nodeStarter);
+      LOG.info("Using wrapper correctly: {}", nodeStarter);
     } else {
       LOG.error(
           "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
               + " are current.");
-      System.out.println(
-          "NOT using wrapper (at least not correctly). Please ensure wrapper.jar and wrapper.conf"
-              + " are current.");
     }
-    LOG.info("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
-    System.out.println("Crypta v" + Version.currentBuildNumber() + "+" + Version.gitRevision());
-    LOG.info("FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
-    System.out.println(
-        "FNP port is on " + darknetCrypto.getBindTo() + ':' + getDarknetPortNumber());
+    LOG.info("Crypta v{}+{}", Version.currentBuildNumber(), Version.gitRevision());
+    LOG.info("FNP port is on {}:{}", darknetCrypto.getBindTo(), getDarknetPortNumber());
     // Start services
 
     //		SubConfig pluginManagerConfig = new SubConfig("pluginmanager3", config);
@@ -4149,7 +3873,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       LOG.info("Starting the node updater");
       nodeUpdater.start();
     } catch (Exception e) {
-      e.printStackTrace();
+      LOG.error("Could not start Updater", e);
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_START_UPDATER, "Could not start Updater: " + e);
     }
@@ -4234,7 +3958,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     long uid = random.nextLong();
     int initialX = random.nextInt();
     Message m = DMT.createFNPRoutedPing(uid, loc2, maxHTL, initialX, pubKeyHash);
-    LOG.info("Message: " + m);
+    LOG.info("Message: {}", m);
 
     dispatcher.handleRouted(m, null);
     // FIXME: might be rejected
@@ -4282,18 +4006,18 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       DSAPublicKey pubKey = sskKey.getPubKey();
       if (pubKey == null) {
         pubKey = getPubKey.getKey(sskKey.getPubKeyHash(), canReadClientCache, offersOnly, null);
-        if (LOG.isDebugEnabled()) LOG.debug("Fetched pubkey: " + pubKey);
+        if (LOG.isDebugEnabled()) LOG.debug("Fetched pubkey: {}", pubKey);
         try {
           sskKey.setPubKey(pubKey);
         } catch (SSKVerifyException e) {
-          LOG.error("Error setting pubkey: " + e, e);
+          LOG.error("Error setting pubkey: {}", e, e);
         }
       }
       if (pubKey != null) {
-        if (LOG.isDebugEnabled()) LOG.debug("Got pubkey: " + pubKey);
+        if (LOG.isDebugEnabled()) LOG.debug("Got pubkey: {}", pubKey);
         kb = fetch(sskKey, canReadClientCache, canWriteClientCache, canWriteDatastore, false, null);
       } else {
-        if (LOG.isDebugEnabled()) LOG.debug("Not found because no pubkey: " + uid);
+        if (LOG.isDebugEnabled()) LOG.debug("Not found because no pubkey: {}", uid);
       }
     } else throw new IllegalStateException("Unknown key type: " + key.getClass());
 
@@ -4340,16 +4064,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     boolean canWriteDatastore = canWriteDatastoreRequest(htl);
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "makeRequestSender("
-              + key
-              + ','
-              + htl
-              + ','
-              + uid
-              + ','
-              + source
-              + ") on "
-              + getDarknetPortNumber());
+          "makeRequestSender({},{},{},{}) on {}", key, htl, uid, source, getDarknetPortNumber());
     // In store?
     if (!ignoreStore) {
       KeyBlock kb =
@@ -4366,7 +4081,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             ? tracker.getTransferringRequestSenderByKey(nchk, realTimeFlag)
             : null;
     if (sender != null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Data already being transferred: " + sender);
+      if (LOG.isDebugEnabled()) LOG.debug("Data already being transferred: {}", sender);
       sender.setTransferCoalesced();
       tag.setSender(sender, true);
       return sender;
@@ -4393,7 +4108,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             realTimeFlag);
     tag.setSender(sender, false);
     sender.start();
-    if (LOG.isDebugEnabled()) LOG.debug("Created new sender: " + sender);
+    if (LOG.isDebugEnabled()) LOG.debug("Created new sender: {}", sender);
     return sender;
   }
 
@@ -4470,11 +4185,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgClientCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestClientCacheSSKSuccess)
             nodeStats.furthestClientCacheSSKSuccess = dist;
-          if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in client-cache");
+          if (LOG.isTraceEnabled()) LOG.trace("Found key {} in client-cache", key);
           return block;
         }
       } catch (IOException e) {
-        LOG.error("Could not read from client cache: " + e, e);
+        LOG.error("Could not read from client cache: {}", e, e);
       }
     }
     if (forULPR || useSlashdotCache || canReadClientCache) {
@@ -4485,11 +4200,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           nodeStats.avgSlashdotCacheSSKSuccess.report(loc);
           if (dist > nodeStats.furthestSlashdotCacheSSKSuccess)
             nodeStats.furthestSlashdotCacheSSKSuccess = dist;
-          if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in slashdot-cache");
+          if (LOG.isTraceEnabled()) LOG.trace("Found key {} in slashdot-cache", key);
           return block;
         }
       } catch (IOException e) {
-        LOG.error("Could not read from slashdot/ULPR cache: " + e, e);
+        LOG.error("Could not read from slashdot/ULPR cache: {}", e, e);
       }
     }
     boolean ignoreOldBlocks = !writeLocalToDatastore;
@@ -4521,7 +4236,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgStoreSSKSuccess.report(loc);
         if (dist > nodeStats.furthestStoreSSKSuccess) nodeStats.furthestStoreSSKSuccess = dist;
-        if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in store");
+        if (LOG.isTraceEnabled()) LOG.trace("Found key {} in store", key);
         return block;
       }
       block =
@@ -4547,11 +4262,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (block != null) {
         nodeStats.avgCacheSSKSuccess.report(loc);
         if (dist > nodeStats.furthestCacheSSKSuccess) nodeStats.furthestCacheSSKSuccess = dist;
-        if (LOG.isTraceEnabled()) LOG.trace("Found key " + key + " in cache");
+        if (LOG.isTraceEnabled()) LOG.trace("Found key {} in cache", key);
       }
       return block;
     } catch (IOException e) {
-      LOG.error("Cannot fetch data: " + e, e);
+      LOG.error("Cannot fetch data: {}", e, e);
       return null;
     }
   }
@@ -4577,7 +4292,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           return block;
         }
       } catch (IOException e) {
-        LOG.error("Could not read from client cache: " + e, e);
+        LOG.error("Could not read from client cache: {}", e, e);
       }
     }
     if (forULPR || useSlashdotCache || canReadClientCache) {
@@ -4590,7 +4305,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           return block;
         }
       } catch (IOException e) {
-        LOG.error("Could not read from slashdot/ULPR cache: " + e, e);
+        LOG.error("Could not read from slashdot/ULPR cache: {}", e, e);
       }
     }
     boolean ignoreOldBlocks = !writeLocalToDatastore;
@@ -4622,7 +4337,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       return block;
     } catch (IOException e) {
-      LOG.error("Cannot fetch data: " + e, e);
+      LOG.error("Cannot fetch data: {}", e, e);
       return null;
     }
   }
@@ -4722,30 +4437,22 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     } else return;
     LOG.debug(
         "Distribution of hits and misses over stores:\n"
-            + "CHK Datastore: "
-            + chkDatastore.hits()
-            + '/'
-            + (chkDatastore.hits() + chkDatastore.misses())
-            + '/'
-            + chkDatastore.keyCount()
-            + "\nCHK Datacache: "
-            + chkDatacache.hits()
-            + '/'
-            + (chkDatacache.hits() + chkDatacache.misses())
-            + '/'
-            + chkDatacache.keyCount()
-            + "\nSSK Datastore: "
-            + sskDatastore.hits()
-            + '/'
-            + (sskDatastore.hits() + sskDatastore.misses())
-            + '/'
-            + sskDatastore.keyCount()
-            + "\nSSK Datacache: "
-            + sskDatacache.hits()
-            + '/'
-            + (sskDatacache.hits() + sskDatacache.misses())
-            + '/'
-            + sskDatacache.keyCount());
+            + "CHK Datastore: {}/{}/{}\n"
+            + "CHK Datacache: {}/{}/{}\n"
+            + "SSK Datastore: {}/{}/{}\n"
+            + "SSK Datacache: {}/{}/{}",
+        chkDatastore.hits(),
+        chkDatastore.hits() + chkDatastore.misses(),
+        chkDatastore.keyCount(),
+        chkDatacache.hits(),
+        chkDatacache.hits() + chkDatacache.misses(),
+        chkDatacache.keyCount(),
+        sskDatastore.hits(),
+        sskDatastore.hits() + sskDatastore.misses(),
+        sskDatastore.keyCount(),
+        sskDatacache.hits(),
+        sskDatacache.hits() + sskDatacache.misses(),
+        sskDatacache.keyCount());
   }
 
   public void storeShallow(
@@ -4805,11 +4512,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       if (canWriteDatastore || forULPR || useSlashdotCache) failureTable.onFound(block);
     } catch (IOException e) {
-      LOG.error("Cannot store data: " + e, e);
+      LOG.error("Cannot store data: {}", e, e);
     } catch (Throwable t) {
-      System.err.println(t);
-      t.printStackTrace();
-      LOG.error("Caught " + t + " storing data", t);
+      LOG.error("Caught unexpected error storing data", t);
     }
     if (clientCore != null && clientCore.getRequestStarters() != null) {
       clientCore.getRequestStarters().chkFetchSchedulerBulk.tripPendingKey(block);
@@ -4877,13 +4582,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       }
       if (canWriteDatastore || forULPR || useSlashdotCache) failureTable.onFound(block);
     } catch (IOException e) {
-      LOG.error("Cannot store data: " + e, e);
+      LOG.error("Cannot store data: {}", e, e);
     } catch (KeyCollisionException e) {
       throw e;
     } catch (Throwable t) {
-      System.err.println(t);
-      t.printStackTrace();
-      LOG.error("Caught " + t + " storing data", t);
+      LOG.error("Caught unexpected error storing data", t);
     }
     if (clientCore != null && clientCore.getRequestStarters() != null) {
       clientCore.getRequestStarters().sskFetchSchedulerBulk.tripPendingKey(block);
@@ -4942,8 +4645,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       boolean ignoreLowBackoff,
       boolean realTimeFlag) {
     if (LOG.isDebugEnabled())
-      LOG.debug(
-          "makeInsertSender(" + key + ',' + htl + ',' + uid + ',' + source + ",...," + fromStore);
+      LOG.debug("makeInsertSender({},{},{},{},...,{}", key, htl, uid, source, fromStore);
     CHKInsertSender is = null;
     is =
         new CHKInsertSender(
@@ -5003,8 +4705,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         false,
         writeLocalToDatastore);
     if (LOG.isDebugEnabled())
-      LOG.debug(
-          "makeInsertSender(" + key + ',' + htl + ',' + uid + ',' + source + ",...," + fromStore);
+      LOG.debug("makeInsertSender({},{},{},{},...,{}", key, htl, uid, source, fromStore);
     SSKInsertSender is = null;
     is =
         new SSKInsertSender(
@@ -5083,7 +4784,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             false,
             null);
     if (block == null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Could not find key for " + clientSSK);
+      if (LOG.isDebugEnabled()) LOG.debug("Could not find key for {}", clientSSK);
       return null;
     }
     // Move the pubkey to the top of the LRU, and fix it if it
@@ -5121,8 +4822,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   public void exit(int reason) {
     try {
       this.park();
-      System.out.println("Goodbye.");
-      System.out.println(reason);
+      LOG.info("Goodbye. ({})", reason);
     } finally {
       System.exit(reason);
     }
@@ -5131,7 +4831,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   public void exit(String reason) {
     try {
       this.park();
-      System.out.println("Goodbye. from " + this + " (" + reason + ')');
+      LOG.info("Goodbye. from {} ({})", this, reason);
     } finally {
       System.exit(0);
     }
@@ -5161,7 +4861,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     } catch (Throwable t) {
       try {
         // E.g. if we haven't finished startup
-        LOG.error("Failed to tell peers we are going down: " + t, t);
+        LOG.error("Failed to tell peers we are going down: {}", t, t);
       } catch (Throwable t1) {
         // Ignore. We don't want to mess up the exit process!
       }
@@ -5229,8 +4929,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
 
     if (listener == null) {
-      LOG.error(
-          "Unknown n2nm ID: " + type + " - discarding packet length " + messageData.getLength());
+      LOG.error("Unknown n2nm ID: {} - discarding packet length {}", type, messageData.getLength());
       return;
     }
 
@@ -5244,17 +4943,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    */
   public void handleNodeToNodeTextMessageSimpleFieldSet(
       SimpleFieldSet fs, DarknetPeerNode source, int fileNumber) throws FSParseException {
-    if (LOG.isDebugEnabled()) LOG.debug("Got node to node message: \n" + fs);
+    if (LOG.isDebugEnabled()) LOG.debug("Got node to node message: \n{}", fs);
     int overallType = fs.getInt("n2nType");
     fs.removeValue("n2nType");
     if (overallType == Node.N2N_MESSAGE_TYPE_FPROXY) {
       handleFproxyNodeToNodeTextMessageSimpleFieldSet(fs, source, fileNumber);
     } else {
       LOG.error(
-          "Received unknown node to node message type '"
-              + overallType
-              + "' from "
-              + source.getPeer());
+          "Received unknown node to node message type '{}' from {}", overallType, source.getPeer());
     }
   }
 
@@ -5275,10 +4971,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       source.handleFproxyDownloadFeed(fs, fileNumber);
     } else {
       LOG.error(
-          "Received unknown fproxy node to node message sub-type '"
-              + type
-              + "' from "
-              + source.getPeer());
+          "Received unknown fproxy node to node message sub-type '{}' from {}",
+          type,
+          source.getPeer());
     }
   }
 
@@ -5746,19 +5441,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private SimpleUserAlert alertMTUTooSmall;
 
-  /**
-   * @deprecated Use {@link #getNonPersistentClientBulk()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final RequestClient nonPersistentClientBulk = new RequestClientBuilder().build();
+  private final RequestClient nonPersistentClientBulk = new RequestClientBuilder().build();
 
-  /**
-   * @deprecated Use {@link #getNonPersistentClientRT()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
-  public final RequestClient nonPersistentClientRT = new RequestClientBuilder().realTime().build();
+  private final RequestClient nonPersistentClientRT = new RequestClientBuilder().realTime().build();
 
   public void setDispatcherHook(NodeDispatcherCallback cb) {
     this.dispatcher.setHook(cb);
@@ -5815,12 +5500,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   private void activatePasswordedClientCache(MasterKeys keys) {
     synchronized (this) {
       if (clientCacheType.equals("ram")) {
-        System.err.println("RAM client cache cannot be passworded!");
+        LOG.warn("RAM client cache cannot be passworded!");
         return;
       }
       if (!clientCacheType.equals("salt-hash")) {
-        System.err.println(
-            "Unknown client cache type, cannot activate passworded store: " + clientCacheType);
+        LOG.warn(
+            "Unknown client cache type, cannot activate passworded store: {}", clientCacheType);
         return;
       }
     }
@@ -5830,8 +5515,6 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       initSaltHashClientCacheFS(suffix, true, keys.clientCacheMasterKey);
     } catch (NodeInitException e) {
       LOG.error("Unable to activate passworded client cache", e);
-      System.err.println("Unable to activate passworded client cache: " + e);
-      e.printStackTrace();
       return;
     }
 
@@ -5878,11 +5561,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     try {
       MasterKeys.killMasterKeys(getMasterPasswordFile());
     } catch (IOException e) {
-      System.err.println("Unable to wipe master passwords key file!");
-      System.err.println(
-          "Please delete "
-              + getMasterPasswordFile()
-              + " to ensure that nobody can recover your old downloads.");
+      LOG.warn(
+          "Unable to wipe master passwords key file! Please delete {} to ensure that nobody can"
+              + " recover your old downloads.",
+          getMasterPasswordFile());
     }
     // persistent-temp will be cleaned on restart.
   }
@@ -5945,13 +5627,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     double myDist = Location.distance(myLoc, target);
 
     // First, calculate whether we would have stored it using the old formula.
-    if (LOG.isDebugEnabled()) LOG.debug("Should store for " + key + " ?");
+    if (LOG.isDebugEnabled()) LOG.debug("Should store for {} ?", key);
     // Don't sink store if any of the nodes we routed to, or our predecessor, is both high-uptime
     // and closer to the target than we are.
     if (source != null && !source.isLowUptime()) {
       if (Location.distance(source, target) < myDist) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Not storing because source is closer to target for " + key + " : " + source);
+          LOG.debug("Not storing because source is closer to target for {} : {}", key, source);
         return false;
       }
     }
@@ -5959,42 +5641,32 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       if (Location.distance(pn, target) < myDist && !pn.isLowUptime()) {
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Not storing because peer "
-                  + pn
-                  + " is closer to target for "
-                  + key
-                  + " his loc "
-                  + pn.getLocation()
-                  + " my loc "
-                  + myLoc
-                  + " target is "
-                  + target);
+              "Not storing because peer {} is closer to target for {} his loc {} my loc {} target"
+                  + " is {}",
+              pn,
+              key,
+              pn.getLocation(),
+              myLoc,
+              target);
         return false;
       } else {
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Should store maybe, peer "
-                  + pn
-                  + " loc = "
-                  + pn.getLocation()
-                  + " my loc is "
-                  + myLoc
-                  + " target is "
-                  + target
-                  + " low uptime is "
-                  + pn.isLowUptime());
+              "Should store maybe, peer {} loc = {} my loc is {} target is {} low uptime is {}",
+              pn,
+              pn.getLocation(),
+              myLoc,
+              target,
+              pn.isLowUptime());
       }
     }
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Should store returning true for "
-              + key
-              + " target="
-              + target
-              + " myLoc="
-              + myLoc
-              + " peers: "
-              + routedTo.length);
+          "Should store returning true for {} target={} myLoc={} peers: {}",
+          key,
+          target,
+          myLoc,
+          routedTo.length);
     return true;
   }
 
