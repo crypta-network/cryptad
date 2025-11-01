@@ -349,7 +349,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     @Override
     public String[] getPossibleValues() {
-      return new String[] {"salt-hash", "ram"};
+      return new String[] {TYPE_SALT_HASH, "ram"};
     }
   }
 
@@ -375,7 +375,7 @@ public class Node implements TimeSkewDetectorCallback {
 
       synchronized (this) { // Serialise this part.
         String suffix = getStoreSuffix();
-        if (val.equals("salt-hash")) {
+        if (val.equals(TYPE_SALT_HASH)) {
           byte[] key;
           try {
             synchronized (Node.this) {
@@ -408,7 +408,7 @@ public class Node implements TimeSkewDetectorCallback {
 
     @Override
     public String[] getPossibleValues() {
-      return new String[] {"salt-hash", "ram", "none"};
+      return new String[] {TYPE_SALT_HASH, "ram", "none"};
     }
   }
 
@@ -975,7 +975,7 @@ public class Node implements TimeSkewDetectorCallback {
 
   public void makeStore(String val) throws InvalidConfigValueException {
     String suffix = getStoreSuffix();
-    if (val.equals("salt-hash")) {
+    if (val.equals(TYPE_SALT_HASH)) {
       try {
         initSaltHashFS(suffix, true, null);
       } catch (NodeInitException e) {
@@ -2583,7 +2583,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           public void set(Boolean val)
               throws InvalidConfigValueException, NodeNeedRestartException {
             storePreallocate = val;
-            if (storeType.equals("salt-hash")) {
+            if (storeType.equals(TYPE_SALT_HASH)) {
               setPreallocate(chkDatastore, val);
               setPreallocate(chkDatacache, val);
               setPreallocate(pubKeyDatastore, val);
@@ -2768,11 +2768,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       LOG.warn("Old format Berkeley DB datastore detected.");
       LOG.warn("This datastore format is no longer supported.");
       LOG.warn("The old datastore will be securely deleted.");
-      storeType = "salt-hash";
+      storeType = TYPE_SALT_HASH;
       shouldWriteConfig = true;
       deleteOldBDBIndexStoreFiles();
     }
-    if (storeType.equals("salt-hash")) {
+    if (storeType.equals(TYPE_SALT_HASH)) {
       initRAMFS();
       initSaltHashFS(suffix, false, null);
     } else {
@@ -2846,7 +2846,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     boolean startedClientCache = false;
 
-    if (clientCacheType.equals("salt-hash")) {
+    if (clientCacheType.equals(TYPE_SALT_HASH)) {
       if (clientCacheKey == null) {
         LOG.warn("Cannot open client-cache, it is passworded");
         setClientCacheAwaitingPassword();
@@ -5503,7 +5503,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         LOG.warn("RAM client cache cannot be passworded!");
         return;
       }
-      if (!clientCacheType.equals("salt-hash")) {
+      if (!clientCacheType.equals(TYPE_SALT_HASH)) {
         LOG.warn(
             "Unknown client cache type, cannot activate passworded store: {}", clientCacheType);
         return;
