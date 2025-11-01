@@ -39,7 +39,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * <p>Read-only behavior: once {@link #setReadOnly()} is called or {@link #toRandomAccessBuffer()}
  * is invoked, write operations fail with {@link IOException}.
  */
-public abstract class BaseFileBucket implements RandomAccessBucket {
+public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(BaseFileBucket.class);
 
   /**
@@ -515,6 +515,17 @@ public abstract class BaseFileBucket implements RandomAccessBucket {
   @Override
   public void free() {
     free(false);
+  }
+
+  /**
+   * Closes this bucket, releasing any associated resources.
+   *
+   * <p>This is an alias for {@link #free()}; provided to integrate with try-with-resources where
+   * applicable.
+   */
+  @Override
+  public void close() {
+    free();
   }
 
   /**
