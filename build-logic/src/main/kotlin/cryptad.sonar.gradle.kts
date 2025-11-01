@@ -1,6 +1,9 @@
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
+import org.gradle.api.JavaVersion
+import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
@@ -47,6 +50,15 @@ extensions.configure<SonarLintSettings>("sonarLint") {
     // Use Sonar's standard inclusions property so the engine narrows the scope
     sonarProperty("sonar.inclusions", value)
   }
+
+  // Ensure Java language level is explicitly provided so rules that depend on
+  // the runtime version (e.g., java:S6204 requiring Java 16+) are evaluated
+  // consistently, including for single-file analyses.
+  val javaExt = project.extensions.findByType(JavaPluginExtension::class.java)
+  val sourceVersion = (javaExt?.sourceCompatibility ?: JavaVersion.current()).majorVersion
+  val targetVersion = (javaExt?.targetCompatibility ?: JavaVersion.current()).majorVersion
+  sonarProperty("sonar.java.source", sourceVersion)
+  sonarProperty("sonar.java.target", targetVersion)
 }
 
 // Convenience task: run SonarLint on a single file
@@ -60,6 +72,20 @@ tasks.register("sonarlintFile", SonarLint::class.java) {
   description = "Run SonarLint on a single file (-Psonarlint.file=<path>)."
   // Analyze against main sources by default
   setSource(sourceSets.named("main").get().allSource)
+  // Propagate Java language level explicitly for single-file analysis
+  val javaExt = project.extensions.findByType(JavaPluginExtension::class.java)
+  val sourceVersion = (javaExt?.sourceCompatibility ?: JavaVersion.current()).majorVersion
+  val targetVersion = (javaExt?.targetCompatibility ?: JavaVersion.current()).majorVersion
+  // Configure task-scoped Java release for the SonarLint engine
+  java { release.set(JavaLanguageVersion.of(sourceVersion.toInt())) }
+
+  // Provide classpath and output directories so Java rules that require
+  // semantic information are enabled even for single-file analysis.
+  val mainSourceSet = sourceSets.named("main").get()
+  java {
+    mainOutputDirectories.from(mainSourceSet.output.classesDirs)
+    mainClasspath.from(mainSourceSet.runtimeClasspath)
+  }
   // Pick a file pattern from properties
   val fileProp =
     providers
