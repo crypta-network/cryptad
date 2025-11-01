@@ -314,8 +314,7 @@ public class NodeClientCore implements Persistable {
             "tempDir",
             defaultCacheDir.resolve("tmp").toString(),
             "NodeClientCore.tempDir",
-            "NodeClientCore.tempDirLong",
-            nodeConfig);
+            "NodeClientCore.tempDirLong");
 
     // Note: remove back compatibility hack when safe.
     deleteLegacyTempDirIfPresent(node);
@@ -335,8 +334,7 @@ public class NodeClientCore implements Persistable {
             "persistentTempDir",
             defaultCacheDir.resolve("persistent-temp").toString(),
             "NodeClientCore.persistentTempDir",
-            "NodeClientCore.persistentTempDirLong",
-            nodeConfig);
+            "NodeClientCore.persistentTempDirLong");
 
     fcpPersistentRoot = new PersistentRequestRoot();
     PersistentTempBucketFactory ptbf = createPersistentTempBucketFactory(nodeConfig);
@@ -467,8 +465,7 @@ public class NodeClientCore implements Persistable {
             defaultDataDir.resolve(DOWNLOADS_DIR_NAME).toString(),
             "NodeClientCore.downloadsDir",
             "NodeClientCore.downloadsDirLong",
-            l10n("couldNotFindOrCreateDir"),
-            null);
+            l10n("couldNotFindOrCreateDir"));
 
     // Downloads allowed, uploads allowed
 
@@ -1679,12 +1676,13 @@ public class NodeClientCore implements Persistable {
               uid,
               tag,
               null,
-              localOnly,
-              ignoreStore,
-              offersOnly,
-              canReadClientCache,
-              canWriteClientCache,
-              realTimeFlag);
+              Node.RequestSenderOptions.of(
+                  localOnly,
+                  ignoreStore,
+                  offersOnly,
+                  canReadClientCache,
+                  canWriteClientCache,
+                  realTimeFlag));
       if (o instanceof KeyBlock) {
         tag.setServedFromDatastore();
         listener.onDataFoundLocally();
@@ -1777,12 +1775,8 @@ public class NodeClientCore implements Persistable {
               uid,
               tag,
               null,
-              localOnly,
-              ignoreStore,
-              false,
-              true,
-              canWriteClientCache,
-              realTimeFlag);
+              Node.RequestSenderOptions.of(
+                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
       if (o instanceof CHKBlock block)
         try {
           tag.setServedFromDatastore();
@@ -1920,12 +1914,8 @@ public class NodeClientCore implements Persistable {
               uid,
               tag,
               null,
-              localOnly,
-              ignoreStore,
-              false,
-              true,
-              canWriteClientCache,
-              realTimeFlag);
+              Node.RequestSenderOptions.of(
+                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
       if (o instanceof SSKBlock block)
         try {
           tag.setServedFromDatastore();
@@ -2055,14 +2045,13 @@ public class NodeClientCore implements Persistable {
               uid,
               tag,
               null,
-              headers,
-              prb,
-              false,
-              canWriteClientCache,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
+              Node.ChkInsertOptions.of(headers, prb)
+                  .withFromStore(false)
+                  .withCanWriteClientCache(canWriteClientCache)
+                  .withForkOnCacheable(forkOnCacheable)
+                  .withPreferInsert(preferInsert)
+                  .withIgnoreLowBackoff(ignoreLowBackoff)
+                  .withRealTimeFlag(realTimeFlag));
       boolean hasReceivedRejectedOverload = awaitChkCompletion(is, realTimeFlag);
 
       if (LOG.isDebugEnabled())
@@ -2229,13 +2218,14 @@ public class NodeClientCore implements Persistable {
               uid,
               tag,
               null,
-              false,
-              canWriteClientCache,
-              false,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
+              Node.SskInsertOptions.of()
+                  .withFromStore(false)
+                  .withCanWriteClientCache(canWriteClientCache)
+                  .withCanWriteDatastore(false)
+                  .withForkOnCacheable(forkOnCacheable)
+                  .withPreferInsert(preferInsert)
+                  .withIgnoreLowBackoff(ignoreLowBackoff)
+                  .withRealTimeFlag(realTimeFlag));
       boolean hasReceivedRejectedOverload = awaitSskCompletion(is, realTimeFlag);
 
       if (LOG.isDebugEnabled())

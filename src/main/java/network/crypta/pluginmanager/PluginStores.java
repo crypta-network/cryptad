@@ -32,7 +32,6 @@ public class PluginStores {
             "plugin-data",
             "NodeClientCore.pluginStoresDir",
             "NodeClientCore.pluginStoresDir",
-            null,
             null);
     File dir = pluginStoresDir.dir();
     if (!(dir.mkdirs() || (dir.exists() && dir.isDirectory() && dir.canRead() && dir.canWrite()))) {
@@ -65,7 +64,7 @@ public class PluginStores {
     Bucket bucket = new FileBucket(f, false, true, false, false);
     if (isEncrypted) {
       byte[] key = node.getPluginStoreKey(storeIdentifier);
-      if (key != null) {
+      if (key.length > 0) {
         // We pad then encrypt, which is wasteful, but we have no way to persist the size.
         // Unfortunately AEADCryptBucket needs to know the real termination point.
         bucket = new AEADCryptBucket(bucket, key);
@@ -82,7 +81,7 @@ public class PluginStores {
     Bucket bucket = new FileBucket(f, false, false, false, false);
     if (isEncrypted) {
       byte[] key = node.getPluginStoreKey(storeIdentifier);
-      if (key != null) {
+      if (key.length > 0) {
         // We pad then encrypt, which is wasteful, but we have no way to persist the size.
         // Unfortunately AEADCryptBucket needs to know the real termination point.
         bucket = new AEADCryptBucket(bucket, key);

@@ -224,14 +224,13 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
               uid,
               tag,
               source,
-              headers,
-              prb,
-              false,
-              false,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
+              Node.ChkInsertOptions.of(headers, prb)
+                  .withFromStore(false)
+                  .withCanWriteClientCache(false)
+                  .withForkOnCacheable(forkOnCacheable)
+                  .withPreferInsert(preferInsert)
+                  .withIgnoreLowBackoff(ignoreLowBackoff)
+                  .withRealTimeFlag(realTimeFlag));
     br =
         new BlockReceiver(
             node.getUSM(),

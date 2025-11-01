@@ -318,13 +318,14 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
             uid,
             tag,
             source,
-            false,
-            false,
-            canWriteDatastore,
-            forkOnCacheable,
-            preferInsert,
-            ignoreLowBackoff,
-            realTimeFlag);
+            Node.SskInsertOptions.of()
+                .withFromStore(false)
+                .withCanWriteClientCache(false)
+                .withCanWriteDatastore(canWriteDatastore)
+                .withForkOnCacheable(forkOnCacheable)
+                .withPreferInsert(preferInsert)
+                .withIgnoreLowBackoff(ignoreLowBackoff)
+                .withRealTimeFlag(realTimeFlag));
   }
 
   private void processSenderResults() {

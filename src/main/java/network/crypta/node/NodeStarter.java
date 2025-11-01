@@ -284,7 +284,7 @@ public class NodeStarter implements WrapperListener {
     PersistentConfig config = new PersistentConfig(configFS);
 
     Node node =
-        new Node(config, params.getRandom(), params.getRandom(), null, null, params.getExecutor());
+        new Node(config, params.getRandom(), params.getRandom(), null, params.getExecutor());
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
@@ -514,7 +514,7 @@ public class NodeStarter implements WrapperListener {
     initSSL(cfg);
 
     try {
-      node = new Node(cfg, null, null, logConfigHandler, this, executor);
+      node = new Node(cfg, null, null, this, executor);
       installSeednodesIfMissing(node);
       node.start(false);
       LOG.info("Node initialization completed");

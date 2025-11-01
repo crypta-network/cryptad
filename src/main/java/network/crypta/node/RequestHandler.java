@@ -274,7 +274,18 @@ public class RequestHandler
     } else
       o =
           node.makeRequestSender(
-              key, htl, uid, tag, source, false, true, false, false, false, realTimeFlag);
+              key,
+              htl,
+              uid,
+              tag,
+              source,
+              Node.RequestSenderOptions.of(
+                  false, // localOnly
+                  true, // ignoreStore
+                  false, // offersOnly
+                  false, // canReadClientCache
+                  false, // canWriteClientCache
+                  realTimeFlag));
 
     if (o == null) { // ran out of htl?
       Message dnf = DMT.createFNPDataNotFound(uid);
