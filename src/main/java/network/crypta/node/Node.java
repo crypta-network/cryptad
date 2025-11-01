@@ -518,22 +518,22 @@ public class Node implements TimeSkewDetectorCallback {
   private int storeSaltHashSlotFilterPersistenceTime;
 
   /** Minimum total datastore size */
-  public static final long MIN_STORE_SIZE = 32 * 1024 * 1024;
+  public static final long MIN_STORE_SIZE = 32L * 1024 * 1024;
 
   /** Default datastore size (must be at least MIN_STORE_SIZE) */
-  static final long DEFAULT_STORE_SIZE = 32 * 1024 * 1024;
+  static final long DEFAULT_STORE_SIZE = 32L * 1024 * 1024;
 
   /** Minimum client cache size */
   static final long MIN_CLIENT_CACHE_SIZE = 0;
 
   /** Default client cache size (must be at least MIN_CLIENT_CACHE_SIZE) */
-  static final long DEFAULT_CLIENT_CACHE_SIZE = 10 * 1024 * 1024;
+  static final long DEFAULT_CLIENT_CACHE_SIZE = 10L * 1024 * 1024;
 
   /** Minimum slashdot cache size */
   static final long MIN_SLASHDOT_CACHE_SIZE = 0;
 
   /** Default slashdot cache size (must be at least MIN_SLASHDOT_CACHE_SIZE) */
-  static final long DEFAULT_SLASHDOT_CACHE_SIZE = 10 * 1024 * 1024;
+  static final long DEFAULT_SLASHDOT_CACHE_SIZE = 10L * 1024 * 1024;
 
   /**
    * The number of bytes per key total in all the different datastores. All the datastores are
@@ -2689,12 +2689,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // This is tricky because systems with low memory probably also have slow disks, but using
     // up too much memory can be catastrophic...
     // Total alchemy, FIXME!
-    if (memoryLimit == Long.MAX_VALUE || memoryLimit < 0) defaultCacheSize = 1024 * 1024;
+    if (memoryLimit == Long.MAX_VALUE || memoryLimit < 0) defaultCacheSize = 1024L * 1024;
     else if (memoryLimit <= 128 * 1024 * 1024)
       defaultCacheSize = 0; // Turn off completely for very small memory.
     else {
       // 9 stores, total should be 5% of memory, up to maximum of 1MB per store at 308MB+
-      defaultCacheSize = Math.min(1024 * 1024, (memoryLimit - 128 * 1024 * 1024) / (20 * 9));
+      defaultCacheSize = Math.min(1024L * 1024, (memoryLimit - 128L * 1024 * 1024) / (20 * 9));
     }
 
     nodeConfig.register(
