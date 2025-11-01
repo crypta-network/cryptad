@@ -4246,12 +4246,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (LOG.isDebugEnabled())
       LOG.debug(
           "makeRequestSender({},{},{},{}) on {}", key, htl, uid, source, getDarknetPortNumber());
-    boolean localOnly = opts.localOnly;
-    boolean ignoreStore = opts.ignoreStore;
-    boolean offersOnly = opts.offersOnly;
-    boolean canReadClientCache = opts.canReadClientCache;
-    boolean canWriteClientCache = opts.canWriteClientCache;
-    boolean realTimeFlag = opts.realTimeFlag;
+    boolean localOnly = opts.localOnly();
+    boolean ignoreStore = opts.ignoreStore();
+    boolean offersOnly = opts.offersOnly();
+    boolean canReadClientCache = opts.canReadClientCache();
+    boolean canWriteClientCache = opts.canWriteClientCache();
+    boolean realTimeFlag = opts.realTimeFlag();
 
     if (!ignoreStore) {
       KeyBlock kb =
