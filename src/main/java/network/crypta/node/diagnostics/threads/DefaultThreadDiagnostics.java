@@ -159,8 +159,9 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
   /**
    * Gets the job's ID from the thread (PooledExecutor.MyThread) or defaults to the thread's ID.
    *
-   * @param thread
-   * @return Job ID or Thread ID.
+   * @param thread the thread for which to resolve a stable job identifier; for pooled workers this
+   *     is the current job id, otherwise the OS thread id
+   * @return job id when the thread is a pooled worker with an assigned job; otherwise the thread id
    */
   private long getJobId(Thread thread) {
     long jobId = thread.threadId();
