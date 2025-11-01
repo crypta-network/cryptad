@@ -6086,13 +6086,27 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         > PeerManager.OUTDATED_MIN_TOO_NEW_DARKNET;
   }
 
+  /**
+   * Returns the per-plugin encryption key derived from the node's database key.
+   *
+   * <p>When the node's master database key is not available (for example, database encryption is
+   * disabled or a password has not been provided), this method returns {@code null}. Callers must
+   * handle a {@code null} return value and avoid constructing encryption primitives in that case.
+   * When present, the returned array contains a 32-byte key derived for the given {@code
+   * storeIdentifier} and must be treated as secret.
+   *
+   * @param storeIdentifier plugin store identifier; must not be {@code null} when a key is
+   *     available.
+   * @return a 32-byte derived key, or {@code null} if no database key is available.
+   */
+  @SuppressWarnings("java:S1168")
   public byte[] getPluginStoreKey(String storeIdentifier) {
     DatabaseKey key;
     synchronized (this) {
       key = databaseKey;
     }
     if (key != null) return key.getPluginStoreKey(storeIdentifier);
-    else return new byte[0];
+    else return null;
   }
 
   public PluginManager getPluginManager() {
