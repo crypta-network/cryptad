@@ -102,8 +102,9 @@ public class DatastoreUtil {
       slots /= 3;
       // We return the total size, so we don't need to worry about cache vs store or even client
       // cache.
-      // One key of all 3 types combined uses Node.sizePerKey bytes on disk. So we get a size.
-      maxDatastoreSize = slots * Node.sizePerKey; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
+      // One key of all 3 types combined uses Node.SIZE_PER_KEY bytes on disk. So we get a size.
+      maxDatastoreSize =
+          slots * Node.SIZE_PER_KEY; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
     }
     return maxDatastoreSize;
   }

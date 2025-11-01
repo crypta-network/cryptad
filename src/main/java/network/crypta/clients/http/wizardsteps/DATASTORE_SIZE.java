@@ -191,8 +191,8 @@ public class DATASTORE_SIZE implements Step {
     slots /= 3;
     // We return the total size, so we don't need to worry about cache vs store or even client
     // cache.
-    // One key of all 3 types combined uses Node.sizePerKey bytes on disk. So we get a size.
-    long maxSize = slots * Node.sizePerKey;
+    // One key of all 3 types combined uses Node.SIZE_PER_KEY bytes on disk. So we get a size.
+    long maxSize = slots * Node.SIZE_PER_KEY;
 
     // Datastore can never be larger than free disk space, assuming datastore is zero now.
     File storeDir = node.getStoreDir();

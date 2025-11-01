@@ -536,7 +536,7 @@ public class Node implements TimeSkewDetectorCallback {
    * The number of bytes per key total in all the different datastores. All the datastores are
    * always the same size in number of keys.
    */
-  public static final int sizePerKey =
+  public static final int SIZE_PER_KEY =
       CHKBlock.DATA_LENGTH
           + CHKBlock.TOTAL_HEADERS_LENGTH
           + DSAPublicKey.PADDED_SIZE
@@ -882,7 +882,7 @@ public class Node implements TimeSkewDetectorCallback {
    * the callbacks for outputBandwidthLimit and inputBandwidthLimit. 10 KiB are equivalent to 50 GiB
    * traffic per month.
    */
-  private static final int minimumBandwidth = 10 * 1024;
+  private static final int MINIMUM_BANDWIDTH = 10 * 1024;
 
   /** Quality of Service mark we will use for all outgoing packets (opennet/darknet) */
   private TrafficClass trafficClass;
@@ -894,10 +894,10 @@ public class Node implements TimeSkewDetectorCallback {
   /*
    * Gets minimum bandwidth in bytes considered usable.
    *
-   * @see #minimumBandwidth
+   * @see #MINIMUM_BANDWIDTH
    */
   public static int getMinimumBandwidth() {
-    return minimumBandwidth;
+    return MINIMUM_BANDWIDTH;
   }
 
   /**
@@ -1827,8 +1827,8 @@ public class Node implements TimeSkewDetectorCallback {
         });
 
     int obwLimit = nodeConfig.getInt("outputBandwidthLimit");
-    if (obwLimit < minimumBandwidth) {
-      obwLimit = minimumBandwidth; // upgrade slow nodes automatically
+    if (obwLimit < MINIMUM_BANDWIDTH) {
+      obwLimit = MINIMUM_BANDWIDTH; // upgrade slow nodes automatically
       LOG.info(
           "Output bandwidth was lower than minimum bandwidth. Increased to minimum bandwidth.");
     }
@@ -1891,8 +1891,8 @@ public class Node implements TimeSkewDetectorCallback {
     if (ibwLimit == -1) {
       inputLimitDefault = true;
       ibwLimit = obwLimit * 4;
-    } else if (ibwLimit < minimumBandwidth) {
-      ibwLimit = minimumBandwidth; // upgrade slow nodes automatically
+    } else if (ibwLimit < MINIMUM_BANDWIDTH) {
+      ibwLimit = MINIMUM_BANDWIDTH; // upgrade slow nodes automatically
       LOG.info("Input bandwidth was lower than minimum bandwidth. Increased to minimum bandwidth.");
     }
     inputBandwidthLimit = ibwLimit;
@@ -2417,7 +2417,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                   l10n("invalidMaxStoreSize", Long.toString(maxDatastoreSize / ONE_GIB)));
             }
 
-            long newMaxStoreKeys = storeSize / sizePerKey;
+            long newMaxStoreKeys = storeSize / SIZE_PER_KEY;
             if (newMaxStoreKeys == maxTotalKeys) return;
             // Update each datastore
             synchronized (Node.this) {
@@ -2460,7 +2460,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           NodeInitException.EXIT_INVALID_STORE_SIZE, "Store size too small");
     }
 
-    maxTotalKeys = maxTotalDatastoreSize / sizePerKey;
+    maxTotalKeys = maxTotalDatastoreSize / SIZE_PER_KEY;
 
     nodeConfig.register(
         "storeUseSlotFilters",
@@ -2816,7 +2816,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           public void set(Long storeSize) throws InvalidConfigValueException {
             if (storeSize < MIN_CLIENT_CACHE_SIZE)
               throw new InvalidConfigValueException(l10n("invalidStoreSize"));
-            long newMaxStoreKeys = storeSize / sizePerKey;
+            long newMaxStoreKeys = storeSize / SIZE_PER_KEY;
             if (newMaxStoreKeys == maxClientCacheKeys) return;
             // Update each datastore
             synchronized (Node.this) {
@@ -2842,7 +2842,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           NodeInitException.EXIT_INVALID_STORE_SIZE, "Client cache size too small");
     }
 
-    maxClientCacheKeys = maxTotalClientCacheSize / sizePerKey;
+    maxClientCacheKeys = maxTotalClientCacheSize / SIZE_PER_KEY;
 
     boolean startedClientCache = false;
 
@@ -2974,7 +2974,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           public void set(Long storeSize) throws InvalidConfigValueException {
             if (storeSize < MIN_SLASHDOT_CACHE_SIZE)
               throw new InvalidConfigValueException(l10n("invalidStoreSize"));
-            int newMaxStoreKeys = (int) Math.min(storeSize / sizePerKey, Integer.MAX_VALUE);
+            int newMaxStoreKeys = (int) Math.min(storeSize / SIZE_PER_KEY, Integer.MAX_VALUE);
             if (newMaxStoreKeys == maxSlashdotCacheKeys) return;
             // Update each datastore
             synchronized (Node.this) {
@@ -3000,7 +3000,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           NodeInitException.EXIT_INVALID_STORE_SIZE, "Slashdot cache size too small");
     }
 
-    maxSlashdotCacheKeys = (int) Math.min(maxSlashdotCacheSize / sizePerKey, Integer.MAX_VALUE);
+    maxSlashdotCacheKeys = (int) Math.min(maxSlashdotCacheSize / SIZE_PER_KEY, Integer.MAX_VALUE);
 
     chkSlashdotcache = new CHKStore();
     chkSlashdotcacheStore =
