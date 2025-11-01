@@ -2,6 +2,7 @@ package network.crypta.support;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
 
+import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -277,6 +278,9 @@ public class PooledExecutor implements PriorityAwareExecutor {
     }
   }
 
+  /** Immutable diagnostic sample for a worker thread. */
+  public static record DiagSample(int jobId, String name, long cpuTime) {}
+
   /**
    * Worker that executes tasks and returns to an idle state when finished.
    *
@@ -324,6 +328,22 @@ public class PooledExecutor implements PriorityAwareExecutor {
       if (job != null) return job.id;
       if (nextJob != null) return nextJob.id;
       return 0;
+    }
+
+    /**
+     * Take a consistent snapshot of this worker's current diagnostic identifiers under the worker's
+     * monitor, aligning the job id with the current thread name.
+     *
+     * <p>Includes the current CPU time for this Java thread from {@link ManagementFactory}'s {@link
+     * java.lang.management.ThreadMXBean} so callers can compute deltas keyed by job id.
+     */
+    public DiagSample diagSample() {
+      synchronized (this) {
+        int jid = getJobId();
+        String nm = getName();
+        long cpu = ManagementFactory.getThreadMXBean().getThreadCpuTime(this.threadId());
+        return new DiagSample(jid, nm, cpu);
+      }
     }
 
     /**
