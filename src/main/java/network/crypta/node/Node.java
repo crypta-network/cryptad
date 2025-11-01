@@ -1362,7 +1362,7 @@ public class Node implements TimeSkewDetectorCallback {
       try {
         Files.delete(backup.toPath());
       } catch (IOException e) {
-        LOG.warn("Failed to delete backup {}: {}", backup, e.getMessage(), e);
+        LOG.info("Failed to delete backup {}: {}", backup, e.getMessage(), e);
       }
     }
 
