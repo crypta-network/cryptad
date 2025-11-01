@@ -6560,9 +6560,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Creates a thread‑safe {@link MersenneTwister} seeded from the secure PRNG.
    *
    * <p>Do not use the instance field {@code random} here: this method is called while wiring the
-   * random sources, before {@code this.random} is initialized. Seeding from the global
-   * {@link java.security.SecureRandom} avoids a null dereference and matches the constructor
-   * contract which specifies that the weak random is seeded from a secure PRNG when not provided.
+   * random sources, before {@code this.random} is initialized. Seeding from the global {@link
+   * java.security.SecureRandom} avoids a null dereference and matches the constructor contract
+   * which specifies that the weak random is seeded from a secure PRNG when not provided.
    *
    * @return a synchronized PRNG suitable for simulations and randomized scheduling.
    */
