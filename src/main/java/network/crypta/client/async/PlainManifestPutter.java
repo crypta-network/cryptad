@@ -40,15 +40,16 @@ public class PlainManifestPutter extends BaseManifestPutter {
       ClientContext context)
       throws TooManyFilesInsertException {
     super(
-        clientCallback,
-        manifestElements,
-        prioClass,
-        target,
-        defaultName,
-        ctx,
-        ClientPutter.randomiseSplitfileKeys(target, ctx),
-        forceCryptoKey,
-        context);
+        new InitParams()
+            .withCb(clientCallback)
+            .withManifestElements(manifestElements)
+            .withPrioClass(prioClass)
+            .withTarget(target)
+            .withDefaultName(defaultName)
+            .withCtx(ctx)
+            .withRandomiseCryptoKeys(ClientPutter.randomiseSplitfileKeys(target, ctx))
+            .withForceCryptoKey(forceCryptoKey)
+            .withContext(context));
   }
 
   @Override

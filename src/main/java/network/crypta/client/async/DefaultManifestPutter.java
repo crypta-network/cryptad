@@ -62,7 +62,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   public DefaultManifestPutter(
       ClientPutCallback clientCallback,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       short prioClass,
       FreenetURI target,
       String defaultName,
@@ -79,15 +79,16 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     // a
     // random SSK to take advantage of this.
     super(
-        clientCallback,
-        manifestElements,
-        prioClass,
-        target,
-        defaultName,
-        ctx,
-        ClientPutter.randomiseSplitfileKeys(target, ctx),
-        forceCryptoKey,
-        context);
+        new InitParams()
+            .withCb(clientCallback)
+            .withManifestElements(new HashMap<>(manifestElements))
+            .withPrioClass(prioClass)
+            .withTarget(target)
+            .withDefaultName(defaultName)
+            .withCtx(ctx)
+            .withRandomiseCryptoKeys(ClientPutter.randomiseSplitfileKeys(target, ctx))
+            .withForceCryptoKey(forceCryptoKey)
+            .withContext(context));
   }
 
   /**
