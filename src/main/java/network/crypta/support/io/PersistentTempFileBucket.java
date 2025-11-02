@@ -145,7 +145,7 @@ public class PersistentTempFileBucket extends TempFileBucket implements Serializ
      */
     super.innerResume(context);
     if (LOG.isDebugEnabled()) LOG.debug("Resuming {}", this);
-    tracker = context.persistentFileTracker;
+    tracker = context.getPersistentFileTracker();
     tracker.register(getFile());
   }
 

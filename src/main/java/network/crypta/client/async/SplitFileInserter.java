@@ -201,7 +201,7 @@ public class SplitFileInserter
               context.ticker,
               context.getChkInsertScheduler(realTime).fetchingKeys(),
               context.persistentFG,
-              context.persistentFileTracker,
+              context.getPersistentFileTracker(),
               context.getPersistentMasterSecret());
       storage.onResume(context);
       this.sender = new SplitFileInserterSender(this, storage);

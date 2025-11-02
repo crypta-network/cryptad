@@ -249,9 +249,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     // user frees it it's their fault.
     if (bogusUSK(context)) return false;
     CacheFetchResult result =
-        context.downloadCache == null
+        context.getDownloadCache() == null
             ? null
-            : context.downloadCache.lookupInstant(uri, !fctx.filterData, false, null);
+            : context.getDownloadCache().lookupInstant(uri, !fctx.filterData, false, null);
     if (result == null) return false;
     String mimeType = null;
     if ((!fctx.filterData) && (!result.alreadyFiltered)) {
