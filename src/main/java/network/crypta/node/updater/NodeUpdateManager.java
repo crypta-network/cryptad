@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.FetchContext;
@@ -35,9 +36,7 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.RevocationKeyFoundUserAlert;
-import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UpdatedVersionAvailableUserAlert;
-import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.HTMLNode;
@@ -51,26 +50,44 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Supervises auto‑update components: core application updates and plugin updates.
+ * Supervises auto‑update components for the node: core application updates and plugin updates.
  *
- * <p>Historically this class owned a main‑jar self‑updater and coordinated Update‑Over‑Mandatory
- * (UoM) fallback. The core update flow is now package‑based via {@code CoreUpdater} (deb/rpm/dmg/
- * exe/flatpak/snap), and UoM for the main JAR is disabled in that mode (revocation handling stays).
- * Plugin updates continue to use the existing JAR flow.
+ * <p>This manager wires the package‑based core updater ({@link CoreUpdater}) and maintains
+ * compatibility glue for historical Update‑Over‑Mandatory (UoM) behavior. Today, core updates are
+ * delivered as OS/arch‑specific packages (deb/rpm/dmg/exe/flatpak/snap). Serving or fetching the
+ * main JAR via UoM is intentionally disabled; only revocation handling and announcements remain.
+ * Plugin updates continue to use the existing JAR flow and are orchestrated by {@link
+ * PluginJarUpdater} instances owned by this manager.
  *
- * <p>Procedure for updating the update key: Create a new key. Create a new build X, the "transition
- * version". This must be UOM-compatible with the previous transition version. UOM-compatible means
- * UOM should work from the older builds. This in turn means that it should support an overlapping
- * set of connection setup negTypes (@link FNPPacketMangler.supportedNegTypes()). Similarly there
- * may be issues with changes to the UOM messages, or to messages in general. Build X is inserted to
- * both the old key and the new key. Build X's SSK URI (on the old auto-update key) will be
- * hard-coded as the new transition version. Then the next build, X+1, can get rid of some of the
- * back compatibility cruft (especially old connection setup types), and will be inserted only to
- * the new key. Secure backups of the new key are required and are documented elsewhere. FIXME: See
- * bug #6009 for some current UOM compatibility issues.
+ * <p>Lifecycle and responsibilities:
+ *
+ * <ul>
+ *   <li>Build and hold configuration options under the {@code node.updater} subconfig.
+ *   <li>Start/stop the {@link CoreUpdater} and per‑plugin updaters when enabled/disabled.
+ *   <li>Track and react to revocation state via {@link RevocationChecker}, surfacing alerts.
+ *   <li>Render core update status into the Alerts panel and broadcast UoM announcements.
+ * </ul>
+ *
+ * <p>Threading and state: methods that mutate shared state are generally synchronized on the
+ * instance; read‑only getters typically avoid long‑held locks. Callers should treat {@code
+ * NodeUpdateManager} as long‑lived and bound to the lifecycle of {@link Node}. Instances are not
+ * intended for reuse across nodes. All operations are designed to be idempotent across repeated
+ * invocations.
+ *
+ * <p>Procedure for updating the update key: create a new key and produce a new build X (the
+ * “transition version”). Build X must be UoM‑compatible with the previous transition version so
+ * older nodes can update. UoM compatibility implies an overlapping set of connection setup
+ * negotiation types (see {@code FNPPacketMangler.supportedNegTypes()}) and compatible message
+ * formats. Build X is inserted to both the old and the new key; its SSK on the old key is
+ * hard‑coded as the transition version. The next build (X+1) can drop legacy compatibility and is
+ * inserted only to the new key. Secure key backups are required and documented elsewhere.
  */
 public class NodeUpdateManager {
   private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
+
+  // L10n parameter keys and repeated URL query parts
+  private static final String L10N_PARAM_ERROR = "error";
+  private static final String QUERY_TEXT_PLAIN = "?type=text/plain";
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -83,17 +100,27 @@ public class NodeUpdateManager {
       "USK@uQnFwn0aEFSAZihnSDduEHUd3GUmGg68ATn5R95MKJo,mcNiZqosfZ1F~PkZY8v1TuDKsY6noda-hGRXvu7uUFc,AQACAAE/jar/"
           + Version.currentBuildNumber();
 
+  /** Default USK/SSK pointing to revocation content that disables auto‑update. */
   public static final String REVOCATION_URI =
       "SSK@TAnVLWtrGguuIi3fXkf8OmT5Pmy2Hduai18FUCP0uAU,tMg8t4kLktzmz~uFC6jk~-CUNv1mQ-C573sjLeg0alU,AQACAAE/revoked";
+
   // These are necessary to prevent DoS.
-  public static final long MAX_REVOCATION_KEY_LENGTH = 32 * 1024;
-  public static final long MAX_REVOCATION_KEY_TEMP_LENGTH = 64 * 1024;
-  public static final long MAX_REVOCATION_KEY_BLOB_LENGTH = 128 * 1024;
-  public static final long MAX_MAIN_JAR_LENGTH = 48 * 1024 * 1024; // 48MiB
-  public static final long MAX_JAVA_INSTALLER_LENGTH = 300 * 1024 * 1024;
-  public static final long MAX_WINDOWS_INSTALLER_LENGTH = 300 * 1024 * 1024;
-  public static final long MAX_IP_TO_COUNTRY_LENGTH = 24 * 1024 * 1024;
-  public static final long MAX_SEEDNODES_LENGTH = 3 * 1024 * 1024;
+  /** Maximum allowed decoded byte length of a revocation document. */
+  public static final long MAX_REVOCATION_KEY_LENGTH = 32L * 1024L;
+
+  /** Maximum temporary storage budget in bytes while fetching a revocation document. */
+  public static final long MAX_REVOCATION_KEY_TEMP_LENGTH = 64L * 1024L;
+
+  /** Maximum on‑disk blob length in bytes for a persisted revocation document. */
+  public static final long MAX_REVOCATION_KEY_BLOB_LENGTH = 128L * 1024L;
+
+  /** Maximum allowed size in bytes for the historical main JAR (legacy paths only). */
+  public static final long MAX_MAIN_JAR_LENGTH = 48L * 1024L * 1024L; // 48MiB
+
+  /** Maximum allowed size in bytes for the IPv4‐to‐country database. */
+  public static final long MAX_IP_TO_COUNTRY_LENGTH = 24L * 1024L * 1024L;
+
+  // Installer/seednodes length caps removed with deprecated auto-fetch paths
 
   private FreenetURI updateURI;
   private FreenetURI revocationURI;
@@ -104,7 +131,6 @@ public class NodeUpdateManager {
 
   private Map<String, PluginJarUpdater> pluginUpdaters;
 
-  private boolean autoDeployPluginsOnRestart;
   private final boolean wasEnabledOnStartup;
 
   /** Is auto-update enabled? */
@@ -118,39 +144,20 @@ public class NodeUpdateManager {
    * be un-set, except in the case of a severe error causing a valid update to fail. However, it is
    * un-set in this case, so that we can try again with another build.
    */
-  private boolean isDeployingUpdate;
+  // Unused flag removed; deployment happens only via CoreUpdater
 
   private final Object broadcastUOMAnnouncesSync = new Object();
+
   private boolean broadcastUOMAnnounces = false;
 
-  /**
-   * @deprecated Use {@link #getNode()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
+  /** Owning node; used for configuration, scheduling, and network interactions. */
   public final Node node;
 
-  /**
-   * @deprecated Use {@link #getRevocationChecker()} instead of accessing this directly.
-   */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
   final RevocationChecker revocationChecker;
 
   private String revocationMessage;
   private volatile boolean hasBeenBlown;
   private volatile boolean peersSayBlown;
-  private boolean updateSeednodes;
-  private boolean updateInstallers;
-
-  /** Is there a new main jar ready to deploy? */
-  private volatile boolean hasNewMainJar;
-
-  /** If another main jar is being fetched, when did the fetch start? */
-  private long startedFetchingNextMainJar;
-
-  /** Time when we got the jar */
-  private long gotJarTime;
 
   // Revocation alert
   private RevocationKeyFoundUserAlert revocationAlert;
@@ -158,24 +165,25 @@ public class NodeUpdateManager {
   private final UpdatedVersionAvailableUserAlert alert;
 
   /**
-   * @deprecated Use {@link #getUpdateOverMandatory()} instead of accessing this directly.
+   * Legacy Update‑Over‑Mandatory (UoM) coordinator for announcement/fallback tracking. Serving or
+   * fetching the main JAR via UoM is disabled; revocation UoM remains enabled.
    */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
   public final UpdateOverMandatoryManager uom;
 
-  private boolean disabledThisSession;
-
-  // CoreUpdater manages core updates; legacy main-jar fields are no longer used.
-
-  private static final Object deployLock = new Object();
-
-  static final String TEMP_BLOB_SUFFIX = ".updater.fblob.tmp";
+  // Temp blob suffix removed (legacy path)
   static final String TEMP_FILE_SUFFIX = ".updater.tmp";
 
-  static {
-  }
-
+  /**
+   * Creates a new manager bound to the given {@link Node} and configuration subtree.
+   *
+   * <p>The constructor wires the {@code node.updater} subconfig, initializes the revocation
+   * checker, and prepares the legacy UoM coordinator. It does not start background work; call
+   * {@link #enable(boolean)} or {@link #startCoreUpdater()} to begin update processing.
+   *
+   * @param node the owning node; must remain valid for the lifetime of this manager (non‑null)
+   * @param config global configuration; a {@code node.updater} subconfig is created and populated
+   * @throws InvalidConfigValueException if provided URIs are malformed or violate required shapes
+   */
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
     this.node = node;
     this.hasBeenBlown = false;
@@ -223,7 +231,7 @@ public class NodeUpdateManager {
       updateURI = new FreenetURI(updaterConfig.getString("URI"));
     } catch (MalformedURLException e) {
       throw new InvalidConfigValueException(
-          l10n("invalidUpdateURI", "error", e.getLocalizedMessage()));
+          l10n("invalidUpdateURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
     }
 
     updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
@@ -248,7 +256,7 @@ public class NodeUpdateManager {
       revocationURI = new FreenetURI(updaterConfig.getString("revocationURI"));
     } catch (MalformedURLException e) {
       throw new InvalidConfigValueException(
-          l10n("invalidRevocationURI", "error", e.getLocalizedMessage()));
+          l10n("invalidRevocationURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
     }
 
     // Deprecated UI option: updateSeednodes (no longer shown on the Auto-update page).
@@ -304,7 +312,7 @@ public class NodeUpdateManager {
 
     @Override
     public void onFailure(FetchException e, ClientGetter state) {
-      System.err.println("Failed to fetch " + filename + " : " + e);
+      LOG.warn("Failed to fetch {}", filename, e);
     }
 
     @Override
@@ -313,47 +321,58 @@ public class NodeUpdateManager {
       try {
         temp = FileUtil.createTempFile(filename, ".tmp", directory.dir());
         temp.deleteOnExit();
-        try (FileOutputStream fos = new FileOutputStream(temp)) {
-          BucketTools.copyTo(result.asBucket(), fos, -1);
-        }
+        writeBucketToFile(temp, result.asBucket());
         for (int i = 0; i < 10; i++) {
-          // FIXME add a callback in case it's being used on Windows.
+          // Consider adding a callback in case it's being used on Windows.
           if (FileUtil.moveTo(temp, directory.file(filename))) {
-            System.out.println(
-                "Successfully fetched "
-                    + filename
-                    + " for version "
-                    + Version.currentBuildNumber());
+            LOG.info(
+                "Successfully fetched {} for version {}", filename, Version.currentBuildNumber());
             break;
           } else {
-            System.out.println(
-                "Failed to rename " + temp + " to " + filename + " after fetching it from Crypta.");
-            try {
-              Thread.sleep(
-                  SECONDS.toMillis(1)
-                      + node.getFastWeakRandom()
-                          .nextInt(
-                              (int)
-                                  SECONDS.toMillis(
-                                      (long) Math.min(Math.pow(2, i), MINUTES.toSeconds(15)))));
-            } catch (InterruptedException e) {
-              // Ignore
-            }
+            LOG.warn("Failed to rename {} to {} after fetching it from Crypta.", temp, filename);
+            sleepWithBackoff(i);
           }
         }
-        temp.delete();
+        deleteTempFile(temp);
       } catch (IOException e) {
-        System.err.println(
-            "Fetched but failed to write out "
-                + filename
-                + " - please check that the node has permissions to write in "
-                + directory.dir()
-                + " and particularly the file "
-                + filename);
-        System.err.println("The error was: " + e);
-        e.printStackTrace();
+        LOG.error(
+            "Fetched but failed to write out {} - please check that the node has permissions to"
+                + " write in {} and particularly the file {}",
+            filename,
+            directory.dir(),
+            filename,
+            e);
       } finally {
         IOUtils.closeQuietly(result.asBucket());
+      }
+    }
+
+    private static void writeBucketToFile(File temp, Bucket bucket) throws IOException {
+      try (FileOutputStream fos = new FileOutputStream(temp)) {
+        BucketTools.copyTo(bucket, fos, -1);
+      }
+    }
+
+    private static void deleteTempFile(File temp) {
+      try {
+        // The temp file may have been moved into place already; quietly ignore when missing.
+        Files.deleteIfExists(temp.toPath());
+      } catch (IOException ioe) {
+        LOG.warn("Failed to delete temp file {}", temp, ioe);
+      }
+    }
+
+    private void sleepWithBackoff(int i) {
+      try {
+        Thread.sleep(
+            SECONDS.toMillis(1)
+                + node.getFastWeakRandom()
+                    .nextInt(
+                        (int)
+                            SECONDS.toMillis(
+                                (long) Math.min(Math.pow(2, i), MINUTES.toSeconds(15)))));
+      } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
       }
     }
 
@@ -368,6 +387,11 @@ public class NodeUpdateManager {
     }
   }
 
+  /**
+   * Returns the downloaded installer file for Windows if present and non‑empty.
+   *
+   * @return an existing readable file for the Windows installer, or {@code null} when absent
+   */
   public File getInstallerWindows() {
     File f = NodeFile.INSTALLER_WINDOWS.getFile(node);
     if (!(f.exists() && f.canRead() && f.length() > 0)) {
@@ -377,6 +401,11 @@ public class NodeUpdateManager {
     }
   }
 
+  /**
+   * Returns the downloaded installer file for non‑Windows platforms if present and non‑empty.
+   *
+   * @return an existing readable file for the Unix/macOS installer, or {@code null} when absent
+   */
   public File getInstallerNonWindows() {
     File f = NodeFile.INSTALLER_NON_WINDOWS.getFile(node);
     if (!(f.exists() && f.canRead() && f.length() > 0)) {
@@ -386,51 +415,61 @@ public class NodeUpdateManager {
     }
   }
 
+  /**
+   * Returns the USK‑derived URI for the seednodes list corresponding to the current build.
+   *
+   * @return a {@link FreenetURI} pointing to {@code seednodes-<build>} under the update key
+   */
+  @SuppressWarnings("unused")
   public FreenetURI getSeednodesURI() {
     return updateURI.sskForUSK().setDocName("seednodes-" + Version.currentBuildNumber());
   }
 
+  /**
+   * Returns the USK‑derived URI for the non‑Windows installer of the current build.
+   *
+   * @return a {@link FreenetURI} for {@code installer-<build>} under the update key
+   */
   public FreenetURI getInstallerNonWindowsURI() {
     return updateURI.sskForUSK().setDocName("installer-" + Version.currentBuildNumber());
   }
 
+  /**
+   * Returns the USK‑derived URI for the Windows installer of the current build.
+   *
+   * @return a {@link FreenetURI} for {@code wininstaller-<build>} under the update key
+   */
   public FreenetURI getInstallerWindowsURI() {
     return updateURI.sskForUSK().setDocName("wininstaller-" + Version.currentBuildNumber());
   }
 
+  /**
+   * Returns the USK‑derived URI for the IPv4‑to‑country database used by the node.
+   *
+   * @return a {@link FreenetURI} for {@code iptocountryv4-<build>} under the update key
+   */
   public FreenetURI getIPv4ToCountryURI() {
     return updateURI.sskForUSK().setDocName("iptocountryv4-" + Version.currentBuildNumber());
   }
 
-  public void start() throws InvalidConfigValueException {
+  /**
+   * Starts user‑visible alerting and kicks off background fetchers that do not depend on core
+   * update enablement. Auto‑update itself is started or stopped via {@link #enable(boolean)}.
+   */
+  public void start() {
 
     node.getClientCore().getAlerts().register(alert);
 
     enable(wasEnabledOnStartup);
 
-    // Fetch seednodes to the nodeDir.
-    if (updateSeednodes) {
+    // Deprecated: seednodes/installers are no longer auto-fetched here
 
-      SimplePuller seedrefsGetter = new SimplePuller(getSeednodesURI(), NodeFile.SEEDNODES);
-      seedrefsGetter.start(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, MAX_SEEDNODES_LENGTH);
-    }
-
-    // Fetch installers and IP-to-country files to the runDir.
-    if (updateInstallers) {
-      SimplePuller installerGetter =
-          new SimplePuller(getInstallerNonWindowsURI(), NodeFile.INSTALLER_NON_WINDOWS);
-      SimplePuller wininstallerGetter =
-          new SimplePuller(getInstallerWindowsURI(), NodeFile.INSTALLER_WINDOWS);
-
-      installerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_JAVA_INSTALLER_LENGTH);
-      wininstallerGetter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_WINDOWS_INSTALLER_LENGTH);
-    }
-
-    // FIXME make updateIPToCountry configurable
+    // Note: make updateIPToCountry configurable
     SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPV4_TO_COUNTRY);
     ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
   }
 
+  /** Broadcasts UoM announcements to local peers when armed and applicable. */
   void broadcastUOMAnnounces() {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Broadcast UOM announcements");
@@ -450,33 +489,38 @@ public class NodeUpdateManager {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Broadcasting UOM announcements");
     }
-    node.getPeers().localBroadcast(msg, true, true, ctr, TRANSITION_VERSION, Integer.MAX_VALUE);
+    node.getPeers()
+        .localBroadcast(msg, true, true, getByteCounter(), TRANSITION_VERSION, Integer.MAX_VALUE);
   }
 
-  /** Return the length of the data fetched for the current version, or -1. */
+  /** Return the length of the data fetched for the current version, or {@code -1}. */
   private long canAnnounceUOMNew() {
     return -1;
   }
 
   private Message getNewUOMAnnouncement(long blobSize) {
-    int fetchedVersion = blobSize <= 0 ? -1 : Version.currentBuildNumber();
-    if (blobSize <= 0) {
-      fetchedVersion = -1;
-    }
+    int fetchedVersion = (blobSize <= 0) ? -1 : Version.currentBuildNumber();
     return new DMT.UOMAnnouncementBuilder()
         .mainKey(updateURI.toString())
         .revocationKey(revocationURI.toString())
-        .haveRevocation(revocationChecker.hasBlown())
+        .haveRevocation(getRevocationChecker().hasBlown())
         .mainJarVersion(fetchedVersion)
-        .timeLastTriedRevocationFetch(revocationChecker.lastSucceededDelta())
-        .revocationDNFCount(revocationChecker.getRevocationDNFCounter())
-        .revocationKeyLength(revocationChecker.getBlobSize())
+        .timeLastTriedRevocationFetch(getRevocationChecker().lastSucceededDelta())
+        .revocationDNFCount(getRevocationChecker().getRevocationDNFCounter())
+        .revocationKeyLength(getRevocationChecker().getBlobSize())
         .mainJarLength(blobSize)
         .pingTime((int) node.getNodeStats().getNodeAveragePingTime())
         .bwlimitDelayTime((int) node.getNodeStats().getBwlimitDelayTime())
         .build();
   }
 
+  /**
+   * Sends a UoM announcement to a newly connected peer when there is information worth broadcasting
+   * and the peer is sufficiently up‑to‑date to understand it.
+   *
+   * @param peer the connected peer to which an announcement may be sent; ignored when announcements
+   *     are not yet armed or local revocation state is inconsistent
+   */
   public void maybeSendUOMAnnounce(PeerNode peer) {
 
     synchronized (broadcastUOMAnnouncesSync) {
@@ -487,7 +531,7 @@ public class NodeUpdateManager {
         return; // nothing worth announcing yet
       }
     }
-    if (hasBeenBlown && !revocationChecker.hasBlown()) {
+    if (hasBeenBlown && !getRevocationChecker().hasBlown()) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Not sending UOM (any) on connect: Local problem causing blown key");
       }
@@ -497,14 +541,18 @@ public class NodeUpdateManager {
     long size = canAnnounceUOMNew();
     try {
       if (Version.isBuildAtLeast(peer.getNodeName(), peer.getBuildNumber(), TRANSITION_VERSION)) {
-        peer.sendAsync(getNewUOMAnnouncement(size), null, ctr);
+        peer.sendAsync(getNewUOMAnnouncement(size), null, getByteCounter());
       }
     } catch (NotConnectedException e) {
       // Sad, but ignore it
     }
   }
 
-  /** Is auto-update enabled? */
+  /**
+   * Returns whether the auto‑update system is enabled for the core and plugins.
+   *
+   * @return {@code true} when a {@link CoreUpdater} instance is currently wired and active
+   */
   public synchronized boolean isEnabled() {
     return (coreUpdater != null);
   }
@@ -513,14 +561,9 @@ public class NodeUpdateManager {
    * Enable or disable auto-update.
    *
    * @param enable Whether auto-update should be enabled.
-   * @throws InvalidConfigValueException If enable=true and we are not running under the wrapper.
    */
-  void enable(boolean enable) throws InvalidConfigValueException {
-    // FIXME 194eb7bb6f295e52d18378d805bd315c95030b24 is doubtful and incomplete.
-    // if(!node.isUsingWrapper()){
-    // LOG.info(// "Don't try to start the updater as we are not running under the wrapper.");
-    // return;
-    // }
+  void enable(boolean enable) {
+    // Note: wrapper gating removed in favor of CoreUpdater
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
     CoreUpdater stoppedCoreUpdater = null;
     // We need to run the revocation checker even if auto-update is
@@ -529,7 +572,7 @@ public class NodeUpdateManager {
     // 1. For the benefit of other nodes, and because even if auto-update is
     // off, it's something the user should probably know about.
     // 2. When the key is blown, we turn off auto-update!!!!
-    revocationChecker.start(false);
+    getRevocationChecker().start(false);
     synchronized (this) {
       boolean enabled = (coreUpdater != null);
       if (enabled == enable) {
@@ -537,19 +580,13 @@ public class NodeUpdateManager {
       }
       if (!enable) {
         // Kill it
-        if (coreUpdater != null) coreUpdater.preKill();
+        coreUpdater.preKill();
         stoppedCoreUpdater = coreUpdater;
         coreUpdater = null;
         oldPluginUpdaters = pluginUpdaters;
         pluginUpdaters = null;
         disabledNotBlown = false;
       } else {
-        // if((!WrapperManager.isControlledByNativeWrapper()) ||
-        // (NodeStarter.extBuildNumber == -1)) {
-        // LOG.error(// "Cannot update because not running under wrapper");
-        // throw new
-        // InvalidConfigValueException(l10n("noUpdateWithoutWrapper"));
-        // }
         // Start CoreUpdater and plugin updaters
         startCoreUpdater();
         pluginUpdaters = new HashMap<>();
@@ -558,9 +595,9 @@ public class NodeUpdateManager {
       }
     }
     if (!enable) {
-      if (stoppedCoreUpdater != null) {
-        stoppedCoreUpdater.kill();
-      }
+      // When we reach here with enable=false, coreUpdater was non-null above,
+      // so stoppedCoreUpdater is guaranteed to be non-null.
+      stoppedCoreUpdater.kill();
       stopPluginUpdaters(oldPluginUpdaters);
     } else {
       if (coreUpdater != null) coreUpdater.start();
@@ -575,12 +612,16 @@ public class NodeUpdateManager {
   }
 
   /**
-   * @param plugName The filename for loading/config purposes for an official plugin. E.g. "Library"
-   *     (no .jar)
+   * Starts the update fetcher for a specific official plugin by name.
+   *
+   * <p>The name matches the plugin's identifier without the {@code .jar} suffix (for example,
+   * {@code "Library"}). Non‑official plugins are ignored.
+   *
+   * @param plugName the plugin identifier used for loading/configuration, without {@code .jar}
    */
   public void startPluginUpdater(String plugName) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Starting plugin updater for " + plugName);
+      LOG.debug("Starting plugin updater for {}", plugName);
     }
     OfficialPluginDescription plugin = node.getPluginManager().getOfficialPlugin(plugName);
     if (plugin != null) {
@@ -588,7 +629,7 @@ public class NodeUpdateManager {
     } else
     // Most likely not an official plugin
     if (LOG.isDebugEnabled()) {
-      LOG.debug("No such plugin " + plugName + " in startPluginUpdater()");
+      LOG.debug("No such plugin {} in startPluginUpdater()", plugName);
     }
   }
 
@@ -598,13 +639,11 @@ public class NodeUpdateManager {
     long minVer = (plugin.essential ? plugin.minimumVersion : plugin.recommendedVersion);
     // But it might already be past that ...
     PluginInfoWrapper info = node.getPluginManager().findPluginByIdentifier(name);
-    if (info == null) {
-      if (!(node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(name))) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Plugin not loaded");
-        }
-        return;
+    if (info == null && !node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(name)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Plugin not loaded");
       }
+      return;
     }
     if (info != null) {
       minVer = Math.max(minVer, info.getPluginLongVersion());
@@ -620,7 +659,7 @@ public class NodeUpdateManager {
             name + "-",
             name,
             node.getPluginManager(),
-            autoDeployPluginsOnRestart);
+            false);
     synchronized (this) {
       if (pluginUpdaters == null) {
         if (LOG.isDebugEnabled()) {
@@ -637,15 +676,20 @@ public class NodeUpdateManager {
       pluginUpdaters.put(name, updater);
     }
     updater.start();
-    System.out.println("Started plugin update fetcher for " + name);
+    LOG.info("Started plugin update fetcher for {}", name);
   }
 
+  /**
+   * Stops and removes the update fetcher for the given official plugin, if present.
+   *
+   * @param plugName the plugin identifier used for loading/configuration, without {@code .jar}
+   */
   public void stopPluginUpdater(String plugName) {
     OfficialPluginDescription plugin = node.getPluginManager().getOfficialPlugin(plugName);
     if (plugin == null) {
       return; // Not an official plugin
     }
-    PluginJarUpdater updater = null;
+    PluginJarUpdater updater;
     synchronized (this) {
       if (pluginUpdaters == null) {
         if (LOG.isDebugEnabled()) {
@@ -680,26 +724,39 @@ public class NodeUpdateManager {
     return new NodeUpdateManager(node, config);
   }
 
-  /** Get the URI for freenet.jar. */
+  /**
+   * Returns the base USK for core updates, with the current build set as the suggested edition.
+   *
+   * @return a {@link FreenetURI} representing the update USK, never {@code null}
+   */
   public synchronized FreenetURI getURI() {
     return updateURI;
   }
 
   /**
-   * Update base with docname switched to {@code "info"} (core package info editions). Used by
-   * {@link CoreUpdater}.
+   * Returns the update base with docname switched to {@code "info"} (core package info editions).
+   * Used by {@link CoreUpdater}.
+   *
+   * @return a {@link FreenetURI} pointing to the {@code info} document under the update USK
    */
   public synchronized FreenetURI getCoreInfoURI() {
     return updateURI.setDocName("info");
   }
 
   /**
-   * @return URI for the user-facing changelog.
+   * Returns the URI for the user‑facing changelog under the update USK.
+   *
+   * @return a {@link FreenetURI} that resolves to the short changelog document
    */
   public synchronized FreenetURI getChangelogURI() {
     return updateURI.setDocName("changelog");
   }
 
+  /**
+   * Returns the URI for the developer‑oriented full changelog under the update USK.
+   *
+   * @return a {@link FreenetURI} that resolves to the full changelog document
+   */
   public synchronized FreenetURI getDeveloperChangelogURI() {
     return updateURI.setDocName("fullchangelog");
   }
@@ -724,7 +781,7 @@ public class NodeUpdateManager {
         node.addChild(
             "a",
             "href",
-            '/' + s + "?type=text/plain",
+            '/' + s + QUERY_TEXT_PLAIN,
             NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
         addedFromCore = true;
       }
@@ -734,7 +791,7 @@ public class NodeUpdateManager {
         node.addChild(
             "a",
             "href",
-            '/' + f + "?type=text/plain",
+            '/' + f + QUERY_TEXT_PLAIN,
             NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
         addedFromCore = true;
       }
@@ -749,26 +806,30 @@ public class NodeUpdateManager {
       node.addChild(
           "a",
           "href",
-          '/' + changelogUri + "?type=text/plain",
+          '/' + changelogUri + QUERY_TEXT_PLAIN,
           NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.changelog"));
       node.addChild("br");
       node.addChild(
           "a",
           "href",
-          '/' + developerDetailsUri + "?type=text/plain",
+          '/' + developerDetailsUri + QUERY_TEXT_PLAIN,
           NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.devchangelog"));
     }
   }
 
   /**
-   * Set the URfrenet.jar should be updated from.
+   * Sets the update USK used for core and plugin update metadata.
    *
-   * @param uri The URI to set.
+   * <p>The provided {@link FreenetURI} must be a USK without meta strings. The suggested edition is
+   * normalized to the current build. Changing the URI restarts plugin updaters and notifies the
+   * core updater.
+   *
+   * @param uri the new USK; must be a valid USK without meta strings (non‑null)
    */
-  public void setURI(FreenetURI uri) {
-    // FIXME plugins!!
+  public synchronized void setURI(FreenetURI uri) {
+    // Note: plugins
     NodeUpdater updater;
-    Map<String, PluginJarUpdater> oldPluginUpdaters = null;
+    Map<String, PluginJarUpdater> oldPluginUpdaters;
     synchronized (this) {
       if (updateURI.equals(uri)) {
         return;
@@ -788,39 +849,45 @@ public class NodeUpdateManager {
   }
 
   /**
-   * @return The revocation URI.
+   * Returns the configured revocation URI used to publish compromise notices.
+   *
+   * @return the current revocation {@link FreenetURI}
    */
   public synchronized FreenetURI getRevocationURI() {
     return revocationURI;
   }
 
   /**
-   * Set the revocation URI.
+   * Sets the revocation URI used to detect and relay compromise notices.
    *
-   * @param uri The new revocation URI.
+   * @param uri the new URI to check for revocation messages (non‑null)
    */
-  public void setRevocationURI(FreenetURI uri) {
+  public synchronized void setRevocationURI(FreenetURI uri) {
     synchronized (this) {
       if (revocationURI.equals(uri)) {
         return;
       }
       this.revocationURI = uri;
     }
-    revocationChecker.onChangeRevocationURI();
+    getRevocationChecker().onChangeRevocationURI();
   }
 
   /**
-   * @return Is auto-update currently enabled?
+   * Returns whether auto‑update is currently allowed to run in the background.
+   *
+   * @return {@code true} when background auto‑update is permitted
    */
-  public boolean isAutoUpdateAllowed() {
+  public synchronized boolean isAutoUpdateAllowed() {
     return isAutoUpdateAllowed;
   }
 
   /**
-   * Enable or disable auto-update.
+   * Enables or disables auto‑update.
    *
-   * @param val If true, enable auto-update (and immediately update if an update is ready). If
-   *     false, disable it.
+   * <p>When enabled, background download flows are permitted to run and the core updater may fetch
+   * new packages. Disabling stops future activity but does not remove already downloaded artifacts.
+   *
+   * @param val {@code true} to allow background auto‑update, {@code false} to disallow it
    */
   public void setAutoUpdateAllowed(boolean val) {
     synchronized (this) {
@@ -832,9 +899,6 @@ public class NodeUpdateManager {
     // CoreUpdater handles auto-download when enabled; nothing further needed here.
   }
 
-  private static final long WAIT_FOR_SECOND_FETCH_TO_COMPLETE = MINUTES.toMillis(4);
-  private static final long RECENT_REVOCATION_INTERVAL = MINUTES.toMillis(2);
-
   /**
    * After 5 minutes, deploy the update even if we haven't got 3 DNFs on the revocation key yet.
    * Reason: we want to be able to deploy UOM updates on nodes with all TOO NEW or leaf nodes whose
@@ -843,177 +907,52 @@ public class NodeUpdateManager {
    */
   private static final long REVOCATION_FETCH_TIMEOUT = MINUTES.toMillis(5);
 
-  /**
-   * Does the updater have an update ready to deploy? May be called synchronized(this).
-   *
-   * @param ignoreRevocation If true, return whether we will deploy when the revocation check
-   *     finishes. If false, return whether we can deploy now, and if not, deploy after a delay with
-   *     deployOffThread().
-   */
-  private boolean isReadyToDeployUpdate(boolean ignoreRevocation) {
-    return false;
-  }
-
   /** Check whether there is an update to deploy. If there is, do it. */
   private void deployUpdate() {
     /* no-op in package-based updater */
-  }
-
-  /**
-   * Use this lock when deploying an update of any kind which will require us to restart. If the
-   * update succeeds, you should call waitForever() if you don't immediately exit. There could be
-   * rather nasty race conditions if we deploy two updates at once.
-   *
-   * @return A mutex for serialising update deployments.
-   */
-  static Object deployLock() {
-    return deployLock;
-  }
-
-  /**
-   * Does not return. Should be called, inside the deployLock(), if you are in a situation where
-   * you've deployed an update but the exit hasn't actually happened yet.
-   */
-  static void waitForever() {
-    while (true) {
-      System.err.println("Waiting for shutdown after deployed update...");
-      try {
-        Thread.sleep(60 * 1000);
-      } catch (InterruptedException e) {
-        // Ignore.
-      }
-    }
-  }
-
-  /** Deploy the update. Inner method. Doesn't check anything, just does it. */
-  // Legacy deploy methods removed.
-
-  // writeJars removed
-
-  /**
-   * Write a jar. Returns true if the caller needs to rewrite the config, false if he doesn't, or
-   * throws if it fails.
-   *
-   * @param mainJar The location of the current jar file.
-   * @param newMainJar The location of the new jar file.
-   * @param backupMainJar On Windows, we alternate between freenet.jar and freenet.jar.new, so we do
-   *     not need to write a backup - the user can rename between these two. On Unix, we copy to
-   *     freenet.jar.bak before updating, in case something horrible happens.
-   * @param mainUpdater The NodeUpdater for the file in question, so we can ask it to write the
-   *     file.
-   * @param name The name of the jar for logging.
-   * @param tryEasyWay If true, attempt to rename the new file directly over the old one. This
-   *     avoids the need to rewrite the wrapper config file.
-   * @return True if the caller needs to rewrite the config, false if he doesn't (because easy way
-   *     worked).
-   * @throws UpdateFailedException If something breaks.
-   */
-  // writeJar removed
-
-  // writeJarTo removed
-
-  @SuppressWarnings("serial")
-  private static class UpdateFailedException extends Exception {
-
-    public UpdateFailedException(String message) {
-      super(message);
-    }
-  }
-
-  // restart removed
-
-  private void failUpdate(String reason) {
-    LOG.error("Update failed: " + reason);
-    System.err.println("Update failed: " + reason);
-    this.killUpdateAlerts();
-    node.getClientCore()
-        .getAlerts()
-        .register(
-            new SimpleUserAlert(
-                true,
-                l10n("updateFailedTitle"),
-                l10n("updateFailed", "reason", reason),
-                l10n("updateFailedShort", "reason", reason),
-                UserAlert.CRITICAL_ERROR));
   }
 
   private String l10n(String key) {
     return NodeL10n.getBase().getString("NodeUpdateManager." + key);
   }
 
+  @SuppressWarnings("SameParameterValue")
   private String l10n(String key, String pattern, String value) {
     return NodeL10n.getBase().getString("NodeUpdateManager." + key, pattern, value);
-  }
-
-  /**
-   * Called when a new jar has been downloaded. The caller should process the dependencies *AFTER*
-   * this method has completed, and then call onDependenciesReady().
-   *
-   * @param fetched The build number we have fetched.
-   * @param result The actual data.
-   */
-  void onDownloadedNewJar(Bucket result, int fetched, File savedBlob) {
-    /* no-op */
-  }
-
-  /** Called when the NodeUpdater starts to fetch a new version of the jar. */
-  void onStartFetching() {
-    long now = System.currentTimeMillis();
-    synchronized (this) {
-      startedFetchingNextMainJar = now;
-    }
   }
 
   private boolean disabledNotBlown;
 
   /**
-   * @param msg
-   * @param disabledNotBlown If true, the auto-updating system is broken, and should be disabled,
-   *     but the problem *could* be local e.g. out of disk space and a node sends us a revocation
-   *     certificate.
+   * Blows the update key locally and announces the condition to peers. Once blown, auto‑update is
+   * considered unsafe and related actions are disabled until the condition is cleared.
+   *
+   * <p>This method records the message, sets internal flags, raises a user alert, and issues a
+   * local broadcast so connected peers can react. It is safe to call repeatedly; subsequent calls
+   * will maintain the blown state.
+   *
+   * @param msg a brief reason or diagnostic to include in user alerts and logs (may be empty)
+   * @param disabledNotBlown {@code true} when the updater is disabled for local reasons only (not a
+   *     global revocation), {@code false} when the revocation key indicates a global blow
    */
   public void blow(String msg, boolean disabledNotBlown) {
-    CoreUpdater blownCoreUpdater = null;
+    CoreUpdater blownCoreUpdater;
     synchronized (this) {
       if (hasBeenBlown) {
-        if (this.disabledNotBlown && !disabledNotBlown) {
-          disabledNotBlown = true;
-        }
         LOG.error(
-            "The key has ALREADY been marked as blown! Message was "
-                + revocationMessage
-                + " new message "
-                + msg);
+            "The key has ALREADY been marked as blown! Message was {} new message {}",
+            revocationMessage,
+            msg);
         return;
-      } else {
-        this.revocationMessage = msg;
-        this.hasBeenBlown = true;
-        this.disabledNotBlown = disabledNotBlown;
-        // We must get to the lower part, and show the user the message
-        try {
-          if (disabledNotBlown) {
-            System.err.println("THE AUTO-UPDATING SYSTEM HAS BEEN DISABLED!");
-            System.err.println(
-                "We do not know whether this is a local problem or the auto-update system has in"
-                    + " fact been compromised. What we do know:\n"
-                    + revocationMessage);
-          } else {
-            System.err.println("THE AUTO-UPDATING SYSTEM HAS BEEN COMPROMISED!");
-            System.err.println(
-                "The auto-updating system revocation key has been inserted. It says: "
-                    + revocationMessage);
-          }
-        } catch (Throwable t) {
-          try {
-            LOG.error("Caught " + t, t);
-          } catch (Throwable t1) {
-          }
-        }
       }
+      this.revocationMessage = msg;
+      this.hasBeenBlown = true;
+      this.disabledNotBlown = disabledNotBlown;
       if (coreUpdater != null) coreUpdater.preKill();
       blownCoreUpdater = coreUpdater;
       coreUpdater = null;
     }
+    printRevocationMessage(disabledNotBlown);
     if (blownCoreUpdater != null) {
       blownCoreUpdater.kill();
     }
@@ -1023,8 +962,33 @@ public class NodeUpdateManager {
       // we don't need to advertize updates : we are not going to do them
       killUpdateAlerts();
     }
-    uom.killAlert();
+    getUpdateOverMandatory().killAlert();
     broadcastUOMAnnounces();
+  }
+
+  private void printRevocationMessage(boolean disabledNotBlown) {
+    // We must show the user the message
+    try {
+      if (disabledNotBlown) {
+        LOG.error("THE AUTO-UPDATING SYSTEM HAS BEEN DISABLED!");
+        LOG.error(
+            "We do not know whether this is a local problem or the auto-update system has in fact"
+                + " been compromised. What we do know:{}{}",
+            System.lineSeparator(),
+            revocationMessage);
+      } else {
+        LOG.error("THE AUTO-UPDATING SYSTEM HAS BEEN COMPROMISED!");
+        LOG.error(
+            "The auto-updating system revocation key has been inserted. It says: {}",
+            revocationMessage);
+      }
+    } catch (Exception t) {
+      try {
+        LOG.error("Caught {}", t, t);
+      } catch (Exception t1) {
+        // Ignore secondary logging failures
+      }
+    }
   }
 
   /** Kill all UserAlerts asking the user whether he wants to update. */
@@ -1032,7 +996,11 @@ public class NodeUpdateManager {
     node.getClientCore().getAlerts().unregister(alert);
   }
 
-  /** Called when the RevocationChecker has got 3 DNFs on the revocation key */
+  /**
+   * Clears revocation alert state when a revocation document was expected but not found. The
+   * current design does not surface a new alert here; the core updater UI remains the primary
+   * status surface.
+   */
   public void noRevocationFound() {
     deployUpdate(); // May have been waiting for the revocation.
     deployPluginUpdates();
@@ -1040,7 +1008,8 @@ public class NodeUpdateManager {
     broadcastUOMAnnounces();
     node.getTicker()
         .queueTimedJob(
-            () -> revocationChecker.start(false), node.getRandom().nextInt((int) DAYS.toMillis(1)));
+            () -> getRevocationChecker().start(false),
+            node.getRandom().nextInt((int) DAYS.toMillis(1)));
   }
 
   private void deployPluginUpdates() {
@@ -1059,23 +1028,19 @@ public class NodeUpdateManager {
       }
     }
     if (restartRevocationFetcher) {
-      revocationChecker.start(true, true);
+      getRevocationChecker().start(true, true);
     }
   }
 
-  /**
-   * Mark the update system as “armed”. In package‑based mode this only influences legacy UI text;
-   * {@link CoreUpdater} drives actual downloads when auto‑update is allowed or when the user clicks
-   * Download.
-   */
+  /** Arms the user‑visible alert for update readiness. */
   public void arm() {
     armed = true;
   }
 
-  void deployOffThread(long delay, final boolean announce) {
-    if (announce) maybeBroadcastUOMAnnounces();
-  }
-
+  /**
+   * Schedules or triggers UoM announcements if the node is in a suitable state. Protected to allow
+   * controlled invocation from internal timers and connection hooks.
+   */
   protected void maybeBroadcastUOMAnnounces() {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Maybe broadcast UOM announces");
@@ -1095,63 +1060,104 @@ public class NodeUpdateManager {
     broadcastUOMAnnounces();
   }
 
-  /** Has the private key been revoked? */
+  /**
+   * Returns whether the updater has been marked as blown (either locally or via revocation).
+   *
+   * @return {@code true} when updates are considered unsafe due to a blow condition
+   */
   public boolean isBlown() {
     return hasBeenBlown;
   }
 
+  /**
+   * Returns whether there is a newer core version available to install.
+   *
+   * @return {@code true} when a newer version has been fetched and is ready
+   */
   public boolean hasNewMainJar() {
     CoreUpdater cu = coreUpdater;
     return cu != null && cu.canUpdateNow();
   }
 
   /**
-   * What version has been fetched?
+   * Returns the fetched core version when available.
    *
-   * <p>This includes jar's fetched via UOM, because the UOM code feeds its results through the
-   * mainUpdater.
+   * @return the fetched version number, or {@code -1} when none is available
    */
   public int newMainJarVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.getFetchedVersion() : -1;
   }
 
+  /**
+   * Returns whether the core updater is currently fetching a new version.
+   *
+   * @return {@code true} when a download is in progress
+   */
   public boolean fetchingNewMainJar() {
     CoreUpdater cu = coreUpdater;
     return (cu != null && cu.isFetching());
   }
 
+  /**
+   * Returns the version currently being fetched.
+   *
+   * @return the in‑flight version number, or {@code -1} when idle
+   */
   public int fetchingNewMainJarVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.fetchingVersion() : -1;
   }
 
+  /**
+   * Returns whether a legacy final‑check phase is running.
+   *
+   * @return always {@code false} in package‑based updater mode
+   */
   public boolean inFinalCheck() {
     return false;
   }
 
+  /**
+   * Returns the recent count of revocation fetch DNF outcomes, for diagnostics.
+   *
+   * @return the number of recent DNF results for the revocation fetcher
+   */
   public int getRevocationDNFCounter() {
-    return revocationChecker.getRevocationDNFCounter();
+    return getRevocationChecker().getRevocationDNFCounter();
   }
 
-  /** What version is the node currently running? */
+  /**
+   * Returns the version number the node is currently running.
+   *
+   * @return the current build number from {@link Version#currentBuildNumber()}
+   */
   public int getMainVersion() {
     return Version.currentBuildNumber();
   }
 
+  /**
+   * Returns whether the alert is armed or auto‑update is allowed.
+   *
+   * @return {@code true} when the alert is armed or auto‑update is allowed
+   */
   public boolean isArmed() {
     return armed || isAutoUpdateAllowed;
   }
 
-  /** Is the node able to update as soon as the revocation fetch has been completed? */
+  /**
+   * Returns whether the node could update after a fresh revocation check.
+   *
+   * @return {@code true} when an update would be possible after revocation verification
+   */
   public boolean canUpdateNow() {
-    CoreUpdater cu = coreUpdater;
-    return cu != null && cu.canUpdateNow();
+    return hasNewMainJar();
   }
 
   /**
-   * Is the node able to update *immediately*? (i.e. not only is it ready in every other sense, but
-   * also a revocation fetch has completed recently enough not to need another one)
+   * Returns whether the node can update immediately without another revocation fetch.
+   *
+   * @return {@code true} when no additional revocation fetch is needed
    */
   public boolean canUpdateImmediately() {
     return canUpdateNow();
@@ -1207,7 +1213,7 @@ public class NodeUpdateManager {
         uri = new FreenetURI(val);
       } catch (MalformedURLException e) {
         throw new InvalidConfigValueException(
-            l10n("invalidUpdateURI", "error", e.getLocalizedMessage()));
+            l10n("invalidUpdateURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
       }
       if (uri.hasMetaStrings()) {
         throw new InvalidConfigValueException(l10n("updateURIMustHaveNoMetaStrings"));
@@ -1219,7 +1225,12 @@ public class NodeUpdateManager {
     }
   }
 
+  /** Callback adapter that exposes the revocation URI as a mutable string config option. */
   public class UpdateRevocationURICallback extends StringCallback {
+    /** Default constructor; creates a callback bound to the outer manager. */
+    public UpdateRevocationURICallback() {
+      // Intentionally empty: callback holds no additional state and needs no initialization.
+    }
 
     @Override
     public String get() {
@@ -1233,7 +1244,7 @@ public class NodeUpdateManager {
         uri = new FreenetURI(val);
       } catch (MalformedURLException e) {
         throw new InvalidConfigValueException(
-            l10n("invalidRevocationURI", "error", e.getLocalizedMessage()));
+            l10n("invalidRevocationURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
       }
       setRevocationURI(uri);
     }
@@ -1242,8 +1253,6 @@ public class NodeUpdateManager {
   /**
    * Called when a peer indicates in its UOMAnnounce that it has fetched the revocation key (or
    * failed to do so in a way suggesting that somebody knows the key).
-   *
-   * @param source The node which is claiming this.
    */
   void peerClaimsKeyBlown() {
     // Note that UpdateOverMandatoryManager manages the list of peers who
@@ -1257,33 +1266,31 @@ public class NodeUpdateManager {
   public void notPeerClaimsKeyBlown() {
     peersSayBlown = false;
     node.getExecutor().execute(() -> {}, "Check for updates");
-    node.getTicker().queueTimedJob(() -> maybeBroadcastUOMAnnounces(), REVOCATION_FETCH_TIMEOUT);
+    node.getTicker().queueTimedJob(this::maybeBroadcastUOMAnnounces, REVOCATION_FETCH_TIMEOUT);
   }
 
   boolean peersSayBlown() {
     return peersSayBlown;
   }
 
-  public File getMainBlob(int version) {
-    return null;
-  }
-
-  public synchronized long timeRemainingOnCheck() {
-    long now = System.currentTimeMillis();
-    return Math.max(0, REVOCATION_FETCH_TIMEOUT - (now - gotJarTime));
-  }
+  // Legacy blob serving disabled in package-based updater
 
   /**
-   * @deprecated Use {@link #getByteCounter()} instead of accessing this directly.
+   * Remaining time on a legacy final‑check timer.
+   *
+   * @return always {@code 0} in package‑based updater mode
    */
-  @Deprecated
-  /* It’s not the field that is deprecated but accessing it directly is. */
+  public synchronized long timeRemainingOnCheck() {
+    // Legacy UOM final check not used; no pending timer
+    return 0L;
+  }
+
   final ByteCounter ctr =
       new ByteCounter() {
 
         @Override
         public void receivedBytes(int x) {
-          // FIXME
+          // No-op
         }
 
         @Override
@@ -1297,43 +1304,48 @@ public class NodeUpdateManager {
         }
       };
 
-  public void disableThisSession() {
-    disabledThisSession = true;
-  }
-
+  /**
+   * Timestamp when a legacy fetch workflow started.
+   *
+   * @return always {@code 0}; legacy timestamp is not tracked
+   */
   protected long getStartedFetchingNextMainJarTimestamp() {
-    return startedFetchingNextMainJar;
+    // Legacy normal-updater fetch timestamp no longer tracked
+    return 0L;
   }
 
+  /**
+   * Notifies the UoM coordinator that a peer disconnected.
+   *
+   * @param pn the peer that disconnected
+   */
   public void disconnected(PeerNode pn) {
-    uom.disconnected(pn);
+    getUpdateOverMandatory().disconnected(pn);
   }
 
-  public void deployPlugin(String fn) throws IOException {
+  /**
+   * Arms a plugin updater to deploy as soon as revocation checks permit.
+   *
+   * @param fn plugin identifier matching the updater map key
+   */
+  public void deployPluginWhenReady(String fn) {
     PluginJarUpdater updater;
     synchronized (this) {
       if (hasBeenBlown) {
-        LOG.error("Not deploying update for " + fn + " because revocation key has been blown!");
+        LOG.error("Not deploying update for {} because revocation key has been blown!", fn);
         return;
       }
       updater = pluginUpdaters.get(fn);
     }
-    updater.writeJar();
-  }
-
-  public void deployPluginWhenReady(String fn) throws IOException {
-    PluginJarUpdater updater;
-    synchronized (this) {
-      if (hasBeenBlown) {
-        LOG.error("Not deploying update for " + fn + " because revocation key has been blown!");
-        return;
-      }
-      updater = pluginUpdaters.get(fn);
-    }
-    boolean wasRunning = revocationChecker.start(true, true);
+    boolean wasRunning = getRevocationChecker().start(true, true);
     updater.arm(wasRunning);
   }
 
+  /**
+   * Returns whether UoM should be suppressed for this node (e.g. seednode or early startup).
+   *
+   * @return {@code true} when UoM must not be used due to node role or state
+   */
   public boolean dontAllowUOM() {
     if (node.isOpennetEnabled() && node.wantAnonAuth(true)) {
       // We are a seednode.
@@ -1345,16 +1357,22 @@ public class NodeUpdateManager {
     return false;
   }
 
+  /**
+   * Returns whether a UoM fetch is currently in progress.
+   *
+   * @return {@code true} when a legacy UoM fetch is running
+   */
   public boolean fetchingFromUOM() {
-    return uom.isFetchingMain();
+    return getUpdateOverMandatory().isFetchingMain();
   }
 
-  // onDependenciesReady removed
-
-  /** Show the progress of individual dependencies if possible */
   /**
-   * Render core update status/controls into the global Alerts panel. Delegates to {@link
-   * CoreUpdater#renderProperties(HTMLNode)}.
+   * Renders core update status and controls into the Alerts panel.
+   *
+   * <p>This delegates to {@link CoreUpdater#renderProperties(HTMLNode)} when the core updater is
+   * active.
+   *
+   * @param alertNode the HTML container node to populate with status and action elements
    */
   public void renderProgress(HTMLNode alertNode) {
     CoreUpdater cu;
@@ -1364,15 +1382,26 @@ public class NodeUpdateManager {
     if (cu != null) cu.renderProperties(alertNode);
   }
 
+  /**
+   * Returns whether dependency checks have detected a blocking condition.
+   *
+   * @return always {@code false}; dependency checks are not performed here
+   */
   public boolean brokenDependencies() {
     // No dependency checking in package-based updater
     return false;
   }
 
+  /** Callback invoked when beginning a legacy UoM fetch; no‑op in package‑based mode. */
   public void onStartFetchingUOM() {
     /* no-op */
   }
 
+  /**
+   * Returns the legacy blob file for the current version.
+   *
+   * @return always {@code null}; serving the core JAR via UoM is disabled
+   */
   public synchronized File getCurrentVersionBlobFile() {
     // Serving main.jar over UOM is disabled in package-based updater.
     return null;
@@ -1380,18 +1409,38 @@ public class NodeUpdateManager {
 
   // getMainUpdater() removed; jar updates are disabled.
 
+  /**
+   * Returns the owning {@link Node}.
+   *
+   * @return the node instance associated with this manager
+   */
   public Node getNode() {
     return node;
   }
 
+  /**
+   * Returns the revocation checker responsible for detecting blown keys.
+   *
+   * @return the revocation checker bound to this manager
+   */
   public RevocationChecker getRevocationChecker() {
     return revocationChecker;
   }
 
+  /**
+   * Returns the legacy UoM coordinator used for announcements and bookkeeping.
+   *
+   * @return the UoM coordinator instance
+   */
   public UpdateOverMandatoryManager getUpdateOverMandatory() {
     return uom;
   }
 
+  /**
+   * Returns the byte counter used to attribute UoM traffic to node statistics.
+   *
+   * @return the byte counter implementation backed by node stats
+   */
   public ByteCounter getByteCounter() {
     return ctr;
   }
@@ -1411,7 +1460,12 @@ public class NodeUpdateManager {
             "core-info-");
   }
 
-  /** Current {@link CoreUpdater} instance or null when the core updater is not enabled. */
+  /**
+   * Returns the current {@link CoreUpdater} instance, or {@code null} when the core updater is not
+   * enabled.
+   *
+   * @return the current core updater or {@code null}
+   */
   public synchronized CoreUpdater getCoreUpdater() {
     return coreUpdater;
   }
@@ -1421,6 +1475,8 @@ public class NodeUpdateManager {
    *
    * <p>In package‑based updater mode this returns {@code false} to avoid serving/fetching the main
    * JAR via UoM. Revocation UoM remains enabled.
+   *
+   * @return {@code false} in package‑based mode; legacy flows are disabled for the core JAR
    */
   public synchronized boolean supportsJarUOM() {
     return false;
