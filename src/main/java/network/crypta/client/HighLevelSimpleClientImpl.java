@@ -322,7 +322,6 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             isMetadata,
             filenameHint,
             false,
-            core.getClientContext(),
             forceCryptoKey,
             -1);
     try {
@@ -364,7 +363,6 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             isMetadata,
             filenameHint,
             false,
-            core.getClientContext(),
             null,
             -1);
     try {
