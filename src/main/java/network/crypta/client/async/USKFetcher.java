@@ -165,17 +165,12 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     DBRAttempt(ClientKey key, ClientContext context, USKDateHint.Type type) {
       fetcher =
           new SimpleSingleFileFetcher(
-              key,
-              ctxDBR.maxUSKRetries,
-              ctxDBR,
-              parent,
-              this,
-              false,
-              true,
-              0,
-              context,
-              false,
-              realTimeFlag) {
+              SimpleSingleFileFetcher.Cfg.create(
+                      key, ctxDBR.maxUSKRetries, ctxDBR, parent, this, 0, context)
+                  .essential(false)
+                  .dontAdd(true)
+                  .deleteFetchContext(false)
+                  .realTime(realTimeFlag)) {
             @Override
             public short getPriorityClass() {
               return progressPollPriority;

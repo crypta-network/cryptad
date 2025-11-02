@@ -154,17 +154,11 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
       boolean hasInitialMetadata)
       throws FetchException {
     super(
-        key,
-        maxRetries,
-        ctx,
-        parent,
-        cb,
-        isEssential,
-        false,
-        l,
-        context,
-        deleteFetchContext,
-        realTimeFlag);
+        SimpleSingleFileFetcher.Cfg.create(key, maxRetries, ctx, parent, cb, l, context)
+            .essential(isEssential)
+            .dontAdd(false)
+            .deleteFetchContext(deleteFetchContext)
+            .realTime(realTimeFlag));
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Creating SingleFileFetcher for "
@@ -232,17 +226,18 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
     // Don't add a block, we have already fetched the data, we are just handling the metadata in a
     // different fetcher.
     super(
-        persistent ? fetcher.key.cloneKey() : fetcher.key,
-        fetcher.maxRetries,
-        ctx2,
-        fetcher.parent,
-        callback,
-        false,
-        true,
-        fetcher.token,
-        context,
-        deleteFetchContext,
-        fetcher.realTimeFlag);
+        SimpleSingleFileFetcher.Cfg.create(
+                persistent ? fetcher.key.cloneKey() : fetcher.key,
+                fetcher.maxRetries,
+                ctx2,
+                fetcher.parent,
+                callback,
+                fetcher.token,
+                context)
+            .essential(false)
+            .dontAdd(true)
+            .deleteFetchContext(deleteFetchContext)
+            .realTime(fetcher.realTimeFlag));
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Creating SingleFileFetcher for "
@@ -1535,17 +1530,11 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
         && key instanceof ClientKey clientKey
         && (!hasInitialMetadata))
       return new SimpleSingleFileFetcher(
-          clientKey,
-          maxRetries,
-          ctx,
-          requester,
-          cb,
-          isEssential,
-          false,
-          l,
-          context,
-          false,
-          realTimeFlag);
+          SimpleSingleFileFetcher.Cfg.create(clientKey, maxRetries, ctx, requester, cb, l, context)
+              .essential(isEssential)
+              .dontAdd(false)
+              .deleteFetchContext(false)
+              .realTime(realTimeFlag));
     if (key instanceof ClientKey || hasInitialMetadata)
       return new SingleFileFetcher(
           requester,
