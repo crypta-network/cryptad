@@ -1232,7 +1232,7 @@ public class ClientGet extends ClientRequest
           BucketTools.restoreFrom(
               dis,
               context.persistentFG,
-              context.persistentFileTracker,
+              context.getPersistentFileTracker(),
               context.getPersistentMasterSecret());
       // No way to recover if we don't have the initialMetadata.
     } else {
@@ -1252,7 +1252,7 @@ public class ClientGet extends ClientRequest
                   BucketTools.restoreFrom(
                       innerDIS,
                       context.persistentFG,
-                      context.persistentFileTracker,
+                      context.getPersistentFileTracker(),
                       context.getPersistentMasterSecret());
             } catch (IOException e) {
               LOG.error(
