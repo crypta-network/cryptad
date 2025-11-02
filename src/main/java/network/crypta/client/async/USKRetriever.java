@@ -214,13 +214,14 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
                   output,
                   null,
                   null,
-                  ctx.getSchemeHostAndPort(),
-                  null,
-                  false,
-                  null,
-                  null,
-                  null,
-                  context.linkFilterExceptionProvider);
+                  new ClientGetWorkerThread.Options(
+                      null,
+                      ctx.getSchemeHostAndPort(),
+                      false,
+                      null,
+                      null,
+                      null,
+                      context.linkFilterExceptionProvider));
           worker.start();
           streamGenerator.writeTo(pipeOut, context);
           awaitWorkerCompletion(worker);

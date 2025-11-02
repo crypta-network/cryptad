@@ -1224,13 +1224,14 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
                       output,
                       null,
                       null,
-                      ctx.getSchemeHostAndPort(),
-                      null,
-                      false,
-                      null,
-                      null,
-                      null,
-                      context.linkFilterExceptionProvider);
+                      new ClientGetWorkerThread.Options(
+                          null,
+                          ctx.getSchemeHostAndPort(),
+                          false,
+                          null,
+                          null,
+                          null,
+                          context.linkFilterExceptionProvider));
               worker.start();
               streamGenerator.writeTo(pipeOut, context);
               decompressorManager.waitFinished();
@@ -1404,13 +1405,14 @@ public class SingleFileFetcher extends SimpleSingleFileFetcher {
                       output,
                       null,
                       null,
-                      ctx.getSchemeHostAndPort(),
-                      null,
-                      false,
-                      null,
-                      null,
-                      null,
-                      context.linkFilterExceptionProvider);
+                      new ClientGetWorkerThread.Options(
+                          null,
+                          ctx.getSchemeHostAndPort(),
+                          false,
+                          null,
+                          null,
+                          null,
+                          context.linkFilterExceptionProvider));
               worker.start();
               streamGenerator.writeTo(pipeOut, context);
               decompressorManager.waitFinished();
