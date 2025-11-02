@@ -3,8 +3,10 @@ package network.crypta.client.async;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Objects;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.Key;
 import network.crypta.support.api.Bucket;
@@ -14,183 +16,279 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Helper class to write FBlobs. Threadsafe, allows multiple getters to write to the same
- * BinaryBlobWriter.
+ * Writes a sequence of key blocks to a Binary Blob stream.
+ *
+ * <p>This utility coordinates the incremental creation of a {@linkplain BinaryBlob Binary Blob}
+ * payload that consists of a header, zero or more block records, and a terminating end marker. It
+ * supports two operating modes: a single-bucket mode where callers supply the destination bucket at
+ * construction time, and a factory-backed mode that accumulates intermediate data across multiple
+ * buckets and assembles a final, read-only result on {@link #finalizeBucket()}. The writer ensures
+ * that each {@code Key} is written at most once by tracking keys already added.
+ *
+ * <p>Typical usage creates an instance, adds blocks as they become available, and either snapshots
+ * the current content or finalizes the blob when no further data is expected. The class writes the
+ * Binary Blob header lazily on the first emission and appends the end marker for snapshots and
+ * finalization as needed. Methods that mutate internal state are synchronized to coordinate access
+ * when used from multiple threads, but callers should still arrange a clear life-cycle to avoid
+ * racing a finalization against ongoing writes.
+ *
+ * <ul>
+ *   <li>Single-bucket mode: writes directly to the provided {@code Bucket} and closes its stream on
+ *       finalization.
+ *   <li>Factory-backed mode: streams to temporary buckets, then builds a single read-only result
+ *       bucket and frees intermediates.
+ *   <li>Deduplication: subsequent attempts to add the same {@code Key} are ignored.
+ * </ul>
  *
  * @author saces
+ * @see BinaryBlob
  */
 public final class BinaryBlobWriter {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryBlobWriter.class);
 
-  static {
-  }
+  private final HashSet<Key> binaryBlobKeysAddedAlready;
+  private final BucketFactory bf;
+  private final ArrayList<Bucket> buckets;
+  private final Bucket out;
+  private final boolean isSingleBucket;
 
-  private final HashSet<Key> _binaryBlobKeysAddedAlready;
-  private final BucketFactory _bf;
-  private final ArrayList<Bucket> _buckets;
-  private final Bucket _out;
-  private final boolean _isSingleBucket;
+  private boolean started = false;
+  private boolean finalized = false;
 
-  private boolean _started = false;
-  private boolean _finalized = false;
-
-  private transient DataOutputStream _stream_cache = null;
+  private DataOutputStream streamCache = null;
 
   /**
-   * Persistent/'BigFile' constructor
+   * Persistent/"BigFile" constructor.
    *
-   * @param bf BucketFactory to generate internal buckets from
+   * <p>Creates a writer that allocates intermediate storage from the supplied {@link
+   * BucketFactory}. Data is streamed into a series of temporary buckets. When {@link
+   * #finalizeBucket()} is called, the writer assembles a single, read-only result bucket that
+   * contains the header, all emitted block records, and the end marker.
+   *
+   * @param bf bucket factory used to create internal temporary buckets; must not be {@code null}.
    */
   public BinaryBlobWriter(BucketFactory bf) {
-    _binaryBlobKeysAddedAlready = new HashSet<>();
-    _buckets = new ArrayList<>();
-    _bf = bf;
-    _out = null;
-    _isSingleBucket = false;
+    binaryBlobKeysAddedAlready = new HashSet<>();
+    buckets = new ArrayList<>();
+    this.bf = bf;
+    out = null;
+    isSingleBucket = false;
   }
 
   /**
-   * Transient constructor
+   * Transient constructor.
    *
-   * @param out Bucket to write the result to
+   * <p>Creates a writer that emits directly to the given destination {@code Bucket}. The header is
+   * written on first use. On {@link #finalizeBucket()}, the end marker is appended and the
+   * underlying stream is closed. The caller retains ownership of the bucket object.
+   *
+   * @param out destination bucket that receives the blob content; must not be {@code null}.
    */
   public BinaryBlobWriter(Bucket out) {
-    _binaryBlobKeysAddedAlready = new HashSet<>();
-    _buckets = null;
-    _bf = null;
-    assert out != null;
-    _out = out;
-    _isSingleBucket = true;
+    binaryBlobKeysAddedAlready = new HashSet<>();
+    buckets = null;
+    bf = null;
+    Objects.requireNonNull(out, "out");
+    this.out = out;
+    isSingleBucket = true;
   }
 
   private DataOutputStream getOutputStream() throws IOException, BinaryBlobAlreadyClosedException {
-    if (_finalized) {
+    if (finalized) {
       throw new BinaryBlobAlreadyClosedException(
           "Already finalized (getting final data) on " + this);
     }
-    if (_stream_cache == null) {
-      if (_isSingleBucket) {
-        _stream_cache = new DataOutputStream(_out.getOutputStream());
+    if (streamCache == null) {
+      if (isSingleBucket) {
+        streamCache = new DataOutputStream(Objects.requireNonNull(out, "out").getOutputStream());
       } else {
-        Bucket newBucket = _bf.makeBucket(-1);
-        _buckets.add(newBucket);
-        _stream_cache = new DataOutputStream(newBucket.getOutputStream());
+        BucketFactory localBf = this.bf;
+        ArrayList<Bucket> localBuckets = this.buckets;
+        if (localBf == null || localBuckets == null) {
+          throw new IllegalStateException("BucketFactory mode requires non-null fields");
+        }
+        Bucket newBucket = localBf.makeBucket(-1);
+        localBuckets.add(newBucket);
+        streamCache = new DataOutputStream(newBucket.getOutputStream());
       }
     }
-    if (!_started) {
-      BinaryBlob.writeBinaryBlobHeader(_stream_cache);
-      _started = true;
+    if (!started) {
+      BinaryBlob.writeBinaryBlobHeader(streamCache);
+      started = true;
     }
-    return _stream_cache;
+    return streamCache;
   }
 
   /**
-   * Add a block to the binary blob.
+   * Adds a single key block to the binary blob.
    *
-   * @throws IOException
-   * @throws BinaryBlobAlreadyClosedException
+   * <p>The Binary Blob header is written lazily on the first call. If the {@code Key} associated
+   * with {@code block} has already been added, the call is a no-op and returns silently. The method
+   * does not close or flush the destination stream. Callers may invoke this method multiple times
+   * from different threads; internal synchronization ensures consistent serialization order.
+   *
+   * @param block the block to serialize into the blob; its {@code Key} identifies de-duplication
+   *     and must be consistent with its internal metadata; must not be {@code null}.
+   * @param context optional client context related to the caller; may be {@code null} and is used
+   *     only for diagnostic logging, not for serialization semantics.
+   * @throws IOException if writing to the underlying stream fails at any point during emission.
+   * @throws BinaryBlobAlreadyClosedException if the writer has been finalized or closed and can no
+   *     longer accept additional blocks.
    */
   public synchronized void addKey(ClientKeyBlock block, ClientContext context)
       throws IOException, BinaryBlobAlreadyClosedException {
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("addKey invoked; context present? {}", context != null);
+    }
     Key key = block.getKey();
-    if (_binaryBlobKeysAddedAlready.contains(key)) return;
+    if (binaryBlobKeysAddedAlready.contains(key)) return;
     BinaryBlob.writeKey(getOutputStream(), block.getBlock(), key);
-    _binaryBlobKeysAddedAlready.add(key);
+    binaryBlobKeysAddedAlready.add(key);
   }
 
   /**
-   * finalize the return bucket
+   * Finalizes the blob and seals the result.
    *
-   * @throws IOException
-   * @throws BinaryBlobAlreadyClosedException
+   * <p>Appends the Binary Blob end marker and transitions the writer into the finalized state. In
+   * single-bucket mode, the underlying stream is closed. In factory-backed mode, the writer creates
+   * one read-only bucket containing the full payload, frees any temporary buckets, and retains the
+   * result for retrieval via {@link #getFinalBucket()}.
+   *
+   * @throws IOException if an I/O error occurs while appending the end marker or composing the
+   *     final bucket content.
+   * @throws BinaryBlobAlreadyClosedException if this writer has already been finalized and cannot
+   *     be finalized again.
    */
   public void finalizeBucket() throws IOException, BinaryBlobAlreadyClosedException {
-    if (_finalized) {
+    if (finalized) {
       throw new BinaryBlobAlreadyClosedException("Already finalized (closing blob).");
     }
-    finalizeBucket(true);
+    finalizeInternal();
   }
 
-  private void finalizeBucket(boolean mark) throws IOException, BinaryBlobAlreadyClosedException {
-    if (_finalized)
+  private void finalizeInternal() throws IOException, BinaryBlobAlreadyClosedException {
+    if (finalized)
       throw new BinaryBlobAlreadyClosedException("Already finalized (closing blob - 2).");
     if (LOG.isDebugEnabled()) LOG.debug("Finalizing binary blob {}", this);
-    if (!_isSingleBucket) {
-      if (!mark && (_buckets.size() == 1)) {
-        return;
+    if (!isSingleBucket) {
+      ArrayList<Bucket> localBuckets = this.buckets;
+      BucketFactory localBf = this.bf;
+      if (localBuckets == null || localBf == null) {
+        throw new IllegalStateException("BucketFactory mode requires non-null fields");
       }
-      Bucket out = _bf.makeBucket(-1);
-      getSnapshot(out, mark);
-      for (int i = 0, n = _buckets.size(); i < n; i++) {
-        _buckets.get(i).free();
+      Bucket resultBucket = localBf.makeBucket(-1);
+      snapshotWithEndmarker(resultBucket);
+      for (Bucket localBucket : localBuckets) {
+        localBucket.free();
       }
-      if (mark) {
-        out.setReadOnly();
-      }
-      _buckets.clear();
-      _buckets.addFirst(out);
-    } else if (mark) {
-      DataOutputStream out = new DataOutputStream(getOutputStream());
-      try {
-        BinaryBlob.writeEndBlob(out);
-      } finally {
-        out.close();
-      }
+      resultBucket.setReadOnly();
+      localBuckets.clear();
+      localBuckets.addFirst(resultBucket);
+    } else {
+      DataOutputStream stream = getOutputStream();
+      BinaryBlob.writeEndBlob(stream);
+      stream.close();
     }
-    if (mark) {
-      _finalized = true;
-    }
+    finalized = true;
   }
 
+  /**
+   * Writes a snapshot of the current blob into the provided bucket.
+   *
+   * <p>The snapshot contains all data written so far and an explicit end marker so that readers can
+   * process it immediately. When the writer is already finalized, this method copies the final
+   * result instead. In single-bucket mode (transient constructor), no intermediate state exists and
+   * the method returns without writing.
+   *
+   * @param bucket destination bucket that receives a complete snapshot including the end marker;
+   *     must be writable; the method closes only the snapshot's output stream it obtains.
+   * @throws IOException if writing the snapshot to the destination bucket fails at any point.
+   * @throws BinaryBlobAlreadyClosedException if the writer is finalized and a non-final snapshot is
+   *     requested in a context where it cannot be produced safely.
+   */
   public synchronized void getSnapshot(Bucket bucket)
       throws IOException, BinaryBlobAlreadyClosedException {
-    if (_buckets.isEmpty()) return;
-    if (_finalized) {
-      BucketTools.copy(_buckets.getFirst(), bucket);
+    if (buckets == null || buckets.isEmpty()) return;
+    if (finalized) {
+      BucketTools.copy(buckets.getFirst(), bucket);
       return;
     }
-    getSnapshot(bucket, true);
+    snapshotWithEndmarker(bucket);
   }
 
-  private void getSnapshot(Bucket bucket, boolean addEndmarker)
+  private void snapshotWithEndmarker(Bucket bucket)
       throws IOException, BinaryBlobAlreadyClosedException {
-    if (_buckets.isEmpty()) return;
-    if (_finalized) {
+    if (buckets == null || buckets.isEmpty()) return;
+    if (finalized) {
       throw new BinaryBlobAlreadyClosedException("Already closed (getting final data snapshot)");
     }
-    try (OutputStream out = bucket.getOutputStream()) {
-      for (int i = 0, n = _buckets.size(); i < n; i++) {
-        BucketTools.copyTo(_buckets.get(i), out, -1);
+    try (OutputStream os = bucket.getOutputStream()) {
+      for (Bucket value : buckets) {
+        BucketTools.copyTo(value, os, -1);
       }
-      if (addEndmarker) {
-        DataOutputStream dout = new DataOutputStream(out);
-        BinaryBlob.writeEndBlob(dout);
-        dout.flush();
-      }
+      DataOutputStream dout = new DataOutputStream(os);
+      BinaryBlob.writeEndBlob(dout);
+      dout.flush();
     }
   }
 
+  /**
+   * Returns the finalized result bucket.
+   *
+   * <p>Valid only after a successful call to {@link #finalizeBucket()}. In single-bucket mode, this
+   * is the same {@code Bucket} instance that was supplied to the constructor. In factory-backed
+   * mode, it is a newly created read-only bucket that contains the complete blob.
+   *
+   * @return the bucket whose content is the immutable, finalized Binary Blob; its content remains
+   *     stable for subsequent reads and may be read concurrently by clients.
+   * @throws IllegalStateException if the writer has not been finalized yet or no final bucket is
+   *     available.
+   */
   public synchronized Bucket getFinalBucket() {
-    if (!_finalized) {
+    if (!finalized) {
       throw new IllegalStateException("Not finalized!");
     }
-    if (_isSingleBucket) {
-      return _out;
+    if (isSingleBucket) {
+      return out;
     } else {
-      return _buckets.getFirst();
+      if (buckets == null || buckets.isEmpty()) {
+        throw new IllegalStateException("Final bucket not available");
+      }
+      return buckets.getFirst();
     }
   }
 
+  /**
+   * Signals that an operation was attempted on a writer that has already been closed/finalized.
+   *
+   * <p>Methods such as {@link #addKey(ClientKeyBlock, ClientContext)} and snapshot helpers throw
+   * this exception when further writes or snapshots are invalid due to a completed life-cycle.
+   */
   public static class BinaryBlobAlreadyClosedException extends Exception {
 
-    private static final long serialVersionUID = -1L;
+    @Serial private static final long serialVersionUID = -1L;
 
+    /**
+     * Creates a new exception with the given detail message.
+     *
+     * @param message human-readable explanation of the failure condition encountered by the caller;
+     *     included verbatim in logs and exception messages.
+     */
     public BinaryBlobAlreadyClosedException(String message) {
       super(message);
     }
   }
 
+  /**
+   * Reports whether the writer has been finalized.
+   *
+   * <p>After finalization no further blocks can be added and {@link #getFinalBucket()} becomes
+   * available. Before finalization, snapshots may be taken in factory-backed mode.
+   *
+   * @return {@code true} once {@link #finalizeBucket()} has been called successfully; {@code false}
+   *     otherwise.
+   */
   public boolean isFinalized() {
-    return _finalized;
+    return finalized;
   }
 }
