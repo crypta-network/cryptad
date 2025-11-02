@@ -608,14 +608,15 @@ public class ClientGetter extends BaseClientGetter
               new BufferedInputStream(processedDataInput),
               output,
               uri,
-              computeMime(initialMetadata),
-              ctx.getSchemeHostAndPort(),
               hashes,
-              ctx.filterData,
-              ctx.charset,
-              ctx.prefetchHook,
-              ctx.tagReplacer,
-              context.linkFilterExceptionProvider);
+              new ClientGetWorkerThread.Options(
+                  computeMime(initialMetadata),
+                  ctx.getSchemeHostAndPort(),
+                  ctx.filterData,
+                  ctx.charset,
+                  ctx.prefetchHook,
+                  ctx.tagReplacer,
+                  context.linkFilterExceptionProvider));
       worker.start();
       try {
         streamGenerator.writeTo(dataOutput, context);
@@ -729,14 +730,15 @@ public class ClientGetter extends BaseClientGetter
               is,
               new NullOutputStream(),
               uri,
-              null,
-              ctx.getSchemeHostAndPort(),
               hashes,
-              false,
-              null,
-              ctx.prefetchHook,
-              ctx.tagReplacer,
-              context.linkFilterExceptionProvider);
+              new ClientGetWorkerThread.Options(
+                  null,
+                  ctx.getSchemeHostAndPort(),
+                  false,
+                  null,
+                  ctx.prefetchHook,
+                  ctx.tagReplacer,
+                  context.linkFilterExceptionProvider));
       worker.start();
       if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
       worker.waitFinished();
