@@ -366,7 +366,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
       f = fetcher;
     }
     if (f == null) throw new IllegalStateException();
-    f.changeUSKPollParameters(time, tries, context);
+    f.changeUSKPollParameters(time, tries);
   }
 
   @Override
