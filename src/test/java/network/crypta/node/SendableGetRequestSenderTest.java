@@ -51,12 +51,8 @@ class SendableGetRequestSenderTest {
                 token,
                 null, // node-level key not used for SendableGet
                 clientKey,
-                localOnly,
-                ignoreStore,
-                canWriteClientCache,
-                false, // forkOnCacheable (unused in these tests)
-                realTimeFlag,
-                scheduler)
+                new ChosenBlock.Options(
+                    localOnly, ignoreStore, canWriteClientCache, false, realTimeFlag))
             .defaultAnswer(org.mockito.Answers.CALLS_REAL_METHODS));
   }
 

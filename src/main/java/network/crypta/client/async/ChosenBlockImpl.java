@@ -42,12 +42,8 @@ public class ChosenBlockImpl extends ChosenBlock {
         token,
         key,
         ckey,
-        localRequestOnly,
-        ignoreStore,
-        canWriteClientCache,
-        forkOnCacheable,
-        realTimeFlag,
-        sched);
+        new Options(
+            localRequestOnly, ignoreStore, canWriteClientCache, forkOnCacheable, realTimeFlag));
     this.request = req;
     this.sched = sched;
     this.persistent = persistent;
