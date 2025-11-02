@@ -71,7 +71,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected final boolean realTimeFlag;
 
   /** Has the request or insert been cancelled? */
-  protected boolean cancelled;
+  protected volatile boolean cancelled;
 
   /**
    * The RequestClient, used to determine whether this request is persistent, and also we

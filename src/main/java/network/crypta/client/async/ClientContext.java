@@ -221,7 +221,7 @@ public class ClientContext {
                 try {
                   inserter.start(false, context);
                 } catch (InsertException e) {
-                  inserter.client.onFailure(e, inserter);
+                  inserter.callback.onFailure(e, inserter);
                 }
                 return true;
               },

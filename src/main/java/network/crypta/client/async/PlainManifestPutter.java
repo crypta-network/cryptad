@@ -46,7 +46,7 @@ public class PlainManifestPutter extends BaseManifestPutter {
         target,
         defaultName,
         ctx,
-        ClientPutter.randomiseSplitfileKeys(target, ctx, persistent),
+        ClientPutter.randomiseSplitfileKeys(target, ctx),
         forceCryptoKey,
         context);
   }

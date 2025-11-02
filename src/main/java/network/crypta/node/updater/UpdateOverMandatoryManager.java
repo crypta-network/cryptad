@@ -1543,7 +1543,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
             false,
             null,
             true,
-            updateManager.getNode().getClientCore().getClientContext(),
             null,
             -1);
     try {
