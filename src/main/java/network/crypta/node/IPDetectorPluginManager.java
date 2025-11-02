@@ -20,6 +20,8 @@ import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.AbstractUserAlert;
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.ProxyUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
@@ -269,14 +271,10 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       super(
           false,
           title,
-          text,
-          title,
-          null,
+          Body.of(text, title, null),
           code,
           true,
-          NodeL10n.getBase().getString("UserAlert.hide"),
-          false,
-          null);
+          new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), false));
       this.suggestPortForward = suggestPortForward;
       portsNotForwarded = new int[] {};
     }

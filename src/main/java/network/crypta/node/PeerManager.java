@@ -2193,25 +2193,26 @@ public class PeerManager {
     boolean darknetDefinitelyPortForwarded = node.darknetDefinitelyPortForwarded();
     boolean darknetAssumeNAT = node.getDarknetCrypto().getConfig().alwaysHandshakeAggressively();
     synchronized (uaLock) {
-      ua.opennetDefinitelyPortForwarded = opennetDefinitelyPortForwarded;
-      ua.darknetDefinitelyPortForwarded = darknetDefinitelyPortForwarded;
-      ua.opennetAssumeNAT = opennetAssumeNAT;
-      ua.darknetAssumeNAT = darknetAssumeNAT;
-      ua.darknetConns =
+      ua.setOpennetDefinitelyPortForwarded(opennetDefinitelyPortForwarded);
+      ua.setDarknetDefinitelyPortForwarded(darknetDefinitelyPortForwarded);
+      ua.setOpennetAssumeNAT(opennetAssumeNAT);
+      ua.setDarknetAssumeNAT(darknetAssumeNAT);
+      int darknetConnsVal =
           getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, true)
               + getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, true);
-      ua.conns =
+      ua.setDarknetConns(darknetConnsVal);
+      ua.setConns(
           getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, false)
-              + getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
-      ua.darknetPeers = darknetPeers;
-      ua.disconnDarknetPeers = darknetPeers - ua.darknetConns;
-      ua.peers = peers;
-      ua.neverConn = getPeerNodeStatusSize(PEER_NODE_STATUS_NEVER_CONNECTED, true);
-      ua.clockProblem = getPeerNodeStatusSize(PEER_NODE_STATUS_CLOCK_PROBLEM, false);
-      ua.connError = getPeerNodeStatusSize(PEER_NODE_STATUS_CONN_ERROR, true);
-      ua.isOpennetEnabled = opennetEnabled;
-      ua.tooNewPeersDarknet = getPeerNodeStatusSize(PEER_NODE_STATUS_TOO_NEW, true);
-      ua.tooNewPeersTotal = getPeerNodeStatusSize(PEER_NODE_STATUS_TOO_NEW, false);
+              + getPeerNodeStatusSize(PEER_NODE_STATUS_ROUTING_BACKED_OFF, false));
+      ua.setDarknetPeers(darknetPeers);
+      ua.setDisconnDarknetPeers(darknetPeers - darknetConnsVal);
+      ua.setPeers(peers);
+      ua.setNeverConn(getPeerNodeStatusSize(PEER_NODE_STATUS_NEVER_CONNECTED, true));
+      ua.setClockProblem(getPeerNodeStatusSize(PEER_NODE_STATUS_CLOCK_PROBLEM, false));
+      ua.setConnError(getPeerNodeStatusSize(PEER_NODE_STATUS_CONN_ERROR, true));
+      ua.setOpennetEnabled(opennetEnabled);
+      ua.setTooNewPeersDarknet(getPeerNodeStatusSize(PEER_NODE_STATUS_TOO_NEW, true));
+      ua.setTooNewPeersTotal(getPeerNodeStatusSize(PEER_NODE_STATUS_TOO_NEW, false));
     }
     if (anyConnectedPeers()) node.onConnectedPeer();
   }

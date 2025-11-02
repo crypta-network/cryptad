@@ -58,6 +58,7 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.AbstractUserAlert;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -814,7 +815,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private class PeersSayKeyBlownAlert extends AbstractUserAlert {
 
     public PeersSayKeyBlownAlert() {
-      super(false, null, null, null, null, UserAlert.WARNING, true, null, false, null);
+      super(false, null, null, UserAlert.WARNING, true, new DismissOptions(null, false));
     }
 
     @Override

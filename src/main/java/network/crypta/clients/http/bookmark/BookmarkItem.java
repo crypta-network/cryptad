@@ -7,6 +7,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.FSParseException;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.useralerts.AbstractUserAlert;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
@@ -73,7 +74,7 @@ public class BookmarkItem extends Bookmark {
   private class BookmarkUpdatedUserAlert extends AbstractUserAlert {
 
     public BookmarkUpdatedUserAlert() {
-      super(true, null, null, null, null, UserAlert.MINOR, false, null, true, null);
+      super(true, null, null, UserAlert.MINOR, false, new DismissOptions(null, true));
     }
 
     @Override
