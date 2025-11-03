@@ -1341,22 +1341,22 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       LOG.error("isFinal but not the current state for {}", this);
       reallyFinal = false;
     }
-    ClientGetState sf =
-        new SplitFileFetcher(
-            metadata,
-            rcb,
-            parent,
-            ctx,
-            realTimeFlag,
-            decompressors,
-            clientMetadata,
-            token,
-            topDontCompress,
-            topCompatibilityMode,
-            persistent,
-            thisKey,
-            reallyFinal,
-            context);
+    SplitFileFetcher.InitParams p = new SplitFileFetcher.InitParams();
+    p.metadata = metadata;
+    p.rcb = rcb;
+    p.parent = parent;
+    p.fetchContext = ctx;
+    p.realTimeFlag = realTimeFlag;
+    p.decompressors = decompressors;
+    p.clientMetadata = clientMetadata;
+    p.token = token;
+    p.topDontCompress = topDontCompress;
+    p.topCompatibilityMode = topCompatibilityMode;
+    p.persistent = persistent;
+    p.thisKey = thisKey;
+    p.isFinalFetch = reallyFinal;
+    p.context = context;
+    ClientGetState sf = new SplitFileFetcher(p);
     this.deleteFetchContext = false;
     parent.onTransition(this, sf, context);
     sf.schedule(context);
