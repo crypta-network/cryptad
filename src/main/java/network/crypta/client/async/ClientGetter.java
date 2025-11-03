@@ -291,15 +291,9 @@ public class ClientGetter extends BaseClientGetter
                   uri,
                   ctx,
                   actx,
-                  ctx.maxNonSplitfileRetries,
-                  0,
-                  false,
-                  -1,
-                  true,
-                  true,
-                  context,
-                  realTimeFlag,
-                  initialMetadata != null);
+                  new SingleFileFetcher.CreationPolicy(
+                      ctx.maxNonSplitfileRetries, 0, false, true, true, initialMetadata != null),
+                  new SingleFileFetcher.CreationRuntime(context, realTimeFlag, -1));
         }
         if (overrideMIME != null) expectedMIME = overrideMIME;
       }
