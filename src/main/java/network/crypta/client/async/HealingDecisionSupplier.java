@@ -5,22 +5,43 @@ import network.crypta.node.Location;
 import network.crypta.node.NodeStarter;
 
 /**
- * Specialize Healing to the fraction of the keyspace in which we would receive the inserts if we
- * were one of 5 long distance nodes of an actual inserter.
+ * Supplies decisions that determine whether the node should perform a healing insert for a given
+ * key location.
  *
- * <p>If an opennet node is connected to an attacker, healing traffic could be mistaken for an
- * insert. Since opennet cannot be fully secured, this should be avoided. As a solution, we
- * specialize healing inserts to the inserts we would send if we were one of 5 long distance
- * connections for a node in another part of the keyspace.
+ * <p>This helper focuses healing on the fraction of the keyspace from which the node would most
+ * plausibly receive traffic if it were one of the long-distance peers of a real inserter. In
+ * opennet deployments, blindly healing every key can be indistinguishable from user inserts to an
+ * adversarial neighbor and therefore leaks behavior. By specializing healing so that it resembles
+ * normal request forwarding, we reduce this risk while still contributing meaningfully to network
+ * health.
  *
- * <p>As a welcome side effect, specialized healing inserts should take one hop less to reach the
- * correct node from which loop detection will stop the insert long before HTL reaches zero.
+ * <p>The decision policy is distance-aware. Keys closer to the node's own location are healed with
+ * higher probability using a continuous function of distance; far-away keys are healed at a low
+ * fixed rate. This mirrors typical routing patterns, reduces the number of hops taken by healing
+ * inserts, and helps limit unnecessary load.
+ *
+ * <p>Thread-safety: Instances are immutable after construction provided the suppliers given at
+ * creation are themselves thread-safe and side effect free. Callers may reuse a single instance
+ * across threads as long as the underlying suppliers tolerate concurrent access.
  */
 public class HealingDecisionSupplier {
   private final Supplier<Double> currentNodeLocation;
   private final Supplier<Boolean> isOpennetEnabled;
   private final Supplier<Double> randomNumberSupplier;
 
+  /**
+   * Creates a supplier that decides whether to heal a block based on the current node location,
+   * opennet enablement, and a cryptographically strong random source.
+   *
+   * <p>The {@code currentNodeLocation} and {@code isOpennetEnabled} suppliers are invoked for each
+   * decision. The random source is derived from the globally shared secure RNG used by the node
+   * runtime so that probabilities are stable and unbiased.
+   *
+   * @param currentNodeLocation provides the node's keyspace location in {@code [0.0, 1.0)}; values
+   *     outside this range are treated as implementation-defined and should be avoided.
+   * @param isOpennetEnabled indicates whether opennet mode is active; when {@code false}, healing
+   *     is considered safe and decisions default to permitting healing.
+   */
   public HealingDecisionSupplier(
       Supplier<Double> currentNodeLocation, Supplier<Boolean> isOpennetEnabled) {
 
@@ -39,8 +60,30 @@ public class HealingDecisionSupplier {
     this.randomNumberSupplier = randomNumberSupplier;
   }
 
+  /**
+   * Decides whether to heal for the provided key location.
+   *
+   * <p>When opennet is disabled the decision allows healing unconditionally, reflecting the lower
+   * exposure to Sybil-style observation on darknet. When opennet is enabled, the decision applies a
+   * distance-sensitive probability so that healing resembles ordinary routing: nearby keys are more
+   * likely to be healed, and far-away keys are allowed with a low fixed chance. The
+   * distance-sensitive curve is continuous and monotonic with respect to proximity.
+   *
+   * @param keyLocation the key's location in the ring, expressed in {@code [0.0, 1.0)} where values
+   *     wrap modulo {@code 1.0}; inputs outside the range are not validated and may yield
+   *     implementation-defined behavior.
+   * @return {@code true} when healing should proceed for this key and {@code false} otherwise; the
+   *     result reflects current opennet status and a random draw, and it is not cached across
+   *     invocations.
+   * @throws NullPointerException if the opennet-enabled supplier yields {@code null}. Callers must
+   *     ensure the supplier consistently returns a non-null Boolean value.
+   */
   public boolean shouldHeal(double keyLocation) {
-    if (!isOpennetEnabled.get()) {
+    Boolean opennet = isOpennetEnabled.get();
+    if (opennet == null) {
+      throw new NullPointerException("isOpennetEnabled returned null");
+    }
+    if (!opennet) {
       // darknet is safer against sybil attack, so we can heal fully
       return true;
     }
