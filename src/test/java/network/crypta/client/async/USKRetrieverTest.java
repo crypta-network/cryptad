@@ -544,7 +544,8 @@ class USKRetrieverTest {
 
     // changeUSKPollParameters should delegate when fetcher is set
     retriever.changeUSKPollParameters(30 * 60 * 1000L, 1, ctx);
-    verify(fetcher, times(1)).changeUSKPollParameters(30 * 60 * 1000L, 1, ctx);
+    // USKRetriever delegates to USKFetcher without passing ClientContext
+    verify(fetcher, times(1)).changeUSKPollParameters(30 * 60 * 1000L, 1);
   }
 
   @Test
