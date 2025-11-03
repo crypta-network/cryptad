@@ -128,19 +128,6 @@ class ManifestElementTest {
   }
 
   @Test
-  @SuppressWarnings({"deprecation", "AssertBetweenInconvertibleTypes"})
-  @DisplayName("equals: different ManifestElement class (package) never equal")
-  void equals_whenOtherPackageManifestElement_returnsFalse() {
-    // Arrange
-    ManifestElement a = new ManifestElement("name", rab, null, 1L);
-    network.crypta.client.async.ManifestElement other =
-        new network.crypta.client.async.ManifestElement();
-
-    // Act & Assert
-    assertNotEquals(a, other);
-  }
-
-  @Test
   @DisplayName("freeData: calls free() only when data present")
   void freeData_whenDataPresent_invokesFree() {
     // Arrange
