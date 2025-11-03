@@ -609,9 +609,7 @@ public class NodeClientCore implements Persistable {
             node.wantEncryptedDatabase(),
             node.wantNoPersistentDatabase(),
             databaseKey,
-            getClientContext(),
-            requestStarters,
-            random);
+            requestStarters);
   }
 
   /** Must only be called after we have loaded master.keys */
