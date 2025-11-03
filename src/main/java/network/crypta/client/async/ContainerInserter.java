@@ -425,7 +425,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
   }
 
   // A persistent hashCode is helpful in debugging, and also means we can put
-  // these objects into sets etc when we need to.
+  // these objects into sets etc. when we need to.
 
   /** Stable hash code captured at construction time to aid persistence and debugging. */
   private final int hashCode;
