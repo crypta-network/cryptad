@@ -192,11 +192,11 @@ class ClientRequestSchedulerTest {
     setFinalField(sched, "selector", selector);
 
     SendableRequest req = mock(SendableRequest.class);
-    doNothing().when(selector).innerRegister(same(req), same(context), isNull());
+    doNothing().when(selector).innerRegister(same(req), same(context));
 
     sched.registerInsert(req, false);
 
-    verify(selector).innerRegister(same(req), same(context), isNull());
+    verify(selector).innerRegister(same(req), same(context));
     verify(starter).wakeUp();
   }
 
@@ -229,7 +229,7 @@ class ClientRequestSchedulerTest {
 
     verify(g1).preRegister(same(context), eq(true));
     verify(g2).preRegister(same(context), eq(false));
-    verify(selector).innerRegister(same(g1), same(context), any(SendableRequest[].class));
+    verify(selector).innerRegister(same(g1), same(context));
     verifyNoMoreInteractions(selector);
     verify(starter).wakeUp();
   }
@@ -250,7 +250,7 @@ class ClientRequestSchedulerTest {
 
     sched.finishRegister(new SendableGet[] {g1, g2}, true, true);
 
-    verify(selector).innerRegister(same(g1), same(context), any(SendableRequest[].class));
+    verify(selector).innerRegister(same(g1), same(context));
     verifyNoMoreInteractions(selector);
   }
 
