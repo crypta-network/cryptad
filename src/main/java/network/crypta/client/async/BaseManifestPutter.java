@@ -120,14 +120,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
               data,
               insertURI,
               ctx,
-              false,
-              false,
-              null,
-              ARCHIVE_TYPE.TAR,
-              false,
-              forceCryptoKey,
-              cryptoAlgorithm,
-              realTimeFlag);
+              new ContainerInserter.Options(
+                  false,
+                  false,
+                  null,
+                  ARCHIVE_TYPE.TAR,
+                  forceCryptoKey,
+                  cryptoAlgorithm,
+                  realTimeFlag));
     }
 
     @Override
@@ -199,14 +199,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
               data,
               insertURI,
               ctx,
-              false,
-              false,
-              null,
-              ARCHIVE_TYPE.TAR,
-              false,
-              forceCryptoKey,
-              cryptoAlgorithm,
-              realTimeFlag);
+              new ContainerInserter.Options(
+                  false,
+                  false,
+                  null,
+                  ARCHIVE_TYPE.TAR,
+                  forceCryptoKey,
+                  cryptoAlgorithm,
+                  realTimeFlag));
     }
 
     @Override
