@@ -607,8 +607,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
           oneBlockCompressedSize,
           context.getBucketFactory(persistent),
           persistent,
-          wantHashes,
-          context.getConfig());
+          wantHashes);
     } else {
       if (LOG.isDebugEnabled())
         LOG.debug(
