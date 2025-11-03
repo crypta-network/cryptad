@@ -162,7 +162,10 @@ public class USKManager {
       ClientRequester requester,
       boolean keepLastData,
       boolean checkStoreOnly) {
-    return new USKFetcher(usk, this, ctx, requester, 3, false, keepLastData, checkStoreOnly);
+    int options = 0;
+    if (keepLastData) options |= USKFetcher.OPT_KEEP_LAST_DATA;
+    if (checkStoreOnly) options |= USKFetcher.OPT_CHECK_STORE_ONLY;
+    return new USKFetcher(usk, this, ctx, requester, 3, options);
   }
 
   public USKFetcherTag getFetcherForInsertDontSchedule(
@@ -362,6 +365,7 @@ public class USKManager {
       //			}
       USKFetcher f = temporaryBackgroundFetchersLRU.get(clear);
       if (f == null) {
+        int options = 0;
         f =
             new USKFetcher(
                 usk,
@@ -370,9 +374,7 @@ public class USKManager {
                 new USKFetcherWrapper(
                     usk, RequestStarter.UPDATE_PRIORITY_CLASS, realTimeFlag ? rcRT : rcBulk),
                 3,
-                false,
-                false,
-                false);
+                options);
         sched = f;
         temporaryBackgroundFetchersLRU.push(clear, f);
       } else {
@@ -665,6 +667,7 @@ public class USKManager {
       if (runBackgroundFetch) {
         USKFetcher f = backgroundFetchersByClearUSK.get(clear);
         if (f == null) {
+          int options = USKFetcher.OPT_POLL_FOREVER;
           f =
               new USKFetcher(
                   origUSK,
@@ -672,9 +675,7 @@ public class USKManager {
                   ignoreUSKDatehints ? backgroundFetchContextIgnoreDBR : backgroundFetchContext,
                   new USKFetcherWrapper(origUSK, RequestStarter.UPDATE_PRIORITY_CLASS, client),
                   3,
-                  true,
-                  false,
-                  false);
+                  options);
           sched = f;
           backgroundFetchersByClearUSK.put(clear, f);
         }
@@ -728,7 +729,7 @@ public class USKManager {
       }
       USKFetcher f = backgroundFetchersByClearUSK.get(clear);
       if (f != null) {
-        f.removeSubscriber(cb, context);
+        f.removeSubscriber(cb);
         if (!f.hasSubscribers()) {
           toCancel = f;
           backgroundFetchersByClearUSK.remove(clear);
@@ -791,16 +792,10 @@ public class USKManager {
     toSub = proxy;
     /* runBackgroundFetch=false -> ignoreUSKDatehints unused */
     subscribe(origUSK, toSub, false, client);
+    int options = USKFetcher.OPT_POLL_FOREVER;
     USKFetcher f =
         new USKFetcher(
-            origUSK,
-            this,
-            fctx,
-            new USKFetcherWrapper(origUSK, prio, client),
-            3,
-            true,
-            false,
-            false);
+            origUSK, this, fctx, new USKFetcherWrapper(origUSK, prio, client), 3, options);
     ret.setFetcher(f);
     return ret;
   }
