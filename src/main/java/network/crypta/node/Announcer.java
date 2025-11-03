@@ -1031,7 +1031,7 @@ public class Announcer {
 
     @Override
     public UserEvent.Type getEventType() {
-      return UserEvent.Type.Announcer;
+      return UserEvent.Type.ANNOUNCER;
     }
 
     // Private helper specialized for the only usage here.

@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
+import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
 import network.crypta.config.Config;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
@@ -143,9 +144,7 @@ public class RequestStarterGroup {
             true);
     chkFetchSchedulerBulk =
         new ClientRequestScheduler(
-            false,
-            false,
-            false,
+            new SchedulerMode(false, false, false),
             random,
             chkRequestStarterBulk,
             node,
@@ -154,7 +153,13 @@ public class RequestStarterGroup {
             ctx);
     chkFetchSchedulerRT =
         new ClientRequestScheduler(
-            false, false, true, random, chkRequestStarterRT, node, core, CHK_REQUESTER_NAME, ctx);
+            new SchedulerMode(false, false, true),
+            random,
+            chkRequestStarterRT,
+            node,
+            core,
+            CHK_REQUESTER_NAME,
+            ctx);
     chkRequestStarterBulk.setScheduler(chkFetchSchedulerBulk);
     chkRequestStarterRT.setScheduler(chkFetchSchedulerRT);
 
@@ -194,10 +199,22 @@ public class RequestStarterGroup {
             true);
     chkPutSchedulerBulk =
         new ClientRequestScheduler(
-            true, false, false, random, chkInsertStarterBulk, node, core, CHK_INSERTER_NAME, ctx);
+            new SchedulerMode(true, false, false),
+            random,
+            chkInsertStarterBulk,
+            node,
+            core,
+            CHK_INSERTER_NAME,
+            ctx);
     chkPutSchedulerRT =
         new ClientRequestScheduler(
-            true, false, true, random, chkInsertStarterRT, node, core, CHK_INSERTER_NAME, ctx);
+            new SchedulerMode(true, false, true),
+            random,
+            chkInsertStarterRT,
+            node,
+            core,
+            CHK_INSERTER_NAME,
+            ctx);
     chkInsertStarterBulk.setScheduler(chkPutSchedulerBulk);
     chkInsertStarterRT.setScheduler(chkPutSchedulerRT);
 
@@ -232,10 +249,22 @@ public class RequestStarterGroup {
             true);
     sskFetchSchedulerBulk =
         new ClientRequestScheduler(
-            false, true, false, random, sskRequestStarterBulk, node, core, SSK_REQUESTER_NAME, ctx);
+            new SchedulerMode(false, true, false),
+            random,
+            sskRequestStarterBulk,
+            node,
+            core,
+            SSK_REQUESTER_NAME,
+            ctx);
     sskFetchSchedulerRT =
         new ClientRequestScheduler(
-            false, true, true, random, sskRequestStarterRT, node, core, SSK_REQUESTER_NAME, ctx);
+            new SchedulerMode(false, true, true),
+            random,
+            sskRequestStarterRT,
+            node,
+            core,
+            SSK_REQUESTER_NAME,
+            ctx);
     sskRequestStarterBulk.setScheduler(sskFetchSchedulerBulk);
     sskRequestStarterRT.setScheduler(sskFetchSchedulerRT);
 
@@ -275,10 +304,22 @@ public class RequestStarterGroup {
             true);
     sskPutSchedulerBulk =
         new ClientRequestScheduler(
-            true, true, false, random, sskInsertStarterBulk, node, core, SSK_INSERTER_NAME, ctx);
+            new SchedulerMode(true, true, false),
+            random,
+            sskInsertStarterBulk,
+            node,
+            core,
+            SSK_INSERTER_NAME,
+            ctx);
     sskPutSchedulerRT =
         new ClientRequestScheduler(
-            true, true, true, random, sskInsertStarterRT, node, core, SSK_INSERTER_NAME, ctx);
+            new SchedulerMode(true, true, true),
+            random,
+            sskInsertStarterRT,
+            node,
+            core,
+            SSK_INSERTER_NAME,
+            ctx);
     sskInsertStarterBulk.setScheduler(sskPutSchedulerBulk);
     sskInsertStarterRT.setScheduler(sskPutSchedulerRT);
 

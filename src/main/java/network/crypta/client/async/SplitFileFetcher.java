@@ -179,7 +179,7 @@ public class SplitFileFetcher
               context.random,
               context.tempBucketFactory,
               persistent ? context.persistentRAFFactory : context.tempRAFFactory,
-              persistent ? context.jobRunner : context.dummyJobRunner,
+              context.getJobRunner(persistent),
               context.ticker,
               context.memoryLimitedJobRunner,
               checker,
@@ -560,7 +560,7 @@ public class SplitFileFetcher
           BucketTools.restoreRAFFrom(
               dis,
               context.persistentFG,
-              context.persistentFileTracker,
+              context.getPersistentFileTracker(),
               context.getPersistentMasterSecret());
       fileCompleteViaTruncation = null;
       callbackCompleteViaTruncation = null;

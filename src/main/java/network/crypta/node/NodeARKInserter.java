@@ -196,7 +196,6 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
             false,
             null,
             false,
-            node.getClientCore().getClientContext(),
             null,
             -1);
 

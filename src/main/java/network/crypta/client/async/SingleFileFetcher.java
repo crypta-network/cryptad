@@ -714,13 +714,14 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               output,
               null,
               null,
-              ctx.getSchemeHostAndPort(),
-              null,
-              false,
-              null,
-              null,
-              null,
-              context.linkFilterExceptionProvider);
+              new ClientGetWorkerThread.Options(
+                  null,
+                  ctx.getSchemeHostAndPort(),
+                  false,
+                  null,
+                  null,
+                  null,
+                  context.linkFilterExceptionProvider));
       worker.start();
       return worker;
     } catch (URISyntaxException e) {

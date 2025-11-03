@@ -182,7 +182,6 @@ public class ClientPut extends ClientPutBase {
             isMetadata,
             this.uri.getDocName() == null ? targetFilename : null,
             binaryBlob,
-            core.getClientContext(),
             overrideSplitfileKey,
             -1);
   }
@@ -353,7 +352,6 @@ public class ClientPut extends ClientPutBase {
             isMetadata,
             this.uri.getDocName() == null ? targetFilename : null,
             binaryBlob,
-            server.getCore().getClientContext(),
             message.overrideSplitfileCryptoKey,
             message.metadataThreshold);
   }

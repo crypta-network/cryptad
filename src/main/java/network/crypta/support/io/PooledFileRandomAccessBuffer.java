@@ -558,7 +558,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   public void onResume(ClientContext context) throws ResumeFailedException {
     if (!file.exists()) throw new ResumeFailedException("File does not exist: " + file);
     if (length > file.length()) throw new ResumeFailedException("Bad length");
-    if (persistentTempID != -1) context.persistentFileTracker.register(file);
+    if (persistentTempID != -1) context.getPersistentFileTracker().register(file);
   }
 
   /**

@@ -10,9 +10,9 @@ import network.crypta.support.WaitableExecutor;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.Test;
 
-public class PersistentJobRunnerImplTest {
+class PersistentJobRunnerImplTest {
 
-  public PersistentJobRunnerImplTest() {
+  PersistentJobRunnerImplTest() {
     jobRunner = new JobRunner(exec, ticker, 1000);
     context =
         new ClientContext(
@@ -25,34 +25,43 @@ public class PersistentJobRunnerImplTest {
   }
 
   @Test
-  public void testWaitForCheckpoint() throws PersistenceDisabledException {
+  void waitAndCheckpoint_whenJobWoken_expectJobFinishes() throws PersistenceDisabledException {
+    // Arrange
     jobRunner.onLoading();
-    WakeableJob w = new WakeableJob();
-    jobRunner.queue(w, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-    w.waitForStarted();
+    WakeableJob job = new WakeableJob();
+    jobRunner.queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
+    job.waitForStarted();
     WaitAndCheckpoint checkpointer = new WaitAndCheckpoint(jobRunner);
-    new Thread(checkpointer).start();
+    Thread checkpointThread = new Thread(checkpointer);
+    checkpointThread.start();
     checkpointer.waitForStarted();
-    w.wakeUp();
+
+    // Act
+    job.wakeUp();
     checkpointer.waitForFinished();
-    assertTrue(w.finished());
+
+    // Assert
+    assertTrue(job.finished());
+    assertTrue(jobRunner.grabHasCheckpointed());
   }
 
   @Test
-  public void testDisabledCheckpointing() throws PersistenceDisabledException {
+  void mustCheckpoint_whenCheckpointingDisabled_expectFalseAfterJob()
+      throws PersistenceDisabledException {
+    // Arrange
     jobRunner.setCheckpointASAP();
     exec.waitForIdle();
-    assertFalse(jobRunner.mustCheckpoint()); // Has checkpointed, now false.
+    assertFalse(jobRunner.mustCheckpoint());
     jobRunner.disableWrite();
     assertFalse(jobRunner.mustCheckpoint());
+
+    // Act
     jobRunner.setCheckpointASAP();
     assertFalse(jobRunner.mustCheckpoint());
-
-    // Run a job which will request a checkpoint.
-    jobRunner.queue(context -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-
-    // Wait for the job to complete.
+    jobRunner.queue(ctx -> true, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     exec.waitForIdle();
+
+    // Assert
     assertFalse(jobRunner.mustCheckpoint());
   }
 
@@ -80,10 +89,6 @@ public class PersistentJobRunnerImplTest {
       notifyAll();
     }
 
-    public synchronized boolean started() {
-      return started;
-    }
-
     public synchronized boolean finished() {
       return finished;
     }
@@ -107,7 +112,6 @@ public class PersistentJobRunnerImplTest {
 
     public JobRunner(PriorityAwareExecutor executor, Ticker ticker, long interval) {
       super(executor, ticker, interval);
-      // TODO Auto-generated constructor stub
     }
 
     @Override
@@ -149,7 +153,6 @@ public class PersistentJobRunnerImplTest {
         throw new IllegalStateException(
             JobRunner.class.getSimpleName() + " has failed with unexpected exception", e);
       }
-      assertTrue(jobRunner.grabHasCheckpointed());
       synchronized (this) {
         finished = true;
         notifyAll();

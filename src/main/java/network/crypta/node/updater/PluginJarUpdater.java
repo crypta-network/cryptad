@@ -11,6 +11,8 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.AbstractUserAlert;
+import network.crypta.node.useralerts.AbstractUserAlert.Body;
+import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
@@ -266,14 +268,13 @@ public class PluginJarUpdater extends NodeUpdater {
     return new AbstractUserAlert(
         true,
         l10nName("pluginUpdatedTitle", pluginName),
-        l10nName("pluginUpdatedText", pluginName),
-        l10nName("pluginUpdatedShortText", pluginName),
-        null,
+        Body.of(
+            l10nName("pluginUpdatedText", pluginName),
+            l10nName("pluginUpdatedShortText", pluginName),
+            null),
         UserAlert.ERROR,
         true,
-        NodeL10n.getBase().getString("UserAlert.hide"),
-        true,
-        this) {
+        new DismissOptions(NodeL10n.getBase().getString("UserAlert.hide"), true)) {
 
       @Override
       public void onDismiss() {
@@ -285,15 +286,11 @@ public class PluginJarUpdater extends NodeUpdater {
       @Override
       public HTMLNode getHTMLText() {
         HTMLNode div = new HTMLNode("div");
-        // Text saying the plugin has been updated...
         synchronized (PluginJarUpdater.this) {
           if (deployOnNoRevocation || deployOnNextNoRevocation) {
             div.addChild("#", l10nName("willDeployAfterRevocationCheck", pluginName));
           } else {
             div.addChild("#", l10nPluginUpdatedText(pluginName, fetchedVersion));
-
-            // Form to deploy the updated version.
-            // This is not the same as reloading because we haven't written it yet.
 
             HTMLNode formNode =
                 div.addChild(

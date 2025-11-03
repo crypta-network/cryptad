@@ -376,7 +376,7 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     EncryptedRandomAccessBucket restored =
         (EncryptedRandomAccessBucket)
             BucketTools.restoreFrom(
-                dis, context.persistentFG, context.persistentFileTracker, secret);
+                dis, context.persistentFG, context.getPersistentFileTracker(), secret);
     assertEquals(buf.length, restored.size());
     assertEquals(erab, restored);
     tmp = new byte[buf.length];

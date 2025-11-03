@@ -53,23 +53,56 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A high level data request. Follows redirects, downloads splitfiles, etc. Similar to what you get
- * from FCP, and is used internally to implement FCP. Also used by fproxy, and plugins, and so on.
- * The current state of the request is stored in currentState. The ClientGetState's do most of the
- * work. SingleFileFetcher for example fetches a key, parses the metadata, and if necessary creates
- * other states to e.g. fetch splitfiles.
+ * High‑level client fetch operation for retrieving content and metadata.
+ *
+ * <p>This class coordinates fetching a URI, following redirects, and retrieving multi‑part
+ * splitfiles. It behaves similarly to the fetch logic exposed via FCP and is used internally by the
+ * server, the HTTP proxy, and plugins. The request progresses through a sequence of {@link
+ * ClientGetState} implementations (for example {@code SingleFileFetcher} and {@code
+ * SplitFileFetcher}) and the current state is held in {@link #currentState}.
+ *
+ * <p>Typical usage is:
+ *
+ * <ul>
+ *   <li>Construct a {@code ClientGetter} with a {@link ClientGetCallback} and a target {@link
+ *       FreenetURI} plus a {@link FetchContext}.
+ *   <li>Call {@link #start(ClientContext)} (or {@link #start(boolean, FreenetURI, ClientContext)})
+ *       to enqueue the request.
+ *   <li>React to callbacks for success/failure and optional progress or metadata signals.
+ * </ul>
+ *
+ * <p>State and life cycle: a single instance represents one logical fetch. It can be restarted
+ * under some conditions (see {@link #canRestart()}) and keeps track of metadata such as expected
+ * MIME type and size as they become known. When enabled, content filtering is applied and may cause
+ * the request to fail early if the MIME type is considered unsafe.
+ *
+ * <p>Concurrency and thread‑safety: instances are accessed from job runner threads and callback
+ * threads. Internal fields that change during the fetch are guarded by synchronized blocks on
+ * {@code this}; external callers should assume the class is not generally thread‑safe beyond the
+ * documented callback contract. Mutability is limited to request progress and associated metadata;
+ * configuration passed via the constructor is treated as read‑mostly.
+ *
+ * @see ClientGetState
+ * @see FetchContext
+ * @see ClientGetCallback
  */
 public class ClientGetter extends BaseClientGetter
     implements WantsCooldownCallback, FileGetCompletionCallback, Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetter.class);
 
+  private static final String BLOB_STREAM_ALREADY_CLOSED_PREFIX =
+      "Failed to close binary blob stream, already closed: ";
+  private static final String BLOB_STREAM_FAIL_PREFIX = "Failed to close binary blob stream: ";
+  private static final String CAUGHT_MESSAGE = "Caught {}";
+  private static final String DEBUG_EXCEPTION_MESSAGE = "debug";
+  private static final String RESTORE_FROM_SPLITFILE_FAILED_MSG =
+      "Failed to restore from splitfile, restarting: {}";
+
   @Serial private static final long serialVersionUID = 1L;
 
-  static {
-  }
-
   /** Will be called when the request completes */
+  @SuppressWarnings("java:S1948")
   final ClientGetCallback clientCallback;
 
   /** The initial Freenet URI being fetched. */
@@ -85,6 +118,7 @@ public class ClientGetter extends BaseClientGetter
    * The current state of the request. SingleFileFetcher when processing metadata for fetching a
    * simple key, SplitFileFetcher when fetching a splitfile, etc.
    */
+  @SuppressWarnings("java:S1948")
   private ClientGetState currentState;
 
   /** Has the request finished? */
@@ -97,12 +131,13 @@ public class ClientGetter extends BaseClientGetter
    * If not null, Bucket to return the data in, otherwise we create one. If non-null, it is the
    * responsibility of the callback to create and resume this bucket.
    */
+  @SuppressWarnings("java:S1948")
   final Bucket returnBucket;
 
   /** If not null, BucketWrapper to return a binary blob in */
-  private final BinaryBlobWriter binaryBlobWriter;
+  private final transient BinaryBlobWriter binaryBlobWriter;
 
-  /** If true, someone else is responsible for this BlobWriter, usually its a shared one */
+  /** If true, someone else is responsible for this BlobWriter, usually it's a shared one */
   private final boolean dontFinalizeBlobWriter;
 
   /** The expected MIME type, if we know it. Should not change. */
@@ -115,13 +150,18 @@ public class ClientGetter extends BaseClientGetter
   private boolean finalizedMetadata;
 
   /** Callback to spy on the metadata at each stage of the request */
-  private SnoopMetadata snoopMeta;
+  private transient SnoopMetadata snoopMeta;
 
   /** Callback to spy on the data at each stage of the request */
-  private SnoopBucket snoopBucket;
+  private transient SnoopBucket snoopBucket;
 
+  /**
+   * Optional set of hash results associated with the current request. When present, these are used
+   * for integrity checks or to seed downstream filtering and verification steps.
+   */
   private HashResult[] hashes;
-  private final Bucket initialMetadata;
+
+  private final transient Bucket initialMetadata;
 
   /**
    * If set, and filtering is enabled, the MIME type we filter with must be compatible with this
@@ -133,11 +173,35 @@ public class ClientGetter extends BaseClientGetter
 
   // Shorter constructors for convenience and backwards compatibility.
 
+  /**
+   * Create a getter with minimal parameters.
+   *
+   * <p>This convenience constructor delegates to the full constructor, using {@code null} for the
+   * optional return bucket, binary blob writer, and initial metadata.
+   *
+   * @param client callback that receives completion and failure notifications; must not be {@code
+   *     null} and should be prepared to run on a background thread
+   * @param uri target {@link FreenetURI} to fetch; non‑{@code null}; may be redirected by metadata
+   * @param ctx fetch configuration including size limits, filtering, and retry behavior
+   * @param priorityClass scheduling priority; smaller values represent higher priority
+   */
   public ClientGetter(
       ClientGetCallback client, FreenetURI uri, FetchContext ctx, short priorityClass) {
     this(client, uri, ctx, priorityClass, null, null, null);
   }
 
+  /**
+   * Create a getter that returns data into the supplied bucket when possible.
+   *
+   * <p>If {@code returnBucket} is non‑{@code null}, the implementation may write directly to it or
+   * move the final data into it. Callers own the bucket lifecycle.
+   *
+   * @param client callback that receives completion and failure notifications
+   * @param uri target {@link FreenetURI} to fetch
+   * @param ctx fetch configuration including limits and filtering flags
+   * @param priorityClass scheduling priority; smaller values represent higher priority
+   * @param returnBucket optional destination bucket; when {@code null}, a temporary bucket is used
+   */
   public ClientGetter(
       ClientGetCallback client,
       FreenetURI uri,
@@ -147,6 +211,22 @@ public class ClientGetter extends BaseClientGetter
     this(client, uri, ctx, priorityClass, returnBucket, null, null);
   }
 
+  /**
+   * Create a getter that also records the accessed keys to a binary blob.
+   *
+   * <p>When {@code binaryBlobWriter} is supplied, the fetcher records each accessed (or potentially
+   * accessed in redundant structures) key into the blob. The caller is responsible for the writer
+   * lifecycle unless otherwise noted by the {@link #ClientGetter(ClientGetCallback, FreenetURI,
+   * FetchContext, short, Bucket, BinaryBlobWriter, boolean, Bucket, String) full constructor}.
+   *
+   * @param client callback that receives completion and failure notifications
+   * @param uri target {@link FreenetURI} to fetch
+   * @param ctx fetch configuration including limits and filtering flags
+   * @param priorityClass scheduling priority; smaller values represent higher priority
+   * @param returnBucket optional destination bucket for the final data
+   * @param binaryBlobWriter writer that collects referenced keys during the fetch; may be {@code
+   *     null} to disable collection
+   */
   public ClientGetter(
       ClientGetCallback client,
       FreenetURI uri,
@@ -157,6 +237,22 @@ public class ClientGetter extends BaseClientGetter
     this(client, uri, ctx, priorityClass, returnBucket, binaryBlobWriter, null);
   }
 
+  /**
+   * Create a getter with optional initial metadata.
+   *
+   * <p>Supplies an initial metadata bucket that can speed up or resume processing when already
+   * available. Delegates to the full constructor with default values for writer finalization and
+   * forced extension filtering.
+   *
+   * @param client callback that receives completion and failure notifications
+   * @param uri target {@link FreenetURI} to fetch
+   * @param ctx fetch configuration including limits and filtering flags
+   * @param priorityClass scheduling priority; smaller values represent higher priority
+   * @param returnBucket optional destination bucket for the final data
+   * @param binaryBlobWriter writer that collects referenced keys during the fetch; may be {@code
+   *     null}
+   * @param initialMetadata optional initial metadata to seed the request
+   */
   public ClientGetter(
       ClientGetCallback client,
       FreenetURI uri,
@@ -164,18 +260,6 @@ public class ClientGetter extends BaseClientGetter
       short priorityClass,
       Bucket returnBucket,
       BinaryBlobWriter binaryBlobWriter,
-      Bucket initialMetadata) {
-    this(client, uri, ctx, priorityClass, returnBucket, binaryBlobWriter, false, initialMetadata);
-  }
-
-  public ClientGetter(
-      ClientGetCallback client,
-      FreenetURI uri,
-      FetchContext ctx,
-      short priorityClass,
-      Bucket returnBucket,
-      BinaryBlobWriter binaryBlobWriter,
-      boolean dontFinalizeBlobWriter,
       Bucket initialMetadata) {
     this(
         client,
@@ -184,7 +268,7 @@ public class ClientGetter extends BaseClientGetter
         priorityClass,
         returnBucket,
         binaryBlobWriter,
-        dontFinalizeBlobWriter,
+        false,
         initialMetadata,
         null);
   }
@@ -243,6 +327,17 @@ public class ClientGetter extends BaseClientGetter
     forceCompatibleExtension = null;
   }
 
+  /**
+   * Start the request using the current configuration.
+   *
+   * <p>This convenience method is equivalent to calling {@link #start(boolean, FreenetURI,
+   * ClientContext) start(false, null, context)}. It schedules the fetch if the request has not yet
+   * been started or has been properly reset. Errors that prevent scheduling are reported via a
+   * {@link FetchException}.
+   *
+   * @param context client context providing shared services and job runners for scheduling
+   * @throws FetchException if the request cannot be queued due to invalid state or URI problems
+   */
   public void start(ClientContext context) throws FetchException {
     start(false, null, context);
   }
@@ -259,58 +354,75 @@ public class ClientGetter extends BaseClientGetter
   public boolean start(boolean restart, FreenetURI overrideURI, ClientContext context)
       throws FetchException {
     if (LOG.isDebugEnabled())
-      LOG.debug("Starting " + this + " persistent=" + persistent() + " for " + uri);
+      LOG.debug("Starting {} persistent={} for {}", this, persistent(), uri);
     try {
-      // FIXME synchronization is probably unnecessary.
-      // But we DEFINITELY do not want to synchronize while calling currentState.schedule(),
-      // which can call onSuccess and thereby almost anything.
-      HashResult[] oldHashes = null;
-      String overrideMIME = ctx.overrideMIME;
-      synchronized (this) {
-        if (restart) clearCountersOnRestart();
-        if (overrideURI != null) uri = overrideURI;
-        if (finished) {
-          if (!restart) return false;
-          currentState = null;
-          cancelled = false;
-          finished = false;
-        }
-        if (!resumedFetcher) {
-          actx.clear();
-          expectedMIME = null;
-          expectedSize = 0;
-          oldHashes = hashes;
-          hashes = null;
-          finalBlocksRequired = 0;
-          finalBlocksTotal = 0;
-          resetBlocks();
-          currentState =
-              SingleFileFetcher.create(
-                  this,
-                  this,
-                  uri,
-                  ctx,
-                  actx,
-                  new SingleFileFetcher.CreationPolicy(
-                      ctx.maxNonSplitfileRetries, 0, false, true, true, initialMetadata != null),
-                  new SingleFileFetcher.CreationRuntime(context, realTimeFlag, -1));
-        }
-        if (overrideMIME != null) expectedMIME = overrideMIME;
-      }
+      if (!initStart(restart, overrideURI, context)) return false;
       if (cancelled) cancel();
-      // schedule() may deactivate stuff, so store it now.
-      if (currentState != null && !finished) {
-        if (initialMetadata != null
-            && currentState instanceof SingleFileFetcher fetcher
-            && !resumedFetcher) {
-          fetcher.startWithMetadata(initialMetadata, context);
-        } else currentState.schedule(context);
-      }
+      scheduleIfReady(context);
       if (cancelled) cancel();
     } catch (MalformedURLException e) {
       throw new FetchException(FetchExceptionMode.INVALID_URI, e);
     }
     return true;
+  }
+
+  private boolean initStart(boolean restart, FreenetURI overrideURI, ClientContext context)
+      throws FetchException, MalformedURLException {
+    // See note in the original method: avoid synchronizing while scheduling, which may call back
+    // into arbitrary code.
+    synchronized (this) {
+      if (restart) clearCountersOnRestart();
+      if (overrideURI != null) uri = overrideURI;
+      if (finished) {
+        if (!restart) return false;
+        currentState = null;
+        cancelled = false;
+        finished = false;
+      }
+      if (!resumedFetcher) {
+        actx.clear();
+        expectedMIME = null;
+        expectedSize = 0;
+        // Preserve hash-reset semantics
+        // (the previous code stored oldHashes but never used it).
+        hashes = null;
+        finalBlocksRequired = 0;
+        finalBlocksTotal = 0;
+        resetBlocks();
+        currentState =
+            SingleFileFetcher.create(
+                this,
+                this,
+                uri,
+                ctx,
+                actx,
+                ctx.maxNonSplitfileRetries,
+                0,
+                false,
+                -1,
+                true,
+                true,
+                context,
+                realTimeFlag,
+                initialMetadata != null);
+      }
+      String overrideMIME = ctx.overrideMIME;
+      if (overrideMIME != null) expectedMIME = overrideMIME;
+    }
+    return true;
+  }
+
+  private void scheduleIfReady(ClientContext context) {
+    // schedule() may deactivate stuff, so store it now.
+    if (currentState != null && !finished) {
+      if (initialMetadata != null
+          && currentState instanceof SingleFileFetcher fetcher
+          && !resumedFetcher) {
+        fetcher.startWithMetadata(initialMetadata, context);
+      } else {
+        currentState.schedule(context);
+      }
+    }
   }
 
   @Override
@@ -335,21 +447,45 @@ public class ClientGetter extends BaseClientGetter
       List<? extends Compressor> decompressors,
       ClientGetState state,
       ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Succeeded from " + state + " on " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Succeeded from {} on {}", state, this);
     // Fetching the container is essentially a full success, we should update the latest known good.
     context.uskManager.checkUSK(uri, persistent(), false);
+
+    if (!finalizeBlobWriterOrForwardError(context)) return;
+
+    String mimeType = clientMetadata == null ? null : clientMetadata.getMIMEType();
+    if (!ensureCompatibleExtensionOrForwardError(mimeType, context)) return;
+
+    markFinishedAndSetMIME(mimeType);
+
+    long maxLen = computeMaxLen();
+    try {
+      FetchResult result =
+          processStreams(streamGenerator, clientMetadata, decompressors, maxLen, context);
+      context.getJobRunner(persistent()).setCheckpointASAP();
+      clientCallback.onSuccess(result, ClientGetter.this);
+    } catch (Throwable t) {
+      FetchException ex = mapToFetchException(t);
+      onFailure(ex, state, context, true);
+    }
+  }
+
+  @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+  private boolean finalizeBlobWriterOrForwardError(ClientContext context) {
     try {
       if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
+      return true;
     } catch (IOException | BinaryBlobAlreadyClosedException e) {
       String msg =
           e instanceof BinaryBlobAlreadyClosedException
-              ? "Failed to close binary blob stream, already closed: " + e
-              : "Failed to close binary blob stream: " + e;
+              ? BLOB_STREAM_ALREADY_CLOSED_PREFIX + e
+              : BLOB_STREAM_FAIL_PREFIX + e;
       onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
-      return;
+      return false;
     }
-    String mimeType = clientMetadata == null ? null : clientMetadata.getMIMEType();
+  }
 
+  private boolean ensureCompatibleExtensionOrForwardError(String mimeType, ClientContext context) {
     if (forceCompatibleExtension != null && ctx.filterData) {
       if (mimeType == null) {
         onFailure(
@@ -358,37 +494,30 @@ public class ClientGetter extends BaseClientGetter
                 "No MIME type but need specific extension \"" + forceCompatibleExtension + "\""),
             null,
             context);
-        return;
+        return false;
       }
       try {
         checkCompatibleExtension(mimeType);
       } catch (FetchException e) {
         onFailure(e, null, context);
-        return;
+        return false;
       }
     }
+    return true;
+  }
 
+  private void markFinishedAndSetMIME(String mimeType) {
     synchronized (this) {
       finished = true;
       currentState = null;
       expectedMIME = mimeType;
     }
-    // Rest of method does not need to be synchronized.
-    // Variables will be updated on exit of method, and the only thing that is
-    // set is the returnBucket and the result. Not locking not only prevents
-    // nested locking resulting in deadlocks, it also prevents long locks due to
-    // doing massive encrypted I/Os while holding a lock.
+  }
 
-    DecompressorThreadManager decompressorManager = null;
-    ClientGetWorkerThread worker = null;
-    Bucket finalResult = null;
-    FetchResult result = null;
-
+  private long computeMaxLen() {
     long maxLen = -1;
     synchronized (this) {
-      if (expectedSize > 0) {
-        maxLen = expectedSize;
-      }
+      if (expectedSize > 0) maxLen = expectedSize;
     }
     if (ctx.filterData && maxLen >= 0) {
       maxLen = expectedSize * 2 + 1024;
@@ -396,112 +525,161 @@ public class ClientGetter extends BaseClientGetter
     if (maxLen == -1) {
       maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
     }
+    return maxLen;
+  }
 
-    FetchException ex = null; // set on failure
+  @SuppressWarnings("java:S1181")
+  private FetchResult processStreams(
+      StreamGenerator streamGenerator,
+      ClientMetadata clientMetadata,
+      List<? extends Compressor> decompressors,
+      long maxLen,
+      ClientContext context)
+      throws Throwable {
     try (PipedOutputStream dataOutput = new PipedOutputStream();
         PipedInputStream dataInput = new PipedInputStream()) {
-
-      if (returnBucket == null)
-        finalResult = context.getBucketFactory(persistent()).makeBucket(maxLen);
-      else finalResult = returnBucket;
+      Bucket finalResult =
+          (returnBucket == null)
+              ? context.getBucketFactory(persistent()).makeBucket(maxLen)
+              : returnBucket;
+      boolean createdTempResult = (returnBucket == null);
       if (LOG.isDebugEnabled())
-        LOG.debug("Writing final data to " + finalResult + " return bucket is " + returnBucket);
+        LOG.debug("Writing final data to {} return bucket is {}", finalResult, returnBucket);
       dataOutput.connect(dataInput);
-      result = new FetchResult(clientMetadata, finalResult);
 
-      // Decompress
-      InputStream processedDataInput = dataInput;
-      if (decompressors != null) {
-        if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
-        decompressorManager = new DecompressorThreadManager(dataInput, decompressors, maxLen);
-        processedDataInput = decompressorManager.execute();
+      DecompressionSetup dec = setupDecompression(dataInput, decompressors, maxLen);
+      try {
+        return runWorkerAndStream(
+            streamGenerator,
+            clientMetadata,
+            finalResult,
+            dec.processedInput,
+            dataOutput,
+            dec.manager,
+            context);
+      } catch (Throwable t) {
+        if (createdTempResult && finalResult != null) {
+          try {
+            finalResult.free();
+          } catch (Throwable freeErr) {
+            LOG.warn("Failed to free temporary result bucket after error: {}", freeErr, freeErr);
+          }
+        }
+        throw t;
       }
-
-      try (OutputStream output = finalResult.getOutputStream()) {
-        if (ctx.overrideMIME != null) mimeType = ctx.overrideMIME;
-        worker =
-            new ClientGetWorkerThread(
-                new BufferedInputStream(processedDataInput),
-                output,
-                uri,
-                mimeType,
-                ctx.getSchemeHostAndPort(),
-                hashes,
-                ctx.filterData,
-                ctx.charset,
-                ctx.prefetchHook,
-                ctx.tagReplacer,
-                context.linkFilterExceptionProvider);
-        worker.start();
-        try {
-          streamGenerator.writeTo(dataOutput, context);
-        } catch (IOException e) {
-          // Check if the worker thread caught an exception
-          worker.getError();
-          // If not, throw the original error
-          throw e;
-        }
-
-        // An error will propagate backwards, so wait for the worker first.
-
-        if (LOG.isDebugEnabled())
-          LOG.debug("Waiting for hashing, filtration, and writing to finish");
-        worker.waitFinished();
-
-        if (decompressorManager != null) {
-          if (LOG.isDebugEnabled()) LOG.debug("Waiting for decompression to finalize");
-          decompressorManager.waitFinished();
-        }
-
-        if (worker.getClientMetadata() != null) {
-          clientMetadata = worker.getClientMetadata();
-          result = new FetchResult(clientMetadata, finalResult);
-        }
-        // These must be updated for ClientGet.
-        synchronized (this) {
-          this.expectedMIME = result.getMimeType();
-          this.expectedSize = result.size();
-        }
-      }
-    } catch (UnsafeContentTypeException e) {
-      LOG.info("Error filtering content: will not validate", e);
-      ex =
-          e.createFetchException(
-              ctx.overrideMIME != null ? ctx.overrideMIME : expectedMIME, expectedSize);
-      /*Not really the state's fault*/
-    } catch (URISyntaxException e) {
-      // Impossible
-      LOG.error("URISyntaxException converting a Crypta URI to a URI!: " + e, e);
-      ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
-      /*Not really the state's fault*/
-    } catch (CompressionOutputSizeException e) {
-      LOG.error("Caught " + e, e);
-      ex = new FetchException(FetchExceptionMode.TOO_BIG, e);
-    } catch (InsufficientDiskSpaceException e) {
-      ex = new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-    } catch (IOException | FetchException e) {
-      LOG.error("Caught " + e, e);
-      ex =
-          e instanceof FetchException fe
-              ? fe
-              : new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
-    } catch (Throwable t) {
-      LOG.error("Caught " + t, t);
-      ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
     }
-    if (ex != null) {
-      onFailure(ex, state, context, true);
-      if (finalResult != null && finalResult != returnBucket) {
-        finalResult.free();
-      }
-      if (result != null) {
-        Bucket data = result.asBucket();
-        data.free();
-      }
-      return;
+  }
+
+  private record DecompressionSetup(
+      InputStream processedInput, DecompressorThreadManager manager) {}
+
+  private DecompressionSetup setupDecompression(
+      PipedInputStream dataInput, List<? extends Compressor> decompressors, long maxLen)
+      throws IOException {
+    if (decompressors == null) {
+      return new DecompressionSetup(dataInput, null);
     }
-    context.getJobRunner(persistent()).setCheckpointASAP();
-    clientCallback.onSuccess(result, ClientGetter.this);
+    if (LOG.isDebugEnabled()) LOG.debug("Decompressing...");
+    DecompressorThreadManager manager =
+        new DecompressorThreadManager(dataInput, decompressors, maxLen);
+    InputStream processed = manager.execute();
+    return new DecompressionSetup(processed, manager);
+  }
+
+  private String computeMime(ClientMetadata clientMetadata) {
+    String mimeType = (clientMetadata == null) ? null : clientMetadata.getMIMEType();
+    if (ctx.overrideMIME != null) mimeType = ctx.overrideMIME;
+    return mimeType;
+  }
+
+  private FetchResult runWorkerAndStream(
+      StreamGenerator streamGenerator,
+      ClientMetadata initialMetadata,
+      Bucket finalResult,
+      InputStream processedDataInput,
+      PipedOutputStream dataOutput,
+      DecompressorThreadManager decompressorManager,
+      ClientContext context)
+      throws Throwable {
+    FetchResult result = new FetchResult(initialMetadata, finalResult);
+    try (OutputStream output = finalResult.getOutputStream()) {
+      ClientGetWorkerThread worker =
+          new ClientGetWorkerThread(
+              new BufferedInputStream(processedDataInput),
+              output,
+              uri,
+              hashes,
+              new ClientGetWorkerThread.Options(
+                  computeMime(initialMetadata),
+                  ctx.getSchemeHostAndPort(),
+                  ctx.filterData,
+                  ctx.charset,
+                  ctx.prefetchHook,
+                  ctx.tagReplacer,
+                  context.linkFilterExceptionProvider));
+      worker.start();
+      try {
+        streamGenerator.writeTo(dataOutput, context);
+      } catch (IOException e) {
+        worker.getError();
+        throw e;
+      }
+
+      if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
+      worker.waitFinished();
+
+      if (decompressorManager != null) {
+        if (LOG.isDebugEnabled()) LOG.debug("Waiting for decompression to finalize");
+        decompressorManager.waitFinished();
+      }
+
+      ClientMetadata workerMeta = worker.getClientMetadata();
+      if (workerMeta != null) {
+        result = new FetchResult(workerMeta, finalResult);
+      }
+      synchronized (this) {
+        this.expectedMIME = result.getMimeType();
+        this.expectedSize = result.size();
+      }
+    }
+    return result;
+  }
+
+  private FetchException mapToFetchException(Throwable t) {
+    if (t == null) {
+      LOG.error("Caught null Throwable while mapping to FetchException");
+      return new FetchException(FetchExceptionMode.INTERNAL_ERROR);
+    }
+    switch (t) {
+      case UnsafeContentTypeException e -> {
+        LOG.info("Error filtering content: will not validate", e);
+        return e.createFetchException(
+            ctx.overrideMIME != null ? ctx.overrideMIME : expectedMIME, expectedSize);
+      }
+      case URISyntaxException e -> {
+        LOG.error("URISyntaxException converting a Crypta URI to a URI!: {}", e, e);
+        return new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
+      }
+      case CompressionOutputSizeException e -> {
+        LOG.error(CAUGHT_MESSAGE, e, e);
+        return new FetchException(FetchExceptionMode.TOO_BIG, e);
+      }
+      case InsufficientDiskSpaceException ignored -> {
+        return new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
+      }
+      case FetchException e -> {
+        LOG.error(CAUGHT_MESSAGE, e, e);
+        return e;
+      }
+      case IOException e -> {
+        LOG.error(CAUGHT_MESSAGE, e, e);
+        return new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
+      }
+      default -> {
+        LOG.error(CAUGHT_MESSAGE, t, t);
+        return new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
+      }
+    }
   }
 
   @Override
@@ -512,100 +690,71 @@ public class ClientGetter extends BaseClientGetter
       ClientGetState state,
       ClientContext context) {
     context.uskManager.checkUSK(uri, persistent(), false);
-    try {
-      if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
-    } catch (IOException | BinaryBlobAlreadyClosedException e) {
-      String msg =
-          e instanceof BinaryBlobAlreadyClosedException
-              ? "Failed to close binary blob stream, already closed: " + e
-              : "Failed to close binary blob stream: " + e;
-      onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, e), null, context);
-      return;
-    }
+    if (!finalizeBlobWriterOrForwardError(context)) return;
     File completionFile = getCompletionFile();
     assert (completionFile != null);
     assert (!ctx.filterData);
-    LOG.info("Succeeding via truncation from " + tempFile + " to " + completionFile);
-    FetchException ex = null;
-    RandomAccessFile raf = null;
-    FetchResult result = null;
+    LOG.info("Succeeding via truncation from {} to {}", tempFile, completionFile);
     try {
-      raf = new RandomAccessFile(tempFile, "rw");
+      FetchResult result =
+          completeViaTruncationInternal(tempFile, length, metadata, completionFile, context);
+      context.getJobRunner(persistent()).setCheckpointASAP();
+      clientCallback.onSuccess(result, ClientGetter.this);
+    } catch (Throwable t) {
+      LOG.error("Failed while completing via truncation: {}", t, t);
+      FetchException ex = mapToFetchException(t);
+      onFailure(ex, state, context, true);
+      try {
+        java.nio.file.Files.delete(tempFile.toPath());
+      } catch (IOException ioe) {
+        LOG.warn("Failed to delete temp file {}", tempFile, ioe);
+      }
+    }
+  }
+
+  private FetchResult completeViaTruncationInternal(
+      File tempFile,
+      long length,
+      ClientMetadata metadata,
+      File completionFile,
+      ClientContext context)
+      throws Throwable {
+    try (RandomAccessFile raf = new RandomAccessFile(tempFile, "rw");
+        InputStream is = new BufferedInputStream(new FileInputStream(raf.getFD()))) {
       if (raf.length() < length)
         throw new IOException("File is shorter than target length " + length);
       raf.setLength(length);
-      InputStream is = new BufferedInputStream(new FileInputStream(raf.getFD()));
-      // Check hashes...
 
-      DecompressorThreadManager decompressorManager = null;
-      ClientGetWorkerThread worker = null;
-
-      worker =
+      ClientGetWorkerThread worker =
           new ClientGetWorkerThread(
               is,
               new NullOutputStream(),
               uri,
-              null,
-              ctx.getSchemeHostAndPort(),
               hashes,
-              false,
-              null,
-              ctx.prefetchHook,
-              ctx.tagReplacer,
-              context.linkFilterExceptionProvider);
+              new ClientGetWorkerThread.Options(
+                  null,
+                  ctx.getSchemeHostAndPort(),
+                  false,
+                  null,
+                  ctx.prefetchHook,
+                  ctx.tagReplacer,
+                  context.linkFilterExceptionProvider));
       worker.start();
-
       if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
       worker.waitFinished();
-
-      is.close();
-      is = null;
-      raf = null; // FD is closed.
-
-      // We are still here so it worked.
-
-      if (!FileUtil.moveTo(tempFile, completionFile))
-        throw new FetchException(
-            FetchExceptionMode.BUCKET_ERROR, "Failed to rename from temp file " + tempFile);
-
-      // Success!
-
-      synchronized (this) {
-        finished = true;
-        currentState = null;
-        expectedMIME = metadata.getMIMEType();
-        expectedSize = length;
-      }
-
-      result = new FetchResult(metadata, returnBucket);
-
-    } catch (IOException e) {
-      LOG.error("Failed while completing via truncation: " + e, e);
-      ex = new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
-    } catch (URISyntaxException e) {
-      LOG.error("Impossible failure while completing via truncation: " + e, e);
-      ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
-    } catch (FetchException e) {
-      // Hashes failed.
-      LOG.error("Caught " + e, e);
-      ex = e;
-    } catch (Throwable e) {
-      LOG.error("Failed while completing via truncation: " + e, e);
-      ex = new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
     }
-    if (ex != null) {
-      onFailure(ex, state, context, true);
-      if (raf != null)
-        try {
-          raf.close();
-        } catch (IOException e) {
-          // Ignore.
-        }
-      tempFile.delete();
-    } else {
-      context.getJobRunner(persistent()).setCheckpointASAP();
-      clientCallback.onSuccess(result, ClientGetter.this);
+
+    if (!FileUtil.moveTo(tempFile, completionFile))
+      throw new FetchException(
+          FetchExceptionMode.BUCKET_ERROR, "Failed to rename from temp file " + tempFile);
+
+    synchronized (this) {
+      finished = true;
+      currentState = null;
+      expectedMIME = metadata.getMIMEType();
+      expectedSize = length;
     }
+    return new FetchResult(metadata, returnBucket);
   }
 
   /**
@@ -621,103 +770,113 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Internal version. Adds one parameter.
+   * Handle a terminal failure for this request.
    *
-   * @param force If true, finished may already have been set. This is usually set when called from
-   *     onSuccess after it has set finished = true.
+   * <p>This internal variant allows callers to force completion semantics even when {@link
+   * #finished} may already be true (for example when invoked from a success path that finalizes
+   * state). It normalizes the supplied {@link FetchException}, updates persisted state, and
+   * notifies the client callback exactly once per logical failure.
+   *
+   * @param e normalized failure explaining the reason the fetch cannot proceed; may be adjusted to
+   *     include expected size or MIME if known at failure time
+   * @param state the state that raised the failure; used for logging and consistency checks
+   * @param context client context for scheduling and persistence side effects
+   * @param force when {@code true}, proceed with failure handling even if {@link #finished} is
+   *     already set due to a prior path; callers must ensure idempotency
    */
   public void onFailure(
       FetchException e, ClientGetState state, ClientContext context, boolean force) {
-    if (LOG.isDebugEnabled()) LOG.debug("Failed from " + state + " : " + e + " on " + this, e);
-    ClientGetState oldState = null;
+    if (LOG.isDebugEnabled()) LOG.debug("Failed from {} : {} on {}", state, e, this, e);
     if (expectedSize > 0 && (e.expectedSize <= 0 || finalBlocksTotal != 0))
       e.expectedSize = expectedSize;
 
     context.getJobRunner(persistent()).setCheckpointASAP();
+    e = adjustTooBigForFilter(e);
 
-    if (e.mode == FetchExceptionMode.TOO_BIG && ctx.filterData) {
-      // Check for MIME type issues first. Because of the filtering behaviour the user needs to see
-      // these first.
-      if (e.finalizedSize()) {
-        // Since the size is finalized, so must the MIME type be.
-        String mime = e.getExpectedMimeType();
-        if (ctx.overrideMIME != null) mime = ctx.overrideMIME;
-        if (mime != null && !mime.isEmpty()) {
-          // Even if it's the default, it is set because we have the final size.
-          UnsafeContentTypeException unsafe = ContentFilter.checkMIMEType(mime);
-          if (unsafe != null) {
-            e = unsafe.recreateFetchException(e, mime);
-          }
-        }
-      }
+    FetchException pending = handleArchiveRestart(e, context);
+    if (pending == null) return; // Restarted successfully
+    e = pending;
+
+    boolean alreadyFinished = updateStateOnFailure(e, force);
+    if (!alreadyFinished) {
+      e = maybeFinalizeBlobOnFailure(e, force);
     }
 
-    while (true) {
-      if (e.mode == FetchExceptionMode.ARCHIVE_RESTART) {
-        int ar;
-        synchronized (this) {
-          archiveRestarts++;
-          ar = archiveRestarts;
-        }
-        if (LOG.isDebugEnabled()) LOG.debug("Archive restart on " + this + " ar=" + ar);
-        if (ar > ctx.maxArchiveRestarts)
-          e = new FetchException(FetchExceptionMode.TOO_MANY_ARCHIVE_RESTARTS);
-        else {
-          try {
-            start(context);
-          } catch (FetchException e1) {
-            e = e1;
-            continue;
-          }
-          return;
-        }
+    e = normalizeFetchException(e);
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure({}, {}) on {} for {}", e, state, this, uri, e);
+    if (!alreadyFinished) clientCallback.onFailure(e, ClientGetter.this);
+  }
+
+  private FetchException adjustTooBigForFilter(FetchException e) {
+    if (e.mode == FetchExceptionMode.TOO_BIG && ctx.filterData && e.finalizedSize()) {
+      String mime = e.getExpectedMimeType();
+      if (ctx.overrideMIME != null) mime = ctx.overrideMIME;
+      if (mime != null && !mime.isEmpty()) {
+        UnsafeContentTypeException unsafe = ContentFilter.checkMIMEType(mime);
+        if (unsafe != null) return unsafe.recreateFetchException(e, mime);
       }
-      boolean alreadyFinished = false;
-      synchronized (this) {
-        if (finished && !force) {
-          if (!cancelled)
-            LOG.error(
-                "Already finished - not calling callbacks on " + this, new Exception("error"));
-          alreadyFinished = true;
-        }
-        finished = true;
-        oldState = currentState;
-        currentState = null;
-        String mime = e.getExpectedMimeType();
-        if (mime != null) this.expectedMIME = mime;
-      }
-      if (!alreadyFinished) {
-        try {
-          if (binaryBlobWriter != null && !dontFinalizeBlobWriter)
-            binaryBlobWriter.finalizeBucket();
-        } catch (IOException | BinaryBlobAlreadyClosedException ex) {
-          // the request is already failed but fblob creation failed too
-          // the invalid fblob must be told, more important then an valid but incomplete fblob (ADNF
-          // for example)
-          if (e.mode != FetchExceptionMode.CANCELLED && !force) {
-            if (ex instanceof BinaryBlobAlreadyClosedException
-                && e.mode == FetchExceptionMode.BUCKET_ERROR) {
-              // Don't override bucket error with another bucket error
-            } else {
-              String msg =
-                  ex instanceof BinaryBlobAlreadyClosedException
-                      ? "Failed to close binary blob stream, already closed: " + ex
-                      : "Failed to close binary blob stream: " + ex;
-              e = new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, ex);
-            }
-          }
-        }
-      }
-      if (e.errorCodes != null && e.errorCodes.isOneCodeOnly())
-        e = new FetchException(e.errorCodes.getFirstCodeFetch());
-      if (e.mode == FetchExceptionMode.DATA_NOT_FOUND && super.successfulBlocks > 0)
-        e = new FetchException(e, FetchExceptionMode.ALL_DATA_NOT_FOUND);
-      if (LOG.isDebugEnabled())
-        LOG.debug("onFailure(" + e + ", " + state + ") on " + this + " for " + uri, e);
-      final FetchException e1 = e;
-      if (!alreadyFinished) clientCallback.onFailure(e1, ClientGetter.this);
-      return;
     }
+    return e;
+  }
+
+  private FetchException handleArchiveRestart(FetchException e, ClientContext context) {
+    if (e.mode != FetchExceptionMode.ARCHIVE_RESTART) return e;
+    int ar;
+    synchronized (this) {
+      archiveRestarts++;
+      ar = archiveRestarts;
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("Archive restart on {} ar={}", this, ar);
+    if (ar > ctx.maxArchiveRestarts)
+      return new FetchException(FetchExceptionMode.TOO_MANY_ARCHIVE_RESTARTS);
+    try {
+      start(context);
+      return null; // restarted
+    } catch (FetchException e1) {
+      return e1; // try again with the new exception
+    }
+  }
+
+  private boolean updateStateOnFailure(FetchException e, boolean force) {
+    boolean alreadyFinished = false;
+    synchronized (this) {
+      if (finished && !force) {
+        if (!cancelled)
+          LOG.error("Already finished - not calling callbacks on {}", this, new Exception("error"));
+        alreadyFinished = true;
+      }
+      finished = true;
+      currentState = null;
+      String mime = e.getExpectedMimeType();
+      if (mime != null) this.expectedMIME = mime;
+    }
+    return alreadyFinished;
+  }
+
+  private FetchException maybeFinalizeBlobOnFailure(FetchException e, boolean force) {
+    try {
+      if (binaryBlobWriter != null && !dontFinalizeBlobWriter) binaryBlobWriter.finalizeBucket();
+    } catch (IOException | BinaryBlobAlreadyClosedException ex) {
+      if (e.mode != FetchExceptionMode.CANCELLED
+          && !force
+          && !(ex instanceof BinaryBlobAlreadyClosedException
+              && e.mode == FetchExceptionMode.BUCKET_ERROR)) {
+        String msg =
+            ex instanceof BinaryBlobAlreadyClosedException
+                ? BLOB_STREAM_ALREADY_CLOSED_PREFIX + ex
+                : BLOB_STREAM_FAIL_PREFIX + ex;
+        e = new FetchException(FetchExceptionMode.BUCKET_ERROR, msg, ex);
+      }
+    }
+    return e;
+  }
+
+  private FetchException normalizeFetchException(FetchException e) {
+    if (e.errorCodes != null && e.errorCodes.isOneCodeOnly())
+      e = new FetchException(e.errorCodes.getFirstCodeFetch());
+    if (e.mode == FetchExceptionMode.DATA_NOT_FOUND && super.successfulBlocks > 0)
+      e = new FetchException(e, FetchExceptionMode.ALL_DATA_NOT_FOUND);
+    return e;
   }
 
   /**
@@ -730,14 +889,13 @@ public class ClientGetter extends BaseClientGetter
     ClientGetState s;
     synchronized (this) {
       if (super.cancel()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Already cancelled " + this);
+        if (LOG.isDebugEnabled()) LOG.debug("Already cancelled {}", this);
         return;
       }
       s = currentState;
     }
     if (s != null) {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Cancelling " + s + " for " + this + " instance " + super.toString());
+      if (LOG.isDebugEnabled()) LOG.debug("Cancelling {} for {} instance {}", s, this, this);
       s.cancel(context);
     } else {
       if (LOG.isDebugEnabled()) LOG.debug("Nothing to cancel");
@@ -815,7 +973,7 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Called when the current state creates a new state and we switch to that. For example, a
+   * Called when the current state creates a new state, and we switch to that. For example, a
    * SingleFileFetcher might switch to a SplitFileFetcher. Sometimes this will be called with
    * oldState not equal to our currentState; this means that a subsidiary request has changed state,
    * so we ignore it.
@@ -828,41 +986,38 @@ public class ClientGetter extends BaseClientGetter
         currentState = newState;
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Transition: "
-                  + oldState
-                  + " -> "
-                  + newState
-                  + " on "
-                  + this
-                  + " persistent = "
-                  + persistent()
-                  + " instance = "
-                  + super.toString(),
-              new Exception("debug"));
+              "Transition: {} -> {} on {} persistent = {} instance = {}",
+              oldState,
+              newState,
+              this,
+              persistent(),
+              this,
+              new Exception(DEBUG_EXCEPTION_MESSAGE));
       } else {
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Ignoring transition: "
-                  + oldState
-                  + " -> "
-                  + newState
-                  + " because current = "
-                  + currentState
-                  + " on "
-                  + this
-                  + " persistent = "
-                  + persistent(),
-              new Exception("debug"));
+              "Ignoring transition: {} -> {} because current = {} on {} persistent = {}",
+              oldState,
+              newState,
+              currentState,
+              this,
+              persistent(),
+              new Exception(DEBUG_EXCEPTION_MESSAGE));
         return;
       }
     }
     if (persistent()) context.jobRunner.setCheckpointASAP();
   }
 
-  /** Can the request be restarted? */
+  /**
+   * Whether this request can be restarted in its current state.
+   *
+   * @return {@code true} when no active state is running or the request has finished; otherwise
+   *     {@code false}
+   */
   public boolean canRestart() {
     if (currentState != null && !finished) {
-      if (LOG.isDebugEnabled()) LOG.debug("Cannot restart because not finished for " + uri);
+      if (LOG.isDebugEnabled()) LOG.debug("Cannot restart because not finished for {}", uri);
       return false;
     }
     return true;
@@ -888,32 +1043,53 @@ public class ClientGetter extends BaseClientGetter
     return super.toString();
   }
 
-  // FIXME not persisting binary blob stuff - any stream won't survive shutdown...
+  // Identity semantics are inherited from ClientRequester. Override explicitly to
+  // satisfy static analysis while preserving behavior.
+  @Override
+  public boolean equals(Object obj) {
+    return super.equals(obj);
+  }
 
-  /** Add a block to the binary blob. */
+  @Override
+  public int hashCode() {
+    return super.hashCode();
+  }
+
+  // Note: binary blob data is not persisted; streams do not survive shutdown.
+
+  /**
+   * Add an accessed key block to the binary blob collector.
+   *
+   * @param block the {@link ClientKeyBlock} describing the fetched block and its client key; must
+   *     not be {@code null}
+   * @param context client context used for failure routing if the writer cannot accept data
+   */
   protected void addKeyToBinaryBlob(ClientKeyBlock block, ClientContext context) {
     if (binaryBlobWriter == null) return;
     synchronized (this) {
       if (finished) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Add key to binary blob for " + this + " but already finished");
+          LOG.debug("Add key to binary blob for {} but already finished", this);
         return;
       }
     }
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Adding key " + block.getClientKey().getURI() + " to " + this, new Exception("debug"));
+          "Adding key {} to {}",
+          block.getClientKey().getURI(),
+          this,
+          new Exception(DEBUG_EXCEPTION_MESSAGE));
     try {
       binaryBlobWriter.addKey(block, context);
     } catch (IOException e) {
-      LOG.error("Failed to write key to binary blob stream: " + e, e);
+      LOG.error("Failed to write key to binary blob stream: {}", e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR, "Failed to write key to binary blob stream: " + e),
           null,
           context);
     } catch (BinaryBlobAlreadyClosedException e) {
-      LOG.error("Failed to write key to binary blob stream (already closed??): " + e, e);
+      LOG.error("Failed to write key to binary blob stream (already closed??): {}", e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR,
@@ -923,15 +1099,27 @@ public class ClientGetter extends BaseClientGetter
     }
   }
 
-  /** Are we collecting a binary blob? */
+  /**
+   * Whether key collection into a binary blob is currently active.
+   *
+   * @return {@code true} when a {@link BinaryBlobWriter} is configured and open; {@code false}
+   *     otherwise
+   */
   protected boolean collectingBinaryBlob() {
     return binaryBlobWriter != null;
   }
 
   /**
-   * Called when we know the MIME type of the final data
+   * Notified when the MIME type of the final data becomes known.
    *
-   * @throws FetchException
+   * <p>If filtering is enabled, the MIME is validated and an error is raised when the content type
+   * is considered unsafe or incompatible with a forced extension. The method may schedule
+   * additional bookkeeping work asynchronously.
+   *
+   * @param clientMetadata metadata discovered so far for the fetch; may be trivial and not contain
+   *     MIME information
+   * @param context client context used for scheduling follow‑up jobs related to metadata
+   * @throws FetchException when the MIME type fails validation or violates a configured constraint
    */
   @Override
   public void onExpectedMIME(ClientMetadata clientMetadata, ClientContext context)
@@ -992,51 +1180,80 @@ public class ClientGetter extends BaseClientGetter
             });
   }
 
-  /** Called when we are fairly sure that the expected MIME and size won't change */
+  /** Called when we are fairly sure that the expected MIME and size will not change. */
   @Override
   public void onFinalizedMetadata() {
     finalizedMetadata = true;
   }
 
-  /** Are we sure the expected MIME and size won't change? */
+  /**
+   * Report whether the expected MIME and size are final for this request.
+   *
+   * @return {@code true} once {@link #onFinalizedMetadata()} has been called and future metadata
+   *     updates are not expected; {@code false} otherwise
+   */
+  @SuppressWarnings("unused")
   public boolean finalizedMetadata() {
     return finalizedMetadata;
   }
 
   /**
-   * @return The expected MIME type, if we know it.
+   * Get the expected MIME type if it is currently known.
+   *
+   * @return a MIME type string representing the predicted final content type, or {@code null} if
+   *     not yet determined
    */
   public synchronized String expectedMIME() {
     return expectedMIME;
   }
 
   /**
-   * @return The expected size of the returned data, if we know it. Could change.
+   * Get the expected size of the returned data if currently known (may still change).
+   *
+   * @return a non‑negative number of bytes when the size is known; {@code 0} when unknown
    */
   public synchronized long expectedSize() {
     return expectedSize;
   }
 
   /**
-   * @return The callback to be notified when we complete the request.
+   * Get the client callback that receives success and failure notifications for this request.
+   *
+   * @return the callback instance provided at construction time; never {@code null}
    */
+  @SuppressWarnings("unused")
   public ClientGetCallback getClientCallback() {
     return clientCallback;
   }
 
-  /** Get the metadata snoop callback */
+  /**
+   * Get the metadata snoop callback.
+   *
+   * @return the current metadata observer or {@code null} when not configured
+   */
   public SnoopMetadata getMetaSnoop() {
     return snoopMeta;
   }
 
-  /** Set a callback to snoop on metadata during fetches. Call this before starting the request. */
+  /**
+   * Set a callback to snoop on metadata during fetches. Call this before starting the request.
+   *
+   * @param newSnoop the replacement callback to observe metadata processing; use {@code null} to
+   *     disable observation
+   * @return the previous callback or {@code null} if none was set
+   */
+  @SuppressWarnings("UnusedReturnValue")
   public SnoopMetadata setMetaSnoop(SnoopMetadata newSnoop) {
     SnoopMetadata old = snoopMeta;
     snoopMeta = newSnoop;
     return old;
   }
 
-  /** Get the intermediate data snoop callback */
+  /**
+   * Get the intermediate data snoop callback.
+   *
+   * @return the current bucket observer or {@code null} when not configured
+   */
   public SnoopBucket getBucketSnoop() {
     return snoopBucket;
   }
@@ -1044,14 +1261,28 @@ public class ClientGetter extends BaseClientGetter
   /**
    * Set a callback to snoop on buckets (all intermediary data - metadata, containers) during
    * fetches. Call this before starting the request.
+   *
+   * @param newSnoop the replacement callback to observe intermediary buckets; use {@code null} to
+   *     disable observation
+   * @return the previous callback or {@code null} if none was set
    */
+  @SuppressWarnings("unused")
   public SnoopBucket setBucketSnoop(SnoopBucket newSnoop) {
     SnoopBucket old = snoopBucket;
     snoopBucket = newSnoop;
     return old;
   }
 
+  /**
+   * Expected number of final blocks required to complete the top‑level splitfile. Set when the
+   * top‑level block layout becomes known and remains unchanged thereafter.
+   */
   private int finalBlocksRequired;
+
+  /**
+   * Total number of final blocks in the top‑level splitfile. This is used with {@link
+   * #finalBlocksRequired} to report progress.
+   */
   private int finalBlocksTotal;
 
   @Override
@@ -1060,14 +1291,11 @@ public class ClientGetter extends BaseClientGetter
     if (finalBlocksRequired != 0 || finalBlocksTotal != 0) return;
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "New format metadata has top data: original size "
-              + size
-              + " (compressed "
-              + compressed
-              + ") blocks "
-              + blocksReq
-              + " / "
-              + blocksTotal);
+          "New format metadata has top data: original size {} (compressed {}) blocks {} / {}",
+          size,
+          compressed,
+          blocksReq,
+          blocksTotal);
     onExpectedSize(size, context);
     this.finalBlocksRequired = this.minSuccessBlocks + blocksReq;
     this.finalBlocksTotal = this.totalBlocks + blocksTotal;
@@ -1121,11 +1349,7 @@ public class ClientGetter extends BaseClientGetter
     synchronized (this) {
       if (state != currentState) return;
     }
-    if (wakeupTime == Long.MAX_VALUE) {
-      // Ignore.
-      // FIXME implement when implement clearCooldown().
-      // It means everything that can be started has been started.
-    } else {
+    if (wakeupTime != Long.MAX_VALUE) {
       // Already off-thread.
       ctx.eventProducer.produceEvent(new EnterFiniteCooldownEvent(wakeupTime), context);
     }
@@ -1133,13 +1357,22 @@ public class ClientGetter extends BaseClientGetter
 
   @Override
   public void clearCooldown(ClientGetState state) {
-    // Ignore for now. FIXME.
+    // Intentionally no-op: cooldown managed by states
   }
 
+  /**
+   * Return the final bucket used by the binary blob writer.
+   *
+   * <p>This is only meaningful when a {@link BinaryBlobWriter} was configured and finalized. The
+   * caller owns the returned bucket and must manage its lifecycle.
+   *
+   * @return the final bucket produced by the blob writer, or {@code null} when no writer exists
+   */
   public Bucket getBlobBucket() {
     return binaryBlobWriter.getFinalBucket();
   }
 
+  @Override
   public byte[] getClientDetail(ChecksumChecker checker) throws IOException {
     if (clientCallback instanceof PersistentClientCallback callback) {
       return getClientDetail(callback, checker);
@@ -1147,9 +1380,11 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Called for a persistent request after startup.
+   * Called for a persistent request after startup to restore state and resume work.
    *
-   * @throws ResumeFailedException
+   * @param context client context providing services required to rehydrate state and queue work
+   * @throws ResumeFailedException when stored state is incompatible, missing, or cannot be
+   *     deserialized; the request should be treated as failed and re‑queued from scratch if needed
    */
   @Override
   public void innerOnResume(ClientContext context) throws ResumeFailedException {
@@ -1159,11 +1394,9 @@ public class ClientGetter extends BaseClientGetter
         currentState.onResume(context);
       } catch (FetchException e) {
         currentState = null;
-        LOG.error("Failed to resume: " + e, e);
         throw new ResumeFailedException(e);
       } catch (RuntimeException e) {
         // Severe serialization problems, lost a class silently etc.
-        LOG.error("Failed to resume: " + e, e);
         throw new ResumeFailedException(e);
       }
     // returnBucket is responsibility of the callback.
@@ -1176,12 +1409,17 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * If the request is simple, e.g. a single, final splitfile fetch, then write enough information
-   * to continue the request. Otherwise write a marker indicating that this is not true, and return
-   * false. We don't need to write the expected MIME type, hashes etc, as the caller will write
-   * them.
+   * Persist minimal progress information for simple requests.
    *
-   * @throws IOException
+   * <p>When the fetch is a single, final splitfile operation, this writes enough information to
+   * resume. Otherwise, a marker is written indicating that a trivial resume is not possible. The
+   * caller remains responsible for writing other metadata such as expected MIME and hashes.
+   *
+   * @param dos output stream used to persist the progress marker and any required resume data; the
+   *     caller is responsible for closing the stream
+   * @return {@code true} when trivial progress data was written and the request can be trivially
+   *     resumed; {@code false} when a trivial resume is not applicable for the current state
+   * @throws IOException if the stream cannot be written or the underlying destination fails
    */
   public boolean writeTrivialProgress(DataOutputStream dos) throws IOException {
     if (!(this.binaryBlobWriter == null
@@ -1191,7 +1429,7 @@ public class ClientGetter extends BaseClientGetter
       dos.writeBoolean(false);
       return false;
     }
-    ClientGetState state = null;
+    ClientGetState state;
     synchronized (this) {
       state = currentState;
     }
@@ -1203,9 +1441,22 @@ public class ClientGetter extends BaseClientGetter
       dos.writeBoolean(false);
       return false;
     }
-    return ((SplitFileFetcher) state).writeTrivialProgress(dos);
+    return fetcher.writeTrivialProgress(dos);
   }
 
+  /**
+   * Attempt to resume the request from previously written trivial progress data.
+   *
+   * <p>If a trivial progress marker is present, reconstructs the {@code SplitFileFetcher} state and
+   * marks this getter as resumed. If the marker is absent or the stored data cannot be parsed, the
+   * method returns {@code false} and the caller should fall back to a full resume or restart.
+   *
+   * @param dis input stream positioned at the trivial progress marker and data
+   * @param context client context used to rebuild the necessary state
+   * @return {@code true} when the trivial resume succeeds; {@code false} when no marker exists or
+   *     the stored data is invalid
+   * @throws IOException if reading from the input stream fails
+   */
   public boolean resumeFromTrivialProgress(DataInputStream dis, ClientContext context)
       throws IOException {
     if (dis.readBoolean()) {
@@ -1213,19 +1464,19 @@ public class ClientGetter extends BaseClientGetter
         currentState = new SplitFileFetcher(this, dis, context);
         resumedFetcher = true;
         return true;
-      } catch (StorageFormatException e) {
-        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
-        return false;
-      } catch (ResumeFailedException e) {
-        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
-        return false;
-      } catch (IOException e) {
-        LOG.error("Failed to restore from splitfile, restarting: " + e, e);
+      } catch (StorageFormatException | ResumeFailedException | IOException e) {
+        LOG.error(RESTORE_FROM_SPLITFILE_FAILED_MSG, e, e);
         return false;
       }
     } else return false;
   }
 
+  /**
+   * Whether a {@code SplitFileFetcher} was reconstructed from trivial progress during resume.
+   *
+   * @return {@code true} when {@link #resumeFromTrivialProgress(DataInputStream, ClientContext)}
+   *     successfully rebuilt the fetcher; {@code false} otherwise
+   */
   public boolean resumedFetcher() {
     return resumedFetcher;
   }

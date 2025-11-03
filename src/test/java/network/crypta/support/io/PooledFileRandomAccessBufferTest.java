@@ -486,7 +486,7 @@ class PooledFileRandomAccessBufferTest {
             f, false, -1, tempId, false, new PooledFileRandomAccessBuffer.FDTracker(1))) {
       ClientContext ctx = mock(ClientContext.class);
       PersistentFileTracker tracker = mock(PersistentFileTracker.class);
-      ctx.persistentFileTracker = tracker;
+      when(ctx.getPersistentFileTracker()).thenReturn(tracker);
 
       // Act
       p.onResume(ctx);
