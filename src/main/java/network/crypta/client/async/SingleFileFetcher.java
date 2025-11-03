@@ -2153,7 +2153,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
     @Serial private static final long serialVersionUID = 1L;
     final ClientRequester parent;
-    final transient GetCompletionCallback cb;
+    // Must be serializable to preserve persistent USK fetch completion after restart
+    final GetCompletionCallback cb;
     final USK usk;
     private final List<String> metaStrings;
     final FetchContext ctx;
