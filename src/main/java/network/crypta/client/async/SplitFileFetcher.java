@@ -177,8 +177,8 @@ public class SplitFileFetcher
     try {
       TruncationConfig trunc =
           prepareTruncation(p.isFinalFetch, cb, p.decompressors, p.fetchContext);
-      callbackCompleteViaTruncation = trunc.callback;
-      fileCompleteViaTruncation = trunc.tempFile;
+      callbackCompleteViaTruncation = trunc.callback();
+      fileCompleteViaTruncation = trunc.tempFile();
 
       storage =
           buildStorage(

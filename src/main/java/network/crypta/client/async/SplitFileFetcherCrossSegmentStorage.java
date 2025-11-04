@@ -378,7 +378,8 @@ public class SplitFileFetcherCrossSegmentStorage {
   private static boolean[] wasNonNullFill(byte[][] blocks) {
     boolean[] nonNulls = new boolean[blocks.length];
     for (int i = 0; i < blocks.length; i++) {
-      if (blocks[i] == null) {
+      // Treat null or empty arrays as absent; provide zero-filled buffer for codec.
+      if (blocks[i] == null || blocks[i].length == 0) {
         blocks[i] = new byte[CHKBlock.DATA_LENGTH];
       } else {
         nonNulls[i] = true;
@@ -404,9 +405,14 @@ public class SplitFileFetcherCrossSegmentStorage {
     for (int i = start; i < end; i++) {
       try {
         byte[] block = segments[i].checkAndGetBlockData(blockNumbers[i]);
-        blocks[i - start] = block;
+        // Normalize: use null to represent missing/invalid blocks.
+        if (block == null || block.length == 0) {
+          blocks[i - start] = null;
+        } else {
+          blocks[i - start] = block;
+        }
         synchronized (this) {
-          if (block != null) {
+          if (blocks[i - start] != null) {
             if (!blocksFound[i]) totalFound++;
             blocksFound[i] = true;
           } else {

@@ -2828,8 +2828,7 @@ public class SplitFileFetcherStorage {
   public long countSendableKeys() {
     long now = System.currentTimeMillis();
     long total = 0;
-    for (SplitFileFetcherSegmentStorage segment : segments)
-      total += segment.countSendableKeys(now, maxRetries);
+    for (SplitFileFetcherSegmentStorage segment : segments) total += segment.countSendableKeys();
     return total;
   }
 
@@ -2982,7 +2981,7 @@ public class SplitFileFetcherStorage {
     if (hasFinished()) return; // Don't need to do anything.
     this.errors.inc(FetchExceptionMode.ALL_DATA_NOT_FOUND);
     for (SplitFileFetcherSegmentStorage segment : segments) {
-      segment.onFinishedCheckingDatastoreNoFetch(context);
+      segment.onFinishedCheckingDatastoreNoFetch();
     }
     maybeComplete();
   }
