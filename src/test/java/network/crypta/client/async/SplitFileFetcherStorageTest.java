@@ -23,7 +23,6 @@ import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.OnionFECCodec;
-import network.crypta.client.async.SplitFileFetcherStorage.SplitFileFetcherStorageKey;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
