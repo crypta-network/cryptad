@@ -2826,7 +2826,6 @@ public class SplitFileFetcherStorage {
    * @return the number of keys that can be turned into outbound requests without waiting.
    */
   public long countSendableKeys() {
-    long now = System.currentTimeMillis();
     long total = 0;
     for (SplitFileFetcherSegmentStorage segment : segments) total += segment.countSendableKeys();
     return total;
