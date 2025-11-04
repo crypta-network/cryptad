@@ -1545,7 +1545,7 @@ public class SplitFileFetcherSegmentStorage {
     int chosen = chooseKeyInternal();
     if (chosen == -1) {
       long cooldownTime = blockChooser.overallCooldownTime();
-      if (cooldownTime > System.currentTimeMillis()) parent.increaseCooldown(this, cooldownTime);
+      if (cooldownTime > System.currentTimeMillis()) parent.increaseCooldown(cooldownTime);
       return -1;
     } else {
       return chosen;

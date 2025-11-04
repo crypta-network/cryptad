@@ -330,7 +330,7 @@ class SplitFileFetcherSegmentStorageTest {
 
     // Assert
     assertEquals(-1, chosen);
-    Mockito.verify(parent, Mockito.times(1)).increaseCooldown(seg, wakeup);
+    Mockito.verify(parent, Mockito.times(1)).increaseCooldown(wakeup);
   }
 
   @Test

@@ -3110,12 +3110,7 @@ public class SplitFileFetcherStorage {
         });
   }
 
-  /** Backward-compatible overload used by tests and legacy callers. */
-  void increaseCooldown(
-      SplitFileFetcherSegmentStorage splitFileFetcherSegmentStorage, final long cooldownTime) {
-    // We don't need the segment reference for our current logic; forward to the single-arg method.
-    increaseCooldown(cooldownTime);
-  }
+  // Removed unused segment parameter overload; callers should use single-arg variant.
 
   /**
    * Clear global cooldown when all segments have exited their individual cooldown windows.
