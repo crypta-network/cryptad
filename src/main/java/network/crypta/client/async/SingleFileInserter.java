@@ -476,7 +476,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (LOG.isTraceEnabled()) LOG.trace("Inserting without metadata: {} for {}", bi, this);
     cb.onTransition(this, bi, context);
     if (ctx.earlyEncode && bi instanceof SingleBlockInserter inserter && isCHK)
-      inserter.getBlock(context, true);
+      inserter.getBlock(context);
     bi.schedule(context);
     if (!isUSK) cb.onBlockSetFinished(this, context);
     synchronized (this) {
@@ -621,7 +621,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     mcb.arm(context);
     dataPutter.schedule(context);
     if (ctx.earlyEncode && metaPutter instanceof SingleBlockInserter inserter)
-      inserter.getBlock(context, true);
+      inserter.getBlock(context);
     metaPutter.schedule(context);
     if (!isUSK) cb.onBlockSetFinished(this, context);
     // Deleting origHashes is fine, we are done with them.
