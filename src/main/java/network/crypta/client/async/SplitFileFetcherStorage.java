@@ -550,21 +550,21 @@ public class SplitFileFetcherStorage {
                 + " data, "
                 + checkBlocksPerSegment
                 + " check");
-      segments[i] =
-          new SplitFileFetcherSegmentStorage(
-              this,
-              i,
-              splitfileType,
-              dataBlocks,
-              checkBlocks,
-              crossCheckBlocks,
-              dataOffset,
-              completeViaTruncation ? crossCheckBlocksOffset : -1, // Put at end if truncating.
-              segmentKeysOffset,
-              segmentStatusOffset,
-              maxRetries != -1,
-              keys,
-              keysFetching);
+      SplitFileFetcherSegmentStorage.InitParams p = new SplitFileFetcherSegmentStorage.InitParams();
+      p.parent = this;
+      p.segNumber = i;
+      p.dataBlocks = dataBlocks;
+      p.checkBlocks = checkBlocks;
+      p.crossCheckBlocks = crossCheckBlocks;
+      p.segmentDataOffset = dataOffset;
+      p.segmentCrossCheckDataOffset =
+          completeViaTruncation ? crossCheckBlocksOffset : -1; // Put at end if truncating.
+      p.segmentKeysOffset = segmentKeysOffset;
+      p.segmentStatusOffset = segmentStatusOffset;
+      p.writeRetries = maxRetries != -1;
+      p.keys = keys;
+      p.keysFetching = keysFetching;
+      segments[i] = new SplitFileFetcherSegmentStorage(p);
       dataOffset += (long) dataBlocks * CHKBlock.DATA_LENGTH;
       if (!completeViaTruncation) {
         dataOffset += (long) crossCheckBlocks * CHKBlock.DATA_LENGTH;
@@ -968,17 +968,18 @@ public class SplitFileFetcherStorage {
       int countCheckBlocks = 0;
       int countCrossCheckBlocks = 0;
       for (int i = 0; i < segments.length; i++) {
-        segments[i] =
-            new SplitFileFetcherSegmentStorage(
-                this,
-                dis,
-                i,
-                maxRetries != -1,
-                dataOffset,
-                completeViaTruncation ? crossCheckBlocksOffset : -1,
-                segmentKeysOffset,
-                segmentStatusOffset,
-                keysFetching);
+        SplitFileFetcherSegmentStorage.LoadParams lp =
+            new SplitFileFetcherSegmentStorage.LoadParams();
+        lp.parent = this;
+        lp.dis = dis;
+        lp.segNo = i;
+        lp.writeRetries = maxRetries != -1;
+        lp.segmentDataOffset = dataOffset;
+        lp.segmentCrossCheckDataOffset = (completeViaTruncation ? crossCheckBlocksOffset : -1);
+        lp.segmentKeysOffset = segmentKeysOffset;
+        lp.segmentStatusOffset = segmentStatusOffset;
+        lp.keysFetching = keysFetching;
+        segments[i] = new SplitFileFetcherSegmentStorage(lp);
         int dataBlocks = segments[i].dataBlocks;
         countDataBlocks += dataBlocks;
         int checkBlocks = segments[i].checkBlocks;
@@ -1634,8 +1635,7 @@ public class SplitFileFetcherStorage {
   public long countSendableKeys() {
     long now = System.currentTimeMillis();
     long total = 0;
-    for (SplitFileFetcherSegmentStorage segment : segments)
-      total += segment.countSendableKeys(now, maxRetries);
+    for (SplitFileFetcherSegmentStorage segment : segments) total += segment.countSendableKeys();
     return total;
   }
 
@@ -1741,7 +1741,7 @@ public class SplitFileFetcherStorage {
     if (hasFinished()) return; // Don't need to do anything.
     this.errors.inc(FetchExceptionMode.ALL_DATA_NOT_FOUND);
     for (SplitFileFetcherSegmentStorage segment : segments) {
-      segment.onFinishedCheckingDatastoreNoFetch(context);
+      segment.onFinishedCheckingDatastoreNoFetch();
     }
     maybeComplete();
   }
