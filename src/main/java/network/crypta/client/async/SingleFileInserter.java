@@ -636,6 +636,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       boolean shouldFreeData,
       ClientContext context)
       throws InsertException {
+
     // Otherwise the file is too big to fit into one block
     // We therefore must make a splitfile
     // Job of SplitHandler: when the splitinserter has the metadata,

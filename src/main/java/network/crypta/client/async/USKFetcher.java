@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory;
  * <p>Lifecycle and behavior:
  *
  * <ul>
- *   <li>At most one {@code USKFetcher} is active per USK and it registers itself with the {@code
+ *   <li>At most one {@code USKFetcher} is active per USK, and it registers itself with the {@code
  *       USKManager} to receive discovery events such as newly found slots.
  *   <li>Subscribers and callbacks do not receive data directly from this class but influence
  *       whether to continue polling and at which priority, enabling interactive workloads to
@@ -87,8 +87,6 @@ import org.slf4j.LoggerFactory;
 public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, KeyListener {
   private static final Logger LOG = LoggerFactory.getLogger(USKFetcher.class);
   private static final String FOR_LITERAL = " for ";
-
-  // Static initializer removed as it was empty and unnecessary.
 
   /** USK manager */
   private final USKManager uskManager;
@@ -201,6 +199,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     }
 
     @Override
+    @SuppressWarnings("java:S1181")
     public void onSuccess(
         StreamGenerator streamGenerator,
         ClientMetadata clientMetadata,
@@ -221,20 +220,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
             DecompressorThreadManager decompressorManager =
                 new DecompressorThreadManager(pipeIn, decompressors, maxLen);
             PipedInputStream newPipeIn = decompressorManager.execute();
-            ClientGetWorkerThread worker =
-                new ClientGetWorkerThread(
-                    new BufferedInputStream(newPipeIn),
-                    output,
-                    null,
-                    null,
-                    new ClientGetWorkerThread.Options(
-                        null,
-                        ctx.getSchemeHostAndPort(),
-                        false,
-                        null,
-                        null,
-                        null,
-                        context.linkFilterExceptionProvider));
+            ClientGetWorkerThread worker = createClientGetWorkerThread(newPipeIn, output, context);
             worker.start();
             streamGenerator.writeTo(pipeOut, context);
             decompressorManager.waitFinished();
@@ -403,6 +389,35 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
 
     public void cancel(ClientContext context) {
       this.fetcher.cancel(context);
+    }
+
+    /**
+     * Creates a {@link ClientGetWorkerThread} configured for DBR hint processing.
+     *
+     * <p>Encapsulates the verbose constructor so the success handler remains readable. The returned
+     * worker is not started.
+     *
+     * @param in upstream input (typically from {@link DecompressorThreadManager#execute()})
+     * @param output destination stream for decoded content
+     * @param context client context providing link filter exception provider
+     * @return a newly constructed, non-started worker
+     */
+    private ClientGetWorkerThread createClientGetWorkerThread(
+        java.io.InputStream in, OutputStream output, ClientContext context)
+        throws java.net.URISyntaxException {
+      return new ClientGetWorkerThread(
+          new BufferedInputStream(in),
+          output,
+          null,
+          null,
+          new ClientGetWorkerThread.Options(
+              null,
+              ctx.getSchemeHostAndPort(),
+              false,
+              null,
+              null,
+              null,
+              context.linkFilterExceptionProvider));
     }
   }
 
@@ -1358,7 +1373,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     synchronized (this) {
       localCallbacks = subscribers.toArray(new USKCallback[0]);
       // Callbacks also determine the fetcher's priority.
-      // Otherwise USKFetcherTag would have no way to tell us the priority we should run at.
+      // Otherwise, USKFetcherTag would have no way to tell us the priority we should run at.
       fetcherCallbacks = callbacks.toArray(new USKFetcherCallback[0]);
     }
     if (noCallbacks(localCallbacks, fetcherCallbacks)) {
@@ -2044,7 +2059,8 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
    * polling attempts so they take effect without reconstructing requests. For broader
    * configuration, see the tracker discussion linked below.
    *
-   * <p>See: https://bugs.freenetproject.org/view.php?id=4984
+   * <p>See: <a
+   * href="https://bugs.freenetproject.org/view.php?id=4984">https://bugs.freenetproject.org/view.php?id=4984</a>
    *
    * @param time cooldown duration in milliseconds applied between retry batches; non-negative
    *     values are expected
@@ -2066,7 +2082,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
    * Tracks the list of editions that we want to fetch, from various sources - subscribers, origUSK,
    * last known slot from USKManager, etc.
    *
-   * <p>LOCKING: Take the lock on this class last and always pass in lookup values. Do not lookup
+   * <p>LOCKING: Take the lock on this class last and always pass in lookup values. Do not look up
    * values in USKManager inside this class's lock.
    *
    * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
@@ -2300,14 +2316,17 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
       }
 
       /**
-       * Add the next bunch of editions to fetch to toFetch and toPoll. If they are already running,
-       * REMOVE THEM from the alreadyRunning array.
+       * Add the next set of editions to either {@code toFetch} or {@code toPoll}. If any of those
+       * editions are already running, remove them from {@code alreadyRunning}.
        *
-       * @param toFetch
-       * @param toPoll
-       * @param lookedUp
-       * @param alreadyRunning
-       * @param random
+       * @param toFetch destination list for editions that should be fetched immediately when not in
+       *     background polling mode; entries are appended, not cleared
+       * @param toPoll destination list for editions that should be polled (no immediate fetch) when
+       *     in background polling mode; entries are appended, not cleared
+       * @param lookedUp current best known slot (edition) used as a base for computing the next
+       *     candidate editions; values below zero are treated as zero
+       * @param alreadyRunning list of lookups currently in progress; this method removes any
+       *     edition that remains valid so it is not scheduled twice
        */
       public synchronized void getNextEditions(
           List<Lookup> toFetch, List<Lookup> toPoll, long lookedUp, List<Lookup> alreadyRunning) {
