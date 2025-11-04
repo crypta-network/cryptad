@@ -199,7 +199,7 @@ class SplitFileFetcherGetTest {
     blockFetchContext.localRequestOnly = true;
     boolean cancelled = getter.preRegister(clientContext, true);
     assertTrue(cancelled);
-    verify(storage, times(1)).finishedCheckingDatastoreOnLocalRequest(clientContext);
+    verify(storage, times(1)).finishedCheckingDatastoreOnLocalRequest();
   }
 
   @Test

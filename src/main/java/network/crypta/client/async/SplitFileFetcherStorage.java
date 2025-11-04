@@ -2971,11 +2971,8 @@ public class SplitFileFetcherStorage {
    *
    * <p>When a check produces a definitive result the storage updates segment state and may schedule
    * additional work. The method runs off-thread to avoid blocking request selection.
-   *
-   * @param context execution context associated with the check; may carry throttling or logging
-   *     configuration.
    */
-  public void finishedCheckingDatastoreOnLocalRequest(ClientContext context) {
+  public void finishedCheckingDatastoreOnLocalRequest() {
     // At this point, all the blocks will have been processed.
     if (hasFinished()) return; // Don't need to do anything.
     this.errors.inc(FetchExceptionMode.ALL_DATA_NOT_FOUND);
