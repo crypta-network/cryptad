@@ -312,7 +312,7 @@ class SplitFileFetcherGetTest {
 
   private static SplitFileFetcherStorage.SplitFileFetcherStorageKey newKey(
       SplitFileFetcherStorage owner, int block, int seg) {
-    return owner.new SplitFileFetcherStorageKey(block, seg, owner);
+    return new SplitFileFetcherStorage.SplitFileFetcherStorageKey(block, seg, owner);
   }
 
   private static void setStorageSegments(
