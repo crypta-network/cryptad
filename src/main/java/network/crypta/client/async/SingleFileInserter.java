@@ -649,31 +649,29 @@ class SingleFileInserter implements ClientPutState, Serializable {
       throw new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null);
     }
     if (reportMetadataOnly) {
+      SplitFileInserter.Options opts =
+          new SplitFileInserter.Options.Builder()
+              .ctx(ctx)
+              .context(context)
+              .decompressedLength(origSize)
+              .compressionCodec(bestCodec)
+              .meta(block.clientMetadata)
+              .isMetadata(metadata)
+              .archiveType(archiveType)
+              .splitfileCryptoAlgorithm(cryptoAlgorithm)
+              .splitfileCryptoKey(forceCryptoKey)
+              .hashThisLayerOnly(hashThisLayerOnly)
+              .hashes(hashes)
+              .topDontCompress((ctx.dontCompress || this.dontCompress))
+              .topRequiredBlocks(parent.getMinSuccessFetchBlocks())
+              .topTotalBlocks(parent.getTotalBlocks())
+              .origDataSize(origDataLength)
+              .origCompressedDataSize(origCompressedDataLength)
+              .realTime(realTimeFlag)
+              .token(token)
+              .build();
       SplitFileInserter sfi =
-          new SplitFileInserter(
-              persistent,
-              parent,
-              cb,
-              dataRAF,
-              shouldFreeData,
-              ctx,
-              context,
-              origSize,
-              bestCodec,
-              block.clientMetadata,
-              metadata,
-              archiveType,
-              cryptoAlgorithm,
-              forceCryptoKey,
-              hashThisLayerOnly,
-              hashes,
-              (ctx.dontCompress || this.dontCompress),
-              parent.getMinSuccessFetchBlocks(),
-              parent.getTotalBlocks(),
-              origDataLength,
-              origCompressedDataLength,
-              realTimeFlag,
-              token);
+          new SplitFileInserter(persistent, parent, cb, dataRAF, shouldFreeData, opts);
       if (LOG.isTraceEnabled()) LOG.trace("Inserting as splitfile: {} for {}", sfi, this);
       cb.onTransition(this, sfi, context);
       sfi.schedule(context);
@@ -690,31 +688,29 @@ class SingleFileInserter implements ClientPutState, Serializable {
               || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal());
       if (metadata) allowSizes = false;
       SplitHandler sh = new SplitHandler(origSize, data.size(), allowSizes);
+      SplitFileInserter.Options opts =
+          new SplitFileInserter.Options.Builder()
+              .ctx(ctx)
+              .context(context)
+              .decompressedLength(origSize)
+              .compressionCodec(bestCodec)
+              .meta(block.clientMetadata)
+              .isMetadata(metadata)
+              .archiveType(archiveType)
+              .splitfileCryptoAlgorithm(cryptoAlgorithm)
+              .splitfileCryptoKey(forceCryptoKey)
+              .hashThisLayerOnly(hashThisLayerOnly)
+              .hashes(hashes)
+              .topDontCompress((ctx.dontCompress || this.dontCompress))
+              .topRequiredBlocks(parent.getMinSuccessFetchBlocks())
+              .topTotalBlocks(parent.getTotalBlocks())
+              .origDataSize(origDataLength)
+              .origCompressedDataSize(origCompressedDataLength)
+              .realTime(realTimeFlag)
+              .token(token)
+              .build();
       SplitFileInserter sfi =
-          new SplitFileInserter(
-              persistent,
-              parent,
-              sh,
-              dataRAF,
-              shouldFreeData,
-              ctx,
-              context,
-              origSize,
-              bestCodec,
-              block.clientMetadata,
-              metadata,
-              archiveType,
-              cryptoAlgorithm,
-              forceCryptoKey,
-              hashThisLayerOnly,
-              hashes,
-              (ctx.dontCompress || this.dontCompress),
-              parent.getMinSuccessFetchBlocks(),
-              parent.getTotalBlocks(),
-              origDataLength,
-              origCompressedDataLength,
-              realTimeFlag,
-              token);
+          new SplitFileInserter(persistent, parent, sh, dataRAF, shouldFreeData, opts);
       sh.sfi = sfi;
       if (LOG.isTraceEnabled())
         LOG.trace("Inserting as splitfile: {} for {} for {}", sfi, sh, this);
