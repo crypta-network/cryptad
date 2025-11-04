@@ -820,4 +820,22 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public int hashCode() {
     return super.hashCode();
   }
+
+  /* ===== Java serialization support ===== */
+
+  /**
+   * Custom Java deserialization hook to restore transient/runtime links for backward compatibility.
+   *
+   * <p>Older serialized forms of {@link SingleFileInserter} stored as the current state may lack a
+   * callback (it was transient). When resuming a top-level insert, default that callback to this
+   * {@link ClientPutter} so lifecycle events are delivered correctly.
+   */
+  @Serial
+  private void readObject(java.io.ObjectInputStream in)
+      throws java.io.IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    if (currentState instanceof SingleFileInserter sfi && sfi.cb == null) {
+      sfi.cb = this;
+    }
+  }
 }
