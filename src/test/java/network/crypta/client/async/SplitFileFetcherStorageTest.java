@@ -715,7 +715,7 @@ class SplitFileFetcherStorageTest {
       int blockIndex = 1; // within first (and only) segment
       int segmentNumber = 0;
       SplitFileFetcherStorage.SplitFileFetcherStorageKey skey =
-          new SplitFileFetcherStorageKey(blockIndex, segmentNumber, storage);
+          storage.new SplitFileFetcherStorageKey(blockIndex, segmentNumber, storage);
 
       // Act
       var clientKey = storage.getKey(skey);

@@ -1492,17 +1492,18 @@ public class SplitFileFetcherStorage {
     int countCheckBlocks = 0;
     int countCrossCheckBlocks = 0;
     for (int i = 0; i < segments.length; i++) {
-      segments[i] =
-          new SplitFileFetcherSegmentStorage(
-              this,
-              dis,
-              i,
-              maxRetries != -1,
-              dataOffset,
-              completeViaTruncation ? crossCheckBlocksOffset : -1,
-              segmentKeysOffset,
-              segmentStatusOffset,
-              keysFetching);
+      SplitFileFetcherSegmentStorage.LoadParams lp =
+          new SplitFileFetcherSegmentStorage.LoadParams();
+      lp.parent = this;
+      lp.dis = dis;
+      lp.segNo = i;
+      lp.writeRetries = maxRetries != -1;
+      lp.segmentDataOffset = dataOffset;
+      lp.segmentCrossCheckDataOffset = completeViaTruncation ? crossCheckBlocksOffset : -1;
+      lp.segmentKeysOffset = segmentKeysOffset;
+      lp.segmentStatusOffset = segmentStatusOffset;
+      lp.keysFetching = keysFetching;
+      segments[i] = new SplitFileFetcherSegmentStorage(lp);
       int dataBlocks = segments[i].dataBlocks;
       countDataBlocks += dataBlocks;
       int checkBlocks = segments[i].checkBlocks;
@@ -2273,21 +2274,20 @@ public class SplitFileFetcherStorage {
       final int dataBlocks = keys.getDataBlocks() - ctx.crossCheckBlocks;
       final int checkBlocks = keys.getCheckBlocks();
       validateBlocksPerSegmentLimit(ctx.origFetchContext, dataBlocks, checkBlocks);
-      segments[i] =
-          new SplitFileFetcherSegmentStorage(
-              this,
-              i,
-              splitfileType,
-              dataBlocks,
-              checkBlocks,
-              ctx.crossCheckBlocks,
-              dataOffset,
-              completeViaTruncation ? crossCheckBlocksOffset : -1,
-              segmentKeysOffset,
-              segmentStatusOffset,
-              maxRetries != -1,
-              keys,
-              ctx.keysFetching);
+      SplitFileFetcherSegmentStorage.InitParams p = new SplitFileFetcherSegmentStorage.InitParams();
+      p.parent = this;
+      p.segNumber = i;
+      p.dataBlocks = dataBlocks;
+      p.checkBlocks = checkBlocks;
+      p.crossCheckBlocks = ctx.crossCheckBlocks;
+      p.segmentDataOffset = dataOffset;
+      p.segmentCrossCheckDataOffset = completeViaTruncation ? crossCheckBlocksOffset : -1;
+      p.segmentKeysOffset = segmentKeysOffset;
+      p.segmentStatusOffset = segmentStatusOffset;
+      p.writeRetries = maxRetries != -1;
+      p.keys = keys;
+      p.keysFetching = ctx.keysFetching;
+      segments[i] = new SplitFileFetcherSegmentStorage(p);
       dataOffset += (long) dataBlocks * CHKBlock.DATA_LENGTH;
       if (!completeViaTruncation) {
         dataOffset += (long) ctx.crossCheckBlocks * CHKBlock.DATA_LENGTH;
@@ -2839,8 +2839,7 @@ public class SplitFileFetcherStorage {
    * outcomes with storage state. Equality and hash semantics consider both the segment number and
    * intra-segment block number.
    */
-  public static final class SplitFileFetcherStorageKey
-      implements SendableRequestItem, SendableRequestItemKey {
+  final class SplitFileFetcherStorageKey implements SendableRequestItem, SendableRequestItemKey {
 
     /**
      * Create a key handle for the given block and segment.
@@ -3109,6 +3108,13 @@ public class SplitFileFetcherStorage {
           fetcher.reduceCooldown(wakeupTime);
           return false;
         });
+  }
+
+  /** Backward-compatible overload used by tests and legacy callers. */
+  void increaseCooldown(
+      SplitFileFetcherSegmentStorage splitFileFetcherSegmentStorage, final long cooldownTime) {
+    // We don't need the segment reference for our current logic; forward to the single-arg method.
+    increaseCooldown(cooldownTime);
   }
 
   /**
