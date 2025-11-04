@@ -2839,7 +2839,8 @@ public class SplitFileFetcherStorage {
    * outcomes with storage state. Equality and hash semantics consider both the segment number and
    * intra-segment block number.
    */
-  final class SplitFileFetcherStorageKey implements SendableRequestItem, SendableRequestItemKey {
+  public final class SplitFileFetcherStorageKey
+      implements SendableRequestItem, SendableRequestItemKey {
 
     /**
      * Create a key handle for the given block and segment.
