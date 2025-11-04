@@ -260,30 +260,32 @@ public class SplitFileFetcher
       throws IOException, FetchException, MetadataParseException {
     ChecksumChecker checker = new CRCChecksumChecker();
     return new SplitFileFetcherStorage(
-        metadata,
-        this,
-        decompressors,
-        clientMetadata,
-        topDontCompress,
-        topCompatibilityMode,
-        fetchContext,
-        realTimeFlag,
-        getSalter(),
-        requestKey,
-        parent.getURI(),
-        isFinalFetch,
-        parent.getClientDetail(checker),
-        context.random,
-        context.tempBucketFactory,
-        persistent ? context.persistentRAFFactory : context.tempRAFFactory,
-        context.getJobRunner(persistent),
-        context.ticker,
-        context.memoryLimitedJobRunner,
-        checker,
-        persistent,
-        fileCompleteViaTruncation,
-        context.getFileRandomAccessBufferFactory(persistent),
-        context.getChkFetchScheduler(realTimeFlag).fetchingKeys());
+        new SplitFileFetcherStorage.InitParams.Builder()
+            .metadata(metadata)
+            .fetcher(this)
+            .decompressors(decompressors)
+            .clientMetadata(clientMetadata)
+            .topDontCompress(topDontCompress)
+            .topCompatibilityMode(topCompatibilityMode)
+            .fetchContext(fetchContext)
+            .realTime(realTimeFlag)
+            .salt(getSalter())
+            .thisKey(requestKey)
+            .origKey(parent.getURI())
+            .isFinalFetch(isFinalFetch)
+            .clientDetails(parent.getClientDetail(checker))
+            .random(context.random)
+            .tempBucketFactory(context.tempBucketFactory)
+            .rafFactory(persistent ? context.persistentRAFFactory : context.tempRAFFactory)
+            .exec(context.getJobRunner(persistent))
+            .ticker(context.ticker)
+            .memoryLimitedJobRunner(context.memoryLimitedJobRunner)
+            .checker(checker)
+            .persistent(persistent)
+            .storageFile(fileCompleteViaTruncation)
+            .diskSpaceCheckingRAFFactory(context.getFileRandomAccessBufferFactory(persistent))
+            .keysFetching(context.getChkFetchScheduler(realTimeFlag).fetchingKeys())
+            .build());
   }
 
   /**
@@ -693,20 +695,22 @@ public class SplitFileFetcher
       raf.onResume(context);
       this.storage =
           new SplitFileFetcherStorage(
-              raf,
-              realTimeFlag,
-              this,
-              blockFetchContext,
-              context.random,
-              context.jobRunner,
-              context.getChkFetchScheduler(realTimeFlag).fetchingKeys(),
-              context.ticker,
-              context.memoryLimitedJobRunner,
-              new CRCChecksumChecker(),
-              context.jobRunner.newSalt(),
-              salter,
-              resumed,
-              callbackCompleteViaTruncation != null);
+              new SplitFileFetcherStorage.ResumeParams.Builder()
+                  .raf(raf)
+                  .realTime(realTimeFlag)
+                  .callback(this)
+                  .context(blockFetchContext)
+                  .random(context.random)
+                  .exec(context.jobRunner)
+                  .keysFetching(context.getChkFetchScheduler(realTimeFlag).fetchingKeys())
+                  .ticker(context.ticker)
+                  .memoryLimitedJobRunner(context.memoryLimitedJobRunner)
+                  .checker(new CRCChecksumChecker())
+                  .newSalt(context.jobRunner.newSalt())
+                  .salt(salter)
+                  .resumed(resumed)
+                  .completeViaTruncation(callbackCompleteViaTruncation != null)
+                  .build());
     } catch (ResumeFailedException | IOException e) {
       raf.free();
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
