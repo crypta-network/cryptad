@@ -518,7 +518,7 @@ public class SplitFileFetcherSegmentStorage {
         wasCorrupt = corruptMetadata;
         corruptMetadata = false;
       }
-      parent.restartedAfterDataCorruption(wasCorrupt);
+      parent.restartedAfterDataCorruption();
       return;
     }
 
@@ -596,7 +596,7 @@ public class SplitFileFetcherSegmentStorage {
         wasCorrupt = corruptMetadata;
         corruptMetadata = false;
       }
-      parent.restartedAfterDataCorruption(wasCorrupt);
+      parent.restartedAfterDataCorruption();
       return;
     }
     boolean[] dataBlocksPresent = new boolean[dataBlocks.length];
@@ -1373,7 +1373,7 @@ public class SplitFileFetcherSegmentStorage {
     }
     if (chosen == -1) {
       long cooldownTime = blockChooser.overallCooldownTime();
-      if (cooldownTime > System.currentTimeMillis()) parent.increaseCooldown(this, cooldownTime);
+      if (cooldownTime > System.currentTimeMillis()) parent.increaseCooldown(cooldownTime);
       return -1;
     } else {
       return chosen;

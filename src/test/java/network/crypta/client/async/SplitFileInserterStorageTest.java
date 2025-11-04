@@ -1515,30 +1515,32 @@ public class SplitFileInserterStorageTest {
       RandomSource r)
       throws FetchException, MetadataParseException, IOException {
     return new SplitFileFetcherStorage(
-        m1,
-        fcb,
-        decompressors,
-        new ClientMetadata(),
-        false,
-        cmode,
-        fctx,
-        false,
-        salt,
-        URI,
-        URI,
-        true,
-        new byte[0],
-        r,
-        smallBucketFactory,
-        smallRAFFactory,
-        jobRunner,
-        ticker,
-        memoryLimitedJobRunner,
-        checker,
-        false,
-        null,
-        null,
-        keys);
+        new SplitFileFetcherStorage.InitParams.Builder()
+            .metadata(m1)
+            .fetcher(fcb)
+            .decompressors(decompressors)
+            .clientMetadata(new ClientMetadata())
+            .topDontCompress(false)
+            .topCompatibilityMode(cmode)
+            .fetchContext(fctx)
+            .realTime(false)
+            .salt(salt)
+            .thisKey(URI)
+            .origKey(URI)
+            .isFinalFetch(true)
+            .clientDetails(new byte[0])
+            .random(r)
+            .tempBucketFactory(smallBucketFactory)
+            .rafFactory(smallRAFFactory)
+            .exec(jobRunner)
+            .ticker(ticker)
+            .memoryLimitedJobRunner(memoryLimitedJobRunner)
+            .checker(checker)
+            .persistent(false)
+            .storageFile(null)
+            .diskSpaceCheckingRAFFactory(null)
+            .keysFetching(keys)
+            .build());
   }
 
   private SplitFileInserterSegmentStorage assertProperSegmentStateAndGet(
