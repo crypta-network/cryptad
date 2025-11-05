@@ -152,7 +152,8 @@ public class SplitFileInserterSegmentStorage {
     if (dataBlockCount < 0) throw new StorageFormatException("Bogus data block count");
     crossCheckBlockCount = dis.readInt();
     if (crossCheckBlockCount < 0) throw new StorageFormatException("Bogus cross-check block count");
-    if ((crossCheckBlockCount == 0) != (parent.crossSegments == null))
+    boolean parentHasNoCross = (parent.crossSegments == null || parent.crossSegments.length == 0);
+    if ((crossCheckBlockCount == 0) != parentHasNoCross)
       throw new StorageFormatException("Cross-check block count inconsistent with parent");
     checkBlockCount = dis.readInt();
     if (checkBlockCount < 0) throw new StorageFormatException("Bogus check block count");
