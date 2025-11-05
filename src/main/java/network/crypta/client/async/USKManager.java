@@ -147,13 +147,12 @@ public class USKManager {
     return USKFetcherTag.create(
         usk,
         callback,
-        persistent,
-        realTime,
         ctx,
-        keepLast,
         0,
-        ownFetchContext,
-        checkStoreOnly || ctx.localRequestOnly);
+        persistent ? USKFetcherTag.Flag.PERSISTENT : null,
+        realTime ? USKFetcherTag.Flag.REAL_TIME : null,
+        keepLast ? USKFetcherTag.Flag.KEEP_LAST_DATA : null,
+        (checkStoreOnly || ctx.localRequestOnly) ? USKFetcherTag.Flag.CHECK_STORE_ONLY : null);
   }
 
   USKFetcher getFetcher(
