@@ -406,7 +406,6 @@ public class SplitFileInserterStorage {
             segs,
             totalDataBlocks,
             deductBlocksFromSegments,
-            persistent,
             keysFetching,
             consecutiveRNFsCountAsSuccess);
     randomSegmentIterator = new RandomArrayIterator<>(segments);
@@ -588,11 +587,7 @@ public class SplitFileInserterStorage {
     int segmentCount = readPositiveInt(dis, "segment count");
     this.segmentSize = readPositiveInt(dis, "segment size");
     // Allow zero for NON_REDUNDANT splitfiles (codec == null), where no check blocks exist.
-    {
-      int v = dis.readInt();
-      if (v < 0) throw new StorageFormatException("Bad check segment size " + v);
-      this.checkSegmentSize = v;
-    }
+    this.checkSegmentSize = readCheckSegmentSize(dis);
     int ccb = dis.readInt();
     if (ccb < 0) throw new StorageFormatException("Bad cross-check block count");
     this.crossCheckBlocks = ccb;
@@ -903,6 +898,12 @@ public class SplitFileInserterStorage {
 
   private record DataCheck(int data, int check) {}
 
+  private int readCheckSegmentSize(DataInputStream dis) throws IOException, StorageFormatException {
+    int v = dis.readInt();
+    if (v < 0) throw new StorageFormatException("Bad check segment size " + v);
+    return v;
+  }
+
   private int clampToDataBlocks(int i, int dataBlocks) {
     return Math.min(i, dataBlocks);
   }
@@ -915,18 +916,6 @@ public class SplitFileInserterStorage {
       check = (codec != null) ? codec.getCheckBlocks(data + crossCheckBlocks, cmode) : 0;
     }
     return new DataCheck(data, check);
-  }
-
-  private void logSegmentDetailsIfNeeded(
-      int segNo, int segCount, int data, int check, int deductBlocksFromSegments) {
-    if (deductBlocksFromSegments != 0 && LOG.isDebugEnabled()) {
-      LOG.debug(
-          "INSERTING: Segment {} of {} : {} data blocks {} check blocks",
-          segNo,
-          segCount,
-          data,
-          check);
-    }
   }
 
   private int maybeDeductBlock(int data, int segCount, int segNo, int deductBlocksFromSegments) {
@@ -1461,67 +1450,86 @@ public class SplitFileInserterStorage {
       int segCount,
       int dataBlocks,
       int deductBlocksFromSegments,
-      boolean persistent,
       KeysFetchingLocally keysFetching,
       int consecutiveRNFsCountAsSuccess) {
     SplitFileInserterSegmentStorage[] segArr = new SplitFileInserterSegmentStorage[segCount];
     if (segCount == 1) {
-      // Single segment
-      int checkBlocks =
-          (codec != null) ? codec.getCheckBlocks(dataBlocks + crossCheckBlocks, cmode) : 0;
-      segArr[0] =
-          new SplitFileInserterSegmentStorage(
-              this,
-              0,
-              new SplitFileInserterSegmentStorage.Params()
-                  .blocks(dataBlocks, checkBlocks, crossCheckBlocks)
-                  .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
-                  .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
+      initSingleSegment(segArr, dataBlocks, keysFetching, consecutiveRNFsCountAsSuccess);
     } else {
-      int j = 0;
-      int segNo = 0;
-      int data = segmentSize;
-      int check = (codec != null) ? codec.getCheckBlocks(data + crossCheckBlocks, cmode) : 0;
-      int i = segmentSize;
-      while (true) {
-        this.underlyingOffsetDataSegments[segNo] = (long) j * CHKBlock.DATA_LENGTH;
-        i = clampToDataBlocks(i, dataBlocks);
-        DataCheck dc = adjustForLastSegmentIfNeeded(data, check, i, j, segNo, segCount);
-        data = dc.data;
-        check = dc.check;
-        j = i;
-        segArr[segNo] =
-            new SplitFileInserterSegmentStorage(
-                this,
-                segNo,
-                new SplitFileInserterSegmentStorage.Params()
-                    .blocks(data, check, crossCheckBlocks)
-                    .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
-                    .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
-
-        if (deductBlocksFromSegments != 0)
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "INSERTING: Segment "
-                    + segNo
-                    + " of "
-                    + segCount
-                    + " : "
-                    + data
-                    + " data blocks "
-                    + check
-                    + " check blocks");
-
-        segNo++;
-        if (i == dataBlocks) break;
-        // Deduct one block from each later segment, rather than having
-        // a really short last segment.
-        data = maybeDeductBlock(data, segCount, segNo, deductBlocksFromSegments);
-        i += data;
-      }
-      assert (segNo == segCount);
+      populateMultiSegments(
+          segArr,
+          segmentSize,
+          segCount,
+          dataBlocks,
+          deductBlocksFromSegments,
+          keysFetching,
+          consecutiveRNFsCountAsSuccess);
     }
     return segArr;
+  }
+
+  private void initSingleSegment(
+      SplitFileInserterSegmentStorage[] segArr,
+      int dataBlocks,
+      KeysFetchingLocally keysFetching,
+      int consecutiveRNFsCountAsSuccess) {
+    int checkBlocks =
+        (codec != null) ? codec.getCheckBlocks(dataBlocks + crossCheckBlocks, cmode) : 0;
+    segArr[0] =
+        new SplitFileInserterSegmentStorage(
+            this,
+            0,
+            new SplitFileInserterSegmentStorage.Params()
+                .blocks(dataBlocks, checkBlocks, crossCheckBlocks)
+                .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
+                .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
+  }
+
+  private void populateMultiSegments(
+      SplitFileInserterSegmentStorage[] segArr,
+      int segmentSize,
+      int segCount,
+      int dataBlocks,
+      int deductBlocksFromSegments,
+      KeysFetchingLocally keysFetching,
+      int consecutiveRNFsCountAsSuccess) {
+    int j = 0;
+    int segNo = 0;
+    int data = segmentSize;
+    int check = (codec != null) ? codec.getCheckBlocks(data + crossCheckBlocks, cmode) : 0;
+    int i = segmentSize;
+    while (true) {
+      this.underlyingOffsetDataSegments[segNo] = (long) j * CHKBlock.DATA_LENGTH;
+      i = clampToDataBlocks(i, dataBlocks);
+      DataCheck dc = adjustForLastSegmentIfNeeded(data, check, i, j, segNo, segCount);
+      data = dc.data;
+      check = dc.check;
+      j = i;
+      segArr[segNo] =
+          new SplitFileInserterSegmentStorage(
+              this,
+              segNo,
+              new SplitFileInserterSegmentStorage.Params()
+                  .blocks(data, check, crossCheckBlocks)
+                  .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
+                  .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
+
+      if (deductBlocksFromSegments != 0 && LOG.isDebugEnabled())
+        LOG.debug(
+            "INSERTING: Segment {} of {} : {} data blocks {} check blocks",
+            segNo,
+            segCount,
+            data,
+            check);
+
+      segNo++;
+      if (i == dataBlocks) break;
+      // Deduct one block from each later segment, rather than having
+      // a really short last segment.
+      data = maybeDeductBlock(data, segCount, segNo, deductBlocksFromSegments);
+      i += data;
+    }
+    assert (segNo == segCount);
   }
 
   /**
