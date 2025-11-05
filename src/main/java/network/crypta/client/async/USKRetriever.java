@@ -1,8 +1,16 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.io.Serial;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.util.List;
+import java.util.Objects;
 import network.crypta.client.ArchiveContext;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
@@ -202,20 +210,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
             PipedOutputStream pipeOut = new PipedOutputStream(pipeIn)) {
           decompressorManager = new DecompressorThreadManager(pipeIn, decompressors, maxLen);
           PipedInputStream decompressedInput = decompressorManager.execute();
-          ClientGetWorkerThread worker =
-              new ClientGetWorkerThread(
-                  new BufferedInputStream(decompressedInput),
-                  output,
-                  null,
-                  null,
-                  new ClientGetWorkerThread.Options(
-                      null,
-                      ctx.getSchemeHostAndPort(),
-                      false,
-                      null,
-                      null,
-                      null,
-                      context.linkFilterExceptionProvider));
+          ClientGetWorkerThread worker = createWorker(decompressedInput, output, context);
           worker.start();
           streamGenerator.writeTo(pipeOut, context);
           awaitWorkerCompletion(worker);
@@ -425,6 +420,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    *     setFetcher}
    */
   public void changeUSKPollParameters(long time, int tries, ClientContext context) {
+    Objects.requireNonNull(context, "context");
     USKFetcher f;
     synchronized (this) {
       f = fetcher;
@@ -445,12 +441,39 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
     return null;
   }
 
+  @SuppressWarnings("java:S1181")
   private static void awaitWorkerCompletion(ClientGetWorkerThread worker) throws FetchException {
     try {
       worker.waitFinished();
     } catch (Throwable t) {
       throw new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
     }
+  }
+
+  /**
+   * Creates a {@link ClientGetWorkerThread} configured for the current fetch context and the
+   * provided I/O streams.
+   *
+   * @param input the input stream to read (already decompressed if applicable)
+   * @param output the destination output stream for the retrieved content
+   * @param context client execution context providing link filter configuration
+   * @return a non-started worker thread ready to process the transfer
+   */
+  private ClientGetWorkerThread createWorker(
+      InputStream input, OutputStream output, ClientContext context) throws URISyntaxException {
+    return new ClientGetWorkerThread(
+        new BufferedInputStream(input),
+        output,
+        null,
+        null,
+        new ClientGetWorkerThread.Options(
+            null,
+            ctx.getSchemeHostAndPort(),
+            false,
+            null,
+            null,
+            null,
+            context.linkFilterExceptionProvider));
   }
 
   @Override
