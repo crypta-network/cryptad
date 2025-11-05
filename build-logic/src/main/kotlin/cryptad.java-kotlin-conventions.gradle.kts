@@ -69,6 +69,8 @@ tasks.named("compileJava") { dependsOn(tasks.named("compileKotlin")) }
 // Tests: settings and module opens needed at runtime
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
+  // Verbose failures: full exception stack traces/causes for easier debugging
+  testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
   // Open JDK internals used by tests
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
     jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
