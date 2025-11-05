@@ -1728,7 +1728,9 @@ public class SplitFileInserterStorage {
    *
    * @param fileOffset The position in the file (raf) of the first byte.
    * @param length The length, including checksum, of the data to be written.
-   * @return
+   * @return an OutputStream that computes and appends a checksum, verifies the total written length
+   *     equals {@code length}, and on close() writes the bytes to {@code raf} at {@code
+   *     fileOffset}.
    */
   OutputStream writeChecksummedTo(final long fileOffset, final int length) {
     final ByteArrayOutputStream baos = new ByteArrayOutputStream(length);
@@ -1769,9 +1771,9 @@ public class SplitFileInserterStorage {
   }
 
   /**
-   * Write a cross-check block to disk
+   * Write a cross-check block to disk.
    *
-   * @throws IOException
+   * @throws IOException if writing the block to the backing RAF fails.
    */
   void writeCheckBlock(int segNo, int checkBlockNo, byte[] buf) throws IOException {
     synchronized (this) {
@@ -1809,7 +1811,7 @@ public class SplitFileInserterStorage {
    * Lock the originalData RAF open to avoid the pooled fd being closed when we are doing a major
    * I/O operation involving many reads/writes.
    *
-   * @throws IOException
+   * @throws IOException if acquiring the lock on the underlying RAF fails.
    */
   RAFLock lockUnderlying() throws IOException {
     return originalData.lockOpen();
