@@ -105,7 +105,10 @@ public class CooldownBlockChooser extends SimpleBlockChooser {
   protected boolean checkValid(int blockNo) {
     if (!super.checkValid(blockNo)) return false;
     long wakeUp = blockCooldownTimes[blockNo];
-    if (now > wakeUp) {
+    // Consider cooldown ending exactly at 'now' as expired to avoid edge races
+    // where callers observe a zero-length remaining cooldown. Using '>=' here
+    // makes a block eligible when wakeUp equals the current time.
+    if (now >= wakeUp) {
       blockCooldownTimes[blockNo] = 0;
       return true;
     } else {
