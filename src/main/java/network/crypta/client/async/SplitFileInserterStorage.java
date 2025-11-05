@@ -1040,13 +1040,9 @@ public class SplitFileInserterStorage {
               this,
               dis,
               i,
-              keyLength,
-              splitfileCryptoAlgorithm,
-              splitfileCryptoKey,
-              random,
-              maxRetries,
-              consecutiveRNFsCountAsSuccess,
-              keysFetching);
+              new SplitFileInserterSegmentStorage.Params()
+                  .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
+                  .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
       underlyingOffsetDataSegments[i] = blocks * CHKBlock.DATA_LENGTH;
       blocks += segments[i].dataBlockCount;
       assert (underlyingOffsetDataSegments[i] < dataLength);
@@ -1414,7 +1410,7 @@ public class SplitFileInserterStorage {
     for (int i = 0; i < 10; i++) {
       x = xsRandom.nextInt(segments.length);
       SplitFileInserterSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossDataBlock(segment, xsRandom);
+      int blockNum = seg.allocateCrossDataBlock(xsRandom);
       if (blockNum >= 0) {
         segment.addDataBlock(seg, blockNum);
         return;
@@ -1424,7 +1420,7 @@ public class SplitFileInserterStorage {
       x++;
       if (x == segments.length) x = 0;
       SplitFileInserterSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossDataBlock(segment, xsRandom);
+      int blockNum = seg.allocateCrossDataBlock(xsRandom);
       if (blockNum >= 0) {
         segment.addDataBlock(seg, blockNum);
         return;
@@ -1477,17 +1473,10 @@ public class SplitFileInserterStorage {
           new SplitFileInserterSegmentStorage(
               this,
               0,
-              persistent,
-              dataBlocks,
-              checkBlocks,
-              crossCheckBlocks,
-              keyLength,
-              splitfileCryptoAlgorithm,
-              splitfileCryptoKey,
-              random,
-              maxRetries,
-              consecutiveRNFsCountAsSuccess,
-              keysFetching);
+              new SplitFileInserterSegmentStorage.Params()
+                  .blocks(dataBlocks, checkBlocks, crossCheckBlocks)
+                  .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
+                  .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
     } else {
       int j = 0;
       int segNo = 0;
@@ -1505,18 +1494,23 @@ public class SplitFileInserterStorage {
             new SplitFileInserterSegmentStorage(
                 this,
                 segNo,
-                persistent,
-                data,
-                check,
-                crossCheckBlocks,
-                keyLength,
-                splitfileCryptoAlgorithm,
-                splitfileCryptoKey,
-                random,
-                maxRetries,
-                consecutiveRNFsCountAsSuccess,
-                keysFetching);
-        logSegmentDetailsIfNeeded(segNo, segCount, data, check, deductBlocksFromSegments);
+                new SplitFileInserterSegmentStorage.Params()
+                    .blocks(data, check, crossCheckBlocks)
+                    .keys(keyLength, splitfileCryptoAlgorithm, splitfileCryptoKey)
+                    .codec(random, maxRetries, consecutiveRNFsCountAsSuccess, keysFetching));
+
+        if (deductBlocksFromSegments != 0)
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "INSERTING: Segment "
+                    + segNo
+                    + " of "
+                    + segCount
+                    + " : "
+                    + data
+                    + " data blocks "
+                    + check
+                    + " check blocks");
 
         segNo++;
         if (i == dataBlocks) break;

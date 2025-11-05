@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.Serial;
 import java.util.Arrays;
 import java.util.Random;
 import network.crypta.client.FECCodec;
@@ -30,11 +31,128 @@ import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** A single segment within a splitfile to be inserted. */
+/**
+ * A single segment within a splitfile that is prepared and inserted into the network.
+ *
+ * <p>Each splitfile is divided into multiple segments; a segment, in turn, consists of data blocks
+ * and two kinds of redundancy blocks: per-segment check blocks and cross-segment check blocks. This
+ * class owns the per-segment state for one segment during an insert: tracking which blocks exist on
+ * disk, generating and persisting keys, running FEC encoding, and coordinating block transmission.
+ * It is instantiated either from fixed settings (for new inserts), or from persisted metadata (for
+ * restarts).
+ *
+ * <p>Typical flow: the caller constructs the instance, optionally restores persisted status via
+ * {@link #readStatus()}, and starts encoding using {@link #startEncode(short)}. As individual block
+ * inserts succeed or fail, the owner forwards callbacks to {@link #onInsertedBlock(int, ClientCHK)}
+ * and {@link #onFailure(int, InsertException)}. When all required blocks have been inserted, the
+ * parent is notified and the segment is considered complete.
+ *
+ * <p>Thread-safety: methods that mutate or query completion state synchronize on {@code this}.
+ * Encoding work is scheduled on a background runner and may call back into this instance. Callers
+ * should not hold external locks when invoking methods that may perform I/O or schedule work.
+ * Instances are mutable while an insert is in progress and become effectively read-only after
+ * completion or cancellation.
+ *
+ * <ul>
+ *   <li>Responsibilities: encode blocks, persist keys/status, choose next block
+ *   <li>Notable behavior: lazy metadata writes; restart-friendly status format
+ *   <li>Error handling: disk errors fail the parent; RNF may be treated as success under configured
+ *       heuristics
+ * </ul>
+ *
+ * @see SplitFileInserterStorage
+ * @see SplitFileInserterSegmentBlockChooser
+ */
 public class SplitFileInserterSegmentStorage {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterSegmentStorage.class);
 
-  static {
+  /**
+   * Parameter object used to configure segment construction.
+   *
+   * <p>This simple builder groups the knobs required to create a segment: block counts,
+   * cryptographic parameters, and block-choosing/codec related settings. Using an explicit
+   * parameter object keeps the constructor readable and stable while allowing callers to assemble
+   * values in a fluent style.
+   *
+   * <p>All fields are consumed as-is by the constructor; no validation is performed here.
+   */
+  public static final class Params {
+    int dataBlocks;
+    int checkBlocks;
+    int crossCheckBlocks;
+    int keyLength;
+    byte splitfileCryptoAlgorithm;
+    byte[] splitfileCryptoKey;
+    Random random;
+    int maxRetries;
+    int consecutiveRNFsCountAsSuccess;
+    KeysFetchingLocally keysFetching;
+
+    Params() {}
+
+    /**
+     * Set the number of blocks used by this segment.
+     *
+     * @param data number of data blocks contributing raw payload bytes; must be non-negative and
+     *     fit within codec limits.
+     * @param check number of per-segment check blocks created by the encoder; non-negative value;
+     *     combined with data size to form total.
+     * @param cross number of cross-segment check blocks belonging to this segment; zero when
+     *     cross-segment coding is disabled.
+     * @return the same parameter object for fluent chaining; values are stored verbatim and
+     *     validated by the constructor.
+     */
+    public Params blocks(int data, int check, int cross) {
+      this.dataBlocks = data;
+      this.checkBlocks = check;
+      this.crossCheckBlocks = cross;
+      return this;
+    }
+
+    /**
+     * Set splitfile key properties used to derive {@link ClientCHK} values.
+     *
+     * @param keyLength on-disk key length in bytes, including any checksum; the constructor
+     *     persists this for later reads.
+     * @param cryptoAlgorithm algorithm identifier for splitfile crypto; values are
+     *     implementation-defined and must match encoder/decoder.
+     * @param cryptoKey raw splitfile crypto key; for modern splitfiles this is the same for every
+     *     block and is not modified by this class.
+     * @return the same parameter object for fluent chaining; fields are copied directly into the
+     *     segment instance.
+     */
+    public Params keys(int keyLength, byte cryptoAlgorithm, byte[] cryptoKey) {
+      this.keyLength = keyLength;
+      this.splitfileCryptoAlgorithm = cryptoAlgorithm;
+      this.splitfileCryptoKey = cryptoKey;
+      return this;
+    }
+
+    /**
+     * Set codec- and chooser-related options.
+     *
+     * @param random pseudo-random source used for deterministic selection of cross-segment blocks;
+     *     seeded from splitfile metadata.
+     * @param maxRetries maximum non-fatal retries per block before failing; a negative value
+     *     typically disables retry limits.
+     * @param consecutiveRNFsCountAsSuccess threshold for counting consecutive route-not-found
+     *     events as success; zero disables this heuristic.
+     * @param keysFetching strategy/provider used by the chooser to decide local fetching behavior
+     *     while scheduling block inserts.
+     * @return the same parameter object for fluent chaining; values are passed to the internal
+     *     chooser unchanged.
+     */
+    public Params codec(
+        Random random,
+        int maxRetries,
+        int consecutiveRNFsCountAsSuccess,
+        KeysFetchingLocally keysFetching) {
+      this.random = random;
+      this.maxRetries = maxRetries;
+      this.consecutiveRNFsCountAsSuccess = consecutiveRNFsCountAsSuccess;
+      this.keysFetching = keysFetching;
+      return this;
+    }
   }
 
   final SplitFileInserterStorage parent;
@@ -45,7 +163,7 @@ public class SplitFileInserterSegmentStorage {
   final int checkBlockCount;
   final int totalBlockCount;
 
-  /** Has the segment been encoded? If so, all of the check blocks have been written. */
+  /** Has the segment been encoded? If so, all the check blocks have been written. */
   private boolean encoded;
 
   private boolean encoding;
@@ -55,7 +173,7 @@ public class SplitFileInserterSegmentStorage {
   /** Length of a single key stored on disk. Includes checksum. */
   private final int keyLength;
 
-  // FIXME These are refilled by SplitFileInserterCrossSegmentStorage on construction...
+  // Populated by SplitFileInserterCrossSegmentStorage during construction.
   /** For each cross-segment block, the cross-segment responsible */
   private final SplitFileInserterCrossSegmentStorage[] crossSegmentBlockSegments;
 
@@ -66,11 +184,11 @@ public class SplitFileInserterSegmentStorage {
   private int blocksWithKeysCounter;
 
   // These are only used in construction.
-  private final transient boolean[] crossDataBlocksAllocated;
-  private transient int crossDataBlocksAllocatedCount;
-  private transient int crossCheckBlocksAllocatedCount;
+  private final boolean[] crossDataBlocksAllocated;
+  private int crossDataBlocksAllocatedCount;
+  private int crossCheckBlocksAllocatedCount;
 
-  // These are also in parent but we need them here for easy access, especially as we don't want to
+  // These are also in parent, but we need them here for easy access, especially as we don't want to
   // make the byte[] visible.
   /** For modern splitfiles, the crypto key is the same for every block. */
   private final byte[] splitfileCryptoKey;
@@ -86,36 +204,42 @@ public class SplitFileInserterSegmentStorage {
   /** Set if the insert is cancelled. */
   private boolean cancelled;
 
+  /**
+   * Create a new segment using explicitly provided settings.
+   *
+   * <p>This constructor initializes counters, allocates in-memory structures, and computes the
+   * fixed status record length that will be used for durable metadata. It does not perform any I/O
+   * beyond sizing the status structure.
+   *
+   * @param parent owning storage that provides disk layout, codec, and callbacks; must outlive this
+   *     segment and not be {@code null}.
+   * @param segNo zero-based segment index within the splitfile; used in key and status encodings.
+   * @param params grouped configuration containing block counts, crypto values, and chooser
+   *     options; values are captured directly.
+   */
   public SplitFileInserterSegmentStorage(
-      SplitFileInserterStorage parent,
-      int segNo,
-      boolean persistent,
-      int dataBlocks,
-      int checkBlocks,
-      int crossCheckBlocks,
-      int keyLength,
-      byte splitfileCryptoAlgorithm,
-      byte[] splitfileCryptoKey,
-      Random random,
-      int maxRetries,
-      int consecutiveRNFsCountAsSuccess,
-      KeysFetchingLocally keysFetching) {
+      SplitFileInserterStorage parent, int segNo, Params params) {
     this.parent = parent;
     this.segNo = segNo;
-    this.dataBlockCount = dataBlocks;
-    this.checkBlockCount = checkBlocks;
-    this.crossCheckBlockCount = crossCheckBlocks;
+    this.dataBlockCount = params.dataBlocks;
+    this.checkBlockCount = params.checkBlocks;
+    this.crossCheckBlockCount = params.crossCheckBlocks;
     totalBlockCount = dataBlockCount + crossCheckBlockCount + checkBlockCount;
-    this.keyLength = keyLength;
-    crossSegmentBlockSegments = new SplitFileInserterCrossSegmentStorage[crossCheckBlocks];
-    crossSegmentBlockNumbers = new int[crossCheckBlocks];
+    this.keyLength = params.keyLength;
+    crossSegmentBlockSegments = new SplitFileInserterCrossSegmentStorage[crossCheckBlockCount];
+    crossSegmentBlockNumbers = new int[crossCheckBlockCount];
     blocksHaveKeys = new boolean[totalBlockCount];
-    this.splitfileCryptoAlgorithm = splitfileCryptoAlgorithm;
-    this.splitfileCryptoKey = splitfileCryptoKey;
-    crossDataBlocksAllocated = new boolean[dataBlocks + crossCheckBlocks];
+    this.splitfileCryptoAlgorithm = params.splitfileCryptoAlgorithm;
+    this.splitfileCryptoKey = params.splitfileCryptoKey;
+    crossDataBlocksAllocated = new boolean[dataBlockCount + crossCheckBlockCount];
     blockChooser =
         new SplitFileInserterSegmentBlockChooser(
-            this, totalBlockCount, random, maxRetries, keysFetching, consecutiveRNFsCountAsSuccess);
+            this,
+            totalBlockCount,
+            params.random,
+            params.maxRetries,
+            params.keysFetching,
+            params.consecutiveRNFsCountAsSuccess);
     try {
       CountedOutputStream cos = new CountedOutputStream(new NullOutputStream());
       DataOutputStream dos = new DataOutputStream(cos);
@@ -123,31 +247,37 @@ public class SplitFileInserterSegmentStorage {
       dos.close();
       statusLength = (int) cos.written() + parent.checker.checksumLength();
     } catch (IOException e) {
-      throw new Error(e); // Impossible
+      throw new IllegalStateException(e); // Impossible
     }
   }
 
   /**
-   * Create a segment from the fixed settings stored in the RAF by writeFixedSettings().
+   * Recreate a segment from on-disk fixed settings previously written by {@link
+   * #writeFixedSettings(DataOutputStream)}.
    *
-   * @throws IOException
-   * @throws StorageFormatException
+   * <p>The constructor reads basic block counts and status sizing, rebuilds chooser state, and
+   * validates that values are within reasonable limits. It does not read per-block keys or variable
+   * status; call {@link #readStatus()} for that after construction.
+   *
+   * @param parent owning storage context; provides codec, disk access, and checksum checker
+   *     services required to restore this segment.
+   * @param dis data stream positioned at the fixed-settings record for this segment; the stream is
+   *     read but not closed by this constructor.
+   * @param segNo zero-based segment index associated with this instance; used for basic validation
+   *     and later offsets.
+   * @param params grouped configuration carrying key length and crypto values; these are not read
+   *     from the stream.
+   * @throws IOException on I/O failures while reading from {@code dis}; the caller is responsible
+   *     for stream lifetime and error handling.
+   * @throws StorageFormatException if any count or size is inconsistent with expectations, codec
+   *     limits, or the parent’s cross-segment configuration.
    */
   public SplitFileInserterSegmentStorage(
-      SplitFileInserterStorage parent,
-      DataInputStream dis,
-      int segNo,
-      int keyLength,
-      byte splitfileCryptoAlgorithm,
-      byte[] splitfileCryptoKey,
-      Random random,
-      int maxRetries,
-      int consecutiveRNFsCountAsSuccess,
-      KeysFetchingLocally keysFetching)
+      SplitFileInserterStorage parent, DataInputStream dis, int segNo, Params params)
       throws IOException, StorageFormatException {
     this.parent = parent;
     this.segNo = segNo;
-    this.keyLength = keyLength;
+    this.keyLength = params.keyLength;
     dataBlockCount = dis.readInt();
     if (dataBlockCount < 0) throw new StorageFormatException("Bogus data block count");
     crossCheckBlockCount = dis.readInt();
@@ -165,12 +295,17 @@ public class SplitFileInserterSegmentStorage {
     crossSegmentBlockSegments = new SplitFileInserterCrossSegmentStorage[crossCheckBlockCount];
     crossSegmentBlockNumbers = new int[crossCheckBlockCount];
     blocksHaveKeys = new boolean[totalBlockCount];
-    this.splitfileCryptoAlgorithm = splitfileCryptoAlgorithm;
-    this.splitfileCryptoKey = splitfileCryptoKey;
+    this.splitfileCryptoAlgorithm = params.splitfileCryptoAlgorithm;
+    this.splitfileCryptoKey = params.splitfileCryptoKey;
     crossDataBlocksAllocated = new boolean[dataBlockCount + crossCheckBlockCount];
     blockChooser =
         new SplitFileInserterSegmentBlockChooser(
-            this, totalBlockCount, random, maxRetries, keysFetching, consecutiveRNFsCountAsSuccess);
+            this,
+            totalBlockCount,
+            params.random,
+            params.maxRetries,
+            params.keysFetching,
+            params.consecutiveRNFsCountAsSuccess);
     try {
       CountedOutputStream cos = new CountedOutputStream(new NullOutputStream());
       DataOutputStream dos = new DataOutputStream(cos);
@@ -180,7 +315,7 @@ public class SplitFileInserterSegmentStorage {
       if (minStatusLength > statusLength)
         throw new StorageFormatException("Bad status length (too short)");
     } catch (IOException e) {
-      throw new Error(e); // Impossible
+      throw new IllegalStateException(e); // Impossible
     }
   }
 
@@ -190,12 +325,11 @@ public class SplitFileInserterSegmentStorage {
    * Allocate a cross-segment data block. Note that this algorithm must be reproduced exactly for
    * splitfile compatibility; the Random seed is actually determined by the splitfile metadata.
    *
-   * @param seg The cross-segment to allocate a block for.
    * @param random PRNG seeded from the splitfile metadata, which determines which blocks to
    *     allocate in a deterministic manner.
    * @return The data block number allocated.
    */
-  int allocateCrossDataBlock(SplitFileInserterCrossSegmentStorage seg, Random random) {
+  int allocateCrossDataBlock(Random random) {
     int size = dataBlockCount;
     if (crossDataBlocksAllocatedCount == size) return -1;
     int x = 0;
@@ -249,6 +383,16 @@ public class SplitFileInserterSegmentStorage {
         "Unable to allocate cross check block even though have not used all slots up???");
   }
 
+  /**
+   * Persist the current status for this segment when appropriate.
+   *
+   * <p>When persistence is enabled and the overall insert is still active, this method writes the
+   * status record unless metadata is already up-to-date. The write is skipped when the segment has
+   * been cancelled, and failures are reported back to the parent as disk errors.
+   *
+   * @param force when {@code true}, write status regardless of the in-memory dirty flag; when
+   *     {@code false}, write only if metadata changed.
+   */
   public void storeStatus(boolean force) {
     if (!parent.persistent) return;
     if (parent.hasFinished()) return;
@@ -257,13 +401,9 @@ public class SplitFileInserterSegmentStorage {
       synchronized (this) {
         if (!force && !metadataDirty) return;
         if (cancelled) return;
-        try {
-          dos =
-              new DataOutputStream(
-                  parent.writeChecksummedTo(parent.segmentStatusOffset(segNo), statusLength));
-          innerStoreStatus(dos);
-        } catch (IOException e) {
-          LOG.error("Impossible: " + e, e);
+        dos = openAndWriteStatusLocked();
+        if (dos == null) {
+          // Keep metadataDirty set so we retry on the next opportunity.
           return;
         }
         metadataDirty = false;
@@ -271,8 +411,21 @@ public class SplitFileInserterSegmentStorage {
       // Outside the lock is safe since if we fail we will fail the whole splitfile.
       dos.close();
     } catch (IOException e) {
-      LOG.error("I/O error writing segment status?: " + e, e);
+      LOG.error("I/O error writing segment status?: {}", e, e);
       parent.failOnDiskError(e);
+    }
+  }
+
+  private DataOutputStream openAndWriteStatusLocked() {
+    try {
+      DataOutputStream dos =
+          new DataOutputStream(
+              parent.writeChecksummedTo(parent.segmentStatusOffset(segNo), statusLength));
+      innerStoreStatus(dos);
+      return dos;
+    } catch (IOException e) {
+      LOG.error("Impossible: {}", e, e);
+      return null;
     }
   }
 
@@ -282,6 +435,18 @@ public class SplitFileInserterSegmentStorage {
     blockChooser.write(dos);
   }
 
+  /**
+   * Read and restore the variable status for this segment from disk.
+   *
+   * <p>Only the variable portion is read; fixed settings are consumed by the constructor. The
+   * checksum is verified before decoding.
+   *
+   * @throws IOException on I/O failures while reading the status area.
+   * @throws ChecksumFailedException if the stored checksum does not match the status payload,
+   *     indicating corruption.
+   * @throws StorageFormatException if the decoded data is structurally inconsistent (for example,
+   *     wrong segment number).
+   */
   public void readStatus() throws IOException, ChecksumFailedException, StorageFormatException {
     byte[] data = new byte[statusLength - parent.checker.checksumLength()];
     parent.preadChecksummed(parent.getOffsetSegmentStatus(segNo), data, 0, data.length);
@@ -291,10 +456,25 @@ public class SplitFileInserterSegmentStorage {
     blockChooser.read(dis);
   }
 
+  /**
+   * Return the byte length reserved on disk for this segment’s status.
+   *
+   * @return the total status record length including checksum bytes as used by the {@link
+   *     ChecksumChecker}.
+   */
   public long storedStatusLength() {
     return statusLength;
   }
 
+  /**
+   * Write the fixed settings for this segment to the provided stream.
+   *
+   * <p>The encoded values include the data, cross-check, and check block counts and the precomputed
+   * status length. Callers are responsible for the stream’s lifetime.
+   *
+   * @param dos destination stream positioned for writing; not closed by this method.
+   * @throws IOException if writing to {@code dos} fails for any reason.
+   */
   public void writeFixedSettings(DataOutputStream dos) throws IOException {
     dos.writeInt(dataBlockCount);
     dos.writeInt(crossCheckBlockCount);
@@ -303,17 +483,11 @@ public class SplitFileInserterSegmentStorage {
   }
 
   static int getKeyLength(SplitFileInserterStorage parent) {
-    return encodeKey(1, 1, ClientCHK.TEST_KEY, parent.hasSplitfileKey(), parent.checker, parent)
-        .length;
+    return encodeKey(1, 1, ClientCHK.TEST_KEY, parent.hasSplitfileKey(), parent.checker).length;
   }
 
   private static byte[] encodeKey(
-      int segNo,
-      int blockNumber,
-      ClientCHK key,
-      boolean hasSplitfileKey,
-      ChecksumChecker checker,
-      SplitFileInserterStorage parent) {
+      int segNo, int blockNumber, ClientCHK key, boolean hasSplitfileKey, ChecksumChecker checker) {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
     try {
@@ -323,7 +497,7 @@ public class SplitFileInserterSegmentStorage {
       innerWriteKey(key, dos, hasSplitfileKey);
       dos.close();
     } catch (IOException e) {
-      throw new Error(e); // Impossible
+      throw new IllegalStateException(e); // Impossible
     }
     byte[] fullBuf = baos.toByteArray();
     byte[] bufNoKeyNumber = Arrays.copyOfRange(fullBuf, 8, fullBuf.length);
@@ -341,7 +515,7 @@ public class SplitFileInserterSegmentStorage {
 
   void clearKeys() throws IOException {
     // Just write 0's. Not valid.
-    // FIXME optimise (write the whole lot at once).
+    // Could be optimized to write the lot at once if needed.
     byte[] buf = new byte[keyLength];
     for (int i = 0; i < totalBlockCount; i++) {
       parent.innerWriteSegmentKey(segNo, i, buf);
@@ -351,8 +525,7 @@ public class SplitFileInserterSegmentStorage {
   void setKey(int blockNumber, ClientCHK key) throws IOException {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Setting key " + key + " for block " + blockNumber + " on " + this,
-          new Exception("debug"));
+          "Setting key {} for block {} on {}", key, blockNumber, this, new Exception("debug"));
     try {
       ClientCHK oldKey = readKey(blockNumber);
       if (!oldKey.equals(key))
@@ -369,14 +542,14 @@ public class SplitFileInserterSegmentStorage {
   /**
    * Write a key for a block.
    *
-   * @param blockNo The block number. Can be a data block, cross segment check block or check block,
-   *     in that numerical order.
-   * @param key The key to write.
-   * @throws IOException If we are unable to write the key.
+   * @param blockNumber the block number; can be a data block, a cross-segment check block, or a
+   *     per-segment check block, in that numerical order.
+   * @param key the key to write for the specified block; must match the deterministically generated
+   *     value.
+   * @throws IOException if the key cannot be written to the underlying storage.
    */
   void writeKey(int blockNumber, ClientCHK key) throws IOException {
-    byte[] buf =
-        encodeKey(segNo, blockNumber, key, parent.hasSplitfileKey(), parent.checker, parent);
+    byte[] buf = encodeKey(segNo, blockNumber, key, parent.hasSplitfileKey(), parent.checker);
     parent.innerWriteSegmentKey(segNo, blockNumber, buf);
   }
 
@@ -394,14 +567,24 @@ public class SplitFileInserterSegmentStorage {
     parent.onHasKeys(this);
   }
 
+  /**
+   * Return whether keys for all blocks in this segment are available.
+   *
+   * <p>The result is computed from in-memory flags that are updated when keys are read or written;
+   * it is not recalculated from disk on startup unless {@link #checkKeys()} is used.
+   *
+   * @return {@code true} when all data, cross-check, and check block keys are known for this
+   *     segment; {@code false} otherwise.
+   */
   public synchronized boolean hasKeys() {
     return blocksWithKeysCounter == totalBlockCount;
   }
 
   /**
-   * Called on startup to check which keys we actually have. Does nothing unless the segment claims
-   * to have been encoded already. FIXME consider calling this later on for robustness, but we would
-   * then need to re-encode ...
+   * Validate that keys exist for all blocks when the segment claims to be encoded.
+   *
+   * <p>On mismatch (e.g., due to disk loss), the segment is marked as not yet encoded so it can be
+   * re-encoded. Disk I/O errors are forwarded to the parent and fail the whole insert.
    */
   public void checkKeys() {
     synchronized (this) {
@@ -422,12 +605,27 @@ public class SplitFileInserterSegmentStorage {
     }
   }
 
+  /**
+   * Return the total number of bytes reserved for keys of this segment.
+   *
+   * @return the product of {@code keyLength} and total block count, matching the on-disk layout
+   *     used by the parent.
+   */
   public int storedKeysLength() {
     return keyLength * totalBlockCount;
   }
 
+  /**
+   * Read the raw data block for the given index.
+   *
+   * @param blockNo zero-based data block index; must be within {@code [0, dataBlockCount)}.
+   * @return a new byte array containing {@link CHKBlock#DATA_LENGTH} bytes of payload.
+   * @throws IOException if reading from the underlying storage fails.
+   * @throws IllegalArgumentException if the index is outside the data range.
+   */
   public byte[] readDataBlock(int blockNo) throws IOException {
-    assert (blockNo >= 0 && blockNo < dataBlockCount);
+    if (blockNo < 0 || blockNo >= dataBlockCount)
+      throw new IllegalArgumentException("Invalid data block index: " + blockNo);
     return parent.readSegmentDataBlock(segNo, blockNo);
   }
 
@@ -435,31 +633,48 @@ public class SplitFileInserterSegmentStorage {
     parent.writeSegmentCheckBlock(segNo, checkBlockNo, buf);
   }
 
+  /**
+   * Read a per-segment check block by index.
+   *
+   * @param checkBlockNo zero-based check block index; must be within {@code [0, checkBlockCount)}.
+   * @return a new byte array containing {@link CHKBlock#DATA_LENGTH} bytes of encoded check data.
+   * @throws IOException if reading from the underlying storage fails.
+   * @throws IllegalArgumentException if the index is outside the check range.
+   */
   public byte[] readCheckBlock(int checkBlockNo) throws IOException {
-    assert (checkBlockNo >= 0 && checkBlockNo < checkBlockCount);
+    if (checkBlockNo < 0 || checkBlockNo >= checkBlockCount)
+      throw new IllegalArgumentException("Invalid check block index: " + checkBlockNo);
     return parent.readSegmentCheckBlock(segNo, checkBlockNo);
   }
 
+  /**
+   * Schedule encoding of this segment at the given priority.
+   *
+   * <p>Encoding computes check and cross-check blocks from the current data, persists generated
+   * keys, and marks the segment as encoded on success. Work runs asynchronously under the
+   * memory-limited job runner. Repeated calls are idempotent while encoding is in progress or after
+   * completion.
+   *
+   * @param prio scheduling priority used by the memory-limited job runner; the exact scale is
+   *     defined by the runner implementation.
+   */
   public synchronized void startEncode(final short prio) {
     if (encoded) return;
     if (encoding) return;
     encoding = true;
-    int totalBlockCount = dataBlockCount + checkBlockCount + crossCheckBlockCount;
+    int blocksTotal = dataBlockCount + checkBlockCount + crossCheckBlockCount;
     long limit =
-        (long) totalBlockCount * CHKBlock.DATA_LENGTH
+        (long) blocksTotal * CHKBlock.DATA_LENGTH
             + Math.max(
                 parent.codec.maxMemoryOverheadDecode(dataBlockCount, crossCheckBlockCount),
                 parent.codec.maxMemoryOverheadEncode(dataBlockCount, crossCheckBlockCount));
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Scheduling encode on "
-              + this
-              + " at priority "
-              + prio
-              + " blocks "
-              + totalBlockCount
-              + " memory limit "
-              + limit);
+          "Scheduling encode on {} at priority {} blocks {} memory limit {}",
+          this,
+          prio,
+          blocksTotal,
+          limit);
     parent.memoryLimitedJobRunner.queueJob(
         new MemoryLimitedJob(limit) {
 
@@ -474,44 +689,47 @@ public class SplitFileInserterSegmentStorage {
             CheckpointLock lock = null;
             try {
               lock = parent.jobRunner.lock();
-              innerEncode(chunk);
+              innerEncode();
             } catch (PersistenceDisabledException e) {
               // Will be retried on restarting.
               shutdown = true;
             } finally {
               chunk.release();
-              try {
-                if (!shutdown) {
-                  // We do want to call the callback even if we threw something, because we
-                  // may be waiting to cancel. However we DON'T call it if we are shutting down.
-                  synchronized (SplitFileInserterSegmentStorage.this) {
-                    encoding = false;
-                  }
-                  parent.onFinishedEncoding(SplitFileInserterSegmentStorage.this);
-                }
-              } finally {
-                // Callback is part of the persistent job, unlock *after* calling it.
-                if (lock != null) lock.unlock(false, MemoryLimitedJobRunner.THREAD_PRIORITY);
-              }
+              afterEncode(shutdown, lock);
             }
             return true;
           }
         });
   }
 
-  private void innerEncode(MemoryLimitedChunk chunk) {
+  private void afterEncode(boolean shutdown, CheckpointLock lock) {
+    try {
+      if (!shutdown) {
+        // We do want to call the callback even if we threw something, because we
+        // may be waiting to cancel. However, we DON'T call it if we are shutting down.
+        synchronized (SplitFileInserterSegmentStorage.this) {
+          encoding = false;
+        }
+        parent.onFinishedEncoding(SplitFileInserterSegmentStorage.this);
+      }
+    } finally {
+      // Callback is part of the persistent job, unlock *after* calling it.
+      if (lock != null) lock.unlock(false, MemoryLimitedJobRunner.THREAD_PRIORITY);
+    }
+  }
+
+  private void innerEncode() {
     RAFLock lock = null;
     try {
       synchronized (this) {
         if (cancelled) return;
       }
       lock = parent.lockRAF();
-      if (LOG.isDebugEnabled()) LOG.debug("Encoding " + this + " for " + parent);
+      if (LOG.isDebugEnabled()) LOG.debug("Encoding {} for {}", this, parent);
       byte[][] dataBlocks = readDataAndCrossCheckBlocks();
       generateKeys(dataBlocks, 0);
       byte[][] checkBlocks = new byte[checkBlockCount][];
       for (int i = 0; i < checkBlocks.length; i++) checkBlocks[i] = new byte[CHKBlock.DATA_LENGTH];
-      if (dataBlocks == null || checkBlocks == null) return; // Failed with disk error.
       parent.codec.encode(
           dataBlocks, checkBlocks, new boolean[checkBlocks.length], CHKBlock.DATA_LENGTH);
       for (int i = 0; i < checkBlocks.length; i++) writeCheckBlock(i, checkBlocks[i]);
@@ -519,11 +737,11 @@ public class SplitFileInserterSegmentStorage {
       synchronized (this) {
         encoded = true;
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Encoded " + this + " for " + parent);
+      if (LOG.isDebugEnabled()) LOG.debug("Encoded {} for {}", this, parent);
     } catch (IOException e) {
       parent.failOnDiskError(e);
-    } catch (Throwable t) {
-      LOG.error("Failed: " + t, t);
+    } catch (RuntimeException t) {
+      LOG.error("Failed: {}", t, t);
       parent.fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR, t, null));
     } finally {
       if (lock != null) lock.unlock();
@@ -533,7 +751,8 @@ public class SplitFileInserterSegmentStorage {
   /**
    * Generate keys for each block and record them.
    *
-   * @throws IOException
+   * @throws IOException if persisting a generated key for any block fails due to an I/O error in
+   *     the underlying storage.
    */
   private void generateKeys(byte[][] dataBlocks, int offset) throws IOException {
     for (int i = 0; i < dataBlocks.length; i++) {
@@ -559,6 +778,12 @@ public class SplitFileInserterSegmentStorage {
         crossSegmentBlockNumbers[blockNo], segNo, blockNo + dataBlockCount);
   }
 
+  /**
+   * Return whether encoding for this segment has completed.
+   *
+   * @return {@code true} when all per-segment and cross-segment check blocks have been generated
+   *     and written; {@code false} otherwise.
+   */
   public synchronized boolean isFinishedEncoding() {
     return encoded;
   }
@@ -571,6 +796,18 @@ public class SplitFileInserterSegmentStorage {
     return encoding;
   }
 
+  /**
+   * Encode the specified block into a {@link ClientCHKBlock} suitable for insertion.
+   *
+   * <p>This method reads the block content (data, cross-check, or check) based on the index,
+   * validates preconditions (not already successfully inserted), and applies the splitfile crypto.
+   * It does not modify persistent state.
+   *
+   * @param blockNo zero-based block index spanning data, cross-check, and check regions.
+   * @return an immutable encoded block that exposes the derived {@linkplain ClientCHK client key}
+   *     for uploads.
+   * @throws IOException if the block cannot be read or if an already-inserted block is requested.
+   */
   public ClientCHKBlock encodeBlock(int blockNo) throws IOException {
     if (parent.isFinishing()) {
       throw new IOException(
@@ -578,7 +815,7 @@ public class SplitFileInserterSegmentStorage {
     }
     synchronized (this) {
       if (this.blockChooser.hasSucceeded(blockNo)) {
-        LOG.error("Already inserted block " + blockNo + " for " + this + " for " + parent);
+        LOG.error("Already inserted block {} for {} for {}", blockNo, this, parent);
         throw new IOException(
             "Already inserted block " + blockNo + " for " + this + " for " + parent);
       }
@@ -602,7 +839,7 @@ public class SplitFileInserterSegmentStorage {
       block =
           ClientCHKBlock.encodeSplitfileBlock(buf, splitfileCryptoKey, splitfileCryptoAlgorithm);
     } catch (CHKEncodeException e) {
-      throw new Error(e); // Impossible!
+      throw new IllegalStateException(e); // Impossible!
     }
     return block;
   }
@@ -620,45 +857,68 @@ public class SplitFileInserterSegmentStorage {
 
   ClientCHK readKey(int blockNumber) throws IOException, MissingKeyException {
     byte[] buf = parent.innerReadSegmentKey(segNo, blockNumber);
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    DataOutputStream dos = new DataOutputStream(baos);
-    dos.writeInt(segNo);
-    dos.writeInt(blockNumber);
-    dos.close();
-    byte[] prefix = baos.toByteArray();
-    byte[] checkBuf = new byte[prefix.length + buf.length];
-    System.arraycopy(prefix, 0, checkBuf, 0, prefix.length);
-    int checksumLength = parent.checker.checksumLength();
-    System.arraycopy(buf, 0, checkBuf, prefix.length, buf.length - checksumLength);
-    byte[] checksum = Arrays.copyOfRange(buf, buf.length - checksumLength, buf.length);
     DataInputStream dis = new DataInputStream(new ByteArrayInputStream(buf));
     byte b = dis.readByte();
     if (b != 1) throw new MissingKeyException();
     ClientCHK key = innerReadKey(dis);
     setHasKey(blockNumber);
-    if (LOG.isTraceEnabled()) LOG.trace("Returning " + key);
+    if (LOG.isTraceEnabled()) LOG.trace("Returning {}", key);
     return key;
   }
 
-  public class MissingKeyException extends Exception {
-    private static final long serialVersionUID = -6695311996193392803L;
+  /**
+   * Signals that a requested per-block key is not present on disk.
+   *
+   * <p>Thrown by {@link #readKey(int)} when the on-disk marker indicates the key is missing.
+   * Callers typically trigger re-encoding to regenerate keys in such cases.
+   */
+  public static class MissingKeyException extends Exception {
+    @Serial private static final long serialVersionUID = -6695311996193392803L;
+
+    /**
+     * Construct a new exception indicating the requested key is missing.
+     *
+     * <p>No detail message or cause is set. This mirrors the previously implicit default
+     * constructor to retain behavior and binary compatibility.
+     */
+    public MissingKeyException() {
+      super();
+    }
   }
 
   /**
-   * Has the segment completed all inserts? Should not change once we reach this state, but might be
-   * possible in case of disk errors causing losing keys etc.
+   * Return whether all required blocks for this segment have been inserted.
+   *
+   * <p>The outcome is final under normal operation. In rare circumstances involving local data loss
+   * (for example, keys removed from disk), the state may be reconsidered by higher layers.
+   *
+   * @return {@code true} if the chooser reports success for all required blocks; {@code false} if
+   *     any block remains or the segment was cancelled.
    */
   public synchronized boolean hasSucceeded() {
     if (cancelled) return false;
     return blockChooser.hasSucceededAll();
   }
 
-  /** Has the segment encoded all check blocks and cross-check blocks? */
+  /**
+   * Return whether all check and cross-check blocks have been encoded.
+   *
+   * @return {@code true} when encoding finished and state was updated; {@code false} otherwise.
+   */
   public synchronized boolean hasEncoded() {
     return encoded;
   }
 
-  /** Called when a block insert succeeds */
+  /**
+   * Notify this segment that a block insert succeeded.
+   *
+   * <p>The method records the key when not already present, updates chooser state, and triggers a
+   * lazy metadata write. The parent callback is invoked when success completes the segment.
+   *
+   * @param blockNo zero-based block index whose insert succeeded.
+   * @param key the {@link ClientCHK} associated with the inserted block; must match the value
+   *     previously recorded or be absent.
+   */
   public void onInsertedBlock(int blockNo, ClientCHK key) {
     try {
       if (parent.hasFinished()) return;
@@ -671,50 +931,66 @@ public class SplitFileInserterSegmentStorage {
     }
   }
 
-  /** Called by BlockChooser when all blocks have been inserted. */
+  /** Called by the chooser when all blocks in this segment have been inserted. */
   void onInsertedAllBlocks() {
-    if (LOG.isDebugEnabled()) LOG.debug("Inserted all blocks in segment " + this);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserted all blocks in segment {}", this);
     synchronized (this) {
       if (!encoded) return;
     }
     parent.segmentSucceeded(this);
   }
 
+  /**
+   * Notify this segment that a block insert attempt failed.
+   *
+   * <p>Fatal failures immediately fail the parent. Route-not-found events may be treated as success
+   * under configuration, provided the key exists. Non-fatal failures contribute to retry
+   * accounting; exceeding the limit fails the parent.
+   *
+   * @param blockNo zero-based block index whose insert failed.
+   * @param e the insert exception describing the failure mode; not {@code null}.
+   */
   public void onFailure(int blockNo, InsertException e) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Failed block " + blockNo + " with " + e + " for " + this + " for " + parent);
+      LOG.debug("Failed block {} with {} for {} for {}", blockNo, e, this, parent);
     if (parent.hasFinished()) return; // Race condition possible as this is a callback
     parent.addFailure(e);
     if (e.isFatal()) {
       parent.failFatalErrorInBlock();
-    } else {
-      if (e.mode == InsertExceptionMode.ROUTE_NOT_FOUND
-          && blockChooser.consecutiveRNFsCountAsSuccess > 0) {
-        try {
-          readKey(blockNo);
-          blockChooser.onRNF(blockNo);
-          parent.clearCooldown();
-          return;
-        } catch (MissingKeyException e1) {
-          LOG.error("RNF but no key on block " + blockNo + " on " + this);
-        } catch (IOException e1) {
-          if (parent.hasFinished()) return; // Race condition possible as this is a callback
-          parent.failOnDiskError(e1);
-          return;
-        }
-      } else if (blockChooser.consecutiveRNFsCountAsSuccess > 0) {
-        if (blockChooser.pushRNFs(blockNo)) {
-          parent.failTooManyRetriesInBlock();
-          return;
-        }
-      }
-      if (blockChooser.onNonFatalFailure(blockNo)) {
-        parent.failTooManyRetriesInBlock();
-      } else {
-        if (blockChooser.maxRetries >= 0) lazyWriteMetadata();
-        parent.clearCooldown();
-      }
+      return;
     }
+
+    if (handleRNFIfApplicable(blockNo, e)) return;
+
+    if (blockChooser.onNonFatalFailure(blockNo)) {
+      parent.failTooManyRetriesInBlock();
+    } else {
+      if (blockChooser.maxRetries >= 0) lazyWriteMetadata();
+      parent.clearCooldown();
+    }
+  }
+
+  private boolean handleRNFIfApplicable(int blockNo, InsertException e) {
+    if (e.mode == InsertExceptionMode.ROUTE_NOT_FOUND
+        && blockChooser.consecutiveRNFsCountAsSuccess > 0) {
+      try {
+        readKey(blockNo);
+        blockChooser.onRNF(blockNo);
+        parent.clearCooldown();
+        return true;
+      } catch (MissingKeyException e1) {
+        LOG.error("RNF but no key on block {} on {}", blockNo, this);
+        return false;
+      } catch (IOException e1) {
+        if (parent.hasFinished()) return true; // Race condition possible as this is a callback
+        parent.failOnDiskError(e1);
+        return true;
+      }
+    } else if (blockChooser.consecutiveRNFsCountAsSuccess > 0 && blockChooser.pushRNFs(blockNo)) {
+      parent.failTooManyRetriesInBlock();
+      return true;
+    }
+    return false;
   }
 
   private void lazyWriteMetadata() {
@@ -724,6 +1000,12 @@ public class SplitFileInserterSegmentStorage {
     parent.lazyWriteMetadata();
   }
 
+  /**
+   * Return whether the segment has reached a terminal state.
+   *
+   * @return {@code true} when encoding finished or cancellation has been processed; {@code false}
+   *     while encoding is still running.
+   */
   public synchronized boolean hasCompletedOrFailed() {
     if (encoded) return true; // No more encoding jobs will run.
     if (encoding) return false; // Waiting for job to finish.
@@ -732,10 +1014,13 @@ public class SplitFileInserterSegmentStorage {
   }
 
   /**
-   * Caller must check hasCompletedOrFailed() explicitly after calling cancel() on all segments.
+   * Request cancellation of this segment.
    *
-   * @return True if the segment has completed cancellation. False if it is waiting for an encode,
-   *     in which case a callback to parent will be made when the encode finishes.
+   * <p>The caller must separately check {@link #hasCompletedOrFailed()} after all segments are
+   * cancelled to observe completion of any in-flight encode work.
+   *
+   * @return {@code true} if the segment is now done (no work pending); {@code false} if an encode
+   *     was already in progress and a callback will be issued to the parent when it finishes.
    */
   public synchronized boolean cancel() {
     if (cancelled) return false;
@@ -743,6 +1028,12 @@ public class SplitFileInserterSegmentStorage {
     return hasCompletedOrFailed();
   }
 
+  /**
+   * Choose the next block to insert according to the internal policy.
+   *
+   * @return a {@link BlockInsert} handle representing the chosen block, or {@code null} if no
+   *     further blocks should be sent at this time.
+   */
   public synchronized BlockInsert chooseBlock() {
     int chosenBlock = innerChooseBlock();
     if (chosenBlock == -1) return null;
@@ -754,7 +1045,13 @@ public class SplitFileInserterSegmentStorage {
     return blockChooser.chooseKey();
   }
 
-  static final class BlockInsert implements SendableRequestItemKey, SendableRequestItem {
+  /**
+   * Immutable handle representing a single pending block insert.
+   *
+   * <p>The object serves both as the request item and as its key; equality and hashing include the
+   * owning segment and the block number only.
+   */
+  public static final class BlockInsert implements SendableRequestItemKey, SendableRequestItem {
 
     final SplitFileInserterSegmentStorage segment;
     final int blockNumber;
@@ -820,6 +1117,12 @@ public class SplitFileInserterSegmentStorage {
     crossSegmentBlockNumbers[segmentBlockNumber - dataBlockCount] = crossSegmentBlockNumber;
   }
 
+  /**
+   * Return the number of keys currently eligible for sending.
+   *
+   * @return a non-negative count of keys the chooser deems fetchable at the moment; used for
+   *     scheduling decisions by the parent.
+   */
   public int countSendableKeys() {
     return blockChooser.countFetchable();
   }

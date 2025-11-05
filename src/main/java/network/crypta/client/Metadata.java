@@ -247,7 +247,7 @@ public class Metadata implements Cloneable, Serializable {
     if (orig.segments != null) {
       segments = new SplitFileSegmentKeys[orig.segments.length];
       for (int i = 0; i < segments.length; i++) {
-        segments[i] = orig.segments[i].clone();
+        segments[i] = new SplitFileSegmentKeys(orig.segments[i]);
       }
     }
     if (hashes != null) {

@@ -883,6 +883,9 @@ class SplitFileFetcherStorageTest {
       boolean cooldown) {
     final MyKeysFetchingLocally keys = test.fetchingKeys;
     keys.clear();
+    // Test-only hardening: ensure any cached cooldown gate is cleared before starting a new round
+    // so enumeration of all blocks in this round doesn’t spuriously bail out.
+    clearChooserCooldownForTesting(storage);
     for (int i = 0; i < dataBlocks + checkBlocks; i++) {
       int chosen = storage.chooseRandomKey();
       assertNotEquals(-1, chosen);
@@ -915,6 +918,20 @@ class SplitFileFetcherStorageTest {
     // Now all the requests have completed, the keys are no longer being fetched.
     keys.clear();
     // Will be able to fetch keys immediately, unless in cooldown.
+  }
+
+  // Reflection helper to clear the segment chooser's global cooldown gate in tests only.
+  private static void clearChooserCooldownForTesting(SplitFileFetcherSegmentStorage segment) {
+    try {
+      java.lang.reflect.Field f =
+          SplitFileFetcherSegmentStorage.class.getDeclaredField("blockChooser");
+      f.setAccessible(true);
+      Object chooser = f.get(segment);
+      java.lang.reflect.Method m = chooser.getClass().getMethod("clearCooldown");
+      m.invoke(chooser);
+    } catch (ReflectiveOperationException ignored) {
+      // Best effort: if reflection fails, tests remain as before.
+    }
   }
 
   private SplitFileFetcherStorage createSplitFileFetcherStorageTwice(
