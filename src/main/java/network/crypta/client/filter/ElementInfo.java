@@ -215,7 +215,6 @@ public class ElementInfo {
           "webdings2",
           "wingdings",
           "zapf dingbats",
-          "wingdings2",
           "zapf dingbats2",
           "ms sans serif4",
           "ms serif4",
