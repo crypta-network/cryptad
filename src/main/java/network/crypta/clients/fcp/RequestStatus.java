@@ -185,7 +185,7 @@ public abstract class RequestStatus implements Cloneable {
     // clone() because Date is mutable
     this.latestSuccess = event.latestSuccess != null ? (Date) event.latestSuccess.clone() : null;
     this.isTotalFinalized = event.finalizedTotal;
-    this.minBlocks = event.minSuccessfulBlocks;
+    this.minBlocks = event.getMinSuccessfulBlocks();
     this.totalBlocks = event.totalBlocks;
   }
 

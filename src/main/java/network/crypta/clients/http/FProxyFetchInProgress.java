@@ -380,7 +380,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
           int oldReq = requiredBlocks - (fetchedBlocks + failedBlocks + fatallyFailedBlocks);
           totalBlocks = split.totalBlocks;
           fetchedBlocks = split.succeedBlocks;
-          requiredBlocks = split.minSuccessfulBlocks;
+          requiredBlocks = split.getMinSuccessfulBlocks();
           failedBlocks = split.failedBlocks;
           fatallyFailedBlocks = split.fatallyFailedBlocks;
           finalizedBlocks = split.finalizedTotal;
