@@ -2877,6 +2877,9 @@ class CSSTokenizerFilter {
     int openBracesStartingS3 = 0;
     boolean forPage = false;
 
+    // Early-exit coordination: set to true when helpers need to abort the full parse
+    boolean stopRequested = false;
+
     // Thin entrypoint to keep complexity minimal at the callsite
     void run() throws IOException {
       runCore();
@@ -2886,12 +2889,18 @@ class CSSTokenizerFilter {
     void runCore() throws IOException {
       initParserState();
       if (isInline) currentState = STATE3;
-      while (nextChar()) {
+      while (!stopRequested && nextChar()) {
         detectCommentStart();
+        if (stopRequested) break;
         if (c == 0) continue; // Strip nulls
         handleCurrentStateChar();
+        if (stopRequested) break;
       }
-      finalizeOutput();
+      if (!stopRequested) finalizeOutput();
+    }
+
+    void requestStop() {
+      stopRequested = true;
     }
 
     void initParserState() {
@@ -3011,7 +3020,10 @@ class CSSTokenizerFilter {
           break;
         case '{':
           charsetPossible = false;
-          if (stopAtDetectedCharset) return;
+          if (stopAtDetectedCharset) {
+            requestStop();
+            return;
+          }
           if (prevc == '\\') {
             // Leave in buffer, encoded.
             buffer.append(c);
@@ -3237,7 +3249,10 @@ class CSSTokenizerFilter {
               throw new UnsupportedCharsetInFilterException(
                   "Charset not supported: " + detectedCharset);
             }
-            if (stopAtDetectedCharset) return;
+            if (stopAtDetectedCharset) {
+              requestStop();
+              return;
+            }
             if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
               LOG.info(
                   "Detected charset \"{}\" differs from passed in charset \"{}\"",
@@ -3315,7 +3330,10 @@ class CSSTokenizerFilter {
     void handleState2() throws IOException {
       canImport = false;
       charsetPossible = false;
-      if (stopAtDetectedCharset) return;
+      if (stopAtDetectedCharset) {
+        requestStop();
+        return;
+      }
       switch (c) {
         case '{':
           if (prevc == '\\') {
@@ -3414,6 +3432,7 @@ class CSSTokenizerFilter {
             buffer.append(c);
             break;
           }
+          // Note: openBraces is decremented in STATE3 on '}' when closing a rule block.
           if (buffer.toString().trim().equals("")) {
             if (!ignoreElementsS2) filteredTokens.append("}");
             ignoreElementsS2 = false;
@@ -3476,7 +3495,10 @@ class CSSTokenizerFilter {
 
     void handleState3() throws IOException {
       charsetPossible = false;
-      if (stopAtDetectedCharset) return;
+      if (stopAtDetectedCharset) {
+        requestStop();
+        return;
+      }
       switch (c) {
         case ':':
           if (prevc == '\\') {
@@ -3653,7 +3675,10 @@ class CSSTokenizerFilter {
           } else {
             currentState = STATE2;
           }
-          if (isInline) return;
+          if (isInline) {
+            requestStop();
+            return;
+          }
           buffer.setLength(0);
           s2Comma = false;
           if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE }: {}", c);
@@ -3682,7 +3707,10 @@ class CSSTokenizerFilter {
 
     void handleState3InQuote() {
       charsetPossible = false;
-      if (stopAtDetectedCharset) return;
+      if (stopAtDetectedCharset) {
+        requestStop();
+        return;
+      }
       if (LOG.isTraceEnabled()) LOG.trace("STATE3INQUOTE: {}", c);
       switch (c) {
         case '"':
@@ -3715,7 +3743,10 @@ class CSSTokenizerFilter {
 
     void handleStateComment() {
       charsetPossible = false;
-      if (stopAtDetectedCharset) return;
+      if (stopAtDetectedCharset) {
+        requestStop();
+        return;
+      }
       if (c == '/' && prevc == '*') {
         currentState = stateBeforeComment;
         c = 0;
