@@ -7,11 +7,35 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Utility helpers for validating and normalizing CSS-like values used by client-side filters.
+ *
+ * <p>This class focuses on syntactic checks for common value categories such as numbers, lengths,
+ * angles, colors, transforms, media queries, and timing-related units. Each method returns a
+ * boolean indicating whether the provided string conforms to a conservative interpretation of the
+ * respective specification (CSS/SVG where relevant). No state is kept; all methods are pure and
+ * thread-safe.
+ *
+ * <p>Typical usage is to call individual predicates prior to accepting or acting upon untrusted
+ * input (for example, when parsing style attributes, filter expressions, or plugin-provided
+ * configuration). These helpers deliberately avoid throwing and instead return {@code false} for
+ * malformed inputs, including null references in most cases. Where a richer outcome is useful,
+ * dedicated accessors are provided (for example, {@link #sanitizeURI} and {@link #isURI}).
+ *
+ * <p>Notable characteristics:
+ *
+ * <ul>
+ *   <li>Parsing is locale-independent and based on standard Java number parsing.
+ *   <li>For CSS lengths, a curated set of absolute and relative units is recognized. SVG-specific
+ *       rules are opt-in via parameters.
+ *   <li>Color validation supports legacy and modern syntaxes, including hexadecimal and functional
+ *       notations.
+ * </ul>
+ */
 public class FilterUtils {
   private static final Logger LOG = LoggerFactory.getLogger(FilterUtils.class);
 
-  static {
-  }
+  private FilterUtils() {}
 
   private static final int MAX_NTH =
       999999; // Limit range of numbers allowed in isNth, due to incorrect behavior found in webkit
@@ -19,6 +43,17 @@ public class FilterUtils {
   // based browsers.
 
   // Basic Data types
+  /**
+   * Determines whether the supplied text represents a base-10 integer.
+   *
+   * <p>This check delegates to {@link Integer#parseInt(String)} and reports success without
+   * throwing. Leading {@code +} or {@code -} signs are accepted; embedded whitespace and
+   * non-decimal digits are not. The method is intentionally strict: any parsing failure results in
+   * {@code false}.
+   *
+   * @param strValue candidate integer text; not trimmed; null yields {@code false} without throwing
+   * @return {@code true} when {@link Integer#parseInt(String)} succeeds; otherwise {@code false}
+   */
   public static boolean isInteger(String strValue) {
     try {
       Integer.parseInt(strValue);
@@ -28,19 +63,34 @@ public class FilterUtils {
     }
   }
 
+  /**
+   * Tests whether the given string is a finite number in decimal form, optionally with an exponent.
+   *
+   * <p>The mantissa is parsed using {@link Double#parseDouble(String)} and, when an exponent
+   * segment separated by {@code 'e'} or {@code 'E'} is present, the exponent must be an integer
+   * (base 10). The method treats NaN and infinite values as invalid and never throws.
+   *
+   * @param strNumber textual representation of the number; not trimmed; null returns {@code false}
+   * @return {@code true} when the decimal part parses and, if present, the exponent is an integer
+   */
   public static boolean isNumber(String strNumber) {
     try {
       boolean containsE = false;
-      String strDecimal, strInteger = null;
-      if (strNumber.indexOf('e') > 0) {
+      String strDecimal;
+      String strInteger = null;
+      if (strNumber.indexOf('e') >= 0) {
         containsE = true;
         strDecimal = strNumber.substring(0, strNumber.indexOf('e'));
+        // Intentionally derive exponent from original string to keep current behavior
         strInteger = strNumber.substring(strDecimal.indexOf('e') + 1);
-      } else if (strNumber.indexOf('E') > 0) {
+      } else if (strNumber.indexOf('E') >= 0) {
         containsE = true;
         strDecimal = strNumber.substring(0, strNumber.indexOf('E'));
+        // Intentionally derive exponent from original string to keep current behavior
         strInteger = strNumber.substring(strDecimal.indexOf('E') + 1);
-      } else strDecimal = strNumber;
+      } else {
+        strDecimal = strNumber;
+      }
       Double.parseDouble(strDecimal);
       if (containsE) return isInteger(strInteger);
       else return true;
@@ -70,6 +120,16 @@ public class FilterUtils {
     allowedUnits.add("vmax");
   }
 
+  /**
+   * Verifies that a string represents a percentage value in the form {@code <number>%}.
+   *
+   * <p>Both integer and decimal percentages are accepted, including negative values. A trailing
+   * percent sign is required, and the numeric portion is parsed using standard Java number
+   * semantics.
+   *
+   * @param value text ending with {@code '%'}; leading/trailing whitespace is not ignored here
+   * @return {@code true} if the substring before {@code '%'} is a valid integer or decimal number
+   */
   public static boolean isPercentage(String value) {
     if (value.length() >= 2 && value.charAt(value.length() - 1) == '%') // Valid percentage X%
     {
@@ -80,60 +140,87 @@ public class FilterUtils {
         Integer.parseInt(value.substring(0, value.length() - 1));
         return true;
       } catch (Exception e) {
+        // Ignore parse failure; fall through to double parsing
       }
       try {
         Double.parseDouble(value.substring(0, value.length() - 1));
         return true;
       } catch (Exception e) {
+        // Ignore parse failure; not a valid percentage
       }
     }
     return false;
   }
 
-  public static boolean isLength(String value, boolean isSVG) // SVG lengths allow % values
-      {
-    String lengthValue = null;
-    value = value.trim();
-    if (value.isEmpty()) {
-      return false;
-    }
-    if (isSVG) {
-      if (value.charAt(value.length() - 1) == '%') {
-        lengthValue = value.substring(0, value.length() - 1);
-      }
-    }
-    boolean units = false;
-    if (lengthValue == null) { // Valid unit Vxx[x[x]] (where xx[x[x]] is unit) or V
-      int pos = 0;
-      int len = value.length();
-      for (int i = len - 1; i >= 0; i--) {
-        char c = value.charAt(i);
-        if ((c >= '0' && c <= '9') || c == '.') {
-          pos = i + 1;
-          break;
-        }
-      }
-      if (len - pos > 0 && allowedUnits.contains(value.substring(pos))) {
-        lengthValue = value.substring(0, pos);
-        units = true;
-      } else {
-        lengthValue = value;
-      }
-    }
+  /**
+   * Validates a CSS/SVG length value with optional unit.
+   *
+   * <p>The validator recognizes a curated set of CSS length units such as {@code px}, {@code em},
+   * {@code rem}, {@code cm}, {@code mm}, {@code in}, {@code pt}, {@code pc}, and viewport units
+   * like {@code vw}/{@code vh}/{@code vmin}/{@code vmax}. When {@code isSVG} is {@code true}, a
+   * trailing {@code '%'} is also permitted. A unitless zero is valid even when a unit would
+   * otherwise be required.
+   *
+   * @param value candidate length string to validate; surrounding whitespace is ignored
+   * @param isSVG whether to apply SVG rules (permit {@code %} values in addition to CSS units)
+   * @return {@code true} if the value parses as a finite number and any required unit is present
+   */
+  public static boolean isLength(String value, boolean isSVG) { // SVG lengths allow % values
+    String v = value.trim();
+    if (v.isEmpty()) return false;
+
+    LenParts parts = parseLengthParts(v, isSVG);
+    String lengthValue = parts.len;
+    boolean units = parts.units;
+
     try {
       int x = Integer.parseInt(lengthValue);
       return units || isSVG || x == 0;
     } catch (Exception e) {
+      // Ignore parse failure; try parsing as double below
     }
+
     try {
       double dval = Double.parseDouble(lengthValue);
       if (!units && !isSVG && dval != 0) return false;
-      if (!(Double.isInfinite(dval) || Double.isNaN(dval))) return true;
+      return !(Double.isInfinite(dval) || Double.isNaN(dval));
     } catch (Exception e) {
+      // Ignore parse failure; not a valid length
     }
     return false;
   }
 
+  private record LenParts(String len, boolean units) {}
+
+  private static LenParts parseLengthParts(String v, boolean isSVG) {
+    if (isSVG && v.charAt(v.length() - 1) == '%') {
+      return new LenParts(v.substring(0, v.length() - 1), true);
+    }
+    int pos = 0;
+    int len = v.length();
+    for (int i = len - 1; i >= 0; i--) {
+      char c = v.charAt(i);
+      if ((c >= '0' && c <= '9') || c == '.') {
+        pos = i + 1;
+        break;
+      }
+    }
+    if (len - pos > 0 && allowedUnits.contains(v.substring(pos))) {
+      return new LenParts(v.substring(0, pos), true);
+    }
+    return new LenParts(v, false);
+  }
+
+  /**
+   * Checks whether a value is an angle expressed in degrees, radians, or gradians.
+   *
+   * <p>Accepted forms are {@code <number>deg}, {@code <number>rad}, and {@code <number>grad}. The
+   * numeric portion may be integer or decimal and may include a sign. Whitespace between the number
+   * and unit is not allowed.
+   *
+   * @param value the candidate angle string, such as {@code "90deg"} or {@code "1.57rad"}
+   * @return {@code true} if the string ends with a recognized unit and the prefix parses as a float
+   */
   public static boolean isAngle(String value) {
     boolean isValid = true;
     int index = -1;
@@ -158,6 +245,7 @@ public class FilterUtils {
         Float.parseFloat(firstPart);
         return true;
       } catch (Exception e) {
+        // Ignore parse failure; not a valid angle
       }
     }
     return false;
@@ -295,36 +383,47 @@ public class FilterUtils {
   private static final HashSet<String> CSSsystemColorKeywords = new HashSet<>();
 
   static {
-    CSScolorKeywords.add("activeborder");
-    CSScolorKeywords.add("activecaption");
-    CSScolorKeywords.add("appworkspace");
-    CSScolorKeywords.add("background");
-    CSScolorKeywords.add("buttonface");
-    CSScolorKeywords.add("buttonhighlight");
-    CSScolorKeywords.add("buttonshadow");
-    CSScolorKeywords.add("buttontext");
-    CSScolorKeywords.add("captiontext");
-    CSScolorKeywords.add("graytext");
-    CSScolorKeywords.add("highlight");
-    CSScolorKeywords.add("highlighttext");
-    CSScolorKeywords.add("inactiveborder");
-    CSScolorKeywords.add("inactivecaption");
-    CSScolorKeywords.add("inactivecaptiontext");
-    CSScolorKeywords.add("infobackground");
-    CSScolorKeywords.add("infotext");
-    CSScolorKeywords.add("menu");
-    CSScolorKeywords.add("menutext");
-    CSScolorKeywords.add("scrollbar");
-    CSScolorKeywords.add("threeddarkshadow");
-    CSScolorKeywords.add("threedface");
-    CSScolorKeywords.add("threedhighlight");
-    CSScolorKeywords.add("threedlightshadow");
-    CSScolorKeywords.add("threedshadow");
-    CSScolorKeywords.add("window");
-    CSScolorKeywords.add("windowframe");
-    CSScolorKeywords.add("windowtext");
+    CSSsystemColorKeywords.add("activeborder");
+    CSSsystemColorKeywords.add("activecaption");
+    CSSsystemColorKeywords.add("appworkspace");
+    CSSsystemColorKeywords.add("background");
+    CSSsystemColorKeywords.add("buttonface");
+    CSSsystemColorKeywords.add("buttonhighlight");
+    CSSsystemColorKeywords.add("buttonshadow");
+    CSSsystemColorKeywords.add("buttontext");
+    CSSsystemColorKeywords.add("captiontext");
+    CSSsystemColorKeywords.add("graytext");
+    CSSsystemColorKeywords.add("highlight");
+    CSSsystemColorKeywords.add("highlighttext");
+    CSSsystemColorKeywords.add("inactiveborder");
+    CSSsystemColorKeywords.add("inactivecaption");
+    CSSsystemColorKeywords.add("inactivecaptiontext");
+    CSSsystemColorKeywords.add("infobackground");
+    CSSsystemColorKeywords.add("infotext");
+    CSSsystemColorKeywords.add("menu");
+    CSSsystemColorKeywords.add("menutext");
+    CSSsystemColorKeywords.add("scrollbar");
+    CSSsystemColorKeywords.add("threeddarkshadow");
+    CSSsystemColorKeywords.add("threedface");
+    CSSsystemColorKeywords.add("threedhighlight");
+    CSSsystemColorKeywords.add("threedlightshadow");
+    CSSsystemColorKeywords.add("threedshadow");
+    CSSsystemColorKeywords.add("window");
+    CSSsystemColorKeywords.add("windowframe");
+    CSSsystemColorKeywords.add("windowtext");
   }
 
+  /**
+   * Determines whether a value represents a valid {@code rect()} CSS shape.
+   *
+   * <p>The accepted form is {@code rect(t, r, b, l)} where each component is either an
+   * absolute/relative length (as validated by {@link #isLength(String, boolean)}) or the
+   * case-insensitive literal {@code auto}. Components are comma-separated and the closing
+   * parenthesis must be present.
+   *
+   * @param value string starting with {@code rect(} and ending with {@code )}; not trimmed here
+   * @return {@code true} when the syntax is {@code rect(...)} with four valid components
+   */
   public static boolean isValidCSSShape(String value) {
     if (value.indexOf("rect(") == 0 && value.indexOf(')') == value.length() - 1) {
       String[] shapeParts = value.substring(5, value.length() - 1).split(",");
@@ -357,208 +456,285 @@ public class FilterUtils {
             "tv"));
   }
 
+  /**
+   * Returns {@code true} if the media token is recognized.
+   *
+   * <p>Recognized values include standard CSS media types such as {@code screen}, {@code print},
+   * {@code speech}, and {@code all}. The comparison is case-sensitive in this implementation.
+   *
+   * @param media the media token to validate; use lower-case canonical tokens for best results
+   * @return {@code true} when the token exists in the supported media set; otherwise {@code false}
+   */
   public static boolean isMedia(String media) {
     return cssMedia.contains(media);
   }
 
+  /**
+   * Regular expression that matches hexadecimal color literals.
+   *
+   * <p>The pattern accepts the following forms (case-insensitive): {@code #RGB}, {@code #RGBA},
+   * {@code #RRGGBB}, and {@code #RRGGBBAA}. The alpha channel, when present, appears as the last
+   * component. Callers can use this pattern directly for additional matching requirements or rely
+   * on {@link #isColor(String)} for higher-level checks.
+   */
   public static final Pattern hexColorPattern =
       Pattern.compile("#(?>[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})", Pattern.CASE_INSENSITIVE);
 
+  /**
+   * Validates whether a string represents a color using CSS/SVG notations.
+   *
+   * <p>Supported categories include: named CSS/SVG keywords (e.g., {@code red}, {@code
+   * transparent}), hexadecimal forms matched by {@link #hexColorPattern}, and functional forms such
+   * as {@code rgb(...)}, {@code rgba(...)}, {@code hsl(...)}, and {@code hsla(...)}. For RGB, both
+   * legacy comma-separated and modern space-separated syntaxes are recognized.
+   *
+   * @param value color candidate; surrounding whitespace is ignored; matching is case-insensitive
+   * @return {@code true} if the value matches any supported color notation; otherwise {@code false}
+   */
   public static boolean isColor(String value) {
-    value = value.trim().toLowerCase();
+    String v = value.trim().toLowerCase();
 
-    if (CSScolorKeywords.contains(value)
-        || CSSsystemColorKeywords.contains(value)
-        || SVGcolorKeywords.contains(value)) return true;
+    if (CSScolorKeywords.contains(v)
+        || CSSsystemColorKeywords.contains(v)
+        || SVGcolorKeywords.contains(v)) return true;
 
-    if (value.indexOf('#') == 0) {
-      return hexColorPattern.matcher(value).matches();
-    }
-    if ((value.startsWith("rgb(") || value.startsWith("rgba("))
-        && value.indexOf(')') == value.length() - 1) {
-      // rgba is an alias to rgb
-      if (value.contains(",")) {
-        // Legacy format rgba(r,g,b,a)
-        String[] colorParts =
-            value.substring(value.indexOf("(") + 1, value.length() - 1).split(",");
-        if (colorParts.length != 3 && colorParts.length != 4) return false;
-        for (int i = 0; i < 3; i++) {
-          if (!(isPercentage(colorParts[i].trim()) || isInteger(colorParts[i].trim())))
-            return false;
-        }
-        if (colorParts.length <= 3 || isNumber(colorParts[3])) return true;
-      } else {
-        if (value.contains("/")) {
-          // Modern format rgba(r g b / a)
-          String alphaPart = value.substring(value.indexOf("/") + 1, value.length() - 1).trim();
-          if (!alphaPart.isEmpty()
-              && !isPercentage(alphaPart)
-              && !isNumber(alphaPart)
-              && !alphaPart.equalsIgnoreCase("none")) return false;
-          value =
-              value.substring(0, value.indexOf("/"))
-                  + ")"; // Strip alpha value, proceed to the following tests
-        }
-        // Modern format rgba(r g b)
-        String[] colorParts =
-            value.substring(value.indexOf("(") + 1, value.length() - 1).split(" ");
-        if (colorParts.length != 3) {
-          return false;
-        }
-        for (int i = 0; i < 3; i++) {
-          String trimmed = colorParts[i].trim();
-          if (!(trimmed.equalsIgnoreCase("none")
-              || isPercentage(trimmed)
-              || (isInteger(trimmed) && isIntegerInRange(trimmed, 0, 255)))) return false;
-        }
-        return true;
-      }
+    if (v.indexOf('#') == 0) {
+      return hexColorPattern.matcher(v).matches();
     }
 
-    if (value.indexOf("hsl(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] colorParts = value.substring(4, value.length() - 1).split(",");
-      if (colorParts.length != 3) {
-        return false;
-      }
-
-      if (isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]))
-        return true;
+    if ((v.startsWith("rgb(") || v.startsWith("rgba(")) && v.indexOf(')') == v.length() - 1) {
+      return isColorRgb(v);
     }
 
-    if (value.indexOf("hsla(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] colorParts = value.substring(5, value.length() - 1).split(",");
-      if (colorParts.length != 4) {
-        return false;
-      }
+    return isColorHsl(v) || isColorHsla(v);
+  }
 
-      return isNumber(colorParts[0])
-          && isPercentage(colorParts[1])
-          && isPercentage(colorParts[2])
-          && isNumber(colorParts[3]);
+  private static boolean isColorHsl(String v) {
+    if (v.indexOf("hsl(") != 0 || v.indexOf(')') != v.length() - 1) return false;
+    String[] colorParts = v.substring(4, v.length() - 1).split(",");
+    if (colorParts.length != 3) return false;
+    return isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]);
+  }
+
+  private static boolean isColorHsla(String v) {
+    if (v.indexOf("hsla(") != 0 || v.indexOf(')') != v.length() - 1) return false;
+    String[] colorParts = v.substring(5, v.length() - 1).split(",");
+    if (colorParts.length != 4) return false;
+    return isNumber(colorParts[0])
+        && isPercentage(colorParts[1])
+        && isPercentage(colorParts[2])
+        && isNumber(colorParts[3]);
+  }
+
+  private static boolean isColorRgb(String value) {
+    return value.contains(",") ? isColorRgbLegacy(value) : isColorRgbModern(value);
+  }
+
+  private static boolean isColorRgbLegacy(String v) {
+    String[] colorParts = v.substring(v.indexOf("(") + 1, v.length() - 1).split(",");
+    if (colorParts.length != 3 && colorParts.length != 4) return false;
+    for (int i = 0; i < 3; i++) {
+      if (!(isPercentage(colorParts[i].trim()) || isInteger(colorParts[i].trim()))) return false;
     }
+    return colorParts.length == 3 || isNumber(colorParts[3]);
+  }
 
+  private static boolean isColorRgbModern(String vIn) {
+    String v = vIn;
+    if (v.contains("/")) {
+      // Modern format rgba(r g b / a)
+      String alphaPart = v.substring(v.indexOf("/") + 1, v.length() - 1).trim();
+      if (!alphaPart.isEmpty()
+          && !isPercentage(alphaPart)
+          && !isNumber(alphaPart)
+          && !alphaPart.equalsIgnoreCase("none")) return false;
+      v = v.substring(0, v.indexOf("/")) + ")"; // Strip alpha value
+    }
+    // Modern format rgba(r g b)
+    String[] colorParts = v.substring(v.indexOf("(") + 1, v.length() - 1).split(" ");
+    if (colorParts.length != 3) return false;
+    for (int i = 0; i < 3; i++) {
+      String trimmed = colorParts[i].trim();
+      if (!(trimmed.equalsIgnoreCase("none")
+          || isPercentage(trimmed)
+          || (isInteger(trimmed) && isIntegerInRange(trimmed, 0, 255)))) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Tests whether a value is a valid single CSS transform function.
+   *
+   * <p>Recognized functions include {@code matrix()}, {@code translate()}, {@code translateX()},
+   * {@code translateY()}, {@code scale()}, {@code scaleX()}, {@code scaleY()}, {@code rotate()},
+   * {@code skew()}, {@code skewX()}, and {@code skewY()}. The method validates argument counts and
+   * basic numeric/unit constraints but does not evaluate semantics beyond syntax.
+   *
+   * @param value the transform function string to test; leading/trailing spaces are ignored
+   * @return {@code true} when the syntax matches one of the supported transform functions
+   */
+  public static boolean isCSSTransform(String value) {
+    String v = value.trim();
+    if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform(\"{}\")", v);
+
+    return isTransformMatrix(v)
+        || isTransformTranslateX(v)
+        || isTransformTranslateY(v)
+        || isTransformTranslate(v)
+        || isTransformScale(v)
+        || isTransformScaleX(v)
+        || isTransformScaleY(v)
+        || isTransformRotate(v)
+        || isTransformSkewX(v)
+        || isTransformSkewY(v)
+        || isTransformSkew(v);
+  }
+
+  private static boolean isTransformMatrix(String v) {
+    if (v.indexOf("matrix(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String[] parts = v.substring(7, v.length() - 1).split(",");
+      if (parts.length != 6) return false;
+      for (String part : parts) if (!isNumber(part.trim())) return false;
+      if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a matrix()");
+      return true;
+    }
     return false;
   }
 
-  public static boolean isCSSTransform(String value) {
-    value = value.trim();
-    if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform(\"" + value + "\")");
-
-    if (value.indexOf("matrix(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] parts = value.substring(7, value.length() - 1).split(",");
-      if (parts.length != 6) {
-        return false;
-      }
-
-      boolean isValid = true;
-      for (int i = 0; i < parts.length && isValid; i++) {
-        if (!isNumber(parts[i].trim())) {
-          isValid = false;
-        }
-      }
-      if (isValid) {
-        if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a matrix()");
-        return true;
-      }
-    }
-
-    if (value.indexOf("translateX(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(11, value.length() - 1);
+  private static boolean isTransformTranslateX(String v) {
+    if (v.indexOf("translateX(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(11, v.length() - 1);
       if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a translateX()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("translateY(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(11, value.length() - 1);
+  private static boolean isTransformTranslateY(String v) {
+    if (v.indexOf("translateY(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(11, v.length() - 1);
       if (isPercentage(part.trim()) || isLength(part.trim(), false)) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a translateY()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("translate(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] parts = value.substring(10, value.length() - 1).split(",");
-      if (parts.length == 1
-          && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))) {
-        if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a translate()");
-        return true;
-      } else if (parts.length == 2
-          && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))
-          && (isPercentage(parts[1].trim()) || isLength(parts[1].trim(), false))) {
+  private static boolean isTransformTranslate(String v) {
+    if (v.indexOf("translate(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String[] parts = v.substring(10, v.length() - 1).split(",");
+      boolean valid =
+          (parts.length == 1 && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false)))
+              || (parts.length == 2
+                  && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false))
+                  && (isPercentage(parts[1].trim()) || isLength(parts[1].trim(), false)));
+      if (valid) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a translate()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("scale(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] parts = value.substring(6, value.length() - 1).split(",");
-      if (parts.length == 1 && isNumber(parts[0].trim())) {
-        if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a scale()");
-        return true;
-      } else if (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim())) {
+  private static boolean isTransformScale(String v) {
+    if (v.indexOf("scale(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String[] parts = v.substring(6, v.length() - 1).split(",");
+      boolean valid =
+          (parts.length == 1 && isNumber(parts[0].trim()))
+              || (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim()));
+      if (valid) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a scale()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("scaleX(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(7, value.length() - 1);
+  private static boolean isTransformScaleX(String v) {
+    if (v.indexOf("scaleX(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(7, v.length() - 1);
       if (isNumber(part.trim())) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a scaleX()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("scaleY(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(7, value.length() - 1);
+  private static boolean isTransformScaleY(String v) {
+    if (v.indexOf("scaleY(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(7, v.length() - 1);
       if (isNumber(part.trim())) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a scaleY()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("rotate(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(7, value.length() - 1);
+  private static boolean isTransformRotate(String v) {
+    if (v.indexOf("rotate(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(7, v.length() - 1);
       if (isAngle(part.trim())) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a rotate()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("skewX(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(6, value.length() - 1);
+  private static boolean isTransformSkewX(String v) {
+    if (v.indexOf("skewX(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(6, v.length() - 1);
       if (isNumber(part.trim()) || isAngle(part.trim())) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a skewX()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("skewY(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String part = value.substring(6, value.length() - 1);
+  private static boolean isTransformSkewY(String v) {
+    if (v.indexOf("skewY(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String part = v.substring(6, v.length() - 1);
       if (isNumber(part.trim()) || isAngle(part.trim())) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a skewY()");
         return true;
       }
     }
+    return false;
+  }
 
-    if (value.indexOf("skew(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] parts = value.substring(5, value.length() - 1).split(",");
-      if (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))) {
-        if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a skew()");
-        return true;
-      } else if (parts.length == 2
-          && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))
-          && (isNumber(parts[1].trim()) || isAngle(parts[0].trim()))) {
+  private static boolean isTransformSkew(String v) {
+    if (v.indexOf("skew(") == 0 && v.indexOf(')') == v.length() - 1) {
+      String[] parts = v.substring(5, v.length() - 1).split(",");
+      boolean valid =
+          (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim())))
+              || (parts.length == 2
+                  && (isNumber(parts[0].trim()) || isAngle(parts[0].trim()))
+                  && (isNumber(parts[1].trim()) || isAngle(parts[0].trim())));
+      if (valid) {
         if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a skew()");
         return true;
       }
     }
-
     return false;
   }
 
+  /**
+   * Validates a frequency value expressed in hertz.
+   *
+   * <p>Accepted spellings are {@code <number>hz} and {@code <number>khz}; units are
+   * case-insensitive in this implementation. A unitless positive number is also accepted for
+   * compatibility. Values must parse as a positive {@code float}; zero and negative values are
+   * rejected.
+   *
+   * @param value candidate frequency, for example {@code "440hz"} or {@code "1.5kHz"}
+   * @return {@code true} if a positive number is present with an optional Hz/kHz suffix
+   */
   public static boolean isFrequency(String value) {
     String firstPart;
     value = value.trim().toLowerCase();
@@ -583,11 +759,22 @@ public class FilterUtils {
         float temp = Float.parseFloat(firstPart);
         if (temp > 0) return true;
       } catch (Exception e) {
+        // Ignore parse failure; not a valid frequency
       }
     }
     return false;
   }
 
+  /**
+   * Checks whether a time duration is expressed in seconds or milliseconds.
+   *
+   * <p>Accepted forms are {@code <number>s} and {@code <number>ms}. Both integer and decimal
+   * numbers are supported; the value is validated using {@link #isNumber(String)}. Negative
+   * durations are allowed if the numeric check permits them.
+   *
+   * @param value candidate duration ending in {@code s} or {@code ms}; case-insensitive
+   * @return {@code true} if a numeric value followed by a supported unit is present
+   */
   public static boolean isTime(String value) {
     value = value.toLowerCase();
     String intValue;
@@ -599,29 +786,73 @@ public class FilterUtils {
     return isNumber(intValue);
   }
 
+  /**
+   * Trims and filters an array of strings, optionally removing outer quotes.
+   *
+   * <p>Each element is {@code trim()}-med; when {@code stripQuotes} is {@code true}, matching outer
+   * single or double quotes are removed prior to trimming again. Empty results are dropped. A
+   * {@code null} input array is returned as {@code null} to preserve the caller contract.
+   *
+   * @param values input array to clean; may be {@code null}; entries may include extra whitespace
+   * @param stripQuotes when {@code true}, remove matching outer quotes before final trimming
+   * @return a newly allocated array containing only non-empty cleaned elements, in original order
+   */
+  @SuppressWarnings("java:S1168")
   public static String[] removeWhiteSpace(String[] values, boolean stripQuotes) {
-    if (values == null) return null;
+    if (values == null) return null; // Preserve API contract expected by callers/tests
     ArrayList<String> arrayToReturn = new ArrayList<>();
     for (String value : values) {
       value = value.trim();
       if (stripQuotes) value = CSSTokenizerFilter.removeOuterQuotes(value).trim();
-      if (value != null && !(value.trim().isEmpty())) arrayToReturn.add(value);
+      if (!value.trim().isEmpty()) arrayToReturn.add(value);
     }
     return arrayToReturn.toArray(new String[0]);
   }
 
-  public static String sanitizeURI(FilterCallback cb, String URI) {
+  /**
+   * Invokes the provided callback to sanitize a URI and converts failures to an empty string.
+   *
+   * <p>The callback receives the raw {@code uri} and a {@code null} context object to preserve
+   * existing behavior. If the callback throws or returns {@code null}, this method returns an empty
+   * string. Use together with {@link #isURI} when only accept-or-reject semantics are required.
+   *
+   * @param cb the callback responsible for canonicalizing/sanitizing the URI input
+   * @param uri the original URI string to process; may be any user-provided value
+   * @return the sanitized URI on success; otherwise an empty string to signal rejection/failure
+   */
+  public static String sanitizeURI(FilterCallback cb, String uri) {
     try {
-      return cb.processURI(URI, null);
+      return cb.processURI(uri, null);
     } catch (Exception e) {
       return "";
     }
   }
 
-  public static boolean isURI(FilterCallback cb, String URI) {
-    return URI.equals(sanitizeURI(cb, URI));
+  /**
+   * Determines whether a URI string is accepted by the sanitizer without modification.
+   *
+   * <p>The method sanitizes {@code uri} via {@link #sanitizeURI} and compares the result to the
+   * input using {@link String#equals(Object)}. If they are identical, the URI is considered valid
+   * and unchanged; otherwise it is rejected or would be rewritten.
+   *
+   * @param cb the callback applied to sanitize the URI according to application policy
+   * @param uri the candidate URI string for validation against the sanitizer
+   * @return {@code true} when the sanitizer returns the same string instance content as provided
+   */
+  public static boolean isURI(FilterCallback cb, String uri) {
+    return uri.equals(sanitizeURI(cb, uri));
   }
 
+  /**
+   * Splits a string by any character present in a delimiter set, collapsing consecutive delimiters.
+   *
+   * <p>Delimiters are not returned. Runs of delimiter characters produce no empty tokens because
+   * consecutive delimiters are treated as a single boundary. The original ordering is preserved.
+   *
+   * @param value the source text to split; not {@code null}; no trimming is performed
+   * @param splitOn string containing all delimiter characters to consider during splitting
+   * @return an array of non-empty tokens in encounter order; may be empty but never {@code null}
+   */
   public static String[] splitOnCharArray(String value, String splitOn) {
     ArrayList<String> pointPairs = new ArrayList<>();
     // Creating HashMap for faster search operation
@@ -650,6 +881,16 @@ public class FilterUtils {
     return pointPairs.toArray(new String[0]);
   }
 
+  /**
+   * Validates a sequence of point pairs in the form {@code x,y} separated by whitespace.
+   *
+   * <p>Each pair must contain exactly two floating-point numbers separated by a comma. The method
+   * accepts multiple pairs separated by spaces, tabs, or newlines and returns {@code true} only if
+   * every pair parses successfully.
+   *
+   * @param value the text containing one or more comma-separated coordinate pairs
+   * @return {@code true} when all tokens follow the {@code x,y} floating-point pattern
+   */
   public static boolean isPointPair(String value) {
     String[] pointPairs = splitOnCharArray(value, " \n\t");
     for (String pointPair : pointPairs) {
@@ -665,6 +906,20 @@ public class FilterUtils {
     return true;
   }
 
+  /**
+   * Tests whether a string parses as an integer within an inclusive range.
+   *
+   * <p>Leading {@code +} is permitted and removed for compatibility with differences between
+   * historical Java versions. The range check is inclusive at both ends. Parsing failures and
+   * values outside the range return {@code false}.
+   *
+   * @param strValue the integer string to parse; a leading {@code +} sign is tolerated
+   * @param min the inclusive minimum allowed value; no constraint is placed on relation to {@code
+   *     max}
+   * @param max the inclusive maximum allowed value; effective only when parsing succeeds
+   * @return {@code true} if parsed successfully and the value lies between {@code min} and {@code
+   *     max}
+   */
   public static boolean isIntegerInRange(String strValue, int min, int max) {
     try {
       // Strip any leading '+' character, because Integer.parseInt handles it differently between
@@ -682,37 +937,34 @@ public class FilterUtils {
     }
   }
 
+  /**
+   * Validates an {@code nth-} expression compatible with CSS selectors (e.g., {@code :nth-child}).
+   *
+   * <p>Accepted forms include the literals {@code odd} and {@code even}, a bounded integer in the
+   * inclusive range {@code [-999999, 999999]}, or the linear expression {@code an+b} where both
+   * coefficients are integers within the same bounds. No whitespace is allowed within the token.
+   *
+   * @param value the input token to validate, for example {@code "2n+1"}, {@code "odd"}, or {@code
+   *     "4"}
+   * @return {@code true} if the token matches any of the supported {@code nth-} formats
+   */
   public static boolean isNth(String value) {
     if (value.equals("odd") || value.equals("even") || isIntegerInRange(value, -MAX_NTH, MAX_NTH)) {
       return true;
     } else {
       // Check if value has the form "an+b" - where a and b can be any in range integer.
       int nIndex = value.indexOf('n');
-      if (nIndex != -1) {
-        if (nIndex == 0
-            || (nIndex == 1 && value.charAt(0) == '-')
-            || isIntegerInRange(value.substring(0, nIndex), -MAX_NTH, MAX_NTH)) {
-          int bIndex = nIndex + 1;
-          int bLength = value.length() - bIndex;
-          return bLength == 0
-              || ((value.charAt(bIndex) == '+' || value.charAt(bIndex) == '-')
-                  && isIntegerInRange(value.substring(bIndex), -MAX_NTH, MAX_NTH));
-        }
+      if (nIndex != -1
+          && (nIndex == 0
+              || (nIndex == 1 && value.charAt(0) == '-')
+              || isIntegerInRange(value.substring(0, nIndex), -MAX_NTH, MAX_NTH))) {
+        int bIndex = nIndex + 1;
+        int bLength = value.length() - bIndex;
+        return bLength == 0
+            || ((value.charAt(bIndex) == '+' || value.charAt(bIndex) == '-')
+                && isIntegerInRange(value.substring(bIndex), -MAX_NTH, MAX_NTH));
       }
     }
     return false;
   }
-  //	public static HTMLNode getHTMLNodeFromElement(Element node)
-  //	{
-  //		String[] propertyName=new String[node.getAttributes().size()];
-  //		String[] propertyValue=new String[node.getAttributes().size()];
-  //		int index=0;
-  //		List<Attribute> attrList=node.getAttributes();
-  //		for(Attribute currentAttr:attrList)
-  //		{
-  //			propertyName[index]=currentAttr.getName();
-  //			propertyValue[index]=currentAttr.getValue();
-  //		}
-  //		return new HTMLNode(node.getName(),propertyName,propertyValue,node.getValue());
-  //	}
 }
