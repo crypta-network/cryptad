@@ -4989,8 +4989,7 @@ class CSSTokenizerFilter {
           }
         }
         if (isString && words[0] instanceof ParsedString string) {
-          return ElementInfo.ALLOW_ALL_VALID_STRINGS
-              || ElementInfo.isValidStringDecoded(string.getDecoded());
+          return true;
         }
       }
       /*
@@ -5544,8 +5543,7 @@ class CSSTokenizerFilter {
           && allowedValues.contains(identifier.getDecoded())) return true;
       // String processing
       if (value[0] instanceof ParsedString string) {
-        return ElementInfo.ALLOW_ALL_VALID_STRINGS
-            || ElementInfo.isValidStringDecoded(string.getDecoded());
+        return true;
       }
       if (value[0] instanceof ParsedCounter counter) {
         if (counter.listType != null) {
@@ -5609,9 +5607,7 @@ class CSSTokenizerFilter {
                   "upper-armenian"));
           if (!listStyleType.contains(counter.listType.getDecoded())) return false;
         }
-        return counter.separatorString == null
-            || (ElementInfo.ALLOW_ALL_VALID_STRINGS
-                || ElementInfo.isValidStringDecoded(counter.separatorString.getDecoded()));
+        return true;
       }
       if (value[0] instanceof ParsedAttr) {
         return true;
@@ -5814,7 +5810,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean possiblyValidFontWords(ArrayList<String> fontWords) {
-      if (ElementInfo.disallowUnknownSpecificFonts) {
+      if (ElementInfo.DISALLOW_UNKNOWN_SPECIFIC_FONTS) {
         StringBuilder sb = new StringBuilder();
         boolean first = true;
         for (String s : fontWords) {
