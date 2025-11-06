@@ -49,6 +49,10 @@ import org.slf4j.LoggerFactory;
 public class ContentFilter {
   private static final Logger LOG = LoggerFactory.getLogger(ContentFilter.class);
 
+  // Charset family constants used in detection/normalization
+  private static final String CHARSET_UTF16 = "UTF-16";
+  private static final String CHARSET_UTF32 = "UTF-32";
+
   // Use a concurrent map to avoid legacy synchronized Hashtable
   static final ConcurrentMap<String, FilterMIMEType> mimeTypesByName = new ConcurrentHashMap<>();
 
@@ -674,13 +678,13 @@ public class ContentFilter {
     // expect an inherited "UTF-16" hint to be reflected verbatim even when a
     // BOM is present (which remains compatible as "UTF-16" honors BOM).
     if (charset != null && maybeCharset != null && !maybeCharset.isEmpty()) {
-      if (maybeCharset.equalsIgnoreCase("UTF-16")
-          && charset.regionMatches(true, 0, "UTF-16", 0, 6)) {
-        return "UTF-16";
+      if (maybeCharset.equalsIgnoreCase(CHARSET_UTF16)
+          && charset.regionMatches(true, 0, CHARSET_UTF16, 0, CHARSET_UTF16.length())) {
+        return CHARSET_UTF16;
       }
-      if (maybeCharset.equalsIgnoreCase("UTF-32")
-          && charset.regionMatches(true, 0, "UTF-32", 0, 6)) {
-        return "UTF-32";
+      if (maybeCharset.equalsIgnoreCase(CHARSET_UTF32)
+          && charset.regionMatches(true, 0, CHARSET_UTF32, 0, CHARSET_UTF32.length())) {
+        return CHARSET_UTF32;
       }
     }
     if (charset == null && handler.charsetExtractor != null) {
@@ -729,7 +733,7 @@ public class ContentFilter {
 
   private static String detectFromCommon(CharsetExtractor extractor, byte[] input, int length)
       throws IOException {
-    String[] candidates = {"ISO-8859-1", "UTF-8", "UTF-16", "UTF-32"};
+    String[] candidates = {"ISO-8859-1", "UTF-8", CHARSET_UTF16, CHARSET_UTF32};
     for (String c : candidates) {
       String v = tryGetCharset(extractor, input, length, c);
       if (v != null) return v;
