@@ -56,7 +56,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
               if (ce instanceof SplitfileProgressEvent split) {
                 if (split.finalizedTotal) {
                   progress.setDownloadProgress(
-                      split.minSuccessfulBlocks,
+                      split.getMinSuccessfulBlocks(),
                       split.succeedBlocks,
                       split.totalBlocks,
                       split.failedBlocks,

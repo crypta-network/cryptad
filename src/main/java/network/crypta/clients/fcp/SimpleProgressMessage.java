@@ -31,7 +31,7 @@ public class SimpleProgressMessage extends FCPMessage {
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.put("Total", event.totalBlocks);
-    fs.put("Required", event.minSuccessfulBlocks);
+    fs.put("Required", event.getMinSuccessfulBlocks());
     fs.put("Failed", event.failedBlocks);
     fs.put("FatallyFailed", event.fatallyFailedBlocks);
     /* FIXME: This field has been disabled since it will always be 0 (= "never") even if
@@ -69,7 +69,7 @@ public class SimpleProgressMessage extends FCPMessage {
   }
 
   public double getMinBlocks() {
-    return event.minSuccessfulBlocks;
+    return event.getMinSuccessfulBlocks();
   }
 
   public double getTotalBlocks() {
