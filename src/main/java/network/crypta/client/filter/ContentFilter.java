@@ -668,6 +668,21 @@ public class ContentFilter {
   public static String detectCharset(
       byte[] input, int length, FilterMIMEType handler, String maybeCharset) throws IOException {
     String charset = detectBOM(input, length);
+    // If a BOM indicates a specific endianness but the caller provided a
+    // family charset (e.g., "UTF-16" or "UTF-32") via maybeCharset, prefer
+    // the family name to preserve the caller's intent. This matches tests that
+    // expect an inherited "UTF-16" hint to be reflected verbatim even when a
+    // BOM is present (which remains compatible as "UTF-16" honors BOM).
+    if (charset != null && maybeCharset != null && !maybeCharset.isEmpty()) {
+      if (maybeCharset.equalsIgnoreCase("UTF-16")
+          && charset.regionMatches(true, 0, "UTF-16", 0, 6)) {
+        return "UTF-16";
+      }
+      if (maybeCharset.equalsIgnoreCase("UTF-32")
+          && charset.regionMatches(true, 0, "UTF-32", 0, 6)) {
+        return "UTF-32";
+      }
+    }
     if (charset == null && handler.charsetExtractor != null) {
       charset = detectWithExtractor(handler, input, length);
     }
