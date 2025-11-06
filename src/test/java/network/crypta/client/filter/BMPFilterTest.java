@@ -1,8 +1,13 @@
 package network.crypta.client.filter;
 
 import static network.crypta.client.filter.ResourceFileUtil.resourceToBucket;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,120 +15,56 @@ import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-public class BMPFilterTest {
-  /** File of size less than 54 bytes */
-  @Test
-  public void testTooShortImage() throws IOException {
-    Bucket input = resourceToBucket("./bmp/small.bmp");
+@SuppressWarnings("java:S100") // descriptive test method names
+class BMPFilterTest {
+  /**
+   * Invalid BMP inputs that must be rejected by the filter.
+   *
+   * <p>Files include: small, one, two, three, four, five, six, seven, eight, nine, ten
+   */
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "./bmp/small.bmp",
+        "./bmp/one.bmp",
+        "./bmp/two.bmp",
+        "./bmp/three.bmp",
+        "./bmp/four.bmp",
+        "./bmp/five.bmp",
+        "./bmp/six.bmp",
+        "./bmp/seven.bmp",
+        "./bmp/eight.bmp",
+        "./bmp/nine.bmp",
+        "./bmp/ten.bmp"
+      })
+  void readFilter_whenVariousInvalidHeaders_expectDataFilterException(String resource)
+      throws IOException {
+    // Arrange
+    Bucket input = resourceToBucket(resource);
+
+    // Act + Assert
     filterImage(input, DataFilterException.class);
   }
 
-  /** Illegal start word (AB instead of BM) */
-  @Test
-  public void testIllegalStartWord() throws IOException {
-    Bucket input = resourceToBucket("./bmp/one.bmp");
-    filterImage(input, DataFilterException.class);
-  }
+  /** Valid BMP inputs that should pass through unchanged (including padding cases). */
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "./bmp/ok.bmp",
+        "./bmp/sizeCalculationWithPadding.bmp",
+        "./bmp/sizeCalculationWithoutPadding.bmp"
+      })
+  void readFilter_whenValidImages_expectPassThrough(String resource) throws IOException {
+    // Arrange
+    Bucket input = resourceToBucket(resource);
 
-  /** Invalid offset i.e. starting address */
-  @Test
-  public void testInvalidOffset() throws IOException {
-    Bucket input = resourceToBucket("./bmp/two.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid size of bitmap info header */
-  @Test
-  public void testInvalidBitmapInfoHeaderSize() throws IOException {
-    Bucket input = resourceToBucket("./bmp/three.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Negative image width */
-  @Test
-  public void testNegativeImageWidth() throws IOException {
-    Bucket input = resourceToBucket("./bmp/four.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid number of planes */
-  @Test
-  public void testInvalidNumberOfPlanes() throws IOException {
-    Bucket input = resourceToBucket("./bmp/five.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid bit depth */
-  @Test
-  public void testInvalidBitDepth() throws IOException {
-    Bucket input = resourceToBucket("./bmp/six.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid compression type */
-  @Test
-  public void testInvalidCompressionType() throws IOException {
-    Bucket input = resourceToBucket("./bmp/seven.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid image data size (i.e. not satisfying fileSize = headerSize + imagedatasize) */
-  @Test
-  public void testInvalidImageDataSize() throws IOException {
-    Bucket input = resourceToBucket("./bmp/eight.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Invalid image resolution */
-  @Test
-  public void testInvalidImageResolution() throws IOException {
-    Bucket input = resourceToBucket("./bmp/nine.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** File is shorter than expected */
-  @Test
-  public void testNotEnoughImageData() throws IOException {
-    Bucket input = resourceToBucket("./bmp/ten.bmp");
-    filterImage(input, DataFilterException.class);
-  }
-
-  /** Tests valid image */
-  @Test
-  public void testValidImage() throws IOException {
-    Bucket input = resourceToBucket("./bmp/ok.bmp");
+    // Act
     Bucket output = filterImage(input, null);
 
-    // Filter should return the original
-    assertEquals(input.size(), output.size(), "Input and output should be the same length");
-    assertArrayEquals(
-        BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output),
-        "Input and output are not identical");
-  }
-
-  /** Checks that the image size calculation works for images with padding */
-  @Test
-  public void testImageSizeCalculationWithPadding() throws IOException {
-    Bucket input = resourceToBucket("./bmp/sizeCalculationWithPadding.bmp");
-    Bucket output = filterImage(input, null);
-
-    // Filter should return the original
-    assertEquals(input.size(), output.size(), "Input and output should be the same length");
-    assertArrayEquals(
-        BucketTools.toByteArray(input),
-        BucketTools.toByteArray(output),
-        "Input and output are not identical");
-  }
-
-  /** Checks that the image size calculation works for images without padding */
-  @Test
-  public void testImageSizeCalculationWithoutPadding() throws IOException {
-    Bucket input = resourceToBucket("./bmp/sizeCalculationWithoutPadding.bmp");
-    Bucket output = filterImage(input, null);
-
-    // Filter should return the original
+    // Assert
     assertEquals(input.size(), output.size(), "Input and output should be the same length");
     assertArrayEquals(
         BucketTools.toByteArray(input),
@@ -148,5 +89,65 @@ public class BMPFilterTest {
   private static void readFilter(
       BMPFilter objBMPFilter, InputStream inStream, OutputStream outStream) throws IOException {
     objBMPFilter.readFilter(inStream, outStream, "", null, null, null);
+  }
+
+  @Test
+  void readInt_whenLittleEndian_expectCorrectValue() throws IOException {
+    // Arrange
+    BMPFilter filter = new BMPFilter();
+    byte[] bytes = new byte[] {0x01, 0x02, 0x03, 0x04}; // little-endian => 0x04030201
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes))) {
+      // Act
+      int value = filter.readInt(dis);
+
+      // Assert
+      assertEquals(0x04030201, value);
+    }
+  }
+
+  @Test
+  void readInt_whenEOF_expectEOFException() {
+    // Arrange
+    BMPFilter filter = new BMPFilter();
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(new byte[0]))) {
+      // Act + Assert
+      assertThrows(EOFException.class, () -> filter.readInt(dis));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Test
+  void readShort_whenLittleEndian_expectCorrectValue() throws IOException {
+    // Arrange
+    BMPFilter filter = new BMPFilter();
+    byte[] bytes = new byte[] {0x34, 0x12}; // little-endian => 0x1234
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes))) {
+      // Act
+      int value = filter.readShort(dis);
+
+      // Assert
+      assertEquals(0x1234, value);
+    }
+  }
+
+  @Test
+  void readShort_whenEOFOnFirstOrSecondByte_expectEOFException() {
+    // Arrange
+    BMPFilter filter = new BMPFilter();
+
+    // First byte missing
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(new byte[0]))) {
+      assertThrows(EOFException.class, () -> filter.readShort(dis));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+
+    // Second byte missing
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(new byte[] {0x01}))) {
+      assertThrows(EOFException.class, () -> filter.readShort(dis));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 }
