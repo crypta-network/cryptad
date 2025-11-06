@@ -40,12 +40,13 @@ public class FlacPacketFilter implements CodecPacketFilter {
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(packet.toArray()));
     switch (currentState) {
       case UNINITIALIZED:
-        if (!(packet instanceof FlacMetadataBlock)
-            && ((FlacMetadataBlock) packet).getMetadataBlockType() != BlockType.STREAMINFO) {
+        if (!(packet instanceof FlacMetadataBlock block)
+            || block.getMetadataBlockType() != BlockType.STREAMINFO) {
           streamValid = false;
           return null;
         }
-        if (((FlacMetadataBlock) packet).isLastMetadataBlock()) currentState = State.METADATA_FOUND;
+        // Transition based on the "last" flag of STREAMINFO
+        currentState = block.isLastMetadataBlock() ? State.METADATA_FOUND : State.STREAMINFO_FOUND;
         minimumBlockSize = input.readUnsignedShort();
         maximumBlockSize = input.readUnsignedShort();
         minimumFrameSize = (input.readUnsignedShort() << 8) | input.readUnsignedByte();
@@ -59,35 +60,43 @@ public class FlacPacketFilter implements CodecPacketFilter {
         byte[] hash = new byte[4];
         input.readFully(hash);
         md5sum = new HashResult(HashType.MD5, hash);
-        currentState = State.STREAMINFO_FOUND;
         break;
       case STREAMINFO_FOUND:
-        if (((FlacMetadataBlock) packet).isLastMetadataBlock()) currentState = State.METADATA_FOUND;
+        if (!(packet instanceof FlacMetadataBlock block2)) {
+          // Unexpected non-metadata packet before last metadata block; invalidate stream.
+          streamValid = false;
+          return null;
+        }
+        if (block2.isLastMetadataBlock()) currentState = State.METADATA_FOUND;
         byte[] payload;
         FlacMetadataBlockHeader header;
-        switch (((FlacMetadataBlock) packet).getMetadataBlockType()) {
+        switch (block2.getMetadataBlockType()) {
           case APPLICATION:
             payload = new byte[packet.payload.length];
             Arrays.fill(payload, (byte) 0);
-            header = ((FlacMetadataBlock) packet).getHeader();
+            header = block2.getHeader();
             packet = new FlacMetadataBlock(header.toInt(), payload);
             ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
             break;
           case VORBIS_COMMENT:
             payload = new byte[packet.payload.length];
             Arrays.fill(payload, (byte) 0);
-            header = ((FlacMetadataBlock) packet).getHeader();
+            header = block2.getHeader();
             packet = new FlacMetadataBlock(header.toInt(), payload);
             ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
             break;
           case PICTURE:
             payload = new byte[packet.payload.length];
             Arrays.fill(payload, (byte) 0);
-            header = ((FlacMetadataBlock) packet).getHeader();
+            header = block2.getHeader();
             packet = new FlacMetadataBlock(header.toInt(), payload);
             ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
             break;
         }
+        break;
+      case METADATA_FOUND:
+        // Audio frames and any subsequent packets pass through unchanged.
+        break;
     }
     if (packet instanceof FlacMetadataBlock block && logMINOR)
       LOG.debug("Returning packet of type" + block.getMetadataBlockType());
