@@ -34,14 +34,15 @@ import network.crypta.support.io.FileUtil;
  *   <li>Copies input to output unchanged when all checks pass.
  * </ul>
  *
+ * <p>References: <a
+ * href="http://www.fastgraph.com/help/bmp_header_format.html">http://www.fastgraph.com/help/bmp_header_format.html</a>
+ * and <a
+ * href="http://en.wikipedia.org/wiki/BMP_file_format">http://en.wikipedia.org/wiki/BMP_file_format</a>
+ *
  * @see ContentDataFilter
  * @see #readFilter(InputStream, OutputStream, String, Map, String, FilterCallback)
  * @author kurmiashish
  * @since 1
- *     <p>References: <a
- *     href="http://www.fastgraph.com/help/bmp_header_format.html">http://www.fastgraph.com/help/bmp_header_format.html</a>
- *     and <a
- *     href="http://en.wikipedia.org/wiki/BMP_file_format">http://en.wikipedia.org/wiki/BMP_file_format</a>
  */
 public class BMPFilter implements ContentDataFilter {
 
