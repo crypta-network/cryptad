@@ -123,21 +123,7 @@ public class FlacPacketFilter implements CodecPacketFilter {
         byte[] payload;
         FlacMetadataBlockHeader header;
         switch (block2.getMetadataBlockType()) {
-          case APPLICATION:
-            payload = new byte[packet.payload.length];
-            Arrays.fill(payload, (byte) 0);
-            header = block2.getHeader();
-            packet = new FlacMetadataBlock(header.toInt(), payload);
-            ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
-            break;
-          case VORBIS_COMMENT:
-            payload = new byte[packet.payload.length];
-            Arrays.fill(payload, (byte) 0);
-            header = block2.getHeader();
-            packet = new FlacMetadataBlock(header.toInt(), payload);
-            ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
-            break;
-          case PICTURE:
+          case APPLICATION, VORBIS_COMMENT, PICTURE:
             payload = new byte[packet.payload.length];
             Arrays.fill(payload, (byte) 0);
             header = block2.getHeader();
