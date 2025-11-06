@@ -4740,69 +4740,69 @@ class CSSTokenizerFilter {
         boolean allowCommaDelimiters) {
       this.onlyValueVerifier = onlyValueVerifier;
       this.allowCommaDelimiters = allowCommaDelimiters;
-      boolean isInteger,
-          isReal,
-          isPercentage,
-          isLength,
-          isAngle,
-          isColor,
-          isIDSelector,
-          isURI,
-          isShape,
-          isString,
-          isCounter,
-          isIdentifier,
-          isTime,
-          isFrequency,
-          isTransform;
-      isInteger =
-          isReal =
-              isPercentage =
-                  isLength =
-                      isAngle =
-                          isColor =
-                              isURI =
-                                  isShape =
-                                      isString =
-                                          isCounter =
-                                              isIdentifier =
-                                                  isTime =
-                                                      isIDSelector =
-                                                          isFrequency = isTransform = false;
+      boolean isIntegerFlag,
+          isRealFlag,
+          isPercentageFlag,
+          isLengthFlag,
+          isAngleFlag,
+          isColorFlag,
+          isIDSelectorFlag,
+          isURIFlag,
+          isShapeFlag,
+          isStringFlag,
+          isCounterFlag,
+          isIdentifierFlag,
+          isTimeFlag,
+          isFrequencyFlag,
+          isTransformFlag;
+      isIntegerFlag =
+          isRealFlag =
+              isPercentageFlag =
+                  isLengthFlag =
+                      isAngleFlag =
+                          isColorFlag =
+                              isURIFlag =
+                                  isShapeFlag =
+                                      isStringFlag =
+                                          isCounterFlag =
+                                              isIdentifierFlag =
+                                                  isTimeFlag =
+                                                      isIDSelectorFlag =
+                                                          isFrequencyFlag = isTransformFlag = false;
       if (possibleValues != null) {
         for (String possibleValue : possibleValues) {
-          if ("in".equals(possibleValue)) isInteger = true; // in
-          else if ("re".equals(possibleValue)) isReal = true; // re
-          else if ("pe".equals(possibleValue)) isPercentage = true; // pe
-          else if ("le".equals(possibleValue)) isLength = true; // le
-          else if ("an".equals(possibleValue)) isAngle = true; // an
-          else if ("co".equals(possibleValue)) isColor = true; // co
-          else if ("ur".equals(possibleValue)) isURI = true; // ur
+          if ("in".equals(possibleValue)) isIntegerFlag = true; // in
+          else if ("re".equals(possibleValue)) isRealFlag = true; // re
+          else if ("pe".equals(possibleValue)) isPercentageFlag = true; // pe
+          else if ("le".equals(possibleValue)) isLengthFlag = true; // le
+          else if ("an".equals(possibleValue)) isAngleFlag = true; // an
+          else if ("co".equals(possibleValue)) isColorFlag = true; // co
+          else if ("ur".equals(possibleValue)) isURIFlag = true; // ur
           else if ("se".equals(possibleValue)) {
-            isIDSelector = true; // se
-          } else if ("sh".equals(possibleValue)) isShape = true; // sh
-          else if ("st".equals(possibleValue)) isString = true; // st
-          else if ("id".equals(possibleValue)) isIdentifier = true; // id
-          else if ("ti".equals(possibleValue)) isTime = true; // ti
-          else if ("fr".equals(possibleValue)) isFrequency = true; // fr
-          else if ("tr".equals(possibleValue)) isTransform = true; // tr
+            isIDSelectorFlag = true; // se
+          } else if ("sh".equals(possibleValue)) isShapeFlag = true; // sh
+          else if ("st".equals(possibleValue)) isStringFlag = true; // st
+          else if ("id".equals(possibleValue)) isIdentifierFlag = true; // id
+          else if ("ti".equals(possibleValue)) isTimeFlag = true; // ti
+          else if ("fr".equals(possibleValue)) isFrequencyFlag = true; // fr
+          else if ("tr".equals(possibleValue)) isTransformFlag = true; // tr
         }
       }
-      this.isInteger = isInteger;
-      this.isReal = isReal;
-      this.isPercentage = isPercentage;
-      this.isLength = isLength;
-      this.isAngle = isAngle;
-      this.isColor = isColor;
-      this.isURI = isURI;
-      this.isIDSelector = isIDSelector;
-      this.isShape = isShape;
-      this.isString = isString;
-      this.isCounter = isCounter;
-      this.isIdentifier = isIdentifier;
-      this.isTime = isTime;
-      this.isFrequency = isFrequency;
-      this.isTransform = isTransform;
+      this.isInteger = isIntegerFlag;
+      this.isReal = isRealFlag;
+      this.isPercentage = isPercentageFlag;
+      this.isLength = isLengthFlag;
+      this.isAngle = isAngleFlag;
+      this.isColor = isColorFlag;
+      this.isURI = isURIFlag;
+      this.isIDSelector = isIDSelectorFlag;
+      this.isShape = isShapeFlag;
+      this.isString = isStringFlag;
+      this.isCounter = isCounterFlag;
+      this.isIdentifier = isIdentifierFlag;
+      this.isTime = isTimeFlag;
+      this.isFrequency = isFrequencyFlag;
+      this.isTransform = isTransformFlag;
       if (allowedValues != null) {
         this.allowedValues = Collections.unmodifiableSet(new HashSet<>(allowedValues));
       } else {
