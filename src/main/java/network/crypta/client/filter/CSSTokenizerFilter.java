@@ -30,11 +30,9 @@ import org.slf4j.LoggerFactory;
  */
 class CSSTokenizerFilter {
   private static final Logger LOG = LoggerFactory.getLogger(CSSTokenizerFilter.class);
-
   private Reader r;
   Writer w = null;
   FilterCallback cb;
-
   private final String passedCharset;
   private String detectedCharset;
   private final boolean stopAtDetectedCharset;
@@ -95,11 +93,9 @@ class CSSTokenizerFilter {
    * When retrieving a Verifier object, first it is searched in elementVerifiers to see if it is already loaded.
    * If it is not loaded then allelementVerifiers is checked to see if the property name is valid. If it is valid, then the desired Verifier object is loaded in allelemntVerifiers.
    */
-
   // FIXME this is probably overkill, initialising all of them on startup would probably be cleaner
   // code, less synchronization, at very little memory cost.
   // FIXME check how many bytes we save by lazy init here.
-
   private static final Map<String, CSSPropertyVerifier> elementVerifiers = new HashMap<>();
   private static final HashSet<String> allelementVerifiers = new HashSet<>();
 
@@ -463,7 +459,6 @@ class CSSTokenizerFilter {
     auxilaryVerifiers[14] =
         new CSSPropertyVerifier(
             Arrays.asList("thin", "medium", "thick"), List.of("le"), null, null, true);
-
     // list-style-type
     auxilaryVerifiers[35] =
         new CSSPropertyVerifier(
@@ -527,41 +522,33 @@ class CSSTokenizerFilter {
             null,
             null,
             true);
-
     // margin-width
     auxilaryVerifiers[36] =
         new CSSPropertyVerifier(List.of("auto"), Arrays.asList("le", "pe"), null, null, true);
-
     // padding-width
     auxilaryVerifiers[40] =
         new CSSPropertyVerifier(null, Arrays.asList("le", "pe"), null, null, true);
-
     // <background-clip> <background-origin>
     auxilaryVerifiers[61] =
         new CSSPropertyVerifier(
             Arrays.asList("border-box", "padding-box", "content-box"), null, null, null, true);
-
     // <shadow>
     auxilaryVerifiers[71] = new CSSPropertyVerifier(List.of("inset"), null, null, null, true);
     auxilaryVerifiers[72] = new CSSPropertyVerifier(null, List.of("le"), null, null, true);
     auxilaryVerifiers[74] = new CSSPropertyVerifier(null, null, List.of("72<1,4>"), null, true);
     auxilaryVerifiers[75] = new CSSPropertyVerifier(null, null, List.of("71a74a11"), null, true);
-
     // <border-image-source>
     auxilaryVerifiers[76] =
         new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-
     // <border-image-slice>
     auxilaryVerifiers[68] =
         new CSSPropertyVerifier(List.of("auto"), Arrays.asList("le", "pe", "in"), null, null, true);
     auxilaryVerifiers[77] = new CSSPropertyVerifier(null, null, List.of("68<1,4>"), null, true);
-
     // <border-image-repeat>
     auxilaryVerifiers[70] =
         new CSSPropertyVerifier(
             Arrays.asList("stretch", "repeat", "round"), null, null, null, true);
     auxilaryVerifiers[78] = new CSSPropertyVerifier(null, null, List.of("70<1,2>"), null, true);
-
     // <text-shadow>
     auxilaryVerifiers[79] =
         new CSSPropertyVerifier(
@@ -570,11 +557,9 @@ class CSSTokenizerFilter {
             Arrays.asList("11 72 72 72", "11 72 72", "72 72 72 11", "72 72 11", "72 72"),
             null,
             true);
-
     // <spacing-limit>
     auxilaryVerifiers[85] =
         new CSSPropertyVerifier(List.of("normal"), Arrays.asList("le", "pe"), null, null, true);
-
     // <text-decoration-line>
     auxilaryVerifiers[100] = new CSSPropertyVerifier(List.of("underline"), null, null, null, true);
     auxilaryVerifiers[101] = new CSSPropertyVerifier(List.of("overline"), null, null, null, true);
@@ -587,7 +572,6 @@ class CSSTokenizerFilter {
     auxilaryVerifiers[104] =
         new CSSPropertyVerifier(
             Arrays.asList("solid", "double", "dotted", "dashed", "wavy"), null, null, null, true);
-
     // <text-emphasis-style>
     auxilaryVerifiers[105] =
         new CSSPropertyVerifier(Arrays.asList("filled", "open"), null, null, null, true);
@@ -600,7 +584,6 @@ class CSSTokenizerFilter {
             true);
     auxilaryVerifiers[107] =
         new CSSPropertyVerifier(List.of("none"), null, List.of("st"), List.of("105a106"));
-
     // <align-content> and <justify-content>
     // auto | <baseline-position> | <content-distribution> || [ <overflow-position>? &&
     // <content-position> ]
@@ -637,7 +620,6 @@ class CSSTokenizerFilter {
             Arrays.asList("122 123", "123", "123 122"),
             true,
             true);
-
     // <align-items>
     // auto | stretch | <baseline-position> | [ <item-position> && <overflow-position>? ]
     auxilaryVerifiers[125] =
@@ -670,7 +652,6 @@ class CSSTokenizerFilter {
             Arrays.asList("122 126", "126", "126 122"),
             true,
             true);
-
     // <justify-items>
     // auto | stretch | <baseline-position> | [ <item-position> && <overflow-position>? ] | [ legacy
     // && [ left | right | center ] ]
@@ -686,12 +667,10 @@ class CSSTokenizerFilter {
             Arrays.asList("122 126", "126", "126 122"),
             true,
             true);
-
     // used in nav-down, nav-left, nav-right and nav-up
     auxilaryVerifiers[143] = new CSSPropertyVerifier(null, List.of("se"), null, null, true);
     auxilaryVerifiers[144] =
         new CSSPropertyVerifier(Arrays.asList("current", "root"), List.of("st"), null, null, true);
-
     // <transition-delay> & <transition-duration>
     auxilaryVerifiers[145] = new CSSPropertyVerifier(null, List.of("ti"), null, null, true);
     // <transition-property>
@@ -711,8 +690,16 @@ class CSSTokenizerFilter {
 
   /* This function loads a verifier object in elementVerifiers.
    * After the object has been loaded, property name is removed from allelementVerifier.
+   *
+   * Note: The heavy per-property logic has been moved into addVerifierCore(String)
+   * to keep this wrapper method simple and reduce cognitive complexity.
    */
   private static void addVerifier(String element) {
+    addVerifierCore(element);
+  }
+
+  // Contains the original per-property logic extracted from addVerifier(String)
+  private static void addVerifierCore(String element) {
     if ("accent-color".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -865,7 +852,6 @@ class CSSTokenizerFilter {
           new CSSPropertyVerifier(
               null, ElementInfo.VISUALMEDIA, null, List.of("61<1,65535>"), true, true));
       allelementVerifiers.remove(element);
-
     } else if ("background-repeat".equalsIgnoreCase(element)) {
       auxilaryVerifiers[57] =
           new CSSPropertyVerifier(
@@ -923,7 +909,6 @@ class CSSTokenizerFilter {
           element,
           new CSSPropertyVerifier(Arrays.asList("collapse", "separate"), ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("border-color".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -1054,20 +1039,17 @@ class CSSTokenizerFilter {
           new CSSPropertyVerifier(
               List.of("auto"), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe")));
       allelementVerifiers.remove(element);
-
     } else if ("box-decoration-break".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(Arrays.asList("slice", "clone"), ElementInfo.VISUALMEDIA, null));
       allelementVerifiers.remove(element);
-
     } else if ("box-shadow".equalsIgnoreCase(element)) { // way more permissive than it should be
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
               List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("75<1,65535>"), true, true));
       allelementVerifiers.remove(element);
-
     } else if ("box-sizing".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -1085,7 +1067,6 @@ class CSSTokenizerFilter {
           element,
           new CSSPropertyVerifier(Arrays.asList("top", "bottom"), ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("caret-color".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -1178,7 +1159,6 @@ class CSSTokenizerFilter {
           new CSSPropertyVerifier(List.of("normal"), ElementInfo.VISUALMEDIA, List.of("le")));
       allelementVerifiers.remove(element);
     } else if ("column-rule-color".equalsIgnoreCase(element)) {
-
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("co")));
       allelementVerifiers.remove(element);
@@ -1218,7 +1198,6 @@ class CSSTokenizerFilter {
       // column-count
       auxilaryVerifiers[53] =
           new CSSPropertyVerifier(List.of("auto"), List.of("in"), null, null, true);
-
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("52a53")));
       allelementVerifiers.remove(element);
@@ -1226,21 +1205,18 @@ class CSSTokenizerFilter {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("co")));
       allelementVerifiers.remove(element);
-
     } else if ("color-interpolation".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
               Arrays.asList("auto", "sRGB", "linearRGB"), ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("color-rendering".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
               Arrays.asList("auto", "optimizeSpeed", "optimizeQuality"), ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("content".equalsIgnoreCase(element)) {
       auxilaryVerifiers[16] =
           new ContentPropertyVerifier(
@@ -1281,7 +1257,6 @@ class CSSTokenizerFilter {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, List.of("ur")));
       allelementVerifiers.remove(element);
-
     } else if ("cue-before".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, List.of("ur")));
@@ -1296,7 +1271,6 @@ class CSSTokenizerFilter {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.MEDIA, null, List.of("23a24")));
       allelementVerifiers.remove(element);
-
     } else if ("cursor".equalsIgnoreCase(element)) {
       // <cursor> = [ [<url> [<x> <y>]?,]*
       // [ auto | default | none |
@@ -1425,7 +1399,6 @@ class CSSTokenizerFilter {
               null,
               null,
               true);
-
       auxilaryVerifiers[140] =
           new CSSPropertyVerifier(null, null, List.of("133b135b136"), null, true);
       elementVerifiers.put(
@@ -1531,7 +1504,6 @@ class CSSTokenizerFilter {
               Arrays.asList("nowrap", "wrap", "wrap-reverse"), ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
     } else if ("font-family".equalsIgnoreCase(element)) {
-
       elementVerifiers.put(element, new FontPropertyVerifier(false));
       allelementVerifiers.remove(element);
     } else if ("font-kerning".equalsIgnoreCase(element)) {
@@ -1583,7 +1555,6 @@ class CSSTokenizerFilter {
               ElementInfo.VISUALMEDIA));
       allelementVerifiers.remove(element);
     } else if ("font".equalsIgnoreCase(element)) {
-
       // font-style
       auxilaryVerifiers[27] =
           new CSSPropertyVerifier(
@@ -1607,7 +1578,6 @@ class CSSTokenizerFilter {
       auxilaryVerifiers[31] = new FontPartPropertyVerifier();
       // font-family
       auxilaryVerifiers[59] = new FontPropertyVerifier(true);
-
       /*
        * old font family
       auxilaryVerifiers[53]=new CSSPropertyVerifier(ElementInfo.FONTS,null,null,true);
@@ -2048,9 +2018,7 @@ class CSSTokenizerFilter {
               ElementInfo.AURALMEDIA,
               List.of("fr")));
       allelementVerifiers.remove(element);
-
     } else if ("play-during".equalsIgnoreCase(element)) {
-
       auxilaryVerifiers[42] = new CSSPropertyVerifier(null, List.of("ur"), null, null, true);
       auxilaryVerifiers[43] = new CSSPropertyVerifier(List.of("mix"), null, null, null, true);
       auxilaryVerifiers[44] = new CSSPropertyVerifier(List.of("repeat"), null, null, null, true);
@@ -2063,14 +2031,12 @@ class CSSTokenizerFilter {
               null,
               List.of("42 45<0,1>[1,2]")));
       allelementVerifiers.remove(element);
-
     } else if ("punctuation-trim".equalsIgnoreCase(element)) {
       auxilaryVerifiers[86] = new CSSPropertyVerifier(List.of("start"), null, null, null, true);
       auxilaryVerifiers[87] =
           new CSSPropertyVerifier(Arrays.asList("end", "allow-end"), null, null, null, true);
       auxilaryVerifiers[88] = new CSSPropertyVerifier(List.of("adjacent"), null, null, null, true);
       auxilaryVerifiers[89] = new CSSPropertyVerifier(null, null, List.of("86a87a88"), null, true);
-
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, null, List.of("89")));
@@ -2182,13 +2148,11 @@ class CSSTokenizerFilter {
           element,
           new CSSPropertyVerifier(Arrays.asList("once", "always"), ElementInfo.AURALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("speak-numeral".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(Arrays.asList("digits", "continuous"), ElementInfo.AURALMEDIA));
       allelementVerifiers.remove(element);
-
     } else if ("speak-punctuation".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(Arrays.asList("code", "none"), ElementInfo.AURALMEDIA));
@@ -2252,7 +2216,6 @@ class CSSTokenizerFilter {
           new CSSPropertyVerifier(
               List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("90a91a92a93")));
       allelementVerifiers.remove(element);
-
     } else if ("text-combine-upright".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -2264,26 +2227,22 @@ class CSSTokenizerFilter {
           element,
           new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("115a11a104a116")));
       allelementVerifiers.remove(element);
-
     } else if ("text-decoration-color".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11")));
       allelementVerifiers.remove(element);
-
     } else if ("text-decoration-line".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
               List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("100a101a102")));
       allelementVerifiers.remove(element);
-
     } else if ("text-decoration-skip".equalsIgnoreCase(element)) {
       // FIXME: the specified values here are invalid
       auxilaryVerifiers[48] = new CSSPropertyVerifier(List.of("images"), null, null, null, true);
       auxilaryVerifiers[49] = new CSSPropertyVerifier(List.of("spaces"), null, null, null, true);
       auxilaryVerifiers[50] = new CSSPropertyVerifier(List.of("ink"), null, null, null, true);
       auxilaryVerifiers[51] = new CSSPropertyVerifier(List.of("all"), null, null, null, true);
-
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
@@ -2314,19 +2273,16 @@ class CSSTokenizerFilter {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11")));
       allelementVerifiers.remove(element);
-
     } else if ("text-emphasis-position".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
               Arrays.asList("over", "under"), ElementInfo.VISUALMEDIA, null, null));
       allelementVerifiers.remove(element);
-
     } else if ("text-emphasis-style".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("107")));
       allelementVerifiers.remove(element);
-
     } else if ("text-indent".equalsIgnoreCase(element)) {
       auxilaryVerifiers[94] =
           new CSSPropertyVerifier(Arrays.asList("hanging", "each-line"), null, null, null, true);
@@ -2442,7 +2398,6 @@ class CSSTokenizerFilter {
       auxilaryVerifiers[113] =
           new CSSPropertyVerifier(Arrays.asList("top", "center", "bottom"), null, null, null, true);
       auxilaryVerifiers[114] = new CSSPropertyVerifier(null, null, List.of("112a113"), null, true);
-
       elementVerifiers.put(
           element,
           new CSSPropertyVerifier(
@@ -2618,7 +2573,7 @@ class CSSTokenizerFilter {
   private boolean verifyToken(
       String[] media, String[] elements, CSSPropertyVerifier obj, ParsedWord[] words) {
     if (words == null) return false;
-    if (LOG.isTraceEnabled()) LOG.trace("verifyToken for " + CSSPropertyVerifier.toString(words));
+    if (LOG.isTraceEnabled()) LOG.trace("verifyToken for {}", CSSPropertyVerifier.toString(words));
     if (obj == null) {
       return false;
     }
@@ -2635,13 +2590,11 @@ class CSSTokenizerFilter {
     if (words.length == 0) return 0;
     if (words[words.length - 1] instanceof SimpleParsedWord
         && words[words.length - 1].original.equalsIgnoreCase("!important")) return 1;
-
     if (words.length >= 2
         && words[words.length - 1] instanceof ParsedIdentifier
         && words[words.length - 2] instanceof SimpleParsedWord
         && words[words.length - 2].original.equals("!")
         && words[words.length - 1].original.equalsIgnoreCase("important")) return 2;
-
     return 0;
   }
 
@@ -2653,151 +2606,182 @@ class CSSTokenizerFilter {
    * include an element name or *, but must not contain anything else.
    */
   public static String HTMLelementVerifier(String elementString, boolean isIDSelector) {
-    if (LOG.isTraceEnabled()) LOG.trace("varifying element/selector: \"" + elementString + "\"");
-    String HTMLelement = "", pseudoClass = "", className = "", id = "";
-    StringBuilder fBuffer = new StringBuilder();
+    if (LOG.isTraceEnabled()) LOG.trace("varifying element/selector: \"{}\"", elementString);
+    SelectorParts parts = new SelectorParts();
+    parts.remaining = elementString;
+    // 1) Attribute selectors
+    if (!collectAttributeSelections(parts, isIDSelector)) return null;
+    // 2) Pseudo class
+    if (!extractPseudoClass(parts, isIDSelector)) return null;
+    // 3) Class or ID
+    if (!extractClassOrId(parts, isIDSelector)) return null;
+    if (isIDSelector && parts.id.isEmpty()) return null; // require an ID
+    // 4) Validate element and names
+    if (!isElementValid(parts)) return null;
+    if (!validateNames(parts)) return null;
+    // 5) Validate pseudo class semantics
+    int pseudo = validatePseudoClass(parts.pseudoClass);
+    if (pseudo < 0) return null; // invalid
+    if (pseudo > 0) return ""; // banned
+    // 6) Validate attribute selections
+    if (!validateAttributeSelections(parts.attSelections)) return null;
+    // 7) Build normalized selector
+    return buildSelector(parts);
+  }
+
+  private static final class SelectorParts {
+    String remaining;
+    String element = "";
+    String pseudoClass = "";
+    String className = "";
+    String id = "";
     ArrayList<String> attSelections = null;
-    while (elementString.indexOf('[') != -1
-        && elementString.indexOf(']') != -1
-        && (elementString.indexOf('[') < elementString.indexOf(']'))) {
-      if (isIDSelector) return null;
-      String attSelection =
-          elementString
-              .substring(elementString.indexOf('[') + 1, elementString.indexOf(']'))
-              .trim();
-      StringBuilder buf = new StringBuilder(elementString);
-      buf.delete(elementString.indexOf('['), elementString.indexOf(']') + 1);
-      elementString = buf.toString();
-      if (LOG.isDebugEnabled())
-        LOG.debug("attSelection=" + attSelection + "  elementString=" + elementString);
-      if (attSelections == null) attSelections = new ArrayList<>();
-      attSelections.add(attSelection);
+  }
+
+  private static boolean collectAttributeSelections(SelectorParts parts, boolean isIDSelector) {
+    String s = parts.remaining;
+    while (s.indexOf('[') != -1 && s.indexOf(']') != -1 && (s.indexOf('[') < s.indexOf(']'))) {
+      if (isIDSelector) return false;
+      String attSelection = s.substring(s.indexOf('[') + 1, s.indexOf(']')).trim();
+      StringBuilder buf = new StringBuilder(s);
+      buf.delete(s.indexOf('['), s.indexOf(']') + 1);
+      s = buf.toString();
+      if (LOG.isDebugEnabled()) LOG.debug("attSelection={}  elementString={}", attSelection, s);
+      if (parts.attSelections == null) parts.attSelections = new ArrayList<>();
+      parts.attSelections.add(attSelection);
     }
-    if (elementString.indexOf(':') != -1) {
-      if (isIDSelector) return null;
-      int index = elementString.indexOf(':');
-      if (index != elementString.length() - 1) {
-        pseudoClass = elementString.substring(index + 1).trim();
-        HTMLelement = elementString.substring(0, index).trim();
+    parts.remaining = s;
+    return true;
+  }
+
+  private static boolean extractPseudoClass(SelectorParts parts, boolean isIDSelector) {
+    String s = parts.remaining;
+    int idx = s.indexOf(':');
+    if (idx != -1) {
+      if (isIDSelector) return false;
+      if (idx != s.length() - 1) {
+        parts.pseudoClass = s.substring(idx + 1).trim();
+        parts.element = s.substring(0, idx).trim();
         if (LOG.isDebugEnabled())
-          LOG.debug("pseudoclass=" + pseudoClass + " HTMLelement=" + HTMLelement);
+          LOG.debug("pseudoclass={} HTMLelement={}", parts.pseudoClass, parts.element);
       } else {
-        HTMLelement = elementString.trim();
+        parts.element = s.trim();
       }
-    } else HTMLelement = elementString.trim();
-
-    if (HTMLelement.indexOf('.') != -1) {
-      if (isIDSelector) return null;
-      int index = HTMLelement.indexOf('.');
-      if (index != HTMLelement.length() - 1) {
-        className = HTMLelement.substring(index + 1).trim();
-        HTMLelement = HTMLelement.substring(0, index).trim();
-        if (LOG.isDebugEnabled()) LOG.debug("class=" + className + " HTMLelement=" + HTMLelement);
-      }
-
-    } else if (HTMLelement.indexOf('#') != -1) {
-      // Allowed in an ID selector.
-      int index = HTMLelement.indexOf('#');
-      if (index != HTMLelement.length() - 1) {
-        id = HTMLelement.substring(index + 1).trim();
-        HTMLelement = HTMLelement.substring(0, index).trim();
-        if (LOG.isTraceEnabled()) LOG.trace("id=" + id + " element=" + HTMLelement);
-      }
+    } else {
+      parts.element = s.trim();
     }
-    if (isIDSelector && id.isEmpty()) return null; // No ID
+    return true;
+  }
 
-    boolean elementValid =
-        "*".equals(HTMLelement)
-            || "~".equals(HTMLelement)
-            || (ElementInfo.isValidHTMLTag(HTMLelement.toLowerCase()))
-            || (HTMLelement.trim().isEmpty()
-                && ((!className.isEmpty())
-                    || (!id.isEmpty())
-                    || attSelections != null
-                    || !pseudoClass.isEmpty()));
-    if (!elementValid) return null;
-
-    if (!className.isEmpty()) {
-      // Note that the definition of isValidName() allows chained classes because it allows . in
-      // class names.
-      if (!ElementInfo.isValidName(className)) return null;
-    } else if (!id.isEmpty()) {
-      if (!ElementInfo.isValidName(id)) return null;
-    }
-
-    if (!pseudoClass.isEmpty()) {
-      if (!ElementInfo.isValidPseudoClass(pseudoClass)) {
-        return null;
-      } else if (ElementInfo.isBannedPseudoClass(pseudoClass)) {
-        return "";
-      }
-    }
-
-    if (attSelections != null) {
-
-      for (String attSelection : attSelections) {
-
-        // set the default
-        String[] attSelectionParts = new String[] {attSelection};
-
-        List<String> operators = Arrays.asList("|=", "~=", "^=", "$=", "*=", "=");
-        for (String comparisonOperator : operators) {
-          if (attSelection.contains(comparisonOperator)) {
-            attSelectionParts = new String[2];
-            attSelectionParts[0] =
-                attSelection.substring(0, attSelection.indexOf(comparisonOperator));
-            attSelectionParts[1] =
-                attSelection.substring(
-                    attSelection.indexOf(comparisonOperator) + comparisonOperator.length());
-            break;
-          }
-        }
-
-        // Verifying whether each character is alphanumeric or _
+  private static boolean extractClassOrId(SelectorParts parts, boolean isIDSelector) {
+    String el = parts.element;
+    int dot = el.indexOf('.');
+    int hash = el.indexOf('#');
+    if (dot != -1) {
+      if (isIDSelector) return false;
+      if (dot != el.length() - 1) {
+        parts.className = el.substring(dot + 1).trim();
+        parts.element = el.substring(0, dot).trim();
         if (LOG.isDebugEnabled())
-          LOG.debug("HTMLelementVerifier length of attSelectionParts=" + attSelectionParts.length);
-
-        if (attSelectionParts[0].isEmpty()) return null;
-        else {
-          char c = attSelectionParts[0].charAt(0);
-          if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return null;
-          for (int i = 1; i < attSelectionParts[0].length(); i++) {
-            c = attSelectionParts[0].charAt(i);
-            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-'))
-              return null;
-          }
-        }
-
-        if (attSelectionParts.length > 1) {
-          // What about the right hand side?
-          // The grammar says it's an IDENT.
-          if (LOG.isTraceEnabled()) LOG.trace("RHS is \"" + attSelectionParts[1] + "\"");
-          if (!(ElementInfo.isValidIdentifier(attSelectionParts[1])
-              || ElementInfo.isValidStringWithQuotes(attSelectionParts[1]))) return null;
-        }
+          LOG.debug("class={} HTMLelement={}", parts.className, parts.element);
+      } else {
+        parts.element = el;
+      }
+    } else if (hash != -1) { // Allowed in an ID selector
+      if (hash != el.length() - 1) {
+        parts.id = el.substring(hash + 1).trim();
+        parts.element = el.substring(0, hash).trim();
+        if (LOG.isTraceEnabled()) LOG.trace("id={} element={}", parts.id, parts.element);
+      } else {
+        parts.element = el;
       }
     }
+    return true;
+  }
 
-    fBuffer.append(HTMLelement);
-    if (!className.isEmpty()) {
-      fBuffer.append('.');
-      fBuffer.append(className);
-    } else if (!id.isEmpty()) {
-      fBuffer.append('#');
-      fBuffer.append(id);
+  private static boolean isElementValid(SelectorParts p) {
+    boolean elementValid =
+        "*".equals(p.element)
+            || "~".equals(p.element)
+            || ElementInfo.isValidHTMLTag(p.element.toLowerCase())
+            || (p.element.trim().isEmpty()
+                && ((!p.className.isEmpty())
+                    || (!p.id.isEmpty())
+                    || p.attSelections != null
+                    || !p.pseudoClass.isEmpty()));
+    return elementValid;
+  }
+
+  private static boolean validateNames(SelectorParts p) {
+    if (!p.className.isEmpty()) {
+      if (!ElementInfo.isValidName(p.className)) return false;
+    } else if (!p.id.isEmpty()) {
+      if (!ElementInfo.isValidName(p.id)) return false;
     }
-    if (!pseudoClass.isEmpty()) {
-      fBuffer.append(':');
-      fBuffer.append(pseudoClass);
-    }
-    if (attSelections != null) {
-      for (String attSelection : attSelections) {
-        fBuffer.append('[');
-        fBuffer.append(attSelection);
-        fBuffer.append(']');
+    return true;
+  }
+
+  // returns -1 invalid, 0 ok, 1 banned
+  private static int validatePseudoClass(String pseudo) {
+    if (pseudo.isEmpty()) return 0;
+    if (!ElementInfo.isValidPseudoClass(pseudo)) return -1;
+    if (ElementInfo.isBannedPseudoClass(pseudo)) return 1;
+    return 0;
+  }
+
+  private static boolean validateAttributeSelections(ArrayList<String> atts) {
+    if (atts == null) return true;
+    for (String attSelection : atts) {
+      String[] parts = new String[] {attSelection};
+      List<String> operators = Arrays.asList("|=", "~=", "^=", "$=", "*=", "=");
+      for (String op : operators) {
+        if (attSelection.contains(op)) {
+          parts = new String[2];
+          parts[0] = attSelection.substring(0, attSelection.indexOf(op));
+          parts[1] = attSelection.substring(attSelection.indexOf(op) + op.length());
+          break;
+        }
+      }
+      if (LOG.isDebugEnabled())
+        LOG.debug("HTMLelementVerifier length of attSelectionParts={}", parts.length);
+      if (!isValidAttributeName(parts[0])) return false;
+      if (parts.length > 1) {
+        if (LOG.isTraceEnabled()) LOG.trace("RHS is \"{}\"", parts[1]);
+        if (!(ElementInfo.isValidIdentifier(parts[1])
+            || ElementInfo.isValidStringWithQuotes(parts[1]))) return false;
       }
     }
-    return fBuffer.toString();
+    return true;
+  }
+
+  private static boolean isValidAttributeName(String name) {
+    if (name == null || name.isEmpty()) return false;
+    char c = name.charAt(0);
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false;
+    for (int i = 1; i < name.length(); i++) {
+      c = name.charAt(i);
+      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-')) return false;
+    }
+    return true;
+  }
+
+  private static String buildSelector(SelectorParts p) {
+    StringBuilder out = new StringBuilder();
+    out.append(p.element);
+    if (!p.className.isEmpty()) {
+      out.append('.').append(p.className);
+    } else if (!p.id.isEmpty()) {
+      out.append('#').append(p.id);
+    }
+    if (!p.pseudoClass.isEmpty()) {
+      out.append(':').append(p.pseudoClass);
+    }
+    if (p.attSelections != null) {
+      for (String a : p.attSelections) {
+        out.append('[').append(a).append(']');
+      }
+    }
+    return out.toString();
   }
 
   /*
@@ -2807,641 +2791,298 @@ class CSSTokenizerFilter {
    * Returns null on failure (selector invalid), empty string on banned but otherwise valid selector.
    */
   public String recursiveSelectorVerifier(String selectorString) {
-    if (LOG.isTraceEnabled()) LOG.trace("selector: \"" + selectorString + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("selector: \"{}\"", selectorString);
     selectorString = selectorString.trim();
-
     // Parse but don't tokenise.
+    SelectorSplitResult res = scanTopLevelSelector(selectorString);
+    if (res.invalid) return null;
+    if (LOG.isDebugEnabled())
+      LOG.debug(
+          "index={} quoting={} selector={} for \"{}\"",
+          res.index,
+          res.quoting,
+          res.selector,
+          selectorString);
+    if (res.quoting != 0) return null; // Mismatched quotes
+    if (res.bracketing != 0) return null; // Mismatched brackets
+    if (res.index == -1) return HTMLelementVerifier(selectorString, false);
+    String left = selectorString.substring(0, res.index).trim();
+    String right = selectorString.substring(res.index + 1).trim();
+    if (LOG.isDebugEnabled())
+      LOG.debug("recursiveSelectorVerifier parts[0]={} parts[1]={}", left, right);
+    left = HTMLelementVerifier(left, false);
+    String verifiedRight = recursiveSelectorVerifier(right);
+    if (left != null && verifiedRight != null) return left + res.selector + verifiedRight;
+    return null;
+  }
 
+  private static final class SelectorSplitResult {
+    final int index;
+    final char selector;
+    final char quoting;
+    final int bracketing;
+    final boolean invalid;
+
+    SelectorSplitResult(int index, char selector, char quoting, int bracketing, boolean invalid) {
+      this.index = index;
+      this.selector = selector;
+      this.quoting = quoting;
+      this.bracketing = bracketing;
+      this.invalid = invalid;
+    }
+  }
+
+  private static SelectorSplitResult scanTopLevelSelector(String selectorString) {
+    ScanState st = new ScanState();
+    for (int i = 0; i < selectorString.length(); i++) {
+      st.process(selectorString.charAt(i), i);
+      if (st.invalid) break;
+    }
+    return new SelectorSplitResult(st.index, st.selector, st.quoting, st.bracketing, st.invalid);
+  }
+
+  private static final class ScanState {
     int index = -1;
     char selector = 0;
-
-    char c;
     char quoting = 0;
     boolean escaping = false;
     int bracketing = 0;
     int escapedDigits = 0;
-    for (int i = 0; i < selectorString.length(); i++) {
-      c = selectorString.charAt(i);
+    boolean invalid = false;
+
+    void process(char c, int i) {
       if (c == '+' && quoting == 0 && !escaping && bracketing == 0) {
         if (index == -1 || index == i - 1 && selector == ' ') {
           index = i;
           selector = c;
         }
-      } else if (c == '>' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == '>' && quoting == 0 && !escaping) {
         if (index == -1 || index == i - 1 && selector == ' ') {
           index = i;
           selector = c;
         }
-      } else if (c == ' ' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == ' ' && quoting == 0 && !escaping) {
         if (index == -1 || index == i - 1 && selector == ' ') {
           index = i;
           selector = c;
         }
-      } else if (c == '(' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == '(' && quoting == 0 && !escaping) {
         bracketing += 1;
-      } else if (c == ')' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == ')' && quoting == 0 && !escaping) {
         bracketing -= 1;
-      } else if (c == '\'' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == '\'' && quoting == 0 && !escaping) {
         quoting = c;
-      } else if (c == '\"' && quoting == 0 && !escaping) {
+        return;
+      }
+      if (c == '"' && quoting == 0 && !escaping) {
         quoting = c;
-      } else if (c == quoting && !escaping) {
+        return;
+      }
+      if (c == quoting && !escaping) {
         quoting = 0;
-      } else if ((c == '\r' || c == '\n' || c == '\f') && !(quoting != 0 && escaping)) {
-        // No newlines unless in a string *and* quoted!
+        return;
+      }
+      if ((c == '\r' || c == '\n' || c == '\f') && !(quoting != 0 && escaping)) {
         if (LOG.isTraceEnabled())
-          LOG.trace("no newlines unless in a string *and* quoted at index " + i);
-        return null;
-      } else if (c == '\r' && escapedDigits == 0) {
+          LOG.trace("no newlines unless in a string *and* quoted at index {}", i);
+        invalid = true;
+        return;
+      }
+      if (c == '\r' && escapedDigits == 0) {
         escaping = false;
-      } else if (c == '\n' || c == '\f') {
-        if (escapedDigits == 0) escaping = false;
-        else {
-          if (LOG.isTraceEnabled()) LOG.trace("invalid newline escaping at char " + i);
-          return null; // Invalid
+        return;
+      }
+      if (c == '\n' || c == '\f') {
+        if (escapedDigits == 0) {
+          escaping = false;
+        } else {
+          if (LOG.isTraceEnabled()) LOG.trace("invalid newline escaping at char {}", i);
+          invalid = true;
         }
-      } else if (escaping
+        return;
+      }
+      if (escaping
           && ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
         escapedDigits++;
         if (escapedDigits == 6) escaping = false;
-      } else if (escaping && escapedDigits > 0 && (" \t\r\n\f".indexOf(c) != -1)) {
+        return;
+      }
+      if (escaping && escapedDigits > 0 && (" \t\r\n\f".indexOf(c) != -1)) {
         escaping = false;
-      } else if (c == '\\' && !escaping) {
+        return;
+      }
+      if (c == '\\' && !escaping) {
         escaping = true;
-      } else if (c == '\\' && escapedDigits > 0) {
+        escapedDigits = 0;
+        return;
+      }
+      if (c == '\\' && escapedDigits > 0) {
         if (LOG.isTraceEnabled())
-          LOG.trace("backslash but already escaping with digits at char " + i);
-        return null; // Invalid
-      } else if (c == '\\') {
+          LOG.trace("backslash but already escaping with digits at char {}", i);
+        invalid = true;
+        return;
+      }
+      if (c == '\\') {
         escaping = false;
-      } else if (escaping) {
+        escapedDigits = 0;
+        return;
+      }
+      if (escaping) {
         // Any other character can be escaped.
         escaping = false;
+        escapedDigits = 0;
       }
     }
-
-    if (LOG.isDebugEnabled())
-      LOG.debug(
-          "index="
-              + index
-              + " quoting="
-              + quoting
-              + " selector="
-              + selector
-              + " for \""
-              + selectorString
-              + "\"");
-
-    if (quoting != 0) return null; // Mismatched quotes
-    if (bracketing != 0) return null; // Mismatched brackets
-
-    if (index == -1) return HTMLelementVerifier(selectorString, false);
-
-    String[] parts = new String[2];
-
-    parts[0] = selectorString.substring(0, index).trim();
-    parts[1] = selectorString.substring(index + 1).trim();
-    if (LOG.isDebugEnabled())
-      LOG.debug("recursiveSelectorVerifier parts[0]=" + parts[0] + " parts[1]=" + parts[1]);
-    parts[0] = HTMLelementVerifier(parts[0], false);
-    parts[1] = recursiveSelectorVerifier(parts[1]);
-    if (parts[0] != null && parts[1] != null) return parts[0] + selector + parts[1];
-    else return null;
   }
 
   // main function
   public void parse() throws IOException {
+    new Parser().run();
+  }
 
-    final int STATE1 = 1; // State corresponding to @page,@media etc
-    final int STATE2 = 2; // State corresponding to HTML element like body
-    final int STATE3 = 3; // State corresponding to CSS properties
-
-    /* e.g.
-     * STATE1
-     * @media screen {
-     * STATE2	STATE3
-     * h2		{text-align:left;}
-     * }
-     */
-    final int STATECOMMENT = 4;
-    final int STATE1INQUOTE = 5;
-    final int STATE2INQUOTE = 6;
-    final int STATE3INQUOTE = 7;
-    char currentQuote = '"';
-    int stateBeforeComment = 0;
-    int currentState = 1;
-    boolean isState1Present = false;
-    String[] elements = null;
-    StringBuilder filteredTokens = new StringBuilder();
-    StringBuilder buffer = new StringBuilder();
-    int openBraces = 0;
-    String defaultMedia = "screen";
-    String[] currentMedia = new String[] {defaultMedia};
-    String propertyName = "", propertyValue = "";
-    boolean ignoreElementsS1 = false,
-        ignoreElementsS2 = false,
-        ignoreElementsS3 = false,
-        closeIgnoredS2 = false;
-    int x;
-    char c = 0, prevc = 0;
-    boolean s2Comma = false;
-    boolean canImport = true; // import statement can occur only in the beginning
-
-    String whitespaceAfterColon = "";
-    String whitespaceBeforeProperty = "";
-
-    boolean charsetPossible = true;
-    boolean bomPossible = true;
-    int openBracesStartingS3 = 0;
-    boolean forPage = false;
-
-    if (isInline) {
-      currentState = STATE3;
+  // Parser implementation extracted from the former parse() body to enable
+  // further decomposition and reduce the complexity of this entrypoint.
+  private final class Parser {
+    // Thin entrypoint to keep complexity minimal at the callsite
+    void run() throws IOException {
+      runCore();
     }
 
-    while (true) {
-      try {
-        x = r.read();
-      } catch (IOException e) {
-        throw e;
+    // Extracted heavy logic from run()
+    void runCore() throws IOException {
+      final int STATE1 = 1; // State corresponding to @page,@media etc
+      final int STATE2 = 2; // State corresponding to HTML element like body
+      final int STATE3 = 3; // State corresponding to CSS properties
+      /* e.g.
+       * STATE1
+       * @media screen {
+       * STATE2	STATE3
+       * h2		{text-align:left;}
+       * }
+       */
+      final int STATECOMMENT = 4;
+      final int STATE1INQUOTE = 5;
+      final int STATE2INQUOTE = 6;
+      final int STATE3INQUOTE = 7;
+      char currentQuote = '"';
+      int stateBeforeComment = 0;
+      int currentState = 1;
+      boolean isState1Present = false;
+      String[] elements = null;
+      StringBuilder filteredTokens = new StringBuilder();
+      StringBuilder buffer = new StringBuilder();
+      int openBraces = 0;
+      String defaultMedia = "screen";
+      String[] currentMedia = new String[] {defaultMedia};
+      String propertyName = "", propertyValue = "";
+      boolean ignoreElementsS1 = false,
+          ignoreElementsS2 = false,
+          ignoreElementsS3 = false,
+          closeIgnoredS2 = false;
+      int x;
+      char c = 0, prevc = 0;
+      boolean s2Comma = false;
+      boolean canImport = true; // import statement can occur only in the beginning
+      String whitespaceAfterColon = "";
+      String whitespaceBeforeProperty = "";
+      boolean charsetPossible = true;
+      boolean bomPossible = true;
+      int openBracesStartingS3 = 0;
+      boolean forPage = false;
+      if (isInline) {
+        currentState = STATE3;
       }
-
-      if (x == -1) {
-        if (currentState == STATE3
-            && c != ';'
-            && !propertyName.isEmpty()
-            && propertyValue.isEmpty()) {
-          // Finish off the current property.
-          // Common for e.g. HTML: style='background-image:url(blah)'
-          x = ';';
-        } else {
-          break;
+      while (true) {
+        try {
+          x = r.read();
+        } catch (IOException e) {
+          throw e;
         }
-      }
-      if (x == (char) 0xFEFF) {
-        if (bomPossible) {
-          // BOM
-          if (LOG.isTraceEnabled()) LOG.trace("Ignoring BOM");
-          w.write(x);
+        if (x == -1) {
+          if (currentState == STATE3
+              && c != ';'
+              && !propertyName.isEmpty()
+              && propertyValue.isEmpty()) {
+            // Finish off the current property.
+            // Common for e.g. HTML: style='background-image:url(blah)'
+            x = ';';
+          } else {
+            break;
+          }
         }
-        continue;
-      }
-      bomPossible = false;
-      prevc = c;
-      c = (char) x;
-      if (LOG.isTraceEnabled()) LOG.trace("Read: " + c + " 0x" + Integer.toHexString(c));
-      if (prevc == '/'
-          && c == '*'
-          && currentState != STATE1INQUOTE
-          && currentState != STATE2INQUOTE
-          && currentState != STATE3INQUOTE
-          && currentState != STATECOMMENT) {
-        stateBeforeComment = currentState;
-        currentState = STATECOMMENT;
-        if (buffer.charAt(buffer.length() - 1) == '/') {
-          buffer.deleteCharAt(buffer.length() - 1);
+        if (x == (char) 0xFEFF) {
+          if (bomPossible) {
+            // BOM
+            if (LOG.isTraceEnabled()) LOG.trace("Ignoring BOM");
+            w.write(x);
+          }
+          continue;
         }
-        if (LOG.isTraceEnabled()) LOG.trace("Comment detected: buffer=" + buffer);
-        prevc = 0;
-      }
-      if (c == 0) continue; // Strip nulls
-      switch (currentState) {
-        case STATE1:
-          switch (c) {
-            case '\n':
-            case ' ':
-            case '\t':
-              buffer.append(c);
-              if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE whitespace: " + c);
-              break;
-
-            case '@':
-              if (prevc != '\\') {
-                isState1Present = true;
-                if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE @: " + c);
-              }
-              buffer.append(c);
-              break;
-
-            case '{':
-              charsetPossible = false;
-              if (stopAtDetectedCharset) return;
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
+        bomPossible = false;
+        prevc = c;
+        c = (char) x;
+        if (LOG.isTraceEnabled()) LOG.trace("Read: {} 0x{}", c, Integer.toHexString(c));
+        if (prevc == '/'
+            && c == '*'
+            && currentState != STATE1INQUOTE
+            && currentState != STATE2INQUOTE
+            && currentState != STATE3INQUOTE
+            && currentState != STATECOMMENT) {
+          stateBeforeComment = currentState;
+          currentState = STATECOMMENT;
+          if (buffer.charAt(buffer.length() - 1) == '/') {
+            buffer.deleteCharAt(buffer.length() - 1);
+          }
+          if (LOG.isTraceEnabled()) LOG.trace("Comment detected: buffer={}", buffer);
+          prevc = 0;
+        }
+        if (c == 0) continue; // Strip nulls
+        switch (currentState) {
+          case STATE1:
+            switch (c) {
+              case '\n':
+              case ' ':
+              case '\t':
+                buffer.append(c);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE whitespace: {}", c);
+                break;
+              case '@':
+                if (prevc != '\\') {
+                  isState1Present = true;
+                  if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE @: {}", c);
+                }
                 buffer.append(c);
                 break;
-              }
-              openBraces++;
-              isState1Present = false;
-
-              int i = 0;
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              String braceSpace = buffer.substring(0, i);
-              buffer.delete(0, i);
-              if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
-                braceSpace += buffer.substring(0, 4);
-                if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  LOG.error("<!-- not followed by whitespace!");
-                  return;
-                }
-                buffer.delete(0, 4);
-                for (i = 0; i < buffer.length(); i++) {
-                  char c1 = buffer.charAt(i);
-                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                  break;
-                }
-                braceSpace += buffer.substring(0, i);
-                buffer.delete(0, i);
-              }
-              for (i = buffer.length() - 1; i >= 0; i--) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              i++;
-              String postSpace = buffer.substring(i);
-              buffer.setLength(i);
-              String orig = buffer.toString().trim();
-              ParsedWord[] parts = split(orig, false);
-              if (LOG.isTraceEnabled()) LOG.trace("Split: " + CSSPropertyVerifier.toString(parts));
-              buffer.setLength(0);
-              boolean valid = false;
-              if (parts != null) {
-                if (parts.length < 1) {
-                  ignoreElementsS1 = true;
-                  if (LOG.isDebugEnabled())
-                    LOG.debug(
-                        "STATE1 CASE {: Does not have one part. ignoring " + buffer.toString());
-                  valid = false;
-                } else if (parts[0] instanceof SimpleParsedWord
-                    && "@media".equalsIgnoreCase(parts[0].original)) {
-                  if (parts.length < 2) {
-                    ignoreElementsS1 = true;
-                    if (LOG.isDebugEnabled())
-                      LOG.debug(
-                          "STATE1 CASE {: Does not have two parts. ignoring " + buffer.toString());
-                    valid = false;
-                  } else {
-                    ArrayList<String> medias = commaListFromIdentifiers(parts, 1);
-                    if (medias != null && !medias.isEmpty()) {
-                      for (i = 0; i < medias.size(); i++) {
-                        if (!FilterUtils.isMedia(medias.get(i))) {
-                          // Unrecognised media, don't pass it.
-                          medias.remove(i);
-                          i--; // Don't skip next
-                        }
-                      }
-                    }
-                    if (medias != null && !medias.isEmpty()) {
-                      filteredTokens.append(braceSpace);
-                      filteredTokens.append("@media ");
-                      boolean first = true;
-                      for (String media : medias) {
-                        if (!first) filteredTokens.append(", ");
-                        first = false;
-                        filteredTokens.append(media);
-                      }
-                      filteredTokens.append(postSpace);
-                      filteredTokens.append("{");
-                      valid = true;
-                      currentMedia = medias.toArray(new String[0]);
-                    }
-                  }
-                } else if (parts[0] instanceof SimpleParsedWord
-                    && "@page".equalsIgnoreCase(parts[0].original)) {
-                  if (parts.length == 0) {
-                    valid = true;
-                  } else {
-                    valid = true;
-                    for (int j = 1; j < parts.length; j++) {
-                      if (!(parts[j] instanceof SimpleParsedWord)) {
-                        valid = false;
-                        break;
-                      } else {
-                        String s = parts[j].original;
-                        if (!(s.equalsIgnoreCase(":left")
-                            || s.equalsIgnoreCase(":right")
-                            || s.equals(":first"))) {
-                          valid = false;
-                          break;
-                        }
-                      }
-                    }
-                  }
-                  if (valid) {
-                    forPage = true;
-                    filteredTokens.append(braceSpace);
-                    filteredTokens.append(orig);
-                    filteredTokens.append(postSpace);
-                    filteredTokens.append("{");
-                  }
-                }
-              } // else valid = false
-              if (!valid) {
-                ignoreElementsS1 = true;
-                // No valid media types.
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "STATE1 CASE {: Failed verification test. ignoring " + buffer.toString());
-              } else {
-                w.write(filteredTokens.toString());
-                filteredTokens.setLength(0);
-              }
-              buffer.setLength(0);
-              s2Comma = false;
-              if (forPage) {
-                currentState = STATE3;
-                openBracesStartingS3 = openBraces;
-              } else {
-                currentState = STATE2;
-              }
-              buffer.setLength(0);
-              break;
-            case ';':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              if (LOG.isTraceEnabled())
-                LOG.trace("buffer in state 1 ; : \"" + buffer.toString() + "\"");
-              // should be @import
-
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              w.write(buffer.substring(0, i));
-              buffer.delete(0, i);
-
-              if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
-                w.write(buffer.substring(0, 4));
-                if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  LOG.error("<!-- not followed by whitespace!");
-                  return;
-                }
-                buffer.delete(0, 4);
-                for (i = 0; i < buffer.length(); i++) {
-                  char c1 = buffer.charAt(i);
-                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                  break;
-                }
-                w.write(buffer.substring(0, i));
-                buffer.delete(0, i);
-              }
-
-              // If ignoreElementsS1, then just delete everything up to the semicolon. After that,
-              // fresh start.
-              if (canImport && !ignoreElementsS1 && buffer.toString().contains("@import")) {
-                if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement=" + buffer.toString());
-
-                String strbuffer = buffer.toString().trim();
-                int importIndex = strbuffer.toLowerCase().indexOf("@import");
-                if ("".equals(strbuffer.substring(0, importIndex).trim())) {
-                  String str1 = strbuffer.substring(importIndex + 7);
-                  ParsedWord[] strparts = split(str1, false);
-                  if (strparts != null
-                      && strparts.length > 0
-                      && (strparts[0] instanceof ParsedURL
-                          || strparts[0] instanceof ParsedString)) {
-                    String uri;
-                    if (strparts[0] instanceof ParsedString string) {
-                      uri = string.getDecoded();
-                    } else {
-                      uri = ((ParsedURL) strparts[0]).getDecoded();
-                    }
-                    ArrayList<String> medias = commaListFromIdentifiers(strparts, 1);
-
-                    if (medias != null) { // None gives [0], broke gives null
-                      StringBuilder output = new StringBuilder();
-                      output.append("@import url(\"");
-                      try {
-                        // Add ?maybecharset= even though there might be a ?type= with a charset, we
-                        // will ignore maybecharset if there is.
-                        // We behave similarly in <link rel=stylesheet...> if there is a ?type= in
-                        // the URL.
-                        String s = cb.processURI(uri, "text/css");
-                        if (passedCharset != null) {
-                          if (s.indexOf('?') == -1) s += "?maybecharset=" + passedCharset;
-                          else s += "&maybecharset=" + passedCharset;
-                        }
-                        output.append(s);
-                        output.append("\")");
-                        boolean first = true;
-                        for (String media : medias) {
-                          if (FilterUtils.isMedia(media)) {
-                            if (!first) output.append(", ");
-                            else output.append(' ');
-                            first = false;
-                            output.append(media);
-                          }
-                        }
-                        output.append(";");
-                        w.write(output.toString());
-                      } catch (CommentException e) {
-                        // Don't write anything
-                      }
-                    }
-                  }
-                }
-              } else if (charsetPossible && buffer.toString().startsWith("@charset ")) {
-                // charsetPossible is incompatible with ignoreElementsS1
-                String s = buffer.delete(0, "@charset ".length()).toString();
-                s = removeOuterQuotes(s);
-                detectedCharset = s;
-                if (LOG.isTraceEnabled())
-                  LOG.trace("Detected charset: \"" + detectedCharset + "\"");
-                if (!Charset.isSupported(detectedCharset)) {
-                  LOG.info("Charset not supported: " + detectedCharset);
-                  throw new UnsupportedCharsetInFilterException(
-                      "Charset not supported: " + detectedCharset);
-                }
+              case '{':
+                charsetPossible = false;
                 if (stopAtDetectedCharset) return;
-                if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
-                  LOG.info(
-                      "Detected charset \""
-                          + detectedCharset
-                          + "\" differs from passed in charset \""
-                          + passedCharset
-                          + "\"");
-                  throw new IOException("Detected charset differs from passed in charset");
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
                 }
-                w.write("@charset \"" + detectedCharset + "\";");
-              }
-              isState1Present = false;
-              ignoreElementsS1 = false;
-              buffer.setLength(0);
-              charsetPossible = false;
-              break;
-            case '"':
-            case '\'':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              buffer.append(c);
-              currentState = STATE1INQUOTE;
-              currentQuote = c;
-              break;
-            default:
-              buffer.append(c);
-              if (!isState1Present) {
-                String s = buffer.toString().trim();
-                if (!(s.isEmpty()
-                    || s.equals("/")
-                    || s.equals("<")
-                    || s.equals("<!")
-                    || s.equals("<!-")
-                    || s.equals("<!--"))) currentState = STATE2;
-              }
-              if (LOG.isTraceEnabled()) LOG.trace("STATE1 default CASE: " + c);
-              break;
-          }
-          break;
-
-        case STATE1INQUOTE:
-          if (LOG.isTraceEnabled()) LOG.trace("STATE1INQUOTE: " + c);
-          switch (c) {
-            case '"':
-              if (currentQuote == '"' && prevc != '\\') currentState = STATE1;
-              buffer.append(c);
-              break;
-            case '\'':
-              if (currentQuote == '\'' && prevc != '\\') currentState = STATE1;
-              buffer.append(c);
-              break;
-            case '\n':
-              if (prevc == '\r') {
-                break;
-              }
-            // Otherwise same as \r ...
-            case '\f':
-            case '\r':
-              if (prevc != '\\') {
-                ignoreElementsS1 = true;
-                currentState = STATE1;
-                break;
-              } else {
-                // Wipe out the \ as well.
-                buffer.setLength(buffer.length() - 1);
-                break;
-              }
-            default:
-              buffer.append(c);
-              break;
-          }
-          break;
-
-        case STATE2:
-          canImport = false;
-          charsetPossible = false;
-          if (stopAtDetectedCharset) return;
-          switch (c) {
-            case '{':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-
-              int i = 0;
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              if (LOG.isDebugEnabled())
-                LOG.debug("Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
-              String ws = buffer.substring(0, i);
-              buffer.delete(0, i);
-
-              if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
-                ws += buffer.substring(0, 4);
-                if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
-                  LOG.error("<!-- not followed by whitespace!");
-                  return;
-                }
-                buffer.delete(0, 4);
+                openBraces++;
+                isState1Present = false;
+                int i = 0;
                 for (i = 0; i < buffer.length(); i++) {
                   char c1 = buffer.charAt(i);
                   if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                   break;
                 }
-                ws += buffer.substring(0, i);
+                String braceSpace = buffer.substring(0, i);
                 buffer.delete(0, i);
-              }
-
-              openBraces++;
-              if (!buffer.toString().trim().isEmpty()) {
-                String filtered = recursiveSelectorVerifier(buffer.toString());
-                if (filtered != null && !"".equals(filtered)) {
-                  if (s2Comma) {
-                    filteredTokens.append(",");
-                    s2Comma = false;
-                  }
-                  filteredTokens.append(ws);
-                  filteredTokens.append(filtered);
-                  filteredTokens.append(" {");
-                } else if (s2Comma && "".equals(filtered)) {
-                  // There was a comma, so filteredTokens already contains some tokens.
-                  // The current selector is valid, yet banned. Ignore it.
-                  s2Comma = false;
-                  filteredTokens.append(ws);
-                  filteredTokens.append(" {");
-                } else {
-                  ignoreElementsS2 = true;
-                  // If there was a comma, filteredTokens may contain some tokens.
-                  // These are invalid, as per the spec: we wipe the whole selector out.
-                  // Also, not wiping filteredTokens here does bad things:
-                  // we would write the filtered tokens, without the { or }, so we end up prepending
-                  // it to the next rule, which is not what we want as it changes the next rule's
-                  // meaning.
-                  filteredTokens.setLength(0);
-                }
-                if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE { filtered elements" + filtered);
-              } else {
-                // No valid selector, wipe it out as above.
-                ignoreElementsS2 = true;
-                // If there was a comma, filteredTokens may contain some tokens.
-                // These are invalid, as per the spec: we wipe the whole selector out.
-                // Also, not wiping filteredTokens here does bad things:
-                // we would write the filtered tokens, without the { or }, so we end up prepending
-                // it to the next rule, which is not what we want as it changes the next rule's
-                // meaning.
-                filteredTokens.setLength(0);
-              }
-              currentState = STATE3;
-              openBracesStartingS3 = openBraces;
-              if (LOG.isDebugEnabled())
-                LOG.debug("STATE2 -> STATE3, openBracesStartingS3 = " + openBracesStartingS3);
-              buffer.setLength(0);
-              break;
-
-            case ',':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              if (LOG.isDebugEnabled())
-                LOG.debug("Appending whitespace in state2: \"" + buffer.substring(0, i) + "\"");
-              ws = buffer.substring(0, i);
-              buffer.delete(0, i);
-
-              if (!s2Comma) {
                 if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
-                  filteredTokens.append(buffer, 0, 4);
+                  braceSpace += buffer.substring(0, 4);
                   if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
                     LOG.error("<!-- not followed by whitespace!");
                     return;
@@ -3452,251 +3093,541 @@ class CSSTokenizerFilter {
                     if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                     break;
                   }
-                  filteredTokens.append(buffer, 0, i);
+                  braceSpace += buffer.substring(0, i);
                   buffer.delete(0, i);
                 }
-              }
-
-              String filtered = recursiveSelectorVerifier(buffer.toString().trim());
-              if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE , filtered elements" + filtered);
-              if (filtered != null && !"".equals(filtered)) {
-                if (s2Comma) filteredTokens.append(",");
-                else s2Comma = true;
-                filteredTokens.append(ws);
-                filteredTokens.append(filtered);
-              } else if ("".equals(filtered)) {
-                // This selector was banned. Ignore it.
-                filteredTokens.append(ws);
-              }
-              buffer.setLength(0);
-              break;
-
-            case '}':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              if (openBraces > 0 && !ignoreElementsS1) {
-                openBraces--;
-                // ignoreElementsS2 is irrelevant here, we are not *adding to* filteredTokens.
-                if (openBraces >= 0) filteredTokens.append('}');
-                else openBraces = 0;
-                if (LOG.isTraceEnabled()) LOG.trace("Writing \"" + filteredTokens + "\"");
-                w.write(filteredTokens.toString());
-              } else {
-                if (openBraces > 0) openBraces--;
-                // Ignore.
-                // We are going back to STATE1, so reset ignoreElementsS1
-                ignoreElementsS1 = false;
-              }
-              filteredTokens.setLength(0);
-              buffer.setLength(0);
-              currentMedia = new String[] {defaultMedia};
-              isState1Present = false;
-              currentState = STATE1;
-              if (isInline) return;
-              if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE }: " + c);
-              break;
-
-            case '"':
-            case '\'':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              buffer.append(c);
-              currentState = STATE2INQUOTE;
-              currentQuote = c;
-              break;
-
-            default:
-              buffer.append(c);
-              if (LOG.isTraceEnabled()) LOG.trace("STATE2 default CASE: " + c);
-              break;
-          }
-          break;
-
-        case STATE2INQUOTE:
-          if (LOG.isTraceEnabled()) LOG.trace("STATE2INQUOTE: " + c);
-          charsetPossible = false;
-          switch (c) {
-            case '"':
-              if (currentQuote == '"' && prevc != '\\') currentState = STATE2;
-              buffer.append(c);
-              break;
-            case '\'':
-              if (currentQuote == '\'' && prevc != '\\') currentState = STATE2;
-              buffer.append(c);
-              break;
-            case '\n':
-              if (prevc == '\r') {
-                break;
-              }
-            // Otherwise same as \r ...
-            case '\f':
-            case '\r':
-              if (prevc != '\\') {
-                ignoreElementsS2 = true;
-                closeIgnoredS2 = true;
-                currentState = STATE2;
-                break;
-              } else {
-                // Wipe out the \ as well.
-                buffer.setLength(buffer.length() - 1);
-                break;
-              }
-            default:
-              buffer.append(c);
-              break;
-          }
-          break;
-
-        case STATE3:
-          charsetPossible = false;
-          if (stopAtDetectedCharset) return;
-          switch (c) {
-            case ':':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              if (openBraces > openBracesStartingS3) {
-                // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
-                buffer.append(c);
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "openBraces now "
-                          + openBraces
-                          + " not moving on because openBracesStartingS3="
-                          + openBracesStartingS3
-                          + " in S3");
-                break;
-              }
-              int i = 0;
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              if (LOG.isTraceEnabled())
-                LOG.trace("Appending whitespace: " + buffer.substring(0, i));
-              whitespaceBeforeProperty = buffer.substring(0, i);
-              propertyName = buffer.delete(0, i).toString().trim();
-              if (LOG.isTraceEnabled()) LOG.trace("Property name: " + propertyName);
-              buffer.setLength(0);
-              if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE :: " + c);
-              break;
-
-            case ';':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
-                buffer.append(c);
-                break;
-              }
-              if (openBraces > openBracesStartingS3) {
-                // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
-                buffer.append(c);
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "openBraces now "
-                          + openBraces
-                          + " not moving on because openBracesStartingS3="
-                          + openBracesStartingS3
-                          + " in S3");
-                break;
-              }
-
-              i = 0;
-              for (i = 0; i < buffer.length(); i++) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-                break;
-              }
-              if (LOG.isDebugEnabled())
-                LOG.debug("Appending whitespace after colon: \"" + buffer.substring(0, i) + "\"");
-              whitespaceAfterColon = buffer.substring(0, i);
-              propertyValue = buffer.delete(0, i).toString().trim();
-              if (LOG.isTraceEnabled()) LOG.trace("Property value: " + propertyValue);
-              buffer.setLength(0);
-
-              CSSPropertyVerifier obj = getVerifier(propertyName);
-              if (obj != null) {
-                ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
+                for (i = buffer.length() - 1; i >= 0; i--) {
+                  char c1 = buffer.charAt(i);
+                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                  break;
+                }
+                i++;
+                String postSpace = buffer.substring(i);
+                buffer.setLength(i);
+                String orig = buffer.toString().trim();
+                ParsedWord[] parts = split(orig, false);
                 if (LOG.isTraceEnabled())
-                  LOG.trace("Split: " + CSSPropertyVerifier.toString(words));
-                if (!ignoreElementsS2
-                    && !ignoreElementsS3
-                    && verifyToken(currentMedia, elements, obj, words)) {
-                  if (changedAnything(words)) propertyValue = reconstruct(words);
-                  filteredTokens.append(whitespaceBeforeProperty);
-                  whitespaceBeforeProperty = "";
-                  filteredTokens.append(propertyName);
-                  filteredTokens.append(':');
-                  filteredTokens.append(whitespaceAfterColon);
-                  filteredTokens.append(propertyValue);
-                  filteredTokens.append(';');
-                  if (LOG.isDebugEnabled())
-                    LOG.debug("STATE3 CASE ;: appending " + propertyName + ":" + propertyValue);
-                  if (LOG.isDebugEnabled())
-                    LOG.debug("filtered tokens now: \"" + filteredTokens.toString() + "\"");
-                } else {
+                  LOG.trace("Split: {}", CSSPropertyVerifier.toString(parts));
+                buffer.setLength(0);
+                boolean valid = false;
+                if (parts != null) {
+                  if (parts.length < 1) {
+                    ignoreElementsS1 = true;
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
+                          "STATE1 CASE {: Does not have one part. ignoring {}", buffer.toString());
+                    valid = false;
+                  } else if (parts[0] instanceof SimpleParsedWord
+                      && "@media".equalsIgnoreCase(parts[0].original)) {
+                    if (parts.length < 2) {
+                      ignoreElementsS1 = true;
+                      if (LOG.isDebugEnabled())
+                        LOG.debug(
+                            "STATE1 CASE {: Does not have two parts. ignoring {}",
+                            buffer.toString());
+                      valid = false;
+                    } else {
+                      ArrayList<String> medias = commaListFromIdentifiers(parts, 1);
+                      if (medias != null && !medias.isEmpty()) {
+                        for (i = 0; i < medias.size(); i++) {
+                          if (!FilterUtils.isMedia(medias.get(i))) {
+                            // Unrecognised media, don't pass it.
+                            medias.remove(i);
+                            i--; // Don't skip next
+                          }
+                        }
+                      }
+                      if (medias != null && !medias.isEmpty()) {
+                        filteredTokens.append(braceSpace);
+                        filteredTokens.append("@media ");
+                        boolean first = true;
+                        for (String media : medias) {
+                          if (!first) filteredTokens.append(", ");
+                          first = false;
+                          filteredTokens.append(media);
+                        }
+                        filteredTokens.append(postSpace);
+                        filteredTokens.append("{");
+                        valid = true;
+                        currentMedia = medias.toArray(new String[0]);
+                      }
+                    }
+                  } else if (parts[0] instanceof SimpleParsedWord
+                      && "@page".equalsIgnoreCase(parts[0].original)) {
+                    if (parts.length == 0) {
+                      valid = true;
+                    } else {
+                      valid = true;
+                      for (int j = 1; j < parts.length; j++) {
+                        if (!(parts[j] instanceof SimpleParsedWord)) {
+                          valid = false;
+                          break;
+                        } else {
+                          String s = parts[j].original;
+                          if (!(s.equalsIgnoreCase(":left")
+                              || s.equalsIgnoreCase(":right")
+                              || s.equals(":first"))) {
+                            valid = false;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    if (valid) {
+                      forPage = true;
+                      filteredTokens.append(braceSpace);
+                      filteredTokens.append(orig);
+                      filteredTokens.append(postSpace);
+                      filteredTokens.append("{");
+                    }
+                  }
+                } // else valid = false
+                if (!valid) {
+                  ignoreElementsS1 = true;
+                  // No valid media types.
                   if (LOG.isDebugEnabled())
                     LOG.debug(
-                        "filtered tokens now (ignored): \""
-                            + filteredTokens.toString()
-                            + "\" words="
-                            + CSSPropertyVerifier.toString(words)
-                            + " ignoreS1="
-                            + ignoreElementsS1
-                            + " ignoreS2="
-                            + ignoreElementsS2
-                            + " ignoreS3="
-                            + ignoreElementsS3);
+                        "STATE1 CASE {: Failed verification test. ignoring {}", buffer.toString());
+                } else {
+                  w.write(filteredTokens.toString());
+                  filteredTokens.setLength(0);
                 }
-              } else {
+                buffer.setLength(0);
+                s2Comma = false;
+                if (forPage) {
+                  currentState = STATE3;
+                  openBracesStartingS3 = openBraces;
+                } else {
+                  currentState = STATE2;
+                }
+                buffer.setLength(0);
+                break;
+              case ';':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
                 if (LOG.isTraceEnabled())
-                  LOG.trace("No such property name \"" + propertyName + "\"");
-              }
-              ignoreElementsS3 = false;
-              propertyName = "";
-              propertyValue = "";
-              break;
-            case '}':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
+                  LOG.trace("buffer in state 1 ; : \"{}\"", buffer.toString());
+                // should be @import
+                for (i = 0; i < buffer.length(); i++) {
+                  char c1 = buffer.charAt(i);
+                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                  break;
+                }
+                w.write(buffer.substring(0, i));
+                buffer.delete(0, i);
+                if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
+                  w.write(buffer.substring(0, 4));
+                  if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
+                    LOG.error("<!-- not followed by whitespace!");
+                    return;
+                  }
+                  buffer.delete(0, 4);
+                  for (i = 0; i < buffer.length(); i++) {
+                    char c1 = buffer.charAt(i);
+                    if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                    break;
+                  }
+                  w.write(buffer.substring(0, i));
+                  buffer.delete(0, i);
+                }
+                // If ignoreElementsS1, then just delete everything up to the semicolon. After that,
+                // fresh start.
+                if (canImport && !ignoreElementsS1 && buffer.toString().contains("@import")) {
+                  if (LOG.isTraceEnabled())
+                    LOG.trace("STATE1 CASE ;statement={}", buffer.toString());
+                  String strbuffer = buffer.toString().trim();
+                  int importIndex = strbuffer.toLowerCase().indexOf("@import");
+                  if ("".equals(strbuffer.substring(0, importIndex).trim())) {
+                    String str1 = strbuffer.substring(importIndex + 7);
+                    ParsedWord[] strparts = split(str1, false);
+                    if (strparts != null
+                        && strparts.length > 0
+                        && (strparts[0] instanceof ParsedURL
+                            || strparts[0] instanceof ParsedString)) {
+                      String uri;
+                      if (strparts[0] instanceof ParsedString string) {
+                        uri = string.getDecoded();
+                      } else {
+                        uri = ((ParsedURL) strparts[0]).getDecoded();
+                      }
+                      ArrayList<String> medias = commaListFromIdentifiers(strparts, 1);
+                      if (medias != null) { // None gives [0], broke gives null
+                        StringBuilder output = new StringBuilder();
+                        output.append("@import url(\"");
+                        try {
+                          // Add ?maybecharset= even though there might be a ?type= with a charset,
+                          // we
+                          // will ignore maybecharset if there is.
+                          // We behave similarly in <link rel=stylesheet...> if there is a ?type= in
+                          // the URL.
+                          String s = cb.processURI(uri, "text/css");
+                          if (passedCharset != null) {
+                            if (s.indexOf('?') == -1) s += "?maybecharset=" + passedCharset;
+                            else s += "&maybecharset=" + passedCharset;
+                          }
+                          output.append(s);
+                          output.append("\")");
+                          boolean first = true;
+                          for (String media : medias) {
+                            if (FilterUtils.isMedia(media)) {
+                              if (!first) output.append(", ");
+                              else output.append(' ');
+                              first = false;
+                              output.append(media);
+                            }
+                          }
+                          output.append(";");
+                          w.write(output.toString());
+                        } catch (CommentException e) {
+                          // Don't write anything
+                        }
+                      }
+                    }
+                  }
+                } else if (charsetPossible && buffer.toString().startsWith("@charset ")) {
+                  // charsetPossible is incompatible with ignoreElementsS1
+                  String s = buffer.delete(0, "@charset ".length()).toString();
+                  s = removeOuterQuotes(s);
+                  detectedCharset = s;
+                  if (LOG.isTraceEnabled()) LOG.trace("Detected charset: \"{}\"", detectedCharset);
+                  if (!Charset.isSupported(detectedCharset)) {
+                    LOG.info("Charset not supported: {}", detectedCharset);
+                    throw new UnsupportedCharsetInFilterException(
+                        "Charset not supported: " + detectedCharset);
+                  }
+                  if (stopAtDetectedCharset) return;
+                  if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
+                    LOG.info(
+                        "Detected charset \"{}\" differs from passed in charset \"{}\"",
+                        detectedCharset,
+                        passedCharset);
+                    throw new IOException("Detected charset differs from passed in charset");
+                  }
+                  w.write("@charset \"" + detectedCharset + "\";");
+                }
+                isState1Present = false;
+                ignoreElementsS1 = false;
+                buffer.setLength(0);
+                charsetPossible = false;
+                break;
+              case '"':
+              case '\'':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                buffer.append(c);
+                currentState = STATE1INQUOTE;
+                currentQuote = c;
+                break;
+              default:
+                buffer.append(c);
+                if (!isState1Present) {
+                  String s = buffer.toString().trim();
+                  if (!(s.isEmpty()
+                      || s.equals("/")
+                      || s.equals("<")
+                      || s.equals("<!")
+                      || s.equals("<!-")
+                      || s.equals("<!--"))) currentState = STATE2;
+                }
+                if (LOG.isTraceEnabled()) LOG.trace("STATE1 default CASE: {}", c);
+                break;
+            }
+            break;
+          case STATE1INQUOTE:
+            if (LOG.isTraceEnabled()) LOG.trace("STATE1INQUOTE: {}", c);
+            switch (c) {
+              case '"':
+                if (currentQuote == '"' && prevc != '\\') currentState = STATE1;
                 buffer.append(c);
                 break;
-              }
-              openBraces--;
-              if (openBraces > openBracesStartingS3 - 1) {
-                // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
+              case '\'':
+                if (currentQuote == '\'' && prevc != '\\') currentState = STATE1;
                 buffer.append(c);
+                break;
+              case '\n':
+                if (prevc == '\r') {
+                  break;
+                }
+              // Otherwise same as \r ...
+              case '\f':
+              case '\r':
+                if (prevc != '\\') {
+                  ignoreElementsS1 = true;
+                  currentState = STATE1;
+                  break;
+                } else {
+                  // Wipe out the \ as well.
+                  buffer.setLength(buffer.length() - 1);
+                  break;
+                }
+              default:
+                buffer.append(c);
+                break;
+            }
+            break;
+          case STATE2:
+            canImport = false;
+            charsetPossible = false;
+            if (stopAtDetectedCharset) return;
+            switch (c) {
+              case '{':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                int i = 0;
+                for (i = 0; i < buffer.length(); i++) {
+                  char c1 = buffer.charAt(i);
+                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                  break;
+                }
                 if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "openBraces now "
-                          + openBraces
-                          + " not moving on because openBracesStartingS3="
-                          + openBracesStartingS3
-                          + " in S3");
-                if (openBraces < 0) openBraces = 0;
+                  LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+                String ws = buffer.substring(0, i);
+                buffer.delete(0, i);
+                if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
+                  ws += buffer.substring(0, 4);
+                  if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
+                    LOG.error("<!-- not followed by whitespace!");
+                    return;
+                  }
+                  buffer.delete(0, 4);
+                  for (i = 0; i < buffer.length(); i++) {
+                    char c1 = buffer.charAt(i);
+                    if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                    break;
+                  }
+                  ws += buffer.substring(0, i);
+                  buffer.delete(0, i);
+                }
+                openBraces++;
+                if (!buffer.toString().trim().isEmpty()) {
+                  String filtered = recursiveSelectorVerifier(buffer.toString());
+                  if (filtered != null && !"".equals(filtered)) {
+                    if (s2Comma) {
+                      filteredTokens.append(",");
+                      s2Comma = false;
+                    }
+                    filteredTokens.append(ws);
+                    filteredTokens.append(filtered);
+                    filteredTokens.append(" {");
+                  } else if (s2Comma && "".equals(filtered)) {
+                    // There was a comma, so filteredTokens already contains some tokens.
+                    // The current selector is valid, yet banned. Ignore it.
+                    s2Comma = false;
+                    filteredTokens.append(ws);
+                    filteredTokens.append(" {");
+                  } else {
+                    ignoreElementsS2 = true;
+                    // If there was a comma, filteredTokens may contain some tokens.
+                    // These are invalid, as per the spec: we wipe the whole selector out.
+                    // Also, not wiping filteredTokens here does bad things:
+                    // we would write the filtered tokens, without the { or }, so we end up
+                    // prepending
+                    // it to the next rule, which is not what we want as it changes the next rule's
+                    // meaning.
+                    filteredTokens.setLength(0);
+                  }
+                  if (LOG.isTraceEnabled())
+                    LOG.trace("STATE2 CASE { filtered elements{}", filtered);
+                } else {
+                  // No valid selector, wipe it out as above.
+                  ignoreElementsS2 = true;
+                  // If there was a comma, filteredTokens may contain some tokens.
+                  // These are invalid, as per the spec: we wipe the whole selector out.
+                  // Also, not wiping filteredTokens here does bad things:
+                  // we would write the filtered tokens, without the { or }, so we end up prepending
+                  // it to the next rule, which is not what we want as it changes the next rule's
+                  // meaning.
+                  filteredTokens.setLength(0);
+                }
+                currentState = STATE3;
+                openBracesStartingS3 = openBraces;
+                if (LOG.isDebugEnabled())
+                  LOG.debug("STATE2 -> STATE3, openBracesStartingS3 = {}", openBracesStartingS3);
+                buffer.setLength(0);
                 break;
-              }
-              if (openBraces < 0) openBraces = 0;
-              for (i = buffer.length() - 1; i >= 0; i--) {
-                char c1 = buffer.charAt(i);
-                if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+              case ',':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                for (i = 0; i < buffer.length(); i++) {
+                  char c1 = buffer.charAt(i);
+                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                  break;
+                }
+                if (LOG.isDebugEnabled())
+                  LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+                ws = buffer.substring(0, i);
+                buffer.delete(0, i);
+                if (!s2Comma) {
+                  if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
+                    filteredTokens.append(buffer, 0, 4);
+                    if (" \t\r\n".indexOf(buffer.charAt(4)) == -1) {
+                      LOG.error("<!-- not followed by whitespace!");
+                      return;
+                    }
+                    buffer.delete(0, 4);
+                    for (i = 0; i < buffer.length(); i++) {
+                      char c1 = buffer.charAt(i);
+                      if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n')
+                        continue;
+                      break;
+                    }
+                    filteredTokens.append(buffer, 0, i);
+                    buffer.delete(0, i);
+                  }
+                }
+                String filtered = recursiveSelectorVerifier(buffer.toString().trim());
+                if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE , filtered elements{}", filtered);
+                if (filtered != null && !"".equals(filtered)) {
+                  if (s2Comma) filteredTokens.append(",");
+                  else s2Comma = true;
+                  filteredTokens.append(ws);
+                  filteredTokens.append(filtered);
+                } else if ("".equals(filtered)) {
+                  // This selector was banned. Ignore it.
+                  filteredTokens.append(ws);
+                }
+                buffer.setLength(0);
                 break;
-              }
-              i++;
-              String postSpace = buffer.substring(i);
-              buffer.setLength(i);
-              // This (string!=) is okay as we set it directly by propertyName="" to indicate there
-              // is no property name.
-              if (propertyName != "") {
-
+              case '}':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                if (openBraces > 0 && !ignoreElementsS1) {
+                  openBraces--;
+                  // ignoreElementsS2 is irrelevant here, we are not *adding to* filteredTokens.
+                  if (openBraces >= 0) filteredTokens.append('}');
+                  else openBraces = 0;
+                  if (LOG.isTraceEnabled()) LOG.trace("Writing \"{}\"", filteredTokens);
+                  w.write(filteredTokens.toString());
+                } else {
+                  if (openBraces > 0) openBraces--;
+                  // Ignore.
+                  // We are going back to STATE1, so reset ignoreElementsS1
+                  ignoreElementsS1 = false;
+                }
+                filteredTokens.setLength(0);
+                buffer.setLength(0);
+                currentMedia = new String[] {defaultMedia};
+                isState1Present = false;
+                currentState = STATE1;
+                if (isInline) return;
+                if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE }: {}", c);
+                break;
+              case '"':
+              case '\'':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                buffer.append(c);
+                currentState = STATE2INQUOTE;
+                currentQuote = c;
+                break;
+              default:
+                buffer.append(c);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE2 default CASE: {}", c);
+                break;
+            }
+            break;
+          case STATE2INQUOTE:
+            if (LOG.isTraceEnabled()) LOG.trace("STATE2INQUOTE: {}", c);
+            charsetPossible = false;
+            switch (c) {
+              case '"':
+                if (currentQuote == '"' && prevc != '\\') currentState = STATE2;
+                buffer.append(c);
+                break;
+              case '\'':
+                if (currentQuote == '\'' && prevc != '\\') currentState = STATE2;
+                buffer.append(c);
+                break;
+              case '\n':
+                if (prevc == '\r') {
+                  break;
+                }
+              // Otherwise same as \r ...
+              case '\f':
+              case '\r':
+                if (prevc != '\\') {
+                  ignoreElementsS2 = true;
+                  closeIgnoredS2 = true;
+                  currentState = STATE2;
+                  break;
+                } else {
+                  // Wipe out the \ as well.
+                  buffer.setLength(buffer.length() - 1);
+                  break;
+                }
+              default:
+                buffer.append(c);
+                break;
+            }
+            break;
+          case STATE3:
+            charsetPossible = false;
+            if (stopAtDetectedCharset) return;
+            switch (c) {
+              case ':':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                if (openBraces > openBracesStartingS3) {
+                  // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
+                  buffer.append(c);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "openBraces now {} not moving on because openBracesStartingS3={} in S3",
+                        openBraces,
+                        openBracesStartingS3);
+                  break;
+                }
+                int i = 0;
+                for (i = 0; i < buffer.length(); i++) {
+                  char c1 = buffer.charAt(i);
+                  if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                  break;
+                }
+                if (LOG.isTraceEnabled())
+                  LOG.trace("Appending whitespace: {}", buffer.substring(0, i));
+                whitespaceBeforeProperty = buffer.substring(0, i);
+                propertyName = buffer.delete(0, i).toString().trim();
+                if (LOG.isTraceEnabled()) LOG.trace("Property name: {}", propertyName);
+                buffer.setLength(0);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE :: {}", c);
+                break;
+              case ';':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                if (openBraces > openBracesStartingS3) {
+                  // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
+                  buffer.append(c);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "openBraces now {} not moving on because openBracesStartingS3={} in S3",
+                        openBraces,
+                        openBracesStartingS3);
+                  break;
+                }
                 i = 0;
                 for (i = 0; i < buffer.length(); i++) {
                   char c1 = buffer.charAt(i);
@@ -3704,22 +3635,16 @@ class CSSTokenizerFilter {
                   break;
                 }
                 if (LOG.isDebugEnabled())
-                  LOG.debug("Appending whitespace after colon (}): " + buffer.substring(0, i));
+                  LOG.debug("Appending whitespace after colon: \"{}\"", buffer.substring(0, i));
                 whitespaceAfterColon = buffer.substring(0, i);
-                buffer.delete(0, i);
-
-                propertyValue = buffer.toString().trim();
-                if (LOG.isTraceEnabled()) LOG.trace("Property value: " + propertyValue);
+                propertyValue = buffer.delete(0, i).toString().trim();
+                if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
                 buffer.setLength(0);
-
-                obj = getVerifier(propertyName);
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "Found PropertyName:" + propertyName + " propertyValue:" + propertyValue);
+                CSSPropertyVerifier obj = getVerifier(propertyName);
                 if (obj != null) {
                   ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
                   if (LOG.isTraceEnabled())
-                    LOG.trace("Split: " + CSSPropertyVerifier.toString(words));
+                    LOG.trace("Split: {}", CSSPropertyVerifier.toString(words));
                   if (!ignoreElementsS2
                       && !ignoreElementsS3
                       && verifyToken(currentMedia, elements, obj, words)) {
@@ -3730,146 +3655,213 @@ class CSSTokenizerFilter {
                     filteredTokens.append(':');
                     filteredTokens.append(whitespaceAfterColon);
                     filteredTokens.append(propertyValue);
-                    if (LOG.isTraceEnabled())
-                      LOG.trace("STATE3 CASE }: appending " + propertyName + ":" + propertyValue);
+                    filteredTokens.append(';');
+                    if (LOG.isDebugEnabled())
+                      LOG.debug("STATE3 CASE ;: appending {}:{}", propertyName, propertyValue);
+                    if (LOG.isDebugEnabled())
+                      LOG.debug("filtered tokens now: \"{}\"", filteredTokens.toString());
+                  } else {
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
+                          "filtered tokens now (ignored): \"{}\" words={} ignoreS1={} ignoreS2={}"
+                              + " ignoreS3={}",
+                          filteredTokens.toString(),
+                          CSSPropertyVerifier.toString(words),
+                          ignoreElementsS1,
+                          ignoreElementsS2,
+                          ignoreElementsS3);
                   }
                 } else {
-                  if (LOG.isTraceEnabled())
-                    LOG.trace("No such property name \"" + propertyName + "\"");
+                  if (LOG.isTraceEnabled()) LOG.trace("No such property name \"{}\"", propertyName);
                 }
+                ignoreElementsS3 = false;
                 propertyName = "";
-              } else {
-                // Whitespace at end
-                i = 0;
-                for (i = 0; i < buffer.length(); i++) {
+                propertyValue = "";
+                break;
+              case '}':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                openBraces--;
+                if (openBraces > openBracesStartingS3 - 1) {
+                  // Correctly tokenise bogus properties containing {}'s, see CSS2.1 section 4.1.6.
+                  buffer.append(c);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "openBraces now {} not moving on because openBracesStartingS3={} in S3",
+                        openBraces,
+                        openBracesStartingS3);
+                  if (openBraces < 0) openBraces = 0;
+                  break;
+                }
+                if (openBraces < 0) openBraces = 0;
+                for (i = buffer.length() - 1; i >= 0; i--) {
                   char c1 = buffer.charAt(i);
                   if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
                   break;
                 }
-                if (LOG.isDebugEnabled())
-                  LOG.debug("Appending whitespace after colon (}): " + buffer.substring(0, i));
-                filteredTokens.append(buffer, 0, i);
-                buffer.delete(0, i);
-              }
-              ignoreElementsS3 = false;
-              if ((!ignoreElementsS2) || closeIgnoredS2) {
-                filteredTokens.append(postSpace);
-                filteredTokens.append("}");
-                closeIgnoredS2 = false;
-                ignoreElementsS2 = false;
-              } else ignoreElementsS2 = false;
-              if (!ignoreElementsS1) {
-                w.write(filteredTokens.toString());
-                if (LOG.isDebugEnabled())
-                  LOG.debug("writing filtered tokens: \"" + filteredTokens.toString() + "\"");
-              }
-              filteredTokens.setLength(0);
-              whitespaceAfterColon = "";
-              if (forPage) {
-                forPage = false;
-                currentState = STATE1;
-              } else {
-                currentState = STATE2;
-              }
-              if (isInline) return;
-              buffer.setLength(0);
-              s2Comma = false;
-              if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE }: " + c);
-              break;
-
-            case '{':
-              // Correctly tokenise invalid properties including {}, see CSS2 section 4.1.6.
-              openBraces++;
-              buffer.append(c);
-              if (LOG.isTraceEnabled()) LOG.trace("openBraces now " + openBraces + " in S3");
-              break;
-            case '"':
-            case '\'':
-              if (prevc == '\\') {
-                // Leave in buffer, encoded.
+                i++;
+                String postSpace = buffer.substring(i);
+                buffer.setLength(i);
+                // This (string!=) is okay as we set it directly by propertyName="" to indicate
+                // there
+                // is no property name.
+                if (propertyName != "") {
+                  i = 0;
+                  for (i = 0; i < buffer.length(); i++) {
+                    char c1 = buffer.charAt(i);
+                    if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                    break;
+                  }
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+                  whitespaceAfterColon = buffer.substring(0, i);
+                  buffer.delete(0, i);
+                  propertyValue = buffer.toString().trim();
+                  if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
+                  buffer.setLength(0);
+                  obj = getVerifier(propertyName);
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "Found PropertyName:{} propertyValue:{}", propertyName, propertyValue);
+                  if (obj != null) {
+                    ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
+                    if (LOG.isTraceEnabled())
+                      LOG.trace("Split: {}", CSSPropertyVerifier.toString(words));
+                    if (!ignoreElementsS2
+                        && !ignoreElementsS3
+                        && verifyToken(currentMedia, elements, obj, words)) {
+                      if (changedAnything(words)) propertyValue = reconstruct(words);
+                      filteredTokens.append(whitespaceBeforeProperty);
+                      whitespaceBeforeProperty = "";
+                      filteredTokens.append(propertyName);
+                      filteredTokens.append(':');
+                      filteredTokens.append(whitespaceAfterColon);
+                      filteredTokens.append(propertyValue);
+                      if (LOG.isTraceEnabled())
+                        LOG.trace("STATE3 CASE }: appending {}:{}", propertyName, propertyValue);
+                    }
+                  } else {
+                    if (LOG.isTraceEnabled())
+                      LOG.trace("No such property name \"{}\"", propertyName);
+                  }
+                  propertyName = "";
+                } else {
+                  // Whitespace at end
+                  i = 0;
+                  for (i = 0; i < buffer.length(); i++) {
+                    char c1 = buffer.charAt(i);
+                    if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+                    break;
+                  }
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+                  filteredTokens.append(buffer, 0, i);
+                  buffer.delete(0, i);
+                }
+                ignoreElementsS3 = false;
+                if ((!ignoreElementsS2) || closeIgnoredS2) {
+                  filteredTokens.append(postSpace);
+                  filteredTokens.append("}");
+                  closeIgnoredS2 = false;
+                  ignoreElementsS2 = false;
+                } else ignoreElementsS2 = false;
+                if (!ignoreElementsS1) {
+                  w.write(filteredTokens.toString());
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("writing filtered tokens: \"{}\"", filteredTokens.toString());
+                }
+                filteredTokens.setLength(0);
+                whitespaceAfterColon = "";
+                if (forPage) {
+                  forPage = false;
+                  currentState = STATE1;
+                } else {
+                  currentState = STATE2;
+                }
+                if (isInline) return;
+                buffer.setLength(0);
+                s2Comma = false;
+                if (LOG.isTraceEnabled()) LOG.trace("STATE3 CASE }: {}", c);
+                break;
+              case '{':
+                // Correctly tokenise invalid properties including {}, see CSS2 section 4.1.6.
+                openBraces++;
+                buffer.append(c);
+                if (LOG.isTraceEnabled()) LOG.trace("openBraces now {} in S3", openBraces);
+                break;
+              case '"':
+              case '\'':
+                if (prevc == '\\') {
+                  // Leave in buffer, encoded.
+                  buffer.append(c);
+                  break;
+                }
+                buffer.append(c);
+                currentState = STATE3INQUOTE;
+                currentQuote = c;
+                break;
+              default:
+                buffer.append(c);
+                if (LOG.isTraceEnabled()) LOG.trace("STATE3 default CASE : {}", c);
+                break;
+            }
+            break;
+          case STATE3INQUOTE:
+            charsetPossible = false;
+            if (stopAtDetectedCharset) return;
+            if (LOG.isTraceEnabled()) LOG.trace("STATE3INQUOTE: {}", c);
+            switch (c) {
+              case '"':
+                if (currentQuote == '"' && prevc != '\\') currentState = STATE3;
                 buffer.append(c);
                 break;
-              }
-              buffer.append(c);
-              currentState = STATE3INQUOTE;
-              currentQuote = c;
-              break;
-
-            default:
-              buffer.append(c);
-              if (LOG.isTraceEnabled()) LOG.trace("STATE3 default CASE : " + c);
-              break;
-          }
-          break;
-
-        case STATE3INQUOTE:
-          charsetPossible = false;
-          if (stopAtDetectedCharset) return;
-          if (LOG.isTraceEnabled()) LOG.trace("STATE3INQUOTE: " + c);
-          switch (c) {
-            case '"':
-              if (currentQuote == '"' && prevc != '\\') currentState = STATE3;
-              buffer.append(c);
-              break;
-            case '\'':
-              if (currentQuote == '\'' && prevc != '\\') currentState = STATE3;
-              buffer.append(c);
-              break;
-            case '\n':
-              if (prevc == '\r') {
+              case '\'':
+                if (currentQuote == '\'' && prevc != '\\') currentState = STATE3;
+                buffer.append(c);
                 break;
-              }
-            // Otherwise same as \r ...
-            case '\r':
-            case '\f':
-              if (prevc != '\\') {
-                ignoreElementsS3 = true;
-                currentState = STATE3;
+              case '\n':
+                if (prevc == '\r') {
+                  break;
+                }
+              // Otherwise same as \r ...
+              case '\r':
+              case '\f':
+                if (prevc != '\\') {
+                  ignoreElementsS3 = true;
+                  currentState = STATE3;
+                  break;
+                } else {
+                  // Wipe out the \ as well.
+                  buffer.setLength(buffer.length() - 1);
+                  break;
+                }
+              default:
+                buffer.append(c);
                 break;
-              } else {
-                // Wipe out the \ as well.
-                buffer.setLength(buffer.length() - 1);
-                break;
-              }
-            default:
-              buffer.append(c);
-              break;
-          }
-          break;
-
-        case STATECOMMENT:
-          // FIXME sanitize (remove potentially dangerous chars) and preserve comments.
-          charsetPossible = false;
-          if (stopAtDetectedCharset) return;
-          if (c == '/') {
-            if (prevc == '*') {
-              currentState = stateBeforeComment;
-              c = 0;
-              if (LOG.isTraceEnabled()) LOG.trace("Exiting the comment state " + currentState);
             }
-          }
-          break;
+            break;
+          case STATECOMMENT:
+            // FIXME sanitize (remove potentially dangerous chars) and preserve comments.
+            charsetPossible = false;
+            if (stopAtDetectedCharset) return;
+            if (c == '/') {
+              if (prevc == '*') {
+                currentState = stateBeforeComment;
+                c = 0;
+                if (LOG.isTraceEnabled()) LOG.trace("Exiting the comment state {}", currentState);
+              }
+            }
+            break;
+        }
       }
-    }
-
-    if (LOG.isTraceEnabled()) LOG.trace("Filtered tokens: \"" + filteredTokens + "\"");
-    w.write(filteredTokens.toString());
-    for (int i = 0; i < openBraces; i++) w.write('}');
-
-    if (LOG.isTraceEnabled()) LOG.trace("Remaining buffer: \"" + buffer + "\"");
-
-    int i = 0;
-    for (i = 0; i < buffer.length(); i++) {
-      char c1 = buffer.charAt(i);
-      if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-      break;
-    }
-    w.write(buffer.substring(0, i));
-    buffer.delete(0, i);
-
-    while (buffer.toString().trim().equals("-->")) {
-      w.write("-->");
-      buffer.delete(0, 3);
+      if (LOG.isTraceEnabled()) LOG.trace("Filtered tokens: \"{}\"", filteredTokens);
+      w.write(filteredTokens.toString());
+      for (int i = 0; i < openBraces; i++) w.write('}');
+      if (LOG.isTraceEnabled()) LOG.trace("Remaining buffer: \"{}\"", buffer);
+      int i = 0;
       for (i = 0; i < buffer.length(); i++) {
         char c1 = buffer.charAt(i);
         if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
@@ -3877,12 +3869,21 @@ class CSSTokenizerFilter {
       }
       w.write(buffer.substring(0, i));
       buffer.delete(0, i);
+      while (buffer.toString().trim().equals("-->")) {
+        w.write("-->");
+        buffer.delete(0, 3);
+        for (i = 0; i < buffer.length(); i++) {
+          char c1 = buffer.charAt(i);
+          if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
+          break;
+        }
+        w.write(buffer.substring(0, i));
+        buffer.delete(0, i);
+      }
+      // FIXME CSS2.1 section 4.2 "Unexpected end of style sheet".
+      // We do NOT auto-close at the end.
+      // It might be worth implementing this one day.
     }
-
-    // FIXME CSS2.1 section 4.2 "Unexpected end of style sheet".
-    // We do NOT auto-close at the end.
-    // It might be worth implementing this one day.
-
   }
 
   private String reconstruct(ParsedWord[] words) {
@@ -3895,14 +3896,14 @@ class CSSTokenizerFilter {
       if (!first) sb.append(" ");
       if (!word.changed) {
         sb.append(word.original);
-        if (LOG.isTraceEnabled()) LOG.trace("Adding word (original): \"" + word.original + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("Adding word (original): \"{}\"", word.original);
       } else {
         sb.append(word.encode(false)); // FIXME check if charset is full unicode, if so pass true
-        if (LOG.isTraceEnabled()) LOG.trace("Adding word (new): \"" + word.encode(false) + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("Adding word (new): \"{}\"", word.encode(false));
       }
       first = false;
     }
-    if (LOG.isTraceEnabled()) LOG.trace("Reconstructed: \"" + sb + "\"");
+    if (LOG.isTraceEnabled()) LOG.trace("Reconstructed: \"{}\"", sb);
     return sb.toString();
   }
 
@@ -3939,7 +3940,6 @@ class CSSTokenizerFilter {
   }
 
   abstract static class ParsedWord {
-
     final String original;
 
     /** Has decoded changed? If not we can use the original. */
@@ -4024,7 +4024,6 @@ class CSSTokenizerFilter {
   }
 
   static class ParsedIdentifier extends BaseParsedWord {
-
     ParsedIdentifier(String original, String decoded, boolean changed) {
       super(original, decoded, changed);
     }
@@ -4047,7 +4046,6 @@ class CSSTokenizerFilter {
   }
 
   static class ParsedString extends BaseParsedWord {
-
     ParsedString(String original, String decoded, boolean changed, char stringChar) {
       super(original, decoded, changed);
       this.stringChar = stringChar;
@@ -4083,7 +4081,6 @@ class CSSTokenizerFilter {
   }
 
   static class ParsedURL extends ParsedString {
-
     ParsedURL(String original, String decoded, boolean changed, char stringChar) {
       super(original, decoded, changed || stringChar == 0, stringChar == 0 ? '"' : stringChar);
     }
@@ -4101,7 +4098,6 @@ class CSSTokenizerFilter {
   }
 
   static class ParsedAttr extends ParsedIdentifier {
-
     ParsedAttr(String original, String decoded, boolean changed) {
       super(original, decoded, changed);
     }
@@ -4121,7 +4117,6 @@ class CSSTokenizerFilter {
    * SimpleParsedWord.
    */
   static class SimpleParsedWord extends ParsedWord {
-
     public SimpleParsedWord(String original) {
       super(original, false);
     }
@@ -4171,15 +4166,10 @@ class CSSTokenizerFilter {
     }
   }
 
-  /**
-   * Split up a string, taking into account CSS rules for escaping, strings, identifiers.
-   *
-   * @param str1
-   * @return
-   */
+  /** Split up a string, taking into account CSS rules for escaping, strings, identifiers. */
   private static ParsedWord[] split(String input, boolean allowCommaDelimiters) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Splitting \"" + input + "\" allowCommaDelimiters=" + allowCommaDelimiters);
+      LOG.debug("Splitting \"{}\" allowCommaDelimiters={}", input, allowCommaDelimiters);
     ArrayList<ParsedWord> words = new ArrayList<>();
     ParsedWord lastWord = null;
     char c = 0;
@@ -4217,12 +4207,11 @@ class CSSTokenizerFilter {
               if (decodedToken.isEmpty()) {
                 if (lastWord == null) {
                   if (LOG.isDebugEnabled())
-                    LOG.debug("Extra comma before first element in \"" + input + "\" i=" + i);
+                    LOG.debug("Extra comma before first element in \"{}\" i={}", input, i);
                   return null;
                 } else if (lastWord.postComma) {
                   if (LOG.isDebugEnabled())
-                    LOG.debug(
-                        "Extra comma after element " + lastWord + " in \"" + input + "\" i=" + i);
+                    LOG.debug("Extra comma after element {} in \"{}\" i={}", lastWord, input, i);
                   // Allow it, delete it.
                   lastWord.changed = true;
                 } else lastWord.postComma = true;
@@ -4233,16 +4222,13 @@ class CSSTokenizerFilter {
                     parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
                 if (LOG.isDebugEnabled())
                   LOG.debug(
-                      "Token before comma: orig: \""
-                          + origToken
-                          + "\" decoded: \""
-                          + decodedToken
-                          + "\" dontLike="
-                          + dontLikeOrigToken
-                          + " couldBeIdentifier="
-                          + couldBeIdentifier
-                          + " parsed "
-                          + word);
+                      "Token before comma: orig: \"{}\" decoded: \"{}\" dontLike={}"
+                          + " couldBeIdentifier={} parsed {}",
+                      origToken,
+                      decodedToken,
+                      dontLikeOrigToken,
+                      couldBeIdentifier,
+                      word);
                 if (word == null) return null;
                 if (addComma) {
                   // This would mean we have two commas with a token between them
@@ -4264,16 +4250,13 @@ class CSSTokenizerFilter {
                   parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "Token: orig: \""
-                        + origToken
-                        + "\" decoded: \""
-                        + decodedToken
-                        + "\" dontLike="
-                        + dontLikeOrigToken
-                        + " couldBeIdentifier="
-                        + couldBeIdentifier
-                        + " parsed "
-                        + word);
+                    "Token: orig: \"{}\" decoded: \"{}\" dontLike={} couldBeIdentifier={} parsed"
+                        + " {}",
+                    origToken,
+                    decodedToken,
+                    dontLikeOrigToken,
+                    couldBeIdentifier,
+                    word);
               if (word == null) return null;
               if (addComma) {
                 word.postComma = true;
@@ -4367,7 +4350,6 @@ class CSSTokenizerFilter {
         }
       } else {
         // We are in a string.
-
         if (eatLF && c == '\n') {
           // Slightly different meaning here.
           // Here we do want to include it in the string.
@@ -4376,7 +4358,6 @@ class CSSTokenizerFilter {
           // Don't add to decoded because it is invisible along with the preceding \
           continue;
         } else eatLF = false;
-
         if (c == stringchar && !escaping) {
           origToken.append(c);
           decodedToken.append(c);
@@ -4444,14 +4425,11 @@ class CSSTokenizerFilter {
     if (!origToken.isEmpty()) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Token: orig: \""
-                + origToken
-                + "\" decoded: \""
-                + decodedToken
-                + "\" dontLike="
-                + dontLikeOrigToken
-                + " couldBeIdentifier="
-                + couldBeIdentifier);
+            "Token: orig: \"{}\" decoded: \"{}\" dontLike={} couldBeIdentifier={}",
+            origToken,
+            decodedToken,
+            dontLikeOrigToken,
+            couldBeIdentifier);
       ParsedWord word = parseToken(origToken, decodedToken, dontLikeOrigToken, couldBeIdentifier);
       if (word == null) return null;
       words.add(word);
@@ -4482,20 +4460,16 @@ class CSSTokenizerFilter {
         }
       }
     }
-
     String s = origToken.toString();
     if (couldBeIdentifier)
       return new ParsedIdentifier(s, decodedToken.toString(), dontLikeOrigToken);
-
     String sl = s.toLowerCase();
     if (sl.startsWith("url(")) {
       if (s.endsWith(")")) {
         decodedToken.delete(0, 4);
         decodedToken.setLength(decodedToken.length() - 1);
-        if (LOG.isTraceEnabled()) LOG.trace("stripped: " + decodedToken);
-
+        if (LOG.isTraceEnabled()) LOG.trace("stripped: {}", decodedToken);
         // Trim whitespace from both ends
-
         String strippedOrig = s.substring(4, s.length() - 1);
         int i;
         for (i = 0; i < strippedOrig.length(); i++) {
@@ -4511,12 +4485,9 @@ class CSSTokenizerFilter {
         }
         decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
         strippedOrig = strippedOrig.substring(0, i + 1);
-
         if (LOG.isTraceEnabled())
-          LOG.trace("whitespace stripped: " + strippedOrig + " decoded " + decodedToken);
-
+          LOG.trace("whitespace stripped: {} decoded {}", strippedOrig, decodedToken);
         if (strippedOrig.isEmpty()) return null;
-
         if (strippedOrig.length() > 2) {
           char c = strippedOrig.charAt(0);
           if (c == '\'' || c == '\"') {
@@ -4526,8 +4497,7 @@ class CSSTokenizerFilter {
               decodedToken.setLength(decodedToken.length() - 1);
               decodedToken.deleteCharAt(0);
               if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "creating url(): orig=\"" + origToken + "\" decoded=\"" + decodedToken + "\"");
+                LOG.debug("creating url(): orig=\"{}\" decoded=\"{}\"", origToken, decodedToken);
               return new ParsedURL(
                   origToken.toString(), decodedToken.toString(), dontLikeOrigToken, c);
             } else return null;
@@ -4537,14 +4507,11 @@ class CSSTokenizerFilter {
             origToken.toString(), decodedToken.toString(), dontLikeOrigToken, (char) 0);
       } else return null;
     }
-
     if (sl.startsWith("attr(")) {
       if (s.endsWith(")")) {
         decodedToken.delete(0, 5);
         decodedToken.setLength(decodedToken.length() - 1);
-
         // Trim whitespace from both ends
-
         String strippedOrig = s.substring(4, s.length() - 1);
         int i;
         for (i = 0; i < strippedOrig.length(); i++) {
@@ -4560,22 +4527,17 @@ class CSSTokenizerFilter {
         }
         decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
         strippedOrig = strippedOrig.substring(0, i + 1);
-
         if (strippedOrig.isEmpty()) return null;
-
         return new ParsedAttr(origToken.toString(), decodedToken.toString(), dontLikeOrigToken);
       } else return null;
     }
-
     boolean plural = false;
     if (sl.startsWith("counter(") || (plural = sl.startsWith("counters("))) {
       if (s.endsWith(")")) {
         int len = plural ? "counters(".length() : "counter(".length();
         decodedToken.delete(0, len);
         decodedToken.setLength(decodedToken.length() - 1);
-
         // Trim whitespace from both ends
-
         String strippedOrig = s.substring(len, s.length() - 1);
         int i;
         for (i = 0; i < strippedOrig.length(); i++) {
@@ -4591,15 +4553,12 @@ class CSSTokenizerFilter {
         }
         decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
         strippedOrig = strippedOrig.substring(0, i + 1);
-
         if (strippedOrig.isEmpty()) return null;
-
         String[] split = FilterUtils.removeWhiteSpace(strippedOrig.split(","), false);
         if (split.length == 0
             || (plural && split.length > 3)
             || ((!plural) && split.length > 2)
             || (plural && split.length < 2)) return null;
-
         ParsedIdentifier ident = makeParsedIdentifier(split[0]);
         if (ident == null) return null;
         ParsedString separator = null;
@@ -4615,7 +4574,6 @@ class CSSTokenizerFilter {
         return new ParsedCounter(origToken.toString(), ident, listType, separator);
       } else return null;
     }
-
     return new SimpleParsedWord(origToken.toString());
   }
 
@@ -4644,7 +4602,6 @@ class CSSTokenizerFilter {
   static class CSSPropertyVerifier {
     public final boolean onlyValueVerifier;
     public final boolean allowCommaDelimiters;
-
     public final Set<String>
         allowedValues; // immutable HashSet for all String constants that this CSS property can
     // assume like "auto"
@@ -4652,7 +4609,6 @@ class CSSTokenizerFilter {
     // accepted
     public final Set<String>
         allowedMedia; // immutable HashSet for all valid Media for this CSS property.
-
     /*
      * in, re etc stands for different code strings using which these boolean values can be set in
      * constructor like passing in,re would set isInteger and isReal.
@@ -4672,7 +4628,6 @@ class CSSTokenizerFilter {
     public final boolean isTime; // ti
     public final boolean isFrequency; // fr
     public final boolean isTransform; // tr
-
     private final List<String> parserExpressions;
 
     CSSPropertyVerifier(boolean allowCommaDelimiters) {
@@ -4716,7 +4671,6 @@ class CSSTokenizerFilter {
         boolean allowCommaDelimiters) {
       this.onlyValueVerifier = onlyValueVerifier;
       this.allowCommaDelimiters = allowCommaDelimiters;
-
       boolean isInteger,
           isReal,
           isPercentage,
@@ -4780,19 +4734,16 @@ class CSSTokenizerFilter {
       this.isTime = isTime;
       this.isFrequency = isFrequency;
       this.isTransform = isTransform;
-
       if (allowedValues != null) {
         this.allowedValues = Collections.unmodifiableSet(new HashSet<>(allowedValues));
       } else {
         this.allowedValues = null;
       }
-
       if (allowedMedia != null) {
         this.allowedMedia = Collections.unmodifiableSet(new HashSet<>(allowedMedia));
       } else {
         this.allowedMedia = null;
       }
-
       if (parseExpression != null) {
         this.parserExpressions = Collections.unmodifiableList(new ArrayList<>(parseExpression));
       } else {
@@ -4826,7 +4777,7 @@ class CSSTokenizerFilter {
         String s = cb.processURI(w, null);
         if (s == null || s.isEmpty()) return false;
         if (s.equals(w)) return true;
-        if (LOG.isTraceEnabled()) LOG.trace("New url: \"" + s + "\" from \"" + w + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("New url: \"{}\" from \"{}\"", s, w);
         word.setNewURL(s);
         return true;
       } catch (CommentException e) {
@@ -4846,8 +4797,7 @@ class CSSTokenizerFilter {
     // Verifies whether this CSS property can have a value under given media and HTML elements
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] words, FilterCallback cb) {
-
-      if (LOG.isTraceEnabled()) LOG.trace("checkValidity for " + toString(words) + " for " + this);
+      if (LOG.isTraceEnabled()) LOG.trace("checkValidity for {} for {}", toString(words), this);
       if (!onlyValueVerifier) {
         if (allowedMedia != null) {
           boolean allowed = false;
@@ -4859,11 +4809,9 @@ class CSSTokenizerFilter {
           if (!allowed) {
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "checkValidity Media of the element is not allowed.Media="
-                      + Fields.commaList(media)
-                      + " allowed Media="
-                      + allowedMedia);
-
+                  "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
+                  Fields.commaList(media),
+                  allowedMedia);
             return false;
           }
         }
@@ -4880,12 +4828,9 @@ class CSSTokenizerFilter {
         // The following rule causes borders and backgrounds to be drawn around all cells:
         // table { empty-cells: show }
         // Hence it is not appropriate to check which property is valid for which element.
-
         // In security terms, there is no danger in allowing every property on every element.
       }
-
       if (words.length == 1) {
-
         if (words[0] instanceof ParsedIdentifier) {
           String lowerCaseWord = words[0].original.toLowerCase();
           if (allowedValues != null && allowedValues.contains(lowerCaseWord)) {
@@ -4902,34 +4847,25 @@ class CSSTokenizerFilter {
             return true;
           }
         }
-
         if (words[0] instanceof SimpleParsedWord) {
-
           String word = words[0].original;
-
           // Numeric explicitly defined value is possible
           if (allowedValues != null && allowedValues.contains(word)) return true;
-
           // These are all numeric so they will have parsed as a SimpleParsedWord.
-
           if (isInteger && isIntegerChecker(word)) {
             return true;
           }
-
           if (isReal && isRealChecker(word)) {
             return true;
           }
-
           if (isPercentage && FilterUtils.isPercentage(word)) // Valid percentage X%
           {
             return true;
           }
-
           if (isLength && FilterUtils.isLength(word, false)) // Valid unit Vxx where xx is unit or V
           {
             return true;
           }
-
           if (isAngle && FilterUtils.isAngle(word)) {
             return true;
           }
@@ -4938,24 +4874,19 @@ class CSSTokenizerFilter {
           if (isColor) {
             if (FilterUtils.isColor(word)) return true;
           }
-
           if (isShape) {
             if (FilterUtils.isValidCSSShape(word)) return true;
           }
-
           if (isFrequency) {
             if (FilterUtils.isFrequency(word)) return true;
           }
-
           if (isTime) {
             if (FilterUtils.isTime(word)) return true;
           }
-
           if (isTransform) {
             if (FilterUtils.isCSSTransform(word)) return true;
           }
         }
-
         if (words[0] instanceof ParsedIdentifier) {
           String value = words[0].original;
           if (isColor && FilterUtils.isColor(value)) {
@@ -4970,14 +4901,11 @@ class CSSTokenizerFilter {
           }
         }
         if (isURI && words[0] instanceof ParsedURL rL) {
-
           return isValidURI(rL, cb);
         }
-
         if (isIdentifier && words[0] instanceof ParsedIdentifier) {
           return true;
         }
-
         if (isIDSelector) {
           // In accordance with spec for e.g. nav-*, we only allow ID selectors.
           // See http://www.w3.org/TR/css3-ui/
@@ -4991,13 +4919,11 @@ class CSSTokenizerFilter {
             return true;
           }
         }
-
         if (isString && words[0] instanceof ParsedString string) {
           return ElementInfo.ALLOW_ALL_VALID_STRINGS
               || ElementInfo.isValidStringDecoded(string.getDecoded());
         }
       }
-
       /*
        * Parser expressions
        * Original syntax: http://www.w3.org/TR/CSS2/about.html#value-defs
@@ -5019,7 +4945,6 @@ class CSSTokenizerFilter {
        */
       for (String parserExpression : parserExpressions) {
         boolean result = recursiveParserExpressionVerifier(parserExpression, words, cb);
-
         if (result) return true;
       }
       return false;
@@ -5056,14 +4981,10 @@ class CSSTokenizerFilter {
         String expression, ParsedWord[] words, FilterCallback cb) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "1recursiveParserExpressionVerifier called: with "
-                + expression
-                + " "
-                + toString(words));
+            "1recursiveParserExpressionVerifier called: with {} {}", expression, toString(words));
       if ((expression == null || (expression.trim().isEmpty()))) {
         return words == null || words.length == 0;
       }
-
       int tokensCanBeGivenLowerLimit = 1, tokensCanBeGivenUpperLimit = 1;
       for (int i = 0; i < expression.length(); i++) {
         if (expression.charAt(i) == 'a') // Identifying ||
@@ -5095,33 +5016,26 @@ class CSSTokenizerFilter {
           }
           for (; j <= words.length; j++) {
             if (LOG.isTraceEnabled())
-              LOG.trace("2Making recursiveDoubleBarVerifier to consume " + j + " words");
+              LOG.trace("2Making recursiveDoubleBarVerifier to consume {} words", j);
             ParsedWord[] partToPassToDB = Arrays.copyOf(words, j);
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "3Calling recursiveDoubleBarVerifier with "
-                      + firstPart
-                      + " "
-                      + CSSPropertyVerifier.toString(partToPassToDB));
+                  "3Calling recursiveDoubleBarVerifier with {} {}",
+                  firstPart,
+                  CSSPropertyVerifier.toString(partToPassToDB));
             if (recursiveDoubleBarVerifier(
                 firstPart, partToPassToDB, cb)) // This function is written to verify || operator.
             {
               ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "4recursiveDoubleBarVerifier true calling itself with "
-                        + secondPart
-                        + CSSPropertyVerifier.toString(partToPass));
+                    "4recursiveDoubleBarVerifier true calling itself with {}{}",
+                    secondPart,
+                    CSSPropertyVerifier.toString(partToPass));
               if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) return true;
             }
             if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "5Back to recursiveDoubleBarVerifier "
-                      + j
-                      + " "
-                      + (noOfa + 1)
-                      + " "
-                      + words.length);
+              LOG.debug("5Back to recursiveDoubleBarVerifier {} {} {}", j, noOfa + 1, words.length);
           }
           return false;
         } else if (expression.charAt(i) == 'b') {
@@ -5161,7 +5075,7 @@ class CSSTokenizerFilter {
               ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "8First part is true. partToPass=" + CSSPropertyVerifier.toString(partToPass));
+                    "8First part is true. partToPass={}", CSSPropertyVerifier.toString(partToPass));
               return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
             }
           }
@@ -5178,7 +5092,6 @@ class CSSTokenizerFilter {
               return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
             }
           } else return recursiveParserExpressionVerifier(secondPart, words, cb);
-
           return false;
         } else if (expression.charAt(i) == '<') {
           int tindex = expression.indexOf('>');
@@ -5206,20 +5119,17 @@ class CSSTokenizerFilter {
             }
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "9in < firstPart="
-                      + firstPart
-                      + " secondPart="
-                      + secondPart
-                      + " tokensCanBeGivenLowerLimit="
-                      + tokensCanBeGivenLowerLimit
-                      + " tokensCanBeGivenUpperLimit="
-                      + tokensCanBeGivenUpperLimit);
+                  "9in < firstPart={} secondPart={} tokensCanBeGivenLowerLimit={}"
+                      + " tokensCanBeGivenUpperLimit={}",
+                  firstPart,
+                  secondPart,
+                  tokensCanBeGivenLowerLimit,
+                  tokensCanBeGivenUpperLimit);
             int index = Integer.parseInt(firstPart);
             String[] strLimits = expression.substring(i + 1, tindex).split(",");
             if (strLimits.length == 2) {
               int lowerLimit = Integer.parseInt(strLimits[0]);
               int upperLimit = Integer.parseInt(strLimits[1]);
-
               return recursiveVariableOccuranceVerifier(
                   index,
                   words,
@@ -5231,12 +5141,11 @@ class CSSTokenizerFilter {
                   cb);
             }
           }
-
           return false;
         }
       }
       // Single verifier object
-      if (LOG.isTraceEnabled()) LOG.trace("10Single token:" + expression);
+      if (LOG.isTraceEnabled()) LOG.trace("10Single token:{}", expression);
       int index = Integer.parseInt(expression);
       return CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
     }
@@ -5266,7 +5175,6 @@ class CSSTokenizerFilter {
       assert (!expression.isEmpty());
       assert (expression.charAt(expression.length() - 1) != 'b');
       assert (expression.charAt(0) != 'b');
-
       // Get all the verifiers in one list, we need to check them individually
       List<CSSPropertyVerifier> propertyVerifierList = new ArrayList<>();
       for (int i = 0; i <= expression.length(); i++) {
@@ -5280,12 +5188,10 @@ class CSSTokenizerFilter {
           } else ignoredParts = "";
           firstPart = expression.substring(lastB + 1, i);
           lastB = i;
-
           int index = Integer.parseInt(firstPart);
           propertyVerifierList.add(CSSTokenizerFilter.auxilaryVerifiers[index]);
         }
       }
-
       // Check each group of words in each verifier a maximum of maxLoops times
       // and only if we have some property verifiers to test against in the list.
       // Since some property verifiers will return a positive match on an empty
@@ -5317,7 +5223,6 @@ class CSSTokenizerFilter {
           break;
         }
       }
-
       // Little optimisation to allow us to quit early
       // any propertyVerifiers left will not accept any words in the list or
       // they would have been accepted earlier. We know the next step will fail
@@ -5325,7 +5230,6 @@ class CSSTokenizerFilter {
       if (words.length > 0) {
         return false;
       }
-
       // Verifiers that still remain in the list may accept an empty word array
       // here we will let those verifiers accept an empty array if they want to.
       boolean result = true;
@@ -5333,7 +5237,6 @@ class CSSTokenizerFilter {
         CSSPropertyVerifier verifier = propertyVerifierList.get(i);
         result = result && verifier.checkValidity(words, cb);
       }
-
       return result;
     }
 
@@ -5381,66 +5284,55 @@ class CSSTokenizerFilter {
         int tokensCanBeGivenUpperLimit,
         String secondPart,
         FilterCallback cb) {
-
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "recursiveVariableOccurranceVerifier("
-                + verifierIndex
-                + ","
-                + toString(valueParts)
-                + ","
-                + lowerLimit
-                + ","
-                + upperLimit
-                + ","
-                + tokensCanBeGivenLowerLimit
-                + ","
-                + tokensCanBeGivenUpperLimit
-                + ","
-                + secondPart
-                + ")");
+            "recursiveVariableOccurranceVerifier({},{},{},{},{},{},{})",
+            verifierIndex,
+            toString(valueParts),
+            lowerLimit,
+            upperLimit,
+            tokensCanBeGivenLowerLimit,
+            tokensCanBeGivenUpperLimit,
+            secondPart);
       if ((valueParts == null || valueParts.length == 0) && lowerLimit == 0) return true;
-
       if (lowerLimit <= 0) {
         // There could be secondPart.
         if (recursiveParserExpressionVerifier(secondPart, valueParts, cb)) {
           if (LOG.isTraceEnabled())
-            LOG.trace("recursiveVariableOccurranceVerifier completed by " + secondPart);
+            LOG.trace("recursiveVariableOccurranceVerifier completed by {}", secondPart);
           return true;
         }
       }
-
       // There can be no more parts.
       if (upperLimit == 0) {
         if (LOG.isTraceEnabled()) LOG.trace("recursiveVariableOccurranceVerifier: no more parts");
         return false;
       }
-
       for (int i = tokensCanBeGivenLowerLimit;
           i <= tokensCanBeGivenUpperLimit && i <= valueParts.length;
           i++) {
         ParsedWord[] before = Arrays.copyOf(valueParts, i);
         if (CSSTokenizerFilter.auxilaryVerifiers[verifierIndex].checkValidity(before, cb)) {
           if (LOG.isDebugEnabled())
-            LOG.debug(
-                "first " + i + " tokens using " + verifierIndex + " match " + toString(before));
+            LOG.debug("first {} tokens using {} match {}", i, verifierIndex, toString(before));
           if (i == valueParts.length && lowerLimit <= 1) {
             if (recursiveParserExpressionVerifier(secondPart, new ParsedWord[0], cb)) {
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "recursiveVariableOccurranceVerifier completed with no more parts by "
-                        + secondPart);
+                    "recursiveVariableOccurranceVerifier completed with no more parts by {}",
+                    secondPart);
               return true;
             } else {
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "recursiveVariableOccurranceVerifier: satisfied self but nothing left to match "
-                        + secondPart);
+                    "recursiveVariableOccurranceVerifier: satisfied self but nothing left to match"
+                        + " {}",
+                    secondPart);
               return false;
             }
           } else if (i == valueParts.length) return false;
           ParsedWord[] after = Arrays.copyOfRange(valueParts, i, valueParts.length);
-          if (LOG.isTraceEnabled()) LOG.trace("rest of tokens: " + toString(after));
+          if (LOG.isTraceEnabled()) LOG.trace("rest of tokens: {}", toString(after));
           if (recursiveVariableOccuranceVerifier(
               verifierIndex,
               after,
@@ -5452,7 +5344,6 @@ class CSSTokenizerFilter {
               cb)) return true;
         }
       }
-
       return false;
     }
 
@@ -5481,12 +5372,8 @@ class CSSTokenizerFilter {
         String expression, ParsedWord[] words, FilterCallback cb) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "11in recursiveDoubleBarVerifier expression="
-                + expression
-                + " value="
-                + toString(words));
+            "11in recursiveDoubleBarVerifier expression={} value={}", expression, toString(words));
       if (words == null || words.length == 0) return true;
-
       String ignoredParts = "";
       String firstPart = "";
       String secondPart = "";
@@ -5507,17 +5394,12 @@ class CSSTokenizerFilter {
           else secondPart = expression.substring(i + 1);
           if (LOG.isDebugEnabled())
             LOG.debug(
-                "12in a firstPart="
-                    + firstPart
-                    + " secondPart="
-                    + secondPart
-                    + " for expression "
-                    + expression
-                    + " i "
-                    + i);
-
+                "12in a firstPart={} secondPart={} for expression {} i {}",
+                firstPart,
+                secondPart,
+                expression,
+                i);
           boolean result = false;
-
           int index = Integer.parseInt(firstPart);
           for (int j = 0; j < words.length; j++) {
             // Check the first j+1 words against this verifier: A single verifier can consume more
@@ -5527,12 +5409,7 @@ class CSSTokenizerFilter {
                     getSubArray(words, 0, j + 1), cb);
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "14in for loop result:"
-                      + result
-                      + " for "
-                      + toString(words)
-                      + " for "
-                      + firstPart);
+                  "14in for loop result:{} for {} for {}", result, toString(words), firstPart);
             if (result) {
               // Check the remaining words...
               ParsedWord[] valueToPass = Arrays.copyOfRange(words, j + 1, words.length);
@@ -5552,44 +5429,37 @@ class CSSTokenizerFilter {
                       + secondPart;
               if (LOG.isDebugEnabled())
                 LOG.debug(
-                    "14a "
-                        + toString(getSubArray(words, 0, j + 1))
-                        + " can be consumed by "
-                        + index
-                        + " passing on expression="
-                        + pattern
-                        + " value="
-                        + toString(valueToPass));
+                    "14a {} can be consumed by {} passing on expression={} value={}",
+                    toString(getSubArray(words, 0, j + 1)),
+                    index,
+                    pattern,
+                    toString(valueToPass));
               if (pattern.isEmpty()) return false;
               result = recursiveDoubleBarVerifier(pattern, valueToPass, cb);
               if (result) {
                 if (LOG.isTraceEnabled())
-                  LOG.trace("15else part is true, value consumed=" + words[j]);
+                  LOG.trace("15else part is true, value consumed={}", words[j]);
                 return true;
               }
             }
           }
         }
       }
-
       if (lastA != -1) return false;
       // Single token
       int index = Integer.parseInt(expression);
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "16Single token:"
-                + expression
-                + " with value=*"
-                + Fields.commaList(words)
-                + "* validity="
-                + CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb));
+            "16Single token:{} with value=*{}* validity={}",
+            expression,
+            Fields.commaList(words),
+            CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb));
       return CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
     }
   }
 
   // CSSPropertyVerifier class extended for verifying content property.
   static class ContentPropertyVerifier extends CSSPropertyVerifier {
-
     ContentPropertyVerifier(Collection<String> allowedValues) {
       super(allowedValues, null, null, null);
     }
@@ -5598,20 +5468,16 @@ class CSSTokenizerFilter {
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
       if (LOG.isTraceEnabled())
-        LOG.trace("ContentPropertyVerifier checkValidity called: " + toString(value));
-
+        LOG.trace("ContentPropertyVerifier checkValidity called: {}", toString(value));
       if (value.length != 1) return false;
-
       if (value[0] instanceof ParsedIdentifier identifier
           && allowedValues != null
           && allowedValues.contains(identifier.getDecoded())) return true;
-
       // String processing
       if (value[0] instanceof ParsedString string) {
         return ElementInfo.ALLOW_ALL_VALID_STRINGS
             || ElementInfo.isValidStringDecoded(string.getDecoded());
       }
-
       if (value[0] instanceof ParsedCounter counter) {
         if (counter.listType != null) {
           HashSet<String> listStyleType = new HashSet<>();
@@ -5678,17 +5544,14 @@ class CSSTokenizerFilter {
             || (ElementInfo.ALLOW_ALL_VALID_STRINGS
                 || ElementInfo.isValidStringDecoded(counter.separatorString.getDecoded()));
       }
-
       if (value[0] instanceof ParsedAttr) {
         return true;
       }
-
       return false;
     }
   }
 
   // For verifying ’font-size’[ / ’line-height’]? of Font property
-
   static class FontPartPropertyVerifier extends CSSPropertyVerifier {
     FontPartPropertyVerifier() {
       super(false);
@@ -5697,9 +5560,8 @@ class CSSTokenizerFilter {
     @Override
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
-
       if (LOG.isTraceEnabled())
-        LOG.trace("FontPartPropertyVerifier called with " + toString(value));
+        LOG.trace("FontPartPropertyVerifier called with {}", toString(value));
       CSSPropertyVerifier fontSize =
           new CSSPropertyVerifier(
               Arrays.asList(
@@ -5717,7 +5579,6 @@ class CSSTokenizerFilter {
               null,
               true);
       if (fontSize.checkValidity(value, cb)) return true;
-
       for (ParsedWord word : value) {
         // Token by token
         if (fontSize.checkValidity(word, cb)) continue;
@@ -5729,7 +5590,7 @@ class CSSTokenizerFilter {
             String secondPart = orig.substring(slashIndex + 1);
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "FontPartPropertyVerifier FirstPart=" + firstPart + " secondPart=" + secondPart);
+                  "FontPartPropertyVerifier FirstPart={} secondPart={}", firstPart, secondPart);
             CSSPropertyVerifier lineHeight =
                 new CSSPropertyVerifier(
                     List.of("normal"), Arrays.asList("le", "pe", "re", "in"), null, null, true);
@@ -5748,7 +5609,6 @@ class CSSTokenizerFilter {
   }
 
   abstract static class FamilyPropertyVerifier extends CSSPropertyVerifier {
-
     FamilyPropertyVerifier(boolean valueOnly, Set<String> mediaTypes) {
       super(null, mediaTypes, null, null, valueOnly, true);
     }
@@ -5760,11 +5620,10 @@ class CSSTokenizerFilter {
     // words...
     // Quite possible, but not a high priority, "verdana,arial,times new roman,sans-serif" is not
     // dangerous, it's just hard to parse.
-
     @Override
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
-      if (LOG.isTraceEnabled()) LOG.trace("font verifier: " + toString(value));
+      if (LOG.isTraceEnabled()) LOG.trace("font verifier: {}", toString(value));
       if (value.length == 1) {
         if (value[0] instanceof ParsedIdentifier && "inherit".equalsIgnoreCase(value[0].original)) {
           // CSS Property has one of the explicitly defined values
@@ -5782,11 +5641,9 @@ class CSSTokenizerFilter {
         if (!allowed) {
           if (LOG.isDebugEnabled())
             LOG.debug(
-                "checkValidity Media of the element is not allowed.Media="
-                    + Fields.commaList(media)
-                    + " allowed Media="
-                    + allowedMedia);
-
+                "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
+                Fields.commaList(media),
+                allowedMedia);
           return false;
         }
       }
@@ -5799,7 +5656,7 @@ class CSSTokenizerFilter {
         String s = null;
         if (word instanceof ParsedString string) {
           String decoded = (string.getDecoded());
-          if (LOG.isTraceEnabled()) LOG.trace("decoded: \"" + decoded + "\"");
+          if (LOG.isTraceEnabled()) LOG.trace("decoded: \"{}\"", decoded);
           // It's actually quoted, great.
           if (isSpecificFamily(decoded.toLowerCase())) {
             continue;
@@ -5818,11 +5675,7 @@ class CSSTokenizerFilter {
           if (word.postComma) {
             if (LOG.isDebugEnabled())
               LOG.debug(
-                  "Word ends in comma, but is not a valid font on its own: "
-                      + word
-                      + " (index "
-                      + i
-                      + ")");
+                  "Word ends in comma, but is not a valid font on its own: {} (index {})", word, i);
             return false;
           }
         } else return false;
@@ -5833,14 +5686,13 @@ class CSSTokenizerFilter {
         fontWords.clear();
         assert (s != null);
         fontWords.add(s);
-        if (LOG.isTraceEnabled()) LOG.trace("first word: \"" + s + "\"");
+        if (LOG.isTraceEnabled()) LOG.trace("first word: \"{}\"", s);
         if (i == value.length - 1) {
           if (LOG.isDebugEnabled())
             LOG.debug(
-                "last word. font words: "
-                    + getStringFromArray(fontWords.toArray(new String[0]))
-                    + " valid="
-                    + validFontWords(fontWords));
+                "last word. font words: {} valid={}",
+                getStringFromArray(fontWords.toArray(new String[0])),
+                validFontWords(fontWords));
           return validFontWords(fontWords);
         }
         if (!possiblyValidFontWords(fontWords)) return false;
@@ -5852,7 +5704,7 @@ class CSSTokenizerFilter {
           if (newWord instanceof ParsedIdentifier) {
             s1 = newWord.original;
             fontWords.add(s1);
-            if (LOG.isTraceEnabled()) LOG.trace("adding word: \"" + s1 + "\"");
+            if (LOG.isTraceEnabled()) LOG.trace("adding word: \"{}\"", s1);
             if (last) {
               if (newWord.postComma) {
                 if (LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
@@ -5861,8 +5713,8 @@ class CSSTokenizerFilter {
                 // Valid. Good.
                 if (LOG.isDebugEnabled())
                   LOG.debug(
-                      "font: reached last in inner loop, valid. font words: "
-                          + getStringFromArray(fontWords.toArray(new String[0])));
+                      "font: reached last in inner loop, valid. font words: {}",
+                      getStringFromArray(fontWords.toArray(new String[0])));
                 return true;
               }
             }
@@ -5875,13 +5727,13 @@ class CSSTokenizerFilter {
               } else {
                 if (LOG.isDebugEnabled())
                   LOG.debug(
-                      "comma but can't parse font words: "
-                          + Fields.commaList(fontWords.toArray(new String[0])));
+                      "comma but can't parse font words: {}",
+                      Fields.commaList(fontWords.toArray(new String[0])));
                 return false;
               }
             }
           } else {
-            if (LOG.isTraceEnabled()) LOG.trace("cannot parse " + newWord);
+            if (LOG.isTraceEnabled()) LOG.trace("cannot parse {}", newWord);
             return false;
           }
         }
@@ -5932,7 +5784,6 @@ class CSSTokenizerFilter {
   }
 
   static class FontPropertyVerifier extends FamilyPropertyVerifier {
-
     FontPropertyVerifier(boolean valueOnly) {
       super(valueOnly, ElementInfo.VISUALMEDIA);
     }
@@ -5949,7 +5800,6 @@ class CSSTokenizerFilter {
   }
 
   static class VoiceFamilyPropertyVerifier extends FamilyPropertyVerifier {
-
     VoiceFamilyPropertyVerifier(boolean valueOnly) {
       super(valueOnly, ElementInfo.AURALMEDIA);
     }
