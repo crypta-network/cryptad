@@ -48,51 +48,51 @@ class CSSTokenizerFilterTest {
   // --------------------- HTMLelementVerifier ----------------------
 
   @Test
-  void HTMLelementVerifier_whenSimpleElement_expectSame() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("div", false);
+  void htmlElementVerifier_whenSimpleElement_expectSame() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("div", false);
     assertEquals("div", out);
   }
 
   @Test
-  void HTMLelementVerifier_whenClassOnly_expectSame() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier(".item", false);
+  void htmlElementVerifier_whenClassOnly_expectSame() {
+    String out = CSSTokenizerFilter.htmlElementVerifier(".item", false);
     assertEquals(".item", out);
   }
 
   @Test
-  void HTMLelementVerifier_whenIdSelectorOnly_expectSame() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("#logo", true);
+  void htmlElementVerifier_whenIdSelectorOnly_expectSame() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("#logo", true);
     assertEquals("#logo", out);
   }
 
   @Test
-  void HTMLelementVerifier_whenElementAndId_withIdSelector_expectSame() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("div#logo", true);
+  void htmlElementVerifier_whenElementAndId_withIdSelector_expectSame() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("div#logo", true);
     assertEquals("div#logo", out);
   }
 
   @Test
-  void HTMLelementVerifier_whenClassWithIdSelector_expectNull() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("div.main", true);
+  void htmlElementVerifier_whenClassWithIdSelector_expectNull() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("div.main", true);
     assertNull(out);
   }
 
   @Test
-  void HTMLelementVerifier_whenInvalidElement_expectNull() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("nonexistenttag", false);
+  void htmlElementVerifier_whenInvalidElement_expectNull() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("nonexistenttag", false);
     assertNull(out);
   }
 
   @Test
-  void HTMLelementVerifier_whenBannedPseudoClass_expectEmptyString() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("a:visited", false);
+  void htmlElementVerifier_whenBannedPseudoClass_expectEmptyString() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("a:visited", false);
     assertNotNull(out);
     assertEquals("", out);
   }
 
   @Test
-  void HTMLelementVerifier_whenAttributeSelection_expectRoundTrip() {
-    String out = CSSTokenizerFilter.HTMLelementVerifier("a[href=\"x\"]", false);
+  void htmlElementVerifier_whenAttributeSelection_expectRoundTrip() {
+    String out = CSSTokenizerFilter.htmlElementVerifier("a[href=\"x\"]", false);
     assertEquals("a[href=\"x\"]", out);
   }
 

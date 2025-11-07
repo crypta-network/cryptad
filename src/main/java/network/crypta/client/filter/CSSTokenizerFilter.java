@@ -203,12 +203,8 @@ class CSSTokenizerFilter {
     allelementVerifiers.add("border-width");
     allelementVerifiers.add("border-block-end-width");
     allelementVerifiers.add("border-block-start-width");
-    allelementVerifiers.add(S_BORDER_BOTTOM_WIDTH);
     allelementVerifiers.add("border-inline-end-width");
     allelementVerifiers.add("border-inline-start-width");
-    allelementVerifiers.add(S_BORDER_LEFT_WIDTH);
-    allelementVerifiers.add(S_BORDER_RIGHT_WIDTH);
-    allelementVerifiers.add(S_BORDER_TOP_WIDTH);
     allelementVerifiers.add("border-radius");
     allelementVerifiers.add("border-bottom-left-radius");
     allelementVerifiers.add("border-bottom-right-radius");
@@ -2421,30 +2417,10 @@ class CSSTokenizerFilter {
   }
 
   /**
-   * Determines whether a CSS property/value is valid for the given media and elements.
-   *
-   * <p>Example:
-   * <pre>
-   * @media print {
-   *   h1, h2 , h3, h4 { font-size: 10pt }
-   * }
-   * media: print; elements: [h1, h2, h3, h4]; token: font-size; value: 10pt
-   * </pre>
+   * This method has been moved inside Parser to localize parsing concerns with the state machine.
+   * Kept no-op here to preserve file structure; actual implementation now resides in Parser.
    */
-  private boolean verifyToken(
-      String[] media, String[] elements, CSSPropertyVerifier obj, ParsedWord[] words) {
-    if (words == null) return false;
-    if (LOG.isTraceEnabled()) LOG.trace("verifyToken for {}", CSSPropertyVerifier.toString(words));
-    if (obj == null) {
-      return false;
-    }
-    int important = checkImportant(words);
-    if (important > 0) {
-      if (words.length == important) return true; // Eh? !important on its own!
-      words = Arrays.copyOf(words, words.length - important);
-    }
-    return obj.checkValidity(media, elements, words, cb);
-  }
+  // (intentionally empty to avoid duplication)
 
   // CSS minimizer often removes space between token and !important
   private int checkImportant(ParsedWord[] words) {
@@ -2466,7 +2442,7 @@ class CSSTokenizerFilter {
    * @param isIDSelector True if we only allow an ID selector, which must include an ID, may
    * include an element name or *, but must not contain anything else.
    */
-  public static String HTMLelementVerifier(String elementString, boolean isIDSelector) {
+  public static String htmlElementVerifier(String elementString, boolean isIDSelector) {
     if (LOG.isTraceEnabled()) LOG.trace("varifying element/selector: \"{}\"", elementString);
     SelectorParts parts = new SelectorParts();
     parts.remaining = elementString;
@@ -2589,9 +2565,8 @@ class CSSTokenizerFilter {
   }
 
   private static boolean validateNames(SelectorParts p) {
-    if (!p.className.isEmpty() && !ElementInfo.isValidName(p.className)) return false;
-    if (p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id)) return false;
-    return true;
+    return !((!p.className.isEmpty() && !ElementInfo.isValidName(p.className))
+        || (p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id)));
   }
 
   // returns -1 invalid, 0 ok, 1 banned
@@ -2664,7 +2639,7 @@ class CSSTokenizerFilter {
   }
 
   /*
-   * This function works with different operators, +, >, " " and verifies each HTML element with HTMLelementVerifier(String elementString)
+   * This function works with different operators, +, >, " " and verifies each HTML element with htmlElementVerifier(String elementString)
    * e.g. div > p:first-child
    * This would call HTMLelementVerifier with div and p:first-child
    * Returns null on failure (selector invalid), empty string on banned but otherwise valid selector.
@@ -2684,12 +2659,12 @@ class CSSTokenizerFilter {
           selectorString);
     if (res.quoting != 0) return null; // Mismatched quotes
     if (res.bracketing != 0) return null; // Mismatched brackets
-    if (res.index == -1) return HTMLelementVerifier(selectorString, false);
+    if (res.index == -1) return htmlElementVerifier(selectorString, false);
     String left = selectorString.substring(0, res.index).trim();
     String right = selectorString.substring(res.index + 1).trim();
     if (LOG.isDebugEnabled())
       LOG.debug("recursiveSelectorVerifier parts[0]={} parts[1]={}", left, right);
-    left = HTMLelementVerifier(left, false);
+    left = htmlElementVerifier(left, false);
     String verifiedRight = recursiveSelectorVerifier(right);
     if (left != null && verifiedRight != null) return left + res.selector + verifiedRight;
     return null;
@@ -3418,9 +3393,7 @@ class CSSTokenizerFilter {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE1;
           buffer.append(c);
           break;
-        case '\n':
-        case '\f':
-        case '\r':
+        case '\n', '\f', '\r':
           if (c == '\n' && prevc == '\r') {
             break;
           }
@@ -3607,9 +3580,7 @@ class CSSTokenizerFilter {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE2;
           buffer.append(c);
           break;
-        case '\n':
-        case '\f':
-        case '\r':
+        case '\n', '\f', '\r':
           if (c == '\n' && prevc == '\r') {
             break;
           }
@@ -3705,6 +3676,29 @@ class CSSTokenizerFilter {
       propertyValue = buffer.delete(0, i).toString().trim();
       if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
       buffer.setLength(0);
+    }
+
+    /**
+     * Determines whether a CSS property/value is valid for the given media and elements.
+     *
+     * <p>Example usage context: inside a media block, for a set of elements and a given
+     * property/value pair, validate and optionally transform tokens before appending to the
+     * filtered output.
+     */
+    private boolean verifyToken(
+        String[] media, String[] elements, CSSPropertyVerifier obj, ParsedWord[] words) {
+      if (words == null) return false;
+      if (LOG.isTraceEnabled())
+        LOG.trace("verifyToken for {}", CSSPropertyVerifier.toString(words));
+      if (obj == null) {
+        return false;
+      }
+      int important = checkImportant(words);
+      if (important > 0) {
+        if (words.length == important) return true; // Eh? !important on its own!
+        words = Arrays.copyOf(words, words.length - important);
+      }
+      return obj.checkValidity(media, elements, words, cb);
     }
 
     private void appendPropertyIfValid(
@@ -3848,9 +3842,7 @@ class CSSTokenizerFilter {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE3;
           buffer.append(c);
           break;
-        case '\n':
-        case '\r':
-        case '\f':
+        case '\n', '\r', '\f':
           if (c == '\n' && prevc == '\r') {
             break;
           }
@@ -4677,13 +4669,13 @@ class CSSTokenizerFilter {
 
     private ParsedWord handleQuotedToken(
         StringBuilder origToken, StringBuilder decodedToken, boolean dontLikeOrigToken) {
-      char c = origToken.charAt(0);
+      char q0 = origToken.charAt(0);
       char d = origToken.charAt(origToken.length() - 1);
-      if (c == d) {
+      if (q0 == d) {
         decodedToken.setLength(decodedToken.length() - 1);
         decodedToken.deleteCharAt(0);
         return new ParsedString(
-            origToken.toString(), decodedToken.toString(), dontLikeOrigToken, c);
+            origToken.toString(), decodedToken.toString(), dontLikeOrigToken, q0);
       } else {
         if (d != ',') return null; // No whitespace after a string
         return new SimpleParsedWord(origToken.toString());
@@ -4726,8 +4718,8 @@ class CSSTokenizerFilter {
     private static int countLeadingSpaces(String s) {
       int i = 0;
       while (i < s.length()) {
-        char c = s.charAt(i);
-        if (c == ' ' || c == '\t') i++;
+        char ch = s.charAt(i);
+        if (ch == ' ' || ch == '\t') i++;
         else break;
       }
       return i;
@@ -4736,8 +4728,8 @@ class CSSTokenizerFilter {
     private static int countTrailingSpacesIgnoringEscaped(String s) {
       int i = s.length() - 1;
       while (i >= 0) {
-        char c = s.charAt(i);
-        if ((c == ' ' || c == '\t') && !(i > 0 && s.charAt(i - 1) == '\\')) i--;
+        char ch = s.charAt(i);
+        if ((ch == ' ' || ch == '\t') && !(i > 0 && s.charAt(i - 1) == '\\')) i--;
         else break;
       }
       return s.length() - i - 1;
@@ -5036,9 +5028,7 @@ class CSSTokenizerFilter {
 
     public static boolean isValidURI(ParsedURL word, FilterCallback cb) {
       String w = CSSTokenizerFilter.removeOuterQuotes(word.getDecoded());
-      // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI called cb="+cb);
       try {
-        // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI "+cb.processURI(URI, null));
         String s = cb.processURI(w, null);
         if (s == null || s.isEmpty()) return false;
         if (s.equals(w)) return true;
@@ -5046,7 +5036,6 @@ class CSSTokenizerFilter {
         word.setNewURL(s);
         return true;
       } catch (CommentException e) {
-        // if(debug) LOG.trace("CSSPropertyVerifier isVaildURI Exception"+e.toString());
         return false;
       }
     }
@@ -5148,36 +5137,23 @@ class CSSTokenizerFilter {
     }
 
     private boolean isValidIdSelector(ParsedWord word) {
-      String result = HTMLelementVerifier(word.original, true);
+      String result = htmlElementVerifier(word.original, true);
       return !(result == null || result.isEmpty());
     }
 
-    /* parserExpression string would be interpreted as 1 || 2 => 1a2 here 1a2 would be written to parse 1 || 2 where 1 and 2 are auxilaryVerifiers[1] and auxilaryVerifiers[2] respectively i.e. indices in auxilaryVerifiers
-     * [1][2] => 1 2
-     * 1<1,4> => 1<1,4>
-     * 1* => 1<0,65536>
-     * 1? => 1?
-     * 1+ => 1<1,65536>
-     * 1&&2 => 1b2	 (see doubleAmpersandVerifier())
-     * Additional expressions that can be passed to the function
-     * 1 2 => both 1 and 2 should return true where 1 and 2 are again indices in auxiliaryVerifier array.
-     * [a,b]=> give at least a tokens and at the most b tokens(part of values) to this block of expression.
-     * e.g. 1[2,3] and the value is "hello world program" then object 1 would be tested with "hello world"
-     * and "hello world program".
-     * The main logic of this function is find a set of values for different part of the ParserExpression so that each part returns true.
-     * e.g. Suppose the expression is
-     * (1 || 2) 3
-     * where object 1 can consume upto 2 tokens, 2 can consume upto 2 tokens and 3 would consume one and only one token.
-     * This expression would be encoded as
-     * "1a2" for 1 || 2 Using this, third object would be created say 4 e.g. 4="1a2"
-     * Now the main object would be given the parserExpression as
-     * "4<0,4> 3"
-     * This function would call
-     * 4 with 0 tokens and 3 with the remaining
-     * 4 with 1 tokens and 3 with the remaining
-     * and so on.
-     * If all combinations are failed then it would return false. If any combination gives true value
-     * then return value would be true.
+    /**
+     * Parser expression encoding overview.
+     *
+     * <p>The parser encodes high-level operators into a compact internal form using indices of
+     * {@code auxilaryVerifiers}. Examples (illustrative only): - Logical OR is encoded by joining
+     * indices with the letter 'a'. - Logical AND is encoded by joining indices with the letter 'b'.
+     * - Repetition bounds are encoded using angle brackets, e.g., {@code <1,4>}. - Optional and
+     * one-or-more are mapped to equivalent bounded forms. - Token windows can be expressed with
+     * square brackets to indicate minimum/maximum tokens.
+     *
+     * <p>The verifier explores combinations which allow the full value to be consumed by the
+     * expression: it tries each sub-expression in turn and distributes the remaining tokens to the
+     * rest. If any combination validates, the whole expression is accepted.
      */
     public boolean recursiveParserExpressionVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
@@ -5592,14 +5568,9 @@ class CSSTokenizerFilter {
       return sb.toString();
     }
 
-    /*
-     * This function verifies || operator. This function returns true only if it can consume entire value for the given parseExpression
-     * e.g. expression is [1 || 2 || 3 || 4] and value is "Hello world program"
-     * Then this function would try all combinations of objects so that the expression can consume this value.
-     * 1 would try to consume "Hello" and rest would try to consume "world program"
-     * 2 would try to consume "Hello" and rest would try to consume "world program"
-     * 3 would try to consume "Hello" and rest would try to consume "world program"
-     * and so on.
+    /**
+     * Verifies an OR (||) group by exploring all partitions of the token stream among
+     * sub-expressions until one validates the entire value.
      */
     public boolean recursiveDoubleBarVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
@@ -6093,9 +6064,7 @@ class CSSTokenizerFilter {
       for (String s : fontWords) {
         if (s == null) throw new NullPointerException();
       }
-      if (fontWords.size() == 1) {
-        if (isGenericFamily(fontWords.getFirst().toLowerCase())) return true;
-      }
+      if (fontWords.size() == 1 && isGenericFamily(fontWords.getFirst().toLowerCase())) return true;
       StringBuilder sb = new StringBuilder();
       boolean first = true;
       for (String s : fontWords) {
