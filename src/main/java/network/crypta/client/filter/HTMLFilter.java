@@ -3455,6 +3455,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
               "bookmark"));
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean isStandardLinkType(String token) {
       return standardRelTypes.contains(token.toLowerCase());
     }
@@ -3688,22 +3689,15 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String httpEquiv, String content, Map<String, Object> output, HTMLParseContext pc)
         throws DataFilterException {
       String lowered = httpEquiv.toLowerCase();
-      switch (lowered) {
-        case "expires":
-          return handleExpiresMeta(content, output);
-        case "content-script-type":
-          return true;
-        case "content-style-type":
-          return handleStyleTypeMeta(content, output);
-        case "content-type":
-          return handleContentTypeMeta(httpEquiv, content, output, pc);
-        case "content-language":
-          return handleContentLanguageMeta(content, output);
-        case HtmlStrings.STR_REFRESH:
-          return handleRefreshMeta(content, output, pc);
-        default:
-          return true;
-      }
+      return switch (lowered) {
+        case "expires" -> handleExpiresMeta(content, output);
+        case "content-script-type" -> true;
+        case "content-style-type" -> handleStyleTypeMeta(content, output);
+        case "content-type" -> handleContentTypeMeta(httpEquiv, content, output, pc);
+        case "content-language" -> handleContentLanguageMeta(content, output);
+        case HtmlStrings.STR_REFRESH -> handleRefreshMeta(content, output, pc);
+        default -> true;
+      };
     }
 
     private boolean handleExpiresMeta(String content, Map<String, Object> output) {
@@ -3738,7 +3732,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         }
       }
       throwFilterException(l10n("invalidMetaType"));
-      return true;
+      return false;
     }
 
     private boolean applyContentTypeIfAllowed(
