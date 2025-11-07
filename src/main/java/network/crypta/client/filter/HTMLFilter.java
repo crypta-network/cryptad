@@ -50,7 +50,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       "network/crypta/clients/http/staticfiles/js/m3u-player.js";
 
   /** if true, embed m3u player. Enabled when fproxy javascript is enabled. * */
-  public static boolean embedM3uPlayer = true;
+  private static boolean embedM3uPlayer = true;
 
   private static final boolean DELETE_WIERD_STUFF = true;
   private static final boolean DELETE_ERRORS = true;
@@ -65,10 +65,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   // These defaults currently apply globally across documents; future work may allow per-document
   // overrides once the configuration flow is merged with TagReplacerCallback.
   /** -1 means don't allow it */
-  public static int metaRefreshSamePageMinInterval = 1;
+  private static int metaRefreshSamePageMinInterval = 1;
 
   /** -1 means don't allow it */
-  public static int metaRefreshRedirectMinInterval = 30;
+  private static int metaRefreshRedirectMinInterval = 30;
 
   private static final String M3U_PLAYER_SCRIPT_TAG_CONTENT = loadM3uPlayerScriptTagContent();
 
@@ -328,20 +328,18 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     void run() throws IOException {
       resetTokenizerState();
       mode = INTEXT;
-      while (true) {
-        if (shouldStopDetectingCharset()) {
-          return;
-        }
+      while (!shouldStopDetectingCharset()) {
         int readValue = r.read();
         if (readValue == -1) {
           handleEndOfStream();
-          break;
+          flushOpenElements();
+          w.flush();
+          return;
         }
         updateCharacterState((char) readValue);
-        if (skipBomOrNullCharacters()) {
-          continue;
+        if (!skipBomOrNullCharacters()) {
+          dispatchTokenizerMode();
         }
-        dispatchTokenizerMode();
       }
       flushOpenElements();
       w.flush();
@@ -761,12 +759,28 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return tagContent;
   }
 
-  /**
-   * @deprecated since 2025.03; use {@link #loadM3uPlayerScriptTagContent()} instead.
-   */
-  @Deprecated(since = "2025.03", forRemoval = false)
-  static String m3uPlayerScriptTagContent() {
-    return loadM3uPlayerScriptTagContent();
+  public static boolean isEmbedM3uPlayerEnabled() {
+    return embedM3uPlayer;
+  }
+
+  public static void setEmbedM3uPlayerEnabled(boolean enabled) {
+    embedM3uPlayer = enabled;
+  }
+
+  public static int getMetaRefreshSamePageMinInterval() {
+    return metaRefreshSamePageMinInterval;
+  }
+
+  public static void setMetaRefreshSamePageMinInterval(int interval) {
+    metaRefreshSamePageMinInterval = interval;
+  }
+
+  public static int getMetaRefreshRedirectMinInterval() {
+    return metaRefreshRedirectMinInterval;
+  }
+
+  public static void setMetaRefreshRedirectMinInterval(int interval) {
+    metaRefreshRedirectMinInterval = interval;
   }
 
   String processTag(List<String> splitTag, Writer w, HTMLParseContext pc) throws IOException {
@@ -901,7 +915,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return tag.startSlash
         && "body".equals(tag.element)
         && pc.wasMediaElementFound
-        && embedM3uPlayer;
+        && isEmbedM3uPlayerEnabled();
   }
 
   private void writeSanitizedTag(ParsedTag tag, Writer w, HTMLParseContext pc) throws IOException {
@@ -988,7 +1002,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   private void removeTrailingHyphen(StringBuilder comment) {
-    if (comment.length() > 0 && comment.charAt(comment.length() - 1) == '-') {
+    if (!comment.isEmpty() && comment.charAt(comment.length() - 1) == '-') {
       comment.setLength(comment.length() - 1);
     }
   }
@@ -1123,6 +1137,67 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         map.put(name, value);
       }
       return map;
+    }
+
+    Map<String, Object> toAttributeMap() {
+      Map<String, Object> attributes = new LinkedHashMap<>();
+      if (unparsedAttrs == null) {
+        return attributes;
+      }
+      boolean waitingForValue = false;
+      String previousKey = "";
+      for (String rawAttribute : unparsedAttrs) {
+        if (waitingForValue) {
+          waitingForValue = false;
+          previousKey = applyDeferredValue(attributes, previousKey, rawAttribute);
+          continue;
+        }
+        AttributeToken token = parseAttributeToken(rawAttribute, previousKey);
+        waitingForValue = token.expectingValue;
+        previousKey = token.key;
+        if (token.value != null) {
+          attributes.put(token.key, token.value);
+        } else if (!waitingForValue) {
+          attributes.put(token.key, new Object());
+        }
+      }
+      return attributes;
+    }
+
+    private AttributeToken parseAttributeToken(String rawAttribute, String previousKey) {
+      AttributeToken token = new AttributeToken();
+      int separatorIndex = rawAttribute.indexOf('=');
+      if (separatorIndex == rawAttribute.length() - 1) {
+        token.expectingValue = true;
+        token.key = separatorIndex == 0 ? previousKey : rawAttribute.substring(0, separatorIndex);
+        token.key = token.key.toLowerCase();
+        return token;
+      }
+      if (separatorIndex > -1) {
+        String key = rawAttribute.substring(0, separatorIndex);
+        if (key.isEmpty()) {
+          key = previousKey;
+        }
+        token.key = key.toLowerCase();
+        String rawValue = rawAttribute.substring(separatorIndex + 1);
+        token.value = stripQuotes(rawValue);
+        return token;
+      }
+      token.key = rawAttribute;
+      return token;
+    }
+
+    private String applyDeferredValue(Map<String, Object> attributes, String key, String rawValue) {
+      String sanitizedValue = stripQuotes(rawValue);
+      attributes.remove(key);
+      attributes.put(key, sanitizedValue);
+      return "";
+    }
+
+    private static final class AttributeToken {
+      boolean expectingValue;
+      String key;
+      String value;
     }
 
     public void htmlwrite(Writer w, HTMLParseContext pc) throws IOException {
@@ -1629,7 +1704,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             new String[] {"src"}, // inline uris
             emptyStringArray,
             emptyStringArray));
-    // TODO: param tag?
+    // <param> tags are intentionally unsupported to avoid leaking plugin-specific parameters.
     // http://www.w3.org/TR/html4/struct/objects.html#h-13.3.2
     // applet tag PROHIBITED - we do not support applets
     allowedTagsVerifiers.put(HtmlStrings.STR_STYLE, new StyleTagVerifier());
@@ -2688,7 +2763,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     ParsedTag sanitize(ParsedTag t, HTMLParseContext pc) throws DataFilterException {
-      Map<String, Object> attributes = buildAttributeMap(t);
+      Map<String, Object> attributes = t.toAttributeMap();
       Map<String, Object> sanitized = sanitizeHash(attributes, t, pc);
       if (sanitized == DROP_TAG || sanitized == null) {
         return null;
@@ -2703,65 +2778,18 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return buildSanitizedTag(t, sanitized);
     }
 
-    private Map<String, Object> buildAttributeMap(ParsedTag tag) {
-      Map<String, Object> attributes = new LinkedHashMap<>();
-      boolean waitingForValue = false;
-      String previousKey = "";
-      if (tag.unparsedAttrs == null) {
-        return attributes;
-      }
-      for (String rawAttribute : tag.unparsedAttrs) {
-        if (waitingForValue) {
-          waitingForValue = false;
-          previousKey = applyDeferredValue(attributes, previousKey, rawAttribute);
-          continue;
-        }
-        AttributeToken token = parseAttributeToken(rawAttribute, previousKey);
-        waitingForValue = token.expectingValue;
-        previousKey = token.key;
-        if (token.value != null) {
-          attributes.put(token.key, token.value);
-        } else if (!waitingForValue) {
-          attributes.put(token.key, new Object());
-        }
-      }
-      return attributes;
-    }
-
-    private AttributeToken parseAttributeToken(String rawAttribute, String previousKey) {
-      AttributeToken token = new AttributeToken();
-      int separatorIndex = rawAttribute.indexOf('=');
-      if (separatorIndex == rawAttribute.length() - 1) {
-        token.expectingValue = true;
-        token.key = separatorIndex == 0 ? previousKey : rawAttribute.substring(0, separatorIndex);
-        token.key = token.key.toLowerCase();
-        return token;
-      }
-      if (separatorIndex > -1) {
-        String key = rawAttribute.substring(0, separatorIndex);
-        if (key.isEmpty()) {
-          key = previousKey;
-        }
-        token.key = key.toLowerCase();
-        String rawValue = rawAttribute.substring(separatorIndex + 1);
-        token.value = stripQuotes(rawValue);
-        return token;
-      }
-      token.key = rawAttribute;
-      return token;
-    }
-
-    private String applyDeferredValue(Map<String, Object> attributes, String key, String rawValue) {
-      String sanitizedValue = stripQuotes(rawValue);
-      attributes.remove(key);
-      attributes.put(key, sanitizedValue);
-      return "";
-    }
-
     private void removeBlankEntries(Map<String, Object> attributes, boolean isXhtml) {
       attributes
           .entrySet()
           .removeIf(entry -> entry.getValue() == null || entry.getValue().equals("") && isXhtml);
+    }
+
+    static String getHashString(Map<String, Object> h, String key) {
+      Object value = h.get(key);
+      if (value instanceof String string) {
+        return string;
+      }
+      return null;
     }
 
     private ParsedTag buildSanitizedTag(ParsedTag source, Map<String, Object> attributes) {
@@ -2783,12 +2811,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return DROP_TAG;
     }
 
-    private static final class AttributeToken {
-      boolean expectingValue;
-      String key;
-      String value;
-    }
-
+    /**
+     * @throws DataFilterException Subclasses may signal invalid tag data and abort sanitation.
+     */
     Map<String, Object> sanitizeHash(Map<String, Object> h, ParsedTag p, HTMLParseContext pc)
         throws DataFilterException {
       if (p != null && LOG.isTraceEnabled()) {
@@ -2805,28 +2830,24 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if (sanitizeUriAttribute(name, value, hn, pc)) {
           continue;
         }
+
         if (parsedAttrs.contains(name)) {
           hn.put(name, null);
-          continue;
-        }
-        if (allowedAttrs.contains(name)) {
+        } else if (allowedAttrs.contains(name)) {
           hn.put(name, value);
-          continue;
+        } else if (handleBooleanAttribute(name, value, hn, pc)) {
+          // handled
+        } else if (handleLanguageAttribute(name, value, hn)) {
+          // handled
+        } else {
+          handleRoleAttribute(name, value, hn);
         }
-        if (handleBooleanAttribute(name, value, hn, pc)) {
-          continue;
-        }
-        if (handleLanguageAttribute(name, value, hn)) {
-          continue;
-        }
-        handleRoleAttribute(name, value, hn);
       }
       return hn;
     }
 
     private boolean sanitizeUriAttribute(
-        String name, Object value, Map<String, Object> output, HTMLParseContext pc)
-        throws DataFilterException {
+        String name, Object value, Map<String, Object> output, HTMLParseContext pc) {
       boolean inline = inlineURIAttrs.contains(name);
       if (!inline && !uriAttrs.contains(name)) {
         return false;
@@ -2859,9 +2880,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (!booleanAttrs.contains(name)) {
         return false;
       }
-      String stringValue = value instanceof String ? (String) value : null;
-      if ((stringValue != null && stringValue.equalsIgnoreCase(name))
-          || (!pc.isXHTML && value == null)) {
+      boolean matchesName = value instanceof String string && string.equalsIgnoreCase(name);
+      if (matchesName || (!pc.isXHTML && value == null)) {
         output.put(name, value);
       }
       return true;
@@ -3021,12 +3041,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     @Override
     void processStyle(HTMLParseContext pc) {
-      try {
-        pc.currentStyleScriptChunk = sanitizeStyle(pc.currentStyleScriptChunk, pc.cb, pc, false);
-      } catch (DataFilterException e) {
-        LOG.error("Error parsing style", e);
-        pc.currentStyleScriptChunk = "";
-      }
+      pc.currentStyleScriptChunk = sanitizeStyle(pc.currentStyleScriptChunk, pc.cb, pc, false);
     }
   }
 
@@ -3352,8 +3367,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     private boolean handleStylesheetMetadata(
-        Map<String, Object> attributes, Map<String, Object> output, LinkCharsetInfo info)
-        throws DataFilterException {
+        Map<String, Object> attributes, Map<String, Object> output, LinkCharsetInfo info) {
       String media = getHashString(attributes, HtmlStrings.STR_MEDIA);
       if (media != null) {
         media = CSSReadFilter.filterMediaList(media);
@@ -3375,8 +3389,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String fallbackCharset,
         boolean isIcon,
         String hreflang,
-        HTMLParseContext pc)
-        throws DataFilterException {
+        HTMLParseContext pc) {
       String href = getHashString(attributes, "href");
       if (href == null) {
         return;
@@ -3756,16 +3769,16 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private boolean handleContentLanguageMeta(String content, Map<String, Object> output) {
       if (content == null) {
-        return true;
+        return false;
       }
       String trimmed = content.trim();
       if (trimmed.isEmpty()) {
-        return true;
+        return false;
       }
       for (String token : trimmed.split(",")) {
         String cleaned = token.trim();
         if (!isValidLanguageToken(cleaned)) {
-          return true;
+          return false;
         }
       }
       output.put(HtmlStrings.STR_HTTP_EQUIV, "Content-Language");
@@ -3796,13 +3809,12 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     private boolean handleRefreshMeta(
-        String content, Map<String, Object> output, HTMLParseContext pc)
-        throws DataFilterException {
+        String content, Map<String, Object> output, HTMLParseContext pc) {
       int idx = content.indexOf(';');
-      if (idx == -1 && metaRefreshSamePageMinInterval >= 0) {
+      if (idx == -1 && getMetaRefreshSamePageMinInterval() >= 0) {
         return handleSamePageRefresh(content, output, pc);
       }
-      if (metaRefreshRedirectMinInterval >= 0) {
+      if (getMetaRefreshRedirectMinInterval() >= 0) {
         return handleRedirectRefresh(content, idx, output, pc);
       }
       return true;
@@ -3815,8 +3827,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if (seconds < 0) {
           return false;
         }
-        if (seconds < metaRefreshSamePageMinInterval) {
-          seconds = metaRefreshSamePageMinInterval;
+        if (seconds < getMetaRefreshSamePageMinInterval()) {
+          seconds = getMetaRefreshSamePageMinInterval();
         }
         output.put(HtmlStrings.STR_HTTP_EQUIV, HtmlStrings.STR_REFRESH);
         output.put(HtmlStrings.STR_CONTENT, Integer.toString(seconds));
@@ -3828,15 +3840,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     private boolean handleRedirectRefresh(
-        String content, int separatorIndex, Map<String, Object> output, HTMLParseContext pc)
-        throws DataFilterException {
+        String content, int separatorIndex, Map<String, Object> output, HTMLParseContext pc) {
       try {
         int seconds = Integer.parseInt(content.substring(0, separatorIndex));
         if (seconds < 0) {
           return false;
         }
-        if (seconds < metaRefreshRedirectMinInterval) {
-          seconds = metaRefreshRedirectMinInterval;
+        if (seconds < getMetaRefreshRedirectMinInterval()) {
+          seconds = getMetaRefreshRedirectMinInterval();
         }
         String after = content.substring(separatorIndex + 1).trim();
         if (!after.toLowerCase().startsWith("url=")) {
@@ -4110,8 +4121,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   @SuppressWarnings("java:S1181")
   static String sanitizeStyle(
-      String style, FilterCallback cb, HTMLParseContext hpc, boolean isInline)
-      throws DataFilterException {
+      String style, FilterCallback cb, HTMLParseContext hpc, boolean isInline) {
     if (style == null) return null;
     if (hpc.onlyDetectingCharset) return null;
     Reader r = new StringReader(style);
@@ -4165,7 +4175,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   // TEXT/PLAIN; format=flowed; charset=US-ASCII or IMAGE/JPEG; name=test.jpeg; x-unix-mode=0644.
   public static String[] splitType(String type) {
     StringFieldParser sfp;
-    String charset = null, param, name, value;
+    String charset = null;
+    String param;
+    String name;
+    String value;
     int x;
 
     sfp = new StringFieldParser(type, ';');
@@ -4206,7 +4219,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     public String nextField() {
-      int start, end;
+      int start;
+      int end;
 
       if (curPos > maxPos) return null;
       start = curPos;
@@ -4267,18 +4281,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return retval;
   }
 
-  static String getHashString(Map<String, Object> h, String key) {
-    Object o = h.get(key);
-    if (o == null) return null;
-    if (o instanceof String string) return string;
-    else return null;
-  }
-
-  private static String l10n(String key) {
+  static String l10n(String key) {
     return NodeL10n.getBase().getString("HTMLFilter." + key);
   }
 
-  private static String l10n(String key, String pattern, String value) {
+  static String l10n(String key, String pattern, String value) {
     return NodeL10n.getBase().getString("HTMLFilter." + key, pattern, value);
   }
 
