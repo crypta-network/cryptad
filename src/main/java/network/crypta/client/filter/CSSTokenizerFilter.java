@@ -5864,88 +5864,116 @@ class CSSTokenizerFilter {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "11in recursiveDoubleBarVerifier expression={} value={}", expression, toString(words));
+
       if (words == null || words.length == 0) return true;
-      String ignoredParts = "";
-      String firstPart = "";
-      String secondPart = "";
-      int lastA = -1;
-      // Check for invalid patterns.
-      assert (!expression.isEmpty());
-      assert (expression.charAt(expression.length() - 1) != 'a');
-      assert (expression.charAt(0) != 'a');
+
+      // Basic validation mirrors previous assertions
+      assert !expression.isEmpty();
+      assert expression.charAt(expression.length() - 1) != 'a';
+      assert expression.charAt(0) != 'a';
+
+      List<String> parts = splitDoubleBarExpression(expression);
+
+      // Fast path: single token (no 'a')
+      if (parts.size() == 1) {
+        int index = Integer.parseInt(parts.getFirst());
+        boolean ok = CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "16Single token:{} with value=*{}* validity={}",
+              expression,
+              Fields.commaList(words),
+              ok);
+        return ok;
+      }
+
+      // Multi-token case: try consuming from each component once, recurse for the rest
+      for (int p = 0; p < parts.size(); p++) {
+        if (tryMatchComponent(parts, p, words, cb)) return true;
+      }
+
+      // Equivalent to (lastA != -1) return false; in original flow
+      return false;
+    }
+
+    private List<String> splitDoubleBarExpression(String expression) {
+      // Preserve behavior for invalid sequences (e.g., empty parts cause NumberFormatException
+      // later when parsed as int)
+      ArrayList<String> parts = new ArrayList<>();
+      int last = 0;
       for (int i = 0; i <= expression.length(); i++) {
         if (i == expression.length() || expression.charAt(i) == 'a') {
-          if (!firstPart.isEmpty()) {
-            if (ignoredParts.isEmpty()) ignoredParts = firstPart;
-            else ignoredParts = ignoredParts + "a" + firstPart;
-          } else ignoredParts = "";
-          firstPart = expression.substring(lastA + 1, i);
-          lastA = i;
-          if (i == expression.length()) secondPart = "";
-          else secondPart = expression.substring(i + 1);
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "12in a firstPart={} secondPart={} for expression {} i {}",
-                firstPart,
-                secondPart,
-                expression,
-                i);
-          boolean result = false;
-          int index = Integer.parseInt(firstPart);
-          for (int j = 0; j < words.length; j++) {
-            // Check the first j+1 words against this verifier: A single verifier can consume more
-            // than one word.
-            result =
-                CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(
-                    getSubArray(words, 0, j + 1), cb);
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "14in for loop result:{} for {} for {}", result, toString(words), firstPart);
-            if (result) {
-              // Check the remaining words...
-              ParsedWord[] valueToPass = Arrays.copyOfRange(words, j + 1, words.length);
-              if (valueToPass.length == 0) {
-                // We have matched everything against the subset we have considered so far.
-                if (LOG.isTraceEnabled())
-                  LOG.trace("14opt No more words to pass, have matched everything");
-                return true;
-              }
-              // Against the rest of the pattern: the part that we've tried and failed plus the part
-              // that we haven't tried yet.
-              // NOT against the verifier we were just considering, because the double-bar operator
-              // expects no more than one match from each component of the pattern.
-              String pattern =
-                  ignoredParts
-                      + (((ignoredParts.isEmpty()) || (secondPart.isEmpty())) ? "" : "a")
-                      + secondPart;
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "14a {} can be consumed by {} passing on expression={} value={}",
-                    toString(getSubArray(words, 0, j + 1)),
-                    index,
-                    pattern,
-                    toString(valueToPass));
-              if (pattern.isEmpty()) return false;
-              result = recursiveDoubleBarVerifier(pattern, valueToPass, cb);
-              if (result) {
-                if (LOG.isTraceEnabled())
-                  LOG.trace("15else part is true, value consumed={}", words[j]);
-                return true;
-              }
-            }
-          }
+          parts.add(expression.substring(last, i));
+          last = i + 1;
         }
       }
-      if (lastA != -1) return false;
-      // Single token
-      int index = Integer.parseInt(expression);
+      return parts;
+    }
+
+    private boolean tryMatchComponent(
+        List<String> parts, int partIndex, ParsedWord[] words, FilterCallback cb) {
+      String firstPart = parts.get(partIndex);
+      String secondPart = joinParts(parts, partIndex + 1, parts.size());
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "16Single token:{} with value=*{}* validity={}",
-            expression,
-            Fields.commaList(words),
-            CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb));
-      return CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
+            "12in a firstPart={} secondPart={} for expression {}",
+            firstPart,
+            secondPart,
+            String.join("a", parts));
+
+      int index = Integer.parseInt(firstPart);
+
+      for (int j = 0; j < words.length; j++) {
+        ParsedWord[] head = getSubArray(words, 0, j + 1);
+        boolean result = CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(head, cb);
+        if (LOG.isDebugEnabled())
+          LOG.debug("14in for loop result:{} for {} for {}", result, toString(words), firstPart);
+        if (!result) continue;
+
+        ParsedWord[] valueToPass = Arrays.copyOfRange(words, j + 1, words.length);
+        if (valueToPass.length == 0) {
+          if (LOG.isTraceEnabled())
+            LOG.trace("14opt No more words to pass, have matched everything");
+          return true;
+        }
+
+        String ignoredParts = joinParts(parts, 0, partIndex);
+        String pattern = joinNonEmptyWithA(ignoredParts, secondPart);
+
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "14a {} can be consumed by {} passing on expression={} value={}",
+              toString(head),
+              index,
+              pattern,
+              toString(valueToPass));
+
+        if (pattern.isEmpty()) return false;
+
+        boolean recurse = recursiveDoubleBarVerifier(pattern, valueToPass, cb);
+        if (recurse) {
+          if (LOG.isTraceEnabled()) LOG.trace("15else part is true, value consumed={}", words[j]);
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    private String joinParts(List<String> parts, int fromInclusive, int toExclusive) {
+      if (fromInclusive >= toExclusive) return "";
+      StringBuilder sb = new StringBuilder();
+      for (int i = fromInclusive; i < toExclusive; i++) {
+        if (i > fromInclusive) sb.append('a');
+        sb.append(parts.get(i));
+      }
+      return sb.toString();
+    }
+
+    private String joinNonEmptyWithA(String left, String right) {
+      if (left.isEmpty()) return right;
+      if (right.isEmpty()) return left;
+      return left + 'a' + right;
     }
   }
 
