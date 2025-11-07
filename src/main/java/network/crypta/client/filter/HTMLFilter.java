@@ -4039,10 +4039,15 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private boolean handleRefreshMeta(
         String content, Map<String, Object> output, HTMLParseContext pc) {
       int idx = content.indexOf(';');
-      if (idx == -1 && getMetaRefreshSamePageMinInterval() >= 0) {
-        return handleSamePageRefresh(content, output, pc);
+      if (idx == -1) {
+        // Same-page refresh (no URL part). Only handle when enabled; otherwise leave unchanged.
+        if (getMetaRefreshSamePageMinInterval() >= 0) {
+          return handleSamePageRefresh(content, output, pc);
+        }
+        return true;
       }
-      if (getMetaRefreshRedirectMinInterval() >= 0) {
+      // Redirect refresh: requires a separator and redirect filtering enabled.
+      if (idx >= 0 && getMetaRefreshRedirectMinInterval() >= 0) {
         return handleRedirectRefresh(content, idx, output, pc);
       }
       return true;
