@@ -2422,18 +2422,7 @@ class CSSTokenizerFilter {
    */
   // (intentionally empty to avoid duplication)
 
-  // CSS minimizer often removes space between token and !important
-  private int checkImportant(ParsedWord[] words) {
-    if (words.length == 0) return 0;
-    if (words[words.length - 1] instanceof SimpleParsedWord
-        && words[words.length - 1].original.equalsIgnoreCase("!important")) return 1;
-    if (words.length >= 2
-        && words[words.length - 1] instanceof ParsedIdentifier
-        && words[words.length - 2] instanceof SimpleParsedWord
-        && words[words.length - 2].original.equals("!")
-        && words[words.length - 1].original.equalsIgnoreCase("important")) return 2;
-    return 0;
-  }
+  // (moved checkImportant() into Parser)
 
   /*
    * This function accepts an HTML element(along with class name, ID, pseudo class or attribute selector or a combinator) and determines whether it is valid or not.
@@ -3701,6 +3690,19 @@ class CSSTokenizerFilter {
       return obj.checkValidity(media, elements, words, cb);
     }
 
+    // CSS minimizer often removes space between token and !important
+    private int checkImportant(ParsedWord[] words) {
+      if (words.length == 0) return 0;
+      if (words[words.length - 1] instanceof SimpleParsedWord
+          && words[words.length - 1].original.equalsIgnoreCase("!important")) return 1;
+      if (words.length >= 2
+          && words[words.length - 1] instanceof ParsedIdentifier
+          && words[words.length - 2] instanceof SimpleParsedWord
+          && words[words.length - 2].original.equals("!")
+          && words[words.length - 1].original.equalsIgnoreCase("important")) return 2;
+      return 0;
+    }
+
     private void appendPropertyIfValid(
         ParsedWord[] words, CSSPropertyVerifier obj, boolean addSemicolon) {
       if (!ignoreElementsS2
@@ -3956,7 +3958,7 @@ class CSSTokenizerFilter {
           first = false;
           continue;
         }
-        if (!appendFromWord(out, word)) return Collections.emptyList();
+        if (!appendFromWord(out, word)) return null; // broken: signal to caller
       }
       return out;
     }
