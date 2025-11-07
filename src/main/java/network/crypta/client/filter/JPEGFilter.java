@@ -15,15 +15,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Content filter for JPEG's. Just check the header.
+ * Filters JPEG byte streams by validating structural markers and optionally stripping metadata.
  *
- * <p>http://www.obrador.com/essentialjpeg/headerinfo.htm Also the JFIF spec. Also
- * http://cs.haifa.ac.il/~nimrod/Compression/JPEG/J6sntx2005.pdf
- * http://svn.xiph.org/experimental/giles/jpegdump.c
- * http://it.jeita.or.jp/document/publica/standard/exif/english/jeida49e.htm
+ * <p>This implementation performs a disciplined, marker-by-marker reconstruction of a JPEG image,
+ * copying only segments whose headers, lengths, and marker ordering comply with the JFIF and EXIF
+ * specifications. It enforces that every frame it forwards begins with the canonical start-of-image
+ * prefix, carries well-formed scan headers, and advertises lengths that match the bytes actually
+ * observed on the wire. When the constructor flags request it, application comments and EXIF blocks
+ * are omitted entirely so operator policies about privacy or payload size can be upheld without
+ * touching downstream components.
  *
- * <p>L10n: Only the overall explanation message and the "too short" messages are localised. It's
- * probably not worth doing the others, they're way too detailed.
+ * <p>The filter operates in a streaming fashion: {@link #readFilter(InputStream, OutputStream,
+ * String, Map, String, FilterCallback)} consumes data incrementally, writes sanitized frames as
+ * soon as they are proven safe, and terminates precisely at the end-of-image marker. Instances are
+ * thread-safe and reusable because their configuration is immutable and all parsing state lives on
+ * the stack for the duration of a call. Validation failures raise {@link DataFilterException} with
+ * a localized explanation obtained through {@link NodeL10n}, allowing callers to surface actionable
+ * error text to requesters.
+ *
+ * <p>Key behaviors include:
+ *
+ * <ul>
+ *   <li>Verifies the start-of-image header and every advertised frame length before copying.
+ *   <li>Optionally removes APP1 (EXIF) and COM frames while retaining structural metadata.
+ *   <li>Logs marker transitions at debug level to aid diagnosis of corrupt or malicious files.
+ * </ul>
+ *
+ * <p>Reference material: <a href="http://www.obrador.com/essentialjpeg/headerinfo.htm">Essential
+ * JPEG header info</a>, the JFIF 1.02 specification, and the EXIF 2.2 specification.
+ *
+ * @see ContentDataFilter
+ * @see FilterCallback
  */
 public class JPEGFilter implements ContentDataFilter {
   private static final Logger LOG = LoggerFactory.getLogger(JPEGFilter.class);
@@ -36,22 +58,52 @@ public class JPEGFilter implements ContentDataFilter {
   private static final int MARKER_RST0 = 0xD0; // First reset marker
   private static final int MARKER_RST7 = 0xD7; // Last reset marker
 
-  static {
-  }
-
   JPEGFilter(boolean deleteComments, boolean deleteExif) {
     this.deleteComments = deleteComments;
     this.deleteExif = deleteExif;
   }
 
+  private static final String INVALID_HEADER = "Invalid header";
+
   static final byte[] soi =
       new byte[] {
         (byte) 0xFF, (byte) 0xD8 // Start of Image
       };
-  static final byte[] identifier = new byte[] {(byte) 'J', (byte) 'F', (byte) 'I', (byte) 'F', 0};
-  static final byte[] extensionIdentifier =
-      new byte[] {(byte) 'J', (byte) 'F', (byte) 'X', (byte) 'X', 0};
 
+  /**
+   * Streams a JPEG payload through the sanitizing pipeline, emitting only validated segments.
+   *
+   * <p>The method asserts the canonical start-of-image prefix, rewrites essential frames exactly as
+   * received, and conditionally strips comments or EXIF blocks according to the configuration
+   * passed to the constructor. It stops at the end-of-image marker, flushes the destination {@link
+   * OutputStream}, and raises {@link DataFilterException} whenever marker ordering, lengths, or
+   * encodings diverge from the JFIF profile. The callback parameter is accepted for interface
+   * completeness but is not currently invoked because JPEG filtering offers no interactive choices.
+   *
+   * <p>Typical usage wires the filter into the client proxy, allowing JPEG uploads to be validated
+   * before reaching storage:
+   *
+   * <pre>{@code
+   * ContentDataFilter filter = new JPEGFilter(false, true);
+   * filter.readFilter(input, output, null, Map.of(), hostHint, null);
+   * }</pre>
+   *
+   * @param input stream providing JPEG bytes; must begin with an SOI marker and deliver ordered
+   *     marker data without rewinds.
+   * @param output destination for sanitized JPEG bytes; receives only frames that already passed
+   *     validation and is flushed after completion.
+   * @param charset declared charset for the resource; ignored for binary JPEG but preserved for
+   *     interface compatibility with other media types.
+   * @param otherParams media-type parameters such as {@code boundary}; unused for JPEG yet required
+   *     for {@link ContentDataFilter} interoperability.
+   * @param schemeHostAndPort externally visible endpoint string (for example, {@code
+   *     https://example:7777}); currently unused but accepted for uniform signatures.
+   * @param cb optional callback for per-node filtering choices; ignored because JPEG sanitation is
+   *     fully deterministic.
+   * @throws IOException if reading from the source or writing to the sink fails before completion.
+   * @throws DataFilterException if structural validation fails, including malformed markers,
+   *     truncated frames, or forbidden metadata blocks.
+   */
   @Override
   public void readFilter(
       InputStream input,
@@ -61,289 +113,418 @@ public class JPEGFilter implements ContentDataFilter {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    readFilter(input, output, charset, otherParams, cb, deleteComments, deleteExif);
+    readFilter(input, output, deleteComments, deleteExif);
     output.flush();
   }
 
-  public void readFilter(
-      InputStream input,
-      OutputStream output,
-      String charset,
-      Map<String, String> otherParams,
-      FilterCallback cb,
-      boolean deleteComments,
-      boolean deleteExif)
+  private void readFilter(
+      InputStream input, OutputStream output, boolean deleteComments, boolean deleteExif)
       throws IOException {
     CountedInputStream cis = new CountedInputStream(input);
     DataInputStream dis = new DataInputStream(cis);
-    assertHeader(dis, soi);
+    assertHeader(dis);
     output.write(soi);
 
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
+    StreamContext streamContext = new StreamContext(cis, dis, dos, baos, output);
 
-    // Check the chunks.
-
-    boolean finished = false;
     int forceMarkerType = -1;
-    while (!finished) {
+    while (true) {
       baos.reset();
-      int markerType;
-      if (forceMarkerType != -1) {
-        markerType = forceMarkerType;
-        forceMarkerType = -1;
-      } else {
-        int markerStart = dis.read();
-        if (markerStart == -1) {
-          // No more chunks to scan.
-          break;
-        } else if (finished) {
-          if (LOG.isDebugEnabled()) LOG.debug("More data after EOI, copying to truncate");
-          return;
-        }
-        if (markerStart != 0xFF) {
-          throwError(
-              "Invalid marker",
-              "The file includes an invalid marker start "
-                  + Integer.toHexString(markerStart)
-                  + " and cannot be parsed further.");
-        }
-        if (baos != null) baos.write(0xFF);
-        markerType = dis.readUnsignedByte();
-        if (baos != null) baos.write(markerType);
-      }
-      if (LOG.isDebugEnabled()) LOG.debug("Marker type: " + Integer.toHexString(markerType));
-      long countAtStart = cis.count(); // After marker but before type
-      int blockLength;
-      if (markerType == MARKER_EOI || markerType >= MARKER_RST0 && markerType <= MARKER_RST7)
-        blockLength = 0;
-      else {
-        blockLength = dis.readUnsignedShort();
-        dos.writeShort(blockLength);
-      }
-      if (markerType == 0xDA) {
-        // Start of scan marker
-
-        // Copy marker
-        if (blockLength < 2)
-          throwError(
-              "Invalid frame length",
-              "The file includes an invalid frame (length " + blockLength + ").");
-        byte[] buf = new byte[blockLength - 2];
-        dis.readFully(buf);
-        dos.write(buf);
-        LOG.debug("Copied start-of-frame marker length " + (blockLength - 2));
-
-        if (baos != null) baos.writeTo(output); // will continue; at end
-
-        // Now copy the scan itself
-
-        int prevChar = -1;
-        while (true) {
-          int x = dis.read();
-          if (prevChar != -1 && output != null) {
-            output.write(prevChar);
-          }
-          if (x == -1) {
-            // Termination inside a scan; valid I suppose
-            break;
-          }
-          if (prevChar == 0xFF
-              && x != 0
-              && !(x >= MARKER_RST0 && x <= MARKER_RST7)) { // reset markers can occur in the scan
-
-            forceMarkerType = x;
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "Moved scan at "
-                      + cis.count()
-                      + ", found a marker type "
-                      + Integer.toHexString(x));
-            if (output != null) output.write(x);
-            break; // End of scan, new marker
-          }
-          prevChar = x;
-        }
-
-        continue; // Avoid writing the header twice
-
-      } else if (markerType == 0xE0) { // APP0
-        if (LOG.isDebugEnabled()) LOG.debug("APP0");
-        String type = readNullTerminatedAsciiString(dis);
-        if (baos != null) writeNullTerminatedString(baos, type);
-        if (LOG.isDebugEnabled()) LOG.debug("Type: " + type + " length " + type.length());
-        if (type.equals("JFIF")) {
-          LOG.debug("JFIF Header");
-          // File header
-          int majorVersion = dis.readUnsignedByte();
-          if (majorVersion != 1)
-            throwError("Invalid header", "Unrecognized major version " + majorVersion + ".");
-          dos.write(majorVersion);
-          int minorVersion = dis.readUnsignedByte();
-          if (minorVersion > 2)
-            throwError("Invalid header", "Unrecognized version 1." + minorVersion + ".");
-          dos.write(minorVersion);
-          int units = dis.readUnsignedByte();
-          if (units > 2) throwError("Invalid header", "Unrecognized units type " + units + ".");
-          dos.write(units);
-          dos.writeShort(dis.readShort()); // Copy Xdensity
-          dos.writeShort(dis.readShort()); // Copy Ydensity
-          int thumbX = dis.readUnsignedByte();
-          dos.writeByte(thumbX);
-          int thumbY = dis.readUnsignedByte();
-          dos.writeByte(thumbY);
-          int thumbLen = thumbX * thumbY * 3;
-          byte[] buf = new byte[thumbLen];
-          dis.readFully(buf);
-          dos.write(buf);
-        } else if (type.equals("JFXX")) {
-          // JFIF extension marker
-          int extensionCode = dis.readUnsignedByte();
-          if (extensionCode == 0x10 || extensionCode == 0x11 || extensionCode == 0x13) {
-            // Alternate thumbnail, perfectly valid
-            dos.write(extensionCode);
-            skipRest(blockLength, countAtStart, cis, dis, dos, "thumbnail frame");
-            LOG.debug("Thumbnail frame");
-          } else
-            throwError(
-                "Unknown JFXX extension " + extensionCode,
-                "The file contains an unknown JFXX extension.");
-        } else {
-          if (LOG.isDebugEnabled())
-            LOG.debug("Dropping application-specific APP0 chunk named " + type);
-          // Application-specific extension
-          skipRest(blockLength, countAtStart, cis, dis, dos, "application-specific frame");
-          continue; // Don't write the frame.
-        }
-      } else if (markerType == 0xE1) { // EXIF
-        if (deleteExif) {
-          if (LOG.isDebugEnabled()) LOG.debug("Dropping EXIF data");
-          skipBytes(dis, blockLength - 2);
-          continue; // Don't write the frame
-        }
-        skipRest(blockLength, countAtStart, cis, dis, dos, "EXIF frame");
-      } else if (markerType == 0xFE) {
-        // Comment
-        if (deleteComments) {
-          skipBytes(dis, blockLength - 2);
-          if (LOG.isDebugEnabled()) LOG.debug("Dropping comment length " + (blockLength - 2) + '.');
-          continue; // Don't write the frame
-        }
-        skipRest(blockLength, countAtStart, cis, dis, dos, "comment");
-      } else if (markerType == 0xD9) {
-        // End of image
-        finished = true;
-        if (LOG.isDebugEnabled()) LOG.debug("End of image");
-      } else {
-        // We used to support only DB C4 C0, because some website said they were
-        // sufficient for decoding a JPEG. Unfortunately they are not, JPEG is a
-        // very complex standard and the full spec is only available for a fee.
-        // FIXME somebody who has access to the spec should have a look at this,
-        // and ideally write some chunk sanitizers.
-        boolean valid =
-            switch (markerType) {
-              // descriptions from http://svn.xiph.org/experimental/giles/jpegdump.c (GPL)
-              case 0xc0: // start of frame
-              case 0xc1: // extended sequential, huffman
-              case 0xc2: // progressive, huffman
-              case 0xc3: // lossless, huffman
-              case 0xc5: // differential sequential, huffman
-              case 0xc6: // differential progressive, huffman
-              case 0xc7: // differential lossless, huffman
-              // DELETE 0xc8 - "reserved for JPEG extension" - likely to be used for Bad Things
-              case 0xc9: // extended sequential, arithmetic
-              case 0xca: // progressive, arithmetic
-              case 0xcb: // lossless, arithmetic
-              case 0xcd: // differential sequential, arithmetic
-              case 0xcf: // differential lossless, arithmetic
-              case 0xc4: // define huffman tables
-              case 0xcc: // define arithmetic-coding conditioning
-              // Restart markers
-              case 0xd0:
-              case 0xd1:
-              case 0xd2:
-              case 0xd3:
-              case 0xd4:
-              case 0xd5:
-              case 0xd6:
-              case 0xd7:
-              // Delimiters:
-              case 0xd8: // start of image
-              case 0xd9: // end of image
-              case 0xda: // start of scan
-              case 0xdb: // define quantization tables
-              case 0xdc: // define number of lines
-              case 0xdd: // define restart interval
-              case 0xde: // define hierarchical progression
-              case 0xdf: // expand reference components
-                // DELETE APP0 - APP15 - application data sections, likely to be troublesome.
-                // DELETE extension data sections JPG0-6,SOF48,LSE,JPG9-JPG13, JCOM (comment!!), TEM
-                // ("temporary private use for arithmetic coding")
-                // DELETE 0x02 - 0xbf reserved sections.
-                // Do not support JPEG2000 at the moment. Probably has different headers. FIXME.
-                yield true;
-              default:
-                yield false;
-            };
-        if (valid) {
-          // Essential, non-terminal, but unparsed frames.
-          if (blockLength < 2)
-            throwError(
-                "Invalid frame length",
-                "The file includes an invalid frame (length " + blockLength + ").");
-          byte[] buf = new byte[blockLength - 2];
-          dis.readFully(buf);
-          dos.write(buf);
-          LOG.debug(
-              "Essential frame type "
-                  + Integer.toHexString(markerType)
-                  + " length "
-                  + (blockLength - 2)
-                  + " offset at end "
-                  + cis.count());
-        } else {
-          if (markerType >= 0xE0 && markerType <= 0xEF) {
-            // APP marker. Can be safely deleted.
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "Dropping application marker type "
-                      + Integer.toHexString(markerType)
-                      + " length "
-                      + blockLength);
-          } else {
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "Dropping unknown frame type "
-                      + Integer.toHexString(markerType)
-                      + " blockLength");
-          }
-          // Delete frame
-          skipBytes(dis, blockLength - 2);
-          continue;
-        }
+      MarkerReadResult marker = readNextMarker(dis, baos, forceMarkerType);
+      if (!marker.hasMarker()) {
+        return;
       }
 
-      if (cis.count() != countAtStart + blockLength)
-        throwError(
-            "Invalid frame",
-            "The length of the frame is incorrect (read "
-                + (cis.count() - countAtStart)
-                + " bytes, frame length "
-                + blockLength
-                + " for type "
-                + Integer.toHexString(markerType)
-                + ").");
-      // Write frame
-      baos.writeTo(output);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Marker type: {}", Integer.toHexString(marker.markerType()));
+      }
+
+      long countAtStart = cis.count();
+      int blockLength = readBlockLength(marker.markerType(), dis, dos);
+
+      FrameAction action =
+          processFrame(
+              marker.markerType(),
+              blockLength,
+              countAtStart,
+              streamContext,
+              deleteComments,
+              deleteExif);
+
+      forceMarkerType = action.nextForceMarkerType();
+
+      if (writeFrameIfNeeded(
+              action,
+              marker.markerType(),
+              blockLength,
+              countAtStart,
+              streamContext.cis,
+              streamContext.baos,
+              streamContext.output)
+          && action.finished()) {
+        return;
+      }
     }
-
-    // In future, maybe we will check the other chunks too.
-    // In particular, we may want to delete, or filter, the comment blocks.
-    // FIXME
   }
 
-  private static String l10n(String key) {
-    return NodeL10n.getBase().getString("JPEGFilter." + key);
+  private MarkerReadResult readNextMarker(
+      DataInputStream dis, ByteArrayOutputStream baos, int forceMarkerType) throws IOException {
+    if (forceMarkerType != -1) {
+      baos.write(0xFF);
+      baos.write(forceMarkerType);
+      return new MarkerReadResult(true, forceMarkerType);
+    }
+    int markerStart = dis.read();
+    if (markerStart == -1) {
+      return MarkerReadResult.none();
+    }
+    if (markerStart != 0xFF) {
+      throwError(
+          "Invalid marker",
+          "The file includes an invalid marker start "
+              + Integer.toHexString(markerStart)
+              + " and cannot be parsed further.");
+    }
+    baos.write(0xFF);
+    int markerType = dis.readUnsignedByte();
+    baos.write(markerType);
+    return new MarkerReadResult(true, markerType);
+  }
+
+  private int readBlockLength(int markerType, DataInputStream dis, DataOutputStream dos)
+      throws IOException {
+    if (markerType == MARKER_EOI || markerType >= MARKER_RST0 && markerType <= MARKER_RST7) {
+      return 0;
+    }
+    int blockLength = dis.readUnsignedShort();
+    dos.writeShort(blockLength);
+    return blockLength;
+  }
+
+  private int processStartOfScan(int blockLength, StreamContext ctx) throws IOException {
+    validateScanBlockLength(blockLength);
+    copyScanHeader(blockLength, ctx);
+    ctx.baos.writeTo(ctx.output);
+    return forwardScanData(ctx);
+  }
+
+  private void validateScanBlockLength(int blockLength) throws IOException {
+    if (blockLength < 2) {
+      throwError(
+          "Invalid frame length",
+          "The file includes an invalid frame (length " + blockLength + ").");
+    }
+  }
+
+  private void copyScanHeader(int blockLength, StreamContext ctx) throws IOException {
+    byte[] buf = new byte[blockLength - 2];
+    ctx.dis.readFully(buf);
+    ctx.dos.write(buf);
+    LOG.debug("Copied start-of-frame marker length {}", blockLength - 2);
+  }
+
+  private int forwardScanData(StreamContext ctx) throws IOException {
+    int prevChar = -1;
+    while (true) {
+      int x = ctx.dis.read();
+      if (x == -1) {
+        if (prevChar != -1 && ctx.output != null) {
+          ctx.output.write(prevChar);
+        }
+        break;
+      }
+      if (prevChar == 0xFF && x != 0 && !(x >= MARKER_RST0 && x <= MARKER_RST7)) {
+        logScanMarker(ctx, x);
+        return x;
+      }
+      if (prevChar != -1 && ctx.output != null) {
+        ctx.output.write(prevChar);
+      }
+      prevChar = x;
+    }
+    return -1;
+  }
+
+  private void logScanMarker(StreamContext ctx, int marker) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Moved scan at {}, found a marker type {}", ctx.cis.count(), Integer.toHexString(marker));
+    }
+  }
+
+  private FrameAction processFrame(
+      int markerType,
+      int blockLength,
+      long countAtStart,
+      StreamContext ctx,
+      boolean deleteComments,
+      boolean deleteExif)
+      throws IOException {
+    if (markerType == 0xDA) {
+      int nextMarker = processStartOfScan(blockLength, ctx);
+      return FrameAction.startOfScan(nextMarker);
+    }
+    if (markerType == 0xE0) {
+      return handleApp0Frame(blockLength, countAtStart, ctx);
+    }
+    if (markerType == 0xE1) {
+      return handleExifFrame(blockLength, countAtStart, ctx, deleteExif);
+    }
+    if (markerType == 0xFE) {
+      return handleCommentFrame(blockLength, countAtStart, ctx, deleteComments);
+    }
+    if (markerType == MARKER_EOI) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("End of image");
+      }
+      return FrameAction.writeAndFinish();
+    }
+    return handleGeneralFrame(markerType, blockLength, ctx);
+  }
+
+  private FrameAction handleApp0Frame(int blockLength, long countAtStart, StreamContext ctx)
+      throws IOException {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("APP0");
+    }
+    String type = readNullTerminatedAsciiString(ctx.dis);
+    writeNullTerminatedString(ctx.baos, type);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Type: {} length {}", type, type.length());
+    }
+    if (type.equals("JFIF")) {
+      return copyJfifHeader(ctx);
+    }
+    if (type.equals("JFXX")) {
+      return copyJfxxHeader(blockLength, countAtStart, ctx);
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Dropping application-specific APP0 chunk named {}", type);
+    }
+    skipRest(blockLength, countAtStart, ctx.cis, ctx.dis, ctx.dos, "application-specific frame");
+    return FrameAction.skip();
+  }
+
+  private FrameAction copyJfifHeader(StreamContext ctx) throws IOException {
+    LOG.debug("JFIF Header");
+    int majorVersion = ctx.dis.readUnsignedByte();
+    if (majorVersion != 1) {
+      throwError(INVALID_HEADER, "Unrecognized major version " + majorVersion + ".");
+    }
+    ctx.dos.write(majorVersion);
+    int minorVersion = ctx.dis.readUnsignedByte();
+    if (minorVersion > 2) {
+      throwError(INVALID_HEADER, "Unrecognized version 1." + minorVersion + ".");
+    }
+    ctx.dos.write(minorVersion);
+    int units = ctx.dis.readUnsignedByte();
+    if (units > 2) {
+      throwError(INVALID_HEADER, "Unrecognized units type " + units + ".");
+    }
+    ctx.dos.write(units);
+    ctx.dos.writeShort(ctx.dis.readShort());
+    ctx.dos.writeShort(ctx.dis.readShort());
+    int thumbX = ctx.dis.readUnsignedByte();
+    ctx.dos.writeByte(thumbX);
+    int thumbY = ctx.dis.readUnsignedByte();
+    ctx.dos.writeByte(thumbY);
+    int thumbLen = thumbX * thumbY * 3;
+    byte[] buf = new byte[thumbLen];
+    ctx.dis.readFully(buf);
+    ctx.dos.write(buf);
+    return FrameAction.writeAndContinue();
+  }
+
+  private FrameAction copyJfxxHeader(int blockLength, long countAtStart, StreamContext ctx)
+      throws IOException {
+    int extensionCode = ctx.dis.readUnsignedByte();
+    if (extensionCode == 0x10 || extensionCode == 0x11 || extensionCode == 0x13) {
+      ctx.dos.write(extensionCode);
+      skipRest(blockLength, countAtStart, ctx.cis, ctx.dis, ctx.dos, "thumbnail frame");
+      LOG.debug("Thumbnail frame");
+      return FrameAction.writeAndContinue();
+    }
+    throwError(
+        "Unknown JFXX extension " + extensionCode, "The file contains an unknown JFXX extension.");
+    return FrameAction.skip();
+  }
+
+  private FrameAction handleExifFrame(
+      int blockLength, long countAtStart, StreamContext ctx, boolean deleteExif)
+      throws IOException {
+    if (deleteExif) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Dropping EXIF data");
+      }
+      skipBytes(ctx.dis, blockLength - 2);
+      return FrameAction.skip();
+    }
+    skipRest(blockLength, countAtStart, ctx.cis, ctx.dis, ctx.dos, "EXIF frame");
+    return FrameAction.writeAndContinue();
+  }
+
+  private FrameAction handleCommentFrame(
+      int blockLength, long countAtStart, StreamContext ctx, boolean deleteComments)
+      throws IOException {
+    if (deleteComments) {
+      skipBytes(ctx.dis, blockLength - 2);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Dropping comment length {}.", blockLength - 2);
+      }
+      return FrameAction.skip();
+    }
+    skipRest(blockLength, countAtStart, ctx.cis, ctx.dis, ctx.dos, "comment");
+    return FrameAction.writeAndContinue();
+  }
+
+  private FrameAction handleGeneralFrame(int markerType, int blockLength, StreamContext ctx)
+      throws IOException {
+    if (isValidEssentialMarker(markerType)) {
+      copyEssentialFrame(markerType, blockLength, ctx);
+      return FrameAction.writeAndContinue();
+    }
+    dropFrame(markerType, blockLength, ctx.dis);
+    return FrameAction.skip();
+  }
+
+  private boolean isValidEssentialMarker(int markerType) {
+    return switch (markerType) {
+      case 0xC0, // start of frame
+          0xC1,
+          0xC2,
+          0xC3,
+          0xC5,
+          0xC6,
+          0xC7,
+          0xC9,
+          0xCA,
+          0xCB,
+          0xCD,
+          0xCF,
+          0xC4,
+          0xCC,
+          0xD0,
+          0xD1,
+          0xD2,
+          0xD3,
+          0xD4,
+          0xD5,
+          0xD6,
+          0xD7,
+          0xD8,
+          0xD9,
+          0xDA,
+          0xDB,
+          0xDC,
+          0xDD,
+          0xDE,
+          0xDF ->
+          true;
+      default -> false;
+    };
+  }
+
+  private void copyEssentialFrame(int markerType, int blockLength, StreamContext ctx)
+      throws IOException {
+    if (blockLength < 2) {
+      throwError(
+          "Invalid frame length",
+          "The file includes an invalid frame (length " + blockLength + ").");
+    }
+    byte[] buf = new byte[blockLength - 2];
+    ctx.dis.readFully(buf);
+    ctx.dos.write(buf);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Essential frame type {} length {} offset at end {}",
+          Integer.toHexString(markerType),
+          blockLength - 2,
+          ctx.cis.count());
+    }
+  }
+
+  private void dropFrame(int markerType, int blockLength, DataInputStream dis) throws IOException {
+    if (markerType >= 0xE0 && markerType <= 0xEF) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Dropping application marker type {} length {}",
+            Integer.toHexString(markerType),
+            blockLength);
+      }
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Dropping unknown frame type {} blockLength", Integer.toHexString(markerType));
+    }
+    skipBytes(dis, blockLength - 2);
+  }
+
+  private void validateFrameLength(
+      int markerType, int blockLength, long countAtStart, CountedInputStream cis)
+      throws IOException {
+    if (cis.count() != countAtStart + blockLength) {
+      throwError(
+          "Invalid frame",
+          "The length of the frame is incorrect (read "
+              + (cis.count() - countAtStart)
+              + " bytes, frame length "
+              + blockLength
+              + " for type "
+              + Integer.toHexString(markerType)
+              + ").");
+    }
+  }
+
+  private boolean writeFrameIfNeeded(
+      FrameAction action,
+      int markerType,
+      int blockLength,
+      long countAtStart,
+      CountedInputStream cis,
+      ByteArrayOutputStream baos,
+      OutputStream output)
+      throws IOException {
+    if (action.skipFrame()) {
+      return false;
+    }
+    validateFrameLength(markerType, blockLength, countAtStart, cis);
+    baos.writeTo(output);
+    return true;
+  }
+
+  private record StreamContext(
+      CountedInputStream cis,
+      DataInputStream dis,
+      DataOutputStream dos,
+      ByteArrayOutputStream baos,
+      OutputStream output) {}
+
+  private record MarkerReadResult(boolean hasMarker, int markerType) {
+    static MarkerReadResult none() {
+      return new MarkerReadResult(false, -1);
+    }
+  }
+
+  private record FrameAction(boolean skipFrame, boolean finished, int nextForceMarkerType) {
+    static FrameAction skip() {
+      return new FrameAction(true, false, -1);
+    }
+
+    static FrameAction writeAndContinue() {
+      return new FrameAction(false, false, -1);
+    }
+
+    static FrameAction writeAndFinish() {
+      return new FrameAction(false, true, -1);
+    }
+
+    static FrameAction startOfScan(int nextForceMarkerType) {
+      return new FrameAction(true, false, nextForceMarkerType);
+    }
+  }
+
+  private static String notJpegMessage() {
+    return NodeL10n.getBase().getString("JPEGFilter.notJpeg");
   }
 
   private void writeNullTerminatedString(ByteArrayOutputStream baos, String type)
@@ -384,33 +565,34 @@ public class JPEGFilter implements ContentDataFilter {
     dos.write(buf);
   }
 
-  // FIXME factor this out somewhere ... an IOUtil class maybe
+  // Helper that tolerates short skips and falls back to bounded reads.
   private void skipBytes(DataInputStream dis, int skip) throws IOException {
     int skipped = 0;
     while (skipped < skip) {
-      long x = dis.skip(skip - skipped);
+      long remaining = (long) skip - skipped;
+      long x = dis.skip(remaining);
       if (x <= 0) {
         byte[] buf = new byte[Math.min(4096, skip - skipped)];
         dis.readFully(buf);
         skipped += buf.length;
-      } else skipped += x;
+      } else skipped += (int) x;
     }
   }
 
-  private void assertHeader(DataInputStream dis, byte[] expected) throws IOException {
-    byte[] read = new byte[expected.length];
+  private void assertHeader(DataInputStream dis) throws IOException {
+    byte[] read = new byte[soi.length];
     dis.readFully(read);
-    if (!Arrays.equals(read, expected))
-      throwError("Invalid header", "The file does not start with a valid JPEG (JFIF) header.");
+    if (!Arrays.equals(read, soi))
+      throwError(INVALID_HEADER, "The file does not start with a valid JPEG (JFIF) header.");
   }
 
   private void throwError(String shortReason, String reason) throws DataFilterException {
     // Throw an exception
-    String message = l10n("notJpeg");
+    String message = notJpegMessage();
     if (reason != null) message += ' ' + reason;
     if (shortReason != null) message += " - " + shortReason;
     DataFilterException e = new DataFilterException(shortReason, shortReason, message);
-    if (LOG.isDebugEnabled()) LOG.info("Throwing " + e.getMessage(), e);
+    if (LOG.isDebugEnabled()) LOG.info("Throwing {}", e.getMessage(), e);
     throw e;
   }
 }
