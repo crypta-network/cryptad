@@ -1,9 +1,6 @@
 package network.crypta.client.filter;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Map;
 import network.crypta.l10n.NodeL10n;
 
 public class WAVFilter extends RIFFFilter {
@@ -31,19 +28,10 @@ public class WAVFilter extends RIFFFilter {
   }
 
   @Override
-  protected void readFilterChunk(
-      byte[] ID,
-      int size,
-      Object context,
-      DataInputStream input,
-      DataOutputStream output,
-      String charset,
-      Map<String, String> otherParams,
-      String schemeHostAndPort,
-      FilterCallback cb)
+  protected void readFilterChunk(byte[] id, int size, Object context, ReadFilterContext params)
       throws IOException {
     WAVFilterContext ctx = (WAVFilterContext) context;
-    if (ID[0] == 'f' && ID[1] == 'm' && ID[2] == 't' && ID[3] == ' ') {
+    if (id[0] == 'f' && id[1] == 'm' && id[2] == 't' && id[3] == ' ') {
       if (ctx.hasfmt) {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), "Unexpected fmt chunk was encountered");
@@ -59,7 +47,7 @@ public class WAVFilter extends RIFFFilter {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), "fmt chunk size is invalid");
       }
-      ctx.format = Short.reverseBytes(input.readShort());
+      ctx.format = Short.reverseBytes(params.input.readShort());
       int WAVE_FORMAT_MULAW = 7;
       int WAVE_FORMAT_ALAW = 6;
       int WAVE_FORMAT_IEEE_FLOAT = 3;
@@ -71,33 +59,33 @@ public class WAVFilter extends RIFFFilter {
         throw new DataFilterException(
             l10n("invalidTitle"), l10n("invalidTitle"), "WAV file uses a not yet supported format");
       }
-      ctx.nChannels = Short.reverseBytes(input.readShort());
-      output.write(ID);
-      writeLittleEndianInt(output, size);
-      output.writeInt(
+      ctx.nChannels = Short.reverseBytes(params.input.readShort());
+      params.output.write(id);
+      writeLittleEndianInt(params.output, size);
+      params.output.writeInt(
           (Short.reverseBytes((short) ctx.format) << 16)
               | Short.reverseBytes((short) ctx.nChannels));
-      ctx.nSamplesPerSec = readLittleEndianInt(input);
-      writeLittleEndianInt(output, ctx.nSamplesPerSec);
-      int nAvgBytesPerSec = readLittleEndianInt(input);
-      writeLittleEndianInt(output, nAvgBytesPerSec);
-      ctx.nBlockAlign = Short.reverseBytes(input.readShort());
-      ctx.wBitsPerSample = Short.reverseBytes(input.readShort());
-      output.writeInt(
+      ctx.nSamplesPerSec = readLittleEndianInt(params.input);
+      writeLittleEndianInt(params.output, ctx.nSamplesPerSec);
+      int nAvgBytesPerSec = readLittleEndianInt(params.input);
+      writeLittleEndianInt(params.output, nAvgBytesPerSec);
+      ctx.nBlockAlign = Short.reverseBytes(params.input.readShort());
+      ctx.wBitsPerSample = Short.reverseBytes(params.input.readShort());
+      params.output.writeInt(
           (Short.reverseBytes((short) ctx.nBlockAlign) << 16)
               | Short.reverseBytes((short) ctx.wBitsPerSample));
       ctx.hasfmt = true;
       if (size > FMT_SIZE_BASIC) {
-        short cbSize = Short.reverseBytes(input.readShort());
+        short cbSize = Short.reverseBytes(params.input.readShort());
         if (cbSize + FMT_SIZE_cbSize != size) {
           throw new DataFilterException(
               l10n("invalidTitle"), l10n("invalidTitle"), "fmt chunk size is invalid");
         }
-        output.writeShort(Short.reverseBytes(cbSize));
+        params.output.writeShort(Short.reverseBytes(cbSize));
       }
       if (size > FMT_SIZE_cbSize) {
         // wValidBitsPerSample, dwChannelMask, and SubFormat GUID
-        passthroughBytes(input, output, FMT_SIZE_cbSize_extension - FMT_SIZE_cbSize);
+        passthroughBytes(params.input, params.output, FMT_SIZE_cbSize_extension - FMT_SIZE_cbSize);
       }
       // Further checks
       if ((ctx.format == WAVE_FORMAT_ALAW || ctx.format == WAVE_FORMAT_MULAW)
@@ -114,33 +102,33 @@ public class WAVFilter extends RIFFFilter {
           l10n("invalidTitle"),
           "Unexpected header chunk was encountered, instead of fmt chunk");
     }
-    if (ID[0] == 'd' && ID[1] == 'a' && ID[2] == 't' && ID[3] == 'a') {
+    if (id[0] == 'd' && id[1] == 'a' && id[2] == 't' && id[3] == 'a') {
       // audio data
-      output.write(ID);
-      writeLittleEndianInt(output, size);
-      passthroughBytes(input, output, size);
+      params.output.write(id);
+      writeLittleEndianInt(params.output, size);
+      passthroughBytes(params.input, params.output, size);
       if ((size & 1) != 0) { // Add padding if necessary
-        output.writeByte(input.readByte());
+        params.output.writeByte(params.input.readByte());
       }
       ctx.hasdata = true;
-    } else if (ID[0] == 'f' && ID[1] == 'a' && ID[2] == 'c' && ID[3] == 't') {
+    } else if (id[0] == 'f' && id[1] == 'a' && id[2] == 'c' && id[3] == 't') {
       if (size != 4) {
         // It should be 4 bytes, so don't know what to do with the data other than discarding it.
-        writeJunkChunk(input, output, size);
+        writeJunkChunk(params.input, params.output, size);
       } else {
         // Just dwSampleLength (Number of samples) here, pass through
-        output.write(ID);
-        writeLittleEndianInt(output, size);
-        passthroughBytes(input, output, size);
+        params.output.write(id);
+        writeLittleEndianInt(params.output, size);
+        passthroughBytes(params.input, params.output, size);
       }
     } else {
       // Unknown block
-      writeJunkChunk(input, output, size);
+      writeJunkChunk(params.input, params.output, size);
     }
   }
 
   @Override
-  protected void EOFCheck(Object context) throws DataFilterException {
+  protected void eofCheck(Object context) throws DataFilterException {
     WAVFilterContext ctx = (WAVFilterContext) context;
     if (!ctx.hasfmt || !ctx.hasdata) {
       throw new DataFilterException(
