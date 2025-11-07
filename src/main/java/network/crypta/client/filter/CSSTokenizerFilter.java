@@ -2893,13 +2893,13 @@ class CSSTokenizerFilter {
   // further decomposition and reduce the complexity of this entrypoint.
   private final class Parser {
     // Parser state (formerly locals) — kept as fields to minimize run() complexity
-    final int STATE1 = 1;
-    final int STATE2 = 2;
-    final int STATE3 = 3;
-    final int STATECOMMENT = 4;
-    final int STATE1INQUOTE = 5;
-    final int STATE2INQUOTE = 6;
-    final int STATE3INQUOTE = 7;
+    static final int STATE1 = 1;
+    static final int STATE2 = 2;
+    static final int STATE3 = 3;
+    static final int STATECOMMENT = 4;
+    static final int STATE1INQUOTE = 5;
+    static final int STATE2INQUOTE = 6;
+    static final int STATE3INQUOTE = 7;
 
     char currentQuote = '"';
     int stateBeforeComment = 0;
