@@ -1100,16 +1100,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase());
       if (LOG.isTraceEnabled()) LOG.trace("Got verifier: {} for {}", tv, element);
       if (tv == null) {
-        if (DELETE_WIERD_STUFF) {
-          return null;
-        } else {
+        if (!DELETE_WIERD_STUFF) {
           String err =
               HtmlStrings.STR_COMMENT_PREFIX
                   + HTMLEncoder.encode(l10n("unknownTag", "tag", element))
                   + " -->";
           if (!DELETE_ERRORS) throwFilterException(l10n("unknownTagLabel") + ' ' + err);
-          return null;
         }
+        return null;
       }
       return tv.sanitize(this, pc);
     }
@@ -2832,21 +2830,28 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           continue;
         }
 
-        if (parsedAttrs.contains(name)) {
-          hn.put(name, null);
-        } else if (allowedAttrs.contains(name)) {
-          hn.put(name, value);
-        } else {
-          boolean handled = handleBooleanAttribute(name, value, hn, pc);
-          if (!handled) {
-            handled = handleLanguageAttribute(name, value, hn);
-          }
-          if (!handled) {
-            handleRoleAttribute(name, value, hn);
-          }
-        }
+        addSanitizedAttribute(name, value, hn, pc);
       }
       return hn;
+    }
+
+    private void addSanitizedAttribute(
+        String name, Object value, Map<String, Object> output, HTMLParseContext pc) {
+      if (parsedAttrs.contains(name)) {
+        output.put(name, null);
+        return;
+      }
+      if (allowedAttrs.contains(name)) {
+        output.put(name, value);
+        return;
+      }
+      if (handleBooleanAttribute(name, value, output, pc)) {
+        return;
+      }
+      if (handleLanguageAttribute(name, value, output)) {
+        return;
+      }
+      handleRoleAttribute(name, value, output);
     }
 
     private boolean sanitizeUriAttribute(
@@ -3691,7 +3696,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       String lowered = httpEquiv.toLowerCase();
       return switch (lowered) {
         case "expires" -> handleExpiresMeta(content, output);
-        case "content-script-type" -> true;
         case "content-style-type" -> handleStyleTypeMeta(content, output);
         case "content-type" -> handleContentTypeMeta(httpEquiv, content, output, pc);
         case "content-language" -> handleContentLanguageMeta(content, output);
@@ -4164,6 +4168,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return null;
   }
 
+  @SuppressWarnings("unused")
   static String sanitizeURI(String uri, FilterCallback cb, boolean inline) throws CommentException {
     return sanitizeURI(uri, null, null, null, cb, inline);
   }
@@ -4200,6 +4205,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private int curPos;
     private final char c;
 
+    @SuppressWarnings("unused")
     public StringFieldParser(String str) {
       this(str, '\t');
     }
@@ -4257,14 +4263,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       throws CommentException {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Sanitizing URI: "
-              + suri
-              + " ( override type "
-              + overrideType
-              + " override charset "
-              + overrideCharset
-              + " ) inline="
-              + inline,
+          "Sanitizing URI: {} ( override type {} override charset {} ) inline={}",
+          suri,
+          overrideType,
+          overrideCharset,
+          inline,
           new Exception("debug"));
     boolean addMaybe = false;
     if ((overrideCharset != null) && !overrideCharset.isEmpty())
@@ -4282,12 +4285,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return NodeL10n.getBase().getString("HTMLFilter." + key);
   }
 
+  @SuppressWarnings("SameParameterValue")
   static String l10n(String key, String pattern, String value) {
     return NodeL10n.getBase().getString("HTMLFilter." + key, pattern, value);
   }
 
   @Override
-  public BOMDetection getCharsetByBOM(byte[] input, int length) throws DataFilterException {
+  public BOMDetection getCharsetByBOM(byte[] input, int length) {
     // BOM detection is handled elsewhere; XML-specific markers are deliberately ignored here.
     return null;
   }
