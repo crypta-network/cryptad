@@ -2954,6 +2954,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     abstract void setStyle(boolean b, HTMLParseContext pc);
 
+    @SuppressWarnings("unused")
     abstract boolean getStyle(HTMLParseContext pc);
 
     abstract void processStyle(HTMLParseContext pc);
@@ -3340,8 +3341,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     private boolean isValidStylesheetPosition(int index, String previousToken) {
-      return index == 0
-          || (index == 1 && previousToken != null && "alternate".equalsIgnoreCase(previousToken));
+      return index == 0 || (index == 1 && "alternate".equalsIgnoreCase(previousToken));
     }
 
     private void appendToken(StringBuilder builder, String token) {
