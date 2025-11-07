@@ -44,6 +44,30 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Streams and sanitizes HTML emitted by the node so the FProxy surface only exposes vetted,
+ * policy-compliant markup. The filter rewrites tags, normalizes attributes, and optionally injects
+ * helper snippets while preserving the original document structure as closely as possible.
+ *
+ * <p>The class operates as a streaming state machine: {@link #readFilter(InputStream, OutputStream,
+ * String, Map, String, FilterCallback)} feeds data through {@link HTMLParseContext}, which tracks
+ * open elements, style/script state, and charset detection hints. Defensive defaults block risky
+ * constructs (e.g., scripts, malformed refresh tags) while offering configurable escape hatches
+ * such as the M3U helper or relaxed refresh intervals.
+ *
+ * <p>Instances are not thread-safe and should be scoped per HTTP request. They rely on supplied
+ * {@link FilterCallback} implementations for URI validation and on external localization helpers
+ * for user-facing error strings.
+ *
+ * <ul>
+ *   <li>Sanitizes tag/attribute combinations against {@link #getAllowedHTMLTags()}.
+ *   <li>Extracts or enforces charset declarations before bytes reach the browser.
+ *   <li>Applies policy toggles such as media-player injection and meta-refresh throttling.
+ * </ul>
+ *
+ * @see ContentDataFilter
+ * @see CharsetExtractor
+ */
 public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   private static final Logger LOG = LoggerFactory.getLogger(HTMLFilter.class);
 
@@ -72,6 +96,17 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   private static int metaRefreshRedirectMinInterval = 30;
 
   private static final String M3U_PLAYER_SCRIPT_TAG_CONTENT = loadM3uPlayerScriptTagContent();
+
+  /**
+   * Creates a new filter instance using the current static configuration toggles. The constructor
+   * does not allocate heavyweight resources; state such as open-element stacks is created inside
+   * {@link HTMLParseContext} on demand, so callers may instantiate filters eagerly and reuse them
+   * across requests as long as each invocation of {@link #readFilter(InputStream, OutputStream,
+   * String, Map, String, FilterCallback)} completes before the next begins.
+   */
+  public HTMLFilter() {
+    // No-op constructor; parsing state lives in HTMLParseContext instances created per request.
+  }
 
   private static final class HtmlStrings {
     private HtmlStrings() {}
@@ -198,6 +233,31 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     static final String STR_XMLNS = "xmlns";
   }
 
+  /**
+   * Streams untrusted HTML from {@code input}, sanitizes it according to the current policy, and
+   * writes the resulting markup to {@code output}. The method configures buffered character
+   * streams, enforces the negotiated {@code charset}, and drives an {@link HTMLParseContext} that
+   * emits callbacks for visible text or URIs while blocking unsafe constructs. All state lives
+   * inside the parse context, so callers may safely reuse {@link HTMLFilter} instances only when
+   * they have completed a previous invocation.
+   *
+   * <p>The callback receives events for every surviving tag or resource reference, allowing higher
+   * layers to audit URIs or collect metadata. Errors in the declared charset raise an {@link
+   * UnknownCharsetException} before sanitization begins, guaranteeing deterministic output
+   * encoding.
+   *
+   * <pre>{@code
+   * filter.readFilter(in, out, "UTF-8", Map.of(), "http://127.0.0.1:8888", callback);
+   * }</pre>
+   *
+   * @param input streaming source supplying the HTML payload to sanitize and forward downstream
+   * @param output destination for sanitized markup that must already be opened for writing bytes
+   * @param charset canonical name negotiated with the client; {@code null} is never permitted
+   * @param otherParams mutable metadata map passed through unchanged for downstream handlers
+   * @param schemeHostAndPort absolute origin string used when rewriting relative resource links
+   * @param cb callback receiving sanitized text and URIs; a {@link NullFilterCallback} is allowed
+   * @throws IOException if the input cannot be decoded or the output stream rejects the write
+   */
   @Override
   public void readFilter(
       InputStream input,
@@ -227,6 +287,24 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     w.flush();
   }
 
+  /**
+   * Detects the declared character set within an HTML byte buffer by running the tokenizer in a
+   * special "detection only" mode. The method reads at most {@link #getCharsetBufferSize()} bytes
+   * through a {@link java.io.BufferedReader}, stops after the head section is conclusively parsed,
+   * and returns the first {@code <meta charset>} encountered. Mixed encodings or malformed markup
+   * cause the detector to bail out early so downstream consumers can fall back to defaults.
+   *
+   * <p>The provided {@code parseCharset} acts as a tentative decoder for the buffer and should be a
+   * codec capable of handling the incoming bytes (typically UTF-8 or windows-1252). The returned
+   * value is never cached; callers should persist it alongside the response headers they generate.
+   *
+   * @param input byte array holding the document prefix inspected for charset declarations
+   * @param length count of valid bytes in {@code input}; values above buffer size are trimmed
+   * @param parseCharset decoder used while scanning; unsupported names throw {@link
+   *     UnknownCharsetException}
+   * @return detected charset name, or {@code null} when no reliable declaration was found
+   * @throws IOException if the underlying reader cannot be created or encounters malformed data
+   */
   @Override
   public String getCharset(byte[] input, int length, String parseCharset) throws IOException {
 
@@ -761,26 +839,72 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return tagContent;
   }
 
+  /**
+   * Reports whether the sanitizer should inject the lightweight M3U JavaScript player when media
+   * tags are encountered. Toggling this value lets administrators balance user convenience against
+   * strict content policies without recompiling the node. The flag is read on every HTML parse, so
+   * changes take effect immediately for subsequent requests.
+   *
+   * @return {@code true} when eligible media tags cause the player snippet to be inlined
+   */
   public static boolean isEmbedM3uPlayerEnabled() {
     return embedM3uPlayer;
   }
 
+  /**
+   * Enables or disables automatic embedding of the bundled M3U player script for sanitized media
+   * documents. The value is global because the filter is shared by multiple request handlers, so it
+   * should be updated only during configuration reloads. Toggle changes apply to all future parse
+   * contexts and therefore should be coordinated with UI preferences.
+   *
+   * @param enabled {@code true} to inject the helper script whenever media tags are preserved
+   */
   public static void setEmbedM3uPlayerEnabled(boolean enabled) {
     embedM3uPlayer = enabled;
   }
 
+  /**
+   * Exposes the minimum number of seconds required between meta-refresh events that reload the same
+   * page. Requests falling below this threshold are stripped to prevent rapid refresh loops, which
+   * would otherwise waste bandwidth and degrade the browsing experience.
+   *
+   * @return minimum delay, or {@code -1} when zero-delay refreshes must always be dropped
+   */
   public static int getMetaRefreshSamePageMinInterval() {
     return metaRefreshSamePageMinInterval;
   }
 
+  /**
+   * Updates the interval guarding same-page meta refresh operations. Negative values disable the
+   * tag entirely, while zero preserves only single-refresh pages. Higher numbers give users more
+   * time to react when viewing large forms or threaded discussions.
+   *
+   * @param interval number of seconds enforced between refreshes targeting the current URI
+   */
   public static void setMetaRefreshSamePageMinInterval(int interval) {
     metaRefreshSamePageMinInterval = interval;
   }
 
+  /**
+   * Returns the policy-controlled delay required before a meta refresh pointing to another location
+   * is allowed to survive filtering. Redirects that fire too quickly are frequently used for
+   * phishing and annoyance attacks, so this value determines how aggressively the node trims such
+   * tags.
+   *
+   * @return minimum redirect delay in seconds, or {@code -1} when redirects are forbidden outright
+   */
   public static int getMetaRefreshRedirectMinInterval() {
     return metaRefreshRedirectMinInterval;
   }
 
+  /**
+   * Sets the minimum delay enforced for meta refreshes that redirect the browser to a new URL.
+   * Values less than zero reject all redirect refresh tags; large values effectively disable the
+   * feature unless the document explicitly opts in with a long timeout. Update this setting only
+   * during configuration reloads to avoid surprising concurrent sanitization tasks.
+   *
+   * @param interval number of seconds required before allowing a redirecting refresh to pass
+   */
   public static void setMetaRefreshRedirectMinInterval(int interval) {
     metaRefreshRedirectMinInterval = interval;
   }
@@ -1029,12 +1153,43 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     throw new DataFilterException(longer, longer, msg);
   }
 
+  /**
+   * Immutable representation of a tag that successfully passed syntax validation. ParsedTag keeps
+   * the element name, differentiates whether the token opens or closes a tag, and stores the raw
+   * attribute strings so later sanitizer stages can re-run validation without reparsing the source
+   * stream. Instances are frequently copied, so the class avoids allocating heavyweight collections
+   * beyond the attribute array.
+   *
+   * <p>The structure is purposely forgiving: {@code startSlash} and {@code endSlash} are recorded
+   * even when the tokenizer encountered mismatched syntax, allowing downstream verifiers to insert
+   * recovery comments or drop the offending tag entirely. String casing is normalized during
+   * parsing so comparisons can be performed cheaply.
+   */
   public static class ParsedTag {
+    /**
+     * Element name captured from the tokenizer, normalized to lower-case ASCII so case-insensitive
+     * comparisons and hash lookups remain cheap even when reserializing the tag later.
+     */
     public final String element;
+
+    /**
+     * Attribute strings as originally parsed, including surrounding quotes and ordering, so
+     * verifiers can reconstitute a canonical attribute map while preserving formatting for output.
+     */
     public final String[] unparsedAttrs;
+
     final boolean startSlash;
     final boolean endSlash;
 
+    /**
+     * Creates a tag from an already-sanitized attribute map, typically used by verifiers that
+     * synthesize new markup (for example, when closing missing tags). The method copies the
+     * provided attributes into a compact {@link String} array so later output stages can emit
+     * stable ordering while avoiding accidental reuse of the caller's map.
+     *
+     * @param elementName canonical element name that will be written verbatim into the output tag
+     * @param attributes map of attribute/value pairs; values are assumed to be properly escaped
+     */
     public ParsedTag(String elementName, Map<String, String> attributes) {
       this.element = elementName;
       startSlash = false;
@@ -1047,6 +1202,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       this.unparsedAttrs = attrs;
     }
 
+    /**
+     * Copies an existing tag while replacing its attribute array with a sanitized version. This is
+     * useful when a verifier needs to preserve element directionality ({@code startSlash} or {@code
+     * endSlash}) yet drop or reorder attributes without touching the rest of the token's metadata.
+     *
+     * @param t source tag to copy; its element name and slash flags are reused verbatim
+     * @param outAttrs sanitized attribute array that is safe to re-emit verbatim
+     */
     public ParsedTag(ParsedTag t, String[] outAttrs) {
       this.element = t.element;
       this.unparsedAttrs = outAttrs;
@@ -1054,6 +1217,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       this.endSlash = t.endSlash;
     }
 
+    /**
+     * Rebuilds a tag from a source {@link ParsedTag} and a mutable attribute map. The entries are
+     * flattened into {@code name="value"} strings using the map's iteration order, mirroring the
+     * format produced by the tokenizer.
+     *
+     * @param t template tag providing the element name and slash orientation
+     * @param attributes replacement attribute map that has already passed policy checks
+     */
     public ParsedTag(ParsedTag t, Map<String, String> attributes) {
       String[] attrs = new String[attributes.size()];
       int pos = 0;
@@ -1066,6 +1237,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       this.endSlash = t.endSlash;
     }
 
+    /**
+     * Builds a tag directly from the raw token list emitted by {@link HTMLParseContext}. This
+     * constructor is performance-sensitive: it interprets the vector produced during parsing,
+     * derives the element name, and classifies whether the tag was self-closing or a closing tag
+     * without allocating intermediate collections.
+     *
+     * @param v token list containing the element name and its raw attribute fragments in order
+     */
     public ParsedTag(List<String> v) {
       int len = v.size();
       if (len == 0) {
@@ -1112,6 +1291,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return tv.sanitize(this, pc);
     }
 
+    /**
+     * Serializes this token back into an HTML tag, honoring whether it was originally a closing or
+     * self-closing construct. Attribute ordering and quoting are preserved exactly as captured so
+     * higher layers can re-emit familiar markup for trusted clients. The string is primarily used
+     * by {@link #htmlwrite(Writer, HTMLParseContext)} when committing sanitized tags to the output.
+     *
+     * @return full tag string, or an empty string when {@link #element} is {@code null}
+     */
     @Override
     public String toString() {
       if (element == null) return "";
@@ -1128,6 +1315,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return sb.toString();
     }
 
+    /**
+     * Produces a mutable attribute map from the stored array. The conversion strips surrounding
+     * quotes and leaves HTML encoding untouched, making it a convenient bridge for sanitation
+     * routines that expect map inputs. Iteration order matches the original source, which helps
+     * callers retain deterministic attribute ordering when rebuilding tags.
+     *
+     * @return map keyed by attribute names with values lacking leading/trailing quotes
+     */
     public Map<String, String> getAttributesAsMap() {
       Map<String, String> map = new HashMap<>();
       for (String attr : unparsedAttrs) {
@@ -1230,6 +1425,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
   }
 
+  /**
+   * Returns an immutable snapshot of the whitelist used by the sanitizer. The set is mainly
+   * intended for diagnostics and UI exposure—mutating the returned collection would break shared
+   * invariants, so the implementation wraps it with {@link Collections#unmodifiableSet(Set)}. Call
+   * this method sparingly; it clones a fairly large set.
+   *
+   * @return view of allowed element names expressed in lower case
+   */
   public static Set<String> getAllowedHTMLTags() {
     return Collections.unmodifiableSet(allowedHTMLTags);
   }
@@ -2619,11 +2822,23 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           }
         };
 
+    /**
+     * Canonical tag name this verifier was built for; used in diagnostics and policy lookups so
+     * that related log entries can be correlated with the originating element.
+     */
     protected final String tagName;
+
     // Attributes which need no sanitation
     private final HashSet<String> allowedAttrs;
+
     // Attributes which will be sanitized by child classes
+    /**
+     * Set of attribute names that require special handling (event handlers, core attrs, etc.) and
+     * therefore must be copied into {@link ParsedTag} instances even if they are removed from the
+     * user-visible output.
+     */
     protected final HashSet<String> parsedAttrs;
+
     private final HashSet<String> uriAttrs;
     private final HashSet<String> inlineURIAttrs;
     final HashSet<String> booleanAttrs;
@@ -2806,6 +3021,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return new ParsedTag(source, outAttrs);
     }
 
+    /**
+     * Provides a sentinel map signaling that the current tag should be suppressed. Verifiers use
+     * the shared {@link #DROP_TAG} instance so the sanitizer can cheaply detect the "drop" case via
+     * reference comparison without allocating new containers during heavy parsing workloads.
+     *
+     * @return shared immutable map whose identity alone indicates the tag must be discarded
+     */
     protected Map<String, Object> dropTag() {
       return DROP_TAG;
     }
@@ -2929,8 +3151,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
     }
 
-    /*If this function returns true, this tag will be removed from
-     * the sanitized output if it has no attributes*/
+    /**
+     * Indicates whether the sanitized version of this tag should be dropped when it no longer
+     * carries any attributes. Subclasses override this to enforce stricter policies for tags whose
+     * semantics rely on attribute content (for example, {@code meta} refresh directives).
+     *
+     * @return {@code true} if an attribute-less instance should be removed from the stream
+     */
     protected boolean expungeTagIfNoAttributes() {
       return false;
     }
@@ -3899,6 +4126,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private static final Set<String> SUPPORTED_NAME_FIELDS =
         new HashSet<>(Arrays.asList("author", "keywords", "description", "viewport"));
 
+    /** {@inheritDoc} */
     @Override
     protected boolean expungeTagIfNoAttributes() {
       return true;
@@ -4175,6 +4403,16 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   // The type header can contain additional parameters beyond charset, such as
   // TEXT/PLAIN; format=flowed; charset=US-ASCII or IMAGE/JPEG; name=test.jpeg; x-unix-mode=0644.
+  /**
+   * Splits a MIME type header into the base media type and the first explicit charset parameter.
+   * Additional parameters are ignored because the sanitizer only needs to know which decoder to
+   * use. The method tolerates folded whitespace and mixed casing, mirroring how HTTP headers reach
+   * the client.
+   *
+   * @param type raw {@code Content-Type} header value, e.g. {@code text/html; charset=UTF-8}
+   * @return two-element array where index 0 is the media type and index 1 holds the charset or
+   *     {@code null}
+   */
   public static String[] splitType(String type) {
     StringFieldParser sfp;
     String charset = null;
@@ -4290,15 +4528,30 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     return NodeL10n.getBase().getString("HTMLFilter." + key, pattern, value);
   }
 
+  /**
+   * HTMLFilter delegates BOM detection to higher-level extractors because the HTML parsing path
+   * already examines {@code <meta charset>} declarations. This method therefore returns {@code
+   * null}, signaling that BOM hints must be interpreted by wrapper components.
+   *
+   * @param input byte buffer containing the beginning of the document
+   * @param length number of bytes provided for inspection
+   * @return always {@code null}, indicating BOM checks should be handled by the caller
+   */
   @Override
   public BOMDetection getCharsetByBOM(byte[] input, int length) {
-    // BOM detection is handled elsewhere; XML-specific markers are deliberately ignored here.
     return null;
   }
 
+  /**
+   * Indicates how many bytes callers should supply when asking {@link #getCharset(byte[], int,
+   * String)} to detect a charset. The value balances accuracy (meta tags can appear deep inside a
+   * head section) with memory consumption. Override this only if the upstream buffering strategy is
+   * known to surface unusually large {@code <head>} sections.
+   *
+   * @return maximum buffer length in bytes, currently 64&nbsp;KiB
+   */
   @Override
   public int getCharsetBufferSize() {
-    // Read in 64 kilobytes. The charset could be defined anywhere in the head section
     return 1024 * 64;
   }
 }
