@@ -15,15 +15,83 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.support.io.CountedOutputStream;
 
 /**
- * Filters Ogg container files. These containers contain one or more logical bitstreams of data
- * encapsulated into a physical bitstream. The data is broken into variable length pages, consisting
- * of a header and 0-255 segments of 0-255 bytes. For more details refer to <a
- * href="http://www.xiph.org/ogg/doc/rfc3533.txt">http://www.xiph.org/ogg/doc/rfc3533.txt</a>
+ * Filters Ogg container files by validating page structure and forwarding acceptable data.
  *
+ * <p>The Ogg container multiplexes one or more logical bitstreams (such as Vorbis, Theora, or FLAC)
+ * into a single physical bitstream composed of pages. Each page carries a small header and a
+ * sequence of lacing values that split the payload into segments. This filter reads the stream
+ * page-by-page, performs inexpensive structural checks to guard against malformed content, and
+ * copies valid pages to the destination stream. Pages that contain embedded, valid “subpages”
+ * (which typically indicate an attempt to smuggle a nested stream) are treated conservatively and
+ * are not forwarded.
+ *
+ * <p>Use this filter when relaying user-supplied Ogg files or when a basic integrity pass is
+ * desired before passing data to downstream decoders. The implementation is streaming (does not
+ * buffer entire files), holds no shared mutable state, and is safe for reuse across independent
+ * invocations as long as a fresh input/output stream pair is provided each time. It does not parse
+ * or decode individual codec packets; instead, it focuses on container framing validity and on
+ * avoiding mixed or nested page sequences that could confuse consumers.
+ *
+ * <ul>
+ *   <li>Responsibilities: validate Ogg page framing; reject pages that hide nested pages; copy
+ *       acceptable bytes verbatim.
+ *   <li>Concurrency: instances are stateless and effectively thread-safe; no shared state.
+ *   <li>Error handling: malformed input results in a {@link DataFilterException}; I/O failures are
+ *       surfaced as {@link IOException}.
+ * </ul>
+ *
+ * <p>Reference: <a href="https://www.xiph.org/ogg/doc/rfc3533.txt">RFC 3533 – The Ogg Encapsulation
+ * Format</a>.
+ *
+ * @see ContentDataFilter
+ * @see OggPage
+ * @see OggBitstreamFilter
  * @author sajack
  */
 public class OggFilter implements ContentDataFilter {
 
+  /**
+   * Creates a new Ogg filter instance.
+   *
+   * <p>Instances are stateless and can be reused across multiple calls as long as a new input and
+   * output stream is provided per invocation of {@link #readFilter(InputStream, OutputStream,
+   * String, Map, String, FilterCallback)}. No additional initialization is required.
+   */
+  public OggFilter() {
+    // Intentionally empty: the filter is stateless and requires no initialization.
+  }
+
+  /**
+   * Run the Ogg read filter, validating page structure and forwarding acceptable pages.
+   *
+   * <p>This is the integration point required by {@link ContentDataFilter}. The method reads the
+   * input as an Ogg physical bitstream, aggregates packet splits across consecutive pages, and
+   * writes pages that pass structural checks to {@code output}. If no output is produced, a
+   * localized {@link DataFilterException} is raised to signal rejection. The character set and
+   * auxiliary parameters are accepted for interface compatibility but are not used by this binary
+   * container filter.
+   *
+   * <pre>{@code
+   * // Example: stream an Ogg file through the filter
+   * var filter = new OggFilter();
+   * filter.readFilter(in, out, null, Map.of(), host, callback);
+   * }</pre>
+   *
+   * @param input the source of Ogg bytes; must remain readable for the duration of filtering; not
+   *     closed by this method.
+   * @param output the destination receiving validated pages written verbatim; flushed on success;
+   *     not closed by this method.
+   * @param charset unused for Ogg content; callers may pass {@code null} or an empty string safely;
+   *     retained for API compatibility.
+   * @param otherParams additional parameters supplied by higher layers; ignored by this filter but
+   *     accepted for interface compatibility; may be {@code null}.
+   * @param schemeHostAndPort request authority ({@code scheme://host:port}) supplied by callers;
+   *     not used by this filter and may be {@code null}.
+   * @param cb callback for link discovery or tag replacement in text formats; not used here but
+   *     carried for interface consistency; may be {@code null}.
+   * @throws IOException if reading from {@code input} or writing to {@code output} fails; includes
+   *     validation failures signaled via {@link DataFilterException}.
+   */
   public void readFilter(
       InputStream input,
       OutputStream output,
@@ -107,10 +175,13 @@ public class OggFilter implements ContentDataFilter {
   }
 
   /**
-   * Searches for valid pages hidden inside this page
+   * Searches for valid pages hidden inside this page.
    *
-   * @return whether or not a hidden page exists
-   * @throws IOException
+   * @param page the current page whose payload will be scanned for embedded subpages
+   * @param nextPage the following page, used to extend the scan window across a packet boundary;
+   *     may be {@code null}
+   * @return {@code true} if a valid hidden subpage is detected; {@code false} otherwise
+   * @throws IOException if an I/O error occurs while reading or parsing candidate subpages
    */
   private boolean hasValidSubpage(OggPage page, OggPage nextPage) throws IOException {
     OggPage subpage;
