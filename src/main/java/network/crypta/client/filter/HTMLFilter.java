@@ -4046,8 +4046,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         }
         return true;
       }
-      // Redirect refresh: requires a separator and redirect filtering enabled.
-      if (idx >= 0 && getMetaRefreshRedirectMinInterval() >= 0) {
+      // Redirect refresh: requires redirect filtering enabled; idx >= 0 is implied.
+      else if (getMetaRefreshRedirectMinInterval() >= 0) {
         return handleRedirectRefresh(content, idx, output, pc);
       }
       return true;
