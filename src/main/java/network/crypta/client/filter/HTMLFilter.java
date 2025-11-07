@@ -40,6 +40,7 @@ import network.crypta.support.HTMLEncoder;
 import network.crypta.support.URLDecoder;
 import network.crypta.support.URLEncodedFormatException;
 import network.crypta.support.io.NullWriter;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -2613,9 +2614,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   static class TagVerifier {
 
     private static final Map<String, Object> DROP_TAG =
-        new AbstractMap<String, Object>() {
+        new AbstractMap<>() {
           @Override
-          public Set<Entry<String, Object>> entrySet() {
+          public @NotNull Set<Entry<String, Object>> entrySet() {
             return Collections.emptySet();
           }
         };
@@ -2835,12 +2836,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           hn.put(name, null);
         } else if (allowedAttrs.contains(name)) {
           hn.put(name, value);
-        } else if (handleBooleanAttribute(name, value, hn, pc)) {
-          // handled
-        } else if (handleLanguageAttribute(name, value, hn)) {
-          // handled
         } else {
-          handleRoleAttribute(name, value, hn);
+          boolean handled = handleBooleanAttribute(name, value, hn, pc);
+          if (!handled) {
+            handled = handleLanguageAttribute(name, value, hn);
+          }
+          if (!handled) {
+            handleRoleAttribute(name, value, hn);
+          }
         }
       }
       return hn;
