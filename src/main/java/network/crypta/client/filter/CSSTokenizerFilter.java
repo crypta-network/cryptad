@@ -5468,39 +5468,54 @@ class CSSTokenizerFilter {
 
     private boolean validateSingleWord(ParsedWord word, FilterCallback cb) {
       if (word instanceof ParsedIdentifier) {
-        String lower = word.original.toLowerCase();
-        if (allowedValues != null && allowedValues.contains(lower)) return true;
-        if (isDefaultingKeyword(lower)) return true;
+        if (validateIdentifierDefaults((ParsedIdentifier) word)) return true;
       }
       if (word instanceof SimpleParsedWord) {
-        String w = word.original;
-        if (allowedValues != null && allowedValues.contains(w)) return true;
-        if (isInteger && isIntegerChecker(w)) return true;
-        if (isReal && isRealChecker(w)) return true;
-        if (isPercentage && FilterUtils.isPercentage(w)) return true;
-        if (isLength && FilterUtils.isLength(w, false)) return true;
-        if (isAngle && FilterUtils.isAngle(w)) return true;
-        if (isColor && FilterUtils.isColor(w)) return true;
-        if (isShape && FilterUtils.isValidCSSShape(w)) return true;
-        if (isFrequency && FilterUtils.isFrequency(w)) return true;
-        if (isTime && FilterUtils.isTime(w)) return true;
-        if (isTransform && FilterUtils.isCSSTransform(w)) return true;
+        if (validateSimpleWord((SimpleParsedWord) word)) return true;
       }
       if (word instanceof ParsedIdentifier) {
-        String value = word.original;
-        if (isColor && FilterUtils.isColor(value)) return true;
-        if (isLength
-            && (value.equalsIgnoreCase("min-content")
-                || value.equalsIgnoreCase("max-content")
-                || value.equalsIgnoreCase("fit-content"))) return true; // TODO: fit-content(20em)
+        if (validateIdentifierSpecials((ParsedIdentifier) word)) return true;
       }
       if (isURI && word instanceof ParsedURL rL) return isValidURI(rL, cb);
       if (isIdentifier && word instanceof ParsedIdentifier) return true;
-      if (isIDSelector) {
-        String result = HTMLelementVerifier(word.original, true);
-        if (!(result == null || result.isEmpty())) return true;
-      }
+      if (isIDSelector) return isValidIdSelector(word);
       return isString && word instanceof ParsedString;
+    }
+
+    private boolean validateIdentifierDefaults(ParsedIdentifier word) {
+      String lower = word.original.toLowerCase();
+      if (allowedValues != null && allowedValues.contains(lower)) return true;
+      return isDefaultingKeyword(lower);
+    }
+
+    private boolean validateSimpleWord(SimpleParsedWord word) {
+      String w = word.original;
+      if (allowedValues != null && allowedValues.contains(w)) return true;
+      if (isInteger && isIntegerChecker(w)) return true;
+      if (isReal && isRealChecker(w)) return true;
+      if (isPercentage && FilterUtils.isPercentage(w)) return true;
+      if (isLength && FilterUtils.isLength(w, false)) return true;
+      if (isAngle && FilterUtils.isAngle(w)) return true;
+      if (isColor && FilterUtils.isColor(w)) return true;
+      if (isShape && FilterUtils.isValidCSSShape(w)) return true;
+      if (isFrequency && FilterUtils.isFrequency(w)) return true;
+      if (isTime && FilterUtils.isTime(w)) return true;
+      return isTransform && FilterUtils.isCSSTransform(w);
+    }
+
+    private boolean validateIdentifierSpecials(ParsedIdentifier word) {
+      String value = word.original;
+      if (isColor && FilterUtils.isColor(value)) return true;
+      if (!isLength) return false;
+      // TODO: fit-content(20em)
+      return value.equalsIgnoreCase("min-content")
+          || value.equalsIgnoreCase("max-content")
+          || value.equalsIgnoreCase("fit-content");
+    }
+
+    private boolean isValidIdSelector(ParsedWord word) {
+      String result = HTMLelementVerifier(word.original, true);
+      return !(result == null || result.isEmpty());
     }
 
     /* parserExpression string would be interpreted as 1 || 2 => 1a2 here 1a2 would be written to parse 1 || 2 where 1 and 2 are auxilaryVerifiers[1] and auxilaryVerifiers[2] respectively i.e. indices in auxilaryVerifiers
