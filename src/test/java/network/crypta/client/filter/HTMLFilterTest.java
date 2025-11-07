@@ -96,7 +96,7 @@ class HTMLFilterTest {
   }
 
   @Test
-  void getCharsetByBOM_returnsNull() throws Exception {
+  void getCharsetByBOM_returnsNull() {
     // Act & Assert
     assertNull(filter.getCharsetByBOM("<html>".getBytes(StandardCharsets.UTF_8), 6));
   }
