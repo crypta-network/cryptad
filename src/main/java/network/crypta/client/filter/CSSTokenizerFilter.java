@@ -85,6 +85,11 @@ class CSSTokenizerFilter {
   private static final String MSG_SPLIT = "Split: {}";
   private static final String MSG_OPEN_BRACES_S3 =
       "openBraces now {} not moving on because openBracesStartingS3={} in S3";
+  private static final String MSG_PROPERTY_VALUE = "Property value: {}";
+  private static final String MSG_NO_SUCH_PROPERTY_NAME = "No such property name \"{}\"";
+  private static final String MSG_APPEND_WS_AFTER_COLON =
+      "Appending whitespace after colon (}): {}";
+  private static final String MSG_APPEND_WS_STATE2 = "Appending whitespace in state2: \"{}\"";
   private static final String TOK_COUNTERS = "counters(";
   private static final String TOK_COUNTER = "counter(";
   private static final Logger LOG = LoggerFactory.getLogger(CSSTokenizerFilter.class);
@@ -950,7 +955,7 @@ class CSSTokenizerFilter {
           new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("6a7a8a9a10")));
       allelementVerifiers.remove(element);
     } else if ("block-size".equalsIgnoreCase(element)
-        || "bottom".equalsIgnoreCase(element)
+        || V_BOTTOM.equalsIgnoreCase(element)
         || "height".equalsIgnoreCase(element)
         || "inline-size".equalsIgnoreCase(element)
         || "left".equalsIgnoreCase(element)
@@ -958,7 +963,7 @@ class CSSTokenizerFilter {
         || "min-height".equalsIgnoreCase(element)
         || "min-block-size".equalsIgnoreCase(element)
         || "min-inline-size".equalsIgnoreCase(element)
-        || "right".equalsIgnoreCase(element)
+        || V_RIGHT.equalsIgnoreCase(element)
         || "top".equalsIgnoreCase(element)
         || "width".equalsIgnoreCase(element)) {
       elementVerifiers.put(
@@ -3139,7 +3144,7 @@ class CSSTokenizerFilter {
         if (parts.length < 1) {
           ignoreElementsS1 = true;
           if (LOG.isDebugEnabled())
-            LOG.debug("STATE1 CASE {: Does not have one part. ignoring {}", buffer.toString());
+            LOG.debug("STATE1 CASE {: Does not have one part. ignoring {}", buffer);
           valid = false;
         } else if (parts[0] instanceof SimpleParsedWord
             && "@media".equalsIgnoreCase(parts[0].original)) {
@@ -3153,7 +3158,7 @@ class CSSTokenizerFilter {
       if (!valid) {
         ignoreElementsS1 = true; // No valid media types.
         if (LOG.isDebugEnabled())
-          LOG.debug("STATE1 CASE {: Failed verification test. ignoring {}", buffer.toString());
+          LOG.debug("STATE1 CASE {: Failed verification test. ignoring {}", buffer);
       } else {
         w.write(filteredTokens.toString());
         filteredTokens.setLength(0);
@@ -3176,7 +3181,7 @@ class CSSTokenizerFilter {
         buffer.append(c); // Leave in buffer, encoded.
         return;
       }
-      if (LOG.isTraceEnabled()) LOG.trace("buffer in state 1 ; : \"{}\"", buffer.toString());
+      if (LOG.isTraceEnabled()) LOG.trace("buffer in state 1 ; : \"{}\"", buffer);
 
       // Write leading whitespace and optional HTML comment marker
       int i = 0;
@@ -3331,7 +3336,7 @@ class CSSTokenizerFilter {
 
     /** Writes a sanitized @import if valid; no-op when invalid. */
     private void writeFilteredImportIfValid() throws IOException {
-      if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement={}", buffer.toString());
+      if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement={}", buffer);
       String strbuffer = buffer.toString().trim();
       int importIndex = strbuffer.toLowerCase().indexOf("@import");
       if (!"".equals(strbuffer.substring(0, importIndex).trim())) return;
@@ -3391,7 +3396,7 @@ class CSSTokenizerFilter {
           if (prevc == '\r') {
             break;
           }
-        // Otherwise same as \r ...
+        // fall through to '\r'
         case '\f':
         case '\r':
           if (prevc != '\\') {
@@ -3447,8 +3452,7 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled())
-        LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
       String ws = buffer.substring(0, i);
       buffer.delete(0, i);
       if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
@@ -3511,8 +3515,7 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled())
-        LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
       String ws = buffer.substring(0, i);
       buffer.delete(0, i);
       if (!buffer.toString().trim().isEmpty()) {
@@ -3587,6 +3590,7 @@ class CSSTokenizerFilter {
           if (prevc == '\r') {
             break;
           }
+        // fall through to '\r'
         case '\f':
         case '\r':
           if (prevc != '\\') {
@@ -3675,7 +3679,7 @@ class CSSTokenizerFilter {
         LOG.debug("Appending whitespace after colon: \"{}\"", buffer.substring(0, i));
       whitespaceAfterColon = buffer.substring(0, i);
       propertyValue = buffer.delete(0, i).toString().trim();
-      if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
+      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
       buffer.setLength(0);
       CSSPropertyVerifier obj = getVerifier(propertyName);
       if (obj != null) {
@@ -3694,8 +3698,7 @@ class CSSTokenizerFilter {
           filteredTokens.append(';');
           if (LOG.isDebugEnabled())
             LOG.debug("STATE3 CASE ;: appending {}:{}", propertyName, propertyValue);
-          if (LOG.isDebugEnabled())
-            LOG.debug("filtered tokens now: \"{}\"", filteredTokens.toString());
+          if (LOG.isDebugEnabled()) LOG.debug("filtered tokens now: \"{}\"", filteredTokens);
         } else {
           if (LOG.isDebugEnabled())
             LOG.debug(
@@ -3708,7 +3711,7 @@ class CSSTokenizerFilter {
                 ignoreElementsS3);
         }
       } else {
-        if (LOG.isTraceEnabled()) LOG.trace("No such property name \"{}\"", propertyName);
+        if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
       }
       ignoreElementsS3 = false;
       propertyName = "";
@@ -3739,12 +3742,11 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled())
-        LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
       whitespaceAfterColon = buffer.substring(0, i);
       buffer.delete(0, i);
       propertyValue = buffer.toString().trim();
-      if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
+      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
       buffer.setLength(0);
       CSSPropertyVerifier obj = getVerifier(propertyName);
       if (LOG.isDebugEnabled())
@@ -3766,7 +3768,7 @@ class CSSTokenizerFilter {
             LOG.trace("STATE3 CASE }: appending {}:{}", propertyName, propertyValue);
         }
       } else {
-        if (LOG.isTraceEnabled()) LOG.trace("No such property name \"{}\"", propertyName);
+        if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
       }
       propertyName = "";
     }
@@ -3776,8 +3778,7 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled())
-        LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
       filteredTokens.append(buffer, 0, i);
       buffer.delete(0, i);
     }
@@ -3792,8 +3793,7 @@ class CSSTokenizerFilter {
       } else ignoreElementsS2 = false;
       if (!ignoreElementsS1) {
         w.write(filteredTokens.toString());
-        if (LOG.isDebugEnabled())
-          LOG.debug("writing filtered tokens: \"{}\"", filteredTokens.toString());
+        if (LOG.isDebugEnabled()) LOG.debug("writing filtered tokens: \"{}\"", filteredTokens);
       }
       filteredTokens.setLength(0);
       whitespaceAfterColon = "";
@@ -3848,6 +3848,7 @@ class CSSTokenizerFilter {
           if (prevc == '\r') {
             break;
           }
+        // fall through to '\r'
         case '\r':
         case '\f':
           if (prevc != '\\') {
@@ -3891,7 +3892,7 @@ class CSSTokenizerFilter {
                 break;
               }
               if (LOG.isDebugEnabled())
-                LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+                LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
               String ws = buffer.substring(0, i);
               buffer.delete(0, i);
               if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
@@ -3967,7 +3968,7 @@ class CSSTokenizerFilter {
                 break;
               }
               if (LOG.isDebugEnabled())
-                LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
+                LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
               ws = buffer.substring(0, i);
               buffer.delete(0, i);
               if (!s2Comma) {
@@ -4132,7 +4133,7 @@ class CSSTokenizerFilter {
                 LOG.debug("Appending whitespace after colon: \"{}\"", buffer.substring(0, i));
               whitespaceAfterColon = buffer.substring(0, i);
               propertyValue = buffer.delete(0, i).toString().trim();
-              if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
+              if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
               buffer.setLength(0);
               CSSPropertyVerifier obj = getVerifier(propertyName);
               if (obj != null) {
@@ -4165,7 +4166,7 @@ class CSSTokenizerFilter {
                         ignoreElementsS3);
                 }
               } else {
-                if (LOG.isTraceEnabled()) LOG.trace("No such property name \"{}\"", propertyName);
+                if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
               }
               ignoreElementsS3 = false;
               propertyName = "";
@@ -4206,11 +4207,11 @@ class CSSTokenizerFilter {
                   break;
                 }
                 if (LOG.isDebugEnabled())
-                  LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+                  LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
                 whitespaceAfterColon = buffer.substring(0, i);
                 buffer.delete(0, i);
                 propertyValue = buffer.toString().trim();
-                if (LOG.isTraceEnabled()) LOG.trace("Property value: {}", propertyValue);
+                if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
                 buffer.setLength(0);
                 obj = getVerifier(propertyName);
                 if (LOG.isDebugEnabled())
@@ -4233,7 +4234,7 @@ class CSSTokenizerFilter {
                       LOG.trace("STATE3 CASE }: appending {}:{}", propertyName, propertyValue);
                   }
                 } else {
-                  if (LOG.isTraceEnabled()) LOG.trace("No such property name \"{}\"", propertyName);
+                  if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
                 }
                 propertyName = "";
               } else {
@@ -4245,7 +4246,7 @@ class CSSTokenizerFilter {
                   break;
                 }
                 if (LOG.isDebugEnabled())
-                  LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
+                  LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
                 filteredTokens.append(buffer, 0, i);
                 buffer.delete(0, i);
               }
@@ -4361,11 +4362,15 @@ class CSSTokenizerFilter {
       while (buffer.toString().trim().equals("-->")) {
         w.write("-->");
         buffer.delete(0, 3);
-        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
-          i++;
+        // Reset index before scanning leading whitespace for the new buffer state
+        int j = 0;
+        while (j < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(j)) != -1) {
+          j++;
         }
-        w.write(buffer.substring(0, i));
-        buffer.delete(0, i);
+        if (j > 0) {
+          w.write(buffer.substring(0, j));
+          buffer.delete(0, j);
+        }
       }
       // FIXME CSS2.1 section 4.2 "Unexpected end of style sheet".
       // We do NOT auto-close at the end.
