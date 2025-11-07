@@ -209,10 +209,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     if (cb == null) cb = new NullFilterCallback();
 
     if (LOG.isDebugEnabled()) LOG.debug("readFilter(): charset={}", charset);
-    Reader r = null;
-    Writer w = null;
-    InputStreamReader isr = null;
-    OutputStreamWriter osw = null;
+    Reader r;
+    Writer w;
+    InputStreamReader isr;
+    OutputStreamWriter osw;
     try {
       isr = new InputStreamReader(input, charset);
       osw = new OutputStreamWriter(output, charset);
@@ -315,6 +315,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       openElements.push(element);
     }
 
+    @SuppressWarnings("unused")
     public String popElementFromStack() {
       if (!openElements.isEmpty()) return openElements.pop();
       else return null;
@@ -1094,7 +1095,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (LOG.isTraceEnabled()) LOG.trace("Element = {}", element);
     }
 
-    public ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
+    ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
       TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase());
       if (LOG.isTraceEnabled()) LOG.trace("Got verifier: {} for {}", tv, element);
       if (tv == null) {
@@ -1119,9 +1120,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (startSlash) sb.append('/');
       sb.append(element);
       if (unparsedAttrs != null) {
-        int n = unparsedAttrs.length;
-        for (int i = 0; i < n; i++) {
-          sb.append(' ').append(unparsedAttrs[i]);
+        for (String unparsedAttr : unparsedAttrs) {
+          sb.append(' ').append(unparsedAttr);
         }
       }
       if (endSlash) sb.append(" /");
@@ -1200,7 +1200,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       String value;
     }
 
-    public void htmlwrite(Writer w, HTMLParseContext pc) throws IOException {
+    void htmlwrite(Writer w, HTMLParseContext pc) throws IOException {
       String s = toString();
       if (pc.getisXHTML()
           && ElementInfo.isVoidElement(element)
@@ -1212,7 +1212,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
     }
 
-    public void write(Writer w, HTMLParseContext pc) throws IOException {
+    void write(Writer w, HTMLParseContext pc) throws IOException {
       if (!startSlash) {
         if (ElementInfo.tryAutoClose(element) && element.equals(pc.peekTopElement())) {
           pc.closeXHTMLTag(element, w);
