@@ -25,6 +25,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -56,40 +58,21 @@ class HTMLFilterTest {
     lenient().when(callback.processTag(any(ParsedTag.class))).thenReturn(null);
   }
 
-  @Test
-  void splitType_whenTypeAndCharset_expectParsed() {
-    // Arrange
-    String input = "text/html; charset=UTF-8";
-
+  @ParameterizedTest
+  @CsvSource(
+      value = {
+        "'text/html; charset=UTF-8','text/html','UTF-8'",
+        "'text/html;    charset = UTF-8 ; q=0.8','text/html','UTF-8'",
+        "'text/html; CHARSET=UTF-8','text/html',NULL"
+      },
+      nullValues = "NULL")
+  void splitType_whenVariousInputs_expectParsed(
+      String input, String expectedType, String expectedCharset) {
     // Act
     String[] result = HTMLFilter.splitType(input);
 
     // Assert
-    assertArrayEquals(new String[] {"text/html", "UTF-8"}, result);
-  }
-
-  @Test
-  void splitType_whenWhitespaceAndExtraParams_expectCharsetExtracted() {
-    // Arrange
-    String input = "text/html;    charset = UTF-8 ; q=0.8";
-
-    // Act
-    String[] result = HTMLFilter.splitType(input);
-
-    // Assert
-    assertArrayEquals(new String[] {"text/html", "UTF-8"}, result);
-  }
-
-  @Test
-  void splitType_whenUppercaseParameterName_expectCharsetIgnored() {
-    // Arrange
-    String input = "text/html; CHARSET=UTF-8";
-
-    // Act
-    String[] result = HTMLFilter.splitType(input);
-
-    // Assert
-    assertArrayEquals(new String[] {"text/html", null}, result);
+    assertArrayEquals(new String[] {expectedType, expectedCharset}, result);
   }
 
   @Test
