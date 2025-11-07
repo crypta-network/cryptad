@@ -4737,87 +4737,187 @@ class CSSTokenizerFilter {
     }
 
     void handleNotInString(int index) {
-      if (eatLF && c == '\n') {
-        eatLF = false;
-        return;
-      } else eatLF = false;
+      if (handleEatLFGate()) return;
 
       if (!escaping) {
-        if ((WS_T_R_N_F.indexOf(c) != -1 || (allowCommaDelimiters && c == ','))
-            && bracketCount == 0) {
-          if (c == ',') {
-            handleComma(index);
-          }
-          flushTokenOnWhitespace();
-        } else if (c == '\"' || c == '\'') {
-          stringchar = c;
-          origToken.append(c);
-          decodedToken.append(c);
-          couldBeIdentifier = false;
-        } else if (c == '\\') {
-          origToken.append(c);
-          escape.setLength(0);
-          escaping = true;
-        } else if (c == '(') {
-          bracketCount++;
-          origToken.append(c);
-          decodedToken.append(c);
-          couldBeIdentifier = false;
-        } else if (c == ')') {
-          bracketCount--;
-          if (bracketCount < 0) {
-            invalid = true;
-            return;
-          }
-          origToken.append(c);
-          decodedToken.append(c);
-          couldBeIdentifier = false;
-        } else {
-          if (couldBeIdentifier) {
-            if (!((c >= '0' && c <= '9' && !origToken.isEmpty())
-                || (c >= 'a' && c <= 'z')
-                || (c >= 'A' && c <= 'Z')
-                || c == '-'
-                || c == '_'
-                || c >= 0xA1)) couldBeIdentifier = false;
-            if (origToken.length() == 1 && origToken.charAt(0) == '-' && (c >= '0' && c <= '9'))
-              couldBeIdentifier = false;
-          }
-          origToken.append(c);
-          decodedToken.append(c);
+        if (isDelimiterOutsideBrackets()) {
+          handleDelimiter(index);
+          return;
         }
-      } else if (escape.isEmpty()) {
-        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+        if (isQuote(c)) {
+          startString();
+          return;
+        }
+        if (isBackslash(c)) {
+          beginEscape();
+          return;
+        }
+        if (isOpenParen(c)) {
+          openBracket();
+          return;
+        }
+        if (isCloseParen(c)) {
+          if (closeBracketMakesInvalid()) return;
+          closeBracket();
+          return;
+        }
+        appendIdentifierOrLiteral();
+        return;
+      }
+
+      if (escape.isEmpty()) {
+        if (isHexDigit(c)) {
           escape.append(c);
-        } else if (c == '\n' || c == '\r' || c == '\f') {
+          return;
+        }
+        if (isLineBreak(c)) {
           invalid = true;
           return;
-        } else {
-          escaping = false;
-          origToken.append(c);
-          decodedToken.append(c);
         }
-      } else {
-        // escaping and escape not empty
-        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-          escape.append(c);
-          if (escape.length() == 6) {
-            origToken.append(escape);
-            decodedToken.append((char) Integer.parseInt(escape.toString(), 16));
-            escape.setLength(0);
-            escaping = false;
-          }
-        } else if (WS_T_R_N_F.indexOf(c) != -1) {
-          origToken.append(escape);
-          decodedToken.append((char) Integer.parseInt(escape.toString(), 16));
-          origToken.append(" ");
-          escape.setLength(0);
-          escaping = false;
-          if (c == '\r') eatLF = true;
-        } else {
-          invalid = true;
-        }
+        endEscapeAndAppendLiteral();
+        return;
       }
+
+      // escaping and escape not empty
+      if (isHexDigit(c)) {
+        appendHexAndMaybeFinish();
+        return;
+      }
+      if (WS_T_R_N_F.indexOf(c) != -1) {
+        finishEscapeWithWhitespace();
+        return;
+      }
+      invalid = true;
+    }
+
+    private boolean handleEatLFGate() {
+      if (eatLF && c == '\n') {
+        eatLF = false;
+        return true;
+      }
+      eatLF = false;
+      return false;
+    }
+
+    private boolean isDelimiterOutsideBrackets() {
+      return (WS_T_R_N_F.indexOf(c) != -1 || (allowCommaDelimiters && c == ','))
+          && bracketCount == 0;
+    }
+
+    private void handleDelimiter(int index) {
+      if (c == ',') handleComma(index);
+      flushTokenOnWhitespace();
+    }
+
+    private static boolean isQuote(char ch) {
+      return ch == '\"' || ch == '\'';
+    }
+
+    private static boolean isBackslash(char ch) {
+      return ch == '\\';
+    }
+
+    private static boolean isOpenParen(char ch) {
+      return ch == '(';
+    }
+
+    private static boolean isCloseParen(char ch) {
+      return ch == ')';
+    }
+
+    private void startString() {
+      stringchar = c;
+      origToken.append(c);
+      decodedToken.append(c);
+      couldBeIdentifier = false;
+    }
+
+    private void beginEscape() {
+      origToken.append(c);
+      escape.setLength(0);
+      escaping = true;
+    }
+
+    private void openBracket() {
+      bracketCount++;
+      origToken.append(c);
+      decodedToken.append(c);
+      couldBeIdentifier = false;
+    }
+
+    private boolean closeBracketMakesInvalid() {
+      int next = bracketCount - 1;
+      if (next < 0) {
+        invalid = true;
+        return true;
+      }
+      return false;
+    }
+
+    private void closeBracket() {
+      bracketCount--;
+      origToken.append(c);
+      decodedToken.append(c);
+      couldBeIdentifier = false;
+    }
+
+    private void appendIdentifierOrLiteral() {
+      if (couldBeIdentifier) updateIdentifierFlagForChar();
+      origToken.append(c);
+      decodedToken.append(c);
+    }
+
+    private void updateIdentifierFlagForChar() {
+      boolean isDigit = (c >= '0' && c <= '9');
+      boolean isAlphaLower = (c >= 'a' && c <= 'z');
+      boolean isAlphaUpper = (c >= 'A' && c <= 'Z');
+      boolean allowed =
+          ((isDigit && !origToken.isEmpty())
+              || isAlphaLower
+              || isAlphaUpper
+              || c == '-'
+              || c == '_'
+              || c >= 0xA1);
+      if (!allowed) {
+        couldBeIdentifier = false;
+        return;
+      }
+      if (origToken.length() == 1 && origToken.charAt(0) == '-' && isDigit) {
+        couldBeIdentifier = false;
+      }
+    }
+
+    private static boolean isHexDigit(char ch) {
+      return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
+    }
+
+    private static boolean isLineBreak(char ch) {
+      return ch == '\n' || ch == '\r' || ch == '\f';
+    }
+
+    private void endEscapeAndAppendLiteral() {
+      escaping = false;
+      origToken.append(c);
+      decodedToken.append(c);
+    }
+
+    private void appendHexAndMaybeFinish() {
+      escape.append(c);
+      if (escape.length() == 6) {
+        origToken.append(escape);
+        decodedToken.append((char) Integer.parseInt(escape.toString(), 16));
+        escape.setLength(0);
+        escaping = false;
+      }
+    }
+
+    private void finishEscapeWithWhitespace() {
+      origToken.append(escape);
+      decodedToken.append((char) Integer.parseInt(escape.toString(), 16));
+      origToken.append(" ");
+      escape.setLength(0);
+      escaping = false;
+      if (c == '\r') eatLF = true;
     }
 
     void handleInString() {
