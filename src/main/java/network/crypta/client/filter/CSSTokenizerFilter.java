@@ -2659,21 +2659,8 @@ class CSSTokenizerFilter {
     return null;
   }
 
-  private static final class SelectorSplitResult {
-    final int index;
-    final char selector;
-    final char quoting;
-    final int bracketing;
-    final boolean invalid;
-
-    SelectorSplitResult(int index, char selector, char quoting, int bracketing, boolean invalid) {
-      this.index = index;
-      this.selector = selector;
-      this.quoting = quoting;
-      this.bracketing = bracketing;
-      this.invalid = invalid;
-    }
-  }
+  private record SelectorSplitResult(
+      int index, char selector, char quoting, int bracketing, boolean invalid) {}
 
   private static SelectorSplitResult scanTopLevelSelector(String selectorString) {
     ScanState st = new ScanState();
@@ -3154,9 +3141,9 @@ class CSSTokenizerFilter {
 
       writeLeadingWhitespaceAndOptionalHtmlComment();
 
-      // handled if any returns true (side effects only)
-      if (tryHandleImport() || tryHandleCharset()) {
-        // no-op
+      // Handle either @import or @charset; short-circuit to avoid double handling
+      if (!tryHandleImport()) {
+        tryHandleCharset();
       }
 
       isState1Present = false;
@@ -3194,8 +3181,8 @@ class CSSTokenizerFilter {
       return true;
     }
 
-    private boolean tryHandleCharset() throws IOException {
-      if (!(charsetPossible && buffer.toString().startsWith("@charset "))) return false;
+    private void tryHandleCharset() throws IOException {
+      if (!(charsetPossible && buffer.toString().startsWith("@charset "))) return;
       String s = buffer.delete(0, "@charset ".length()).toString();
       s = removeOuterQuotes(s);
       detectedCharset = s;
@@ -3206,7 +3193,7 @@ class CSSTokenizerFilter {
       }
       if (stopAtDetectedCharset) {
         requestStop();
-        return true;
+        return;
       }
       if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
         LOG.info(
@@ -3216,7 +3203,6 @@ class CSSTokenizerFilter {
         throw new IOException("Detected charset differs from passed in charset");
       }
       w.write("@charset \"" + detectedCharset + "\";");
-      return true;
     }
 
     /** Returns prefix whitespace plus an optional HTML comment marker; null on invalid pattern. */
@@ -3258,15 +3244,15 @@ class CSSTokenizerFilter {
 
     /** Handles @media parts assembly and filtering. Returns true when valid. */
     private boolean processAtMedia(ParsedWord[] parts, String braceSpace, String postSpace) {
-      List<String> medias = commaListFromIdentifiers(parts, 1);
-      if (medias != null && !medias.isEmpty()) {
+      List<String> medias = commaListFromIdentifiers(parts);
+      if (!medias.isEmpty()) {
         for (int i = medias.size() - 1; i >= 0; i--) {
           if (!FilterUtils.isMedia(medias.get(i))) {
             medias.remove(i);
           }
         }
       }
-      if (medias != null && !medias.isEmpty()) {
+      if (!medias.isEmpty()) {
         filteredTokens.append(braceSpace);
         filteredTokens.append("@media ");
         boolean first = true;
@@ -3322,8 +3308,9 @@ class CSSTokenizerFilter {
       if (!isValidImportHead(strparts)) return;
 
       String uri = extractImportUri(strparts[0]);
-      List<String> medias = commaListFromIdentifiers(strparts, 1);
-      if (medias == null) return; // None gives [0], broke gives null
+      List<String> medias = commaListFromIdentifiers(strparts);
+      // If extra tokens exist but parsing yielded no valid media, treat as broken and skip
+      if (strparts.length > 1 && medias.isEmpty()) return;
 
       try {
         String output = buildImportOutput(uri, medias);
@@ -3334,7 +3321,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean isImportAtStart(String strbuffer, int importIndex) {
-      return importIndex >= 0 && "".equals(strbuffer.substring(0, importIndex).trim());
+      return importIndex >= 0 && strbuffer.substring(0, importIndex).trim().isEmpty();
     }
 
     private boolean isValidImportHead(ParsedWord[] strparts) {
@@ -3344,8 +3331,11 @@ class CSSTokenizerFilter {
     }
 
     private String extractImportUri(ParsedWord head) {
+      if (head instanceof ParsedURL url) return url.getDecoded();
+      // Fallback: head must be a ParsedString per isValidImportHead()
       if (head instanceof ParsedString string) return string.getDecoded();
-      return ((ParsedURL) head).getDecoded();
+      // Defensive: should not happen; return original encoding
+      return head == null ? null : head.original;
     }
 
     private String buildImportOutput(String uri, List<String> medias) throws CommentException {
@@ -3389,12 +3379,11 @@ class CSSTokenizerFilter {
           if (prevc != '\\') {
             ignoreElementsS1 = true;
             currentState = STATE1;
-            break;
           } else {
             // Wipe out the \\ as well.
             buffer.setLength(buffer.length() - 1);
-            break;
           }
+          break;
         default:
           buffer.append(c);
           break;
@@ -3443,7 +3432,7 @@ class CSSTokenizerFilter {
         return;
       }
       String filtered = recursiveSelectorVerifier(buffer.toString());
-      if (filtered != null && !"".equals(filtered)) {
+      if (filtered != null && !filtered.isEmpty()) {
         appendFilteredSelectorOpenBrace(ws, filtered);
       } else if (s2Comma && "".equals(filtered)) {
         handleCommaEmptyFiltered(ws);
@@ -3506,7 +3495,7 @@ class CSSTokenizerFilter {
       if (!buffer.toString().trim().isEmpty()) {
         String filtered = recursiveSelectorVerifier(buffer.toString());
         if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE , filtered elements{}", filtered);
-        if (filtered != null && !"".equals(filtered)) {
+        if (filtered != null && !filtered.isEmpty()) {
           if (s2Comma) filteredTokens.append(",");
           else s2Comma = true;
           filteredTokens.append(ws);
@@ -3530,8 +3519,8 @@ class CSSTokenizerFilter {
       }
       if (openBraces > 0 && !ignoreElementsS1) {
         openBraces--;
-        if (openBraces >= 0) filteredTokens.append('}');
-        else openBraces = 0;
+        // openBraces was > 0, so after decrement it's >= 0
+        filteredTokens.append('}');
         if (LOG.isTraceEnabled()) LOG.trace("Writing \"{}\"", filteredTokens);
         w.write(filteredTokens.toString());
       } else {
@@ -3577,11 +3566,10 @@ class CSSTokenizerFilter {
             ignoreElementsS2 = true;
             closeIgnoredS2 = true;
             currentState = STATE2;
-            break;
           } else {
             buffer.setLength(buffer.length() - 1);
-            break;
           }
+          break;
         default:
           buffer.append(c);
           break;
@@ -3789,8 +3777,8 @@ class CSSTokenizerFilter {
         filteredTokens.append(postSpace);
         filteredTokens.append("}");
         closeIgnoredS2 = false;
-        ignoreElementsS2 = false;
-      } else ignoreElementsS2 = false;
+      }
+      ignoreElementsS2 = false;
       if (!ignoreElementsS1) {
         w.write(filteredTokens.toString());
         if (LOG.isDebugEnabled()) LOG.debug("writing filtered tokens: \"{}\"", filteredTokens);
@@ -3851,11 +3839,10 @@ class CSSTokenizerFilter {
           if (prevc != '\\') {
             ignoreElementsS3 = true;
             currentState = STATE3;
-            break;
           } else {
             buffer.setLength(buffer.length() - 1);
-            break;
           }
+          break;
         default:
           buffer.append(c);
           break;
@@ -3943,11 +3930,11 @@ class CSSTokenizerFilter {
       return false;
     }
 
-    private List<String> commaListFromIdentifiers(ParsedWord[] parts, int offset) {
-      ArrayList<String> out = new ArrayList<>(Math.max(0, parts.length - offset));
-      if (parts.length <= offset) return out;
+    private List<String> commaListFromIdentifiers(ParsedWord[] parts) {
+      ArrayList<String> out = new ArrayList<>(Math.max(0, parts.length - 1));
+      if (parts.length <= 1) return out;
 
-      if (parts.length == offset + 1 && parts[1] instanceof ParsedIdentifier id) {
+      if (parts.length == 2 && parts[1] instanceof ParsedIdentifier id) {
         out.add(id.getDecoded());
         return out;
       }
@@ -3958,7 +3945,7 @@ class CSSTokenizerFilter {
           first = false;
           continue;
         }
-        if (!appendFromWord(out, word)) return null; // broken: signal to caller
+        if (!appendFromWord(out, word)) return Collections.emptyList(); // broken: signal to caller
       }
       return out;
     }
@@ -4030,7 +4017,7 @@ class CSSTokenizerFilter {
 
     @Override
     protected void innerEncode(boolean unicode, StringBuilder out) {
-      char prevc = 0;
+      char prevc;
       char c = 0;
       for (int i = 0; i < decoded.length(); i++) {
         prevc = c;
@@ -4199,10 +4186,6 @@ class CSSTokenizerFilter {
       }
       out.append(')');
       if (postComma) out.append(',');
-    }
-
-    protected boolean addComma() {
-      return false;
     }
   }
 
@@ -4928,14 +4911,10 @@ class CSSTokenizerFilter {
       this.isFrequency = flags.frequency;
       this.isTransform = flags.transform;
 
-      this.allowedValues =
-          allowedValues != null ? Collections.unmodifiableSet(new HashSet<>(allowedValues)) : null;
-      this.allowedMedia =
-          allowedMedia != null ? Collections.unmodifiableSet(new HashSet<>(allowedMedia)) : null;
+      this.allowedValues = allowedValues != null ? Set.copyOf(allowedValues) : null;
+      this.allowedMedia = allowedMedia != null ? Set.copyOf(allowedMedia) : null;
       this.parserExpressions =
-          parseExpression != null
-              ? Collections.unmodifiableList(new ArrayList<>(parseExpression))
-              : Collections.emptyList();
+          parseExpression != null ? List.copyOf(parseExpression) : Collections.emptyList();
     }
 
     private static final class TypeFlags {
@@ -5179,21 +5158,16 @@ class CSSTokenizerFilter {
       }
 
       char op = expression.charAt(firstIndex);
-      switch (op) {
-        case 'a':
-          return handleOrExpression(expression, words, cb);
-        case 'b':
-          return handleAndExpression(expression, words, cb);
-        case ' ':
-          return handleSequenceExpression(expression, firstIndex, words, cb);
-        case '?':
-          return handleOptionalExpression(expression, firstIndex, words, cb);
-        case '<':
-          return handleRangeExpression(expression, firstIndex, words, cb);
-        default:
-          // Should not happen, but fallback to single verifier behavior.
-          return handleSingleVerifier(expression, words, cb);
-      }
+      return switch (op) {
+        case 'a' -> handleOrExpression(expression, words, cb);
+        case 'b' -> handleAndExpression(expression, words, cb);
+        case ' ' -> handleSequenceExpression(expression, firstIndex, words, cb);
+        case '?' -> handleOptionalExpression(expression, firstIndex, words, cb);
+        case '<' -> handleRangeExpression(expression, firstIndex, words, cb);
+        default ->
+            // Should not happen, but fallback to single verifier behavior.
+            handleSingleVerifier(expression, words, cb);
+      };
     }
 
     private int minNonNegative(int... values) {
@@ -5375,13 +5349,14 @@ class CSSTokenizerFilter {
      */
     public boolean doubleAmpersandVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
-      validateAndChainExpression(expression, 'b');
-      List<CSSPropertyVerifier> verifiers = parseVerifiers(expression, 'b');
+      validateAndChainExpression(expression);
+      List<CSSPropertyVerifier> verifiers = parseVerifiers(expression);
       return consumeInAnyOrder(verifiers, words, cb);
     }
 
-    /** Basic format validation for 'a'/'b' chained expressions. */
-    private void validateAndChainExpression(String expression, char chain) {
+    /** Basic format validation for 'b'-chained expressions used by '&&' CSS shorthands. */
+    private void validateAndChainExpression(String expression) {
+      final char chain = 'b';
       if (expression == null || expression.isEmpty())
         throw new IllegalArgumentException("expression must not be null or empty");
       if (expression.charAt(expression.length() - 1) == chain)
@@ -5390,8 +5365,9 @@ class CSSTokenizerFilter {
         throw new IllegalArgumentException("expression must not start with '" + chain + "'");
     }
 
-    /** Parses 1{chain}2{chain}3 into a list of auxiliary verifiers. */
-    private List<CSSPropertyVerifier> parseVerifiers(String expression, char chain) {
+    /** Parses 1b2b3 into a list of auxiliary verifiers. */
+    private List<CSSPropertyVerifier> parseVerifiers(String expression) {
+      final char chain = 'b';
       ArrayList<CSSPropertyVerifier> list = new ArrayList<>();
       int last = -1;
       for (int i = 0; i <= expression.length(); i++) {
@@ -5705,65 +5681,65 @@ class CSSTokenizerFilter {
       }
       if (value[0] instanceof ParsedCounter counter) {
         if (counter.listType != null) {
-          HashSet<String> listStyleType = new HashSet<>();
-          listStyleType.addAll(
-              Arrays.asList(
-                  "disc",
-                  V_CIRCLE,
-                  "square",
-                  "decimal",
-                  "decimal-leading-zero",
-                  "lower-roman",
-                  "upper-roman",
-                  "lower-greek",
-                  "lower-latin",
-                  "upper-latin",
-                  "armenian",
-                  "georgian",
-                  "lower-alpha",
-                  "upper-alpha",
-                  "none",
-                  "arabic-indic",
-                  "bengali",
-                  "cambodian",
-                  "cjk-decimal",
-                  "cjk-earthly-branch",
-                  "cjk-heavenly-stem",
-                  "cjk-ideographic",
-                  "devanagari",
-                  "disclosure-closed",
-                  "disclosure-open",
-                  "ethiopic-numeric",
-                  "gujarati",
-                  "gurmukhi",
-                  "hebrew",
-                  "hiragana",
-                  "hiragana-iroha",
-                  "japanese-formal",
-                  "japanese-informal",
-                  "kannada",
-                  "katakana",
-                  "katakana-iroha",
-                  "khmer",
-                  "korean-hangul-formal",
-                  "korean-hanja-formal",
-                  "lao",
-                  "lower-armenian",
-                  "malayalam",
-                  "mongolian",
-                  "myanmar",
-                  "oriya",
-                  "persian",
-                  "simp-chinese-formal",
-                  "simp-chinese-informal",
-                  "tamil",
-                  "telugu",
-                  "thai",
-                  "tibetan",
-                  "trad-chinese-formal",
-                  "trad-chinese-informal",
-                  "upper-armenian"));
-          if (!listStyleType.contains(counter.listType.getDecoded())) return false;
+          HashSet<String> listStyleType =
+              new HashSet<>(
+                  Arrays.asList(
+                      "disc",
+                      V_CIRCLE,
+                      "square",
+                      "decimal",
+                      "decimal-leading-zero",
+                      "lower-roman",
+                      "upper-roman",
+                      "lower-greek",
+                      "lower-latin",
+                      "upper-latin",
+                      "armenian",
+                      "georgian",
+                      "lower-alpha",
+                      "upper-alpha",
+                      "none",
+                      "arabic-indic",
+                      "bengali",
+                      "cambodian",
+                      "cjk-decimal",
+                      "cjk-earthly-branch",
+                      "cjk-heavenly-stem",
+                      "cjk-ideographic",
+                      "devanagari",
+                      "disclosure-closed",
+                      "disclosure-open",
+                      "ethiopic-numeric",
+                      "gujarati",
+                      "gurmukhi",
+                      "hebrew",
+                      "hiragana",
+                      "hiragana-iroha",
+                      "japanese-formal",
+                      "japanese-informal",
+                      "kannada",
+                      "katakana",
+                      "katakana-iroha",
+                      "khmer",
+                      "korean-hangul-formal",
+                      "korean-hanja-formal",
+                      "lao",
+                      "lower-armenian",
+                      "malayalam",
+                      "mongolian",
+                      "myanmar",
+                      "oriya",
+                      "persian",
+                      "simp-chinese-formal",
+                      "simp-chinese-informal",
+                      "tamil",
+                      "telugu",
+                      "thai",
+                      "tibetan",
+                      "trad-chinese-formal",
+                      "trad-chinese-informal",
+                      "upper-armenian"));
+          return listStyleType.contains(counter.listType.getDecoded());
         }
         return true;
       }
@@ -6025,16 +6001,10 @@ class CSSTokenizerFilter {
       }
     }
 
-    private static final class ProcessResult {
-      final boolean shouldReturn;
-      final boolean returnValue;
-      final int nextIndex; // valid only when shouldReturn == false
-
-      private ProcessResult(boolean shouldReturn, boolean returnValue, int nextIndex) {
-        this.shouldReturn = shouldReturn;
-        this.returnValue = returnValue;
-        this.nextIndex = nextIndex;
-      }
+    /**
+     * @param nextIndex valid only when shouldReturn == false
+     */
+    private record ProcessResult(boolean shouldReturn, boolean returnValue, int nextIndex) {
 
       static ProcessResult returning(boolean value) {
         return new ProcessResult(true, value, -1);
