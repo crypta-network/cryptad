@@ -753,9 +753,6 @@ class CSSTokenizerFilter {
 
   /* This function loads a verifier object in elementVerifiers.
    * After the object has been loaded, property name is removed from allelementVerifier.
-   *
-   * Note: The heavy per-property logic has been moved into addVerifierCore(String)
-   * to keep this wrapper method simple and reduce cognitive complexity.
    */
   private static void addVerifier(String element) {
     if ("accent-color".equalsIgnoreCase(element)) {
@@ -3092,28 +3089,15 @@ class CSSTokenizerFilter {
     void handleState1() throws IOException {
       switch (c) {
         case '}':
-          if (prevc == '\\') {
-            buffer.append(c);
-            break;
-          }
-          if (openBraces > 0) {
-            openBraces--;
-            if (!ignoreElementsS1) w.write('}');
-          }
-          buffer.setLength(0);
+          handleState1RightBrace();
           break;
         case '\n':
         case ' ':
         case '\t':
-          buffer.append(c);
-          if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE whitespace: {}", c);
+          handleState1Whitespace();
           break;
         case '@':
-          if (prevc != '\\') {
-            isState1Present = true;
-            if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE @: {}", c);
-          }
-          buffer.append(c);
+          handleState1At();
           break;
         case '{':
           handleState1OpenBrace();
@@ -3123,28 +3107,61 @@ class CSSTokenizerFilter {
           break;
         case '"':
         case '\'':
-          if (prevc == '\\') {
-            buffer.append(c); // Leave in buffer, encoded.
-            break;
-          }
-          buffer.append(c);
-          currentState = STATE1INQUOTE;
-          currentQuote = c;
+          handleState1EnterQuote();
           break;
         default:
-          buffer.append(c);
-          if (!isState1Present) {
-            String s = buffer.toString().trim();
-            if (!(s.isEmpty()
-                || s.equals("/")
-                || s.equals("<")
-                || s.equals("<!")
-                || s.equals("<!-")
-                || s.equals("<!--"))) currentState = STATE2;
-          }
-          if (LOG.isTraceEnabled()) LOG.trace("STATE1 default CASE: {}", c);
+          handleState1Default();
           break;
       }
+    }
+
+    private void handleState1RightBrace() throws IOException {
+      if (prevc == '\\') {
+        buffer.append(c);
+        return;
+      }
+      if (openBraces > 0) {
+        openBraces--;
+        if (!ignoreElementsS1) w.write('}');
+      }
+      buffer.setLength(0);
+    }
+
+    private void handleState1Whitespace() {
+      buffer.append(c);
+      if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE whitespace: {}", c);
+    }
+
+    private void handleState1At() {
+      if (prevc != '\\') {
+        isState1Present = true;
+        if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE @: {}", c);
+      }
+      buffer.append(c);
+    }
+
+    private void handleState1EnterQuote() {
+      if (prevc == '\\') {
+        buffer.append(c); // Leave in buffer, encoded.
+        return;
+      }
+      buffer.append(c);
+      currentState = STATE1INQUOTE;
+      currentQuote = c;
+    }
+
+    private void handleState1Default() {
+      buffer.append(c);
+      if (!isState1Present) {
+        String s = buffer.toString().trim();
+        if (!(s.isEmpty()
+            || s.equals("/")
+            || s.equals("<")
+            || s.equals("<!")
+            || s.equals("<!-")
+            || s.equals("<!--"))) currentState = STATE2;
+      }
+      if (LOG.isTraceEnabled()) LOG.trace("STATE1 default CASE: {}", c);
     }
 
     // ===== STATE1 helpers =====
@@ -3170,22 +3187,7 @@ class CSSTokenizerFilter {
       ParsedWord[] parts = split(orig, false);
       if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(parts));
       buffer.setLength(0);
-
-      boolean valid = false;
-      if (parts != null) {
-        if (parts.length < 1) {
-          ignoreElementsS1 = true;
-          if (LOG.isDebugEnabled())
-            LOG.debug("STATE1 CASE {: Does not have one part. ignoring {}", buffer);
-          valid = false;
-        } else if (parts[0] instanceof SimpleParsedWord
-            && "@media".equalsIgnoreCase(parts[0].original)) {
-          valid = processAtMedia(parts, braceSpace, postSpace);
-        } else if (parts[0] instanceof SimpleParsedWord
-            && "@page".equalsIgnoreCase(parts[0].original)) {
-          valid = processAtPage(parts, braceSpace, postSpace, orig);
-        }
-      }
+      boolean valid = processState1OpenBraceParts(parts, braceSpace, postSpace, orig);
 
       if (!valid) {
         ignoreElementsS1 = true; // No valid media types.
@@ -3207,6 +3209,26 @@ class CSSTokenizerFilter {
       buffer.setLength(0);
     }
 
+    private boolean processState1OpenBraceParts(
+        ParsedWord[] parts, String braceSpace, String postSpace, String orig) {
+      if (parts == null || parts.length < 1) {
+        ignoreElementsS1 = true;
+        if (LOG.isDebugEnabled())
+          LOG.debug("STATE1 CASE {: Does not have one part. ignoring {}", buffer);
+        return false;
+      }
+      if (parts[0] instanceof SimpleParsedWord spw) {
+        String head = spw.original;
+        if ("@media".equalsIgnoreCase(head)) {
+          return processAtMedia(parts, braceSpace, postSpace);
+        }
+        if ("@page".equalsIgnoreCase(head)) {
+          return processAtPage(parts, braceSpace, postSpace, orig);
+        }
+      }
+      return false;
+    }
+
     /** Processes the ';' branch while in STATE1 (e.g., @import or @charset). */
     private void handleState1Semicolon() throws IOException {
       if (prevc == '\\') {
@@ -3215,7 +3237,21 @@ class CSSTokenizerFilter {
       }
       if (LOG.isTraceEnabled()) LOG.trace("buffer in state 1 ; : \"{}\"", buffer);
 
-      // Write leading whitespace and optional HTML comment marker
+      writeLeadingWhitespaceAndOptionalHtmlComment();
+
+      if (tryHandleImport()) {
+        // handled
+      } else if (tryHandleCharset()) {
+        // handled
+      }
+
+      isState1Present = false;
+      ignoreElementsS1 = false;
+      buffer.setLength(0);
+      charsetPossible = false;
+    }
+
+    private void writeLeadingWhitespaceAndOptionalHtmlComment() throws IOException {
       int i = 0;
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
@@ -3236,40 +3272,37 @@ class CSSTokenizerFilter {
         w.write(buffer.substring(0, i));
         buffer.delete(0, i);
       }
+    }
 
-      // If ignoreElementsS1, then just delete everything up to the semicolon. After that, fresh
-      // start.
-      if (canImport && !ignoreElementsS1 && buffer.toString().contains("@import")) {
-        writeFilteredImportIfValid();
-      } else if (charsetPossible && buffer.toString().startsWith("@charset ")) {
-        // charsetPossible is incompatible with ignoreElementsS1
-        String s = buffer.delete(0, "@charset ".length()).toString();
-        s = removeOuterQuotes(s);
-        detectedCharset = s;
-        if (LOG.isTraceEnabled()) LOG.trace("Detected charset: \"{}\"", detectedCharset);
-        if (!Charset.isSupported(detectedCharset)) {
-          LOG.info("Charset not supported: {}", detectedCharset);
-          throw new UnsupportedCharsetInFilterException(
-              "Charset not supported: " + detectedCharset);
-        }
-        if (stopAtDetectedCharset) {
-          requestStop();
-          return;
-        }
-        if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
-          LOG.info(
-              "Detected charset \"{}\" differs from passed in charset \"{}\"",
-              detectedCharset,
-              passedCharset);
-          throw new IOException("Detected charset differs from passed in charset");
-        }
-        w.write("@charset \"" + detectedCharset + "\";");
+    private boolean tryHandleImport() throws IOException {
+      if (!(canImport && !ignoreElementsS1 && buffer.toString().contains("@import"))) return false;
+      writeFilteredImportIfValid();
+      return true;
+    }
+
+    private boolean tryHandleCharset() throws IOException {
+      if (!(charsetPossible && buffer.toString().startsWith("@charset "))) return false;
+      String s = buffer.delete(0, "@charset ".length()).toString();
+      s = removeOuterQuotes(s);
+      detectedCharset = s;
+      if (LOG.isTraceEnabled()) LOG.trace("Detected charset: \"{}\"", detectedCharset);
+      if (!Charset.isSupported(detectedCharset)) {
+        LOG.info("Charset not supported: {}", detectedCharset);
+        throw new UnsupportedCharsetInFilterException("Charset not supported: " + detectedCharset);
       }
-
-      isState1Present = false;
-      ignoreElementsS1 = false;
-      buffer.setLength(0);
-      charsetPossible = false;
+      if (stopAtDetectedCharset) {
+        requestStop();
+        return true;
+      }
+      if (passedCharset != null && !detectedCharset.equalsIgnoreCase(passedCharset)) {
+        LOG.info(
+            "Detected charset \"{}\" differs from passed in charset \"{}\"",
+            detectedCharset,
+            passedCharset);
+        throw new IOException("Detected charset differs from passed in charset");
+      }
+      w.write("@charset \"" + detectedCharset + "\";");
+      return true;
     }
 
     /** Returns prefix whitespace plus an optional HTML comment marker; null on invalid pattern. */
@@ -3371,46 +3404,58 @@ class CSSTokenizerFilter {
       if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement={}", buffer);
       String strbuffer = buffer.toString().trim();
       int importIndex = strbuffer.toLowerCase().indexOf("@import");
-      if (!"".equals(strbuffer.substring(0, importIndex).trim())) return;
-      String str1 = strbuffer.substring(importIndex + 7);
-      ParsedWord[] strparts = split(str1, false);
-      if (strparts == null
-          || strparts.length == 0
-          || !(strparts[0] instanceof ParsedURL || strparts[0] instanceof ParsedString)) return;
+      if (!isImportAtStart(strbuffer, importIndex)) return;
+      ParsedWord[] strparts = split(strbuffer.substring(importIndex + 7), false);
+      if (!isValidImportHead(strparts)) return;
 
-      String uri;
-      if (strparts[0] instanceof ParsedString string) {
-        uri = string.getDecoded();
-      } else {
-        uri = ((ParsedURL) strparts[0]).getDecoded();
-      }
+      String uri = extractImportUri(strparts[0]);
       ArrayList<String> medias = commaListFromIdentifiers(strparts, 1);
       if (medias == null) return; // None gives [0], broke gives null
 
-      StringBuilder output = new StringBuilder();
-      output.append("@import url(\"");
       try {
-        String s = cb.processURI(uri, "text/css");
-        if (passedCharset != null) {
-          if (s.indexOf('?') == -1) s += "?maybecharset=" + passedCharset;
-          else s += "&maybecharset=" + passedCharset;
-        }
-        output.append(s);
-        output.append("\")");
-        boolean first = true;
-        for (String media : medias) {
-          if (FilterUtils.isMedia(media)) {
-            if (!first) output.append(", ");
-            else output.append(' ');
-            first = false;
-            output.append(media);
-          }
-        }
-        output.append(";");
-        w.write(output.toString());
+        String output = buildImportOutput(uri, medias);
+        w.write(output);
       } catch (CommentException e) {
         // Don't write anything
       }
+    }
+
+    private boolean isImportAtStart(String strbuffer, int importIndex) {
+      return importIndex >= 0 && "".equals(strbuffer.substring(0, importIndex).trim());
+    }
+
+    private boolean isValidImportHead(ParsedWord[] strparts) {
+      return !(strparts == null
+          || strparts.length == 0
+          || !(strparts[0] instanceof ParsedURL || strparts[0] instanceof ParsedString));
+    }
+
+    private String extractImportUri(ParsedWord head) {
+      if (head instanceof ParsedString string) return string.getDecoded();
+      return ((ParsedURL) head).getDecoded();
+    }
+
+    private String buildImportOutput(String uri, ArrayList<String> medias) throws CommentException {
+      StringBuilder output = new StringBuilder();
+      output.append("@import url(\"");
+      String s = cb.processURI(uri, "text/css");
+      if (passedCharset != null) {
+        if (s.indexOf('?') == -1) s += "?maybecharset=" + passedCharset;
+        else s += "&maybecharset=" + passedCharset;
+      }
+      output.append(s);
+      output.append("\")");
+      boolean first = true;
+      for (String media : medias) {
+        if (FilterUtils.isMedia(media)) {
+          if (!first) output.append(", ");
+          else output.append(' ');
+          first = false;
+          output.append(media);
+        }
+      }
+      output.append(";");
+      return output.toString();
     }
 
     void handleState1InQuote() {
@@ -3480,57 +3525,10 @@ class CSSTokenizerFilter {
         buffer.append(c);
         return;
       }
-      int i = 0;
-      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
-        i++;
-      }
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
-      String ws = buffer.substring(0, i);
-      buffer.delete(0, i);
-      if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
-        ws += buffer.substring(0, 4);
-        if (WS_T_R_N.indexOf(buffer.charAt(4)) == -1) {
-          LOG.error(MSG_HTML_COMMENT_WS);
-          return;
-        }
-        buffer.delete(0, 4);
-        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
-          i++;
-        }
-        ws += buffer.substring(0, i);
-        buffer.delete(0, i);
-      }
+      String ws = extractLeadingWhitespaceAndOptionalHtmlComment();
+      if (ws == null) return;
       openBraces++;
-      if (!buffer.toString().trim().isEmpty()) {
-        String filtered = recursiveSelectorVerifier(buffer.toString());
-        if (filtered != null && !"".equals(filtered)) {
-          if (s2Comma) {
-            if (filteredTokens.length() > 0) filteredTokens.append(",");
-            s2Comma = false;
-          }
-          filteredTokens.append(ws);
-          filteredTokens.append(filtered);
-          filteredTokens.append(" {");
-        } else if (s2Comma && "".equals(filtered)) {
-          String sofar = filteredTokens.toString().trim();
-          if (sofar.isEmpty()) {
-            // All selectors were banned; ignore this whole rule
-            ignoreElementsS2 = true;
-            filteredTokens.setLength(0);
-          } else {
-            s2Comma = false;
-            filteredTokens.append(ws);
-            filteredTokens.append(" {");
-          }
-        } else {
-          ignoreElementsS2 = true;
-          filteredTokens.setLength(0);
-        }
-        if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE { filtered elements{}", filtered);
-      } else {
-        ignoreElementsS2 = true;
-        filteredTokens.setLength(0);
-      }
+      processSelectorAfterOpenBrace(ws);
       currentState = STATE3;
       openBracesStartingS3 = openBraces;
       if (LOG.isDebugEnabled())
@@ -3538,11 +3536,61 @@ class CSSTokenizerFilter {
       buffer.setLength(0);
     }
 
+    private void processSelectorAfterOpenBrace(String ws) {
+      if (buffer.toString().trim().isEmpty()) {
+        handleInvalidSelector();
+        return;
+      }
+      String filtered = recursiveSelectorVerifier(buffer.toString());
+      if (filtered != null && !"".equals(filtered)) {
+        appendFilteredSelectorOpenBrace(ws, filtered);
+      } else if (s2Comma && "".equals(filtered)) {
+        handleCommaEmptyFiltered(ws);
+      } else {
+        handleInvalidSelector();
+      }
+      if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE { filtered elements{}", filtered);
+    }
+
+    private void appendFilteredSelectorOpenBrace(String ws, String filtered) {
+      if (s2Comma) {
+        if (filteredTokens.length() > 0) filteredTokens.append(",");
+        s2Comma = false;
+      }
+      filteredTokens.append(ws);
+      filteredTokens.append(filtered);
+      filteredTokens.append(" {");
+    }
+
+    private void handleCommaEmptyFiltered(String ws) {
+      String sofar = filteredTokens.toString().trim();
+      if (sofar.isEmpty()) {
+        // All selectors were banned; ignore this whole rule
+        ignoreElementsS2 = true;
+        filteredTokens.setLength(0);
+      } else {
+        s2Comma = false;
+        filteredTokens.append(ws);
+        filteredTokens.append(" {");
+      }
+    }
+
+    private void handleInvalidSelector() {
+      ignoreElementsS2 = true;
+      filteredTokens.setLength(0);
+    }
+
     private void handleState2Comma() {
       if (prevc == '\\') {
         buffer.append(c);
         return;
       }
+      String ws = extractLeadingWhitespace();
+      applyFilteredSelectorOnComma(ws);
+      buffer.setLength(0);
+    }
+
+    private String extractLeadingWhitespace() {
       int i = 0;
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
@@ -3550,6 +3598,10 @@ class CSSTokenizerFilter {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_STATE2, buffer.substring(0, i));
       String ws = buffer.substring(0, i);
       buffer.delete(0, i);
+      return ws;
+    }
+
+    private void applyFilteredSelectorOnComma(String ws) {
       if (!buffer.toString().trim().isEmpty()) {
         String filtered = recursiveSelectorVerifier(buffer.toString());
         if (LOG.isTraceEnabled()) LOG.trace("STATE2 CASE , filtered elements{}", filtered);
@@ -3559,15 +3611,14 @@ class CSSTokenizerFilter {
           filteredTokens.append(ws);
           filteredTokens.append(filtered);
         } else if ("".equals(filtered)) {
-          // Valid but banned. Only proceed to open a block later if we had at least one
-          // previously accepted selector. Otherwise ignore the whole rule.
+          // Valid but banned. Only proceed later if we had at least one previously accepted
+          // selector. Otherwise ignore the whole rule.
           filteredTokens.append(ws);
           s2Comma = true;
         }
       } else {
         s2Comma = true;
       }
-      buffer.setLength(0);
     }
 
     private void handleState2RightBrace() throws IOException {
@@ -3703,6 +3754,21 @@ class CSSTokenizerFilter {
         if (LOG.isDebugEnabled()) LOG.debug(MSG_OPEN_BRACES_S3, openBraces, openBracesStartingS3);
         return;
       }
+      preparePropertyValueFromBuffer();
+      CSSPropertyVerifier obj = getVerifier(propertyName);
+      if (obj != null) {
+        ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
+        if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(words));
+        appendPropertyIfValid(words, obj, true);
+      } else if (LOG.isTraceEnabled()) {
+        LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
+      }
+      ignoreElementsS3 = false;
+      propertyName = "";
+      propertyValue = "";
+    }
+
+    private void preparePropertyValueFromBuffer() {
       int i = 0;
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
@@ -3713,41 +3779,33 @@ class CSSTokenizerFilter {
       propertyValue = buffer.delete(0, i).toString().trim();
       if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
       buffer.setLength(0);
-      CSSPropertyVerifier obj = getVerifier(propertyName);
-      if (obj != null) {
-        ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
-        if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(words));
-        if (!ignoreElementsS2
-            && !ignoreElementsS3
-            && verifyToken(currentMedia, elements, obj, words)) {
-          if (changedAnything(words)) propertyValue = reconstruct(words);
-          filteredTokens.append(whitespaceBeforeProperty);
-          whitespaceBeforeProperty = "";
-          filteredTokens.append(propertyName);
-          filteredTokens.append(':');
-          filteredTokens.append(whitespaceAfterColon);
-          filteredTokens.append(propertyValue);
-          filteredTokens.append(';');
-          if (LOG.isDebugEnabled())
-            LOG.debug("STATE3 CASE ;: appending {}:{}", propertyName, propertyValue);
-          if (LOG.isDebugEnabled()) LOG.debug("filtered tokens now: \"{}\"", filteredTokens);
-        } else {
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "filtered tokens now (ignored): \"{}\" words={} ignoreS1={} ignoreS2={}"
-                    + " ignoreS3={}",
-                filteredTokens.toString(),
-                CSSPropertyVerifier.toString(words),
-                ignoreElementsS1,
-                ignoreElementsS2,
-                ignoreElementsS3);
-        }
-      } else {
-        if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
+    }
+
+    private void appendPropertyIfValid(
+        ParsedWord[] words, CSSPropertyVerifier obj, boolean addSemicolon) throws IOException {
+      if (!ignoreElementsS2
+          && !ignoreElementsS3
+          && verifyToken(currentMedia, elements, obj, words)) {
+        if (changedAnything(words)) propertyValue = reconstruct(words);
+        filteredTokens.append(whitespaceBeforeProperty);
+        whitespaceBeforeProperty = "";
+        filteredTokens.append(propertyName);
+        filteredTokens.append(':');
+        filteredTokens.append(whitespaceAfterColon);
+        filteredTokens.append(propertyValue);
+        if (addSemicolon) filteredTokens.append(';');
+        if (LOG.isDebugEnabled())
+          LOG.debug("STATE3 CASE ;: appending {}:{}", propertyName, propertyValue);
+        if (LOG.isDebugEnabled()) LOG.debug("filtered tokens now: \"{}\"", filteredTokens);
+      } else if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "filtered tokens now (ignored): \"{}\" words={} ignoreS1={} ignoreS2={} ignoreS3={}",
+            filteredTokens.toString(),
+            CSSPropertyVerifier.toString(words),
+            ignoreElementsS1,
+            ignoreElementsS2,
+            ignoreElementsS3);
       }
-      ignoreElementsS3 = false;
-      propertyName = "";
-      propertyValue = "";
     }
 
     private void handleState3RightBrace() throws IOException {
@@ -3786,18 +3844,11 @@ class CSSTokenizerFilter {
       if (obj != null) {
         ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
         if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(words));
-        if (!ignoreElementsS2
-            && !ignoreElementsS3
-            && verifyToken(currentMedia, elements, obj, words)) {
-          if (changedAnything(words)) propertyValue = reconstruct(words);
-          filteredTokens.append(whitespaceBeforeProperty);
-          whitespaceBeforeProperty = "";
-          filteredTokens.append(propertyName);
-          filteredTokens.append(':');
-          filteredTokens.append(whitespaceAfterColon);
-          filteredTokens.append(propertyValue);
-          if (LOG.isTraceEnabled())
-            LOG.trace("STATE3 CASE }: appending {}:{}", propertyName, propertyValue);
+        try {
+          appendPropertyIfValid(words, obj, false);
+        } catch (IOException e) {
+          // Re-throw as unchecked; callers already handle IOException in the main flow
+          throw new RuntimeException(e);
         }
       } else {
         if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
@@ -5191,66 +5242,78 @@ class CSSTokenizerFilter {
   private static ParsedWord parseUrlToken(
       String s, StringBuilder origToken, StringBuilder decodedToken, boolean dontLikeOrigToken) {
     if (!s.endsWith(")")) return null;
+    // remove leading 'url(' and trailing ')'
     decodedToken.delete(0, 4);
     decodedToken.setLength(decodedToken.length() - 1);
     if (LOG.isTraceEnabled()) LOG.trace("stripped: {}", decodedToken);
     String strippedOrig = s.substring(4, s.length() - 1);
-    int i;
-    for (i = 0; i < strippedOrig.length(); i++) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-    }
-    decodedToken.delete(0, i);
-    strippedOrig = strippedOrig.substring(i);
-    i = strippedOrig.length() - 1;
-    while (i >= 0
-        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
-        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
-      i--;
-    }
-    decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
-    strippedOrig = strippedOrig.substring(0, i + 1);
+
+    int leading = countLeadingSpaces(strippedOrig);
+    decodedToken.delete(0, leading);
+    strippedOrig = strippedOrig.substring(leading);
+
+    int trailing = countTrailingSpacesIgnoringEscaped(strippedOrig);
+    decodedToken.setLength(decodedToken.length() - trailing);
+    strippedOrig = strippedOrig.substring(0, strippedOrig.length() - trailing);
+
     if (LOG.isTraceEnabled())
       LOG.trace("whitespace stripped: {} decoded {}", strippedOrig, decodedToken);
     if (strippedOrig.isEmpty()) return null;
-    if (strippedOrig.length() > 2) {
+
+    if (hasBalancedQuotes(strippedOrig)) {
       char q = strippedOrig.charAt(0);
-      if (q == '\'' || q == '\"') {
-        char d = strippedOrig.charAt(strippedOrig.length() - 1);
-        if (q == d) {
-          decodedToken.setLength(decodedToken.length() - 1);
-          decodedToken.deleteCharAt(0);
-          if (LOG.isDebugEnabled())
-            LOG.debug("creating url(): orig=\"{}\" decoded=\"{}\"", origToken, decodedToken);
-          return new ParsedURL(origToken.toString(), decodedToken.toString(), dontLikeOrigToken, q);
-        } else return null;
-      }
+      decodedToken.setLength(decodedToken.length() - 1);
+      decodedToken.deleteCharAt(0);
+      if (LOG.isDebugEnabled())
+        LOG.debug("creating url(): orig=\"{}\" decoded=\"{}\"", origToken, decodedToken);
+      return new ParsedURL(origToken.toString(), decodedToken.toString(), dontLikeOrigToken, q);
     }
     return new ParsedURL(
         origToken.toString(), decodedToken.toString(), dontLikeOrigToken, (char) 0);
   }
 
+  private static int countLeadingSpaces(String s) {
+    int i = 0;
+    while (i < s.length()) {
+      char c = s.charAt(i);
+      if (c == ' ' || c == '\t') i++;
+      else break;
+    }
+    return i;
+  }
+
+  private static int countTrailingSpacesIgnoringEscaped(String s) {
+    int i = s.length() - 1;
+    while (i >= 0) {
+      char c = s.charAt(i);
+      if ((c == ' ' || c == '\t') && !(i > 0 && s.charAt(i - 1) == '\\')) i--;
+      else break;
+    }
+    return s.length() - i - 1;
+  }
+
+  private static boolean hasBalancedQuotes(String s) {
+    if (s.length() <= 2) return false;
+    char q = s.charAt(0);
+    if (q != '\'' && q != '"') return false;
+    return s.charAt(s.length() - 1) == q;
+  }
+
   private static ParsedWord parseAttrToken(
       String s, StringBuilder origToken, StringBuilder decodedToken, boolean dontLikeOrigToken) {
     if (!s.endsWith(")")) return null;
+    // remove leading 'attr(' and trailing ')'
     decodedToken.delete(0, 5);
     decodedToken.setLength(decodedToken.length() - 1);
     String strippedOrig = s.substring(4, s.length() - 1);
-    int i;
-    for (i = 0; i < strippedOrig.length(); i++) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-    }
-    decodedToken.delete(0, i);
-    strippedOrig = strippedOrig.substring(i);
-    i = strippedOrig.length() - 1;
-    while (i >= 0
-        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
-        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
-      i--;
-    }
-    decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
-    strippedOrig = strippedOrig.substring(0, i + 1);
+
+    int leading = countLeadingSpaces(strippedOrig);
+    decodedToken.delete(0, leading);
+    strippedOrig = strippedOrig.substring(leading);
+
+    int trailing = countTrailingSpacesIgnoringEscaped(strippedOrig);
+    decodedToken.setLength(decodedToken.length() - trailing);
+    strippedOrig = strippedOrig.substring(0, strippedOrig.length() - trailing);
     if (strippedOrig.isEmpty()) return null;
     return new ParsedAttr(origToken.toString(), decodedToken.toString(), dontLikeOrigToken);
   }
@@ -5267,40 +5330,49 @@ class CSSTokenizerFilter {
     decodedToken.delete(0, len);
     decodedToken.setLength(decodedToken.length() - 1);
     String strippedOrig = s.substring(len, s.length() - 1);
-    int i;
-    for (i = 0; i < strippedOrig.length(); i++) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-    }
-    decodedToken.delete(0, i);
-    strippedOrig = strippedOrig.substring(i);
-    i = strippedOrig.length() - 1;
-    while (i >= 0
-        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
-        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
-      i--;
-    }
-    decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
-    strippedOrig = strippedOrig.substring(0, i + 1);
+
+    // trim spaces taking escapes into account and keep decodedToken in sync
+    int leading = countLeadingSpaces(strippedOrig);
+    decodedToken.delete(0, leading);
+    strippedOrig = strippedOrig.substring(leading);
+    int trailing = countTrailingSpacesIgnoringEscaped(strippedOrig);
+    decodedToken.setLength(decodedToken.length() - trailing);
+    strippedOrig = strippedOrig.substring(0, strippedOrig.length() - trailing);
     if (strippedOrig.isEmpty()) return null;
+
     String[] split = FilterUtils.removeWhiteSpace(strippedOrig.split(","), false);
-    if (split.length == 0
-        || (plural && split.length > 3)
-        || ((!plural) && split.length > 2)
-        || (plural && split.length < 2)) return null;
+    if (!isValidCounterPartsCount(split.length, plural)) return null;
+
     ParsedIdentifier ident = makeParsedIdentifier(split[0]);
     if (ident == null) return null;
-    ParsedString separator = null;
-    ParsedIdentifier listType = null;
-    if (plural) {
-      separator = makeParsedString(split[1]);
-      if (separator == null) return null;
-    }
-    if (((!plural) && split.length == 2) || (plural && split.length == 3)) {
-      listType = makeParsedIdentifier(split[split.length - 1]);
+
+    ParsedString separator = parseCounterSeparator(plural, split);
+    if (plural && separator == null) return null;
+
+    ParsedIdentifier listType = parseCounterListType(plural, split);
+    if ((plural && split.length == 3) || (!plural && split.length == 2)) {
       if (listType == null) return null;
     }
     return new ParsedCounter(origToken.toString(), ident, listType, separator);
+  }
+
+  private static boolean isValidCounterPartsCount(int len, boolean plural) {
+    if (len == 0) return false;
+    if (plural) return len >= 2 && len <= 3;
+    return len <= 2;
+  }
+
+  private static ParsedString parseCounterSeparator(boolean plural, String[] split) {
+    if (!plural) return null;
+    return makeParsedString(split[1]);
+  }
+
+  private static ParsedIdentifier parseCounterListType(boolean plural, String[] split) {
+    int idx = plural ? 2 : 1;
+    if ((plural && split.length == 3) || (!plural && split.length == 2)) {
+      return makeParsedIdentifier(split[idx]);
+    }
+    return null;
   }
 
   private static ParsedIdentifier makeParsedIdentifier(String string) {
@@ -5397,83 +5469,103 @@ class CSSTokenizerFilter {
         boolean allowCommaDelimiters) {
       this.onlyValueVerifier = onlyValueVerifier;
       this.allowCommaDelimiters = allowCommaDelimiters;
-      boolean isIntegerFlag,
-          isRealFlag,
-          isPercentageFlag,
-          isLengthFlag,
-          isAngleFlag,
-          isColorFlag,
-          isIDSelectorFlag,
-          isURIFlag,
-          isShapeFlag,
-          isStringFlag,
-          isCounterFlag,
-          isIdentifierFlag,
-          isTimeFlag,
-          isFrequencyFlag,
-          isTransformFlag;
-      isIntegerFlag =
-          isRealFlag =
-              isPercentageFlag =
-                  isLengthFlag =
-                      isAngleFlag =
-                          isColorFlag =
-                              isURIFlag =
-                                  isShapeFlag =
-                                      isStringFlag =
-                                          isCounterFlag =
-                                              isIdentifierFlag =
-                                                  isTimeFlag =
-                                                      isIDSelectorFlag =
-                                                          isFrequencyFlag = isTransformFlag = false;
-      if (possibleValues != null) {
-        for (String possibleValue : possibleValues) {
-          if ("in".equals(possibleValue)) isIntegerFlag = true; // in
-          else if ("re".equals(possibleValue)) isRealFlag = true; // re
-          else if ("pe".equals(possibleValue)) isPercentageFlag = true; // pe
-          else if ("le".equals(possibleValue)) isLengthFlag = true; // le
-          else if ("an".equals(possibleValue)) isAngleFlag = true; // an
-          else if ("co".equals(possibleValue)) isColorFlag = true; // co
-          else if ("ur".equals(possibleValue)) isURIFlag = true; // ur
-          else if ("se".equals(possibleValue)) {
-            isIDSelectorFlag = true; // se
-          } else if ("sh".equals(possibleValue)) isShapeFlag = true; // sh
-          else if ("st".equals(possibleValue)) isStringFlag = true; // st
-          else if ("id".equals(possibleValue)) isIdentifierFlag = true; // id
-          else if ("ti".equals(possibleValue)) isTimeFlag = true; // ti
-          else if ("fr".equals(possibleValue)) isFrequencyFlag = true; // fr
-          else if ("tr".equals(possibleValue)) isTransformFlag = true; // tr
+
+      TypeFlags flags = TypeFlags.fromPossibleValues(possibleValues);
+      this.isInteger = flags.integer;
+      this.isReal = flags.real;
+      this.isPercentage = flags.percentage;
+      this.isLength = flags.length;
+      this.isAngle = flags.angle;
+      this.isColor = flags.color;
+      this.isURI = flags.uri;
+      this.isIDSelector = flags.idSelector;
+      this.isShape = flags.shape;
+      this.isString = flags.string;
+      this.isCounter = flags.counter; // not set by tokens currently, reserved
+      this.isIdentifier = flags.identifier;
+      this.isTime = flags.time;
+      this.isFrequency = flags.frequency;
+      this.isTransform = flags.transform;
+
+      this.allowedValues =
+          allowedValues != null ? Collections.unmodifiableSet(new HashSet<>(allowedValues)) : null;
+      this.allowedMedia =
+          allowedMedia != null ? Collections.unmodifiableSet(new HashSet<>(allowedMedia)) : null;
+      this.parserExpressions =
+          parseExpression != null
+              ? Collections.unmodifiableList(new ArrayList<>(parseExpression))
+              : Collections.emptyList();
+    }
+
+    private static final class TypeFlags {
+      boolean integer;
+      boolean real;
+      boolean percentage;
+      boolean length;
+      boolean angle;
+      boolean color;
+      boolean uri;
+      boolean shape;
+      boolean string;
+      boolean counter;
+      boolean identifier;
+      boolean time;
+      boolean frequency;
+      boolean transform;
+      boolean idSelector;
+
+      static TypeFlags fromPossibleValues(Collection<String> possibleValues) {
+        TypeFlags f = new TypeFlags();
+        if (possibleValues == null) return f;
+        for (String p : possibleValues) {
+          switch (p) {
+            case "in":
+              f.integer = true;
+              break;
+            case "re":
+              f.real = true;
+              break;
+            case "pe":
+              f.percentage = true;
+              break;
+            case "le":
+              f.length = true;
+              break;
+            case "an":
+              f.angle = true;
+              break;
+            case "co":
+              f.color = true;
+              break;
+            case "ur":
+              f.uri = true;
+              break;
+            case "se":
+              f.idSelector = true;
+              break;
+            case "sh":
+              f.shape = true;
+              break;
+            case "st":
+              f.string = true;
+              break;
+            case "id":
+              f.identifier = true;
+              break;
+            case "ti":
+              f.time = true;
+              break;
+            case "fr":
+              f.frequency = true;
+              break;
+            case "tr":
+              f.transform = true;
+              break;
+            default:
+              break;
+          }
         }
-      }
-      this.isInteger = isIntegerFlag;
-      this.isReal = isRealFlag;
-      this.isPercentage = isPercentageFlag;
-      this.isLength = isLengthFlag;
-      this.isAngle = isAngleFlag;
-      this.isColor = isColorFlag;
-      this.isURI = isURIFlag;
-      this.isIDSelector = isIDSelectorFlag;
-      this.isShape = isShapeFlag;
-      this.isString = isStringFlag;
-      this.isCounter = isCounterFlag;
-      this.isIdentifier = isIdentifierFlag;
-      this.isTime = isTimeFlag;
-      this.isFrequency = isFrequencyFlag;
-      this.isTransform = isTransformFlag;
-      if (allowedValues != null) {
-        this.allowedValues = Collections.unmodifiableSet(new HashSet<>(allowedValues));
-      } else {
-        this.allowedValues = null;
-      }
-      if (allowedMedia != null) {
-        this.allowedMedia = Collections.unmodifiableSet(new HashSet<>(allowedMedia));
-      } else {
-        this.allowedMedia = null;
-      }
-      if (parseExpression != null) {
-        this.parserExpressions = Collections.unmodifiableList(new ArrayList<>(parseExpression));
-      } else {
-        this.parserExpressions = Collections.emptyList();
+        return f;
       }
     }
 
@@ -5576,19 +5668,29 @@ class CSSTokenizerFilter {
 
     private boolean validateSimpleWord(SimpleParsedWord word) {
       String w = word.original;
-      boolean matchesAllowed = allowedValues != null && allowedValues.contains(w);
-      boolean matchesTypes =
-          (isInteger && isIntegerChecker(w))
-              || (isReal && isRealChecker(w))
-              || (isPercentage && FilterUtils.isPercentage(w))
-              || (isLength && FilterUtils.isLength(w, false))
-              || (isAngle && FilterUtils.isAngle(w))
-              || (isColor && FilterUtils.isColor(w))
-              || (isShape && FilterUtils.isValidCSSShape(w))
-              || (isFrequency && FilterUtils.isFrequency(w))
-              || (isTime && FilterUtils.isTime(w))
-              || (isTransform && FilterUtils.isCSSTransform(w));
-      return matchesAllowed || matchesTypes;
+      if (matchesAllowedValue(w)) return true;
+      if (matchesNumericTypes(w)) return true;
+      return matchesOtherTypes(w);
+    }
+
+    private boolean matchesAllowedValue(String w) {
+      return allowedValues != null && allowedValues.contains(w);
+    }
+
+    private boolean matchesNumericTypes(String w) {
+      return (isInteger && isIntegerChecker(w))
+          || (isReal && isRealChecker(w))
+          || (isPercentage && FilterUtils.isPercentage(w))
+          || (isLength && FilterUtils.isLength(w, false))
+          || (isAngle && FilterUtils.isAngle(w));
+    }
+
+    private boolean matchesOtherTypes(String w) {
+      return (isColor && FilterUtils.isColor(w))
+          || (isShape && FilterUtils.isValidCSSShape(w))
+          || (isFrequency && FilterUtils.isFrequency(w))
+          || (isTime && FilterUtils.isTime(w))
+          || (isTransform && FilterUtils.isCSSTransform(w));
     }
 
     private boolean validateIdentifierSpecials(ParsedIdentifier word) {
@@ -6416,48 +6518,70 @@ class CSSTokenizerFilter {
 
     private ProcessResult consumeUnquotedFont(
         ParsedWord[] value, int startIndex, ArrayList<String> fontWords) {
-      if (startIndex == value.length - 1) {
-        boolean ok = validFontWords(fontWords);
-        if (LOG.isDebugEnabled())
-          LOG.debug(
-              "last word. font words: {} valid={}",
-              getStringFromArray(fontWords.toArray(new String[0])),
-              ok);
-        return ProcessResult.returning(ok);
-      }
-
+      if (atLastWord(startIndex, value)) return finalizeLastWord(fontWords);
       if (!possiblyValidFontWords(fontWords)) return ProcessResult.returning(false);
+      return consumeFollowingFontWords(value, startIndex, fontWords);
+    }
 
+    private boolean atLastWord(int startIndex, ParsedWord[] value) {
+      return startIndex == value.length - 1;
+    }
+
+    private ProcessResult finalizeLastWord(ArrayList<String> fontWords) {
+      boolean ok = validFontWords(fontWords);
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "last word. font words: {} valid={}",
+            getStringFromArray(fontWords.toArray(new String[0])),
+            ok);
+      return ProcessResult.returning(ok);
+    }
+
+    private ProcessResult consumeFollowingFontWords(
+        ParsedWord[] value, int startIndex, ArrayList<String> fontWords) {
       for (int j = startIndex + 1; j < value.length; j++) {
         ParsedWord newWord = value[j];
-        if (!(newWord instanceof ParsedIdentifier)) {
-          if (LOG.isTraceEnabled()) LOG.trace("cannot parse {}", newWord);
-          return ProcessResult.returning(false);
-        }
+        if (!isIdentifier(newWord)) return ProcessResult.returning(false);
 
         fontWords.add(newWord.original);
         if (LOG.isTraceEnabled()) LOG.trace("adding word: \"{}\"", newWord.original);
 
-        if (j == value.length - 1) {
-          if (newWord.postComma) {
-            if (LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
-          }
-          if (validFontWords(fontWords)) return ProcessResult.returning(true);
-        }
+        ProcessResult maybe = maybeReturnAtLastIndex(newWord, j, value, fontWords);
+        if (maybe != null) return maybe;
 
-        if (newWord.postComma) {
-          if (validFontWords(fontWords)) {
-            fontWords.clear();
-            return ProcessResult.continuingFrom(j);
-          }
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "comma but can't parse font words: {}",
-                Fields.commaList(fontWords.toArray(new String[0])));
-          return ProcessResult.returning(false);
-        }
+        if (newWord.postComma) return handleCommaInFontList(fontWords, j);
       }
       return ProcessResult.returning(validFontWords(fontWords));
+    }
+
+    private ProcessResult maybeReturnAtLastIndex(
+        ParsedWord newWord, int j, ParsedWord[] value, ArrayList<String> fontWords) {
+      if (!isLastIndex(j, value)) return null;
+      if (newWord.postComma && LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
+      if (validFontWords(fontWords)) return ProcessResult.returning(true);
+      return null;
+    }
+
+    private boolean isIdentifier(ParsedWord w) {
+      if (w instanceof ParsedIdentifier) return true;
+      if (LOG.isTraceEnabled()) LOG.trace("cannot parse {}", w);
+      return false;
+    }
+
+    private boolean isLastIndex(int j, ParsedWord[] value) {
+      return j == value.length - 1;
+    }
+
+    private ProcessResult handleCommaInFontList(ArrayList<String> fontWords, int j) {
+      if (validFontWords(fontWords)) {
+        fontWords.clear();
+        return ProcessResult.continuingFrom(j);
+      }
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "comma but can't parse font words: {}",
+            Fields.commaList(fontWords.toArray(new String[0])));
+      return ProcessResult.returning(false);
     }
 
     private static final class StartDecision {
