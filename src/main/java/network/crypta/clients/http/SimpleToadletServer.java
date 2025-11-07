@@ -933,7 +933,7 @@ public final class SimpleToadletServer
 
           @Override
           public Integer get() {
-            return HTMLFilter.metaRefreshSamePageMinInterval;
+            return HTMLFilter.getMetaRefreshSamePageMinInterval();
           }
 
           @Override
@@ -942,12 +942,12 @@ public final class SimpleToadletServer
             if (val < -1)
               throw new InvalidConfigValueException(
                   "-1 = disabled, 0+ = set a minimum interval"); // FIXME l10n
-            HTMLFilter.metaRefreshSamePageMinInterval = val;
+            HTMLFilter.setMetaRefreshSamePageMinInterval(val);
           }
         },
         false);
-    HTMLFilter.metaRefreshSamePageMinInterval =
-        Math.max(-1, fproxyConfig.getInt("metaRefreshSamePageInterval"));
+    HTMLFilter.setMetaRefreshSamePageMinInterval(
+        Math.max(-1, fproxyConfig.getInt("metaRefreshSamePageInterval")));
 
     fproxyConfig.register(
         "metaRefreshRedirectInterval",
@@ -961,7 +961,7 @@ public final class SimpleToadletServer
 
           @Override
           public Integer get() {
-            return HTMLFilter.metaRefreshRedirectMinInterval;
+            return HTMLFilter.getMetaRefreshRedirectMinInterval();
           }
 
           @Override
@@ -970,12 +970,12 @@ public final class SimpleToadletServer
             if (val < -1)
               throw new InvalidConfigValueException(
                   "-1 = disabled, 0+ = set a minimum interval"); // FIXME l10n
-            HTMLFilter.metaRefreshRedirectMinInterval = val;
+            HTMLFilter.setMetaRefreshRedirectMinInterval(val);
           }
         },
         false);
-    HTMLFilter.metaRefreshRedirectMinInterval =
-        Math.max(-1, fproxyConfig.getInt("metaRefreshRedirectInterval"));
+    HTMLFilter.setMetaRefreshRedirectMinInterval(
+        Math.max(-1, fproxyConfig.getInt("metaRefreshRedirectInterval")));
 
     fproxyConfig.register(
         "embedM3uPlayerInFreesites",
@@ -989,15 +989,15 @@ public final class SimpleToadletServer
 
           @Override
           public Boolean get() {
-            return HTMLFilter.embedM3uPlayer;
+            return HTMLFilter.isEmbedM3uPlayerEnabled();
           }
 
           @Override
           public void set(Boolean val) {
-            HTMLFilter.embedM3uPlayer = val;
+            HTMLFilter.setEmbedM3uPlayerEnabled(val);
           }
         });
-    HTMLFilter.embedM3uPlayer = fproxyConfig.getBoolean("embedM3uPlayerInFreesites");
+    HTMLFilter.setEmbedM3uPlayerEnabled(fproxyConfig.getBoolean("embedM3uPlayerInFreesites"));
 
     fproxyConfig.register(
         "refilterPolicy",
