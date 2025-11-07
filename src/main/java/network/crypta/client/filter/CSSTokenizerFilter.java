@@ -753,11 +753,6 @@ class CSSTokenizerFilter {
    * to keep this wrapper method simple and reduce cognitive complexity.
    */
   private static void addVerifier(String element) {
-    addVerifierCore(element);
-  }
-
-  // Contains the original per-property logic extracted from addVerifier(String)
-  private static void addVerifierCore(String element) {
     if ("accent-color".equalsIgnoreCase(element)) {
       elementVerifiers.put(
           element,
@@ -2941,10 +2936,9 @@ class CSSTokenizerFilter {
       if (isInline) currentState = STATE3;
       while (!stopRequested && nextChar()) {
         detectCommentStart();
-        if (stopRequested) break;
-        if (c == 0) continue; // Strip nulls
-        handleCurrentStateChar();
-        if (stopRequested) break;
+        if (!stopRequested && c != 0) {
+          handleCurrentStateChar();
+        }
       }
       if (!stopRequested) finalizeOutput();
     }
@@ -3186,10 +3180,8 @@ class CSSTokenizerFilter {
 
       // Write leading whitespace and optional HTML comment marker
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       w.write(buffer.substring(0, i));
       buffer.delete(0, i);
@@ -3201,10 +3193,8 @@ class CSSTokenizerFilter {
           return;
         }
         buffer.delete(0, 4);
-        for (i = 0; i < buffer.length(); i++) {
-          char c1 = buffer.charAt(i);
-          if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-          break;
+        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+          i++;
         }
         w.write(buffer.substring(0, i));
         buffer.delete(0, i);
@@ -3248,10 +3238,8 @@ class CSSTokenizerFilter {
     /** Returns prefix whitespace plus an optional HTML comment marker; null on invalid pattern. */
     private String extractLeadingWhitespaceAndOptionalHtmlComment() {
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       String prefix = buffer.substring(0, i);
       buffer.delete(0, i);
@@ -3262,10 +3250,8 @@ class CSSTokenizerFilter {
           return null;
         }
         buffer.delete(0, 4);
-        for (i = 0; i < buffer.length(); i++) {
-          char c1 = buffer.charAt(i);
-          if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-          break;
+        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+          i++;
         }
         prefix += buffer.substring(0, i);
         buffer.delete(0, i);
@@ -3276,10 +3262,9 @@ class CSSTokenizerFilter {
     /** Trims trailing whitespace from buffer and returns that whitespace. */
     private String extractTrailingWhitespaceAndTrim() {
       int i;
-      for (i = buffer.length() - 1; i >= 0; i--) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      i = buffer.length() - 1;
+      while (i >= 0 && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i--;
       }
       i++;
       String postSpace = buffer.substring(i);
@@ -3321,17 +3306,15 @@ class CSSTokenizerFilter {
       boolean valid = parts.length == 0;
       if (!valid) {
         valid = true;
-        for (int j = 1; j < parts.length; j++) {
+        for (int j = 1; j < parts.length && valid; j++) {
           if (!(parts[j] instanceof SimpleParsedWord)) {
             valid = false;
-            break;
           } else {
             String s = parts[j].original;
             if (!(s.equalsIgnoreCase(":left")
                 || s.equalsIgnoreCase(":right")
                 || s.equals(":first"))) {
               valid = false;
-              break;
             }
           }
         }
@@ -3461,10 +3444,8 @@ class CSSTokenizerFilter {
         return;
       }
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isDebugEnabled())
         LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
@@ -3477,10 +3458,8 @@ class CSSTokenizerFilter {
           return;
         }
         buffer.delete(0, 4);
-        for (i = 0; i < buffer.length(); i++) {
-          char c1 = buffer.charAt(i);
-          if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-          break;
+        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+          i++;
         }
         ws += buffer.substring(0, i);
         buffer.delete(0, i);
@@ -3529,10 +3508,8 @@ class CSSTokenizerFilter {
         return;
       }
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isDebugEnabled())
         LOG.debug("Appending whitespace in state2: \"{}\"", buffer.substring(0, i));
@@ -3669,10 +3646,8 @@ class CSSTokenizerFilter {
         return;
       }
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isTraceEnabled()) LOG.trace("Appending whitespace: {}", buffer.substring(0, i));
       whitespaceBeforeProperty = buffer.substring(0, i);
@@ -3693,10 +3668,8 @@ class CSSTokenizerFilter {
         return;
       }
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isDebugEnabled())
         LOG.debug("Appending whitespace after colon: \"{}\"", buffer.substring(0, i));
@@ -3763,10 +3736,8 @@ class CSSTokenizerFilter {
 
     private void processRightBracePendingProperty() {
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isDebugEnabled())
         LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
@@ -3802,10 +3773,8 @@ class CSSTokenizerFilter {
 
     private void appendPrefixWhitespaceFromBuffer() {
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       if (LOG.isDebugEnabled())
         LOG.debug("Appending whitespace after colon (}): {}", buffer.substring(0, i));
@@ -4384,20 +4353,16 @@ class CSSTokenizerFilter {
       for (int i = 0; i < openBraces; i++) w.write('}');
       if (LOG.isTraceEnabled()) LOG.trace("Remaining buffer: \"{}\"", buffer);
       int i = 0;
-      for (i = 0; i < buffer.length(); i++) {
-        char c1 = buffer.charAt(i);
-        if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-        break;
+      while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+        i++;
       }
       w.write(buffer.substring(0, i));
       buffer.delete(0, i);
       while (buffer.toString().trim().equals("-->")) {
         w.write("-->");
         buffer.delete(0, 3);
-        for (i = 0; i < buffer.length(); i++) {
-          char c1 = buffer.charAt(i);
-          if (c1 == ' ' || c1 == '\f' || c1 == '\t' || c1 == '\r' || c1 == '\n') continue;
-          break;
+        while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
+          i++;
         }
         w.write(buffer.substring(0, i));
         buffer.delete(0, i);
@@ -4729,8 +4694,7 @@ class CSSTokenizerFilter {
         c = input.charAt(i);
         if (stringchar == 0) handleNotInString(i);
         else handleInString();
-        if (invalid) break;
-        if (c == 0) break; // defensive; mirrors prior pattern when c could be set to 0
+        if (invalid || c == 0) break; // single break for loop termination
       }
       if (!invalid) finalizeTrailingEscapeOrToken();
       return invalid ? null : words.toArray(new ParsedWord[0]);
@@ -5119,10 +5083,11 @@ class CSSTokenizerFilter {
     }
     decodedToken.delete(0, i);
     strippedOrig = strippedOrig.substring(i);
-    for (i = strippedOrig.length() - 1; i >= 0; i--) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-      if (i > 0 && strippedOrig.charAt(i - 1) == '\\') break;
+    i = strippedOrig.length() - 1;
+    while (i >= 0
+        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
+        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
+      i--;
     }
     decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
     strippedOrig = strippedOrig.substring(0, i + 1);
@@ -5159,10 +5124,11 @@ class CSSTokenizerFilter {
     }
     decodedToken.delete(0, i);
     strippedOrig = strippedOrig.substring(i);
-    for (i = strippedOrig.length() - 1; i >= 0; i--) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-      if (i > 0 && strippedOrig.charAt(i - 1) == '\\') break;
+    i = strippedOrig.length() - 1;
+    while (i >= 0
+        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
+        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
+      i--;
     }
     decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
     strippedOrig = strippedOrig.substring(0, i + 1);
@@ -5189,10 +5155,11 @@ class CSSTokenizerFilter {
     }
     decodedToken.delete(0, i);
     strippedOrig = strippedOrig.substring(i);
-    for (i = strippedOrig.length() - 1; i >= 0; i--) {
-      char c = strippedOrig.charAt(i);
-      if (!(c == ' ' || c == '\t')) break;
-      if (i > 0 && strippedOrig.charAt(i - 1) == '\\') break;
+    i = strippedOrig.length() - 1;
+    while (i >= 0
+        && (strippedOrig.charAt(i) == ' ' || strippedOrig.charAt(i) == '\t')
+        && !(i > 0 && strippedOrig.charAt(i - 1) == '\\')) {
+      i--;
     }
     decodedToken.setLength(decodedToken.length() - (strippedOrig.length() - i - 1));
     strippedOrig = strippedOrig.substring(0, i + 1);
@@ -6211,9 +6178,8 @@ class CSSTokenizerFilter {
               true);
       if (fontSize.checkValidity(value, cb)) return true;
       for (ParsedWord word : value) {
-        // Token by token
-        if (fontSize.checkValidity(word, cb)) continue;
-        if (word instanceof SimpleParsedWord) {
+        boolean tokenValid = fontSize.checkValidity(word, cb);
+        if (!tokenValid && word instanceof SimpleParsedWord) {
           String orig = word.original;
           if (orig.contains("/")) {
             int slashIndex = orig.indexOf("/");
@@ -6227,13 +6193,16 @@ class CSSTokenizerFilter {
                     List.of(V_NORMAL), Arrays.asList("le", "pe", "re", "in"), null, null, true);
             ParsedWord[] first = split(firstPart, false);
             ParsedWord[] second = split(secondPart, false);
-            if (first.length == 1
-                && second.length == 1
-                && fontSize.checkValidity(first, cb)
-                && lineHeight.checkValidity(second, cb)) continue;
+            tokenValid =
+                first.length == 1
+                    && second.length == 1
+                    && fontSize.checkValidity(first, cb)
+                    && lineHeight.checkValidity(second, cb);
           }
         }
-        return false;
+        if (!tokenValid) {
+          return false;
+        }
       }
       return true;
     }
