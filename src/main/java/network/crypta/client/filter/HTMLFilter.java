@@ -18,6 +18,7 @@ import java.io.Writer;
 import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
 import java.text.ParseException;
+import java.util.AbstractMap;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -2536,6 +2537,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   static class TagVerifier {
 
+    private static final Map<String, Object> DROP_TAG =
+        new AbstractMap<String, Object>() {
+          @Override
+          public Set<Entry<String, Object>> entrySet() {
+            return Collections.emptySet();
+          }
+        };
+
     protected final String tagName;
     // Attributes which need no sanitation
     private final HashSet<String> allowedAttrs;
@@ -2681,7 +2690,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     ParsedTag sanitize(ParsedTag t, HTMLParseContext pc) throws DataFilterException {
       Map<String, Object> attributes = buildAttributeMap(t);
       Map<String, Object> sanitized = sanitizeHash(attributes, t, pc);
-      if (sanitized == null) {
+      if (sanitized == DROP_TAG || sanitized == null) {
         return null;
       }
       removeBlankEntries(sanitized, pc.isXHTML);
@@ -2768,6 +2777,10 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         outAttrs[index++] = buffer.toString();
       }
       return new ParsedTag(source, outAttrs);
+    }
+
+    protected Map<String, Object> dropTag() {
+      return DROP_TAG;
     }
 
     private static final class AttributeToken {
@@ -2945,7 +2958,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
               .append(l10n("tooManyNestedStyleOrScriptTags"))
               .append(" -->");
         else throwFilterException(l10n("tooManyNestedStyleOrScriptTagsLong"));
-        return null;
+        return dropTag();
       }
       if (!pc.killStyle) {
         processStyle(pc);
@@ -2970,7 +2983,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
               .append(l10n("tooManyNestedStyleOrScriptTags"))
               .append(" -->");
         else throwFilterException(l10n("tooManyNestedStyleOrScriptTagsLong"));
-        return null;
+        return dropTag();
       }
       setStyle(true, pc);
       String type = getHashString(h, "type");
@@ -2978,7 +2991,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if (!type.equalsIgnoreCase(HtmlStrings.STR_TEXT_CSS)) {
           pc.killStyle = true;
           pc.expectingBadComment = true;
-          return null; // kill the tag
+          return dropTag();
         }
         hn.put("type", HtmlStrings.STR_TEXT_CSS);
       }
@@ -3034,7 +3047,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         throws DataFilterException {
       // Call parent so we swallow the scripting
       super.sanitizeHash(hn, p, pc);
-      return null; // Lose the tags
+      return dropTag();
     }
 
     @Override
@@ -3171,12 +3184,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       for (String name : eventAttrs) {
         String arg = getHashString(h, name);
         if (arg != null) {
-          String sanitized = sanitizeScripting(arg);
-          if (sanitized == null) {
-            hn.remove(name);
-          } else {
-            hn.put(name, sanitized);
-          }
+          sanitizeScripting(arg);
+          hn.remove(name);
         }
       }
 
@@ -3213,7 +3222,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       LinkCharsetInfo charsetInfo = resolveLinkCharset(h);
       RelParseResult relResult = parseRelValue(getHashString(h, "rel"));
       if (relResult == null) {
-        return null;
+        return dropTag();
       }
       String parsedRev = normalizeRevValue(getHashString(h, "rev"));
       if (!relResult.normalizedRel.isEmpty()) {
@@ -3226,13 +3235,13 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           && relResult.originalRel == null
           && charsetInfo.type != null
           && charsetInfo.type.startsWith(HtmlStrings.STR_TEXT_CSS)) {
-        return null;
+        return dropTag();
       }
       String fallbackCharset = null;
       if (relResult.isStylesheet) {
         fallbackCharset = charsetInfo.charset == null ? pc.charset : null;
         if (!handleStylesheetMetadata(h, hn, charsetInfo)) {
-          return null;
+          return dropTag();
         }
       }
       sanitizeHrefAttribute(
@@ -3502,9 +3511,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             .append(HtmlStrings.STR_COMMENT_PREFIX)
             .append(HTMLEncoder.encode(e.toString()))
             .append(" -->");
-        return null;
+        return dropTag();
       }
-      if (finalAction == null) return null;
+      if (finalAction == null) return dropTag();
       hn.put(HtmlStrings.STR_METHOD, method);
       hn.put(HtmlStrings.STR_ACTION, finalAction);
       // Force enctype and accept-charset to acceptable values.
@@ -3555,7 +3564,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       // We drop the whole <input> if type isn't allowed (case-insensitive)
       if (hn.get("type") != null
           && !allowedTypes.contains(hn.get("type").toString().toLowerCase())) {
-        return null;
+        return dropTag();
       }
 
       return hn;
@@ -3613,7 +3622,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           handleNamedMetaTag(name, content, hn);
         } else if (hasHttpEquivOnly(name, httpEquiv)
             && !handleHttpEquivMeta(httpEquiv, content, hn, pc)) {
-          return null;
+          return dropTag();
         }
       }
 
@@ -4095,10 +4104,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         }
       }
       pc.writeAfterTag.append("<!-- deleted invalid base href -->");
-      return null;
+      return dropTag();
     }
   }
 
+  @SuppressWarnings("java:S1181")
   static String sanitizeStyle(
       String style, FilterCallback cb, HTMLParseContext hpc, boolean isInline)
       throws DataFilterException {
@@ -4113,18 +4123,12 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       pc.parse();
     } catch (IOException e) {
       LOG.error("IOException parsing inline CSS!");
-    } catch (Throwable t) {
-      if ("Error: could not match input".equals(t.getMessage())) {
-        LOG.info("CSS Parse Error!", t);
+    } catch (Error e) {
+      if ("Error: could not match input".equals(e.getMessage())) {
+        LOG.info("CSS Parse Error!", e);
         return "/* " + l10n("couldNotParseStyle") + " */";
       }
-      if (t instanceof Error err) {
-        throw err;
-      }
-      if (t instanceof RuntimeException runtime) {
-        throw runtime;
-      }
-      throw new RuntimeException(t);
+      throw e;
     }
     String s = w.toString();
     if ((s == null) || s.isEmpty()) return null;
