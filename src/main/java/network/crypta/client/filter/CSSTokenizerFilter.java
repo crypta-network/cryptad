@@ -2740,57 +2740,90 @@ class CSSTokenizerFilter {
     boolean invalid = false;
 
     void process(char c, int i) {
-      if (c == '+' && quoting == 0 && !escaping && bracketing == 0) {
-        if (index == -1 || index == i - 1 && selector == ' ') {
+      if (trySelectTopLevelCombinator(c, i)) return;
+      if (tryHandleParentheses(c)) return;
+      if (tryHandleQuotes(c)) return;
+      if (tryInvalidateOnNewline(c, i)) return;
+      if (tryHandleCR(c)) return;
+      if (tryHandleLFOrFF(c, i)) return;
+      if (tryHandleHexEscapeDigit(c)) return;
+      if (tryHandleEscapeTerminatorWhitespace(c)) return;
+      if (tryHandleBackslash(c, i)) return;
+      finalizeGenericEscaping();
+    }
+
+    private boolean trySelectTopLevelCombinator(char c, int i) {
+      if (quoting != 0 || escaping) return false;
+      if (c == '+') {
+        if (bracketing == 0 && shouldSetSelector(i)) {
           index = i;
           selector = c;
+          return true;
         }
-        return;
+        return false;
       }
-      if (c == '>' && quoting == 0 && !escaping) {
-        if (index == -1 || index == i - 1 && selector == ' ') {
+      if (c == '>' || c == ' ') {
+        if (shouldSetSelector(i)) {
           index = i;
           selector = c;
+          return true;
         }
-        return;
       }
-      if (c == ' ' && quoting == 0 && !escaping) {
-        if (index == -1 || index == i - 1 && selector == ' ') {
-          index = i;
-          selector = c;
-        }
-        return;
-      }
-      if (c == '(' && quoting == 0 && !escaping) {
+      return false;
+    }
+
+    private boolean shouldSetSelector(int i) {
+      return index == -1 || index == i - 1 && selector == ' ';
+    }
+
+    private boolean tryHandleParentheses(char c) {
+      if (quoting != 0 || escaping) return false;
+      if (c == '(') {
         bracketing += 1;
-        return;
+        return true;
       }
-      if (c == ')' && quoting == 0 && !escaping) {
+      if (c == ')') {
         bracketing -= 1;
-        return;
+        return true;
       }
-      if (c == '\'' && quoting == 0 && !escaping) {
-        quoting = c;
-        return;
+      return false;
+    }
+
+    private boolean tryHandleQuotes(char c) {
+      if (escaping) return false;
+      if (quoting == 0) {
+        if (c == '\'' || c == '"') {
+          quoting = c;
+          return true;
+        }
+        return false;
       }
-      if (c == '"' && quoting == 0 && !escaping) {
-        quoting = c;
-        return;
-      }
-      if (c == quoting && !escaping) {
+      if (c == quoting) {
         quoting = 0;
-        return;
+        return true;
       }
+      return false;
+    }
+
+    private boolean tryInvalidateOnNewline(char c, int i) {
       if ((c == '\r' || c == '\n' || c == '\f') && !(quoting != 0 && escaping)) {
         if (LOG.isTraceEnabled())
           LOG.trace("no newlines unless in a string *and* quoted at index {}", i);
         invalid = true;
-        return;
+        return true;
       }
+      return false;
+    }
+
+    private boolean tryHandleCR(char c) {
       if (c == '\r' && escapedDigits == 0) {
         escaping = false;
-        return;
+        return true;
       }
+      return false;
+    }
+
+    private boolean tryHandleLFOrFF(char c, int i) {
       if (c == '\n' || c == '\f') {
         if (escapedDigits == 0) {
           escaping = false;
@@ -2798,34 +2831,51 @@ class CSSTokenizerFilter {
           if (LOG.isTraceEnabled()) LOG.trace("invalid newline escaping at char {}", i);
           invalid = true;
         }
-        return;
+        return true;
       }
-      if (escaping
-          && ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+
+    private boolean isHexDigit(char c) {
+      return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    private boolean tryHandleHexEscapeDigit(char c) {
+      if (escaping && isHexDigit(c)) {
         escapedDigits++;
         if (escapedDigits == 6) escaping = false;
-        return;
+        return true;
       }
+      return false;
+    }
+
+    private boolean tryHandleEscapeTerminatorWhitespace(char c) {
       if (escaping && escapedDigits > 0 && (WS_T_R_N_F.indexOf(c) != -1)) {
         escaping = false;
-        return;
+        return true;
       }
-      if (c == '\\' && !escaping) {
+      return false;
+    }
+
+    private boolean tryHandleBackslash(char c, int i) {
+      if (c != '\\') return false;
+      if (!escaping) {
         escaping = true;
         escapedDigits = 0;
-        return;
+        return true;
       }
-      if (c == '\\' && escapedDigits > 0) {
+      if (escapedDigits > 0) {
         if (LOG.isTraceEnabled())
           LOG.trace("backslash but already escaping with digits at char {}", i);
         invalid = true;
-        return;
+        return true;
       }
-      if (c == '\\') {
-        escaping = false;
-        escapedDigits = 0;
-        return;
-      }
+      escaping = false;
+      escapedDigits = 0;
+      return true;
+    }
+
+    private void finalizeGenericEscaping() {
       if (escaping) {
         // Any other character can be escaped.
         escaping = false;
@@ -6062,124 +6112,195 @@ class CSSTokenizerFilter {
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
       if (LOG.isTraceEnabled()) LOG.trace("font verifier: {}", toString(value));
-      if (value.length == 1) {
-        if (value[0] instanceof ParsedIdentifier && "inherit".equalsIgnoreCase(value[0].original)) {
-          // CSS Property has one of the explicitly defined values
-          if (LOG.isTraceEnabled()) LOG.trace("font: inherit");
-          return true;
-        }
-      }
-      if (allowedMedia != null && !onlyValueVerifier) {
-        boolean allowed = false;
-        for (String m : media)
-          if (allowedMedia.contains(m)) {
-            allowed = true;
-            break;
-          }
-        if (!allowed) {
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
-                Fields.commaList(media),
-                allowedMedia);
-          return false;
-        }
-      }
+      if (isInherit(value)) return true;
+
+      if (!isMediaAllowed(media)) return false;
+
       ArrayList<String> fontWords = new ArrayList<>();
       // FIXME delete fonts we don't know about but let through ones we do.
       // Or allow unknown fonts given [a-z][A-Z][0-9] ???
-      outer:
-      for (int i = 0; i < value.length; i++) {
+      int i = 0;
+      while (i < value.length) {
         ParsedWord word = value[i];
-        String s = null;
-        if (word instanceof ParsedString string) {
-          String decoded = (string.getDecoded());
-          if (LOG.isTraceEnabled()) LOG.trace("decoded: \"{}\"", decoded);
-          // It's actually quoted, great.
-          if (isSpecificFamily(decoded.toLowerCase())) {
-            continue;
-          }
-          if (isGenericFamily(decoded.toLowerCase())) {
-            continue;
-          } else s = decoded;
-        } else if (word instanceof ParsedIdentifier identifier) {
-          s = (identifier.getDecoded());
-          if (isGenericFamily(s)) {
-            continue;
-          }
-          if (isSpecificFamily(s)) {
-            continue;
-          }
-          if (word.postComma) {
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "Word ends in comma, but is not a valid font on its own: {} (index {})", word, i);
-            return false;
-          }
-        } else return false;
-        // Unquoted multi-word font, or unquoted single-word font.
-        // Unfortunately fonts can be ambiguous...
-        // Therefore we do not accept a single-word font unless it is either quoted or ends in a
-        // comma.
+        StartDecision start = analyzeStartWord(word, i);
+
+        if (start.kind == StartDecision.Kind.CONTINUE) {
+          i++;
+          continue;
+        }
+        if (start.kind == StartDecision.Kind.INVALID) return false;
+
+        // START of an unquoted, possibly multi-word font name
         fontWords.clear();
-        assert (s != null);
-        fontWords.add(s);
-        if (LOG.isTraceEnabled()) LOG.trace("first word: \"{}\"", s);
-        if (i == value.length - 1) {
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "last word. font words: {} valid={}",
-                getStringFromArray(fontWords.toArray(new String[0])),
-                validFontWords(fontWords));
-          return validFontWords(fontWords);
-        }
-        if (!possiblyValidFontWords(fontWords)) return false;
-        boolean last = false;
-        for (int j = i + 1; j < value.length; j++) {
-          ParsedWord newWord = value[j];
-          if (j == value.length - 1) last = true;
-          String s1;
-          if (newWord instanceof ParsedIdentifier) {
-            s1 = newWord.original;
-            fontWords.add(s1);
-            if (LOG.isTraceEnabled()) LOG.trace("adding word: \"{}\"", s1);
-            if (last) {
-              if (newWord.postComma) {
-                if (LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
-              }
-              if (validFontWords(fontWords)) {
-                // Valid. Good.
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "font: reached last in inner loop, valid. font words: {}",
-                      getStringFromArray(fontWords.toArray(new String[0])));
-                return true;
-              }
-            }
-            if (newWord.postComma) {
-              // Words must be a valid font when put together
-              if (validFontWords(fontWords)) {
-                fontWords.clear();
-                i = j;
-                continue outer;
-              } else {
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "comma but can't parse font words: {}",
-                      Fields.commaList(fontWords.toArray(new String[0])));
-                return false;
-              }
-            }
-          } else {
-            if (LOG.isTraceEnabled()) LOG.trace("cannot parse {}", newWord);
-            return false;
-          }
-        }
-        // Still looking for another keyword...
-        return validFontWords(fontWords);
+        fontWords.add(start.firstWord);
+        if (LOG.isTraceEnabled()) LOG.trace("first word: \"{}\"", start.firstWord);
+
+        ProcessResult pr = consumeUnquotedFont(value, i, fontWords);
+        if (pr.shouldReturn) return pr.returnValue;
+
+        // Continue outer loop from the consumed index
+        i = pr.nextIndex + 1;
       }
       if (LOG.isTraceEnabled()) LOG.trace("font: reached end, valid");
       return true;
+    }
+
+    private boolean isInherit(ParsedWord[] value) {
+      if (value.length != 1) return false;
+      ParsedWord w = value[0];
+      if (w instanceof ParsedIdentifier && "inherit".equalsIgnoreCase(w.original)) {
+        if (LOG.isTraceEnabled()) LOG.trace("font: inherit");
+        return true;
+      }
+      return false;
+    }
+
+    private boolean isMediaAllowed(String[] media) {
+      if (allowedMedia == null || onlyValueVerifier) return true;
+      for (String m : media) {
+        if (allowedMedia.contains(m)) return true;
+      }
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
+            Fields.commaList(media),
+            allowedMedia);
+      return false;
+    }
+
+    private StartDecision analyzeStartWord(ParsedWord word, int index) {
+      String s = null;
+      if (word instanceof ParsedString string) {
+        String decoded = (string.getDecoded());
+        if (LOG.isTraceEnabled()) LOG.trace("decoded: \"{}\"", decoded);
+        String lower = decoded.toLowerCase();
+        if (isSpecificFamily(lower) || isGenericFamily(lower)) {
+          return StartDecision.continueNext();
+        }
+        s = decoded;
+      } else if (word instanceof ParsedIdentifier identifier) {
+        s = identifier.getDecoded();
+        if (isGenericFamily(s) || isSpecificFamily(s)) {
+          return StartDecision.continueNext();
+        }
+        if (word.postComma) {
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "Word ends in comma, but is not a valid font on its own: {} (index {})",
+                word,
+                index);
+          return StartDecision.invalid();
+        }
+      } else {
+        return StartDecision.invalid();
+      }
+      return StartDecision.startWith(s);
+    }
+
+    private ProcessResult consumeUnquotedFont(
+        ParsedWord[] value, int startIndex, ArrayList<String> fontWords) {
+      // If only one token remains, validate as-is
+      if (startIndex == value.length - 1) {
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "last word. font words: {} valid={}",
+              getStringFromArray(fontWords.toArray(new String[0])),
+              validFontWords(fontWords));
+        return ProcessResult.returning(validFontWords(fontWords));
+      }
+
+      if (!possiblyValidFontWords(fontWords)) return ProcessResult.returning(false);
+
+      for (int j = startIndex + 1; j < value.length; j++) {
+        ParsedWord newWord = value[j];
+        boolean last = (j == value.length - 1);
+
+        if (!(newWord instanceof ParsedIdentifier)) {
+          if (LOG.isTraceEnabled()) LOG.trace("cannot parse {}", newWord);
+          return ProcessResult.returning(false);
+        }
+
+        String s1 = newWord.original;
+        fontWords.add(s1);
+        if (LOG.isTraceEnabled()) LOG.trace("adding word: \"{}\"", s1);
+
+        if (last) {
+          if (newWord.postComma) {
+            if (LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
+          }
+          if (validFontWords(fontWords)) {
+            if (LOG.isDebugEnabled())
+              LOG.debug(
+                  "font: reached last in inner loop, valid. font words: {}",
+                  getStringFromArray(fontWords.toArray(new String[0])));
+            return ProcessResult.returning(true);
+          }
+        }
+
+        if (newWord.postComma) {
+          if (validFontWords(fontWords)) {
+            fontWords.clear();
+            // Continue processing from this position in the outer loop
+            return ProcessResult.continuingFrom(j);
+          } else {
+            if (LOG.isDebugEnabled())
+              LOG.debug(
+                  "comma but can't parse font words: {}",
+                  Fields.commaList(fontWords.toArray(new String[0])));
+            return ProcessResult.returning(false);
+          }
+        }
+      }
+      // Still looking for another keyword...
+      return ProcessResult.returning(validFontWords(fontWords));
+    }
+
+    private static final class StartDecision {
+      enum Kind {
+        CONTINUE,
+        INVALID,
+        START
+      }
+
+      final Kind kind;
+      final String firstWord;
+
+      private StartDecision(Kind kind, String firstWord) {
+        this.kind = kind;
+        this.firstWord = firstWord;
+      }
+
+      static StartDecision continueNext() {
+        return new StartDecision(Kind.CONTINUE, null);
+      }
+
+      static StartDecision invalid() {
+        return new StartDecision(Kind.INVALID, null);
+      }
+
+      static StartDecision startWith(String first) {
+        return new StartDecision(Kind.START, first);
+      }
+    }
+
+    private static final class ProcessResult {
+      final boolean shouldReturn;
+      final boolean returnValue;
+      final int nextIndex; // valid only when shouldReturn == false
+
+      private ProcessResult(boolean shouldReturn, boolean returnValue, int nextIndex) {
+        this.shouldReturn = shouldReturn;
+        this.returnValue = returnValue;
+        this.nextIndex = nextIndex;
+      }
+
+      static ProcessResult returning(boolean value) {
+        return new ProcessResult(true, value, -1);
+      }
+
+      static ProcessResult continuingFrom(int index) {
+        return new ProcessResult(false, false, index);
+      }
     }
 
     private boolean possiblyValidFontWords(ArrayList<String> fontWords) {
