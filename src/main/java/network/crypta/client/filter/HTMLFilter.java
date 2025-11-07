@@ -4040,17 +4040,18 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         String content, Map<String, Object> output, HTMLParseContext pc) {
       int idx = content.indexOf(';');
       if (idx == -1) {
-        // Same-page refresh (no URL part). Only handle when enabled; otherwise leave unchanged.
+        // Same-page refresh (no URL part).
         if (getMetaRefreshSamePageMinInterval() >= 0) {
           return handleSamePageRefresh(content, output, pc);
         }
-        return true;
-      }
-      // Redirect refresh: requires redirect filtering enabled; idx >= 0 is implied.
-      else if (getMetaRefreshRedirectMinInterval() >= 0) {
+        // Same-page refreshes are disabled: drop the tag.
+        return false;
+      } else if (getMetaRefreshRedirectMinInterval() >= 0) {
+        // Redirect refresh: separator present and redirect filtering enabled.
         return handleRedirectRefresh(content, idx, output, pc);
       }
-      return true;
+      // Redirect refreshes are disabled: drop the tag.
+      return false;
     }
 
     private boolean handleSamePageRefresh(
