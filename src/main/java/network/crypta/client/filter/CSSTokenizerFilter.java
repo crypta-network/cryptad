@@ -5385,172 +5385,210 @@ class CSSTokenizerFilter {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "1recursiveParserExpressionVerifier called: with {} {}", expression, toString(words));
-      if ((expression == null || (expression.trim().isEmpty()))) {
+      if (expression == null || expression.trim().isEmpty()) {
         return words == null || words.length == 0;
       }
-      int tokensCanBeGivenLowerLimit = 1, tokensCanBeGivenUpperLimit = 1;
-      for (int i = 0; i < expression.length(); i++) {
-        if (expression.charAt(i) == 'a') // Identifying ||
-        {
-          int noOfa = 0;
-          int endIndex = expression.length();
-          // Detecting the other end
-          for (int j = 0; j < expression.length(); j++) {
-            char c = expression.charAt(j);
-            if (c == 'a') {
-              noOfa++;
-            } else if (!('0' <= c && '9' >= c)) {
-              endIndex = j;
-              break;
-            }
-          }
-          String firstPart = expression.substring(0, endIndex);
-          String secondPart = "";
-          if (endIndex != expression.length()) secondPart = expression.substring(endIndex + 1);
-          int j = 1;
-          if ((secondPart.isEmpty())) {
-            // This is an optimisation: If no second part, there cannot be any words assigned to the
-            // second part, so the first part must match everything.
-            // It is equivalent to running the loop, because each time the second part will fail,
-            // because it is trying to match "" to a nonzero number of words.
-            // This happens every time we have "1a2a3" with nothing after it, so it is tested by the
-            // unit tests already.
-            j = words.length;
-          }
-          for (; j <= words.length; j++) {
-            if (LOG.isTraceEnabled())
-              LOG.trace("2Making recursiveDoubleBarVerifier to consume {} words", j);
-            ParsedWord[] partToPassToDB = Arrays.copyOf(words, j);
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "3Calling recursiveDoubleBarVerifier with {} {}",
-                  firstPart,
-                  CSSPropertyVerifier.toString(partToPassToDB));
-            if (recursiveDoubleBarVerifier(
-                firstPart, partToPassToDB, cb)) // This function is written to verify || operator.
-            {
-              ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "4recursiveDoubleBarVerifier true calling itself with {}{}",
-                    secondPart,
-                    CSSPropertyVerifier.toString(partToPass));
-              if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) return true;
-            }
-            if (LOG.isDebugEnabled())
-              LOG.debug("5Back to recursiveDoubleBarVerifier {} {} {}", j, noOfa + 1, words.length);
-          }
-          return false;
-        } else if (expression.charAt(i) == 'b') {
-          // detecting b which is the && operator
-          int endIndex = expression.length();
-          // Find the end of a chain of 1b2b3...
-          for (int j = 0; j < expression.length(); j++) {
-            char c = expression.charAt(j);
-            if (!(c == 'b' || '0' <= c && '9' >= c)) {
-              endIndex = j;
-              break;
-            }
-          }
-          String firstPart = expression.substring(0, endIndex);
-          String secondPart = "";
-          if (endIndex != expression.length()) {
-            secondPart = expression.substring(endIndex + 1);
-          }
-          for (int j = words.length; j >= 1; j--) {
-            ParsedWord[] partToPassToDA = Arrays.copyOf(words, j);
-            if (doubleAmpersandVerifier(firstPart, partToPassToDA, cb)) {
-              ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
-              if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) {
-                return true;
-              }
-            }
-          }
-          return false;
-        } else if (expression.charAt(i) == ' ') {
-          String firstPart = expression.substring(0, i);
-          String secondPart = expression.substring(i + 1);
-          if (words != null && words.length > 0) {
-            int index = Integer.parseInt(firstPart);
-            boolean result =
-                CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words[0], cb);
-            if (result) {
-              ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "8First part is true. partToPass={}", CSSPropertyVerifier.toString(partToPass));
-              return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
-            }
-          }
-          return false;
-        } else if (expression.charAt(i) == '?') {
-          String firstPart = expression.substring(0, i);
-          String secondPart = expression.substring(i + 1);
-          int index = Integer.parseInt(firstPart);
-          if (words.length > 0) {
-            boolean result =
-                CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words[0], cb);
-            if (result) {
-              ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
-              return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
-            }
-          } else return recursiveParserExpressionVerifier(secondPart, words, cb);
-          return false;
-        } else if (expression.charAt(i) == '<') {
-          int tindex = expression.indexOf('>');
-          if (tindex > i) {
-            int firstIndex = tindex + 1;
-            if ((tindex != expression.length() - 1) && expression.charAt(tindex + 1) == '[') {
-              int indexOfSecondBracket = expression.indexOf(']');
-              if (indexOfSecondBracket > (tindex + 1)) {
-                tokensCanBeGivenLowerLimit =
-                    Integer.parseInt(
-                        expression.substring(tindex + 2, indexOfSecondBracket).split(",")[0]);
-                tokensCanBeGivenUpperLimit =
-                    Integer.parseInt(
-                        expression.substring(tindex + 2, indexOfSecondBracket).split(",")[1]);
-                firstIndex = expression.indexOf(']') + 1;
-              }
-            }
-            String firstPart = expression.substring(0, i);
-            String secondPart = expression.substring(firstIndex);
-            if (!secondPart.isEmpty() && secondPart.charAt(0) == ' ') {
-              secondPart = secondPart.substring(1);
-            } else if (!secondPart.isEmpty()) {
-              throw new IllegalStateException(
-                  "Don't know what to do with char after <>[]: " + secondPart.charAt(0));
-            }
-            if (LOG.isDebugEnabled())
-              LOG.debug(
-                  "9in < firstPart={} secondPart={} tokensCanBeGivenLowerLimit={}"
-                      + " tokensCanBeGivenUpperLimit={}",
-                  firstPart,
-                  secondPart,
-                  tokensCanBeGivenLowerLimit,
-                  tokensCanBeGivenUpperLimit);
-            int index = Integer.parseInt(firstPart);
-            String[] strLimits = expression.substring(i + 1, tindex).split(",");
-            if (strLimits.length == 2) {
-              int lowerLimit = Integer.parseInt(strLimits[0]);
-              int upperLimit = Integer.parseInt(strLimits[1]);
-              return recursiveVariableOccuranceVerifier(
-                  index,
-                  words,
-                  lowerLimit,
-                  upperLimit,
-                  tokensCanBeGivenLowerLimit,
-                  tokensCanBeGivenUpperLimit,
-                  secondPart,
-                  cb);
-            }
-          }
-          return false;
+
+      // Find the first operator occurrence to decide which handler to use.
+      int idxA = expression.indexOf('a');
+      int idxB = expression.indexOf('b');
+      int idxSpace = expression.indexOf(' ');
+      int idxQ = expression.indexOf('?');
+      int idxLt = expression.indexOf('<');
+
+      int firstIndex = minNonNegative(idxA, idxB, idxSpace, idxQ, idxLt);
+      if (firstIndex == -1) {
+        return handleSingleVerifier(expression, words, cb);
+      }
+
+      char op = expression.charAt(firstIndex);
+      switch (op) {
+        case 'a':
+          return handleOrExpression(expression, words, cb);
+        case 'b':
+          return handleAndExpression(expression, words, cb);
+        case ' ':
+          return handleSequenceExpression(expression, firstIndex, words, cb);
+        case '?':
+          return handleOptionalExpression(expression, firstIndex, words, cb);
+        case '<':
+          return handleRangeExpression(expression, firstIndex, words, cb);
+        default:
+          // Should not happen, but fallback to single verifier behavior.
+          return handleSingleVerifier(expression, words, cb);
+      }
+    }
+
+    private int minNonNegative(int... values) {
+      int min = Integer.MAX_VALUE;
+      boolean found = false;
+      for (int v : values) {
+        if (v >= 0 && v < min) {
+          min = v;
+          found = true;
         }
       }
-      // Single verifier object
+      return found ? min : -1;
+    }
+
+    private boolean handleSingleVerifier(String expression, ParsedWord[] words, FilterCallback cb) {
       if (LOG.isTraceEnabled()) LOG.trace("10Single token:{}", expression);
       int index = Integer.parseInt(expression);
       return CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words, cb);
+    }
+
+    private boolean handleOrExpression(String expression, ParsedWord[] words, FilterCallback cb) {
+      // Identifying || chain like "1a2a3 [rest]"
+      int noOfa = 0;
+      int endIndex = expression.length();
+      for (int j = 0; j < expression.length(); j++) {
+        char c = expression.charAt(j);
+        if (c == 'a') noOfa++;
+        else if (!('0' <= c && '9' >= c)) {
+          endIndex = j;
+          break;
+        }
+      }
+      String firstPart = expression.substring(0, endIndex);
+      String secondPart = "";
+      if (endIndex != expression.length()) secondPart = expression.substring(endIndex + 1);
+
+      int j = 1;
+      if (secondPart.isEmpty()) {
+        // Optimization identical to original: if no second part, first part must match everything.
+        j = words.length;
+      }
+      for (; j <= words.length; j++) {
+        if (LOG.isTraceEnabled())
+          LOG.trace("2Making recursiveDoubleBarVerifier to consume {} words", j);
+        ParsedWord[] partToPassToDB = Arrays.copyOf(words, j);
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "3Calling recursiveDoubleBarVerifier with {} {}",
+              firstPart,
+              CSSPropertyVerifier.toString(partToPassToDB));
+        if (recursiveDoubleBarVerifier(firstPart, partToPassToDB, cb)) {
+          ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "4recursiveDoubleBarVerifier true calling itself with {}{}",
+                secondPart,
+                CSSPropertyVerifier.toString(partToPass));
+          if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) return true;
+        }
+        if (LOG.isDebugEnabled())
+          LOG.debug("5Back to recursiveDoubleBarVerifier {} {} {}", j, noOfa + 1, words.length);
+      }
+      return false;
+    }
+
+    private boolean handleAndExpression(String expression, ParsedWord[] words, FilterCallback cb) {
+      // Identifying && chain like "1b2b3 [rest]"
+      int endIndex = expression.length();
+      for (int j = 0; j < expression.length(); j++) {
+        char c = expression.charAt(j);
+        if (!(c == 'b' || ('0' <= c && '9' >= c))) {
+          endIndex = j;
+          break;
+        }
+      }
+      String firstPart = expression.substring(0, endIndex);
+      String secondPart = "";
+      if (endIndex != expression.length()) secondPart = expression.substring(endIndex + 1);
+      for (int j = words.length; j >= 1; j--) {
+        ParsedWord[] partToPassToDA = Arrays.copyOf(words, j);
+        if (doubleAmpersandVerifier(firstPart, partToPassToDA, cb)) {
+          ParsedWord[] partToPass = Arrays.copyOfRange(words, j, words.length);
+          if (recursiveParserExpressionVerifier(secondPart, partToPass, cb)) return true;
+        }
+      }
+      return false;
+    }
+
+    private boolean handleSequenceExpression(
+        String expression, int spaceIndex, ParsedWord[] words, FilterCallback cb) {
+      String firstPart = expression.substring(0, spaceIndex);
+      String secondPart = expression.substring(spaceIndex + 1);
+      if (words != null && words.length > 0) {
+        int index = Integer.parseInt(firstPart);
+        boolean result = CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words[0], cb);
+        if (result) {
+          ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
+          if (LOG.isDebugEnabled())
+            LOG.debug(
+                "8First part is true. partToPass={}", CSSPropertyVerifier.toString(partToPass));
+          return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
+        }
+      }
+      return false;
+    }
+
+    private boolean handleOptionalExpression(
+        String expression, int qIndex, ParsedWord[] words, FilterCallback cb) {
+      String firstPart = expression.substring(0, qIndex);
+      String secondPart = expression.substring(qIndex + 1);
+      int index = Integer.parseInt(firstPart);
+      if (words.length > 0) {
+        boolean result = CSSTokenizerFilter.auxilaryVerifiers[index].checkValidity(words[0], cb);
+        if (result) {
+          ParsedWord[] partToPass = Arrays.copyOfRange(words, 1, words.length);
+          return recursiveParserExpressionVerifier(secondPart, partToPass, cb);
+        }
+      } else {
+        return recursiveParserExpressionVerifier(secondPart, words, cb);
+      }
+      return false;
+    }
+
+    private boolean handleRangeExpression(
+        String expression, int ltIndex, ParsedWord[] words, FilterCallback cb) {
+      int tindex = expression.indexOf('>');
+      if (tindex > ltIndex) {
+        int firstIndex = tindex + 1;
+        int tokensCanBeGivenLowerLimit = 1;
+        int tokensCanBeGivenUpperLimit = 1;
+        if ((tindex != expression.length() - 1) && expression.charAt(tindex + 1) == '[') {
+          int indexOfSecondBracket = expression.indexOf(']');
+          if (indexOfSecondBracket > (tindex + 1)) {
+            String[] limits = expression.substring(tindex + 2, indexOfSecondBracket).split(",");
+            tokensCanBeGivenLowerLimit = Integer.parseInt(limits[0]);
+            tokensCanBeGivenUpperLimit = Integer.parseInt(limits[1]);
+            firstIndex = expression.indexOf(']') + 1;
+          }
+        }
+        String firstPart = expression.substring(0, ltIndex);
+        String secondPart = expression.substring(firstIndex);
+        if (!secondPart.isEmpty() && secondPart.charAt(0) == ' ') {
+          secondPart = secondPart.substring(1);
+        } else if (!secondPart.isEmpty()) {
+          throw new IllegalStateException(
+              "Don't know what to do with char after <>[]: " + secondPart.charAt(0));
+        }
+        if (LOG.isDebugEnabled())
+          LOG.debug(
+              "9in < firstPart={} secondPart={} tokensCanBeGivenLowerLimit={}"
+                  + " tokensCanBeGivenUpperLimit={}",
+              firstPart,
+              secondPart,
+              tokensCanBeGivenLowerLimit,
+              tokensCanBeGivenUpperLimit);
+        int index = Integer.parseInt(firstPart);
+        String[] strLimits = expression.substring(ltIndex + 1, tindex).split(",");
+        if (strLimits.length == 2) {
+          int lowerLimit = Integer.parseInt(strLimits[0]);
+          int upperLimit = Integer.parseInt(strLimits[1]);
+          return recursiveVariableOccuranceVerifier(
+              index,
+              words,
+              lowerLimit,
+              upperLimit,
+              tokensCanBeGivenLowerLimit,
+              tokensCanBeGivenUpperLimit,
+              secondPart,
+              cb);
+        }
+      }
+      return false;
     }
 
     /**
