@@ -36,42 +36,74 @@ public class OggFilter implements ContentDataFilter {
     LinkedList<OggPage> splitPages = new LinkedList<>();
     CountedOutputStream out = new CountedOutputStream(output);
     DataInputStream in = new DataInputStream(new BufferedInputStream(input, 255));
-    OggPage page = null;
+
     OggPage nextPage = OggPage.readPage(in);
     boolean running = true;
     while (running) {
-      page = nextPage;
-      try {
-        nextPage = OggPage.readPage(in);
-      } catch (EOFException e) {
-        nextPage = null;
-        running = false;
-      }
-      OggBitstreamFilter filter = null;
-      if (streamFilters.containsKey(page.getSerial())) {
-        filter = streamFilters.get(page.getSerial());
-      } else {
-        filter = OggBitstreamFilter.getBitstreamFilter(page);
-        streamFilters.put(page.getSerial(), filter);
-      }
+      OggPage page = nextPage;
+      nextPage = readNextPageOrNull(in);
+      if (nextPage == null) running = false;
+
+      OggBitstreamFilter filter = getOrCreateFilter(streamFilters, page);
       if (filter == null) continue;
+
       page = filter.parse(page);
-      // Don't write a continuous pages unless they are all valid
-      if (page != null && page.headerValid() && !hasValidSubpage(page, nextPage)) {
-        splitPages.add(page);
-        if (nextPage == null || !nextPage.isPacketContinued()) {
-          while (!splitPages.isEmpty()) {
-            OggPage part = splitPages.remove();
-            out.write(part.toArray());
-          }
-        }
-      } else if (!splitPages.isEmpty()) splitPages.clear();
+      handlePage(page, nextPage, splitPages, out);
     }
     out.flush();
     if (out.written() == 0) {
       throw new DataFilterException(
           l10n("EmptyOutputTitle"), l10n("EmptyOutputTitle"), l10n("EmptyOutputDescription"));
     }
+  }
+
+  private static OggPage readNextPageOrNull(DataInputStream in) throws IOException {
+    try {
+      return OggPage.readPage(in);
+    } catch (EOFException e) {
+      return null;
+    }
+  }
+
+  private OggBitstreamFilter getOrCreateFilter(
+      Map<Integer, OggBitstreamFilter> streamFilters, OggPage page) {
+    Integer serial = page.getSerial();
+    if (streamFilters.containsKey(serial)) {
+      return streamFilters.get(serial);
+    }
+    OggBitstreamFilter filter = OggBitstreamFilter.getBitstreamFilter(page);
+    // Preserve behavior: store even when null to avoid re-resolving later
+    streamFilters.put(serial, filter);
+    return filter;
+  }
+
+  private void handlePage(
+      OggPage page, OggPage nextPage, LinkedList<OggPage> splitPages, CountedOutputStream out)
+      throws IOException {
+    if (isWritablePage(page, nextPage)) {
+      splitPages.add(page);
+      if (isEndOfPacket(nextPage)) {
+        writeAllSplitPages(splitPages, out);
+      }
+    } else if (!splitPages.isEmpty()) {
+      splitPages.clear();
+    }
+  }
+
+  private static boolean isEndOfPacket(OggPage nextPage) {
+    return nextPage == null || !nextPage.isPacketContinued();
+  }
+
+  private void writeAllSplitPages(LinkedList<OggPage> splitPages, CountedOutputStream out)
+      throws IOException {
+    while (!splitPages.isEmpty()) {
+      OggPage part = splitPages.remove();
+      out.write(part.toArray());
+    }
+  }
+
+  private boolean isWritablePage(OggPage page, OggPage nextPage) throws IOException {
+    return page != null && page.headerValid() && !hasValidSubpage(page, nextPage);
   }
 
   /**
@@ -81,14 +113,14 @@ public class OggFilter implements ContentDataFilter {
    * @throws IOException
    */
   private boolean hasValidSubpage(OggPage page, OggPage nextPage) throws IOException {
-    OggPage subpage = null;
+    OggPage subpage;
     int pageCount = 0;
     try (ByteArrayOutputStream data = new ByteArrayOutputStream()) {
       // Populate a byte array with all the data in which a subpage might hide
       data.write(page.toArray());
       if (nextPage != null) data.write(nextPage.toArray());
       try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(data.toByteArray()))) {
-        while (true) {
+        while (in.available() > 0) {
           OggPage.seekToPage(in);
           in.mark(65307);
           subpage = new OggPage(in);
@@ -96,7 +128,8 @@ public class OggFilter implements ContentDataFilter {
             pageCount++;
           }
           in.reset();
-          in.skip(1); // Break the lock on the current page
+          long skipped = in.skip(1L); // Break the lock on the current page
+          if (skipped <= 0) break;
         }
       } catch (EOFException e) {
         // We've ran out of data to read. Break.
@@ -107,8 +140,9 @@ public class OggFilter implements ContentDataFilter {
 
   private boolean hasValidSubpage(OggPage page) throws IOException {
     try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(page.toArray()))) {
-      in.skip(1); // Break alignment with the first page
-      while (true) {
+      long skipped = in.skip(1L); // Break alignment with the first page
+      if (skipped <= 0) return false;
+      while (in.available() > 0) {
         OggPage subpage = OggPage.readPage(in);
         if (subpage.headerValid()) return true;
       }
@@ -116,17 +150,6 @@ public class OggFilter implements ContentDataFilter {
       // We've ran out of data to read. Break.
     }
     return false;
-  }
-
-  public void writeFilter(
-      InputStream input,
-      OutputStream output,
-      String charset,
-      HashMap<String, String> otherParams,
-      FilterCallback cb)
-      throws IOException {
-    // TODO Auto-generated method stub
-
   }
 
   private static String l10n(String key) {
