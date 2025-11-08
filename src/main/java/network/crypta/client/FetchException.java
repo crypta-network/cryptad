@@ -841,8 +841,12 @@ public class FetchException extends Exception {
           MIME_INCOMPATIBLE_WITH_EXTENSION ->
           true;
 
-      // Wierd ones
-      case CANCELLED, ARCHIVE_RESTART, PERMANENT_REDIRECT, WRONG_MIME_TYPE ->
+      // Weird ones
+      case CANCELLED ->
+          // Treat user-initiated cancellations as non-fatal so callers may
+          // retry or ignore without backoff semantics.
+          false;
+      case ARCHIVE_RESTART, PERMANENT_REDIRECT, WRONG_MIME_TYPE ->
           // Fatal
           true;
     };
