@@ -632,7 +632,7 @@ public class ClientGet extends ClientRequest
   public void onFailure(FetchException e, ClientGetter state) {
     if (finished) return;
     synchronized (this) {
-      if (e.expectedSize != 0) this.foundDataLength = e.expectedSize;
+      if (e.getExpectedSize() != 0) this.foundDataLength = e.getExpectedSize();
       if (e.getExpectedMimeType() != null) this.foundDataMimeType = e.getExpectedMimeType();
       succeeded = false;
       getFailedMessage = new GetFailedMessage(e, identifier, global);

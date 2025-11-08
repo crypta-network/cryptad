@@ -781,8 +781,8 @@ public class ClientGetter extends BaseClientGetter
   public void onFailure(
       FetchException e, ClientGetState state, ClientContext context, boolean force) {
     if (LOG.isDebugEnabled()) LOG.debug("Failed from {} : {} on {}", state, e, this, e);
-    if (expectedSize > 0 && (e.expectedSize <= 0 || finalBlocksTotal != 0))
-      e.expectedSize = expectedSize;
+    if (expectedSize > 0 && (e.getExpectedSize() <= 0 || finalBlocksTotal != 0))
+      e = e.withExpectedSize(expectedSize);
 
     context.getJobRunner(persistent()).setCheckpointASAP();
     e = adjustTooBigForFilter(e);

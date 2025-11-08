@@ -137,7 +137,7 @@ public class DataFilterException extends UnsafeContentTypeException {
    */
   @Override
   public FetchException recreateFetchException(FetchException e, String mime) {
-    return new FetchException(e.expectedSize, this, mime);
+    return new FetchException(e.getExpectedSize(), this, mime);
   }
 
   /**

@@ -119,7 +119,7 @@ public abstract class UnsafeContentTypeException extends IOException {
    * @return a new {@code FetchException} that captures this validation failure and context
    */
   public FetchException recreateFetchException(FetchException e, String mime) {
-    return new FetchException(getFetchErrorCode(), e.expectedSize, this, mime);
+    return new FetchException(getFetchErrorCode(), e.getExpectedSize(), this, mime);
   }
 
   /**

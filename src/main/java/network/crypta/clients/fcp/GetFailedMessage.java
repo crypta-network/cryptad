@@ -37,7 +37,7 @@ public class GetFailedMessage extends FCPMessage implements Serializable {
     this.isFatal = e.isFatal();
     this.identifier = identifier;
     this.global = global;
-    this.expectedDataLength = e.expectedSize;
+    this.expectedDataLength = e.getExpectedSize();
     this.expectedMimeType = e.getExpectedMimeType();
     this.finalizedExpected = e.finalizedSize();
     this.redirectURI = e.newURI;

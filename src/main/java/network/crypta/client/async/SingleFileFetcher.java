@@ -1554,7 +1554,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     } catch (MetadataParseException e) {
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
     } catch (FetchException e) {
-      if (notFinalizedSize) e.setNotFinalizedSize();
+      if (notFinalizedSize) e = e.notFinalized();
       onFailure(e, false, context);
     } catch (ArchiveFailureException | ArchiveRestartException e) {
       onFailure(wrapToFetchException(e), false, context);
