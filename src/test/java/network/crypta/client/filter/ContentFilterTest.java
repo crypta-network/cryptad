@@ -238,7 +238,7 @@ public class ContentFilterTest {
     // Arrange
     for (String content : HTML_MEDIA_TAG_COMBINATIONS) {
       String expected =
-          HTML_START_TO_BODY + content + HTMLFilter.m3uPlayerScriptTagContent() + HTML_BODY_END;
+          HTML_START_TO_BODY + content + HTMLFilter.loadM3uPlayerScriptTagContent() + HTML_BODY_END;
       String unparsed = HTML_START_TO_BODY + content + HTML_BODY_END;
       // Act
       String filtered = htmlFilter(unparsed);
@@ -311,8 +311,8 @@ public class ContentFilterTest {
   }
 
   private static void setMetaRefreshPolicy(int samePageMin, int redirectMin) {
-    HTMLFilter.metaRefreshSamePageMinInterval = samePageMin;
-    HTMLFilter.metaRefreshRedirectMinInterval = redirectMin;
+    HTMLFilter.setMetaRefreshSamePageMinInterval(samePageMin);
+    HTMLFilter.setMetaRefreshRedirectMinInterval(redirectMin);
   }
 
   @Test

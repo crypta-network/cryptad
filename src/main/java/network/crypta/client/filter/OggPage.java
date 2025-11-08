@@ -8,19 +8,38 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
-import network.crypta.l10n.NodeL10n;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Represents a single page of an Ogg bitstream
+ * Represents a single page of an Ogg bitstream.
+ *
+ * <p>An Ogg page is a framing unit that encapsulates a sequence of packet data along with header
+ * fields such as the stream serial number, page sequence number and a CRC checksum. This class can
+ * parse pages from a raw byte stream, expose commonly used header fields, re-lace segment tables
+ * from known packet sizes, and serialize the page back to a byte array. Typical usage involves
+ * repeatedly calling {@link #readPage(DataInputStream)} on a demultiplexed input until EOF.
+ *
+ * <p>Instances produced by the parsing constructor are effectively immutable with respect to header
+ * fields exposed via accessors. The contained payload array is created by this class and is not
+ * shared with the input stream. Methods that compute derived values (e.g., CRC or packets) operate
+ * on the in-memory representation and do not mutate observable state unless explicitly documented.
+ * This class is not thread-safe; callers should synchronize externally if the same instance is
+ * accessed from multiple threads.
+ *
+ * <ul>
+ *   <li>Responsibilities: decode page structure, verify header fields, and emit codec packets.
+ *   <li>Notable behavior: careful scanning of magic header {@code "OggS"} to locate page starts.
+ *   <li>Trade-offs: minimizes copying while keeping parsing logic straightforward and predictable.
+ * </ul>
  *
  * @author sajack
+ * @see #readPage(DataInputStream)
+ * @see #asPackets()
  */
 public class OggPage {
   private static final Logger LOG = LoggerFactory.getLogger(OggPage.class);
-
-  boolean logMINOR = LOG.isDebugEnabled();
   static final byte[] magicNumber = new byte[] {0x4f, 0x67, 0x67, 0x53};
   /*This CRC lookup table was taken from libogg. These values
    * are XORed with
@@ -105,11 +124,25 @@ public class OggPage {
   byte[] segmentTable;
   byte[] payload;
 
+  /**
+   * Construct an {@code OggPage} by reading fields that immediately follow the magic {@code "OggS"}
+   * marker.
+   *
+   * <p>The given stream must be positioned at the first header byte after the four-byte magic. The
+   * constructor consumes the entire page, including the segment table and payload, and stores an
+   * internal copy of those bytes. The input stream is left positioned at the first byte following
+   * this page, ready to read the next page or subsequent data.
+   *
+   * @param input data source positioned just after the {@code "OggS"} magic; never {@code null}.
+   *     The implementation reads all required header fields, segment counts, and payload bytes.
+   * @throws IOException if the underlying input cannot supply the full header, segment table, or
+   *     payload, or if a read operation fails due to end-of-stream or an I/O error.
+   */
   public OggPage(DataInputStream input) throws IOException {
     version = input.readByte();
-    LOG.debug("Version: " + version);
+    LOG.debug("Version: {}", version);
     headerType = input.readByte();
-    LOG.debug("Headertype: " + headerType);
+    LOG.debug("Headertype: {}", headerType);
     this.granuelPosition = new byte[8];
     this.bitStreamSerial = new byte[4];
     this.pageSequenceNumber = new byte[4];
@@ -117,12 +150,14 @@ public class OggPage {
     input.readFully(bitStreamSerial);
     input.readFully(pageSequenceNumber);
     input.readFully(checksum);
-    LOG.debug(
-        "Checksum: "
-            + Integer.toHexString(byteToUnsigned(checksum[0]))
-            + Integer.toHexString(byteToUnsigned(checksum[1]))
-            + Integer.toHexString(byteToUnsigned(checksum[2]))
-            + Integer.toHexString(byteToUnsigned(checksum[3])));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Checksum: {}{}{}{}",
+          Integer.toHexString(byteToUnsigned(checksum[0])),
+          Integer.toHexString(byteToUnsigned(checksum[1])),
+          Integer.toHexString(byteToUnsigned(checksum[2])),
+          Integer.toHexString(byteToUnsigned(checksum[3])));
+    }
     segments = intToUnsignedByte(input.readUnsignedByte());
     segmentTable = new byte[byteToUnsigned(segments)];
     input.readFully(segmentTable);
@@ -132,13 +167,30 @@ public class OggPage {
     }
     payload = new byte[payloadSize];
     input.readFully(payload);
-    LOG.debug("Created page with " + segments + " segments");
+    LOG.debug("Created page with {} segments", segments);
   }
 
+  /**
+   * Construct a new page by re-packing the payload of an existing page from codec packets.
+   *
+   * <p>The new page inherits header fields such as version, header type, stream serial, and page
+   * sequence from {@code oldPage}. The provided {@link CodecPacket} collection is concatenated into
+   * the payload, and the segment table is recalculated to reflect the packet boundaries using 255
+   * byte lacing rules. A fresh CRC is computed over the resulting page.
+   *
+   * @param oldPage source page whose immutable header fields are copied into the new instance; must
+   *     not be {@code null}.
+   * @param packets ordered packets that form the new payload; each packet contributes one or more
+   *     segments, and empty collections result in an empty payload and segment table.
+   * @throws IOException if internal buffering or stream-like operations required during assembly
+   *     fail. This constructor performs no external I/O beyond in-memory processing.
+   */
   public OggPage(OggPage oldPage, Collection<CodecPacket> packets) throws IOException {
     this.version = oldPage.version;
     this.headerType = oldPage.headerType;
-    LOG.debug("Header type: " + Integer.toBinaryString(this.headerType));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Header type: {}", Integer.toBinaryString(this.headerType));
+    }
     this.granuelPosition = oldPage.granuelPosition;
     this.bitStreamSerial = oldPage.bitStreamSerial;
     this.pageSequenceNumber = oldPage.pageSequenceNumber;
@@ -148,60 +200,77 @@ public class OggPage {
     for (CodecPacket packet : packets) {
       int wholeSegments = packet.payload.length / 255;
       int concludingPartialSegment = packet.payload.length % 255;
-      LOG.debug("Whole segments: " + wholeSegments + " Partial: " + concludingPartialSegment);
+      LOG.debug("Whole segments: {} Partial: {}", wholeSegments, concludingPartialSegment);
       for (int i = 0; i < wholeSegments; i++) {
         segmentSizes.add(intToUnsignedByte(255));
       }
       if (concludingPartialSegment != 0) {
         segmentSizes.add(intToUnsignedByte(concludingPartialSegment));
       }
-      LOG.debug("Writing packet sized: " + packet.payload.length);
+      LOG.debug("Writing packet sized: {}", packet.payload.length);
       payloadStream.write(packet.payload);
     }
     this.segments = intToUnsignedByte(segmentSizes.size());
     this.segmentTable = new byte[byteToUnsigned(segments)];
     LOG.debug(
-        "SegmentSizes len: "
-            + segmentSizes.size()
-            + " SegmentTable size: "
-            + segmentTable.length
-            + " Segments: "
-            + segments);
+        "SegmentSizes len: {} SegmentTable size: {} Segments: {}",
+        segmentSizes.size(),
+        segmentTable.length,
+        segments);
     for (int i = 0; i < segmentSizes.size(); i++) {
       this.segmentTable[i] = segmentSizes.get(i);
     }
 
     payloadStream.close();
     this.payload = payloadStream.toByteArray();
-    LOG.debug("Payload size: " + this.payload.length + "Made of " + packets.size() + " packets");
+    LOG.debug("Payload size: {}Made of {} packets", this.payload.length, packets.size());
     this.checksum = calculateCRC();
   }
 
   /**
-   * Extracts the Ogg page from a physical bitstream
+   * Advance the input to the next Ogg page start by scanning for the {@code "OggS"} magic.
    *
-   * @param input a stream of data containing a physical bitstream
-   * @return the next Ogg page in bitstream
-   * @throws IOException
+   * <p>This method does not consume any header bytes beyond the magic. On return, the input stream
+   * is positioned just after the four-byte marker and ready for an {@link OggPage} constructor
+   * call. The implementation reads one byte at a time and permits overlapping matches, which is
+   * robust in the presence of stray {@code 'O'} bytes before a legitimate header.
+   *
+   * @param input data source to scan; must not be {@code null}. The stream is advanced to the first
+   *     occurrence of the {@code "OggS"} sequence or throws upon I/O failure.
+   * @throws IOException if an I/O error occurs while reading from the stream or if the stream ends
+   *     before a full {@code "OggS"} sequence can be read.
    */
   public static void seekToPage(DataInputStream input) throws IOException {
+    // Scan byte-by-byte for the magic sequence, allowing overlapping candidates.
+    int matched = 0;
     while (true) {
-      // Seek for magic number
-      if (input.readByte() != magicNumber[0]) continue;
-      if (input.readByte() != magicNumber[1]) continue;
-      if (input.readByte() != magicNumber[2]) continue;
-      if (input.readByte() != magicNumber[3]) continue;
-      return;
+      byte b = input.readByte();
+      if (b == magicNumber[matched]) {
+        matched++;
+        if (matched == magicNumber.length) {
+          return; // positioned just after "OggS"
+        }
+      } else {
+        // If this byte itself could start a new match, keep it; otherwise reset.
+        matched = (b == magicNumber[0]) ? 1 : 0;
+      }
     }
-    // If we've found all of the previous magic numbers, we've probably found a page
   }
 
   /**
-   * Extracts the Ogg page from a physical bitstream
+   * Read and parse the next {@code OggPage} from the given input stream.
    *
-   * @param input a stream of data containing a physical bitstream
-   * @return the next Ogg page in bitstream
-   * @throws IOException
+   * <p>This convenience method first scans forward to the next {@code "OggS"} magic using {@link
+   * #seekToPage(DataInputStream)} and then constructs an {@link OggPage} starting at the version
+   * byte. The resulting instance represents the complete page, and the stream is positioned at the
+   * first byte after the page payload when the method returns.
+   *
+   * @param input a stream containing a physical Ogg bitstream; must not be {@code null}. The method
+   *     advances the stream to the next page and consumes exactly that page.
+   * @return a parsed page object containing header fields, segment table, and payload data; callers
+   *     own the returned instance and may retain it independently of the stream lifecycle.
+   * @throws IOException if scanning for the magic or reading the page fails due to I/O errors or
+   *     insufficient data to complete the parse.
    */
   public static OggPage readPage(DataInputStream input) throws IOException {
     seekToPage(input);
@@ -209,24 +278,57 @@ public class OggPage {
   }
 
   /**
-   * Checks some header values for sanity, and verifies this Page's <code>checksum</code> field.
+   * Check header sanity and verify this page's CRC checksum for integrity.
    *
-   * @return whether or not the page is valid
+   * <p>The method validates the version field (must be zero for current Ogg streams) and compares
+   * the stored checksum with a computed CRC over the page with the checksum bytes cleared as per
+   * Ogg format rules.
+   *
+   * @return {@code true} when the version is acceptable and the calculated CRC matches the stored
+   *     value; {@code false} otherwise.
    */
   public boolean headerValid() {
     if (version != 0) return false;
     return Arrays.equals(checksum, calculateCRC());
   }
 
+  /**
+   * Determine whether the first packet in this page is a continuation from the previous page.
+   *
+   * <p>This inspects the least significant bit of the header type flag. When set, the first packet
+   * of the payload begins in a prior page and continues here; otherwise, the first packet starts at
+   * the first segment of this page.
+   *
+   * @return {@code true} when the continuation flag is set; {@code false} when the first packet
+   *     starts within this page.
+   */
   public boolean isPacketContinued() {
-    if (LOG.isDebugEnabled()) LOG.debug("Packet continued: " + (headerType & 0x1));
+    if (LOG.isDebugEnabled()) LOG.debug("Packet continued: {}", headerType & 0x1);
     return (headerType & 0x01) == 1;
   }
 
+  /**
+   * Determine whether this page contains the final packet of the stream.
+   *
+   * <p>This inspects the end-of-stream bit in the header type field. It does not validate that the
+   * page is actually the last in the physical bitstream; it only reports the header intent.
+   *
+   * @return {@code true} when the end-of-stream flag is set on this page; otherwise {@code false}.
+   */
   public boolean isFinalPacket() {
     return (headerType & 0x04) == 4;
   }
 
+  /**
+   * Serialize this page to a newly allocated byte array including header and payload.
+   *
+   * <p>The resulting array begins with the magic {@code "OggS"}, followed by all header fields, the
+   * segment table, and the entire payload. The returned array is independent of the internal state
+   * and may be retained or modified by callers without affecting this instance.
+   *
+   * @return a new array containing a complete on-wire representation of this page, suitable for
+   *     persistence or transmission.
+   */
   public byte[] toArray() {
     ByteBuffer bb = ByteBuffer.allocate(27 + byteToUnsigned(segments) + payload.length);
     bb.put(magicNumber);
@@ -242,17 +344,43 @@ public class OggPage {
     return bb.array();
   }
 
+  /**
+   * Get the stream serial number for this page.
+   *
+   * <p>The value identifies the logical Ogg bitstream to which this page belongs. It is extracted
+   * directly from the page header and returned as a signed 32-bit integer using the native byte
+   * order of {@link ByteBuffer#getInt()} for the stored four bytes.
+   *
+   * @return the stream serial number as a 32-bit signed integer, as stored in the header.
+   */
   public int getSerial() {
     ByteBuffer bb = ByteBuffer.wrap(bitStreamSerial);
     return bb.getInt();
   }
 
+  /**
+   * Get this page's sequence number within its logical stream.
+   *
+   * <p>The page sequence is stored in little-endian order in the header. This method returns the
+   * integer value with bytes reversed to match typical host-endian usage.
+   *
+   * @return the 32-bit page sequence number with byte order corrected for typical host usage.
+   */
   public int getPageNumber() {
     ByteBuffer bb = ByteBuffer.wrap(pageSequenceNumber);
     return Integer.reverseBytes(bb.getInt());
   }
 
-  /** Calculates this page's 32 bit CRC checksum. */
+  /**
+   * Calculate this page's 32-bit CRC checksum according to the Ogg specification.
+   *
+   * <p>The calculation serializes the page with its checksum field zeroed, then computes the CRC
+   * using a standard lookup table compatible with libogg. The resulting bytes are ordered least
+   * significant first, matching the on-wire representation.
+   *
+   * @return a four-byte array containing the CRC value in little-endian order; a new array is
+   *     created for each call.
+   */
   public byte[] calculateCRC() {
     byte[] array = toArray();
     // Strip out the checksum bytes
@@ -260,67 +388,96 @@ public class OggPage {
     array[23] = 0;
     array[24] = 0;
     array[25] = 0;
-    int crc_reg = 0;
-    for (int i = 0; i < array.length; i++) {
+    int crcReg = 0;
+    for (byte b : array) {
       /*Ugly, no? This line was taken from jorbis, which, I'd bet money, adapted it to java from libogg,
        * which in turn took it from http://www.ross.net/crc/download/crc_v3.txt */
-      crc_reg = (crc_reg << 8) ^ crc_lookup[((crc_reg >>> 24) & 0xff) ^ (array[i] & 0xff)];
+      crcReg = (crcReg << 8) ^ crc_lookup[((crcReg >>> 24) & 0xff) ^ (b & 0xff)];
     }
     return new byte[] {
-      (byte) crc_reg, (byte) (crc_reg >>> 8), (byte) (crc_reg >>> 16), (byte) (crc_reg >>> 24)
+      (byte) crcReg, (byte) (crcReg >>> 8), (byte) (crcReg >>> 16), (byte) (crcReg >>> 24)
     };
   }
 
   /**
-   * Rewrites the stored sizes of this page's segments.
+   * Rewrite the segment table (lacing) for this page using the provided packet sizes.
    *
-   * @param packetSizes The sizes of any packets inside of this page's payload. If not null, a
-   *     segment will be prematurely closed after each packet's size number of bytes have been read.
+   * <p>Each packet is expressed as one or more 255-byte segments, with a final partial segment when
+   * the size is not an exact multiple of 255. When {@code packetSizes} is {@code null}, the method
+   * assumes a single packet that spans the entire payload. This method updates only in-memory
+   * structures for this page and does not alter payload bytes.
+   *
+   * @param packetSizes ordered list of packet lengths in bytes; may be {@code null} to indicate a
+   *     single packet covering the full payload. Values must be non-negative and fit within the
+   *     payload size.
    */
-  public void recalculateSegmentLacing(LinkedList<Integer> packetSizes) {
+  public void recalculateSegmentLacing(List<Integer> packetSizes) {
     /*Will packets ever need to be expanded? Right now we're just cutting
      * stuff away, but if we need to write stuff, we run the risk of overflowing
      * past the hard limit of 255 packets, and will need to create a continuing page
      */
-    if (packetSizes == null) {
-      packetSizes = new LinkedList<>();
-      packetSizes.push(payload.length);
-    }
-    segments = 0;
+    LinkedList<Integer> sizes = ensurePacketSizes(packetSizes);
+    segments = intToUnsignedByte(computeTotalSegments(sizes));
+    if (LOG.isDebugEnabled()) LOG.debug("Segments {}", segments);
+    segmentTable = buildSegmentTable(sizes, segments);
+  }
+
+  private LinkedList<Integer> ensurePacketSizes(List<Integer> packetSizes) {
+    if (packetSizes != null) return new LinkedList<>(packetSizes);
+    LinkedList<Integer> sizes = new LinkedList<>();
+    sizes.push(payload.length);
+    return sizes;
+  }
+
+  private int computeTotalSegments(Iterable<Integer> packetSizes) {
+    int total = 0;
     for (int packet : packetSizes) {
-      segments += packet / 255 + (packet % 255 == 0 ? 0 : 1);
-      if (LOG.isDebugEnabled())
+      total += packet / 255 + (packet % 255 == 0 ? 0 : 1);
+      if (LOG.isDebugEnabled()) {
         LOG.debug(
-            "Size of current packet: "
-                + packet
-                + " Current number of segments: "
-                + segments
-                + " Number of whole segments belonging to this packet: "
-                + packet / 255
-                + " Remaining bytes "
-                + packet % 255);
+            "Size of current packet: {} Current number of segments: {} Number of whole segments"
+                + " belonging to this packet: {} Remaining bytes {}",
+            packet,
+            total,
+            packet / 255,
+            packet % 255);
+      }
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Segments " + segments);
-    segmentTable = new byte[segments];
+    return total;
+  }
+
+  private byte[] buildSegmentTable(Iterable<Integer> packetSizes, int segmentCount) {
+    byte[] table = new byte[segmentCount];
     int segment = 0;
     for (int packet : packetSizes) {
-      if (LOG.isDebugEnabled()) LOG.debug("Setting segments for packet sized " + packet);
+      if (LOG.isDebugEnabled()) LOG.debug("Setting segments for packet sized {}", packet);
       for (int packetSegment = 0; packetSegment < packet / 255; packetSegment++) {
-        if (LOG.isDebugEnabled()) LOG.debug("Setting segment " + segment + " to full.");
-        segmentTable[segment] = intToUnsignedByte(255);
+        if (LOG.isDebugEnabled()) LOG.debug("Setting segment {} to full.", segment);
+        table[segment] = intToUnsignedByte(255);
         segment++;
       }
       int remainder = packet % 255;
       if (remainder != 0) {
-        if (LOG.isDebugEnabled()) LOG.debug("Partially filling segment " + segment);
-        segmentTable[segment] = intToUnsignedByte(remainder);
+        if (LOG.isDebugEnabled()) LOG.debug("Partially filling segment {}", segment);
+        table[segment] = intToUnsignedByte(remainder);
         segment++;
       }
     }
+    return table;
   }
 
+  /**
+   * Interpret the payload using the current segment table and return codec packets.
+   *
+   * <p>The method walks the lacing values, concatenating full 255-byte segments until a packet
+   * boundary is encountered (a segment value other than 255 or the final segment of the page). The
+   * returned collection preserves order and contains newly allocated packet payload arrays.
+   *
+   * @return a collection of {@link CodecPacket} instances representing packets contained in this
+   *     page; the collection and its packet arrays are independent of the page.
+   */
   public Collection<CodecPacket> asPackets() {
-    LOG.debug("Creating packets for " + byteToUnsigned(segments) + " segments");
+    LOG.debug("Creating packets for {} segments", byteToUnsigned(segments));
     ArrayList<CodecPacket> packets = new ArrayList<>();
     int bytesParsed = 0;
     int packetSize = 0;
@@ -330,28 +487,7 @@ public class OggPage {
           || i == segmentTable.length - 1) {
         packetSize += byteToUnsigned(segmentTable[i]);
         byte[] packetPayload = new byte[packetSize];
-        try {
-          System.arraycopy(payload, bytesParsed, packetPayload, 0, packetSize);
-        } catch (ArrayIndexOutOfBoundsException e) {
-          LOG.error(
-              "Error, Out of Bounds."
-                  + "Page sequence number: "
-                  + byteToUnsigned(this.pageSequenceNumber[0])
-                  + " "
-                  + byteToUnsigned(this.pageSequenceNumber[1])
-                  + " "
-                  + byteToUnsigned(this.pageSequenceNumber[2])
-                  + " "
-                  + byteToUnsigned(this.pageSequenceNumber[3])
-                  + " bytesParsed: "
-                  + bytesParsed
-                  + " packetSize: "
-                  + packetSize
-                  + " Payload length: "
-                  + payload.length,
-              e);
-          throw e;
-        }
+        System.arraycopy(payload, bytesParsed, packetPayload, 0, packetSize);
 
         bytesParsed += packetSize;
         packets.add(new CodecPacket(packetPayload));
@@ -369,9 +505,5 @@ public class OggPage {
 
   private static byte intToUnsignedByte(int input) {
     return (byte) (input & 0xff);
-  }
-
-  private String l10n(String key) {
-    return NodeL10n.getBase().getString("OggPage." + key);
   }
 }

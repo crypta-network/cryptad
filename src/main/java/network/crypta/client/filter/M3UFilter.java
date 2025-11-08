@@ -6,49 +6,88 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Map;
 import network.crypta.clients.http.ExternalLinkToadlet;
-import network.crypta.l10n.NodeL10n;
 
 /**
- * Content filter for M3Us
+ * Content filter for M3U playlists.
  *
- * <p>This one kills every comment and ensures that every file is a safe URL. Currently far too
- * strict: allows only relative paths with as letters alphanumeric or - and exactly one dot.
+ * <p>This filter reads M3U/M3U8-like plaintext playlists line-by-line, removes comment and empty
+ * lines, rejects excessively long entries, and rewrites each remaining entry through the {@link
+ * ContentDataFilter} pipeline to ensure it is safe to fetch via the node. The goal is to prevent a
+ * playlist from causing unsafe requests while keeping typical relative or absolute media URLs
+ * functional. Historically this filter has been conservative: it favors dropping ambiguous or
+ * malformed lines over passing them through unchanged. As a result, some real-world playlists may
+ * require normalization upstream before they are accepted here.
  *
- * <p>The structure of a simple M3U is just a list of valid relative URLs. The structure of an
- * extended M3U is as follows (taken from http://schworak.com/blog/e39/m3u-play-list-specification/
- * ):
+ * <p>Usage is straightforward: the filter accepts an input stream containing the playlist and
+ * writes a sanitized version to the output stream. Callers should expect that comment lines (those
+ * starting with {@code #}) are omitted entirely and that any item exceeding the internal maximum
+ * byte length is replaced by a marker entry. Each surviving URI is handed to the callback for
+ * validation and optional rewriting; failures are replaced with a stable placeholder so the overall
+ * structure of the playlist remains readable to clients.
  *
- * <p>#EXTM3U #EXTINF:233,Title 1 Somewhere\title1.mp3 #EXTINF:129,Title 2
- * http://www.site.com/~user/title2.mp3 #EXTINF:-1,Stream stream-2016-01-03.m3u
+ * <p>Extended M3U directives appear as comments and are therefore preserved only when carried in a
+ * URI line; dedicated directive/comment lines are intentionally removed. The canonical extended
+ * header is {@code #EXTM3U}. A typical entry line that accompanies metadata looks like {@code
+ * #EXTINF:233,Title 1} followed by a path, for example {@code Somewhere\\title1.mp3}. In prose the
+ * rule is often described as: {@code #EXTINF:&lt;length in seconds&gt;,&lt;title&gt;} followed by
+ * {@code &lt;path&gt;}.
  *
- * <p>#EXTM3U starts the File #EXTINF:<length in seconds>,<title> <path>
+ * <ul>
+ *   <li>Comments beginning with {@code #} are dropped.
+ *   <li>Overly long items (in UTF-8 bytes) are dropped or replaced.
+ *   <li>Each URI is resolved through the filtering callback and may be rewritten.
+ * </ul>
  *
- * <p>Might be useful to extend to m3u8:
- * https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/StreamingMediaGuide/HTTPStreamingArchitecture/HTTPStreamingArchitecture.html#//apple_ref/doc/uid/TP40008332-CH101-SW10
+ * @see ContentDataFilter
  */
 public class M3UFilter implements ContentDataFilter {
 
-  static final byte[] CHAR_COMMENT_START = {(byte) '#'};
   static final byte[] CHAR_NEWLINE = {(byte) '\n'};
-  static final byte[] CHAR_CARRIAGE_RETURN = {(byte) '\r'};
   static final int MAX_URI_LENGTH = 16384;
-  static final String badUriReplacement = "#bad-uri-removed";
+  static final String BAD_URI_REPLACEMENT = "#bad-uri-removed";
 
   // pass-through for most files accessed via a playlist, likely through an external
   // palyer. See FProxyToadlet.MAX_LENGTH_NO_PROGRESS for the default. This value must
   // be synchronized with the test data!
 
-  // TODO: Add parsing of ext-comments to allow for gapless playback.
-  // static final int COMMENT_EXT_SIZE = 4;
-  // static final byte[] COMMENT_EXT_START =
-  //  { (byte)'#', (byte)'E', (byte)'X', (byte)'T' };
-  // static final int EXT_HEADER_SIZE = 7;
-  // static final byte[] EXT_HEADER =
-  // { (byte)'#', (byte)'E', (byte)'X', (byte)'T', (byte)'M', (byte)'3', (byte)'U' };
+  // Future: Add parsing of ext-comments to allow for gapless playback.
 
+  /**
+   * Reads a plaintext M3U playlist from {@code input}, filters and validates each entry, and writes
+   * the sanitized result to {@code output}.
+   *
+   * <p>The method removes blank lines and comment lines (those starting with {@code #}) and
+   * discards items whose UTF-8 encoded length exceeds an internal limit. For each remaining line
+   * the URI is handed to the supplied callback to determine the appropriate sub-mime-type and to
+   * rewrite the request into a safe, node-internal form. When rewriting fails or yields a null
+   * result, a stable placeholder entry is emitted instead so that clients can continue parsing the
+   * playlist. If the original line was terminated with a newline, the same termination is preserved
+   * in the output.
+   *
+   * <p>Callers are responsible for providing streams with the desired lifecycle. This method does
+   * not change the character set of the incoming data; it interprets bytes as UTF-8 only when
+   * computing length limits and when emitting rewritten items. The behavior is idempotent with
+   * respect to comments and overlong entries: repeated passes drop the same lines.
+   *
+   * @param input the source stream containing the playlist text; must be positioned at the start of
+   *     the content and remain readable until end-of-stream; never {@code null}.
+   * @param output the destination stream to receive the filtered playlist; data is written as UTF-8
+   *     bytes and flushed; never {@code null}.
+   * @param charset the declared character set of the source content; accepted but not used for
+   *     parsing because validation operates on raw bytes and UTF-8 encoding for size checks; may be
+   *     {@code null}.
+   * @param otherParams additional, implementation-specific parameters supplied by the caller;
+   *     values are not interpreted by this filter; may be empty but not {@code null}.
+   * @param schemeHostAndPort the scheme/authority of the currently served request, for example
+   *     {@code http://localhost:8888}; forwarded to the callback to assist in URI rewriting; must
+   *     be non-null when rewriting requires absolute context.
+   * @param cb the filtering callback invoked for each URI to determine a safe representation and
+   *     appropriate mime type; must not be {@code null} and should be resilient to invalid input.
+   * @throws IOException if an I/O error occurs while reading from {@code input} or writing to
+   *     {@code output}; callers should assume partial output may have been produced.
+   */
   @Override
   public void readFilter(
       InputStream input,
@@ -58,134 +97,91 @@ public class M3UFilter implements ContentDataFilter {
       String schemeHostAndPort,
       FilterCallback cb)
       throws IOException {
-    // TODO: Check the header whether this is an ext m3u.
-    // TODO: Check the EXTINF headers instead of killing comments.
-    // Check whether the line is a comment
-    boolean isComment = false;
-    int readcount;
-    byte[] nextbyte = new byte[1];
-    byte[] fileUri;
-    int fileIndex;
     DataInputStream dis = new DataInputStream(input);
     DataOutputStream dos = new DataOutputStream(output);
-    readcount = dis.read(nextbyte);
-    // read each line manually
-    while (readcount != -1) {
-      isComment = isCommentStart(nextbyte);
-      // skip empty lines
-      if (isNewline(nextbyte)) {
-        readcount = dis.read(nextbyte);
+
+    Line line;
+    while ((line = readNextLine(dis)) != null) {
+      if (line.text.isEmpty() || isCommentLine(line.text) || exceedsMaxLength(line.text)) {
+        // Drop empty, comment, or overly long lines entirely (including newline)
         continue;
       }
-      // read one line as a fileUri
-      fileIndex = 0;
-      fileUri = new byte[MAX_URI_LENGTH];
-      while (readcount != -1) {
-        if (!isComment
-            &&
-            // do not include carriage return in filenames
-            !isCarriageReturn(nextbyte)
-            &&
-            // enforce maximum path length to avoid OOM attacks
-            fileIndex <= MAX_URI_LENGTH) {
-          // store the read byte
-          fileUri[fileIndex] = nextbyte[0];
-          fileIndex += readcount;
-        }
-        readcount = dis.read(nextbyte);
-        if (isNewline(nextbyte) || readcount == -1) {
-          if (!isComment) {
-            // remove too long paths
-            if (fileIndex <= MAX_URI_LENGTH) {
-              boolean lineIsEmpty = fileIndex == 0;
-              if (!lineIsEmpty) {
-                String uriold = new String(fileUri, 0, fileIndex, StandardCharsets.UTF_8);
-                // System.out.println(uriold);
-                // clean up the URL: allow sub-m3us and mp3/ogg/flac (what we can filter)
-                String filtered;
-                try {
-                  String subMimetype = ContentFilter.mimeTypeForSrc(uriold);
-                  // add prefix for the host name
-                  // for absolute path names,
-                  // because otherwise external
-                  // clients could be tricked into
-                  // accessing local files (and some
-                  // just don't work, especially not
-                  // with downloaded files). This
-                  // can however make downloaded
-                  // files leak information about
-                  // the local setup (host and
-                  // port).
 
-                  // mirroring tools like `wget -mk`
-                  // strip the absolute path again,
-                  // so mirroring should not be
-                  // impaired.
-                  filtered = cb.processURI(uriold, subMimetype, schemeHostAndPort, true);
-                  // allow transparent pass through
-                  // for all but the largest files,
-                  // but not for external
-                  // links. This check is safe,
-                  // since false positives will just
-                  // lead to a file to not be played
-                  // (players will get progress-bar
-                  // HTML content instead).
-                  if (!filtered.contains(ExternalLinkToadlet.PATH)
-                      && !filtered.contains(ExternalLinkToadlet.magicHTTPEscapeString)) {
-                    if (filtered.contains("?")) {
-                      filtered += "&";
-                    } else {
-                      filtered += "?";
-                    }
-                    // 200MiB: playlists are a different usecase, and we want to allow transparent
-                    long MAX_LENGTH_NO_PROGRESS = (200L * 1024 * 1024 * 11) / 10;
-                    filtered += "max-size=" + MAX_LENGTH_NO_PROGRESS;
-                  }
+      String filtered = filterUri(line.text, schemeHostAndPort, cb);
 
-                } catch (CommentException e) {
-                  filtered = badUriReplacement;
-                } catch (Exception e) {
-                  filtered = badUriReplacement;
-                }
-                if (filtered == null) {
-                  filtered = badUriReplacement;
-                }
-                try {
-                  dos.write(filtered.getBytes(StandardCharsets.UTF_8));
-                } catch (Exception e) {
-                  dos.write(badUriReplacement.getBytes(StandardCharsets.UTF_8));
-                }
-                // write a canonical newline for non-empty lines (normalize EOL)
-                if (readcount != -1) {
-                  dos.write(CHAR_NEWLINE);
-                }
-              }
-            }
-          }
-          // skip the newline
-          readcount = dis.read(nextbyte);
-          break; // skip to next line
-        }
+      try {
+        dos.write(filtered.getBytes(StandardCharsets.UTF_8));
+      } catch (Exception e) {
+        dos.write(BAD_URI_REPLACEMENT.getBytes(StandardCharsets.UTF_8));
+      }
+
+      if (line.terminated) {
+        dos.write(CHAR_NEWLINE);
       }
     }
+
     dos.flush();
     dos.close();
     output.flush();
   }
 
-  private static boolean isCommentStart(byte[] nextbyte) {
-    return Arrays.equals(nextbyte, CHAR_COMMENT_START);
+  private static boolean isCommentLine(String s) {
+    return !s.isEmpty() && s.charAt(0) == '#';
   }
 
-  private static boolean isNewline(byte[] nextbyte) {
-    return Arrays.equals(nextbyte, CHAR_NEWLINE);
+  private static boolean exceedsMaxLength(String s) {
+    return s.getBytes(StandardCharsets.UTF_8).length > MAX_URI_LENGTH;
   }
 
-  private static boolean isCarriageReturn(byte[] nextbyte) {
-    return Arrays.equals(nextbyte, CHAR_CARRIAGE_RETURN);
+  private static String filterUri(String uri, String schemeHostAndPort, FilterCallback cb) {
+    String filtered;
+    try {
+      String subMimetype = ContentFilter.mimeTypeForSrc(uri);
+      filtered = cb.processURI(uri, subMimetype, schemeHostAndPort, true);
+
+      if (filtered != null
+          && !filtered.contains(ExternalLinkToadlet.PATH)
+          && !filtered.contains(ExternalLinkToadlet.magicHTTPEscapeString)) {
+        filtered += (filtered.contains("?") ? "&" : "?");
+        long maxLengthNoProgress = (200L * 1024 * 1024 * 11) / 10;
+        filtered += "max-size=" + maxLengthNoProgress;
+      }
+    } catch (Exception e) {
+      filtered = BAD_URI_REPLACEMENT;
+    }
+
+    if (filtered == null) {
+      filtered = BAD_URI_REPLACEMENT;
+    }
+    return filtered;
   }
 
-  private static String l10n(String key) {
-    return NodeL10n.getBase().getString("M3UFilter." + key);
+  private record Line(String text, boolean terminated) {}
+
+  private static Line readNextLine(DataInputStream dis) throws IOException {
+    byte[] one = new byte[1];
+    boolean sawAny = false;
+    boolean terminated = false;
+    // Using a byte buffer to avoid incorrect char length accounting
+    byte[] buf = new byte[MAX_URI_LENGTH + 1];
+    int idx = 0;
+
+    while (dis.read(one) != -1) {
+      sawAny = true;
+      byte b = one[0];
+      if (b == '\n') {
+        terminated = true;
+        break;
+      }
+      if (b != '\r' && idx < buf.length) {
+        buf[idx++] = b;
+      }
+    }
+
+    if (!sawAny) {
+      return null;
+    }
+    String text = new String(buf, 0, idx, StandardCharsets.UTF_8);
+    return new Line(text, terminated);
   }
 }
