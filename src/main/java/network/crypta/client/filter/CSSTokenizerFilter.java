@@ -729,1677 +729,2394 @@ class CSSTokenizerFilter {
             true);
   }
 
+  // --- Data-driven dispatch for property verifiers (reduces addVerifier() complexity) ---
+  @FunctionalInterface
+  private interface PropertyRule {
+    void apply(String element);
+  }
+
+  private static void putAndRemove(String element, CSSPropertyVerifier v) {
+    elementVerifiers.put(element, v);
+    allelementVerifiers.remove(element);
+  }
+
+  private static void aux(int idx, CSSPropertyVerifier v) {
+    auxilaryVerifiers[idx] = v;
+  }
+
+  private static void register(Map<String, PropertyRule> m, PropertyRule rule, String... names) {
+    for (String n : names) m.put(n.toLowerCase(), rule);
+  }
+
+  private static final Map<String, PropertyRule> RULES = buildRules();
+
+  private static Map<String, PropertyRule> buildRules() {
+    Map<String, PropertyRule> m = new HashMap<>();
+
+    // Example ports to the registry. Remaining properties fall back to legacy handler.
+
+    // accent-color
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("co"))),
+        "accent-color");
+
+    // align-content, justify-content
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("121a124"), true, true)),
+        "align-content",
+        "justify-content");
+
+    // clear
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "left", V_RIGHT, "both", "inline-start", "inline-end"),
+                    ElementInfo.VISUALMEDIA)),
+        "clear");
+
+    // background-repeat
+    register(
+        m,
+        element -> {
+          aux(
+              57,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_REPEAT, "space", "round", "no-repeat"), null, null, null, true));
+          aux(
+              58,
+              new CSSPropertyVerifier(
+                  Arrays.asList("repeat-x", "repeat-y"), null, null, null, true));
+          aux(59, new CSSPropertyVerifier(null, null, Arrays.asList("58", "57<1,2>"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("59<1,65535>"), true, true));
+        },
+        "background-repeat");
+
+    // background-attachment
+    register(
+        m,
+        element -> {
+          aux(
+              60,
+              new CSSPropertyVerifier(
+                  Arrays.asList("local", V_SCROLL, V_FIXED), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("60<1,65535>"), true, true));
+        },
+        "background-attachment");
+
+    // background-blend-mode / mix-blend-mode
+    register(
+        m,
+        element -> {
+          aux(
+              148,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      V_NORMAL,
+                      "multiply",
+                      V_SCREEN,
+                      "overlay",
+                      "darken",
+                      "lighten",
+                      "color-dodge",
+                      "color-burn",
+                      "hard-light",
+                      "soft-light",
+                      "difference",
+                      "exclusion",
+                      "hue",
+                      "saturation",
+                      V_COLOR,
+                      "luminosity"),
+                  null,
+                  null,
+                  null,
+                  true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("148<1,2>"), true, true));
+        },
+        "background-blend-mode",
+        "mix-blend-mode");
+
+    // background-clip / background-origin
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("61<1,65535>"), true, true)),
+        "background-clip",
+        "background-origin");
+
+    // background-color
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of(V_TRANSPARENT), ElementInfo.VISUALMEDIA, List.of("co"))),
+        "background-color");
+
+    // background-image
+    register(
+        m,
+        element -> {
+          aux(56, new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("56<1,65535>"), true, true));
+        },
+        "background-image");
+
+    // background-size
+    register(
+        m,
+        element -> {
+          aux(
+              62,
+              new CSSPropertyVerifier(Arrays.asList("cover", V_CONTAIN), null, null, null, true));
+          aux(63, new CSSPropertyVerifier(null, null, Arrays.asList("36<1,2>", "62"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("63<1,65535>"), true, true));
+        },
+        "background-size");
+
+    // background (composite)
+    register(
+        m,
+        element -> {
+          aux(6, new CSSPropertyVerifier(Arrays.asList(V_SCROLL, V_FIXED), null, null, null, true));
+          aux(7, new CSSPropertyVerifier(List.of(V_TRANSPARENT), List.of("co"), null, null, true));
+          aux(8, new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true));
+          aux(9, new CSSPropertyVerifier(null, null, Arrays.asList("2 3?", "4a5"), null, true));
+          aux(
+              10,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_REPEAT, "repeat-x", "repeat-y", "no-repeat"),
+                  null,
+                  null,
+                  null,
+                  true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("6a7a8a9a10")));
+        },
+        "background");
+
+    // background-position / object-position
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null,
+                    ElementInfo.VISUALPAGEDMEDIA,
+                    null,
+                    Arrays.asList("4a5a40", "40 40", "4 5", "5 4", "4 40 5 40", "5 40 4 40"))),
+        "background-position",
+        "object-position");
+
+    // background-position-x
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, null, List.of("2"))),
+        "background-position-x");
+
+    // background-position-y
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, null, List.of("3"))),
+        "background-position-y");
+
+    // --- Border family ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_COLLAPSE, "separate"), ElementInfo.VISUALMEDIA)),
+        "border-collapse");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, List.of("co"), List.of("11<1,4>"))),
+        "border-color");
+
+    register(
+        m,
+        element -> {
+          aux(12, new CSSPropertyVerifier(null, List.of("le"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("12 12?")));
+        },
+        "border-spacing");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of(P_13_1_4))),
+        "border-style",
+        "column-rule-style");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, null, List.of("13"), ElementInfo.VISUALMEDIA, true)),
+        "border-top-style",
+        "border-bottom-style",
+        "border-left-style",
+        "border-right-style",
+        "border-block-end-style",
+        "border-block-start-style",
+        "border-inline-end-style",
+        "border-inline-start-style");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("13a14a11"))),
+        "border-left",
+        "border-right",
+        "border-top",
+        "border-bottom",
+        "border-block-end",
+        "border-block-start",
+        "border-inline-end",
+        "border-inline-start",
+        "border");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("co"))),
+        "border-top-color",
+        "border-bottom-color",
+        "border-left-color",
+        "border-right-color",
+        "border-inline-end-color",
+        "border-inline-start-color",
+        "border-block-start-color",
+        "border-block-end-color",
+        "column-rule-color",
+        V_COLOR);
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of(P_14_1_4))),
+        "border-width",
+        "column-rule-width");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("14"))),
+        S_BORDER_TOP_WIDTH,
+        S_BORDER_BOTTOM_WIDTH,
+        S_BORDER_LEFT_WIDTH,
+        S_BORDER_RIGHT_WIDTH,
+        "border-block-end-width",
+        "border-block-start-width",
+        "border-inline-end-width",
+        "border-inline-start-width");
+
+    register(
+        m,
+        element -> {
+          aux(65, new CSSPropertyVerifier(List.of("/"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null,
+                  ElementInfo.VISUALMEDIA,
+                  null,
+                  Arrays.asList("40<1,4>", "40<1,4> 65 40<1,4>")));
+        },
+        "border-radius");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40<1,2>"))),
+        "border-bottom-left-radius",
+        "border-bottom-right-radius",
+        "border-top-left-radius",
+        "border-top-right-radius",
+        "border-start-end-radius",
+        "border-start-start-radius",
+        "border-end-end-radius",
+        "border-end-start-radius",
+        "padding-block",
+        "padding-inline",
+        "scroll-margin-block",
+        "scroll-margin-inline");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("76"))),
+        "border-image-source");
+
+    register(
+        m,
+        element -> {
+          aux(66, new CSSPropertyVerifier(null, Arrays.asList("pe", "in"), null, null, true));
+          aux(67, new CSSPropertyVerifier(List.of("fill"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("66<1,4> 67?")));
+        },
+        "border-image-slice");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("77"))),
+        "border-image-width");
+
+    register(
+        m,
+        element -> {
+          aux(69, new CSSPropertyVerifier(null, Arrays.asList("le", "in"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("69<1,4>")));
+        },
+        "border-image-outset");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("78"))),
+        "border-image-repeat");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("76a77a78"))),
+        "border-image");
+
+    // --- Columns & z-index ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("in"))),
+        "column-count",
+        "z-index");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("auto", V_BALANCE), ElementInfo.VISUALMEDIA)),
+        "column-fill");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of(V_NORMAL), ElementInfo.VISUALMEDIA, List.of("le"))),
+        "column-gap");
+
+    register(
+        m,
+        element -> {
+          // column-rule: width + style + color
+          aux(54, new CSSPropertyVerifier(null, null, null, List.of(P_14_1_4)));
+          aux(55, new CSSPropertyVerifier(null, null, null, List.of(P_13_1_4)));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("54a55a11")));
+        },
+        "column-rule");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("1", "all"), ElementInfo.VISUALMEDIA)),
+        "column-span");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("le"))),
+        "column-width");
+
+    register(
+        m,
+        element -> {
+          // columns: column-width + column-count
+          aux(52, new CSSPropertyVerifier(List.of("auto"), List.of("le"), null, null, true));
+          aux(53, new CSSPropertyVerifier(List.of("auto"), List.of("in"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("52a53")));
+        },
+        "columns");
+
+    // --- Sizing and position properties (auto | <length> | <percentage>) ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("auto"), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe"))),
+        "block-size",
+        V_BOTTOM,
+        "height",
+        "inline-size",
+        "left",
+        "min-width",
+        "min-height",
+        "min-block-size",
+        "min-inline-size",
+        V_RIGHT,
+        "top",
+        "width");
+
+    // --- Outline ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALINTERACTIVEMEDIA, List.of("co"))),
+        "outline-color");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("le"))),
+        "outline-offset");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "none", V_HIDDEN, V_DOTTED, V_DASHED, V_SOLID, V_DOUBLE, V_GROOVE, V_RIDGE,
+                        V_INSET, V_OUTSET),
+                    ElementInfo.VISUALINTERACTIVEMEDIA)),
+        "outline-style");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("thin", V_MEDIUM, V_THICK),
+                    ElementInfo.VISUALINTERACTIVEMEDIA,
+                    List.of("le"))),
+        "outline-width");
+
+    register(
+        m,
+        element -> {
+          aux(37, new CSSPropertyVerifier(List.of("invert"), List.of("co"), null, null, true));
+          aux(
+              38,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "none", V_HIDDEN, V_DOTTED, V_DASHED, V_SOLID, V_DOUBLE, V_GROOVE, V_RIDGE,
+                      V_INSET, V_OUTSET),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(
+              39,
+              new CSSPropertyVerifier(
+                  Arrays.asList("thin", V_MEDIUM, V_THICK), List.of("le"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALINTERACTIVEMEDIA, List.of("le"), List.of("37a38a39")));
+        },
+        "outline");
+
+    // --- Overflow ---
+    register(
+        m,
+        element -> {
+          aux(
+              32,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_VISIBLE, V_HIDDEN, V_SCROLL, "auto", "clip"),
+                  null,
+                  null,
+                  null,
+                  true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("32<1,2>")));
+        },
+        "overflow");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_VISIBLE, V_HIDDEN, V_SCROLL, "auto", "clip"),
+                    ElementInfo.VISUALMEDIA)),
+        "overflow-x",
+        "overflow-y",
+        "overflow-block",
+        "overflow-inline");
+
+    // --- Overscroll behavior ---
+    register(
+        m,
+        element -> {
+          aux(
+              64,
+              new CSSPropertyVerifier(
+                  Arrays.asList("auto", V_CONTAIN, "none"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("64<1,2>")));
+        },
+        "overscroll-behavior");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_CONTAIN, "none"), ElementInfo.VISUALMEDIA)),
+        "overscroll-behavior-x",
+        "overscroll-behavior-y",
+        "overscroll-behavior-block",
+        "overscroll-behavior-inline");
+
+    // --- Display ---
+    register(
+        m,
+        element -> {
+          // [ <display-outside> || <display-inside> ] | <display-listitem> | <display-internal> |
+          // <display-box> | <display-legacy>
+          aux(
+              131,
+              new CSSPropertyVerifier(
+                  Arrays.asList("block", "inline", "run-in"), null, null, null, true));
+          aux(
+              132,
+              new CSSPropertyVerifier(
+                  Arrays.asList("flow", "flow-root", "table", "flex", "grid", "ruby"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(133, new CSSPropertyVerifier(List.of("list-item"), null, null, null, true));
+          aux(
+              134,
+              new CSSPropertyVerifier(Arrays.asList("flow", "flow-root"), null, null, null, true));
+          aux(135, new CSSPropertyVerifier(null, null, List.of("131?"), null, true));
+          aux(136, new CSSPropertyVerifier(null, null, List.of("134?"), null, true));
+          aux(
+              137,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "table-row-group",
+                      "table-header-group",
+                      "table-footer-group",
+                      "table-row",
+                      "table-cell",
+                      "table-column-group",
+                      "table-column",
+                      "table-caption",
+                      "ruby-base",
+                      "ruby-text",
+                      "ruby-base-container",
+                      "ruby-text-container"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(
+              138,
+              new CSSPropertyVerifier(Arrays.asList("contents", "none"), null, null, null, true));
+          aux(
+              139,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "inline-block",
+                      "inline-list-item",
+                      "inline-table",
+                      "inline-flex",
+                      "inline-grid"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(140, new CSSPropertyVerifier(null, null, List.of("133b135b136"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null,
+                  null,
+                  Arrays.asList("131a132", "140<0,1>[1,3]", "137", "138", "139"),
+                  null,
+                  true));
+        },
+        "display");
+
+    // --- Flexbox ---
+    register(
+        m,
+        element -> {
+          aux(119, new CSSPropertyVerifier(null, null, List.of("in")));
+          aux(
+              120,
+              new CSSPropertyVerifier(Arrays.asList(V_CONTENT, "auto"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("119a120")));
+        },
+        "flex");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_CONTENT, "auto"),
+                    ElementInfo.VISUALMEDIA,
+                    Arrays.asList("le", "pe"))),
+        "flex-basis");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("row", "row-reverse", V_COLUMN, "column-reverse"),
+                    ElementInfo.VISUALMEDIA,
+                    null)),
+        "flex-direction");
+
+    register(
+        m,
+        element -> {
+          aux(
+              117,
+              new CSSPropertyVerifier(
+                  Arrays.asList("row", "row-reverse", V_COLUMN, "column-reverse"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(
+              118,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_NOWRAP, "wrap", "wrap-reverse"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("117a118")));
+        },
+        "flex-flow");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("in"))),
+        "flex-grow",
+        "flex-shrink",
+        "widows");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NOWRAP, "wrap", "wrap-reverse"), ElementInfo.VISUALMEDIA)),
+        "flex-wrap");
+
+    // Alignment / justification
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, Arrays.asList("125", "127"), true, true)),
+        "align-items");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_STRETCH, V_BASELINE, V_LAST_BASELINE),
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    List.of("127"),
+                    true,
+                    true)),
+        "align-self",
+        "justify-self");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null,
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    Arrays.asList("125", "130", "129"),
+                    true,
+                    true)),
+        "justify-items");
+
+    // --- Typography & Fonts ---
+    register(m, element -> putAndRemove(element, new FontPropertyVerifier(false)), "font-family");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", "none", V_NORMAL), ElementInfo.VISUALMEDIA)),
+        "font-kerning");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("auto", "none"), ElementInfo.VISUALMEDIA)),
+        "font-optical-sizing",
+        "pointer-events");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "xx-small",
+                        "x-small",
+                        "small",
+                        V_MEDIUM,
+                        "large",
+                        "x-large",
+                        "xx-large",
+                        "xxx-large",
+                        "larger",
+                        "smaller"),
+                    ElementInfo.VISUALMEDIA,
+                    Arrays.asList("le", "pe"))),
+        "font-size");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "italic", "oblique"), ElementInfo.VISUALMEDIA)),
+        "font-style");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "small-caps"), ElementInfo.VISUALMEDIA)),
+        "font-variant");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        V_NORMAL, "bold", "bolder", "lighter", "100", "200", "300", "400", "500",
+                        "600", "700", "800", "900"),
+                    ElementInfo.VISUALMEDIA)),
+        "font-weight");
+
+    register(
+        m,
+        element -> {
+          aux(
+              27,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_NORMAL, "italic", "oblique"), null, null, null, true));
+          aux(
+              28,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_NORMAL, "small-caps"), null, null, null, true));
+          aux(
+              29,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      V_NORMAL, "bold", "bolder", "lighter", "100", "200", "300", "400", "500",
+                      "600", "700", "800", "900"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(30, new CSSPropertyVerifier(null, null, List.of("27a28a29"), null, true));
+          aux(31, new FontPartPropertyVerifier());
+          aux(59, new FontPropertyVerifier(true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "caption", "icon", "menu", "message-box", "small-caption", "status-bar"),
+                  ElementInfo.VISUALMEDIA,
+                  null,
+                  List.of("30<0,1>[1,3] 31<0,1>[1,3] 59"),
+                  false,
+                  true));
+        },
+        "font");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, null, ElementInfo.VISUALMEDIA, List.of("85<1,3>"))),
+        "letter-spacing",
+        "word-spacing");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of(V_NORMAL),
+                    ElementInfo.VISUALMEDIA,
+                    Arrays.asList("le", "pe", "re", "in"))),
+        "line-height");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", "anywhere", V_NORMAL, "strict", "loose"),
+                    ElementInfo.VISUALMEDIA)),
+        "line-break");
+
+    // List style
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("none"), ElementInfo.VISUALMEDIA, List.of("ur"))),
+        "list-style-image");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("inside", "outside"), ElementInfo.VISUALMEDIA)),
+        "list-style-position");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("35"))),
+        "list-style-type");
+
+    register(
+        m,
+        element -> {
+          aux(33, new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true));
+          aux(
+              34,
+              new CSSPropertyVerifier(Arrays.asList("inside", "outside"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("33a34a35")));
+        },
+        "list-style");
+
+    // Basic layout
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("ltr", "rtl"), ElementInfo.VISUALMEDIA)),
+        "direction");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("left", V_RIGHT, "none", "inline-start", "inline-end"),
+                    ElementInfo.VISUALMEDIA)),
+        "float");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("static", "relative", "absolute", V_FIXED, "sticky"),
+                    ElementInfo.VISUALMEDIA)),
+        "position");
+
+    // Images
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "from-image"), ElementInfo.VISUALMEDIA)),
+        "image-orientation");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", "crisp-edges", "pixelated"), ElementInfo.VISUALMEDIA)),
+        "image-rendering");
+
+    // Hyphenation
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("st"))),
+        "hyphenate-character");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "auto", "manual"), ElementInfo.VISUALMEDIA)),
+        "hyphens");
+
+    // Gaps
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("85<1,2>"))),
+        "gap");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of(V_NORMAL), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe"))),
+        "row-gap");
+
+    // Transforms and transitions
+    register(
+        m,
+        element -> {
+          aux(110, new CSSPropertyVerifier(null, List.of("tr"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, List.of("110<0,65536>"), true, true));
+        },
+        "transform");
+
+    register(
+        m,
+        element -> {
+          aux(111, new CSSPropertyVerifier(null, null, List.of("2 3<0,1>"), null, true));
+          aux(
+              112,
+              new CSSPropertyVerifier(
+                  Arrays.asList("left", V_CENTER, V_RIGHT), null, null, null, true));
+          aux(
+              113,
+              new CSSPropertyVerifier(
+                  Arrays.asList("top", V_CENTER, V_BOTTOM), null, null, null, true));
+          aux(114, new CSSPropertyVerifier(null, null, List.of("112a113"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null, ElementInfo.VISUALMEDIA, null, Arrays.asList("111", "114"), true, true));
+        },
+        "transform-origin");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("none"),
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    Arrays.asList("40", "40 40", "40 40 72"))),
+        "translate");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("145<1,65535>"), false, true)),
+        "transition-delay",
+        "transition-duration");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("146<1,65535>"), false, true)),
+        "transition-property");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("147<1,65535>"), false, true)),
+        "transition-timing-function");
+
+    // --- Miscellaneous ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element, new CSSPropertyVerifier(null, ElementInfo.MEDIA, null, null, true, true)),
+        "all");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "auto",
+                        "none",
+                        "base",
+                        "searchfield",
+                        "textarea",
+                        "checkbox",
+                        "radio",
+                        "menulist",
+                        "listbox",
+                        "meter",
+                        "progress-bar",
+                        "button",
+                        "textfield",
+                        "menulist-button"),
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    null,
+                    true,
+                    true)),
+        "appearance");
+
+    register(
+        m,
+        element -> {
+          aux(
+              0,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "left-side",
+                      "far-left",
+                      "left",
+                      "center-left",
+                      V_CENTER,
+                      "center-right",
+                      V_RIGHT,
+                      "far-right",
+                      "right-side"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(1, new CSSPropertyVerifier(List.of("behind"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  Arrays.asList("leftwards", "rightwards"),
+                  ElementInfo.AURALMEDIA,
+                  List.of("an"),
+                  List.of("0a1")));
+        },
+        "azimuth");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_VISIBLE, V_HIDDEN),
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    null,
+                    true,
+                    true)),
+        "backface-visibility");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_TRANSPARENT, "currentcolor"),
+                    ElementInfo.VISUALMEDIA,
+                    List.of("co"))),
+        "caret-color");
+
+    // --- Text decoration & shadow ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    null, ElementInfo.VISUALMEDIA, null, List.of("115a11a104a116"))),
+        "text-decoration");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11"))),
+        "text-decoration-color",
+        "text-emphasis-color");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("100a101a102"))),
+        "text-decoration-line");
+
+    register(
+        m,
+        element -> {
+          aux(48, new CSSPropertyVerifier(List.of("images"), null, null, null, true));
+          aux(49, new CSSPropertyVerifier(List.of("spaces"), null, null, null, true));
+          aux(50, new CSSPropertyVerifier(List.of("ink"), null, null, null, true));
+          aux(51, new CSSPropertyVerifier(List.of("all"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("48a49a50a51")));
+        },
+        "text-decoration-skip");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "auto", "all"), ElementInfo.VISUALMEDIA)),
+        "text-decoration-skip-ink");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("104"))),
+        "text-decoration-style");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("from-font", "auto"),
+                    ElementInfo.VISUALMEDIA,
+                    Arrays.asList("le", "pe"))),
+        "text-decoration-thickness");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11a107"))),
+        "text-emphasis");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("over", V_UNDER), ElementInfo.VISUALMEDIA)),
+        "text-emphasis-position");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("107"))),
+        "text-emphasis-style");
+
+    register(
+        m,
+        element -> {
+          aux(
+              94,
+              new CSSPropertyVerifier(
+                  Arrays.asList("hanging", "each-line"), null, null, null, true));
+          aux(95, new CSSPropertyVerifier(null, null, List.of("94<0,2>"), null, true));
+          aux(96, new CSSPropertyVerifier(null, Arrays.asList("le", "pe"), null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("96 95")));
+        },
+        "text-indent");
+
+    register(
+        m,
+        element -> {
+          aux(
+              83,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "inter-word", "inter-ideograph", "inter-cluster", "distribute", "kashida"),
+                  null,
+                  null,
+                  null,
+                  true));
+          aux(84, new CSSPropertyVerifier(List.of("trim"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("auto"), ElementInfo.VISUALMEDIA, null, List.of("84a83")));
+        },
+        "text-justify");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("mixed", "upright", "sideways", "sideways-right"),
+                    ElementInfo.VISUALMEDIA)),
+        "text-orientation");
+
+    register(
+        m,
+        element -> {
+          aux(108, new CSSPropertyVerifier(null, null, List.of("11 72 72<0,1>"), null, true));
+          aux(109, new CSSPropertyVerifier(null, null, List.of("72 72<0,1> 11"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("108a109")));
+        },
+        "text-outline");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("clip", "ellipsis"), ElementInfo.VISUALMEDIA, List.of("st"))),
+        "text-overflow");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("79"), true, true)),
+        "text-shadow");
+
+    // --- Margin/Padding, scroll padding/margin ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36"))),
+        "margin-right",
+        "margin-left",
+        "margin-top",
+        "margin-bottom",
+        "margin-block-end",
+        "margin-block-start",
+        "margin-inline-end",
+        "margin-inline-start",
+        "scroll-padding-right",
+        "scroll-padding-left",
+        "scroll-padding-top",
+        "scroll-padding-bottom",
+        "scroll-padding-block-end",
+        "scroll-padding-block-start",
+        "scroll-padding-inline-end",
+        "scroll-padding-inline-start",
+        "text-underline-offset");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36<1,2>"))),
+        "margin-block",
+        "margin-inline",
+        "scroll-padding-block",
+        "scroll-padding-inline");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36<1,4>"))),
+        "margin",
+        "scroll-padding");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40"))),
+        "padding-top",
+        "padding-right",
+        "padding-bottom",
+        "padding-left",
+        "padding-block-end",
+        "padding-block-start",
+        "padding-inline-end",
+        "padding-inline-start",
+        "scroll-margin-top",
+        "scroll-margin-right",
+        "scroll-margin-bottom",
+        "scroll-margin-left",
+        "scroll-margin-block-end",
+        "scroll-margin-block-start",
+        "scroll-margin-inline-end",
+        "scroll-margin-inline-start");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40<1,4>"))),
+        "padding",
+        "scroll-margin");
+
+    // --- Scroll and snapping ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("auto", "smooth"), ElementInfo.VISUALMEDIA)),
+        "scroll-behavior");
+
+    register(
+        m,
+        element -> {
+          aux(
+              82,
+              new CSSPropertyVerifier(
+                  Arrays.asList("none", V_START, "end", V_CENTER), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("82<1,2>")));
+        },
+        "scroll-snap-align");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, V_ALWAYS), ElementInfo.VISUALMEDIA)),
+        "scroll-snap-stop");
+
+    register(
+        m,
+        element -> {
+          aux(
+              103,
+              new CSSPropertyVerifier(
+                  Arrays.asList("x", "y", "block", "inline", "both"), null, null, null, true));
+          aux(
+              80,
+              new CSSPropertyVerifier(
+                  Arrays.asList("mandatory", "proximity"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.VISUALMEDIA, null, Arrays.asList("103", "103 80")));
+        },
+        "scroll-snap-type");
+
+    // --- Cursor & interactivity, visibility & opacity ---
+    register(
+        m,
+        element -> {
+          aux(25, new CSSPropertyVerifier(null, List.of("ur"), null, null, true));
+          aux(141, new CSSPropertyVerifier(null, Arrays.asList("in", "re"), null, null, true));
+          aux(
+              142,
+              new CSSPropertyVerifier(
+                  null, null, null, Arrays.asList("25 141 141", "25"), true, true));
+          aux(
+              26,
+              new CSSPropertyVerifier(
+                  Arrays.asList(
+                      "auto",
+                      "default",
+                      "none",
+                      "context-menu",
+                      "help",
+                      "pointer",
+                      "progress",
+                      "wait",
+                      "cell",
+                      "crosshair",
+                      "text",
+                      "vertical-text",
+                      "alias",
+                      "copy",
+                      "move",
+                      "no-drop",
+                      "not-allowed",
+                      "grab",
+                      "grabbing",
+                      "e-resize",
+                      "n-resize",
+                      "ne-resize",
+                      "nw-resize",
+                      "s-resize",
+                      "se-resize",
+                      "sw-resize",
+                      "w-resize",
+                      "ew-resize",
+                      "ns-resize",
+                      "nesw-resize",
+                      "nwse-resize",
+                      "col-resize",
+                      "row-resize",
+                      "all-scroll",
+                      "zoom-in",
+                      "zoom-out"),
+                  null,
+                  null,
+                  null,
+                  true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  null,
+                  ElementInfo.VISUALINTERACTIVEMEDIA,
+                  null,
+                  List.of("142<0," + ElementInfo.UPPERLIMIT + ">[1,3] 26"),
+                  false,
+                  true));
+        },
+        "cursor");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("auto", "isolate"), ElementInfo.VISUALMEDIA)),
+        "isolation");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, List.of("re"))),
+        "opacity");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_VISIBLE, V_HIDDEN, V_COLLAPSE), ElementInfo.VISUALMEDIA)),
+        "visibility");
+
+    // --- Ruby & Aural ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_START, V_CENTER, "space-between", "space-around"),
+                    ElementInfo.VISUALMEDIA)),
+        "ruby-align");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("over", V_UNDER), ElementInfo.VISUALMEDIA)),
+        "ruby-position");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("below", "level", "above", "higher", "lower"),
+                    ElementInfo.AURALMEDIA,
+                    List.of("an"))),
+        "elevation");
+
+    register(
+        m,
+        element -> putAndRemove(element, new VoiceFamilyPropertyVerifier(false)),
+        "voice-family");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("silent", "x-soft", "soft", V_MEDIUM, "loud", "x-loud"),
+                    ElementInfo.AURALMEDIA,
+                    Arrays.asList("re", "le", "pe"))),
+        "volume");
+
+    // --- Clip ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("sh"))),
+        "clip");
+
+    // --- Hanging punctuation ---
+    register(
+        m,
+        element -> {
+          aux(
+              97,
+              new CSSPropertyVerifier(
+                  Arrays.asList("allow-end", "force-end"), null, null, null, true));
+          aux(98, new CSSPropertyVerifier(List.of("first"), null, null, null, true));
+          aux(99, new CSSPropertyVerifier(List.of("last"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("97a98a99")));
+        },
+        "hanging-punctuation");
+
+    // --- Math style ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "compact"), ElementInfo.VISUALMEDIA)),
+        "math-style");
+
+    // --- Speech ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("once", V_ALWAYS), ElementInfo.AURALMEDIA)),
+        "speak-header");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("digits", "continuous"), ElementInfo.AURALMEDIA)),
+        "speak-numeral");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("code", "none"), ElementInfo.AURALMEDIA)),
+        "speak-punctuation");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "none", "spell-out"), ElementInfo.AURALMEDIA)),
+        "speak");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("x-slow", "slow", V_MEDIUM, "fast", "x-fast", "faster", "slower"),
+                    ElementInfo.AURALMEDIA,
+                    Arrays.asList("re", "in"))),
+        "speech-rate");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("ti", "pe"))),
+        "pause-after",
+        "pause-before");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("in", "re"))),
+        "pitch-range");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("x-low", "low", V_MEDIUM, "high", "x-high"),
+                    ElementInfo.AURALMEDIA,
+                    List.of("fr"))),
+        "pitch");
+
+    register(
+        m,
+        element -> {
+          aux(41, new CSSPropertyVerifier(null, Arrays.asList("ti", "pe"), null, null, true));
+          putAndRemove(element, new CSSPropertyVerifier(null, null, null, List.of("41<1,2>")));
+        },
+        "pause");
+
+    register(
+        m,
+        element -> {
+          aux(42, new CSSPropertyVerifier(null, List.of("ur"), null, null, true));
+          aux(43, new CSSPropertyVerifier(List.of("mix"), null, null, null, true));
+          aux(44, new CSSPropertyVerifier(List.of(V_REPEAT), null, null, null, true));
+          aux(45, new CSSPropertyVerifier(null, null, List.of("43a44"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  Arrays.asList("auto", "none"),
+                  ElementInfo.AURALMEDIA,
+                  null,
+                  List.of("42 45<0,1>[1,2]")));
+        },
+        "play-during");
+
+    register(
+        m,
+        element -> {
+          aux(86, new CSSPropertyVerifier(List.of(V_START), null, null, null, true));
+          aux(
+              87,
+              new CSSPropertyVerifier(Arrays.asList("end", "allow-end"), null, null, null, true));
+          aux(88, new CSSPropertyVerifier(List.of("adjacent"), null, null, null, true));
+          aux(89, new CSSPropertyVerifier(null, null, List.of("86a87a88"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.AURALMEDIA, null, List.of("89")));
+        },
+        "punctuation-trim");
+
+    // --- Box model & captions ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("slice", "clone"), ElementInfo.VISUALMEDIA, null)),
+        "box-decoration-break");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("none"),
+                    ElementInfo.VISUALMEDIA,
+                    null,
+                    List.of("75<1,65535>"),
+                    true,
+                    true)),
+        "box-shadow");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("content-box", "border-box"), ElementInfo.VISUALMEDIA, null)),
+        "box-sizing");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("show", "discard", "hide"), ElementInfo.VISUALMEDIA, null)),
+        "box-suppress");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("top", V_BOTTOM), ElementInfo.VISUALMEDIA)),
+        "caption-side");
+
+    // --- Breaks (paged/column) ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "auto",
+                        V_ALWAYS,
+                        V_AVOID,
+                        "all",
+                        "left",
+                        V_RIGHT,
+                        "recto",
+                        "verso",
+                        "page",
+                        V_COLUMN,
+                        V_AVOID_PAGE,
+                        V_AVOID_COLUMN),
+                    ElementInfo.VISUALPAGEDMEDIA)),
+        "break-after",
+        "page-break-after",
+        "break-before",
+        "page-break-before");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_AVOID, V_AVOID_PAGE, V_AVOID_COLUMN),
+                    ElementInfo.VISUALPAGEDMEDIA)),
+        "break-inside",
+        "page-break-inside");
+
+    // --- Color & rendering ---
+    register(
+        m,
+        element -> {
+          aux(
+              81,
+              new CSSPropertyVerifier(
+                  Arrays.asList("light", "dark", "only"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of(V_NORMAL), ElementInfo.VISUALMEDIA, null, List.of("81<1,3>")));
+        },
+        "color-scheme");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", "sRGB", "linearRGB"), ElementInfo.VISUALMEDIA)),
+        "color-interpolation");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", "optimizeSpeed", "optimizeQuality"),
+                    ElementInfo.VISUALMEDIA)),
+        "color-rendering");
+
+    // --- Content & counters ---
+    register(
+        m,
+        element -> {
+          aux(
+              16,
+              new ContentPropertyVerifier(
+                  Arrays.asList("open-quote", "close-quote", "no-open-quote", "no-close-quote")));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  Arrays.asList(V_NORMAL, "none"),
+                  ElementInfo.MEDIA,
+                  null,
+                  List.of("16<1," + ElementInfo.UPPERLIMIT + ">")));
+        },
+        V_CONTENT);
+
+    register(
+        m,
+        element -> {
+          aux(17, new CSSPropertyVerifier(null, List.of("id"), null, null, true));
+          aux(18, new CSSPropertyVerifier(null, List.of("in"), null, null, true));
+          aux(19, new CSSPropertyVerifier(null, null, List.of("17 18?"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"),
+                  ElementInfo.MEDIA,
+                  null,
+                  List.of("19<1," + ElementInfo.UPPERLIMIT + ">[1,2]")));
+        },
+        "counter-increment");
+
+    register(
+        m,
+        element -> {
+          aux(20, new CSSPropertyVerifier(null, List.of("id"), null, null, true));
+          aux(21, new CSSPropertyVerifier(null, List.of("in"), null, null, true));
+          aux(22, new CSSPropertyVerifier(null, null, List.of("20 21?"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"),
+                  ElementInfo.MEDIA,
+                  null,
+                  List.of("22<1," + ElementInfo.UPPERLIMIT + ">[1,2]")));
+        },
+        "counter-reset");
+
+    // --- Cue & aural ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, List.of("ur"))),
+        "cue-after",
+        "cue-before");
+
+    register(
+        m,
+        element -> {
+          aux(23, new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true));
+          aux(24, new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true));
+          putAndRemove(
+              element, new CSSPropertyVerifier(null, ElementInfo.MEDIA, null, List.of("23a24")));
+        },
+        "cue");
+
+    // --- Baseline & tables ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "auto",
+                        "text-bottom",
+                        "alphabetic",
+                        "ideographic",
+                        "middle",
+                        "central",
+                        "mathematical",
+                        "hanging",
+                        "text-top"),
+                    ElementInfo.VISUALMEDIA)),
+        "dominant-baseline");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("show", "hide"), ElementInfo.VISUALMEDIA)),
+        "empty-cells");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("auto", V_FIXED), ElementInfo.VISUALMEDIA)),
+        "table-layout");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, Arrays.asList("le", "in"))),
+        "tab-size");
+
+    // --- Max/min & nav ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("none"), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe"))),
+        "max-width",
+        "max-height",
+        "max-block-size",
+        "max-inline-size");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of("auto"),
+                    ElementInfo.VISUALINTERACTIVEMEDIA,
+                    null,
+                    List.of(P_143_144_Q))),
+        "nav-down",
+        "nav-left",
+        "nav-right",
+        "nav-up");
+
+    // --- Object fit ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_CONTAIN, "cover", "fill", "none", "scale-down"),
+                    ElementInfo.VISUALMEDIA)),
+        "object-fit");
+
+    // --- Ordering & pagination ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, List.of("in"))),
+        "order",
+        "orphans");
+
+    // --- Quotes, resize, stress/richness ---
+    register(
+        m,
+        element -> {
+          aux(46, new CSSPropertyVerifier(null, List.of("st"), null, null, true));
+          aux(47, new CSSPropertyVerifier(null, null, List.of("46 46"), null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"),
+                  null,
+                  ElementInfo.VISUALMEDIA,
+                  List.of("47<1," + ElementInfo.UPPERLIMIT + ">[2,2]")));
+        },
+        "quotes");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "both", "horizontal", "vertical"),
+                    ElementInfo.VISUALMEDIA,
+                    null)),
+        "resize");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("re", "in"))),
+        "richness",
+        "stress");
+
+    // --- Rotate & perspective ---
+    register(
+        m,
+        element -> {
+          aux(141, new CSSPropertyVerifier(null, Arrays.asList("in", "re"), null, null, true));
+          aux(73, new CSSPropertyVerifier(null, List.of("an"), null, null, true));
+          aux(15, new CSSPropertyVerifier(Arrays.asList("x", "y", "z"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"),
+                  ElementInfo.VISUALMEDIA,
+                  null,
+                  Arrays.asList("73", "15 73", "141 141 141 73")));
+        },
+        "rotate");
+
+    register(
+        m,
+        element ->
+            putAndRemove(element, new CSSPropertyVerifier(List.of("none"), null, List.of("le"))),
+        "perspective");
+
+    // --- Text align & wrap ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        V_START, "end", "left", V_RIGHT, V_CENTER, "justify", "match-parent"),
+                    ElementInfo.VISUALMEDIA)),
+        "text-align");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_START, "end", "left", V_RIGHT, V_CENTER, "justify"),
+                    ElementInfo.VISUALMEDIA)),
+        "text-align-last");
+
+    register(
+        m,
+        element -> {
+          aux(90, new CSSPropertyVerifier(List.of("ideograph-numeric"), null, null, null, true));
+          aux(91, new CSSPropertyVerifier(List.of("ideograph-alpha"), null, null, null, true));
+          aux(92, new CSSPropertyVerifier(List.of("ideograph-space"), null, null, null, true));
+          aux(
+              93,
+              new CSSPropertyVerifier(List.of("ideograph-parenthesis"), null, null, null, true));
+          putAndRemove(
+              element,
+              new CSSPropertyVerifier(
+                  List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("90a91a92a93")));
+        },
+        "text-autospace");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("none", "all"), ElementInfo.VISUALMEDIA, null, null)),
+        "text-combine-upright");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "capitalize",
+                        "uppercase",
+                        "lowercase",
+                        "none",
+                        "fullwidth",
+                        "full-size-kana",
+                        "math-auto"),
+                    ElementInfo.VISUALMEDIA)),
+        "text-transform");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_UNDER, "left", V_RIGHT), ElementInfo.VISUALMEDIA)),
+        "text-underline-position");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("wrap", V_NOWRAP, V_BALANCE), ElementInfo.VISUALMEDIA)),
+        "text-wrap");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(Arrays.asList("wrap", V_NOWRAP), ElementInfo.VISUALMEDIA)),
+        "text-wrap-mode");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList("auto", V_BALANCE, "stable", "pretty", "avoid-orphans"),
+                    ElementInfo.VISUALMEDIA)),
+        "text-wrap-style");
+
+    // --- Unicode bidi & vertical-align ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        V_NORMAL,
+                        "embed",
+                        "bidi-override",
+                        "isolate",
+                        "isolate-override",
+                        "plaintext"),
+                    ElementInfo.VISUALMEDIA)),
+        "unicode-bidi");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        V_BASELINE,
+                        "sub",
+                        "super",
+                        "top",
+                        "text-top",
+                        "middle",
+                        V_BOTTOM,
+                        "text-bottom"),
+                    ElementInfo.VISUALMEDIA,
+                    Arrays.asList("pe", "le"))),
+        "vertical-align");
+
+    // --- White space, word wrapping, writing mode, zoom ---
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "pre", V_NOWRAP, "pre-wrap", "pre-line"),
+                    ElementInfo.VISUALMEDIA)),
+        "white-space");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "preserve", "preserve-break", V_COLLAPSE, "discard", "break-spaces"),
+                    null,
+                    ElementInfo.VISUALMEDIA)),
+        "white-space-collapse");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "break-all", "hyphenate", "keep-all"),
+                    ElementInfo.VISUALMEDIA)),
+        "word-break");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(V_NORMAL, "break-word", "anywhere"), ElementInfo.VISUALMEDIA)),
+        "word-wrap",
+        "overflow-wrap");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    Arrays.asList(
+                        "horizontal-tb",
+                        "vertical-rl",
+                        "vertical-lr",
+                        "lr",
+                        "lr-tb",
+                        "rl",
+                        "tb",
+                        "tb-lr",
+                        "tb-rl"),
+                    ElementInfo.VISUALMEDIA)),
+        "writing-mode");
+
+    register(
+        m,
+        element ->
+            putAndRemove(
+                element,
+                new CSSPropertyVerifier(
+                    List.of(V_NORMAL), ElementInfo.VISUALMEDIA, Arrays.asList("re", "pe"))),
+        "zoom");
+
+    return Collections.unmodifiableMap(m);
+  }
+
   /* This function loads a verifier object in elementVerifiers.
    * After the object has been loaded, property name is removed from allelementVerifier.
    */
   private static void addVerifier(String element) {
-    if ("accent-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("co")));
-      allelementVerifiers.remove(element);
-    } else if ("align-content".equalsIgnoreCase(element)
-        || "justify-content".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("121a124"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("align-items".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, Arrays.asList("125", "127"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("align-self".equalsIgnoreCase(element) || "justify-self".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_STRETCH, V_BASELINE, V_LAST_BASELINE),
-              ElementInfo.VISUALMEDIA,
-              null,
-              List.of("127"),
-              true,
-              true));
-      allelementVerifiers.remove(element);
-    } else if ("all".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.MEDIA, null, null, true, true));
-      allelementVerifiers.remove(element);
-    } else if ("appearance".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "auto",
-                  "none",
-                  "base",
-                  "searchfield",
-                  "textarea",
-                  "checkbox",
-                  "radio",
-                  "menulist",
-                  "listbox",
-                  "meter",
-                  "progress-bar",
-                  "button",
-                  "textfield",
-                  "menulist-button"),
-              ElementInfo.VISUALMEDIA,
-              null,
-              null,
-              true,
-              true));
-      allelementVerifiers.remove(element);
-    } else if ("azimuth".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[0] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "left-side",
-                  "far-left",
-                  "left",
-                  "center-left",
-                  V_CENTER,
-                  "center-right",
-                  V_RIGHT,
-                  "far-right",
-                  "right-side"),
-              null,
-              null,
-              null,
-              true);
-      auxilaryVerifiers[1] = new CSSPropertyVerifier(List.of("behind"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("leftwards", "rightwards"),
-              ElementInfo.AURALMEDIA,
-              List.of("an"),
-              List.of("0a1")));
-      allelementVerifiers.remove(element);
-    } else if ("backface-visibility".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_VISIBLE, V_HIDDEN), ElementInfo.VISUALMEDIA, null, null, true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background-attachment".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[60] =
-          new CSSPropertyVerifier(
-              Arrays.asList("local", V_SCROLL, V_FIXED), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("60<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background-blend-mode".equalsIgnoreCase(element)
-        || "mix-blend-mode".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[148] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  V_NORMAL,
-                  "multiply",
-                  V_SCREEN,
-                  "overlay",
-                  "darken",
-                  "lighten",
-                  "color-dodge",
-                  "color-burn",
-                  "hard-light",
-                  "soft-light",
-                  "difference",
-                  "exclusion",
-                  "hue",
-                  "saturation",
-                  V_COLOR,
-                  "luminosity"),
-              null,
-              null,
-              null,
-              true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("148<1,2>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background-clip".equalsIgnoreCase(element)
-        || "background-origin".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("61<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of(V_TRANSPARENT), ElementInfo.VISUALMEDIA, List.of("co")));
-      allelementVerifiers.remove(element);
-    } else if ("background-image".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[56] =
-          new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("56<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-
-    } else if ("background-repeat".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[57] =
-          new CSSPropertyVerifier(
-              Arrays.asList(V_REPEAT, "space", "round", "no-repeat"), null, null, null, true);
-      auxilaryVerifiers[58] =
-          new CSSPropertyVerifier(Arrays.asList("repeat-x", "repeat-y"), null, null, null, true);
-      auxilaryVerifiers[59] =
-          new CSSPropertyVerifier(null, null, Arrays.asList("58", "57<1,2>"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("59<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background-size".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[62] =
-          new CSSPropertyVerifier(Arrays.asList("cover", V_CONTAIN), null, null, null, true);
-      auxilaryVerifiers[63] =
-          new CSSPropertyVerifier(null, null, Arrays.asList("36<1,2>", "62"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("63<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("background"
-        .equalsIgnoreCase(element)) { // CSS3 http://www.w3.org/TR/css3-background/#background
-      // background-attachment
-      auxilaryVerifiers[6] =
-          new CSSPropertyVerifier(Arrays.asList(V_SCROLL, V_FIXED), null, null, null, true);
-      // background-color
-      auxilaryVerifiers[7] =
-          new CSSPropertyVerifier(List.of(V_TRANSPARENT), List.of("co"), null, null, true);
-      // background-image
-      auxilaryVerifiers[8] =
-          new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-      // background-position
-      auxilaryVerifiers[9] =
-          new CSSPropertyVerifier(null, null, Arrays.asList("2 3?", "4a5"), null, true);
-      // background-repeat
-      auxilaryVerifiers[10] =
-          new CSSPropertyVerifier(
-              Arrays.asList(V_REPEAT, "repeat-x", "repeat-y", "no-repeat"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("6a7a8a9a10")));
-      allelementVerifiers.remove(element);
-    } else if ("block-size".equalsIgnoreCase(element)
-        || V_BOTTOM.equalsIgnoreCase(element)
-        || "height".equalsIgnoreCase(element)
-        || "inline-size".equalsIgnoreCase(element)
-        || "left".equalsIgnoreCase(element)
-        || "min-width".equalsIgnoreCase(element)
-        || "min-height".equalsIgnoreCase(element)
-        || "min-block-size".equalsIgnoreCase(element)
-        || "min-inline-size".equalsIgnoreCase(element)
-        || V_RIGHT.equalsIgnoreCase(element)
-        || "top".equalsIgnoreCase(element)
-        || "width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("auto"), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("border-collapse".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList(V_COLLAPSE, "separate"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("border-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, List.of("co"), List.of("11<1,4>")));
-      allelementVerifiers.remove(element);
-    } else if ("border-spacing".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[12] = new CSSPropertyVerifier(null, List.of("le"), null, null, true);
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("12 12?")));
-      allelementVerifiers.remove(element);
-    } else if ("border-style".equalsIgnoreCase(element)
-        || "column-rule-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of(P_13_1_4)));
-      allelementVerifiers.remove(element);
-    } else if ("border-top-style".equalsIgnoreCase(element)
-        || "border-bottom-style".equalsIgnoreCase(element)
-        || "border-left-style".equalsIgnoreCase(element)
-        || "border-right-style".equalsIgnoreCase(element)
-        || "border-block-end-style".equalsIgnoreCase(element)
-        || "border-block-start-style".equalsIgnoreCase(element)
-        || "border-inline-end-style".equalsIgnoreCase(element)
-        || "border-inline-start-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, null, List.of("13"), ElementInfo.VISUALMEDIA, true));
-      allelementVerifiers.remove(element);
-    } else if ("border-left".equalsIgnoreCase(element)
-        || "border-right".equalsIgnoreCase(element)
-        || "border-top".equalsIgnoreCase(element)
-        || "border-bottom".equalsIgnoreCase(element)
-        || "border-block-end".equalsIgnoreCase(element)
-        || "border-block-start".equalsIgnoreCase(element)
-        || "border-inline-end".equalsIgnoreCase(element)
-        || "border-inline-start".equalsIgnoreCase(element)
-        || "border".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("13a14a11")));
-      allelementVerifiers.remove(element);
-    } else if ("border-top-color".equalsIgnoreCase(element)
-        || "border-bottom-color".equalsIgnoreCase(element)
-        || "border-left-color".equalsIgnoreCase(element)
-        || "border-right-color".equalsIgnoreCase(element)
-        || "border-inline-end-color".equalsIgnoreCase(element)
-        || "border-inline-start-color".equalsIgnoreCase(element)
-        || "border-block-start-color".equalsIgnoreCase(element)
-        || "border-block-end-color".equalsIgnoreCase(element)
-        || "column-rule-color".equalsIgnoreCase(element)
-        || V_COLOR.equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("co")));
-      allelementVerifiers.remove(element);
-    } else if ("border-width".equalsIgnoreCase(element)
-        || "column-rule-width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of(P_14_1_4)));
-      allelementVerifiers.remove(element);
-    } else if (S_BORDER_TOP_WIDTH.equalsIgnoreCase(element)
-        || S_BORDER_BOTTOM_WIDTH.equalsIgnoreCase(element)
-        || S_BORDER_LEFT_WIDTH.equalsIgnoreCase(element)
-        || S_BORDER_RIGHT_WIDTH.equalsIgnoreCase(element)
-        || "border-block-end-width".equalsIgnoreCase(element)
-        || "border-block-start-width".equalsIgnoreCase(element)
-        || "border-inline-end-width".equalsIgnoreCase(element)
-        || "border-inline-start-width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("14")));
-      allelementVerifiers.remove(element);
-
-    } else if ("border-radius".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[65] = new CSSPropertyVerifier(List.of("/"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, Arrays.asList("40<1,4>", "40<1,4> 65 40<1,4>")));
-      allelementVerifiers.remove(element);
-    } else if ("border-bottom-left-radius".equalsIgnoreCase(element)
-        || "border-bottom-right-radius".equalsIgnoreCase(element)
-        || "border-top-left-radius".equalsIgnoreCase(element)
-        || "border-top-right-radius".equalsIgnoreCase(element)
-        || "border-start-end-radius".equalsIgnoreCase(element)
-        || "border-start-start-radius".equalsIgnoreCase(element)
-        || "border-end-end-radius".equalsIgnoreCase(element)
-        || "border-end-start-radius".equalsIgnoreCase(element)
-        || "padding-block".equalsIgnoreCase(element)
-        || "padding-inline".equalsIgnoreCase(element)
-        || "scroll-margin-block".equalsIgnoreCase(element)
-        || "scroll-margin-inline".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40<1,2>")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image-source".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("76")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image-slice".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[66] =
-          new CSSPropertyVerifier(null, Arrays.asList("pe", "in"), null, null, true);
-      auxilaryVerifiers[67] = new CSSPropertyVerifier(List.of("fill"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("66<1,4> 67?")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image-width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("77")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image-outset".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[69] =
-          new CSSPropertyVerifier(null, Arrays.asList("le", "in"), null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("69<1,4>")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image-repeat".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("78")));
-      allelementVerifiers.remove(element);
-    } else if ("border-image".equalsIgnoreCase(element)) { // css3: not sure how to do the rest
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("76a77a78")));
-      allelementVerifiers.remove(element);
-
-    } else if ("box-decoration-break".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("slice", "clone"), ElementInfo.VISUALMEDIA, null));
-      allelementVerifiers.remove(element);
-    } else if ("box-shadow".equalsIgnoreCase(element)) { // way more permissive than it should be
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("75<1,65535>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("box-sizing".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("content-box", "border-box"), ElementInfo.VISUALMEDIA, null));
-      allelementVerifiers.remove(element);
-    } else if ("box-suppress".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("show", "discard", "hide"), ElementInfo.VISUALMEDIA, null));
-      allelementVerifiers.remove(element);
-    } else if ("caption-side".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("top", V_BOTTOM), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("caret-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_TRANSPARENT, "currentcolor"),
-              ElementInfo.VISUALMEDIA,
-              List.of("co")));
-      allelementVerifiers.remove(element);
-    } else if ("clear".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("none", "left", V_RIGHT, "both", "inline-start", "inline-end"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("clip".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("sh")));
-      allelementVerifiers.remove(element);
-    } else if ("break-after".equalsIgnoreCase(element)
-        || "page-break-after".equalsIgnoreCase(element)
-        || "break-before".equalsIgnoreCase(element)
-        || "page-break-before".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "auto",
-                  V_ALWAYS,
-                  V_AVOID,
-                  "all",
-                  "left",
-                  V_RIGHT,
-                  "recto",
-                  "verso",
-                  "page",
-                  V_COLUMN,
-                  V_AVOID_PAGE,
-                  V_AVOID_COLUMN),
-              ElementInfo.VISUALPAGEDMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("break-inside".equalsIgnoreCase(element)
-        || "page-break-inside".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_AVOID, V_AVOID_PAGE, V_AVOID_COLUMN),
-              ElementInfo.VISUALPAGEDMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("color-scheme".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[81] =
-          new CSSPropertyVerifier(Arrays.asList("light", "dark", "only"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of(V_NORMAL), ElementInfo.VISUALMEDIA, null, List.of("81<1,3>")));
-      allelementVerifiers.remove(element);
-    } else if ("column-count".equalsIgnoreCase(element) || "z-index".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("in")));
-      allelementVerifiers.remove(element);
-    } else if ("column-fill".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("auto", V_BALANCE), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("column-gap".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of(V_NORMAL), ElementInfo.VISUALMEDIA, List.of("le")));
-      allelementVerifiers.remove(element);
-
-    } else if ("column-rule".equalsIgnoreCase(element)) {
-      // column-rule-width
-      auxilaryVerifiers[54] = new CSSPropertyVerifier(null, null, null, List.of(P_14_1_4));
-      // border-style
-      auxilaryVerifiers[55] = new CSSPropertyVerifier(null, null, null, List.of(P_13_1_4));
-      // color || transparent 13
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("54a55a11")));
-      allelementVerifiers.remove(element);
-    } else if ("column-span".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(Arrays.asList("1", "all"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("column-width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("le")));
-      allelementVerifiers.remove(element);
-    } else if ("columns".equalsIgnoreCase(element)) {
-      // column-width
-      auxilaryVerifiers[52] =
-          new CSSPropertyVerifier(List.of("auto"), List.of("le"), null, null, true);
-      // column-count
-      auxilaryVerifiers[53] =
-          new CSSPropertyVerifier(List.of("auto"), List.of("in"), null, null, true);
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("52a53")));
-      allelementVerifiers.remove(element);
-
-    } else if ("color-interpolation".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "sRGB", "linearRGB"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("color-rendering".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "optimizeSpeed", "optimizeQuality"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if (V_CONTENT.equalsIgnoreCase(element)) {
-      auxilaryVerifiers[16] =
-          new ContentPropertyVerifier(
-              Arrays.asList("open-quote", "close-quote", "no-open-quote", "no-close-quote"));
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "none"),
-              ElementInfo.MEDIA,
-              null,
-              List.of("16<1," + ElementInfo.UPPERLIMIT + ">")));
-      allelementVerifiers.remove(element);
-    } else if ("counter-increment".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[17] = new CSSPropertyVerifier(null, List.of("id"), null, null, true);
-      auxilaryVerifiers[18] = new CSSPropertyVerifier(null, List.of("in"), null, null, true);
-      auxilaryVerifiers[19] = new CSSPropertyVerifier(null, null, List.of("17 18?"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"),
-              ElementInfo.MEDIA,
-              null,
-              List.of("19<1," + ElementInfo.UPPERLIMIT + ">[1,2]")));
-      allelementVerifiers.remove(element);
-    } else if ("counter-reset".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[20] = new CSSPropertyVerifier(null, List.of("id"), null, null, true);
-      auxilaryVerifiers[21] = new CSSPropertyVerifier(null, List.of("in"), null, null, true);
-      auxilaryVerifiers[22] = new CSSPropertyVerifier(null, null, List.of("20 21?"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"),
-              ElementInfo.MEDIA,
-              null,
-              List.of("22<1," + ElementInfo.UPPERLIMIT + ">[1,2]")));
-      allelementVerifiers.remove(element);
-    } else if ("cue-after".equalsIgnoreCase(element) || "cue-before".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, List.of("ur")));
-      allelementVerifiers.remove(element);
-    } else if ("cue".equalsIgnoreCase(element)) {
-      // cue-before
-      auxilaryVerifiers[23] =
-          new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-      // cue-after
-      auxilaryVerifiers[24] =
-          new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.MEDIA, null, List.of("23a24")));
-      allelementVerifiers.remove(element);
-    } else if ("cursor".equalsIgnoreCase(element)) {
-      // <cursor> = [ [<url> [<x> <y>]?,]*
-      // [ auto | default | none |
-      //	 context-menu | help | pointer | progress | wait |
-      //	 cell | crosshair | text | vertical-text |
-      //	 alias | copy | move | no-drop | not-allowed | grab | grabbing |
-      //	 e-resize | n-resize | ne-resize | nw-resize | s-resize | se-resize | sw-resize | w-resize
-      // | ew-resize | ns-resize | nesw-resize | nwse-resize | col-resize | row-resize | all-scroll
-      // | zoom-in | zoom-out
-      //	] ]
-      auxilaryVerifiers[25] = new CSSPropertyVerifier(null, List.of("ur"), null, null, true);
-      auxilaryVerifiers[141] =
-          new CSSPropertyVerifier(null, Arrays.asList("in", "re"), null, null, true);
-      auxilaryVerifiers[142] =
-          new CSSPropertyVerifier(null, null, null, Arrays.asList("25 141 141", "25"), true, true);
-      auxilaryVerifiers[26] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "auto",
-                  "default",
-                  "none",
-                  "context-menu",
-                  "help",
-                  "pointer",
-                  "progress",
-                  "wait",
-                  "cell",
-                  "crosshair",
-                  "text",
-                  "vertical-text",
-                  "alias",
-                  "copy",
-                  "move",
-                  "no-drop",
-                  "not-allowed",
-                  "grab",
-                  "grabbing",
-                  "e-resize",
-                  "n-resize",
-                  "ne-resize",
-                  "nw-resize",
-                  "s-resize",
-                  "se-resize",
-                  "sw-resize",
-                  "w-resize",
-                  "ew-resize",
-                  "ns-resize",
-                  "nesw-resize",
-                  "nwse-resize",
-                  "col-resize",
-                  "row-resize",
-                  "all-scroll",
-                  "zoom-in",
-                  "zoom-out"),
-              null,
-              null,
-              null,
-              true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null,
-              ElementInfo.VISUALINTERACTIVEMEDIA,
-              null,
-              List.of("142<0," + ElementInfo.UPPERLIMIT + ">[1,3] 26"),
-              false,
-              true));
-      allelementVerifiers.remove(element);
-    } else if ("direction".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(Arrays.asList("ltr", "rtl"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("display".equalsIgnoreCase(element)) {
-      // [ <display-outside> || <display-inside> ] | <display-listitem> | <display-internal> |
-      // <display-box> | <display-legacy>
-      // <display-outside>
-      auxilaryVerifiers[131] =
-          new CSSPropertyVerifier(
-              Arrays.asList("block", "inline", "run-in"), null, null, null, true);
-      // <display-inside>
-      auxilaryVerifiers[132] =
-          new CSSPropertyVerifier(
-              Arrays.asList("flow", "flow-root", "table", "flex", "grid", "ruby"),
-              null,
-              null,
-              null,
-              true);
-      // list-item
-      auxilaryVerifiers[133] =
-          new CSSPropertyVerifier(List.of("list-item"), null, null, null, true);
-      // flow | flow-root
-      auxilaryVerifiers[134] =
-          new CSSPropertyVerifier(Arrays.asList("flow", "flow-root"), null, null, null, true);
-      // <display-listitem> = list-item and optional <display-outside> and [ flow or flow-root ]
-      auxilaryVerifiers[135] = new CSSPropertyVerifier(null, null, List.of("131?"), null, true);
-      auxilaryVerifiers[136] = new CSSPropertyVerifier(null, null, List.of("134?"), null, true);
-      // <display-internal>
-      auxilaryVerifiers[137] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "table-row-group",
-                  "table-header-group",
-                  "table-footer-group",
-                  "table-row",
-                  "table-cell",
-                  "table-column-group",
-                  "table-column",
-                  "table-caption",
-                  "ruby-base",
-                  "ruby-text",
-                  "ruby-base-container",
-                  "ruby-text-container"),
-              null,
-              null,
-              null,
-              true);
-      // <display-box>
-      auxilaryVerifiers[138] =
-          new CSSPropertyVerifier(Arrays.asList("contents", "none"), null, null, null, true);
-      // <display-legacy>
-      auxilaryVerifiers[139] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "inline-block", "inline-list-item", "inline-table", "inline-flex", "inline-grid"),
-              null,
-              null,
-              null,
-              true);
-      auxilaryVerifiers[140] =
-          new CSSPropertyVerifier(null, null, List.of("133b135b136"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null,
-              null,
-              Arrays.asList("131a132", "140<0,1>[1,3]", "137", "138", "139"),
-              null,
-              true));
-      allelementVerifiers.remove(element);
-    } else if ("dominant-baseline".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "auto",
-                  "text-bottom",
-                  "alphabetic",
-                  "ideographic",
-                  "middle",
-                  "central",
-                  "mathematical",
-                  "hanging",
-                  "text-top"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("elevation".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("below", "level", "above", "higher", "lower"),
-              ElementInfo.AURALMEDIA,
-              List.of("an")));
-      allelementVerifiers.remove(element);
-    } else if ("empty-cells".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(Arrays.asList("show", "hide"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("float".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("left", V_RIGHT, "none", "inline-start", "inline-end"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("flex".equalsIgnoreCase(element)) {
-      // flex: none | <flex-grow> <flex-shrink>? || <flex-basis>
-      // flex-grow and flex-shrink are both integers so we can use one auxilaryVerifier
-      auxilaryVerifiers[119] = new CSSPropertyVerifier(null, null, List.of("in"));
-      auxilaryVerifiers[120] =
-          new CSSPropertyVerifier(Arrays.asList(V_CONTENT, "auto"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("119a120")));
-      allelementVerifiers.remove(element);
-    } else if ("flex-basis".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_CONTENT, "auto"),
-              ElementInfo.VISUALMEDIA,
-              Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("flex-direction".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("row", "row-reverse", V_COLUMN, "column-reverse"),
-              ElementInfo.VISUALMEDIA,
-              null));
-      allelementVerifiers.remove(element);
-    } else if ("flex-flow".equalsIgnoreCase(element)) {
-      // flex-flow: <flex-direction> || <flex-wrap>
-      // flex-direction:
-      auxilaryVerifiers[117] =
-          new CSSPropertyVerifier(
-              Arrays.asList("row", "row-reverse", V_COLUMN, "column-reverse"),
-              null,
-              null,
-              null,
-              true);
-      // flex-wrap:
-      auxilaryVerifiers[118] =
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NOWRAP, "wrap", "wrap-reverse"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("117a118")));
-      allelementVerifiers.remove(element);
-    } else if ("flex-grow".equalsIgnoreCase(element)
-        || "flex-shrink".equalsIgnoreCase(element)
-        || "widows".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("in")));
-      allelementVerifiers.remove(element);
-
-    } else if ("flex-wrap".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NOWRAP, "wrap", "wrap-reverse"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font-family".equalsIgnoreCase(element)) {
-      elementVerifiers.put(element, new FontPropertyVerifier(false));
-      allelementVerifiers.remove(element);
-    } else if ("font-kerning".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "none", V_NORMAL), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font-optical-sizing".equalsIgnoreCase(element)
-        || "pointer-events".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(Arrays.asList("auto", "none"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font-size".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "xx-small",
-                  "x-small",
-                  "small",
-                  V_MEDIUM,
-                  "large",
-                  "x-large",
-                  "xx-large",
-                  "xxx-large",
-                  "larger",
-                  "smaller"),
-              ElementInfo.VISUALMEDIA,
-              Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("font-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "italic", "oblique"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font-variant".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList(V_NORMAL, "small-caps"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font-weight".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  V_NORMAL, "bold", "bolder", "lighter", "100", "200", "300", "400", "500", "600",
-                  "700", "800", "900"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("font".equalsIgnoreCase(element)) {
-      // font-style
-      auxilaryVerifiers[27] =
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "italic", "oblique"), null, null, null, true);
-      // font-variant
-      auxilaryVerifiers[28] =
-          new CSSPropertyVerifier(Arrays.asList(V_NORMAL, "small-caps"), null, null, null, true);
-      // font-weight
-      auxilaryVerifiers[29] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  V_NORMAL, "bold", "bolder", "lighter", "100", "200", "300", "400", "500", "600",
-                  "700", "800", "900"),
-              null,
-              null,
-              null,
-              true);
-      // 30-32
-      auxilaryVerifiers[30] = new CSSPropertyVerifier(null, null, List.of("27a28a29"), null, true);
-      // font-size
-      auxilaryVerifiers[31] = new FontPartPropertyVerifier();
-      // font-family
-      auxilaryVerifiers[59] = new FontPropertyVerifier(true);
-      // old font family (legacy kept in history)
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "caption", "icon", "menu", "message-box", "small-caption", "status-bar"),
-              ElementInfo.VISUALMEDIA,
-              null,
-              List.of("30<0,1>[1,3] 31<0,1>[1,3] 59"),
-              false,
-              true));
-      allelementVerifiers.remove(element);
-    } else if ("gap".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("85<1,2>")));
-      allelementVerifiers.remove(element);
-    } else if ("hanging-punctuation".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[97] =
-          new CSSPropertyVerifier(Arrays.asList("allow-end", "force-end"), null, null, null, true);
-      auxilaryVerifiers[98] = new CSSPropertyVerifier(List.of("first"), null, null, null, true);
-      auxilaryVerifiers[99] = new CSSPropertyVerifier(List.of("last"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("97a98a99")));
-      allelementVerifiers.remove(element);
-
-    } else if ("hyphenate-character".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("auto"), ElementInfo.VISUALMEDIA, List.of("st")));
-      allelementVerifiers.remove(element);
-    } else if ("hyphens".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("none", "auto", "manual"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("image-orientation".equalsIgnoreCase(element)) {
-      // image-orientation is currently useless in Freenet because EXIF is stripped. However,
-      // "from-image" is the browser default so can't be removed by the filter. Therefore it is
-      // kept.
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("none", "from-image"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("image-rendering".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "smooth", "crisp-edges", "pixelated"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("isolation".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("auto", "isolate"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("justify-items".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, Arrays.asList("125", "130", "129"), true, true));
-      allelementVerifiers.remove(element);
-
-    } else if ("letter-spacing".equalsIgnoreCase(element)
-        || "word-spacing".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, null, ElementInfo.VISUALMEDIA, List.of("85<1,3>")));
-      allelementVerifiers.remove(element);
-    } else if ("line-height".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of(V_NORMAL), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe", "re", "in")));
-      allelementVerifiers.remove(element);
-    } else if ("line-break".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "anywhere", V_NORMAL, "strict", "loose"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("list-style-image".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("none"), ElementInfo.VISUALMEDIA, List.of("ur")));
-      allelementVerifiers.remove(element);
-    } else if ("list-style-position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("inside", "outside"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("list-style-type".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("35")));
-      allelementVerifiers.remove(element);
-    } else if ("list-style".equalsIgnoreCase(element)) {
-      // list-style-image
-      auxilaryVerifiers[33] =
-          new CSSPropertyVerifier(List.of("none"), List.of("ur"), null, null, true);
-      // list-style-position
-      auxilaryVerifiers[34] =
-          new CSSPropertyVerifier(Arrays.asList("inside", "outside"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("33a34a35")));
-      allelementVerifiers.remove(element);
-    } else if ("margin-right".equalsIgnoreCase(element)
-        || "margin-left".equalsIgnoreCase(element)
-        || "margin-top".equalsIgnoreCase(element)
-        || "margin-bottom".equalsIgnoreCase(element)
-        || "margin-block-end".equalsIgnoreCase(element)
-        || "margin-block-start".equalsIgnoreCase(element)
-        || "margin-inline-end".equalsIgnoreCase(element)
-        || "margin-inline-start".equalsIgnoreCase(element)
-        || "scroll-padding-right".equalsIgnoreCase(element)
-        || "scroll-padding-left".equalsIgnoreCase(element)
-        || "scroll-padding-top".equalsIgnoreCase(element)
-        || "scroll-padding-bottom".equalsIgnoreCase(element)
-        || "scroll-padding-block-end".equalsIgnoreCase(element)
-        || "scroll-padding-block-start".equalsIgnoreCase(element)
-        || "scroll-padding-inline-end".equalsIgnoreCase(element)
-        || "scroll-padding-inline-start".equalsIgnoreCase(element)
-        || "text-underline-offset".equalsIgnoreCase(element)) {
-      // margin-width=Length|Percentage|Auto
-      // scroll-padding-* can have value auto, so it is the same as margin-*; scroll-margin-* can't
-      // have value auto, so it is the same as padding-*
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36")));
-      allelementVerifiers.remove(element);
-    } else if ("margin-block".equalsIgnoreCase(element)
-        || "margin-inline".equalsIgnoreCase(element)
-        || "scroll-padding-block".equalsIgnoreCase(element)
-        || "scroll-padding-inline".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36<1,2>")));
-      allelementVerifiers.remove(element);
-    } else if ("margin".equalsIgnoreCase(element) || "scroll-padding".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("36<1,4>")));
-      allelementVerifiers.remove(element);
-    } else if ("math-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList(V_NORMAL, "compact"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("max-width".equalsIgnoreCase(element)
-        || "max-height".equalsIgnoreCase(element)
-        || "max-block-size".equalsIgnoreCase(element)
-        || "max-inline-size".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-
-    } else if ("nav-down".equalsIgnoreCase(element)
-        || "nav-left".equalsIgnoreCase(element)
-        || "nav-right".equalsIgnoreCase(element)
-        || "nav-up".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("auto"), ElementInfo.VISUALINTERACTIVEMEDIA, null, List.of(P_143_144_Q)));
-      allelementVerifiers.remove(element);
-    } else if ("object-fit".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_CONTAIN, "cover", "fill", "none", "scale-down"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("background-position".equalsIgnoreCase(element)
-        || "object-position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null,
-              ElementInfo.VISUALPAGEDMEDIA,
-              null,
-              Arrays.asList("4a5a40", "40 40", "4 5", "5 4", "4 40 5 40", "5 40 4 40")));
-      allelementVerifiers.remove(element);
-    } else if ("background-position-x".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, null, List.of("2")));
-      allelementVerifiers.remove(element);
-    } else if ("background-position-y".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, null, List.of("3")));
-      allelementVerifiers.remove(element);
-    } else if ("opacity".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, List.of("re")));
-      allelementVerifiers.remove(element);
-    } else if ("order".equalsIgnoreCase(element) || "orphans".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALPAGEDMEDIA, List.of("in")));
-      allelementVerifiers.remove(element);
-    } else if ("outline-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALINTERACTIVEMEDIA, List.of("co")));
-      allelementVerifiers.remove(element);
-    } else if ("outline-offset".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, List.of("le")));
-      allelementVerifiers.remove(element);
-    } else if ("outline-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "none", V_HIDDEN, V_DOTTED, V_DASHED, V_SOLID, V_DOUBLE, V_GROOVE, V_RIDGE,
-                  V_INSET, V_OUTSET),
-              ElementInfo.VISUALINTERACTIVEMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("outline-width".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("thin", V_MEDIUM, V_THICK),
-              ElementInfo.VISUALINTERACTIVEMEDIA,
-              List.of("le")));
-      allelementVerifiers.remove(element);
-    } else if ("outline".equalsIgnoreCase(element)) {
-      // outline-color
-      auxilaryVerifiers[37] =
-          new CSSPropertyVerifier(List.of("invert"), List.of("co"), null, null, true);
-      // outline-style
-      auxilaryVerifiers[38] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "none", V_HIDDEN, V_DOTTED, V_DASHED, V_SOLID, V_DOUBLE, V_GROOVE, V_RIDGE,
-                  V_INSET, V_OUTSET),
-              null,
-              null,
-              null,
-              true);
-      // outline-width
-      auxilaryVerifiers[39] =
-          new CSSPropertyVerifier(
-              Arrays.asList("thin", V_MEDIUM, V_THICK), List.of("le"), null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALINTERACTIVEMEDIA, List.of("le"), List.of("37a38a39")));
-      allelementVerifiers.remove(element);
-    } else if ("overflow".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[32] =
-          new CSSPropertyVerifier(
-              Arrays.asList(V_VISIBLE, V_HIDDEN, V_SCROLL, "auto", "clip"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("32<1,2>")));
-    } else if ("overflow-x".equalsIgnoreCase(element)
-        || "overflow-y".equalsIgnoreCase(element)
-        || "overflow-block".equalsIgnoreCase(element)
-        || "overflow-inline".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_VISIBLE, V_HIDDEN, V_SCROLL, "auto", "clip"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("overscroll-behavior".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[64] =
-          new CSSPropertyVerifier(Arrays.asList("auto", V_CONTAIN, "none"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("64<1,2>")));
-    } else if ("overscroll-behavior-x".equalsIgnoreCase(element)
-        || "overscroll-behavior-y".equalsIgnoreCase(element)
-        || "overscroll-behavior-block".equalsIgnoreCase(element)
-        || "overscroll-behavior-inline".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_CONTAIN, "none"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("padding-top".equalsIgnoreCase(element)
-        || "padding-right".equalsIgnoreCase(element)
-        || "padding-bottom".equalsIgnoreCase(element)
-        || "padding-left".equalsIgnoreCase(element)
-        || "padding-block-end".equalsIgnoreCase(element)
-        || "padding-block-start".equalsIgnoreCase(element)
-        || "padding-inline-end".equalsIgnoreCase(element)
-        || "padding-inline-start".equalsIgnoreCase(element)
-        || "scroll-margin-top".equalsIgnoreCase(element)
-        || "scroll-margin-right".equalsIgnoreCase(element)
-        || "scroll-margin-bottom".equalsIgnoreCase(element)
-        || "scroll-margin-left".equalsIgnoreCase(element)
-        || "scroll-margin-block-end".equalsIgnoreCase(element)
-        || "scroll-margin-block-start".equalsIgnoreCase(element)
-        || "scroll-margin-inline-end".equalsIgnoreCase(element)
-        || "scroll-margin-inline-start".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40")));
-      allelementVerifiers.remove(element);
-
-    } else if ("padding".equalsIgnoreCase(element) || "scroll-margin".equalsIgnoreCase(element)) {
-      // scroll-padding-* can have value auto, so it is the same as margin-*; scroll-margin-* can't
-      // have value auto, so it is the same as padding-*
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("40<1,4>")));
-      allelementVerifiers.remove(element);
-    } else if ("pause-after".equalsIgnoreCase(element)
-        || "pause-before".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("ti", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("pause".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[41] =
-          new CSSPropertyVerifier(null, Arrays.asList("ti", "pe"), null, null, true);
-      elementVerifiers.put(element, new CSSPropertyVerifier(null, null, null, List.of("41<1,2>")));
-      allelementVerifiers.remove(element);
-    } else if ("perspective".equalsIgnoreCase(element)) {
-      elementVerifiers.put(element, new CSSPropertyVerifier(List.of("none"), null, List.of("le")));
-      allelementVerifiers.remove(element);
-    } else if ("pitch-range".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("in", "re")));
-      allelementVerifiers.remove(element);
-    } else if ("pitch".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("x-low", "low", V_MEDIUM, "high", "x-high"),
-              ElementInfo.AURALMEDIA,
-              List.of("fr")));
-      allelementVerifiers.remove(element);
-    } else if ("play-during".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[42] = new CSSPropertyVerifier(null, List.of("ur"), null, null, true);
-      auxilaryVerifiers[43] = new CSSPropertyVerifier(List.of("mix"), null, null, null, true);
-      auxilaryVerifiers[44] = new CSSPropertyVerifier(List.of(V_REPEAT), null, null, null, true);
-      auxilaryVerifiers[45] = new CSSPropertyVerifier(null, null, List.of("43a44"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", "none"),
-              ElementInfo.AURALMEDIA,
-              null,
-              List.of("42 45<0,1>[1,2]")));
-      allelementVerifiers.remove(element);
-    } else if ("punctuation-trim".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[86] = new CSSPropertyVerifier(List.of(V_START), null, null, null, true);
-      auxilaryVerifiers[87] =
-          new CSSPropertyVerifier(Arrays.asList("end", "allow-end"), null, null, null, true);
-      auxilaryVerifiers[88] = new CSSPropertyVerifier(List.of("adjacent"), null, null, null, true);
-      auxilaryVerifiers[89] = new CSSPropertyVerifier(null, null, List.of("86a87a88"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(List.of("none"), ElementInfo.AURALMEDIA, null, List.of("89")));
-      allelementVerifiers.remove(element);
-    } else if ("position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("static", "relative", "absolute", V_FIXED, "sticky"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("quotes".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[46] = new CSSPropertyVerifier(null, List.of("st"), null, null, true);
-      auxilaryVerifiers[47] = new CSSPropertyVerifier(null, null, List.of("46 46"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"),
-              null,
-              ElementInfo.VISUALMEDIA,
-              List.of("47<1," + ElementInfo.UPPERLIMIT + ">[2,2]")));
-      allelementVerifiers.remove(element);
-    } else if ("resize".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("none", "both", "horizontal", "vertical"),
-              ElementInfo.VISUALMEDIA,
-              null));
-      allelementVerifiers.remove(element);
-    } else if ("richness".equalsIgnoreCase(element) || "stress".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.AURALMEDIA, Arrays.asList("re", "in")));
-      allelementVerifiers.remove(element);
-
-    } else if ("rotate".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[141] =
-          new CSSPropertyVerifier(null, Arrays.asList("in", "re"), null, null, true);
-      auxilaryVerifiers[73] = new CSSPropertyVerifier(null, List.of("an"), null, null, true);
-      auxilaryVerifiers[15] =
-          new CSSPropertyVerifier(Arrays.asList("x", "y", "z"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"),
-              ElementInfo.VISUALMEDIA,
-              null,
-              Arrays.asList("73", "15 73", "141 141 141 73")));
-      allelementVerifiers.remove(element);
-    } else if ("ruby-align".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_START, V_CENTER, "space-between", "space-around"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("ruby-position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("over", V_UNDER), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("row-gap".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of(V_NORMAL), ElementInfo.VISUALMEDIA, Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("scroll-behavior".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("auto", "smooth"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("scroll-snap-align".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[82] =
-          new CSSPropertyVerifier(
-              Arrays.asList("none", V_START, "end", V_CENTER), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("82<1,2>")));
-      allelementVerifiers.remove(element);
-    } else if ("scroll-snap-stop".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList(V_NORMAL, V_ALWAYS), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("scroll-snap-type".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[103] =
-          new CSSPropertyVerifier(
-              Arrays.asList("x", "y", "block", "inline", "both"), null, null, null, true);
-      auxilaryVerifiers[80] =
-          new CSSPropertyVerifier(Arrays.asList("mandatory", "proximity"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, Arrays.asList("103", "103 80")));
-      allelementVerifiers.remove(element);
-    } else if ("speak-header".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("once", V_ALWAYS), ElementInfo.AURALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("speak-numeral".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("digits", "continuous"), ElementInfo.AURALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("speak-punctuation".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(Arrays.asList("code", "none"), ElementInfo.AURALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("speak".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "none", "spell-out"), ElementInfo.AURALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("speech-rate".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("x-slow", "slow", V_MEDIUM, "fast", "x-fast", "faster", "slower"),
-              ElementInfo.AURALMEDIA,
-              Arrays.asList("re", "in")));
-      allelementVerifiers.remove(element);
-
-    } else if ("table-layout".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("auto", V_FIXED), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("tab-size".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, Arrays.asList("le", "in")));
-      allelementVerifiers.remove(element);
-    } else if ("text-align"
-        .equalsIgnoreCase(element)) { // We don't support "one character" as the spec says
-      // http://www.w3.org/TR/css3-text/#text-align0
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_START, "end", "left", V_RIGHT, V_CENTER, "justify", "match-parent"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-align-last".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_START, "end", "left", V_RIGHT, V_CENTER, "justify"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-autospace".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[90] =
-          new CSSPropertyVerifier(List.of("ideograph-numeric"), null, null, null, true);
-      auxilaryVerifiers[91] =
-          new CSSPropertyVerifier(List.of("ideograph-alpha"), null, null, null, true);
-      auxilaryVerifiers[92] =
-          new CSSPropertyVerifier(List.of("ideograph-space"), null, null, null, true);
-      auxilaryVerifiers[93] =
-          new CSSPropertyVerifier(List.of("ideograph-parenthesis"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("90a91a92a93")));
-      allelementVerifiers.remove(element);
-    } else if ("text-combine-upright".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("none", "all"), ElementInfo.VISUALMEDIA, null, null));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("115a11a104a116")));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-color".equalsIgnoreCase(element)
-        || "text-emphasis-color".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11")));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-line".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("100a101a102")));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-skip".equalsIgnoreCase(element)) {
-      // The specified values here are invalid
-      auxilaryVerifiers[48] = new CSSPropertyVerifier(List.of("images"), null, null, null, true);
-      auxilaryVerifiers[49] = new CSSPropertyVerifier(List.of("spaces"), null, null, null, true);
-      auxilaryVerifiers[50] = new CSSPropertyVerifier(List.of("ink"), null, null, null, true);
-      auxilaryVerifiers[51] = new CSSPropertyVerifier(List.of("all"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("48a49a50a51")));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-skip-ink".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("none", "auto", "all"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("104")));
-      allelementVerifiers.remove(element);
-    } else if ("text-decoration-thickness".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("from-font", "auto"),
-              ElementInfo.VISUALMEDIA,
-              Arrays.asList("le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("text-emphasis".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("11a107")));
-      allelementVerifiers.remove(element);
-
-    } else if ("text-emphasis-position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("over", V_UNDER), ElementInfo.VISUALMEDIA, null, null));
-      allelementVerifiers.remove(element);
-    } else if ("text-emphasis-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("107")));
-      allelementVerifiers.remove(element);
-    } else if ("text-indent".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[94] =
-          new CSSPropertyVerifier(Arrays.asList("hanging", "each-line"), null, null, null, true);
-      auxilaryVerifiers[95] = new CSSPropertyVerifier(null, null, List.of("94<0,2>"), null, true);
-      auxilaryVerifiers[96] =
-          new CSSPropertyVerifier(null, Arrays.asList("le", "pe"), null, null, true);
-      elementVerifiers.put(
-          element, new CSSPropertyVerifier(null, ElementInfo.VISUALMEDIA, null, List.of("96 95")));
-      allelementVerifiers.remove(element);
-    } else if ("text-justify".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[83] =
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "inter-word", "inter-ideograph", "inter-cluster", "distribute", "kashida"),
-              null,
-              null,
-              null,
-              true);
-      auxilaryVerifiers[84] = new CSSPropertyVerifier(List.of("trim"), null, null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("auto"), ElementInfo.VISUALMEDIA, null, List.of("84a83")));
-      allelementVerifiers.remove(element);
-    } else if ("text-orientation".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("mixed", "upright", "sideways", "sideways-right"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-outline".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[108] =
-          new CSSPropertyVerifier(null, null, List.of("11 72 72<0,1>"), null, true);
-      auxilaryVerifiers[109] =
-          new CSSPropertyVerifier(null, null, List.of("72 72<0,1> 11"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("108a109")));
-      allelementVerifiers.remove(element);
-    } else if ("text-overflow".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("clip", "ellipsis"), ElementInfo.VISUALMEDIA, List.of("st")));
-      allelementVerifiers.remove(element);
-    } else if ("text-shadow".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"), ElementInfo.VISUALMEDIA, null, List.of("79"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("text-transform".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "capitalize",
-                  "uppercase",
-                  "lowercase",
-                  "none",
-                  "fullwidth",
-                  "full-size-kana",
-                  "math-auto"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("text-underline-position".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_UNDER, "left", V_RIGHT), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-wrap".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("wrap", V_NOWRAP, V_BALANCE), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-wrap-mode".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(Arrays.asList("wrap", V_NOWRAP), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("text-wrap-style".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("auto", V_BALANCE, "stable", "pretty", "avoid-orphans"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("transform".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[110] = new CSSPropertyVerifier(null, List.of("tr"), null, null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("110<0,65536>"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("transform-origin".equalsIgnoreCase(element)) {
-      auxilaryVerifiers[111] = new CSSPropertyVerifier(null, null, List.of("2 3<0,1>"), null, true);
-      auxilaryVerifiers[112] =
-          new CSSPropertyVerifier(Arrays.asList("left", V_CENTER, V_RIGHT), null, null, null, true);
-      auxilaryVerifiers[113] =
-          new CSSPropertyVerifier(Arrays.asList("top", V_CENTER, V_BOTTOM), null, null, null, true);
-      auxilaryVerifiers[114] = new CSSPropertyVerifier(null, null, List.of("112a113"), null, true);
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, Arrays.asList("111", "114"), true, true));
-      allelementVerifiers.remove(element);
-    } else if ("unicode-bidi".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  V_NORMAL, "embed", "bidi-override", "isolate", "isolate-override", "plaintext"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("translate".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of("none"),
-              ElementInfo.VISUALMEDIA,
-              null,
-              Arrays.asList("40", "40 40", "40 40 72")));
-      allelementVerifiers.remove(element);
-    } else if ("vertical-align".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  V_BASELINE, "sub", "super", "top", "text-top", "middle", V_BOTTOM, "text-bottom"),
-              ElementInfo.VISUALMEDIA,
-              Arrays.asList("pe", "le")));
-      allelementVerifiers.remove(element);
-    } else if ("visibility".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_VISIBLE, V_HIDDEN, V_COLLAPSE), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("voice-family".equalsIgnoreCase(element)) {
-      elementVerifiers.put(element, new VoiceFamilyPropertyVerifier(false));
-      allelementVerifiers.remove(element);
-    } else if ("volume".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("silent", "x-soft", "soft", V_MEDIUM, "loud", "x-loud"),
-              ElementInfo.AURALMEDIA,
-              Arrays.asList("re", "le", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("white-space".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "pre", V_NOWRAP, "pre-wrap", "pre-line"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("white-space-collapse".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList("preserve", "preserve-break", V_COLLAPSE, "discard", "break-spaces"),
-              null,
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("word-break".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "break-all", "hyphenate", "keep-all"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("word-wrap".equalsIgnoreCase(element) || "overflow-wrap".equalsIgnoreCase(element)) {
-      // word-wrap was a Microsoft extension that got renamed to overflow-wrap in CSS Text Module
-      // Level 3.
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(V_NORMAL, "break-word", "anywhere"), ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-    } else if ("writing-mode".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              Arrays.asList(
-                  "horizontal-tb",
-                  "vertical-rl",
-                  "vertical-lr",
-                  "lr",
-                  "lr-tb",
-                  "rl",
-                  "tb",
-                  "tb-lr",
-                  "tb-rl"),
-              ElementInfo.VISUALMEDIA));
-      allelementVerifiers.remove(element);
-
-    } else if ("zoom".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              List.of(V_NORMAL), ElementInfo.VISUALMEDIA, Arrays.asList("re", "pe")));
-      allelementVerifiers.remove(element);
-    } else if ("transition-delay".equalsIgnoreCase(element)
-        || "transition-duration".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("145<1,65535>"), false, true));
-      allelementVerifiers.remove(element);
-
-    } else if ("transition-property".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("146<1,65535>"), false, true));
-      allelementVerifiers.remove(element);
-    } else if ("transition-timing-function".equalsIgnoreCase(element)) {
-      elementVerifiers.put(
-          element,
-          new CSSPropertyVerifier(
-              null, ElementInfo.VISUALMEDIA, null, List.of("147<1,65535>"), false, true));
-      allelementVerifiers.remove(element);
+    PropertyRule rule = RULES.get(element.toLowerCase());
+    if (rule != null) {
+      rule.apply(element);
     }
   }
 
@@ -2466,7 +3183,7 @@ class CSSTokenizerFilter {
 
   private static boolean collectAttributeSelections(SelectorParts parts, boolean isIDSelector) {
     String s = parts.remaining;
-    while (s.indexOf('[') != -1 && s.indexOf(']') != -1 && (s.indexOf('[') < s.indexOf(']'))) {
+    while (s.indexOf('[') != -1 && s.indexOf(']') != -1 && s.indexOf('[') < s.indexOf(']')) {
       if (isIDSelector) return false;
       String attSelection = s.substring(s.indexOf('[') + 1, s.indexOf(']')).trim();
       StringBuilder buf = new StringBuilder(s);
@@ -2546,16 +3263,16 @@ class CSSTokenizerFilter {
     return "*".equals(p.element)
         || "~".equals(p.element)
         || ElementInfo.isValidHTMLTag(p.element.toLowerCase())
-        || (p.element.trim().isEmpty()
-            && ((!p.className.isEmpty())
-                || (!p.id.isEmpty())
+        || p.element.trim().isEmpty()
+            && (!p.className.isEmpty()
+                || !p.id.isEmpty()
                 || p.attSelections != null
-                || !p.pseudoClass.isEmpty()));
+                || !p.pseudoClass.isEmpty());
   }
 
   private static boolean validateNames(SelectorParts p) {
-    return !((!p.className.isEmpty() && !ElementInfo.isValidName(p.className))
-        || (p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id)));
+    return !(!p.className.isEmpty() && !ElementInfo.isValidName(p.className)
+        || p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id));
   }
 
   // returns -1 invalid, 0 ok, 1 banned
@@ -2600,10 +3317,10 @@ class CSSTokenizerFilter {
   private static boolean isValidAttributeName(String name) {
     if (name == null || name.isEmpty()) return false;
     char c = name.charAt(0);
-    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false;
+    if (!(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z')) return false;
     for (int i = 1; i < name.length(); i++) {
       c = name.charAt(i);
-      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-')) return false;
+      if (!(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c == '-')) return false;
     }
     return true;
   }
@@ -2776,7 +3493,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean isHexDigit(char c) {
-      return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+      return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F';
     }
 
     private boolean tryHandleHexEscapeDigit(char c) {
@@ -2789,7 +3506,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean tryHandleEscapeTerminatorWhitespace(char c) {
-      if (escaping && escapedDigits > 0 && (WS_T_R_N_F.indexOf(c) != -1)) {
+      if (escaping && escapedDigits > 0 && WS_T_R_N_F.indexOf(c) != -1) {
         escaping = false;
         return true;
       }
@@ -3773,7 +4490,7 @@ class CSSTokenizerFilter {
 
     private void finalizeAfterRightBrace(String postSpace) throws IOException {
       ignoreElementsS3 = false;
-      if ((!ignoreElementsS2) || closeIgnoredS2) {
+      if (!ignoreElementsS2 || closeIgnoredS2) {
         filteredTokens.append(postSpace);
         filteredTokens.append("}");
         closeIgnoredS2 = false;
@@ -4058,15 +4775,14 @@ class CSSTokenizerFilter {
     @Override
     protected boolean mustEncode(char c, int i, char prevc, boolean unicode) {
       // It is an identifier.
-      if ((c >= 'a' && c <= 'z')
-          || (c >= 'A' && c <= 'Z')
-          || (c >= '0' && c <= '9')
+      if (c >= 'a' && c <= 'z'
+          || c >= 'A' && c <= 'Z'
+          || c >= '0' && c <= '9'
           || c == '-'
           || c == '_'
-          || (c >= (char) 0x00A1 && unicode)) {
+          || c >= (char) 0x00A1 && unicode) {
         // Cannot start with a digit or a hyphen followed by a digit.
-        return (i == 0 && (c >= '0' && c <= '9'))
-            || (i == 1 && prevc == '-' && (c >= '0' && c <= '9'));
+        return i == 0 && c >= '0' && c <= '9' || i == 1 && prevc == '-' && c >= '0' && c <= '9';
       }
       return true;
     }
@@ -4096,7 +4812,7 @@ class CSSTokenizerFilter {
       if (c == stringChar)
         // And the quote itself.
         return true;
-      else return c < 32 || (c >= (char) 0x0080 && !unicode);
+      else return c < 32 || c >= (char) 0x0080 && !unicode;
     }
 
     @Override
@@ -4306,8 +5022,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean isDelimiterOutsideBrackets() {
-      return (WS_T_R_N_F.indexOf(c) != -1 || (allowCommaDelimiters && c == ','))
-          && bracketCount == 0;
+      return (WS_T_R_N_F.indexOf(c) != -1 || allowCommaDelimiters && c == ',') && bracketCount == 0;
     }
 
     private void handleDelimiter(int index) {
@@ -4374,16 +5089,16 @@ class CSSTokenizerFilter {
     }
 
     private void updateIdentifierFlagForChar() {
-      boolean isDigit = (c >= '0' && c <= '9');
-      boolean isAlphaLower = (c >= 'a' && c <= 'z');
-      boolean isAlphaUpper = (c >= 'A' && c <= 'Z');
+      boolean isDigit = c >= '0' && c <= '9';
+      boolean isAlphaLower = c >= 'a' && c <= 'z';
+      boolean isAlphaUpper = c >= 'A' && c <= 'Z';
       boolean allowed =
-          ((isDigit && !origToken.isEmpty())
+          isDigit && !origToken.isEmpty()
               || isAlphaLower
               || isAlphaUpper
               || c == '-'
               || c == '_'
-              || c >= 0xA1);
+              || c >= 0xA1;
       if (!allowed) {
         couldBeIdentifier = false;
         return;
@@ -4394,7 +5109,7 @@ class CSSTokenizerFilter {
     }
 
     private static boolean isHexDigit(char ch) {
-      return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
+      return ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'f' || ch >= 'A' && ch <= 'F';
     }
 
     private static boolean isLineBreak(char ch) {
@@ -4484,7 +5199,7 @@ class CSSTokenizerFilter {
         decodedToken.append(c);
         return;
       }
-      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+      if (c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
         escape.append(c);
         return;
       }
@@ -4498,7 +5213,7 @@ class CSSTokenizerFilter {
     }
 
     private void handleStringEscapingContinue() {
-      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+      if (c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
         escape.append(c);
         if (escape.length() == 6) {
           origToken.append(escape);
@@ -4774,7 +5489,7 @@ class CSSTokenizerFilter {
       if (plural && separator == null) return null;
 
       ParsedIdentifier listType = parseCounterListType(plural, split);
-      if (((plural && split.length == 3) || (!plural && split.length == 2)) && listType == null)
+      if ((plural && split.length == 3 || !plural && split.length == 2) && listType == null)
         return null;
       return new ParsedCounter(origToken.toString(), ident, listType, separator);
     }
@@ -4792,7 +5507,7 @@ class CSSTokenizerFilter {
 
     private static ParsedIdentifier parseCounterListType(boolean plural, String[] split) {
       int idx = plural ? 2 : 1;
-      if ((plural && split.length == 3) || (!plural && split.length == 2)) {
+      if (plural && split.length == 3 || !plural && split.length == 2) {
         return makeParsedIdentifier(split[idx]);
       }
       return null;
@@ -5092,19 +5807,19 @@ class CSSTokenizerFilter {
     }
 
     private boolean matchesNumericTypes(String w) {
-      return (isInteger && isIntegerChecker(w))
-          || (isReal && isRealChecker(w))
-          || (isPercentage && FilterUtils.isPercentage(w))
-          || (isLength && FilterUtils.isLength(w, false))
-          || (isAngle && FilterUtils.isAngle(w));
+      return isInteger && isIntegerChecker(w)
+          || isReal && isRealChecker(w)
+          || isPercentage && FilterUtils.isPercentage(w)
+          || isLength && FilterUtils.isLength(w, false)
+          || isAngle && FilterUtils.isAngle(w);
     }
 
     private boolean matchesOtherTypes(String w) {
-      return (isColor && FilterUtils.isColor(w))
-          || (isShape && FilterUtils.isValidCSSShape(w))
-          || (isFrequency && FilterUtils.isFrequency(w))
-          || (isTime && FilterUtils.isTime(w))
-          || (isTransform && FilterUtils.isCSSTransform(w));
+      return isColor && FilterUtils.isColor(w)
+          || isShape && FilterUtils.isValidCSSShape(w)
+          || isFrequency && FilterUtils.isFrequency(w)
+          || isTime && FilterUtils.isTime(w)
+          || isTransform && FilterUtils.isCSSTransform(w);
     }
 
     private boolean validateIdentifierSpecials(ParsedIdentifier word) {
@@ -5211,7 +5926,7 @@ class CSSTokenizerFilter {
       int endIndex = expression.length();
       for (int j = 0; j < expression.length(); j++) {
         char ch = expression.charAt(j);
-        if (!(ch == 'a' || ('0' <= ch && '9' >= ch))) {
+        if (!(ch == 'a' || '0' <= ch && '9' >= ch)) {
           endIndex = j;
           break;
         }
@@ -5239,7 +5954,7 @@ class CSSTokenizerFilter {
       int endIndex = expression.length();
       for (int j = 0; j < expression.length(); j++) {
         char ch = expression.charAt(j);
-        if (!(ch == 'b' || ('0' <= ch && '9' >= ch))) {
+        if (!(ch == 'b' || '0' <= ch && '9' >= ch)) {
           endIndex = j;
           break;
         }
@@ -5314,7 +6029,7 @@ class CSSTokenizerFilter {
       int tokensUpper = 1;
       if (tindex != expression.length() - 1 && expression.charAt(tindex + 1) == '[') {
         int end = expression.indexOf(']');
-        if (end > (tindex + 1)) {
+        if (end > tindex + 1) {
           String[] limits = expression.substring(tindex + 2, end).split(",");
           tokensLower = Integer.parseInt(limits[0]);
           tokensUpper = Integer.parseInt(limits[1]);
