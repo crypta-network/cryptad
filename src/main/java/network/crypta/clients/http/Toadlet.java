@@ -201,7 +201,7 @@ public abstract class Toadlet {
     // For now, just run it blocking.
     FetchWaiter fw = new FetchWaiter(clientContext);
     @SuppressWarnings("unused")
-    ClientGetter getter = client.fetch(uri, 1, fw, fctx);
+    ClientGetter getter = client.fetch(uri, fw, fctx);
     return fw.waitForCompletion();
   }
 
