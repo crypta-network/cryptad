@@ -184,6 +184,47 @@ class CSSTokenizerFilterTest {
     assertTrue(f.isValidURI("http://example.com"));
   }
 
+  // ----------------------- regressions (Nov 2025) ----------------
+
+  @Test
+  void parse_whenWhitespaceThenHtmlCommentBeforeImport_doesNotThrow() throws Exception {
+    // Large leading whitespace then an HTML comment, followed by a short @import
+    String sb =
+        " ".repeat(80)
+            + "<!--\n" // require whitespace after comment per tokenizer rules
+            + "@import url(\"http://example.org/x.css\");";
+
+    Reader r = new StringReader(sb);
+    StringWriter w = new StringWriter();
+    // processURI must return a non-null sanitized URI for @import
+    when(callback.processURI("http://example.org/x.css", "text/css"))
+        .thenReturn("http://example.org/x.css");
+    CSSTokenizerFilter f = new CSSTokenizerFilter(r, w, callback, "UTF-8", false, false);
+
+    // Should not throw StringIndexOutOfBoundsException
+    f.parse();
+
+    String out = w.toString();
+    assertTrue(out.contains("@import url("));
+  }
+
+  @Test
+  void parse_whenWhitespaceThenHtmlCommentBeforeOpenBrace_doesNotThrow() throws Exception {
+    // Large leading whitespace then an HTML comment, followed by a short @media block
+    String sb = " ".repeat(80) + "<!--\n" + "@media screen { .x { color: black; } }";
+
+    Reader r = new StringReader(sb);
+    StringWriter w = new StringWriter();
+    CSSTokenizerFilter f =
+        new CSSTokenizerFilter(r, w, new NullFilterCallback(), "UTF-8", false, false);
+
+    // Should not throw StringIndexOutOfBoundsException
+    f.parse();
+
+    String out = w.toString();
+    assertTrue(out.contains("@media"));
+  }
+
   @Test
   void isValidURI_whenCallbackReturnsDifferent_expectFalse() throws Exception {
     CSSTokenizerFilter f =

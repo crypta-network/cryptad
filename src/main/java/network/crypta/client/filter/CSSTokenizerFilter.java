@@ -18,15 +18,39 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Comprehensive CSS2.1 filter. The old jflex-based filter was very far from comprehensive.
+ * Tokenizing and validating filter for CSS 2.1 used by the client-side HTML/CSS sanitization
+ * pipeline.
+ *
+ * <p>This component reads CSS from a {@link Reader}, tokenizes it with a small state machine, and
+ * applies a conservative allowlist of properties, values, selectors and at-rules. The primary goal
+ * is to preserve a wide subset of legitimate stylesheet constructs while reliably rejecting or
+ * neutralizing values and selectors that could break layout assumptions or enable content
+ * exfiltration when rendered by a browser. The implementation predates a formal grammar; it focuses
+ * on robust handling of edge cases encountered in the wild and predictable output suitable for
+ * re-serialization to a {@link Writer}.
+ *
+ * <p>Typical usage is to construct a filter with an input {@code Reader}, an output {@code Writer},
+ * and a {@link FilterCallback} that validates and possibly rewrites URIs. Call {@link #parse()}
+ * once to filter the input stream into the output writer. The filter keeps a small amount of state
+ * around quotes, comments, braces and current property context. It does not attempt to preserve
+ * unreachable or structurally invalid content.
+ *
+ * <ul>
+ *   <li>Selectors: normalized and validated; unsupported or banned pseudo-classes are removed.
+ *   <li>Properties: validated per-property using dedicated verifiers; unknown properties are
+ *       dropped.
+ *   <li>URIs: validated through the provided {@link FilterCallback}; rewritten URIs are propagated.
+ *   <li>Charsets and imports: {@code @charset} is detected; {@code @import} is sanitized and
+ *       retained when valid.
+ * </ul>
+ *
+ * <p>Thread-safety: instances are not thread-safe and are intended for single-threaded, single-use
+ * operation. Reuse across inputs is not supported.
  *
  * @author kurmiashish
- * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
- *     <p>Note: Could be rewritten to parse properly. This works but is rather spaghettified. JFlex
- *     on its own obviously won't work, but JFlex plus a proper grammar should work fine.
- *     <p>According to the CSS2.1 spec, in some cases spaces between tokens are optional. We do NOT
- *     support this! A grammar-based parser might, although really it's horrible, we shouldn't
- *     support it if it's not widely used... See end of 1.4.2.1.
+ * @author Matthew Toseland {@literal <toad@amphibian.dyndns.org>} (0xE43DA450)
+ * @see #parse()
+ * @see FilterCallback
  */
 class CSSTokenizerFilter {
   // Common string literals (SonarLint java:S1192)
@@ -94,8 +118,19 @@ class CSSTokenizerFilter {
   private static final String TOK_COUNTER = "counter(";
   private static final Logger LOG = LoggerFactory.getLogger(CSSTokenizerFilter.class);
   private Reader r;
+
+  /**
+   * Destination for filtered CSS. The filter writes only validated tokens and sanitized constructs
+   * to this writer; callers own the lifecycle of the underlying stream.
+   */
   Writer w = null;
+
+  /**
+   * Callback used to validate and optionally rewrite URIs encountered in CSS values (e.g., {@code
+   * url(...)}). Implementations may return {@code null} to reject a URI.
+   */
   FilterCallback cb;
+
   private final String passedCharset;
   private String detectedCharset;
   private final boolean stopAtDetectedCharset;
@@ -103,12 +138,34 @@ class CSSTokenizerFilter {
 
   // no static init required
 
+  /**
+   * Creates a filter with default configuration suitable for basic uses in tests. The input and
+   * callback must be supplied before calling {@link #parse()}.
+   */
   CSSTokenizerFilter() {
     passedCharset = "UTF-8";
     stopAtDetectedCharset = false;
     isInline = false;
   }
 
+  /**
+   * Creates a filter bound to the given input, output and URI processing callback.
+   *
+   * <p>The filter reads from {@code r}, emits sanitized CSS to {@code w}, and consults {@code cb}
+   * for URI validation and rewriting. The declared charset influences how {@code @charset} handling
+   * behaves — see {@link #parse()} for details.
+   *
+   * @param r input character stream to read CSS from; must not be {@code null} for {@link
+   *     #parse()}.
+   * @param w output writer that receives filtered CSS; caller closes the stream when done.
+   * @param cb callback responsible for URI checking and rewriting; may reject disallowed schemes.
+   * @param charset declared input charset name used for {@code @charset} comparisons;
+   *     case-insensitive.
+   * @param stopAtDetectedCharset when {@code true}, parsing stops immediately after detecting
+   *     {@code @charset} and nothing is written.
+   * @param isInline when {@code true}, enables slightly different parsing heuristics for inline
+   *     style attributes compared to full stylesheets.
+   */
   CSSTokenizerFilter(
       Reader r,
       Writer w,
@@ -124,6 +181,17 @@ class CSSTokenizerFilter {
     this.isInline = isInline;
   }
 
+  /**
+   * Returns whether the callback considers the given URI valid in this filtering context.
+   *
+   * <p>The method forwards the URI to {@link FilterCallback#processURI(String, String)} with a
+   * {@code null} override type. If the callback throws or returns a different value, the URI is
+   * considered invalid for the purpose of acceptance in CSS.
+   *
+   * @param uri absolute or relative URI to validate; must be a non-null, non-empty string.
+   * @return {@code true} when the callback returns the same value; {@code false} on rewrite,
+   *     rejection ({@code null}) or exception.
+   */
   public boolean isValidURI(String uri) {
     try {
       return uri.equals(cb.processURI(uri, null));
@@ -3134,19 +3202,17 @@ class CSSTokenizerFilter {
   }
 
   /**
-   * This method has been moved inside Parser to localize parsing concerns with the state machine.
-   * Kept no-op here to preserve file structure; actual implementation now resides in Parser.
-   */
-  // (intentionally empty to avoid duplication)
-
-  // (moved checkImportant() into Parser)
-
-  /*
-   * This function accepts an HTML element(along with class name, ID, pseudo class or attribute selector or a combinator) and determines whether it is valid or not.
-   * Returns null on failure (invalid selector), empty string on banned (but otherwise valid) selector.
-   * @param elementName A selector which may include an HTML element.
-   * @param isIDSelector True if we only allow an ID selector, which must include an ID, may
-   * include an element name or *, but must not contain anything else.
+   * Validates and normalizes a selector (or element token) according to the filter’s rules.
+   *
+   * <p>The input may include an element name, class or ID, attribute selectors, and certain
+   * pseudo-classes. The method enforces name constraints, rejects unsupported selectors, and
+   * signals banned-but-valid selectors separately from invalid syntax.
+   *
+   * @param elementString selector string to validate; may include an element and simple selectors.
+   * @param isIDSelector when {@code true}, the selector must include an ID and contain no other
+   *     constructs beyond an optional element name or {@code *}.
+   * @return the normalized selector when acceptable; an empty string for banned-but-otherwise-valid
+   *     selectors; or {@code null} if the selector is syntactically invalid.
    */
   public static String htmlElementVerifier(String elementString, boolean isIDSelector) {
     if (LOG.isTraceEnabled()) LOG.trace("varifying element/selector: \"{}\"", elementString);
@@ -3350,6 +3416,16 @@ class CSSTokenizerFilter {
    * This would call HTMLelementVerifier with div and p:first-child
    * Returns null on failure (selector invalid), empty string on banned but otherwise valid selector.
    */
+  /**
+   * Parses and validates a full selector list or a single selector and returns a sanitized form.
+   *
+   * <p>Callers pass either a single selector or a comma-delimited list; invalid or banned selectors
+   * are removed according to policy. The returned string is suitable for re-serialization.
+   *
+   * @param selectorString selector or comma-separated list to validate and normalize.
+   * @return a non-null string representing the sanitized selector(s); may be empty when nothing
+   *     remains after filtering.
+   */
   public String recursiveSelectorVerifier(String selectorString) {
     if (LOG.isTraceEnabled()) LOG.trace("selector: \"{}\"", selectorString);
     selectorString = selectorString.trim();
@@ -3541,6 +3617,17 @@ class CSSTokenizerFilter {
   }
 
   // main function
+  /**
+   * Runs the tokenizer and writes the sanitized CSS to the configured writer.
+   *
+   * <p>Parsing proceeds as a single pass over the reader. When {@code stopAtDetectedCharset} is
+   * set, parsing stops immediately after an {@code @charset} is found, the value is exposed via
+   * {@link #detectedCharset()}, and no output is produced. Otherwise, validated tokens and rules
+   * are emitted to the writer.
+   *
+   * @throws IOException when an I/O error occurs while reading from the input or writing the
+   *     output.
+   */
   public void parse() throws IOException {
     new Parser().run();
   }
@@ -3884,6 +3971,8 @@ class CSSTokenizerFilter {
           return;
         }
         buffer.delete(0, 4);
+        // Restart whitespace scan after the comment from the new buffer start.
+        i = 0;
         while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
           i++;
         }
@@ -3937,6 +4026,8 @@ class CSSTokenizerFilter {
           return null;
         }
         buffer.delete(0, 4);
+        // Restart whitespace scan after the comment from the new buffer start.
+        i = 0;
         while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
           i++;
         }
@@ -4219,7 +4310,7 @@ class CSSTokenizerFilter {
           filteredTokens.append(filtered);
         } else if ("".equals(filtered)) {
           // Valid but banned. Only proceed later if we had at least one previously accepted
-          // selector. Otherwise ignore the whole rule.
+          // selector. Otherwise, ignore the whole rule.
           filteredTokens.append(ws);
           s2Comma = true;
         }
@@ -4630,7 +4721,7 @@ class CSSTokenizerFilter {
         sb.append(word.original);
         if (LOG.isTraceEnabled()) LOG.trace("Adding word (original): \"{}\"", word.original);
       } else {
-        String enc = word.encode(false); // pass true if charset is full unicode
+        String enc = word.encode(false); // pass true if charset is full Unicode
         sb.append(enc);
         if (LOG.isTraceEnabled()) LOG.trace("Adding word (new): \"{}\"", enc);
       }
@@ -4683,19 +4774,37 @@ class CSSTokenizerFilter {
     }
   }
 
+  /**
+   * Base token produced by the tokenizer. Subclasses represent concrete token kinds used by
+   * property verifiers (identifiers, strings, URLs, counters, etc.).
+   */
   abstract static class ParsedWord {
+    /** Original source lexeme preserved for re-encoding when unchanged. */
     final String original;
 
     /** Has decoded changed? If not we can use the original. */
     protected boolean changed;
 
+    /** Whether this token immediately follows a comma in the source (affects list parsing). */
     boolean postComma;
 
+    /**
+     * Constructs a parsed token.
+     *
+     * @param original original lexeme as extracted from the source.
+     * @param changed when {@code true}, forces re-encoding from the decoded representation.
+     */
     protected ParsedWord(String original, boolean changed) {
       this.original = original;
       this.changed = changed;
     }
 
+    /**
+     * Returns the encoded representation of this token suitable for output.
+     *
+     * @param unicode when {@code true}, emits certain non-ASCII characters without escaping.
+     * @return encoded token text using either the original lexeme or the decoded value.
+     */
     public String encode(boolean unicode) {
       if (!changed) return original;
       else {
@@ -4710,22 +4819,33 @@ class CSSTokenizerFilter {
       return super.toString() + ":\"" + original + "\"";
     }
 
+    /**
+     * Encodes this token back to CSS, appending characters to {@code out} using the provided {@code
+     * unicode} policy.
+     *
+     * @param unicode when {@code true}, non-ASCII characters may be emitted as-is; otherwise they
+     *     are escaped using CSS hexadecimal escapes.
+     * @param out destination buffer that receives the encoded token content; never {@code null}.
+     */
     protected abstract void innerEncode(boolean unicode, StringBuilder out);
   }
 
   /**
-   * Note that this does not represent functionThingy's. counter() for example can contain a string,
-   * it is difficult to determine whether to encode strings if we don't know they are strings! This
-   * only handles keywords and strings.
+   * Base implementation for tokens that encode from a decoded form and decide per-character whether
+   * an escape is required. Does not represent function-like constructs ({@code counter()}, etc.).
+   * Only keywords and strings are handled here.
    */
   abstract static class BaseParsedWord extends ParsedWord {
     private String decoded;
 
     /**
-     * @param original
-     * @param decoded
-     * @param changed Set this to true if we don't like the original encoding and have changed
-     *     something during decode.
+     * Creates a token with both the original lexeme and its decoded form.
+     *
+     * @param original original source lexeme as it appeared in the stylesheet; retained for reuse
+     *     when no transformation is necessary.
+     * @param decoded normalized value used for validation and re-encoding decisions.
+     * @param changed set {@code true} when the original encoding was unsuitable and the decoded
+     *     value should be used when re-serializing.
      */
     BaseParsedWord(String original, String decoded, boolean changed) {
       super(original, changed);
@@ -4747,6 +4867,15 @@ class CSSTokenizerFilter {
       }
     }
 
+    /**
+     * Determines whether a character must be escaped in CSS output at the given position.
+     *
+     * @param c character under consideration for encoding.
+     * @param i zero-based index of {@code c} in the decoded string.
+     * @param prevc previous character, or undefined when {@code i == 0}.
+     * @param unicode when {@code true}, permits emitting certain non-ASCII characters directly.
+     * @return {@code true} when {@code c} must be escaped; {@code false} otherwise.
+     */
     protected abstract boolean mustEncode(char c, int i, char prevc, boolean unicode);
 
     private void encodeChar(char c, StringBuilder sb) {
@@ -4757,17 +4886,36 @@ class CSSTokenizerFilter {
       sb.append(s);
     }
 
+    /**
+     * Returns the decoded value for this token used by verifiers and for re-serialization.
+     *
+     * @return an immutable snapshot of the decoded value held by this token.
+     */
     public String getDecoded() {
       return decoded;
     }
 
+    /**
+     * Replaces the decoded value and marks this token as changed so that re-encoding uses the new
+     * value instead of the original lexeme.
+     *
+     * @param s new decoded value to adopt; should be a verifier-sanitized string.
+     */
     public void setNewValue(String s) {
       this.changed = true;
       this.decoded = s;
     }
   }
 
+  /** Token representing an identifier (e.g., property value keywords or selectors). */
   static class ParsedIdentifier extends BaseParsedWord {
+    /**
+     * Creates an identifier token.
+     *
+     * @param original original lexeme as it appeared in the stylesheet.
+     * @param decoded normalized identifier, typically lower-cased when applicable.
+     * @param changed whether {@code decoded} should be used when re-encoding.
+     */
     ParsedIdentifier(String original, String decoded, boolean changed) {
       super(original, decoded, changed);
     }
@@ -4788,7 +4936,16 @@ class CSSTokenizerFilter {
     }
   }
 
+  /** Token representing a quoted string value. */
   static class ParsedString extends BaseParsedWord {
+    /**
+     * Creates a string token, retaining the quote character to use for re-encoding.
+     *
+     * @param original original quoted lexeme.
+     * @param decoded unquoted string contents.
+     * @param changed whether the decoded form differs materially from {@code original}.
+     * @param stringChar the quote character ({@code '"'} or {@code '\''}).
+     */
     ParsedString(String original, String decoded, boolean changed, char stringChar) {
       super(original, decoded, changed);
       this.stringChar = stringChar;
@@ -4823,7 +4980,17 @@ class CSSTokenizerFilter {
     }
   }
 
+  /** Token representing a {@code url("...")} value with a decoded URL string. */
   static class ParsedURL extends ParsedString {
+    /**
+     * Creates a URL token from the decoded URL string and original form.
+     *
+     * @param original original {@code url(...)} lexeme including quotes where present.
+     * @param decoded decoded URL string without surrounding {@code url(...)}.
+     * @param changed whether the decoded URL should be used when re-encoding.
+     * @param stringChar the quote character ({@code '"'} or {@code '\''}); {@code 0} to
+     *     auto-select.
+     */
     ParsedURL(String original, String decoded, boolean changed, char stringChar) {
       super(original, decoded, changed || stringChar == 0, stringChar == 0 ? '"' : stringChar);
     }
@@ -4835,12 +5002,26 @@ class CSSTokenizerFilter {
       out.append(')');
     }
 
+    /**
+     * Replaces the decoded URL string and marks this token as changed so that the new URL is used
+     * when re-encoding.
+     *
+     * @param s sanitized, absolute or relative URL as produced by the callback.
+     */
     public void setNewURL(String s) {
       super.setNewValue(s);
     }
   }
 
+  /** Token representing an attribute name or attribute-like identifier. */
   static class ParsedAttr extends ParsedIdentifier {
+    /**
+     * Creates an attribute token from the given decoded representation.
+     *
+     * @param original original lexeme found in the stylesheet.
+     * @param decoded normalized attribute name.
+     * @param changed whether {@code decoded} should be preferred when re-encoding this token.
+     */
     ParsedAttr(String original, String decoded, boolean changed) {
       super(original, decoded, changed);
     }
@@ -4860,6 +5041,11 @@ class CSSTokenizerFilter {
    * SimpleParsedWord.
    */
   static class SimpleParsedWord extends ParsedWord {
+    /**
+     * Creates a simple token that will be written back verbatim without additional escaping.
+     *
+     * @param original original lexeme to preserve.
+     */
     public SimpleParsedWord(String original) {
       super(original, false);
     }
@@ -4872,6 +5058,14 @@ class CSSTokenizerFilter {
 
   /** Counters need special handling, partly because they contain attributes and strings. */
   static class ParsedCounter extends ParsedWord {
+    /**
+     * Creates a {@code counter(...)} or {@code counters(...)} token.
+     *
+     * @param original original lexeme for preservation purposes.
+     * @param identifier name of the counter; must be a valid identifier.
+     * @param listType optional list-style-type identifier when present.
+     * @param separatorString optional separator string for {@code counters(...)}.
+     */
     public ParsedCounter(
         String original,
         ParsedIdentifier identifier,
@@ -5530,51 +5724,118 @@ class CSSTokenizerFilter {
     }
   }
 
-  /*
-   * Basic class to verify value for a CSS Property. This class can verify values which are
-   * Integer,Real,Percentage, <Length>, <Angle>, <Color>, <URI>, <Shape> and so on.
-   * parserExpression is used for verifying regular expression for Property value
-   * e.g. [ <color> | transparent]{1,4}.
+  /**
+   * Verifier for individual CSS properties.
+   *
+   * <p>This helper encapsulates the per-property rules that determine whether a value is acceptable
+   * for a given media context. It supports both primitive categories (integers, lengths, colors,
+   * URIs, etc.) and simple expression patterns. Where applicable, it also lists concrete allowed
+   * keywords and valid media types.
    */
   static class CSSPropertyVerifier {
-    public final boolean onlyValueVerifier;
-    public final boolean allowCommaDelimiters;
-    public final Set<String>
-        allowedValues; // immutable HashSet for all String constants that this CSS property can
-    // assume like "auto"
-    // Defaulting Keywords ("initial", "inherit", "unset", "revert", "revert-layer") are always
-    // accepted
-    public final Set<String>
-        allowedMedia; // immutable HashSet for all valid Media for this CSS property.
-    /*
-     * in, re etc stands for different code strings using which these boolean values can be set in
-     * constructor like passing in,re would set isInteger and isReal.
+    /**
+     * When {@code true}, validation is based only on the value and ignores the element/media
+     * context; primarily used for properties that have no media scoping.
      */
+    public final boolean onlyValueVerifier;
+
+    /**
+     * Whether comma-separated value lists are allowed (for properties like {@code font-family}).
+     */
+    public final boolean allowCommaDelimiters;
+
+    /**
+     * Immutable set of allowed literal keywords for the property (e.g., {@code auto}). Defaulting
+     * keywords such as {@code initial}, {@code inherit}, {@code unset}, {@code revert}, and {@code
+     * revert-layer} are always accepted.
+     */
+    public final Set<String> allowedValues; // immutable HashSet
+
+    /** Immutable set of allowed media identifiers for which the property is valid. */
+    public final Set<String> allowedMedia; // immutable HashSet
+
+    /*
+     * Type flags describing which primitive categories are supported by this property’s values.
+     * Abbreviations: in (integer), re (real), pe (percentage), le (length), an (angle), co (color or
+     * counter), ur (URI), se (ID selector), sh (shape), st (string), id (identifier), ti (time),
+     * fr (frequency), tr (transform).
+     */
+    /** Accepts integer numeric values. */
     public final boolean isInteger; // in
+
+    /** Accepts real (floating point) numeric values. */
     public final boolean isReal; // re
+
+    /** Accepts percentage values, typically with a trailing {@code %}. */
     public final boolean isPercentage; // pe
+
+    /** Accepts length units (e.g., {@code px}, {@code em}, {@code rem}). */
     public final boolean isLength; // le
+
+    /** Accepts angular units (e.g., {@code deg}, {@code rad}). */
     public final boolean isAngle; // an
+
+    /** Accepts color values (keywords, hex, rgb/rgba, hsl/hsla, etc.). */
     public final boolean isColor; // co
+
+    /** Accepts URL values (e.g., {@code url("...")}). */
     public final boolean isURI; // ur
+
+    /** Accepts an ID selector (e.g., {@code #id}). */
     public final boolean isIDSelector; // se
+
+    /** Accepts geometric shapes where defined by the property. */
     public final boolean isShape; // sh
+
+    /** Accepts literal string values. */
     public final boolean isString; // st
+
+    /** Accepts {@code counter(...)} or {@code counters(...)} constructs. */
     public final boolean isCounter; // co
+
+    /** Accepts bare identifiers as values. */
     public final boolean isIdentifier; // id
+
+    /** Accepts time units (e.g., {@code s}, {@code ms}). */
     public final boolean isTime; // ti
+
+    /** Accepts frequency units (e.g., {@code Hz}, {@code kHz}). */
     public final boolean isFrequency; // fr
+
+    /** Accepts transform functions where applicable. */
     public final boolean isTransform; // tr
+
     private final List<String> parserExpressions;
 
+    /**
+     * Creates a verifier limited to type-based checks; concrete keywords and media constraints are
+     * not applied.
+     *
+     * @param allowCommaDelimiters whether comma-separated lists are accepted for this property.
+     */
     CSSPropertyVerifier(boolean allowCommaDelimiters) {
       this(null, null, null, null, false, allowCommaDelimiters);
     }
 
+    /**
+     * Creates a verifier constrained by the given keywords and media identifiers.
+     *
+     * @param allowedValues literal keywords that are accepted in addition to defaulting keywords.
+     * @param allowedMedia media names for which this property is valid; when {@code null}, media is
+     *     not restricted.
+     */
     CSSPropertyVerifier(Collection<String> allowedValues, Collection<String> allowedMedia) {
       this(allowedValues, allowedMedia, null, null);
     }
 
+    /**
+     * Creates a verifier constrained by keywords and media with an explicit set of possible values.
+     *
+     * @param allowedValues accepted literal keywords; may be {@code null}.
+     * @param allowedMedia accepted media identifiers; may be {@code null}.
+     * @param possibleValues additional symbolic values used by expression parsing; may be {@code
+     *     null}.
+     */
     CSSPropertyVerifier(
         Collection<String> allowedValues,
         Collection<String> allowedMedia,
@@ -5582,6 +5843,17 @@ class CSSTokenizerFilter {
       this(allowedValues, allowedMedia, possibleValues, null);
     }
 
+    /**
+     * Full constructor exposing all verifier knobs including expression patterns and value-only
+     * mode.
+     *
+     * @param allowedValues accepted literal keywords; may be {@code null}.
+     * @param possibleValues auxiliary symbolic values used inside expressions; may be {@code null}.
+     * @param parseExpression expression fragments that model complex value patterns; may be {@code
+     *     null}.
+     * @param allowedMedia accepted media identifiers; may be {@code null}.
+     * @param onlyValueVerifier when {@code true}, ignores media/element context during validation.
+     */
     CSSPropertyVerifier(
         Collection<String> allowedValues,
         Collection<String> possibleValues,
@@ -5591,6 +5863,15 @@ class CSSTokenizerFilter {
       this(allowedValues, allowedMedia, possibleValues, parseExpression, onlyValueVerifier, false);
     }
 
+    /**
+     * Creates a verifier with explicit parse expressions and media constraints.
+     *
+     * @param allowedValues accepted literal keywords; may be {@code null}.
+     * @param allowedMedia accepted media identifiers; may be {@code null}.
+     * @param possibleValues auxiliary symbolic values used inside expressions; may be {@code null}.
+     * @param parseExpression expression fragments defining allowed value structures; may be {@code
+     *     null}.
+     */
     CSSPropertyVerifier(
         Collection<String> allowedValues,
         Collection<String> allowedMedia,
@@ -5599,6 +5880,17 @@ class CSSTokenizerFilter {
       this(allowedValues, allowedMedia, possibleValues, parseExpression, false, false);
     }
 
+    /**
+     * Lowest-level constructor used by factory helpers.
+     *
+     * @param allowedValues accepted literal keywords; may be {@code null}.
+     * @param allowedMedia accepted media identifiers; may be {@code null}.
+     * @param possibleValues auxiliary symbolic values used inside expressions; may be {@code null}.
+     * @param parseExpression expression fragments defining allowed value structures; may be {@code
+     *     null}.
+     * @param onlyValueVerifier when {@code true}, ignores media/element context.
+     * @param allowCommaDelimiters whether comma-separated lists are accepted.
+     */
     CSSPropertyVerifier(
         Collection<String> allowedValues,
         Collection<String> allowedMedia,
@@ -5704,6 +5996,12 @@ class CSSTokenizerFilter {
       }
     }
 
+    /**
+     * Returns whether {@code value} parses as a Java integer.
+     *
+     * @param value candidate numeric literal; must be non-null.
+     * @return {@code true} when an integer can be parsed; {@code false} otherwise.
+     */
     public static boolean isIntegerChecker(String value) {
       try {
         Integer.parseInt(value); // CSS Property has a valid integer.
@@ -5713,6 +6011,12 @@ class CSSTokenizerFilter {
       }
     }
 
+    /**
+     * Returns whether {@code value} parses as a Java floating point number.
+     *
+     * @param value candidate numeric literal; must be non-null.
+     * @return {@code true} when a real number can be parsed; {@code false} otherwise.
+     */
     public static boolean isRealChecker(String value) {
       try {
         Float.parseFloat(value); // Valid float
@@ -5722,6 +6026,13 @@ class CSSTokenizerFilter {
       }
     }
 
+    /**
+     * Validates a URL token via the provided callback and updates it when rewritten.
+     *
+     * @param word parsed URL token whose decoded value is checked using the callback.
+     * @param cb URI validation callback; may return a rewritten value or {@code null} to reject.
+     * @return {@code true} when the URL is accepted (possibly rewritten); {@code false} otherwise.
+     */
     public static boolean isValidURI(ParsedURL word, FilterCallback cb) {
       String w = CSSTokenizerFilter.removeOuterQuotes(word.getDecoded());
       try {
@@ -5736,15 +6047,39 @@ class CSSTokenizerFilter {
       }
     }
 
+    /**
+     * Checks whether a sequence of tokens forms a valid value for this property.
+     *
+     * @param words tokenized value to validate; must not be {@code null}.
+     * @param cb auxiliary callback for URI checks when URLs are present in {@code words}.
+     * @return {@code true} if the entire sequence is accepted under this verifier.
+     */
     public boolean checkValidity(ParsedWord[] words, FilterCallback cb) {
       return this.checkValidity(null, null, words, cb);
     }
 
+    /**
+     * Convenience overload that validates a single token value.
+     *
+     * @param word token to validate according to this property’s rules.
+     * @param cb auxiliary callback for URI checks when {@code word} is a URL.
+     * @return {@code true} when the token is accepted.
+     */
     public boolean checkValidity(ParsedWord word, FilterCallback cb) {
       return this.checkValidity(null, null, new ParsedWord[] {word}, cb);
     }
 
-    // Verifies whether this CSS property can have a value under given media and HTML elements
+    /**
+     * Verifies whether this property can take the supplied value under the given media and element
+     * constraints, applying both keyword and type rules.
+     *
+     * @param media active media names or {@code null} for none; used when media scoping applies.
+     * @param elements HTML element names or {@code null}; reserved for element-specific checks.
+     * @param words tokenized value to validate in full; must not be {@code null}.
+     * @param cb callback consulted for URL validation when applicable.
+     * @return {@code true} if any allowed pattern validates the entire value; otherwise {@code
+     *     false}.
+     */
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] words, FilterCallback cb) {
       if (LOG.isTraceEnabled()) {
@@ -5850,6 +6185,12 @@ class CSSTokenizerFilter {
      * <p>The verifier explores combinations which allow the full value to be consumed by the
      * expression: it tries each sub-expression in turn and distributes the remaining tokens to the
      * rest. If any combination validates, the whole expression is accepted.
+     *
+     * @param expression encoded verifier expression made of indices and operators.
+     * @param words token sequence to be validated against the expression.
+     * @param cb callback consulted for nested URL checks as needed.
+     * @return {@code true} if the expression validates the entire sequence; otherwise {@code
+     *     false}.
      */
     public boolean recursiveParserExpressionVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
@@ -6047,20 +6388,21 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * Takes b expressions and evaluates them.<br>
-     * "&&" means all of the expressions must occur in any order.<br>
-     * CSS Grammar <code>list-item && [ block | nonsense ] && [ more ]?</code><br>
-     * Will accept the following inputs as valid:<br>
-     * <code>list-item block</code><br>
-     * <code>block list-item more</code><br>
-     * <code>more nonsense list-item</code><br>
-     * You can model that using the b expression: <code>1b2b3</code> where 1 is ["list-item"] 2 is
-     * ["block", "nonsense"] and 3 is "4?" and 4 is ["more"].<br>
+     * Takes b-expressions and evaluates them.
      *
-     * @param expression the expression, explained above
-     * @param words tokens to parse
-     * @param cb
-     * @return true if all the verifiers and all the words were consumed, false otherwise.
+     * <p>{@literal &&} means all of the expressions must occur in any order.<br>
+     * CSS Grammar {@code list-item &amp;&amp; [ block | nonsense ] &amp;&amp; [ more ]?}<br>
+     * Will accept the following inputs as valid:<br>
+     * {@code list-item block}<br>
+     * {@code block list-item more}<br>
+     * {@code more nonsense list-item}<br>
+     * You can model that using the b expression: {@code 1b2b3} where 1 is ["list-item"] 2 is
+     * ["block", "nonsense"] and 3 is {@code 4?} and 4 is ["more"].
+     *
+     * @param expression the encoded expression, as explained above.
+     * @param words tokens to parse.
+     * @param cb callback consulted for nested URL checks as needed.
+     * @return {@code true} if all verifiers and all words are consumed; {@code false} otherwise.
      */
     public boolean doubleAmpersandVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
@@ -6133,6 +6475,14 @@ class CSSTokenizerFilter {
     /*
      * This function takes an array of string and concatenates everything in a " " seperated string.
      */
+    /**
+     * Joins a contiguous slice of {@code parts} into a single space-separated string.
+     *
+     * @param parts array of strings; may be {@code null} to yield an empty result.
+     * @param lowerIndex inclusive lower bound index into {@code parts}.
+     * @param upperIndex exclusive upper bound index into {@code parts}.
+     * @return joined slice or an empty string when the bounds fall outside {@code parts}.
+     */
     public static String getStringFromArray(String[] parts, int lowerIndex, int upperIndex) {
       StringBuilder buffer = new StringBuilder();
       if (parts != null && lowerIndex < parts.length) {
@@ -6147,11 +6497,25 @@ class CSSTokenizerFilter {
     /*
      * This function takes an array of string and concatenates everything in a " " seperated string.
      */
+    /**
+     * Joins all elements of {@code parts} into a single space-separated string.
+     *
+     * @param parts array of strings; {@code null} is treated as empty.
+     * @return joined string or an empty string if {@code parts} is {@code null} or empty.
+     */
     public static String getStringFromArray(String[] parts) {
       return getStringFromArray(parts, 0, parts.length - 1);
     }
 
-    // Creates a new sub array from the main array and returns it.
+    /**
+     * Creates a new sub-array from {@code array} spanning {@code [lowerIndex, upperIndex)}.
+     *
+     * @param array source array; {@code null} yields an empty array.
+     * @param lowerIndex inclusive lower bound index into {@code array}.
+     * @param upperIndex exclusive upper bound index into {@code array}.
+     * @return a newly allocated array containing the requested slice or an empty array if out of
+     *     bounds.
+     */
     public static ParsedWord[] getSubArray(ParsedWord[] array, int lowerIndex, int upperIndex) {
       ParsedWord[] arrayToReturn = new ParsedWord[upperIndex - lowerIndex];
       if (array != null && lowerIndex < array.length) {
@@ -6162,8 +6526,21 @@ class CSSTokenizerFilter {
       } else return new ParsedWord[0];
     }
 
-    /*
-     * For verifying part of the ParseExpression with [] operator.
+    /**
+     * Verifies part of a parse expression that uses the {@code []} repetition operator.
+     *
+     * @param verifierIndex index into {@code auxilaryVerifiers} for the repeated sub-expression.
+     * @param valueParts token sequence to validate.
+     * @param lowerLimit minimum allowed repetitions.
+     * @param upperLimit maximum allowed repetitions (inclusive), or zero for none.
+     * @param tokensCanBeGivenLowerLimit minimum number of tokens that the sub-expression may
+     *     consume.
+     * @param tokensCanBeGivenUpperLimit maximum number of tokens that the sub-expression may
+     *     consume.
+     * @param secondPart expression to validate after the repeated part.
+     * @param cb callback consulted by nested verifiers when URLs are encountered.
+     * @return {@code true} if a partitioning satisfies the repetition bounds and validates the
+     *     tail.
      */
     public boolean recursiveVariableOccuranceVerifier(
         int verifierIndex,
@@ -6249,6 +6626,13 @@ class CSSTokenizerFilter {
       return false;
     }
 
+    /**
+     * Returns a comma-separated string representation of the provided token array for logging.
+     *
+     * @param words array of tokens; may be {@code null}.
+     * @return a comma-delimited list of token {@code toString()} values, or {@code null} when
+     *     {@code words} is {@code null}.
+     */
     static String toString(ParsedWord[] words) {
       if (words == null) return null;
       StringBuilder sb = new StringBuilder();
@@ -6262,8 +6646,15 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * Verifies an OR (||) group by exploring all partitions of the token stream among
+     * Verifies an OR ({@code ||}) group by exploring all partitions of the token stream among
      * sub-expressions until one validates the entire value.
+     *
+     * @param expression concatenated sub-expression pattern using {@code 'a'} as a separator.
+     * @param words token sequence to validate against the OR group; empty sequence is accepted.
+     * @param cb callback consulted by nested verifiers (e.g., for URL checks).
+     * @return {@code true} if some partition validates the full sequence; {@code false} otherwise.
+     * @throws IllegalArgumentException if {@code expression} is {@code null}, empty, or starts/ends
+     *     with {@code 'a'}.
      */
     public boolean recursiveDoubleBarVerifier(
         String expression, ParsedWord[] words, FilterCallback cb) {
@@ -6375,12 +6766,30 @@ class CSSTokenizerFilter {
     }
   }
 
-  // CSSPropertyVerifier class extended for verifying content property.
+  /** CSSPropertyVerifier specialization for the {@code content} property. */
   static class ContentPropertyVerifier extends CSSPropertyVerifier {
+    /**
+     * Creates a verifier for {@code content} constrained by the given allowed keywords.
+     *
+     * @param allowedValues additional literal keywords accepted by {@code content}; may be {@code
+     *     null}.
+     */
     ContentPropertyVerifier(Collection<String> allowedValues) {
       super(allowedValues, null, null, null);
     }
 
+    /**
+     * Checks whether the supplied {@code content} value is acceptable.
+     *
+     * <p>Accepts a single keyword from {@code allowedValues}, any string, or a counter/counters
+     * construct with optional list style type.
+     *
+     * @param media unused for {@code content}; may be {@code null}.
+     * @param elements unused for {@code content}; may be {@code null}.
+     * @param value tokenized value; must contain exactly one token.
+     * @param cb callback consulted for URL validation (not used here).
+     * @return {@code true} when the value is valid for {@code content}.
+     */
     @Override
     public boolean checkValidity(
         String[] media, String[] elements, ParsedWord[] value, FilterCallback cb) {
@@ -6463,7 +6872,11 @@ class CSSTokenizerFilter {
   }
 
   // For verifying ’font-size’[ / ’line-height’]? of Font property
+  /**
+   * Verifier for font-related shorthand parts such as style, variant, weight, size and line-height.
+   */
   static class FontPartPropertyVerifier extends CSSPropertyVerifier {
+    /** Creates a verifier for parts used by the {@code font} shorthand. */
     FontPartPropertyVerifier() {
       super(false);
     }
@@ -6521,7 +6934,14 @@ class CSSTokenizerFilter {
     }
   }
 
+  /** Base verifier for properties that accept comma-separated font family lists. */
   abstract static class FamilyPropertyVerifier extends CSSPropertyVerifier {
+    /**
+     * Creates a font-family style verifier.
+     *
+     * @param valueOnly when {@code true}, ignores media/element context.
+     * @param mediaTypes optional set of media identifiers for which this verifier applies.
+     */
     FamilyPropertyVerifier(boolean valueOnly, Set<String> mediaTypes) {
       super(null, mediaTypes, null, null, valueOnly, true);
     }
@@ -6717,7 +7137,12 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * @param nextIndex valid only when shouldReturn == false
+     * Result container for recursive parser steps.
+     *
+     * @param shouldReturn when {@code true}, the caller should return immediately using {@code
+     *     returnValue}.
+     * @param returnValue value to return when {@code shouldReturn} is {@code true}.
+     * @param nextIndex next index to continue from when {@code shouldReturn} is {@code false}.
      */
     private record ProcessResult(boolean shouldReturn, boolean returnValue, int nextIndex) {
 
@@ -6762,12 +7187,30 @@ class CSSTokenizerFilter {
       return isSpecificFamily(sb.toString().toLowerCase());
     }
 
+    /**
+     * Tests whether {@code s} denotes a specific font family name rather than a generic family.
+     *
+     * @param s case-insensitive candidate family name.
+     * @return {@code true} if {@code s} is recognized as a specific family.
+     */
     abstract boolean isSpecificFamily(String s);
 
+    /**
+     * Tests whether {@code s} denotes a generic font family (e.g., {@code serif}).
+     *
+     * @param s case-insensitive candidate family name.
+     * @return {@code true} if {@code s} is recognized as a generic family.
+     */
     abstract boolean isGenericFamily(String s);
   }
 
+  /** Verifier for the complex {@code font} shorthand property. */
   static class FontPropertyVerifier extends FamilyPropertyVerifier {
+    /**
+     * Creates a verifier for the {@code font} shorthand.
+     *
+     * @param valueOnly when {@code true}, ignores media/element context.
+     */
     FontPropertyVerifier(boolean valueOnly) {
       super(valueOnly, ElementInfo.VISUALMEDIA);
     }
@@ -6783,7 +7226,13 @@ class CSSTokenizerFilter {
     }
   }
 
+  /** Verifier for {@code voice-family} lists (speech-related CSS). */
   static class VoiceFamilyPropertyVerifier extends FamilyPropertyVerifier {
+    /**
+     * Creates a verifier for {@code voice-family} lists.
+     *
+     * @param valueOnly when {@code true}, ignores media/element context.
+     */
     VoiceFamilyPropertyVerifier(boolean valueOnly) {
       super(valueOnly, ElementInfo.AURALMEDIA);
     }
@@ -6799,6 +7248,15 @@ class CSSTokenizerFilter {
     }
   }
 
+  /**
+   * Removes a single matching pair of outer quotes from the given string when present.
+   *
+   * <p>Quotes must be balanced and use the same quote character at both ends. Inner characters are
+   * not interpreted.
+   *
+   * @param decoded input string to examine; may be quoted with single or double quotes.
+   * @return the inner substring when quoted; otherwise returns the original input unchanged.
+   */
   public static String removeOuterQuotes(String decoded) {
     if (decoded.length() < 2) return decoded;
     char first = decoded.charAt(0);
@@ -6809,6 +7267,16 @@ class CSSTokenizerFilter {
     return decoded;
   }
 
+  /**
+   * Returns the charset declared by an {@code @charset} statement encountered during parsing.
+   *
+   * <p>The value is only available after a successful {@link #parse()} run that encountered a
+   * {@code @charset}. When {@code stopAtDetectedCharset} is {@code true}, the method still reports
+   * the detected value even though no output is written.
+   *
+   * @return the detected charset name in the source, or {@code null} when no {@code @charset} was
+   *     present.
+   */
   public String detectedCharset() {
     return detectedCharset;
   }
