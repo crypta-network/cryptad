@@ -475,7 +475,10 @@ public class ClientPutDir extends ClientPutBase {
     try {
       makePutter(context);
     } catch (TooManyFilesInsertException e) {
-      this.onFailure(new InsertException(e), null);
+      this.onFailure(
+          new InsertException(
+              InsertException.InsertExceptionMode.TOO_MANY_FILES, (String) null, null),
+          null);
     }
     start(context);
     return true;

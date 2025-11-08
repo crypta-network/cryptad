@@ -62,7 +62,9 @@ public class PutWaiter implements ClientPutCallback {
       }
     }
     if (error != null) {
-      error.uri = uri;
+      if (error.getUri() == null && uri != null) {
+        throw new InsertException(error, uri);
+      }
       throw error;
     }
     if (succeeded) return uri;

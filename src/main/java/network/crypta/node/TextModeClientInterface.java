@@ -859,11 +859,11 @@ public class TextModeClientInterface implements Runnable {
       uri = client.insert(block, getCHKOnly, null);
     } catch (InsertException e) {
       outsb.append(ERROR_PREFIX).append(e.getMessage());
-      if (e.uri != null) outsb.append(URI_WOULD_HAVE_BEEN).append(e.uri);
+      if (e.getUri() != null) outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
       InsertExceptionMode mode = e.getMode();
       if ((mode == InsertExceptionMode.FATAL_ERRORS_IN_BLOCKS)
           || (mode == InsertExceptionMode.TOO_MANY_RETRIES_IN_BLOCKS)) {
-        outsb.append("Splitfile-specific error:\n").append(e.errorCodes.toVerboseString());
+        outsb.append("Splitfile-specific error:\n").append(e.getErrorCodes().toVerboseString());
       }
       return false;
     }
@@ -910,14 +910,14 @@ public class TextModeClientInterface implements Runnable {
       outsb.append("=======================================================");
     } catch (InsertException e) {
       outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
-      if (e.uri != null) {
-        uri = e.uri;
+      if (e.getUri() != null) {
+        uri = e.getUri();
         uri = uri.addMetaStrings(new String[] {""});
         outsb.append(URI_WOULD_HAVE_BEEN).append(uri);
       }
-      if (e.errorCodes != null) {
+      if (e.getErrorCodes() != null) {
         outsb.append("Splitfile errors breakdown:");
-        outsb.append(e.errorCodes.toVerboseString());
+        outsb.append(e.getErrorCodes().toVerboseString());
       }
       LOG.error(LOG_CAUGHT, e, e);
     }
@@ -1008,16 +1008,16 @@ public class TextModeClientInterface implements Runnable {
       outsb.append("File not found");
     } catch (InsertException e) {
       outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
-      if (e.uri != null) {
-        outsb.append(URI_WOULD_HAVE_BEEN).append(e.uri);
+      if (e.getUri() != null) {
+        outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
         long endTime = System.currentTimeMillis();
         long sz = f.length();
         double rate = 1000.0 * sz / (endTime - startTime);
         outsb.append("Upload rate: ").append(rate).append(" bytes / second");
       }
-      if (e.errorCodes != null) {
+      if (e.getErrorCodes() != null) {
         outsb.append("Splitfile errors breakdown:");
-        outsb.append(e.errorCodes.toVerboseString());
+        outsb.append(e.getErrorCodes().toVerboseString());
       }
     } catch (Throwable t) {
       outsb.append("Insert threw: ").append(t);
@@ -1087,8 +1087,8 @@ public class TextModeClientInterface implements Runnable {
     } catch (InsertException e) {
       outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
       LOG.info("Error: {}", e, e);
-      if (e.uri != null) {
-        outsb.append(URI_WOULD_HAVE_BEEN).append(e.uri);
+      if (e.getUri() != null) {
+        outsb.append(URI_WOULD_HAVE_BEEN).append(e.getUri());
       }
     }
     return false;

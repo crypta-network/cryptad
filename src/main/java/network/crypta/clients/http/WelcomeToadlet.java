@@ -333,15 +333,15 @@ public class WelcomeToadlet extends Toadlet {
                     false);
         content.addChild("#", l10n("insertFailedWithMessage", "message", e.getMessage()));
         content.addChild("br");
-        if (e.uri != null) {
-          content.addChild("#", l10n("uriWouldHaveBeen", "uri", e.uri.toString()));
+        if (e.getUri() != null) {
+          content.addChild("#", l10n("uriWouldHaveBeen", "uri", e.getUri().toString()));
         }
         InsertExceptionMode mode = e.getMode();
         if ((mode == InsertExceptionMode.FATAL_ERRORS_IN_BLOCKS)
             || (mode == InsertExceptionMode.TOO_MANY_RETRIES_IN_BLOCKS)) {
           content.addChild("br"); /* TODO */
           content.addChild("#", l10n("splitfileErrorLabel"));
-          content.addChild("pre", e.errorCodes.toVerboseString());
+          content.addChild("pre", e.getErrorCodes().toVerboseString());
         }
       }
 

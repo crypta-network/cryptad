@@ -226,7 +226,7 @@ public class FailureCodeTracker implements Cloneable, Serializable {
   public void merge(InsertException e) {
     if (!insert)
       throw new IllegalArgumentException("This is not an insert yet merge(" + e + ") called!");
-    if (e.errorCodes != null) merge(e.errorCodes);
+    if (e.getErrorCodes() != null) merge(e.getErrorCodes());
     inc(e.getMode());
   }
 

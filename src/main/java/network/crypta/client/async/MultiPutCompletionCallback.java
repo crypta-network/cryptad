@@ -293,7 +293,7 @@ public class MultiPutCompletionCallback
           // Ignore the new failure mode, use the old one
           e = this.e;
           if (persistent) {
-            e = e.clone(); // Since we will remove it, we can't pass it on
+            e = new InsertException(e); // deep copy before removal
           }
         } else {
           // Delete the old failure mode, use the new one
@@ -303,7 +303,7 @@ public class MultiPutCompletionCallback
       if (e == null) {
         e = this.e;
         if (persistent && e != null) {
-          e = e.clone(); // Since we will remove it, we can't pass it on
+          e = new InsertException(e); // deep copy before removal
         }
       }
     }
