@@ -1106,7 +1106,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               new String[] {
                 "hidden",
                 "max-size",
-                String.valueOf(e.expectedSize == -1 ? Long.MAX_VALUE : e.expectedSize * 2)
+                String.valueOf(e.getExpectedSize() == -1 ? Long.MAX_VALUE : e.getExpectedSize() * 2)
               });
           if (requestedMimeType != null)
             optionForm.addChild(
@@ -1415,7 +1415,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
   private static String writeSizeAndMIME(HTMLNode fileInformationList, FetchException e) {
     boolean finalized = e.finalizedSize();
-    long size = e.expectedSize;
+    long size = e.getExpectedSize();
     String mime = e.getExpectedMimeType();
     writeSizeAndMIME(fileInformationList, size, mime, finalized);
     return mime;
