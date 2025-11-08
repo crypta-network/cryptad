@@ -3337,7 +3337,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     Writer w = new StringWriter();
     style = style.trim();
     if (LOG.isDebugEnabled()) LOG.debug("Sanitizing style: " + style);
-    CSSParser pc = new CSSParser(r, w, false, cb, hpc.charset, false, isInline);
+    CSSParser pc = new CSSParser(r, w, cb, hpc.charset, false, isInline);
     try {
       pc.parse();
     } catch (IOException e) {
