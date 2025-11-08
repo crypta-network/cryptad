@@ -476,7 +476,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       }
     }
 
-    return ARCHIVE_TYPE.TAR.mimeTypes[0];
+    return ARCHIVE_TYPE.TAR.defaultMimeType();
   }
 
   private String createZipBucket(OutputStream os) throws IOException {
@@ -494,7 +494,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       }
     }
 
-    return ARCHIVE_TYPE.ZIP.mimeTypes[0];
+    return ARCHIVE_TYPE.ZIP.defaultMimeType();
   }
 
   private Metadata makeManifest(HashMap<String, Object> manifestElements, String archivePrefix) {
