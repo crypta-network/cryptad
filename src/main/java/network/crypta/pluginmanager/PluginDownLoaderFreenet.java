@@ -28,7 +28,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
   private ClientGetter get;
 
   PluginDownLoaderFreenet(HighLevelSimpleClient hlsc, Node node, boolean desperate) {
-    this.hlsc = hlsc.clone();
+    this.hlsc = hlsc.copy();
     this.node = node;
     this.desperate = desperate;
   }

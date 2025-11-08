@@ -120,10 +120,7 @@ class USKManagerTest {
 
     @Override
     public ClientGetter fetch(
-        network.crypta.keys.FreenetURI uri,
-        long maxSize,
-        ClientGetCallback callback,
-        FetchContext fctx) {
+        network.crypta.keys.FreenetURI uri, ClientGetCallback callback, FetchContext fctx) {
       throw new UnsupportedOperationException();
     }
 
@@ -290,8 +287,7 @@ class USKManagerTest {
     }
 
     @Override
-    @SuppressWarnings("MethodDoesntCallSuperMethod")
-    public HighLevelSimpleClient clone() {
+    public HighLevelSimpleClient copy() {
       return this;
     }
   }

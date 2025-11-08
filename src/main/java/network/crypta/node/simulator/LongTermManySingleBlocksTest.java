@@ -370,7 +370,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
                 try {
                   t1 = System.currentTimeMillis();
                   FetchWaiter fw = new FetchWaiter(requestContext);
-                  client.fetch(insertedURIs[j], 32768, fw, fctx);
+                  client.fetch(insertedURIs[j], fw, fctx);
                   fw.waitForCompletion();
                   t2 = System.currentTimeMillis();
 
