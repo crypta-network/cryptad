@@ -198,7 +198,11 @@ public abstract class Toadlet {
    */
   FetchResult fetch(FreenetURI uri, long maxSize, RequestClient clientContext, FetchContext fctx)
       throws FetchException {
-    // For now, just run it blocking.
+    // Honor the provided maxSize for this request.
+    if (maxSize > 0) {
+      fctx.maxOutputLength = maxSize;
+      fctx.maxTempLength = maxSize;
+    }
     FetchWaiter fw = new FetchWaiter(clientContext);
     @SuppressWarnings("unused")
     ClientGetter getter = client.fetch(uri, fw, fctx);
