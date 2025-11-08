@@ -529,12 +529,14 @@ public class ArchiveManager {
       throws IOException, ArchiveFailureException, ArchiveRestartException {
     ExceptionWrapper wrapper = new ExceptionWrapper();
     try (PipedInputStream pis = new PipedInputStream()) {
+      // Connect the pipe before handing the reader to the archive handler to avoid races where
+      // the reader attempts to consume before the writer is attached ("Pipe not connected").
+      final PipedOutputStream pos = new PipedOutputStream(pis);
       context
           .getMainExecutor()
           .execute(
               () -> {
                 try (InputStream is = data.getInputStream();
-                    PipedOutputStream pos = new PipedOutputStream(pis);
                     OutputStream os = new BufferedOutputStream(pos)) {
                   Compressor.COMPRESSOR_TYPE.LZMA_NEW.decompress(is, os, data.size(), expectedSize);
                 } catch (IOException e) {
