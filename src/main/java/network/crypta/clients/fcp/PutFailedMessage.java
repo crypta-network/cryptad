@@ -31,8 +31,8 @@ public class PutFailedMessage extends FCPMessage implements Serializable {
     this.codeDescription = InsertException.getMessage(code);
     this.shortCodeDescription = InsertException.getShortMessage(code);
     this.extraDescription = e.extra;
-    this.tracker = e.errorCodes;
-    this.expectedURI = e.uri;
+    this.tracker = e.getErrorCodes();
+    this.expectedURI = e.getUri();
     this.identifier = identifier;
     this.global = global;
     this.isFatal = InsertException.isFatal(code);
