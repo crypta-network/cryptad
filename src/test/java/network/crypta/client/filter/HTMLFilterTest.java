@@ -1,6 +1,7 @@
 package network.crypta.client.filter;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -210,5 +211,24 @@ class HTMLFilterTest {
     // Assert: sanitizeURI uses the 4-arg variant (uri, overrideType, noRelative=false,
     // inline=false)
     verify(callback).processURI("/path", null, false, false);
+  }
+
+  @Test
+  void readFilter_handlesTrailingWhitespaceAttributeWithoutCrash() throws Exception {
+    // This input previously produced an empty attribute token before '>' causing a crash
+    String html = "<!DOCTYPE html><html><body><a href=\"/x\" >Hello</a></body></html>";
+    ByteArrayInputStream in = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertDoesNotThrow(
+        () ->
+            ContentFilter.filter(
+                in,
+                out,
+                "text/html; charset=UTF-8",
+                new java.net.URI("http://example.com/"),
+                "http://example.com",
+                null,
+                null,
+                "UTF-8"));
   }
 }
