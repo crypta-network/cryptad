@@ -1341,6 +1341,15 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       boolean waitingForValue = false;
       String previousKey = "";
       for (String rawAttribute : unparsedAttrs) {
+        // Skip empty or whitespace-only fragments that can appear due to trailing spaces
+        // before '>' or multiple consecutive spaces between attributes.
+        if (rawAttribute == null) {
+          continue;
+        }
+        rawAttribute = rawAttribute.trim();
+        if (rawAttribute.isEmpty()) {
+          continue;
+        }
         if (waitingForValue) {
           waitingForValue = false;
           previousKey = applyDeferredValue(attributes, previousKey, rawAttribute);
@@ -1361,7 +1370,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private AttributeToken parseAttributeToken(String rawAttribute, String previousKey) {
       AttributeToken token = new AttributeToken();
       int separatorIndex = rawAttribute.indexOf('=');
-      if (separatorIndex == rawAttribute.length() - 1) {
+      // Handle the special case where the attribute ends with '=' (value in next token),
+      // but guard against empty strings where indexOf returns -1 and length() - 1 is also -1.
+      if (separatorIndex >= 0 && separatorIndex == rawAttribute.length() - 1) {
         token.expectingValue = true;
         token.key = separatorIndex == 0 ? previousKey : rawAttribute.substring(0, separatorIndex);
         token.key = token.key.toLowerCase();
