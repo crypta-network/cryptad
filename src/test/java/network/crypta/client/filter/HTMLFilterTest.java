@@ -214,7 +214,7 @@ class HTMLFilterTest {
   }
 
   @Test
-  void readFilter_handlesTrailingWhitespaceAttributeWithoutCrash() throws Exception {
+  void readFilter_handlesTrailingWhitespaceAttributeWithoutCrash() {
     // This input previously produced an empty attribute token before '>' causing a crash
     String html = "<!DOCTYPE html><html><body><a href=\"/x\" >Hello</a></body></html>";
     ByteArrayInputStream in = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
