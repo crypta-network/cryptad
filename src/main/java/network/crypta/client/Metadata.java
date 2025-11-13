@@ -719,7 +719,6 @@ public class Metadata implements Serializable {
   /** If false, the splitfile key can be computed from hashes; if true, it must be specified. */
   private boolean specifySplitfileKey;
 
-  /** As opposed to hashes of the final content. */
   /** Hash of this layer only (not final data); optional and may be {@code null}. */
   byte[] hashThisLayerOnly;
 
@@ -923,8 +922,10 @@ public class Metadata implements Serializable {
   /**
    * Parse some metadata from a byte[].
    *
-   * @throws IOException If the data is incomplete, or something wierd happens.
-   * @throws MetadataParseException
+   * @throws IOException if the data is incomplete or an I/O error occurs while reading from the
+   *     in‑memory stream.
+   * @throws MetadataParseException if the serialized bytes are malformed or unsupported for the
+   *     current parser version.
    */
   private Metadata(byte[] data) throws IOException, MetadataParseException {
     this(new DataInputStream(new ByteArrayInputStream(data)), data.length);
@@ -1730,7 +1731,8 @@ public class Metadata implements Serializable {
   /**
    * Read a key using the current settings.
    *
-   * @throws IOException
+   * @throws IOException if the stream cannot supply enough bytes for a full key or an I/O error
+   *     occurs while reading.
    * @throws MalformedURLException If the key could not be read due to an error in parsing the key.
    *     REDFLAG: May want to recover from these in future, hence the short length.
    */
@@ -1746,7 +1748,8 @@ public class Metadata implements Serializable {
   /**
    * Write a key using the current settings.
    *
-   * @throws IOException
+   * @throws IOException if the destination stream rejects bytes or another I/O error occurs while
+   *     writing.
    * @throws MalformedURLException If an error in the key itself prevented it from being written.
    */
   private void writeKey(DataOutputStream dos, FreenetURI freenetURI) throws IOException {
