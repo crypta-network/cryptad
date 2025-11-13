@@ -602,7 +602,7 @@ public class Metadata implements Serializable {
   static final short FLAGS_EXTRA_METADATA = 16;
   static final short FLAGS_FULL_KEYS = 32;
   // static final short FLAGS_SPLIT_USE_LENGTHS = 64; reserved (not supported). If a new flag is
-  // required in future, consider reassigning this placeholder.
+  // required in the future, consider reassigning this placeholder.
   static final short FLAGS_COMPRESSED = 128;
   static final short FLAGS_TOP_SIZE = 256;
   static final short FLAGS_HASHES = 512;
@@ -655,7 +655,7 @@ public class Metadata implements Serializable {
   FreenetURI simpleRedirectKey;
 
   /**
-   * Metadata is sometimes used as a key in hashtables. Therefore it needs a persistent hashCode.
+   * Metadata is sometimes used as a key in hashtables. Therefore, it needs a persistent hashCode.
    */
   private final int hashCode;
 
@@ -994,12 +994,12 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Derives the splitfile crypto key from the provided hashes. Requires a SHA‑256 result.
+   * Derives the splitfile crypto key from the provided hashes. Requires an SHA‑256 result.
    *
-   * @param hashes array of {@link HashResult}; must contain a SHA‑256 entry; must not be {@code
+   * @param hashes array of {@link HashResult}; must contain an SHA‑256 entry; must not be {@code
    *     null} or empty.
    * @return a 32‑byte key derived from the SHA‑256 of the final data.
-   * @throws IllegalArgumentException if {@code hashes} is missing a SHA‑256 entry.
+   * @throws IllegalArgumentException if {@code hashes} is missing an SHA‑256 entry.
    */
   public static byte[] getCryptoKey(HashResult[] hashes) {
     if (hashes == null || hashes.length == 0 || !HashResult.contains(hashes, HashType.SHA256))
@@ -1010,7 +1010,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Derives the splitfile crypto key directly from a SHA‑256 hash value.
+   * Derives the splitfile crypto key directly from an SHA‑256 hash value.
    *
    * @param hash a 32‑byte SHA‑256 of the final data; must not be {@code null}.
    * @return a 32‑byte key bytes array suitable for splitfile encryption.
@@ -1463,9 +1463,9 @@ public class Metadata implements Serializable {
    * @param decompressedLength The length of this specific splitfile's data after it has been
    *     decompressed.
    * @param isMetadata If true, the splitfile is multi-level metadata i.e. it encodes a bucket full
-   *     of metadata. This usually happens for really big splitfiles, which can be a pyramid of one
-   *     block with metadata for a splitfile full of metadata, that metadata then encodes another
-   *     splitfile full of metadata, etc. Hence we can support very large files.
+   *     of metadata. This usually happens for huge splitfiles, which can be a pyramid of one block
+   *     with metadata for a splitfile full of metadata, that metadata then encodes another
+   *     splitfile full of metadata, etc. Hence, we can support very large files.
    * @param hashes Various hashes of <b>the final data</b>. There should always be at least an
    *     SHA256 hash, unless we are inserting with an old compatibility mode.
    * @param hashThisLayerOnly Hash of the data in this layer (before compression). Separate from
@@ -1473,7 +1473,7 @@ public class Metadata implements Serializable {
    * @param origDataSize The size of the final/original data.
    * @param origCompressedDataSize The size of the final/original data after it was compressed.
    * @param requiredBlocks The number of blocks required on fetch to reconstruct the final data.
-   *     Hence as soon as we have the top splitfile metadata (i.e. hopefully in the top block), we
+   *     Hence, as soon as we have the top splitfile metadata (i.e. hopefully in the top block), we
    *     can show an accurate progress bar.
    * @param totalBlocks The total number of blocks inserted during the whole insert for the
    *     final/original data.
@@ -1734,7 +1734,7 @@ public class Metadata implements Serializable {
    * @throws IOException if the stream cannot supply enough bytes for a full key or an I/O error
    *     occurs while reading.
    * @throws MalformedURLException If the key could not be read due to an error in parsing the key.
-   *     REDFLAG: May want to recover from these in future, hence the short length.
+   *     REDFLAG: May want to recover from these in the future, hence the short length.
    */
   private FreenetURI readKey(DataInputStream dis) throws IOException {
     // Read URL
@@ -1877,7 +1877,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Is this a archive internal metadata redirect?
+   * Is this an archive internal metadata redirect?
    *
    * @return {@code true} when {@link DocumentType#ARCHIVE_METADATA_REDIRECT} is active; {@code
    *     false} otherwise.
@@ -1887,7 +1887,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Is this a Archive internal redirect?
+   * Is this an Archive internal redirect?
    *
    * @return {@code true} when {@link DocumentType#ARCHIVE_INTERNAL_REDIRECT} is active; {@code
    *     false} otherwise.
