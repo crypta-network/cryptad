@@ -19,7 +19,7 @@ abstract class ArchiveStoreItem {
 
   /**
    * Delete any stored data on disk etc. Override in subtypes for specific cleanup. Will be called
-   * with locks held, so should only do low level operations such as deletes..
+   * with locks held, so should only do low level operations such as deletes.
    */
   void innerClose() {} // override in subtypes for cleanup
 
@@ -29,6 +29,7 @@ abstract class ArchiveStoreItem {
   }
 
   /** Return cached data as a Bucket, or throw an ArchiveFailureException. */
+  @SuppressWarnings("unused")
   abstract Bucket getDataOrThrow() throws ArchiveFailureException;
 
   /**
