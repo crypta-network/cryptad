@@ -86,7 +86,6 @@ class SplitFileFetcherGetTest {
             false,
             0,
             0,
-            null,
             new SimpleEventProducer(),
             false,
             true,
@@ -196,7 +195,7 @@ class SplitFileFetcherGetTest {
 
   @Test
   void preRegister_whenLocalOnly_finishesCheckingAndReturnsTrue() {
-    blockFetchContext.localRequestOnly = true;
+    blockFetchContext.setLocalRequestOnly(true);
     boolean cancelled = getter.preRegister(clientContext, true);
     assertTrue(cancelled);
     verify(storage, times(1)).finishedCheckingDatastoreOnLocalRequest();
@@ -204,7 +203,7 @@ class SplitFileFetcherGetTest {
 
   @Test
   void preRegister_whenNetwork_setsHasCheckedStoreNotifiesAndReturnsFalse() {
-    blockFetchContext.localRequestOnly = false;
+    blockFetchContext.setLocalRequestOnly(false);
     PersistentJobRunner runner = mock(PersistentJobRunner.class);
     when(clientContext.getJobRunner(true)).thenReturn(runner);
 

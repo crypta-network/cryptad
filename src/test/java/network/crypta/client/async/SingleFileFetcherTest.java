@@ -75,7 +75,6 @@ class SingleFileFetcherTest {
         false, /* filterData */
         0, /* maxDataBlocksPerSegment */
         0, /* maxCheckBlocksPerSegment */
-        null, /* bucketFactory (unused here) */
         new SimpleEventProducer(),
         ignoreTooMany, /* ignoreTooManyPathComponents */
         true, /* canWriteClientCache */
@@ -294,8 +293,8 @@ class SingleFileFetcherTest {
     // Uri without metastrings
     FreenetURI uri = new FreenetURI("CHK", null);
     FetchContext ctx = newCtx(10_000, true /* ignoreTooMany */);
-    ctx.allowSplitfiles = false;
-    ctx.followRedirects = false;
+    ctx.setAllowSplitfiles(false);
+    ctx.setFollowRedirects(false);
 
     ClientKey mockKey = mock(ClientKey.class);
     try (MockedStatic<BaseClientKey> bck = Mockito.mockStatic(BaseClientKey.class)) {

@@ -67,8 +67,8 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
             });
         FetchContext context = hlsc.getFetchContext();
         if (desperate) {
-          context.maxNonSplitfileRetries = -1;
-          context.maxSplitfileBlockRetries = -1;
+          context.setMaxNonSplitfileRetries(-1);
+          context.setMaxSplitfileBlockRetries(-1);
         }
         FetchWaiter fw = new FetchWaiter(node.getNonPersistentClientBulk());
 

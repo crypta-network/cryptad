@@ -349,9 +349,9 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       case SendableGet sg -> {
         RequestFlags f = new RequestFlags();
         FetchContext ctx = sg.getContext();
-        f.localRequestOnly = ctx.localRequestOnly;
-        f.ignoreStore = ctx.ignoreStore;
-        f.canWriteClientCache = ctx.canWriteClientCache;
+        f.localRequestOnly = ctx.getLocalRequestOnly();
+        f.ignoreStore = ctx.getIgnoreStore();
+        f.canWriteClientCache = ctx.getCanWriteClientCache();
         f.realTimeFlag = sg.realTimeFlag();
         f.forkOnCacheable = false;
         yield f;

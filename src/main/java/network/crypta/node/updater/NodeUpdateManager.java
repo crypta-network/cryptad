@@ -296,10 +296,10 @@ public class NodeUpdateManager {
     public void start(short priority, long maxSize) {
       HighLevelSimpleClient hlsc = node.getClientCore().makeClient(priority, false, false);
       FetchContext context = hlsc.getFetchContext();
-      context.maxNonSplitfileRetries = -1;
-      context.maxSplitfileBlockRetries = -1;
-      context.maxTempLength = maxSize;
-      context.maxOutputLength = maxSize;
+      context.setMaxNonSplitfileRetries(-1);
+      context.setMaxSplitfileBlockRetries(-1);
+      context.setMaxTempLength(maxSize);
+      context.setMaxOutputLength(maxSize);
       ClientGetter get = new ClientGetter(this, freenetURI, context, priority, null, null, null);
       try {
         node.getClientCore().getClientContext().start(get);

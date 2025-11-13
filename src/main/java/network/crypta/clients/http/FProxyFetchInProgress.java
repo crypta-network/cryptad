@@ -166,8 +166,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     this.fctx = fctx;
     this.rc = rc;
     FetchContext alteredFctx = new FetchContext(fctx, FetchContext.IDENTICAL_MASK);
-    alteredFctx.maxOutputLength = fctx.maxTempLength = maxSize;
-    alteredFctx.eventProducer.addEventListener(this);
+    alteredFctx.setMaxOutputLength(maxSize);
+    fctx.setMaxTempLength(maxSize);
+    alteredFctx.getEventProducer().addEventListener(this);
     waiters = new ArrayList<>();
     results = new ArrayList<>();
     getter = new ClientGetter(this, uri, alteredFctx, FProxyToadlet.PRIORITY, null, null, null);
@@ -251,28 +252,30 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     CacheFetchResult result =
         context.getDownloadCache() == null
             ? null
-            : context.getDownloadCache().lookupInstant(uri, !fctx.filterData, false, null);
+            : context.getDownloadCache().lookupInstant(uri, !fctx.getFilterData(), false, null);
     if (result == null) return false;
     String mimeType = null;
-    if ((!fctx.filterData) && (!result.alreadyFiltered)) {
-      if (fctx.overrideMIME == null || fctx.overrideMIME.equals(result.getMimeType())) {
+    if ((!fctx.getFilterData()) && (!result.alreadyFiltered)) {
+      if (fctx.getOverrideMIME() == null || fctx.getOverrideMIME().equals(result.getMimeType())) {
         // Works as-is.
         // Any time we re-use old content we need to remove the tracker because it may not remain
         // available.
         tracker.removeFetcher(this);
         onSuccess(result, null);
         return true;
-      } else if (fctx.overrideMIME != null && !fctx.overrideMIME.equals(result.getMimeType())) {
+      } else if (fctx.getOverrideMIME() != null
+          && !fctx.getOverrideMIME().equals(result.getMimeType())) {
         // Change the MIME type.
         tracker.removeFetcher(this);
-        onSuccess(new FetchResult(new ClientMetadata(fctx.overrideMIME), result.asBucket()), null);
+        onSuccess(
+            new FetchResult(new ClientMetadata(fctx.getOverrideMIME()), result.asBucket()), null);
         return true;
       }
     } else if (result.alreadyFiltered) {
-      if (refilterPolicy == REFILTER_POLICY.RE_FETCH || !fctx.filterData) {
+      if (refilterPolicy == REFILTER_POLICY.RE_FETCH || !fctx.getFilterData()) {
         // Can't use it.
         return false;
-      } else if (fctx.filterData) {
+      } else if (fctx.getFilterData()) {
         if (shouldAcceptCachedFilteredData(fctx, result)) {
           if (refilterPolicy == REFILTER_POLICY.ACCEPT_OLD) {
             tracker.removeFetcher(this);
@@ -287,8 +290,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     try (Bucket data = result.asBucket()) {
       mimeType = result.getMimeType();
       if (mimeType == null || mimeType.isEmpty()) mimeType = DefaultMIMETypes.DEFAULT_MIME_TYPE;
-      if (fctx.overrideMIME != null && !result.alreadyFiltered) mimeType = fctx.overrideMIME;
-      else if (fctx.overrideMIME != null && !mimeType.equals(fctx.overrideMIME)) {
+      if (fctx.getOverrideMIME() != null && !result.alreadyFiltered)
+        mimeType = fctx.getOverrideMIME();
+      else if (fctx.getOverrideMIME() != null && !mimeType.equals(fctx.getOverrideMIME())) {
         // Doesn't work.
         return false;
       }
@@ -316,7 +320,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
               fctx.getSchemeHostAndPort(),
               null,
               null,
-              fctx.charset,
+              fctx.getCharset(),
+              // charset moved behind accessor for S1104
               context.linkFilterExceptionProvider);
           // Since we are not re-using the data bucket, we can happily stay in the
           // FProxyFetchTracker.
@@ -358,15 +363,15 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
   private boolean shouldAcceptCachedFilteredData(FetchContext fctx, CacheFetchResult result) {
     // FIXME allow the charset if it's the same
-    if (fctx.charset != null) return false;
-    if (fctx.overrideMIME == null) {
+    if (fctx.getCharset() != null) return false;
+    if (fctx.getOverrideMIME() == null) {
       return true;
     } else {
       String finalMIME = result.getMimeType();
-      if (fctx.overrideMIME.equals(finalMIME)) return true;
+      if (fctx.getOverrideMIME().equals(finalMIME)) return true;
       else
-        return ContentFilter.stripMIMEType(finalMIME).equals(fctx.overrideMIME)
-            && fctx.charset == null;
+        return ContentFilter.stripMIMEType(finalMIME).equals(fctx.getOverrideMIME())
+            && fctx.getCharset() == null;
       // FIXME we could make this work in a few more cases... it doesn't matter much though as
       // usually people don't override the MIME type!
     }
@@ -593,13 +598,15 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   public boolean fetchContextEquivalent(FetchContext context) {
-    if (this.fctx.filterData != context.filterData) return false;
-    if (this.fctx.maxOutputLength != context.maxOutputLength) return false;
-    if (this.fctx.maxTempLength != context.maxTempLength) return false;
-    if (this.fctx.charset == null && context.charset != null) return false;
-    if (this.fctx.charset != null && !this.fctx.charset.equals(context.charset)) return false;
-    if (this.fctx.overrideMIME == null && context.overrideMIME != null) return false;
-    return this.fctx.overrideMIME == null || this.fctx.overrideMIME.equals(context.overrideMIME);
+    if (this.fctx.getFilterData() != context.getFilterData()) return false;
+    if (this.fctx.getMaxOutputLength() != context.getMaxOutputLength()) return false;
+    if (this.fctx.getMaxTempLength() != context.getMaxTempLength()) return false;
+    if (this.fctx.getCharset() == null && context.getCharset() != null) return false;
+    if (this.fctx.getCharset() != null && !this.fctx.getCharset().equals(context.getCharset()))
+      return false;
+    if (this.fctx.getOverrideMIME() == null && context.getOverrideMIME() != null) return false;
+    return this.fctx.getOverrideMIME() == null
+        || this.fctx.getOverrideMIME().equals(context.getOverrideMIME());
   }
 
   @Override

@@ -707,7 +707,7 @@ public class SplitFileFetcherStorage {
 
     int crossCheckBlocks = p.metadata.getCrossCheckBlocks();
 
-    maxRetries = p.origFetchContext.maxSplitfileBlockRetries;
+    maxRetries = p.origFetchContext.getMaxSplitfileBlockRetries();
     cooldownTries = p.origFetchContext.getCooldownRetries();
     cooldownLength = p.origFetchContext.getCooldownTime();
     this.splitfileSingleCryptoAlgorithm = p.metadata.getSplitfileCryptoAlgorithm();
@@ -1117,7 +1117,7 @@ public class SplitFileFetcherStorage {
     this.random = p.random;
     this.checksumChecker = p.checker;
     this.checksumLength = p.checker.checksumLength();
-    this.maxRetries = p.origContext.maxSplitfileBlockRetries;
+    this.maxRetries = p.origContext.getMaxSplitfileBlockRetries();
     this.cooldownTries = p.origContext.getCooldownRetries();
     this.cooldownLength = p.origContext.getCooldownTime();
     // Errors are not persisted currently.
@@ -2251,8 +2251,8 @@ public class SplitFileFetcherStorage {
   private static void validateBlocksPerSegmentLimit(
       FetchContext origFetchContext, int blocksPerSegment, int checkBlocksPerSegment)
       throws FetchException {
-    if ((blocksPerSegment > origFetchContext.maxDataBlocksPerSegment)
-        || (checkBlocksPerSegment > origFetchContext.maxCheckBlocksPerSegment)) {
+    if ((blocksPerSegment > origFetchContext.getMaxDataBlocksPerSegment())
+        || (checkBlocksPerSegment > origFetchContext.getMaxCheckBlocksPerSegment())) {
       throw new FetchException(
           FetchExceptionMode.TOO_MANY_BLOCKS_PER_SEGMENT,
           "Too many blocks per segment: "

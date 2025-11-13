@@ -232,7 +232,6 @@ class USKManagerTest {
           false, // filterData
           1, // maxDataBlocksPerSegment
           1, // maxCheckBlocksPerSegment
-          null, // bucketFactory
           new SimpleEventProducer(), // eventProducer
           false, // ignoreTooManyPathComponents
           true, // canWriteClientCache
@@ -578,7 +577,7 @@ class USKManagerTest {
     // Context is a copy of backgroundFetchContextIgnoreDBR when persistent
     assertTrue(tag1.persistent);
     assertTrue(tag1.keepLastData);
-    assertTrue(tag1.ctx.ignoreUSKDatehints);
+    assertTrue(tag1.ctx.getIgnoreUSKDatehints());
 
     // bulk non-persistent client: expect manager.backgroundFetchContext (ignore=false)
     RequestClient bulkClient = new RC(false, false);
@@ -593,6 +592,6 @@ class USKManagerTest {
             /* ignoreUSKDatehints= */ false);
     assertFalse(tag2.persistent);
     assertTrue(tag2.keepLastData);
-    assertFalse(tag2.ctx.ignoreUSKDatehints);
+    assertFalse(tag2.ctx.getIgnoreUSKDatehints());
   }
 }
