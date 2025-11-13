@@ -1910,8 +1910,13 @@ public class Metadata implements Serializable {
     int dataIdx = 0;
     int checkIdx = 0;
     for (int s = 0; s < segmentCount; s++) {
-      int nominalDps =
+      // Base data blocks for this segment, accounting for "deduct last N segments by 1" rule.
+      int baseDataPerSeg =
           blocksPerSegment - (s >= (segmentCount - Math.max(0, deductBlocksFromSegments)) ? 1 : 0);
+      // In cross-segment mode, each segment also carries crossCheckBlocks additional data-like
+      // blocks
+      // that participate in segment-level decode. Include them in the data-per-segment target.
+      int nominalDps = baseDataPerSeg + Math.max(0, crossCheckBlocks);
       int remainingData = splitfileDataKeys != null ? (splitfileDataKeys.length - dataIdx) : 0;
       int dps = Math.clamp(remainingData, 0, nominalDps);
       int remainingCheck = splitfileCheckKeys != null ? (splitfileCheckKeys.length - checkIdx) : 0;
