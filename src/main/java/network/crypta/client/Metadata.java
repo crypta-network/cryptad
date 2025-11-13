@@ -84,15 +84,7 @@ public class Metadata implements Serializable {
   }
 
   /** Holder for header-derived state used by later parsing stages. */
-  private static final class HeaderState {
-    final boolean compressed;
-    final boolean hasTopBlocks;
-
-    HeaderState(boolean compressed, boolean hasTopBlocks) {
-      this.compressed = compressed;
-      this.hasTopBlocks = hasTopBlocks;
-    }
-  }
+  private record HeaderState(boolean compressed, boolean hasTopBlocks) {}
 
   private void readMagicVersionAndDocType(DataInputStream dis)
       throws IOException, MetadataParseException {
@@ -142,57 +134,23 @@ public class Metadata implements Serializable {
     return new HeaderState(compressed, hasTopBlocks);
   }
 
-  private static final class TopInfo {
-    final long size;
-    final long compressedSize;
-    final int blocksRequired;
-    final int blocksTotal;
-    final boolean dontCompress;
-    final CompatibilityMode compatMode;
-
-    TopInfo(
-        long size,
-        long compressedSize,
-        int blocksRequired,
-        int blocksTotal,
-        boolean dontCompress,
-        CompatibilityMode compatMode) {
-      this.size = size;
-      this.compressedSize = compressedSize;
-      this.blocksRequired = blocksRequired;
-      this.blocksTotal = blocksTotal;
-      this.dontCompress = dontCompress;
-      this.compatMode = compatMode;
-    }
-  }
+  private record TopInfo(
+      long size,
+      long compressedSize,
+      int blocksRequired,
+      int blocksTotal,
+      boolean dontCompress,
+      CompatibilityMode compatMode) {}
 
   /** Holder for initializing final top-layer fields inside constructors. */
-  private static final class TopLayerInit {
-    final long size;
-    final long compressedSize;
-    final int blocksRequired;
-    final int blocksTotal;
-    final boolean dontCompress;
-    final CompatibilityMode compatMode;
-    final short parsedVersion;
-
-    TopLayerInit(
-        long size,
-        long compressedSize,
-        int blocksRequired,
-        int blocksTotal,
-        boolean dontCompress,
-        CompatibilityMode compatMode,
-        short parsedVersion) {
-      this.size = size;
-      this.compressedSize = compressedSize;
-      this.blocksRequired = blocksRequired;
-      this.blocksTotal = blocksTotal;
-      this.dontCompress = dontCompress;
-      this.compatMode = compatMode;
-      this.parsedVersion = parsedVersion;
-    }
-  }
+  private record TopLayerInit(
+      long size,
+      long compressedSize,
+      int blocksRequired,
+      int blocksTotal,
+      boolean dontCompress,
+      CompatibilityMode compatMode,
+      short parsedVersion) {}
 
   private TopInfo readTopBlocksInfo(DataInputStream dis, boolean hasTopBlocks)
       throws IOException, MetadataParseException {
@@ -230,8 +188,7 @@ public class Metadata implements Serializable {
     if (documentType == DocumentType.ARCHIVE_MANIFEST) {
       if (LOG.isDebugEnabled()) LOG.debug("Archive manifest");
       archiveType = ARCHIVE_TYPE.getArchiveType(dis.readShort());
-      if (archiveType == null)
-        throw new MetadataParseException("Unrecognized archive type " + archiveType);
+      if (archiveType == null) throw new MetadataParseException("Unrecognized archive type");
     }
   }
 
@@ -271,8 +228,7 @@ public class Metadata implements Serializable {
     if (!compressed) return;
     compressionCodec = COMPRESSOR_TYPE.getCompressorByMetadataID(dis.readShort());
     if (compressionCodec == null)
-      throw new MetadataParseException(
-          "Unrecognized splitfile compression codec " + compressionCodec);
+      throw new MetadataParseException("Unrecognized splitfile compression codec");
     decompressedLength = dis.readLong();
   }
 
@@ -294,14 +250,14 @@ public class Metadata implements Serializable {
     if (LOG.isDebugEnabled()) LOG.debug("Compressed MIME");
     short x = dis.readShort();
     compressedMIMEValue = (short) (x & 32767);
-    hasCompressedMIMEParams = (compressedMIMEValue & 32768) == 32768;
+    hasCompressedMIMEParams = (x & 32768) == 32768;
     if (hasCompressedMIMEParams) {
       compressedMIMEParams = dis.readShort();
       if (compressedMIMEParams != 0) {
         throw new MetadataParseException("Unrecognized MIME params ID (not yet implemented)");
       }
     }
-    mimeType = DefaultMIMETypes.byNumber(x);
+    mimeType = DefaultMIMETypes.byNumber(compressedMIMEValue);
   }
 
   private void readRawMime(DataInputStream dis) throws IOException, MetadataParseException {
@@ -866,6 +822,7 @@ public class Metadata implements Serializable {
   }
 
   @Override
+  @SuppressWarnings("RedundantMethodOverride")
   public boolean equals(Object obj) {
     return this == obj;
   }
@@ -1384,14 +1341,11 @@ public class Metadata implements Serializable {
         dataURIs,
         checkURIs,
         cm,
-        archiveType,
         compressionCodec,
         dataLength,
         decompressedLength,
-        splitfileCryptoAlgorithm,
         splitfileCryptoKey,
         hashes,
-        hashThisLayerOnly,
         topCompatibilityMode,
         deductBlocksFromSegments);
     TopLayerInit tli2 =
@@ -1437,14 +1391,11 @@ public class Metadata implements Serializable {
       ClientCHK[] dataURIs,
       ClientCHK[] checkURIs,
       ClientMetadata cm,
-      ARCHIVE_TYPE ignoredArchiveType,
       COMPRESSOR_TYPE compressionCodec,
       long dataLengthValue,
       long decompressedLength,
-      byte ignoredSplitfileCryptoAlgorithm,
       byte[] splitfileCryptoKey,
       HashResult[] hashes,
-      byte[] ignoredHashThisLayerOnly,
       CompatibilityMode topCompatibilityModeParam,
       int deductBlocksFromSegments) {
     splitfileAlgorithm = algo;
@@ -1453,9 +1404,9 @@ public class Metadata implements Serializable {
     splitfileBlocks = dataURIs.length;
     splitfileCheckBlocks = checkURIs.length;
     splitfileDataKeys = dataURIs;
-    if (!keysValid(splitfileDataKeys)) throw new IllegalArgumentException("Invalid data keys");
+    if (keysInvalid(splitfileDataKeys)) throw new IllegalArgumentException("Invalid data keys");
     splitfileCheckKeys = checkURIs;
-    if (!keysValid(splitfileCheckKeys)) throw new IllegalArgumentException("Invalid check keys");
+    if (keysInvalid(splitfileCheckKeys)) throw new IllegalArgumentException("Invalid check keys");
     clientMetadata = cm;
     this.compressionCodec = compressionCodec;
     this.decompressedLength = decompressedLength;
@@ -1501,17 +1452,18 @@ public class Metadata implements Serializable {
     byte[] b = Fields.shortToBytes(mode);
     System.arraycopy(b, 0, splitfileParams, 0, 2);
     // Note: for insert-built Metadata, params contain values but keys are handled elsewhere.
-    if (mode == SPLITFILE_PARAMS_CROSS_SEGMENT) {
-      b =
-          Fields.intsToBytes(
-              new int[] {
-                segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
-              });
-    } else if (mode == SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS) {
-      b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
-    } else {
-      b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
-    }
+    b =
+        switch (mode) {
+          case SPLITFILE_PARAMS_CROSS_SEGMENT ->
+              Fields.intsToBytes(
+                  new int[] {
+                    segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
+                  });
+          case SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS ->
+              Fields.intsToBytes(
+                  new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
+          default -> Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
+        };
     System.arraycopy(b, 0, splitfileParams, 2, b.length);
     this.splitfileSingleCryptoAlgorithm = splitfileCryptoAlgorithm;
     this.splitfileSingleCryptoKey = splitfileCryptoKey;
@@ -1521,9 +1473,9 @@ public class Metadata implements Serializable {
     // Segments layout is managed elsewhere when needed.
   }
 
-  private boolean keysValid(ClientCHK[] keys) {
-    for (ClientCHK key : keys) if (key.getNodeCHK().getRoutingKey() == null) return false;
-    return true;
+  private boolean keysInvalid(ClientCHK[] keys) {
+    for (ClientCHK key : keys) if (key.getNodeCHK().getRoutingKey() == null) return true;
+    return false;
   }
 
   /** Set the MIME type to a string. Compresses it if possible for transit. */
@@ -1725,6 +1677,7 @@ public class Metadata implements Serializable {
   }
 
   /** Is this a simple splitfile? */
+  @SuppressWarnings("unused")
   public boolean isSimpleSplitfile() {
     return splitfile && (documentType == DocumentType.SIMPLE_REDIRECT);
   }
@@ -1753,11 +1706,13 @@ public class Metadata implements Serializable {
   }
 
   /** Is noMime enabled? (for KeyExplorer) */
+  @SuppressWarnings("unused")
   public boolean isNoMimeEnabled() {
     return noMIME;
   }
 
   /** get the resolved name (".metada-N") (for KeyExplorer) */
+  @SuppressWarnings("unused")
   public String getResolvedName() {
     return resolvedName;
   }
@@ -1954,9 +1909,9 @@ public class Metadata implements Serializable {
       int nominalDps =
           blocksPerSegment - (s >= (segmentCount - Math.max(0, deductBlocksFromSegments)) ? 1 : 0);
       int remainingData = splitfileDataKeys != null ? (splitfileDataKeys.length - dataIdx) : 0;
-      int dps = Math.min(nominalDps, Math.max(remainingData, 0));
+      int dps = Math.clamp(remainingData, 0, nominalDps);
       int remainingCheck = splitfileCheckKeys != null ? (splitfileCheckKeys.length - checkIdx) : 0;
-      int cps = Math.min(checkBlocksPerSegment, Math.max(remainingCheck, 0));
+      int cps = Math.clamp(remainingCheck, 0, checkBlocksPerSegment);
       SplitFileSegmentKeys seg =
           new SplitFileSegmentKeys(
               dps, cps, splitfileSingleCryptoKey, splitfileSingleCryptoAlgorithm);
@@ -2003,7 +1958,7 @@ public class Metadata implements Serializable {
   }
 
   private ManifestEntryData buildManifestEntryPayload(
-      Metadata meta, LinkedList<Metadata> unresolvedMetadata) throws IOException {
+      Metadata meta, LinkedList<Metadata> unresolvedMetadata) {
     try {
       byte[] data = meta.writeToByteArray();
       if (data.length > MAX_SIZE_IN_MANIFEST) {
@@ -2054,10 +2009,12 @@ public class Metadata implements Serializable {
     return splitfileAlgorithm;
   }
 
+  @SuppressWarnings("unused")
   public ClientCHK[] getSplitfileDataKeys() {
     return splitfileDataKeys;
   }
 
+  @SuppressWarnings("unused")
   public ClientCHK[] getSplitfileCheckKeys() {
     return splitfileCheckKeys;
   }
@@ -2082,6 +2039,7 @@ public class Metadata implements Serializable {
     return this.decompressedLength;
   }
 
+  @SuppressWarnings("unused")
   public FreenetURI getResolvedURI() {
     return resolvedURI;
   }
@@ -2097,11 +2055,9 @@ public class Metadata implements Serializable {
   public RandomAccessBucket toBucket(BucketFactory bf)
       throws MetadataUnresolvedException, IOException {
     RandomAccessBucket b = bf.makeBucket(-1);
-    boolean success = false;
     try (DataOutputStream dos = new DataOutputStream(b.getOutputStream())) {
       writeTo(dos);
       dos.flush(); // Ensure data is written before setReadOnly()
-      success = true;
     } catch (IOException e) {
       b.free();
       throw e;
@@ -2125,6 +2081,7 @@ public class Metadata implements Serializable {
     return clientMetadata.getMIMEType();
   }
 
+  @SuppressWarnings("unused")
   public void clearSplitfileKeys() {
     splitfileDataKeys = null;
     splitfileCheckKeys = null;
@@ -2235,7 +2192,7 @@ public class Metadata implements Serializable {
   }
 
   private void dumpline(int indent, StringBuilder sb, String string) {
-    for (int i = 0; i < indent; i++) sb.append(' ');
+    sb.append(" ".repeat(Math.max(0, indent)));
     sb.append(string);
     sb.append("\n");
   }
@@ -2347,6 +2304,7 @@ public class Metadata implements Serializable {
 
   // Note: legacy behavior retained for compatibility; segments are cleared after being grabbed to
   // reduce memory usage.
+  @SuppressWarnings("unused")
   public SplitFileSegmentKeys[] grabSegmentKeys() throws FetchException {
     synchronized (this) {
       if (segments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
