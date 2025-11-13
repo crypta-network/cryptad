@@ -34,14 +34,15 @@ commonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.r
 pebble = { group = "io.pebbletemplates", name = "pebble", version.ref = "pebble" }
 unbescape = { group = "org.unbescape", name = "unbescape", version.ref = "unbescape" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
-logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
-mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
-mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", version.ref = "mockito" }
-hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
-objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
-picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
-kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
-flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
+ logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
+ mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+ mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", version.ref = "mockito" }
+ mockitoInline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockito" }
+ hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
+ objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
+ picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
+ kotlinxCoroutinesSwing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
+ flatlaf = { group = "com.formdev", name = "flatlaf", version.ref = "flatlaf" }
 jsystemThemeDetector = { group = "com.github.Dansoftowner", name = "jSystemThemeDetector", version.ref = "jsystemTheme" }
 dbusCore = { group = "com.github.hypfvieh", name = "dbus-java-core", version.ref = "dbusJava" }
 dbusTransportNativeUnix = { group = "com.github.hypfvieh", name = "dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
