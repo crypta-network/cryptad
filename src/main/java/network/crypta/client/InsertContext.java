@@ -16,7 +16,7 @@ import network.crypta.support.compress.Compressor;
  * <p>WARNING: Changing non-transient members on classes that are Serializable can result in losing
  * uploads.
  */
-public class InsertContext implements Cloneable, Serializable {
+public class InsertContext implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -263,15 +263,36 @@ public class InsertContext implements Cloneable, Serializable {
     this.ignoreUSKDatehints = ctx.ignoreUSKDatehints;
   }
 
-  /** Make public, but just call parent for a field for field copy */
-  @Override
-  public InsertContext clone() {
-    try {
-      return (InsertContext) super.clone();
-    } catch (CloneNotSupportedException e) {
-      // Impossible
-      throw new Error(e);
-    }
+  /**
+   * Copy constructor. Creates a shallow copy of the provided {@code InsertContext}. The {@link
+   * #eventProducer} reference is copied as-is; if a new event stream is desired, use {@link
+   * #InsertContext(InsertContext, SimpleEventProducer)} instead.
+   */
+  public InsertContext(InsertContext other) {
+    this.dontCompress = other.dontCompress;
+    this.splitfileAlgo = other.splitfileAlgo;
+    this.splitfileAlgorithm = this.splitfileAlgo.code;
+    this.maxInsertRetries = other.maxInsertRetries;
+    this.consecutiveRNFsCountAsSuccess = other.consecutiveRNFsCountAsSuccess;
+    this.splitfileSegmentDataBlocks = other.splitfileSegmentDataBlocks;
+    this.splitfileSegmentCheckBlocks = other.splitfileSegmentCheckBlocks;
+    this.eventProducer = other.eventProducer;
+    this.canWriteClientCache = other.canWriteClientCache;
+    this.forkOnCacheable = other.forkOnCacheable;
+    this.compressorDescriptor = other.compressorDescriptor;
+    this.extraInsertsSingleBlock = other.extraInsertsSingleBlock;
+    this.extraInsertsSplitfileHeaderBlock = other.extraInsertsSplitfileHeaderBlock;
+    this.localRequestOnly = other.localRequestOnly;
+    this.ignoreUSKDatehints = other.ignoreUSKDatehints;
+    this.realCompatMode = other.realCompatMode;
+    this.compatibilityMode = other.compatibilityMode;
+    this.getCHKOnly = other.getCHKOnly;
+    this.earlyEncode = other.earlyEncode;
+  }
+
+  /** Copy factory for convenience. */
+  public static InsertContext copyOf(InsertContext other) {
+    return new InsertContext(other);
   }
 
   @Override
