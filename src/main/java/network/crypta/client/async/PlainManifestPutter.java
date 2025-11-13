@@ -150,7 +150,7 @@ public class PlainManifestPutter extends BaseManifestPutter {
       String name = entry.getKey();
       Object o = entry.getValue();
       if (o instanceof Map) {
-        HashMap<String, Object> subMap = Metadata.forceMap(o);
+        Map<String, Object> subMap = Metadata.forceMap(o);
         builder.pushCurrentDir();
         builder.makeSubDirCD(name);
         makePutHandlers(builder, subMap, defaultName);

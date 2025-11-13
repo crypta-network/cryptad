@@ -141,7 +141,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         ArrayList<PutHandler> phv = putHandlersArchiveTransformMap.get(this);
         if (phv == null) return; // Already encoded.
         for (PutHandler ph : phv) {
-          HashMap<String, Object> hm = putHandlersTransformMap.get(ph);
+          Map<String, Object> hm = putHandlersTransformMap.get(ph);
           perContainerPutHandlersWaitingForMetadata.get(ph.parentPutHandler).remove(ph);
           if (ph.targetInArchive == null) throw new NullPointerException();
           Metadata m =
@@ -219,7 +219,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         cb.onGeneratedURI(finalURI, this);
       } else {
         synchronized (BaseManifestPutter.this) {
-          HashMap<String, Object> hm = putHandlersTransformMap.get(this);
+          Map<String, Object> hm = putHandlersTransformMap.get(this);
           perContainerPutHandlersWaitingForMetadata.get(parentPutHandler).remove(this);
           Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, key.getURI(), cm);
           hm.put(this.itemName, m);
@@ -351,7 +351,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     }
 
     private void handleContainerOnMetadata(Metadata m, ClientContext context) {
-      HashMap<String, Object> hm = putHandlersTransformMap.get(this);
+      Map<String, Object> hm = putHandlersTransformMap.get(this);
       perContainerPutHandlersWaitingForMetadata.get(parentPutHandler).remove(this);
       hm.put(this.itemName, m);
       putHandlersTransformMap.remove(this);
@@ -1034,7 +1034,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    * Object>} under the item name when available.
    */
   @SuppressWarnings("java:S1948")
-  private final HashMap<PutHandler, HashMap<String, Object>> putHandlersTransformMap;
+  private final HashMap<PutHandler, Map<String, Object>> putHandlersTransformMap;
 
   /**
    * Tracks placeholders to be rewritten once an {@link ArchivePutHandler} produces its final URI.
@@ -1360,14 +1360,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     resolveAndStartBase(context);
   }
 
-  private Metadata makeMetadata(HashMap<String, Object> dir) {
+  private Metadata makeMetadata(Map<String, Object> dir) {
     SimpleManifestComposer smc = new SimpleManifestComposer();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String name = entry.getKey();
       Object item = entry.getValue();
       if (item == null) throw new NullPointerException();
       Metadata m;
-      if (item instanceof HashMap) {
+      if (item instanceof Map) {
         m = makeMetadata(Metadata.forceMap(item));
         if (m == null) throw new NullPointerException("HERE!!");
       } else {
@@ -1698,14 +1698,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   protected abstract static class ManifestBuilder implements Serializable {
 
     @Serial private static final long serialVersionUID = 1L;
-    private final transient Deque<HashMap<String, Object>> dirStack;
+    private final transient Deque<Map<String, Object>> dirStack;
 
     /**
      * Map from name to either a Metadata (to be included as-is), a ManifestElement (either a
      * redirect or a file), or another HashMap. Eventually processed by e.g.
      * ContainerInserter.makeManifest() (for a ContainerBuilder).
      */
-    protected transient HashMap<String, Object> currentDir;
+    protected transient Map<String, Object> currentDir;
 
     private ClientMetadata makeClientMetadata(String mime) {
       if (mime == null) return null;
@@ -1749,7 +1749,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
     }
 
-    private HashMap<String, Object> makeSubDir(HashMap<String, Object> parentDir, String name) {
+    private Map<String, Object> makeSubDir(Map<String, Object> parentDir, String name) {
       if (parentDir.containsKey(name)) {
         throw new IllegalStateException("Item '" + name + "' already exist!");
       }

@@ -2233,10 +2233,11 @@ public class SplitFileFetcherStorage {
                 "Top compatibility mode is incompatible with detected compatibility mode");
           }
         }
+        byte[] customKey = metadata.getCustomSplitfileKey();
         fetcher.onSplitfileCompatibilityMode(
             minCompatMode,
             maxCompatMode,
-            metadata.getCustomSplitfileKey(),
+            (customKey == null || customKey.length == 0) ? null : customKey,
             dontCompress,
             true,
             topCompatibilityMode != 0);

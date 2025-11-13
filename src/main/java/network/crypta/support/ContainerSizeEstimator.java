@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.support.api.ManifestElement;
@@ -206,7 +205,7 @@ public final class ContainerSizeEstimator {
       return false;
     }
     result.sizeSubTrees += TAR_BLOCK_SIZE;
-    HashMap<String, Object> hm = Metadata.forceMap(value);
+    Map<String, Object> hm = Metadata.forceMap(value);
     ContainerSize tempResult = new ContainerSize();
     getSubTreeSize(
         hm, tempResult, maxItemSize, (maxContainerSize - result.sizeSubTrees), maxDeep - 1);

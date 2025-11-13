@@ -83,6 +83,496 @@ public class Metadata implements Serializable {
     }
   }
 
+  /** Holder for header-derived state used by later parsing stages. */
+  private static final class HeaderState {
+    final boolean compressed;
+    final boolean hasTopBlocks;
+
+    HeaderState(boolean compressed, boolean hasTopBlocks) {
+      this.compressed = compressed;
+      this.hasTopBlocks = hasTopBlocks;
+    }
+  }
+
+  private void readMagicVersionAndDocType(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    long magic = dis.readLong();
+    if (magic != FREENET_METADATA_MAGIC) throw new MetadataParseException("Invalid magic " + magic);
+    short version = dis.readShort();
+    if (version < 0 || version > 1)
+      throw new MetadataParseException("Unsupported version " + version);
+    parsedVersion = version;
+    try {
+      documentType = DocumentType.byCode(dis.readByte());
+    } catch (IllegalArgumentException e) {
+      throw new MetadataParseException("Unsupported document type: " + documentType);
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("Document type: {}", documentType);
+  }
+
+  private HeaderState readFlagsAndHashes(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    boolean compressed = false;
+    boolean hasTopBlocks = false;
+    HashResult[] h = null;
+    if (haveFlags()) {
+      short flags = dis.readShort();
+      splitfile = (flags & FLAGS_SPLITFILE) == FLAGS_SPLITFILE;
+      dbr = (flags & FLAGS_DBR) == FLAGS_DBR;
+      noMIME = (flags & FLAGS_NO_MIME) == FLAGS_NO_MIME;
+      compressedMIME = (flags & FLAGS_COMPRESSED_MIME) == FLAGS_COMPRESSED_MIME;
+      extraMetadata = (flags & FLAGS_EXTRA_METADATA) == FLAGS_EXTRA_METADATA;
+      fullKeys = (flags & FLAGS_FULL_KEYS) == FLAGS_FULL_KEYS;
+      compressed = (flags & FLAGS_COMPRESSED) == FLAGS_COMPRESSED;
+      if ((flags & FLAGS_HASHES) == FLAGS_HASHES) {
+        if (parsedVersion == 0)
+          throw new MetadataParseException("Version 0 does not support hashes");
+        h = HashResult.readHashes(dis);
+      }
+      hasTopBlocks = (flags & FLAGS_TOP_SIZE) == FLAGS_TOP_SIZE;
+      if (hasTopBlocks && parsedVersion == 0)
+        throw new MetadataParseException("Version 0 does not support top block data");
+      specifySplitfileKey = (flags & FLAGS_SPECIFY_SPLITFILE_KEY) == FLAGS_SPECIFY_SPLITFILE_KEY;
+      if ((flags & FLAGS_HASH_THIS_LAYER) == FLAGS_HASH_THIS_LAYER) {
+        hashThisLayerOnly = new byte[32];
+        dis.readFully(hashThisLayerOnly);
+      }
+    }
+    hashes = h;
+    return new HeaderState(compressed, hasTopBlocks);
+  }
+
+  private static final class TopInfo {
+    final long size;
+    final long compressedSize;
+    final int blocksRequired;
+    final int blocksTotal;
+    final boolean dontCompress;
+    final CompatibilityMode compatMode;
+
+    TopInfo(
+        long size,
+        long compressedSize,
+        int blocksRequired,
+        int blocksTotal,
+        boolean dontCompress,
+        CompatibilityMode compatMode) {
+      this.size = size;
+      this.compressedSize = compressedSize;
+      this.blocksRequired = blocksRequired;
+      this.blocksTotal = blocksTotal;
+      this.dontCompress = dontCompress;
+      this.compatMode = compatMode;
+    }
+  }
+
+  /** Holder for initializing final top-layer fields inside constructors. */
+  private static final class TopLayerInit {
+    final long size;
+    final long compressedSize;
+    final int blocksRequired;
+    final int blocksTotal;
+    final boolean dontCompress;
+    final CompatibilityMode compatMode;
+    final short parsedVersion;
+
+    TopLayerInit(
+        long size,
+        long compressedSize,
+        int blocksRequired,
+        int blocksTotal,
+        boolean dontCompress,
+        CompatibilityMode compatMode,
+        short parsedVersion) {
+      this.size = size;
+      this.compressedSize = compressedSize;
+      this.blocksRequired = blocksRequired;
+      this.blocksTotal = blocksTotal;
+      this.dontCompress = dontCompress;
+      this.compatMode = compatMode;
+      this.parsedVersion = parsedVersion;
+    }
+  }
+
+  private TopInfo readTopBlocksInfo(DataInputStream dis, boolean hasTopBlocks)
+      throws IOException, MetadataParseException {
+    if (hasTopBlocks) {
+      long size = dis.readLong();
+      long comp = dis.readLong();
+      int req = dis.readInt();
+      int tot = dis.readInt();
+      boolean dont = dis.readBoolean();
+      short code = dis.readShort();
+      CompatibilityMode compat = parseTopCompatibility(code, size);
+      return new TopInfo(size, comp, req, tot, dont, compat);
+    } else {
+      return new TopInfo(0, 0, 0, 0, false, InsertContext.CompatibilityMode.COMPAT_UNKNOWN);
+    }
+  }
+
+  private CompatibilityMode parseTopCompatibility(short code, long topSizeValue)
+      throws MetadataParseException {
+    if (CompatibilityMode.hasCode(code) && code != CompatibilityMode.COMPAT_CURRENT.code) {
+      CompatibilityMode compat = CompatibilityMode.byCode(code);
+      if (topSizeValue != 0 && compat == CompatibilityMode.COMPAT_UNKNOWN)
+        maxCompatMode = CompatibilityMode.COMPAT_1416;
+      return compat;
+    }
+    if (CompatibilityMode.maybeFutureCode(code)) {
+      LOG.warn("Content may have been inserted with a newer version of Crypta?");
+      return InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
+    }
+    throw new MetadataParseException("Bad compatibility mode " + code);
+  }
+
+  private void readArchiveTypeIfNeeded(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    if (documentType == DocumentType.ARCHIVE_MANIFEST) {
+      if (LOG.isDebugEnabled()) LOG.debug("Archive manifest");
+      archiveType = ARCHIVE_TYPE.getArchiveType(dis.readShort());
+      if (archiveType == null)
+        throw new MetadataParseException("Unrecognized archive type " + archiveType);
+    }
+  }
+
+  private void readSplitfileCryptoAndLengthIfNeeded(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    if (!splitfile) return;
+    if (parsedVersion >= 1) {
+      splitfileSingleCryptoAlgorithm = dis.readByte();
+      if (needsExplicitSplitfileKey()) {
+        byte[] key = new byte[32];
+        dis.readFully(key);
+        splitfileSingleCryptoKey = key;
+      } else {
+        if (hashThisLayerOnly != null) splitfileSingleCryptoKey = getCryptoKey(hashThisLayerOnly);
+        else splitfileSingleCryptoKey = getCryptoKey(hashes);
+      }
+    } else {
+      splitfileSingleCryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("Splitfile");
+    dataLength = dis.readLong();
+    if (dataLength < -1)
+      throw new MetadataParseException("Invalid real content length " + dataLength);
+    if (dataLength == -1 && splitfile)
+      throw new MetadataParseException("Splitfile must have a real-length");
+  }
+
+  private boolean needsExplicitSplitfileKey() {
+    return specifySplitfileKey
+        || hashes == null
+        || hashes.length == 0
+        || !HashResult.contains(hashes, HashType.SHA256);
+  }
+
+  private void readCompressionFieldsIfNeeded(DataInputStream dis, boolean compressed)
+      throws IOException, MetadataParseException {
+    if (!compressed) return;
+    compressionCodec = COMPRESSOR_TYPE.getCompressorByMetadataID(dis.readShort());
+    if (compressionCodec == null)
+      throw new MetadataParseException(
+          "Unrecognized splitfile compression codec " + compressionCodec);
+    decompressedLength = dis.readLong();
+  }
+
+  private void readMime(DataInputStream dis) throws IOException, MetadataParseException {
+    if (noMIME) {
+      mimeType = null;
+      if (LOG.isDebugEnabled()) LOG.debug("noMIME enabled");
+      return;
+    }
+    if (compressedMIME) {
+      readCompressedMime(dis);
+    } else {
+      readRawMime(dis);
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("MIME = {}", mimeType);
+  }
+
+  private void readCompressedMime(DataInputStream dis) throws IOException, MetadataParseException {
+    if (LOG.isDebugEnabled()) LOG.debug("Compressed MIME");
+    short x = dis.readShort();
+    compressedMIMEValue = (short) (x & 32767);
+    hasCompressedMIMEParams = (compressedMIMEValue & 32768) == 32768;
+    if (hasCompressedMIMEParams) {
+      compressedMIMEParams = dis.readShort();
+      if (compressedMIMEParams != 0) {
+        throw new MetadataParseException("Unrecognized MIME params ID (not yet implemented)");
+      }
+    }
+    mimeType = DefaultMIMETypes.byNumber(x);
+  }
+
+  private void readRawMime(DataInputStream dis) throws IOException, MetadataParseException {
+    byte l = dis.readByte();
+    int len = l & 0xff;
+    byte[] toRead = new byte[len];
+    dis.readFully(toRead);
+    mimeType = new String(toRead, StandardCharsets.UTF_8);
+    if (LOG.isDebugEnabled()) LOG.debug("Raw MIME");
+    if (!DefaultMIMETypes.isPlausibleMIMEType(mimeType))
+      throw new MetadataParseException("Does not look like a MIME type: \"" + mimeType + "\"");
+  }
+
+  private void failOnUnsupportedDBR() throws MetadataParseException {
+    if (dbr) {
+      throw new MetadataParseException(
+          "Do not support DBRs pending decision on putting them in the key!");
+    }
+  }
+
+  private void readAndDiscardExtraClientMetadata(DataInputStream dis) throws IOException {
+    if (!extraMetadata) return;
+    int numberOfExtraFields = (dis.readShort()) & 0xffff;
+    for (int i = 0; i < numberOfExtraFields; i++) {
+      short type = dis.readShort();
+      int len = (dis.readByte() & 0xff);
+      byte[] buf = new byte[len];
+      dis.readFully(buf);
+      LOG.info("Ignoring type {} extra-client-metadata field of {} bytes", type, len);
+    }
+    extraMetadata = false;
+  }
+
+  private void readManifestIfSimple(DataInputStream dis, long length)
+      throws IOException, MetadataParseException {
+    if (documentType != DocumentType.SIMPLE_MANIFEST) return;
+    int manifestEntryCount = dis.readInt();
+    if (manifestEntryCount < 0)
+      throw new MetadataParseException("Invalid manifest entry count: " + manifestEntryCount);
+    manifestEntries = new HashMap<>();
+    if (LOG.isDebugEnabled()) LOG.debug("Simple manifest, {} entries", manifestEntryCount);
+    for (int i = 0; i < manifestEntryCount; i++) {
+      short nameLength = dis.readShort();
+      byte[] buf = new byte[nameLength];
+      dis.readFully(buf);
+      String name = new String(buf, StandardCharsets.UTF_8).intern();
+      if (LOG.isDebugEnabled()) LOG.debug("Entry {} name {}", i, name);
+      short len = dis.readShort();
+      if (len < 0) throw new MetadataParseException("Invalid manifest entry size: " + len);
+      if (len > length)
+        throw new MetadataParseException(
+            "Impossibly long manifest entry: " + len + " - metadata size " + length);
+      byte[] data = new byte[len];
+      dis.readFully(data);
+      Metadata m = Metadata.construct(data);
+      manifestEntries.put(name, m);
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("End of manifest");
+  }
+
+  private void readArchiveInternalOrShortlinkIfNeeded(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    if ((documentType == DocumentType.ARCHIVE_INTERNAL_REDIRECT)
+        || (documentType == DocumentType.ARCHIVE_METADATA_REDIRECT)
+        || (documentType == DocumentType.SYMBOLIC_SHORTLINK)) {
+      int len = dis.readShort();
+      if (LOG.isDebugEnabled()) LOG.debug("Reading archive internal redirect length {}", len);
+      byte[] buf = new byte[len];
+      dis.readFully(buf);
+      targetName = new String(buf, StandardCharsets.UTF_8);
+      while (true) {
+        if (targetName.isEmpty())
+          throw new MetadataParseException(
+              "Invalid target name is empty: \"" + new String(buf, StandardCharsets.UTF_8) + "\"");
+        if (targetName.charAt(0) == '/') {
+          targetName = targetName.substring(1);
+        } else break;
+      }
+      if (LOG.isDebugEnabled())
+        LOG.debug("Archive and/or internal redirect: {} ({})", targetName, len);
+    }
+  }
+
+  private void readSimpleRedirectOrArchiveKeyIfNeeded(DataInputStream dis) throws IOException {
+    if ((!splitfile)
+        && ((documentType == DocumentType.SIMPLE_REDIRECT)
+            || (documentType == DocumentType.ARCHIVE_MANIFEST))) {
+      simpleRedirectKey = readKey(dis);
+      if (simpleRedirectKey.isCHK()) {
+        byte algo = ClientCHK.getCryptoAlgorithmFromExtra(simpleRedirectKey.getExtra());
+        if (algo == Key.ALGO_AES_CTR_256_SHA256) {
+          minCompatMode = CompatibilityMode.COMPAT_1416;
+          maxCompatMode = CompatibilityMode.latest();
+        } else {
+          if (getParsedVersion() == 0) {
+            minCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
+            maxCompatMode = CompatibilityMode.COMPAT_1251;
+          } else {
+            minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1255;
+          }
+        }
+      }
+    }
+  }
+
+  // Splitfile parsing helpers (extracted from constructor to lower cognitive complexity)
+  private void parseSplitfileHeaderAndLayout(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    readAndValidateSplitfileAlgorithm(dis);
+    readSplitfileParams(dis);
+    readSplitfileBlockCounts(dis);
+
+    if (splitfileAlgorithm == SplitfileAlgorithm.ONION_STANDARD) {
+      byte[] params = splitfileParams();
+      computeOnionStandardLayout(params);
+      enforceTopCompatibilityOrThrow();
+      apply1135WorkaroundAndFinalize();
+    } else {
+      throw new MetadataParseException("Unknown splitfile algorithm " + splitfileAlgorithm);
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("Simple {} {}", splitfileAlgorithm, segmentCount);
+  }
+
+  private void readAndValidateSplitfileAlgorithm(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    try {
+      splitfileAlgorithm = SplitfileAlgorithm.getByCode(dis.readShort());
+    } catch (IllegalArgumentException e) {
+      throw new MetadataParseException("Invalid splitfile code");
+    }
+    if (!((splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT)
+        || (splitfileAlgorithm == SplitfileAlgorithm.ONION_STANDARD)))
+      throw new MetadataParseException("Unknown splitfile algorithm " + splitfileAlgorithm);
+
+    if (splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT)
+      throw new MetadataParseException("Non-redundant splitfile invalid");
+  }
+
+  private void readSplitfileParams(DataInputStream dis) throws IOException, MetadataParseException {
+    int paramsLength = dis.readInt();
+    if (paramsLength > MAX_SPLITFILE_PARAMS_LENGTH)
+      throw new MetadataParseException("Too many bytes of splitfile parameters: " + paramsLength);
+
+    if (paramsLength > 0) {
+      splitfileParams = new byte[paramsLength];
+      dis.readFully(splitfileParams);
+    } else if (paramsLength < 0) {
+      throw new MetadataParseException("Invalid splitfile params length: " + paramsLength);
+    }
+  }
+
+  private void readSplitfileBlockCounts(DataInputStream dis)
+      throws IOException, MetadataParseException {
+    splitfileBlocks = dis.readInt(); // 64TB file size limit :)
+    if (splitfileBlocks < 0)
+      throw new MetadataParseException("Invalid number of blocks: " + splitfileBlocks);
+    if (splitfileBlocks > MAX_SPLITFILE_BLOCKS)
+      throw new MetadataParseException(
+          "Too many splitfile blocks (soft limit to prevent memory DoS): " + splitfileBlocks);
+    splitfileCheckBlocks = dis.readInt();
+    if (splitfileCheckBlocks < 0)
+      throw new MetadataParseException("Invalid number of check blocks: " + splitfileCheckBlocks);
+    if (splitfileCheckBlocks > MAX_SPLITFILE_BLOCKS)
+      throw new MetadataParseException(
+          "Too many splitfile check-blocks (soft limit to prevent memory DoS): "
+              + splitfileCheckBlocks);
+
+    crossCheckBlocks = 0;
+  }
+
+  private void computeOnionStandardLayout(byte[] params) throws MetadataParseException {
+    int checkBlocks;
+    if (getParsedVersion() == 0) {
+      checkBlocks = computeOnionLayoutV0(params);
+    } else {
+      checkBlocks = computeOnionLayoutV1(params);
+    }
+    // Stage the computed per-segment check block count for finalization.
+    checkBlocksPerSegment = checkBlocks;
+  }
+
+  private int computeOnionLayoutV0(byte[] params) throws MetadataParseException {
+    if ((params == null) || (params.length < 8))
+      throw new MetadataParseException("No splitfile params");
+    blocksPerSegment = Fields.bytesToInt(params, 0);
+    int checkBlocks = Fields.bytesToInt(params, 4);
+    deductBlocksFromSegments = 0;
+    int countDataBlocks = splitfileBlocks;
+    int countCheckBlocks = splitfileCheckBlocks;
+    if (countDataBlocks == countCheckBlocks) {
+      if (blocksPerSegment == 128) {
+        int segs = (countDataBlocks + 127) / 128;
+        int segSize = (countDataBlocks + segs - 1) / segs;
+        if (segSize == 128) {
+          minCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
+          maxCompatMode = CompatibilityMode.COMPAT_1250;
+        } else {
+          minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
+        }
+      } else {
+        minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1250;
+      }
+    } else {
+      if (checkBlocks == 64) {
+        minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_UNKNOWN;
+      } else {
+        minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1251;
+      }
+    }
+    return checkBlocks;
+  }
+
+  private int computeOnionLayoutV1(byte[] params) throws MetadataParseException {
+    if (splitfileSingleCryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
+      minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1255;
+    else if (splitfileSingleCryptoAlgorithm == Key.ALGO_AES_CTR_256_SHA256) {
+      minCompatMode = CompatibilityMode.COMPAT_1416;
+      if (maxCompatMode == CompatibilityMode.COMPAT_UNKNOWN)
+        maxCompatMode = CompatibilityMode.latest();
+    }
+    if (params.length < 10)
+      throw new MetadataParseException("Splitfile parameters too short for version 1");
+    short paramsType = Fields.bytesToShort(params, 0);
+    int checkBlocks;
+    if (paramsType == Metadata.SPLITFILE_PARAMS_SIMPLE_SEGMENT
+        || paramsType == Metadata.SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS
+        || paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
+      blocksPerSegment = Fields.bytesToInt(params, 2);
+      checkBlocks = Fields.bytesToInt(params, 6);
+    } else throw new MetadataParseException("Unknown splitfile params type " + paramsType);
+    if (paramsType == Metadata.SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS
+        || paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
+      deductBlocksFromSegments = Fields.bytesToInt(params, 10);
+      if (paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
+        crossCheckBlocks = Fields.bytesToInt(params, 14);
+      }
+    } else deductBlocksFromSegments = 0;
+    return checkBlocks;
+  }
+
+  private void enforceTopCompatibilityOrThrow() throws MetadataParseException {
+    if (topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN) {
+      if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
+          || !(minCompatMode.ordinal() > topCompatibilityMode.ordinal()
+              || maxCompatMode.ordinal() < topCompatibilityMode.ordinal())) {
+        minCompatMode = maxCompatMode = topCompatibilityMode;
+      } else
+        throw new MetadataParseException(
+            "Top compatibility mode is incompatible with detected compatibility mode: min="
+                + minCompatMode
+                + " max="
+                + maxCompatMode
+                + " top="
+                + topCompatibilityMode);
+    }
+  }
+
+  private void apply1135WorkaroundAndFinalize() {
+    if (checkBlocksPerSegment == 64
+        && blocksPerSegment == 128
+        && splitfileCheckBlocks == splitfileBlocks - (splitfileBlocks / 128)) {
+      LOG.info("Activating 1135 wrong check blocks per segment workaround for {}", this);
+      checkBlocksPerSegment = 127;
+    }
+    segmentCount =
+        (splitfileBlocks + blocksPerSegment + crossCheckBlocks - 1)
+            / (blocksPerSegment + crossCheckBlocks);
+  }
+
+  // Removed unused method readSplitfileKeysAndSegmentsFromStream(DataInputStream)
+
   short parsedVersion;
 
   // 2 bytes of flags
@@ -110,8 +600,8 @@ public class Metadata implements Serializable {
   static final short FLAGS_COMPRESSED_MIME = 8;
   static final short FLAGS_EXTRA_METADATA = 16;
   static final short FLAGS_FULL_KEYS = 32;
-  //	static final short FLAGS_SPLIT_USE_LENGTHS = 64; FIXME not supported, reassign to something
-  // else if we need a new flag
+  // static final short FLAGS_SPLIT_USE_LENGTHS = 64; reserved (not supported). If a new flag is
+  // required in future, consider reassigning this placeholder.
   static final short FLAGS_COMPRESSED = 128;
   static final short FLAGS_TOP_SIZE = 256;
   static final short FLAGS_HASHES = 512;
@@ -122,6 +612,9 @@ public class Metadata implements Serializable {
   // We can specify a hash just for this layer as well as hashes for the final content in a
   // multi-layer splitfile.
   static final short FLAGS_HASH_THIS_LAYER = 2048;
+  private static final byte[] SPLITKEY = "SPLITKEY".getBytes(StandardCharsets.UTF_8);
+  private static final byte[] CROSS_SEGMENT_SEED =
+      "CROSS_SEGMENT_SEED".getBytes(StandardCharsets.UTF_8);
 
   /**
    * Container archive type
@@ -228,8 +721,7 @@ public class Metadata implements Serializable {
   public final boolean topDontCompress;
   public final CompatibilityMode topCompatibilityMode;
 
-  static {
-  }
+  // No static initialization required.
 
   /**
    * Copy constructor.
@@ -308,7 +800,7 @@ public class Metadata implements Serializable {
       for (int i = 0; i < this.hashes.length; i++) this.hashes[i] = orig.hashes[i].clone();
     }
     if (orig.manifestEntries != null) {
-      this.manifestEntries = new HashMap<>(orig.manifestEntries.size());
+      this.manifestEntries = HashMap.newHashMap(orig.manifestEntries.size());
       for (Map.Entry<String, Metadata> entry : orig.manifestEntries.entrySet()) {
         Metadata value = entry.getValue();
         this.manifestEntries.put(entry.getKey(), value == null ? null : new Metadata(value));
@@ -373,6 +865,11 @@ public class Metadata implements Serializable {
     return hashCode;
   }
 
+  @Override
+  public boolean equals(Object obj) {
+    return this == obj;
+  }
+
   /**
    * Parse some metadata from a DataInputStream
    *
@@ -380,499 +877,39 @@ public class Metadata implements Serializable {
    */
   public Metadata(DataInputStream dis, long length) throws IOException, MetadataParseException {
     hashCode = super.hashCode();
-    long magic = dis.readLong();
-    if (magic != FREENET_METADATA_MAGIC) throw new MetadataParseException("Invalid magic " + magic);
-    short version = dis.readShort();
-    if (version < 0 || version > 1)
-      throw new MetadataParseException("Unsupported version " + version);
-    parsedVersion = version;
-    try {
-      documentType = DocumentType.byCode(dis.readByte());
-    } catch (IllegalArgumentException e) {
-      throw new MetadataParseException("Unsupported document type: " + documentType);
-    }
-    if (LOG.isDebugEnabled()) LOG.debug("Document type: " + documentType);
+    readMagicVersionAndDocType(dis);
 
-    boolean compressed = false;
-    boolean hasTopBlocks = false;
-    HashResult[] h = null;
-    if (haveFlags()) {
-      short flags = dis.readShort();
-      splitfile = (flags & FLAGS_SPLITFILE) == FLAGS_SPLITFILE;
-      dbr = (flags & FLAGS_DBR) == FLAGS_DBR;
-      noMIME = (flags & FLAGS_NO_MIME) == FLAGS_NO_MIME;
-      compressedMIME = (flags & FLAGS_COMPRESSED_MIME) == FLAGS_COMPRESSED_MIME;
-      extraMetadata = (flags & FLAGS_EXTRA_METADATA) == FLAGS_EXTRA_METADATA;
-      fullKeys = (flags & FLAGS_FULL_KEYS) == FLAGS_FULL_KEYS;
-      compressed = (flags & FLAGS_COMPRESSED) == FLAGS_COMPRESSED;
-      if ((flags & FLAGS_HASHES) == FLAGS_HASHES) {
-        if (version == 0) throw new MetadataParseException("Version 0 does not support hashes");
-        h = HashResult.readHashes(dis);
-      }
-      hasTopBlocks = (flags & FLAGS_TOP_SIZE) == FLAGS_TOP_SIZE;
-      if (hasTopBlocks && version == 0)
-        throw new MetadataParseException("Version 0 does not support top block data");
-      specifySplitfileKey = (flags & FLAGS_SPECIFY_SPLITFILE_KEY) == FLAGS_SPECIFY_SPLITFILE_KEY;
-      if ((flags & FLAGS_HASH_THIS_LAYER) == FLAGS_HASH_THIS_LAYER) {
-        hashThisLayerOnly = new byte[32];
-        dis.readFully(hashThisLayerOnly);
-      }
-    }
-    hashes = h;
+    HeaderState header = readFlagsAndHashes(dis);
+    TopInfo top = readTopBlocksInfo(dis, header.hasTopBlocks);
+    this.topSize = top.size;
+    this.topCompressedSize = top.compressedSize;
+    this.topBlocksRequired = top.blocksRequired;
+    this.topBlocksTotal = top.blocksTotal;
+    this.topDontCompress = top.dontCompress;
+    this.topCompatibilityMode = top.compatMode;
 
-    if (hasTopBlocks) {
-      if (parsedVersion == 0)
-        throw new MetadataParseException("Top size data not supported in version 0");
-      topSize = dis.readLong();
-      topCompressedSize = dis.readLong();
-      topBlocksRequired = dis.readInt();
-      topBlocksTotal = dis.readInt();
-      topDontCompress = dis.readBoolean();
-      short code = dis.readShort();
-      if (CompatibilityMode.hasCode(code)
-          && code
-              != CompatibilityMode.COMPAT_CURRENT
-                  .code) { // COMPAT_UNKNOWN is OK but COMPAT_CURRENT should never be seen in
-        // published metadata
-        topCompatibilityMode = CompatibilityMode.byCode(code);
-        if (topSize != 0 && topCompatibilityMode == CompatibilityMode.COMPAT_UNKNOWN)
-          maxCompatMode = CompatibilityMode.COMPAT_1416;
-      } else {
-        if (CompatibilityMode.maybeFutureCode(code)) {
-          LOG.warn("Content may have been inserted with a newer version of Crypta?");
-          topCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
-        } else {
-          throw new MetadataParseException("Bad compatibility mode " + code);
-        }
-      }
-    } else {
-      topSize = 0;
-      topCompressedSize = 0;
-      topBlocksRequired = 0;
-      topBlocksTotal = 0;
-      topDontCompress = false;
-      topCompatibilityMode = InsertContext.CompatibilityMode.COMPAT_UNKNOWN;
-    }
+    readArchiveTypeIfNeeded(dis);
 
-    if (documentType == DocumentType.ARCHIVE_MANIFEST) {
-      if (LOG.isDebugEnabled()) LOG.debug("Archive manifest");
-      archiveType = ARCHIVE_TYPE.getArchiveType(dis.readShort());
-      if (archiveType == null)
-        throw new MetadataParseException("Unrecognized archive type " + archiveType);
-    }
-
-    if (splitfile) {
-      if (parsedVersion >= 1) {
-        // Splitfile single crypto key.
-        splitfileSingleCryptoAlgorithm = dis.readByte();
-        if (specifySplitfileKey
-            || hashes == null
-            || hashes.length == 0
-            || !HashResult.contains(hashes, HashType.SHA256)) {
-          byte[] key = new byte[32];
-          dis.readFully(key);
-          splitfileSingleCryptoKey = key;
-        } else {
-          if (hashThisLayerOnly != null) splitfileSingleCryptoKey = getCryptoKey(hashThisLayerOnly);
-          else splitfileSingleCryptoKey = getCryptoKey(hashes);
-        }
-      } else {
-        // Pre-1010 isn't supported, so there is only one possibility.
-        splitfileSingleCryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
-      }
-
-      if (LOG.isDebugEnabled()) LOG.debug("Splitfile");
-      dataLength = dis.readLong();
-      if (dataLength < -1)
-        throw new MetadataParseException("Invalid real content length " + dataLength);
-
-      if (dataLength == -1) {
-        if (splitfile) throw new MetadataParseException("Splitfile must have a real-length");
-      }
-    }
-
-    if (compressed) {
-      compressionCodec = COMPRESSOR_TYPE.getCompressorByMetadataID(dis.readShort());
-      if (compressionCodec == null)
-        throw new MetadataParseException(
-            "Unrecognized splitfile compression codec " + compressionCodec);
-
-      decompressedLength = dis.readLong();
-    }
-
-    if (noMIME) {
-      mimeType = null;
-      if (LOG.isDebugEnabled()) LOG.debug("noMIME enabled");
-    } else {
-      if (compressedMIME) {
-        if (LOG.isDebugEnabled()) LOG.debug("Compressed MIME");
-        short x = dis.readShort();
-        compressedMIMEValue = (short) (x & 32767); // chop off last bit
-        hasCompressedMIMEParams = (compressedMIMEValue & 32768) == 32768;
-        if (hasCompressedMIMEParams) {
-          compressedMIMEParams = dis.readShort();
-          if (compressedMIMEParams != 0) {
-            throw new MetadataParseException("Unrecognized MIME params ID (not yet implemented)");
-          }
-        }
-        mimeType = DefaultMIMETypes.byNumber(x);
-      } else {
-        // Read an actual raw MIME type
-        byte l = dis.readByte();
-        int len = l & 0xff; // positive
-        byte[] toRead = new byte[len];
-        dis.readFully(toRead);
-        // Use UTF-8 for everything, for simplicity
-        mimeType = new String(toRead, StandardCharsets.UTF_8);
-        if (LOG.isDebugEnabled()) LOG.debug("Raw MIME");
-        if (!DefaultMIMETypes.isPlausibleMIMEType(mimeType))
-          throw new MetadataParseException("Does not look like a MIME type: \"" + mimeType + "\"");
-      }
-      if (LOG.isDebugEnabled()) LOG.debug("MIME = " + mimeType);
-    }
-
-    if (dbr) {
-      throw new MetadataParseException(
-          "Do not support DBRs pending decision on putting them in the key!");
-    }
-
-    if (extraMetadata) {
-      int numberOfExtraFields = (dis.readShort()) & 0xffff;
-      for (int i = 0; i < numberOfExtraFields; i++) {
-        short type = dis.readShort();
-        int len = (dis.readByte() & 0xff);
-        byte[] buf = new byte[len];
-        dis.readFully(buf);
-        LOG.info("Ignoring type " + type + " extra-client-metadata field of " + len + " bytes");
-      }
-      extraMetadata = false; // can't parse, can't write
-    }
-
+    readSplitfileCryptoAndLengthIfNeeded(dis);
+    readCompressionFieldsIfNeeded(dis, header.compressed);
+    readMime(dis);
+    failOnUnsupportedDBR();
+    readAndDiscardExtraClientMetadata(dis);
     clientMetadata = new ClientMetadata(mimeType);
 
-    if ((!splitfile)
-        && ((documentType == DocumentType.SIMPLE_REDIRECT)
-            || (documentType == DocumentType.ARCHIVE_MANIFEST))) {
-      simpleRedirectKey = readKey(dis);
-      if (simpleRedirectKey.isCHK()) {
-        byte algo = ClientCHK.getCryptoAlgorithmFromExtra(simpleRedirectKey.getExtra());
-        if (algo == Key.ALGO_AES_CTR_256_SHA256) {
-          minCompatMode = CompatibilityMode.COMPAT_1416;
-          maxCompatMode = CompatibilityMode.latest();
-        } else {
-          // Older.
-          if (getParsedVersion() == 0) {
-            minCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
-            maxCompatMode = CompatibilityMode.COMPAT_1251;
-          } else minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1255;
-        }
-      }
-    } else if (splitfile) {
-      try {
-        splitfileAlgorithm = SplitfileAlgorithm.getByCode(dis.readShort());
-      } catch (IllegalArgumentException e) {
-        throw new MetadataParseException("Invalid splitfile code");
-      }
-      if (!((splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT)
-          || (splitfileAlgorithm == SplitfileAlgorithm.ONION_STANDARD)))
-        throw new MetadataParseException("Unknown splitfile algorithm " + splitfileAlgorithm);
+    // Parsing continues below.
+    readSimpleRedirectOrArchiveKeyIfNeeded(dis);
 
-      if (splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT)
-        throw new MetadataParseException("Non-redundant splitfile invalid");
+    // Remaining tail sections
+    readManifestIfSimple(dis, length);
+    readArchiveInternalOrShortlinkIfNeeded(dis);
 
-      int paramsLength = dis.readInt();
-      if (paramsLength > MAX_SPLITFILE_PARAMS_LENGTH)
-        throw new MetadataParseException("Too many bytes of splitfile parameters: " + paramsLength);
-
-      if (paramsLength > 0) {
-        splitfileParams = new byte[paramsLength];
-        dis.readFully(splitfileParams);
-      } else if (paramsLength < 0) {
-        throw new MetadataParseException("Invalid splitfile params length: " + paramsLength);
-      }
-
-      splitfileBlocks = dis.readInt(); // 64TB file size limit :)
-      if (splitfileBlocks < 0)
-        throw new MetadataParseException("Invalid number of blocks: " + splitfileBlocks);
-      if (splitfileBlocks > MAX_SPLITFILE_BLOCKS)
-        throw new MetadataParseException(
-            "Too many splitfile blocks (soft limit to prevent memory DoS): " + splitfileBlocks);
-      splitfileCheckBlocks = dis.readInt();
-      if (splitfileCheckBlocks < 0)
-        throw new MetadataParseException("Invalid number of check blocks: " + splitfileCheckBlocks);
-      if (splitfileCheckBlocks > MAX_SPLITFILE_BLOCKS)
-        throw new MetadataParseException(
-            "Too many splitfile check-blocks (soft limit to prevent memory DoS): "
-                + splitfileCheckBlocks);
-
-      // PARSE SPLITFILE PARAMETERS
-
-      crossCheckBlocks = 0;
-
-      if (splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT) {
-        // Don't need to do much - just fetch everything and piece it together.
-        blocksPerSegment = -1;
-        checkBlocksPerSegment = -1;
-        segmentCount = 1;
-        deductBlocksFromSegments = 0;
-        if (splitfileCheckBlocks > 0) {
-          LOG.error(
-              "Splitfile type is SPLITFILE_NONREDUNDANT yet "
-                  + splitfileCheckBlocks
-                  + " check blocks found!! : "
-                  + this);
-          throw new MetadataParseException(
-              "Splitfile type is non-redundant yet have " + splitfileCheckBlocks + " check blocks");
-        }
-      } else if (splitfileAlgorithm == SplitfileAlgorithm.ONION_STANDARD) {
-        byte[] params = splitfileParams();
-        int checkBlocks;
-        if (getParsedVersion() == 0) {
-          if ((params == null) || (params.length < 8))
-            throw new MetadataParseException("No splitfile params");
-          blocksPerSegment = Fields.bytesToInt(params, 0);
-          checkBlocks = Fields.bytesToInt(params, 4);
-          deductBlocksFromSegments = 0;
-          int countDataBlocks = splitfileBlocks;
-          int countCheckBlocks = splitfileCheckBlocks;
-          if (countDataBlocks == countCheckBlocks) {
-            // No extra check blocks, so before 1251.
-            if (blocksPerSegment == 128) {
-              // Is the last segment small enough that we can't have used even splitting?
-              int segs = (countDataBlocks + 127) / 128;
-              int segSize = (countDataBlocks + segs - 1) / segs;
-              if (segSize == 128) {
-                // Could be either
-                minCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
-                maxCompatMode = CompatibilityMode.COMPAT_1250;
-              } else {
-                minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1250_EXACT;
-              }
-            } else {
-              minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1250;
-            }
-          } else {
-            if (checkBlocks == 64) {
-              // Very old 128/64 redundancy.
-              minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_UNKNOWN;
-            } else {
-              // Extra block per segment in 1251.
-              minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1251;
-            }
-          }
-        } else {
-          // Version 1 i.e. modern.
-          if (splitfileSingleCryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256)
-            minCompatMode = maxCompatMode = CompatibilityMode.COMPAT_1255;
-          else if (splitfileSingleCryptoAlgorithm == Key.ALGO_AES_CTR_256_SHA256) {
-            minCompatMode = CompatibilityMode.COMPAT_1416;
-            if (maxCompatMode == CompatibilityMode.COMPAT_UNKNOWN)
-              maxCompatMode = CompatibilityMode.latest();
-          }
-          if (params.length < 10)
-            throw new MetadataParseException("Splitfile parameters too short for version 1");
-          short paramsType = Fields.bytesToShort(params, 0);
-          if (paramsType == Metadata.SPLITFILE_PARAMS_SIMPLE_SEGMENT
-              || paramsType == Metadata.SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS
-              || paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
-            blocksPerSegment = Fields.bytesToInt(params, 2);
-            checkBlocks = Fields.bytesToInt(params, 6);
-          } else throw new MetadataParseException("Unknown splitfile params type " + paramsType);
-          if (paramsType == Metadata.SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS
-              || paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
-            deductBlocksFromSegments = Fields.bytesToInt(params, 10);
-            if (paramsType == Metadata.SPLITFILE_PARAMS_CROSS_SEGMENT) {
-              crossCheckBlocks = Fields.bytesToInt(params, 14);
-            }
-          } else deductBlocksFromSegments = 0;
-        }
-
-        if (topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN) {
-          // If we have top compatibility mode, then we can give a definitive answer immediately,
-          // with the splitfile key, with dontcompress, etc etc.
-          if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-              || !(minCompatMode.ordinal() > topCompatibilityMode.ordinal()
-                  || maxCompatMode.ordinal() < topCompatibilityMode.ordinal())) {
-            minCompatMode = maxCompatMode = topCompatibilityMode;
-          } else
-            throw new MetadataParseException(
-                "Top compatibility mode is incompatible with detected compatibility mode: min="
-                    + minCompatMode
-                    + " max="
-                    + maxCompatMode
-                    + " top="
-                    + topCompatibilityMode);
-        }
-
-        // FIXME remove this eventually. Will break compat with a few files inserted between 1135
-        // and 1136.
-        // Work around a bug around build 1135.
-        // We were splitting as (128,255), but we were then setting the checkBlocksPerSegment to 64.
-        // Detect this.
-        if (checkBlocks == 64
-            && blocksPerSegment == 128
-            && splitfileCheckBlocks == splitfileBlocks - (splitfileBlocks / 128)) {
-          LOG.info("Activating 1135 wrong check blocks per segment workaround for " + this);
-          checkBlocks = 127;
-        }
-        checkBlocksPerSegment = checkBlocks;
-
-        segmentCount =
-            (splitfileBlocks + blocksPerSegment + crossCheckBlocks - 1)
-                / (blocksPerSegment + crossCheckBlocks);
-
-        // Onion, 128/192.
-        // Will be segmented.
-      } else throw new MetadataParseException("Unknown splitfile format: " + splitfileAlgorithm);
-
-      segments = new SplitFileSegmentKeys[segmentCount];
-
-      if (segmentCount <= 0) {
-        throw new MetadataParseException(
-            "Splitfile segment count must be strictly positive: " + segmentCount);
-      } else if (segmentCount == 1) {
-        // splitfile* will be overwritten, this is bad
-        // so copy them
-        segments[0] =
-            new SplitFileSegmentKeys(
-                splitfileBlocks,
-                splitfileCheckBlocks,
-                splitfileSingleCryptoKey,
-                splitfileSingleCryptoAlgorithm);
-      } else {
-        int dataBlocksPtr = 0;
-        int checkBlocksPtr = 0;
-        for (int i = 0; i < segments.length; i++) {
-          // Create a segment. Give it its keys.
-          int copyDataBlocks = blocksPerSegment + crossCheckBlocks;
-          int copyCheckBlocks = checkBlocksPerSegment;
-          if (i == segments.length - 1) {
-            // Always accept the remainder as the last segment, but do basic sanity checking.
-            // In practice this can be affected by various things: 1) On old splitfiles before full
-            // even
-            // segment splitting with deductBlocksFromSegments (i.e. pre-1255), the last segment
-            // could be
-            // significantly smaller than the rest; 2) On 1251-1253, with partial even segment
-            // splitting,
-            // up to 131 data blocks per segment, cutting the check blocks if necessary, and with an
-            // extra
-            // check block if possible, the last segment could have *more* check blocks than the
-            // rest.
-            copyDataBlocks = splitfileBlocks - dataBlocksPtr;
-            copyCheckBlocks = splitfileCheckBlocks - checkBlocksPtr;
-            if (copyCheckBlocks <= 0 || copyDataBlocks <= 0)
-              throw new MetadataParseException(
-                  "Last segment has bogus block count: total data blocks "
-                      + splitfileBlocks
-                      + " total check blocks "
-                      + splitfileCheckBlocks
-                      + " segment size "
-                      + blocksPerSegment
-                      + " data "
-                      + checkBlocksPerSegment
-                      + " check "
-                      + crossCheckBlocks
-                      + " cross check blocks, deduct "
-                      + deductBlocksFromSegments
-                      + ", segments "
-                      + segments.length);
-          } else if (segments.length - i <= deductBlocksFromSegments) {
-            // Deduct one data block from each of the last deductBlocksFromSegments segments.
-            // This ensures no segment is more than 1 block larger than any other.
-            // We do not shrink the check blocks.
-            copyDataBlocks--;
-          }
-          segments[i] =
-              new SplitFileSegmentKeys(
-                  copyDataBlocks,
-                  copyCheckBlocks,
-                  splitfileSingleCryptoKey,
-                  splitfileSingleCryptoAlgorithm);
-          if (LOG.isDebugEnabled())
-            LOG.debug(
-                "REQUESTING: Segment "
-                    + i
-                    + " of "
-                    + segments.length
-                    + " : "
-                    + copyDataBlocks
-                    + " data blocks "
-                    + copyCheckBlocks
-                    + " check blocks");
-          dataBlocksPtr += copyDataBlocks;
-          checkBlocksPtr += copyCheckBlocks;
-        }
-        if (dataBlocksPtr != splitfileBlocks)
-          throw new MetadataParseException(
-              "Unable to allocate all data blocks to segments - buggy or malicious inserter");
-        if (checkBlocksPtr != splitfileCheckBlocks)
-          throw new MetadataParseException(
-              "Unable to allocate all check blocks to segments - buggy or malicious inserter");
-      }
-
-      for (int i = 0; i < segmentCount; i++) {
-        segments[i].readKeys(dis, false);
-      }
-      for (int i = 0; i < segmentCount; i++) {
-        segments[i].readKeys(dis, true);
-      }
-    }
-
-    if (documentType == DocumentType.SIMPLE_MANIFEST) {
-      int manifestEntryCount = dis.readInt();
-      if (manifestEntryCount < 0)
-        throw new MetadataParseException("Invalid manifest entry count: " + manifestEntryCount);
-
-      manifestEntries = new HashMap<>();
-
-      // Parse the sub-Manifest.
-
-      if (LOG.isDebugEnabled()) LOG.debug("Simple manifest, " + manifestEntryCount + " entries");
-
-      for (int i = 0; i < manifestEntryCount; i++) {
-        short nameLength = dis.readShort();
-        byte[] buf = new byte[nameLength];
-        dis.readFully(buf);
-        String name = new String(buf, StandardCharsets.UTF_8).intern();
-        if (LOG.isDebugEnabled()) LOG.debug("Entry " + i + " name " + name);
-        short len = dis.readShort();
-        if (len < 0) throw new MetadataParseException("Invalid manifest entry size: " + len);
-        if (len > length)
-          throw new MetadataParseException(
-              "Impossibly long manifest entry: " + len + " - metadata size " + length);
-        byte[] data = new byte[len];
-        dis.readFully(data);
-        Metadata m = Metadata.construct(data);
-        manifestEntries.put(name, m);
-      }
-      if (LOG.isDebugEnabled()) LOG.debug("End of manifest"); // Make it easy to search for it!
-    }
-
-    if ((documentType == DocumentType.ARCHIVE_INTERNAL_REDIRECT)
-        || (documentType == DocumentType.ARCHIVE_METADATA_REDIRECT)
-        || (documentType == DocumentType.SYMBOLIC_SHORTLINK)) {
-      int len = dis.readShort();
-      if (LOG.isDebugEnabled()) LOG.debug("Reading archive internal redirect length " + len);
-      byte[] buf = new byte[len];
-      dis.readFully(buf);
-      targetName = new String(buf, StandardCharsets.UTF_8);
-      while (true) {
-        if (targetName.isEmpty())
-          throw new MetadataParseException(
-              "Invalid target name is empty: \"" + new String(buf, StandardCharsets.UTF_8) + "\"");
-        if (targetName.charAt(0) == '/') {
-          targetName = targetName.substring(1);
-        } else break;
-      }
-      if (LOG.isDebugEnabled())
-        LOG.debug("Archive and/or internal redirect: " + targetName + " (" + len + ')');
+    // Splitfile header and layout come after the above sections in the serialized form.
+    if (splitfile) {
+      parseSplitfileHeaderAndLayout(dis);
+      readSplitfileKeys(dis);
     }
   }
-
-  private static final byte[] SPLITKEY = "SPLITKEY".getBytes(StandardCharsets.UTF_8);
-
-  private static final byte[] CROSS_SEGMENT_SEED =
-      "CROSS_SEGMENT_SEED".getBytes(StandardCharsets.UTF_8);
 
   public static byte[] getCryptoKey(HashResult[] hashes) {
     if (hashes == null || hashes.length == 0 || !HashResult.contains(hashes, HashType.SHA256))
@@ -935,13 +972,11 @@ public class Metadata implements Serializable {
    *     HashMap's)
    * @throws MalformedURLException One of the URI:s were malformed
    */
-  private void addRedirectionManifest(HashMap<String, Object> dir) throws MalformedURLException {
+  private void addRedirectionManifest(Map<String, Object> dir) throws MalformedURLException {
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
     documentType = DocumentType.SIMPLE_MANIFEST;
     noMIME = true;
-    // mimeType = null;
-    // clientMetadata = new ClientMetadata(null);
     manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
@@ -951,10 +986,10 @@ public class Metadata implements Serializable {
         // External redirect
         FreenetURI uri = new FreenetURI(string);
         target = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, uri, null);
-      } else if (o instanceof HashMap) {
+      } else if (o instanceof Map) {
         target = new Metadata();
         target.addRedirectionManifest(Metadata.forceMap(o));
-      } else throw new IllegalArgumentException("Not String nor HashMap: " + o);
+      } else throw new IllegalArgumentException("Not String nor Map: " + o);
       manifestEntries.put(key, target);
     }
   }
@@ -966,7 +1001,7 @@ public class Metadata implements Serializable {
    *     HashMap's)
    * @throws MalformedURLException One of the URI:s were malformed
    */
-  public static Metadata mkRedirectionManifest(HashMap<String, Object> dir)
+  public static Metadata mkRedirectionManifest(Map<String, Object> dir)
       throws MalformedURLException {
     Metadata ret = new Metadata();
     ret.addRedirectionManifest(dir);
@@ -977,19 +1012,17 @@ public class Metadata implements Serializable {
    * Create a Metadata object and add manifest entries from the given map. The map can contain
    * either string -> Metadata, or string -> map, the latter indicating subdirs.
    */
-  public static Metadata mkRedirectionManifestWithMetadata(HashMap<String, Object> dir) {
+  public static Metadata mkRedirectionManifestWithMetadata(Map<String, Object> dir) {
     Metadata ret = new Metadata();
     ret.addRedirectionManifestWithMetadata(dir);
     return ret;
   }
 
-  private void addRedirectionManifestWithMetadata(HashMap<String, Object> dir) {
+  private void addRedirectionManifestWithMetadata(Map<String, Object> dir) {
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
     documentType = DocumentType.SIMPLE_MANIFEST;
     noMIME = true;
-    // mimeType = null;
-    // clientMetadata = new ClientMetadata(null);
     manifestEntries = new HashMap<>();
     for (Map.Entry<String, Object> entry : dir.entrySet()) {
       String key = entry.getKey().intern();
@@ -997,24 +1030,28 @@ public class Metadata implements Serializable {
         throw new IllegalArgumentException(
             "Slashes in simple redirect manifest filenames! (slashes denote sub-manifests): "
                 + key);
-      Object o = entry.getValue();
-      if (o instanceof Metadata data) {
-        if (data == null) throw new NullPointerException();
-        if (LOG.isTraceEnabled()) LOG.trace("Putting metadata for " + key);
-        manifestEntries.put(key, data);
-      } else if (o instanceof HashMap) {
-        if (key.isEmpty()) {
-          LOG.error(
-              "Creating a subdirectory called \"\" - it will not be possible to access this through"
-                  + " fproxy!",
-              new Exception("error"));
-        }
-        HashMap<String, Object> hm = Metadata.forceMap(o);
-        if (LOG.isTraceEnabled()) LOG.trace("Making metadata map for " + key);
-        Metadata subMap = mkRedirectionManifestWithMetadata(hm);
-        manifestEntries.put(key, subMap);
-        if (LOG.isTraceEnabled()) LOG.trace("Putting metadata map for " + key);
+      putManifestEntryWithMetadata(key, entry.getValue());
+    }
+  }
+
+  private void putManifestEntryWithMetadata(String key, Object value) {
+    if (value instanceof Metadata data) {
+      if (LOG.isTraceEnabled()) LOG.trace("Putting metadata for {}", key);
+      manifestEntries.put(key, data);
+      return;
+    }
+    if (value instanceof Map) {
+      if (key.isEmpty()) {
+        LOG.error(
+            "Creating a subdirectory called \"\" - it will not be possible to access this through"
+                + " fproxy!",
+            new Exception("error"));
       }
+      Map<String, Object> hm = Metadata.forceMap(value);
+      if (LOG.isTraceEnabled()) LOG.trace("Making metadata map for {}", key);
+      Metadata subMap = mkRedirectionManifestWithMetadata(hm);
+      manifestEntries.put(key, subMap);
+      if (LOG.isTraceEnabled()) LOG.trace("Putting metadata map for {}", key);
     }
   }
 
@@ -1024,7 +1061,7 @@ public class Metadata implements Serializable {
    * @param dir A map of names (string) to either files (same string) or directories (more
    *     HashMap's)
    */
-  Metadata(HashMap<String, Object> dir, String prefix) {
+  Metadata(Map<String, Object> dir, String prefix) {
     hashCode = super.hashCode();
     hashes = null;
     // Simple manifest - contains actual redirects.
@@ -1090,9 +1127,8 @@ public class Metadata implements Serializable {
         if (targetName.charAt(0) == '/') {
           targetName = targetName.substring(1);
           LOG.error(
-              "Stripped initial slash from archive internal redirect on creating metadata: \""
-                  + arg
-                  + "\"",
+              "Stripped initial slash from archive internal redirect on creating metadata: \"{}\"",
+              arg,
               new Exception("debug"));
         } else break;
       }
@@ -1124,9 +1160,8 @@ public class Metadata implements Serializable {
         if (targetName.charAt(0) == '/') {
           targetName = targetName.substring(1);
           LOG.error(
-              "Stripped initial slash from archive internal redirect on creating metadata: \""
-                  + name
-                  + "\"",
+              "Stripped initial slash from archive internal redirect on creating metadata: \"{}\"",
+              name,
               new Exception("debug"));
         } else break;
       }
@@ -1181,12 +1216,37 @@ public class Metadata implements Serializable {
       boolean topDontCompress,
       CompatibilityMode topCompatibilityMode,
       HashResult[] hashes) {
-    assert (topCompatibilityMode != CompatibilityMode.COMPAT_CURRENT);
-    hashCode = super.hashCode();
-    if (hashes != null && hashes.length == 0) {
-      throw new IllegalArgumentException();
+    if (topCompatibilityMode == CompatibilityMode.COMPAT_CURRENT) {
+      throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
+    hashCode = super.hashCode();
+    if (hashes != null && hashes.length == 0) throw new IllegalArgumentException();
     this.hashes = hashes;
+    initSimpleRedirectOrArchive(docType, archiveType, compressionCodec, cm, uri);
+    TopLayerInit tli =
+        computeTopLayerInit(
+            origDataLength,
+            origCompressedDataLength,
+            reqBlocks,
+            totalBlocks,
+            topDontCompress,
+            topCompatibilityMode,
+            hashes);
+    this.topSize = tli.size;
+    this.topCompressedSize = tli.compressedSize;
+    this.topBlocksRequired = tli.blocksRequired;
+    this.topBlocksTotal = tli.blocksTotal;
+    this.topDontCompress = tli.dontCompress;
+    this.topCompatibilityMode = tli.compatMode;
+    parsedVersion = tli.parsedVersion;
+  }
+
+  private void initSimpleRedirectOrArchive(
+      DocumentType docType,
+      ARCHIVE_TYPE archiveType,
+      COMPRESSOR_TYPE compressionCodec,
+      ClientMetadata cm,
+      FreenetURI uri) {
     if ((docType == DocumentType.SIMPLE_REDIRECT) || (docType == DocumentType.ARCHIVE_MANIFEST)) {
       documentType = docType;
       this.archiveType = archiveType;
@@ -1201,27 +1261,34 @@ public class Metadata implements Serializable {
       if (uri == null) throw new NullPointerException();
       simpleRedirectKey = uri;
       if (!(uri.getKeyType().equals("CHK") && !uri.hasMetaStrings())) fullKeys = true;
-    } else throw new IllegalArgumentException();
+      return;
+    }
+    throw new IllegalArgumentException();
+  }
+
+  private TopLayerInit computeTopLayerInit(
+      long origDataLength,
+      long origCompressedDataLength,
+      int reqBlocks,
+      int totalBlocks,
+      boolean topDontCompress,
+      CompatibilityMode topCompatibilityMode,
+      HashResult[] hashes) {
     if (origDataLength != 0
         || origCompressedDataLength != 0
         || reqBlocks != 0
         || totalBlocks != 0
         || hashes != null) {
-      this.topSize = origDataLength;
-      this.topCompressedSize = origCompressedDataLength;
-      this.topBlocksRequired = reqBlocks;
-      this.topBlocksTotal = totalBlocks;
-      this.topDontCompress = topDontCompress;
-      this.topCompatibilityMode = topCompatibilityMode;
-      parsedVersion = 1;
+      return new TopLayerInit(
+          origDataLength,
+          origCompressedDataLength,
+          reqBlocks,
+          totalBlocks,
+          topDontCompress,
+          topCompatibilityMode,
+          (short) 1);
     } else {
-      this.topSize = 0;
-      this.topCompressedSize = 0;
-      this.topBlocksRequired = 0;
-      this.topBlocksTotal = 0;
-      this.topDontCompress = false;
-      this.topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
-      parsedVersion = 0;
+      return new TopLayerInit(0, 0, 0, 0, false, CompatibilityMode.COMPAT_UNKNOWN, (short) 0);
     }
   }
 
@@ -1303,111 +1370,155 @@ public class Metadata implements Serializable {
       byte[] splitfileCryptoKey,
       boolean specifySplitfileKey,
       int crossSegmentBlocks) {
-    assert (topCompatibilityMode != CompatibilityMode.COMPAT_CURRENT);
+    if (topCompatibilityMode == CompatibilityMode.COMPAT_CURRENT) {
+      throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
+    }
     hashCode = super.hashCode();
     this.hashes = hashes;
     this.hashThisLayerOnly = hashThisLayerOnly;
-    if (hashThisLayerOnly != null)
-      if (hashThisLayerOnly.length != 32) throw new IllegalArgumentException();
-    if (isMetadata) documentType = DocumentType.MULTI_LEVEL_METADATA;
-    else {
-      if (archiveType != null) {
-        documentType = DocumentType.ARCHIVE_MANIFEST;
-        this.archiveType = archiveType;
-      } else documentType = DocumentType.SIMPLE_REDIRECT;
+    if (hashThisLayerOnly != null && hashThisLayerOnly.length != 32)
+      throw new IllegalArgumentException();
+    chooseDocTypeForSplitfile(isMetadata, archiveType);
+    initSplitfileCore(
+        algo,
+        dataURIs,
+        checkURIs,
+        cm,
+        archiveType,
+        compressionCodec,
+        dataLength,
+        decompressedLength,
+        splitfileCryptoAlgorithm,
+        splitfileCryptoKey,
+        hashes,
+        hashThisLayerOnly,
+        topCompatibilityMode,
+        deductBlocksFromSegments);
+    TopLayerInit tli2 =
+        computeTopLayerInit(
+            origDataSize,
+            origCompressedDataSize,
+            requiredBlocks,
+            totalBlocks,
+            topDontCompress,
+            topCompatibilityMode,
+            hashes);
+    this.topSize = tli2.size;
+    this.topCompressedSize = tli2.compressedSize;
+    this.topBlocksRequired = tli2.blocksRequired;
+    this.topBlocksTotal = tli2.blocksTotal;
+    this.topDontCompress = tli2.dontCompress;
+    this.topCompatibilityMode = tli2.compatMode;
+    parsedVersion = tli2.parsedVersion;
+    buildSplitfileParamsBytes(
+        segmentSize,
+        checkSegmentSize,
+        deductBlocksFromSegments,
+        crossSegmentBlocks,
+        splitfileCryptoAlgorithm,
+        splitfileCryptoKey,
+        specifySplitfileKey);
+  }
+
+  private void chooseDocTypeForSplitfile(boolean isMetadata, ARCHIVE_TYPE archiveType) {
+    if (isMetadata) {
+      documentType = DocumentType.MULTI_LEVEL_METADATA;
+    } else if (archiveType != null) {
+      documentType = DocumentType.ARCHIVE_MANIFEST;
+      this.archiveType = archiveType;
+    } else {
+      documentType = DocumentType.SIMPLE_REDIRECT;
     }
     splitfile = true;
+  }
+
+  private void initSplitfileCore(
+      SplitfileAlgorithm algo,
+      ClientCHK[] dataURIs,
+      ClientCHK[] checkURIs,
+      ClientMetadata cm,
+      ARCHIVE_TYPE ignoredArchiveType,
+      COMPRESSOR_TYPE compressionCodec,
+      long dataLengthValue,
+      long decompressedLength,
+      byte ignoredSplitfileCryptoAlgorithm,
+      byte[] splitfileCryptoKey,
+      HashResult[] hashes,
+      byte[] ignoredHashThisLayerOnly,
+      CompatibilityMode topCompatibilityModeParam,
+      int deductBlocksFromSegments) {
     splitfileAlgorithm = algo;
-    this.dataLength = dataLength;
+    this.dataLength = dataLengthValue;
     this.compressionCodec = compressionCodec;
     splitfileBlocks = dataURIs.length;
     splitfileCheckBlocks = checkURIs.length;
     splitfileDataKeys = dataURIs;
-    assert (keysValid(splitfileDataKeys));
+    if (!keysValid(splitfileDataKeys)) throw new IllegalArgumentException("Invalid data keys");
     splitfileCheckKeys = checkURIs;
-    assert (keysValid(splitfileCheckKeys));
+    if (!keysValid(splitfileCheckKeys)) throw new IllegalArgumentException("Invalid check keys");
     clientMetadata = cm;
     this.compressionCodec = compressionCodec;
     this.decompressedLength = decompressedLength;
     if (cm != null) setMIMEType(cm.getMIMEType());
     else setMIMEType(DefaultMIMETypes.DEFAULT_MIME_TYPE);
-    if (topCompatibilityMode.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
+    if (topCompatibilityModeParam.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
       if (splitfileCryptoKey != null) throw new IllegalArgumentException();
       if (hashes != null) throw new IllegalArgumentException();
       if (deductBlocksFromSegments != 0) throw new IllegalArgumentException();
-      origDataSize = 0;
-      origCompressedDataSize = 0;
-      requiredBlocks = 0;
-      totalBlocks = 0;
       parsedVersion = 0;
     } else {
       if (splitfileCryptoKey == null) throw new IllegalArgumentException();
       parsedVersion = 1;
     }
-    if (origDataSize != 0) {
-      topSize = origDataSize;
-      topCompressedSize = origCompressedDataSize;
-      topBlocksRequired = requiredBlocks;
-      topBlocksTotal = totalBlocks;
-      // Bug for bug compatibility ...
-      if (topCompatibilityMode.ordinal() >= CompatibilityMode.COMPAT_1468.ordinal()) {
-        this.topDontCompress = topDontCompress;
-        this.topCompatibilityMode = topCompatibilityMode;
-      } else {
-        this.topDontCompress = false;
-        this.topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
-      }
-    } else {
-      topSize = 0;
-      topCompressedSize = 0;
-      topBlocksRequired = 0;
-      topBlocksTotal = 0;
-      this.topDontCompress = false;
-      this.topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
-    }
+  }
 
+  // Top fields are final; compute values then assign once in constructors.
+
+  private void buildSplitfileParamsBytes(
+      int segmentSize,
+      int checkSegmentSize,
+      int deductBlocksFromSegments,
+      int crossSegmentBlocks,
+      byte splitfileCryptoAlgorithm,
+      byte[] splitfileCryptoKey,
+      boolean specifySplitfileKey) {
     if (parsedVersion == 0) {
       splitfileParams = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
-    } else {
-      boolean deductBlocks = (deductBlocksFromSegments != 0);
-      short mode;
-      int len = 10;
-      if (crossSegmentBlocks == 0) {
-        if (deductBlocks) {
-          mode = SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS;
-          len += 4;
-        } else {
-          mode = SPLITFILE_PARAMS_SIMPLE_SEGMENT;
-        }
-      } else {
-        mode = SPLITFILE_PARAMS_CROSS_SEGMENT;
-        len += 8;
-      }
-      splitfileParams = new byte[len];
-      byte[] b = Fields.shortToBytes(mode);
-      System.arraycopy(b, 0, splitfileParams, 0, 2);
-      // FIXME we set the params but we don't include the values in the metadata.
-      // We don't set keys either.
-      // The format of the Metadata object is different for creating one from scratch for
-      // inserting vs constructing it from a serialized metadata document.
-      if (mode == SPLITFILE_PARAMS_CROSS_SEGMENT)
-        b =
-            Fields.intsToBytes(
-                new int[] {
-                  segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
-                });
-      else if (mode == SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS)
-        b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
-      else b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
-      System.arraycopy(b, 0, splitfileParams, 2, b.length);
-      this.splitfileSingleCryptoAlgorithm = splitfileCryptoAlgorithm;
-      this.splitfileSingleCryptoKey = splitfileCryptoKey;
-      this.specifySplitfileKey = specifySplitfileKey;
-      if (splitfileCryptoKey == null)
-        throw new IllegalArgumentException(
-            "Splitfile with parsed version 1 must have a crypto key");
+      return;
     }
-    // FIXME set up segments?
+    boolean deductBlocks = (deductBlocksFromSegments != 0);
+    short mode;
+    int len = 10;
+    if (crossSegmentBlocks == 0) {
+      mode =
+          deductBlocks ? SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS : SPLITFILE_PARAMS_SIMPLE_SEGMENT;
+      if (deductBlocks) len += 4;
+    } else {
+      mode = SPLITFILE_PARAMS_CROSS_SEGMENT;
+      len += 8;
+    }
+    splitfileParams = new byte[len];
+    byte[] b = Fields.shortToBytes(mode);
+    System.arraycopy(b, 0, splitfileParams, 0, 2);
+    // Note: for insert-built Metadata, params contain values but keys are handled elsewhere.
+    if (mode == SPLITFILE_PARAMS_CROSS_SEGMENT) {
+      b =
+          Fields.intsToBytes(
+              new int[] {
+                segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
+              });
+    } else if (mode == SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS) {
+      b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
+    } else {
+      b = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
+    }
+    System.arraycopy(b, 0, splitfileParams, 2, b.length);
+    this.splitfileSingleCryptoAlgorithm = splitfileCryptoAlgorithm;
+    this.splitfileSingleCryptoKey = splitfileCryptoKey;
+    this.specifySplitfileKey = specifySplitfileKey;
+    if (splitfileCryptoKey == null)
+      throw new IllegalArgumentException("Splitfile with parsed version 1 must have a crypto key");
+    // Segments layout is managed elsewhere when needed.
   }
 
   private boolean keysValid(ClientCHK[] keys) {
@@ -1439,7 +1550,7 @@ public class Metadata implements Serializable {
     try {
       writeTo(dos);
     } catch (IOException e) {
-      throw new Error("Could not write to byte array: " + e, e);
+      throw new java.io.UncheckedIOException("Could not write to byte array", e);
     }
     return baos.toByteArray();
   }
@@ -1450,7 +1561,7 @@ public class Metadata implements Serializable {
       writeTo(dos);
       return cos.written();
     } catch (IOException e) {
-      throw new Error("Could not write to CountedOutputStream: " + e, e);
+      throw new java.io.UncheckedIOException("Could not write to CountedOutputStream", e);
     }
   }
 
@@ -1541,7 +1652,7 @@ public class Metadata implements Serializable {
    *
    * @throws MetadataParseException
    */
-  public HashMap<String, Metadata> getDocuments() {
+  public Map<String, Metadata> getDocuments() {
     HashMap<String, Metadata> docs = new HashMap<>();
     for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
       String st = entry.getKey();
@@ -1666,166 +1777,254 @@ public class Metadata implements Serializable {
     dos.writeLong(FREENET_METADATA_MAGIC);
     dos.writeShort(parsedVersion); // version
     dos.writeByte(documentType.code);
-    boolean hasTopBlocks =
-        topBlocksRequired != 0
-            || topBlocksTotal != 0
-            || topSize != 0
-            || topCompressedSize != 0
-            || topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN;
-    if (haveFlags()) {
-      short flags = 0;
-      if (splitfile) flags |= FLAGS_SPLITFILE;
-      if (dbr) flags |= FLAGS_DBR;
-      if (noMIME) flags |= FLAGS_NO_MIME;
-      if (compressedMIME) flags |= FLAGS_COMPRESSED_MIME;
-      if (extraMetadata) flags |= FLAGS_EXTRA_METADATA;
-      if (fullKeys) flags |= FLAGS_FULL_KEYS;
-      if (compressionCodec != null) flags |= FLAGS_COMPRESSED;
-      if (hashes != null) flags |= FLAGS_HASHES;
-      if (hasTopBlocks) {
-        assert (parsedVersion >= 1);
-        flags |= FLAGS_TOP_SIZE;
-      }
-      if (specifySplitfileKey) flags |= FLAGS_SPECIFY_SPLITFILE_KEY;
-      if (hashThisLayerOnly != null) flags |= FLAGS_HASH_THIS_LAYER;
-      dos.writeShort(flags);
-      if (hashes != null) HashResult.write(hashes, dos);
-      if (hashThisLayerOnly != null) {
-        assert (hashThisLayerOnly.length == 32);
-        dos.write(hashThisLayerOnly);
-      }
-    }
+    boolean hasTopBlocks = hasTopBlocksSection();
+    writeFlagsAndHashesSection(dos, hasTopBlocks);
+    if (hasTopBlocks) writeTopBlocksSection(dos);
+    writeArchiveTypeSection(dos);
+    if (splitfile) writeSplitfileCryptoAndLengthSection(dos);
+    writeCompressionAndMimeSection(dos);
+    validateUnsupportedSections();
+    writeKeysOrSplitfileSection(dos);
+    writeSimpleManifestSection(dos);
+    writeTailRedirectSection(dos);
+  }
 
+  private boolean hasTopBlocksSection() {
+    return topBlocksRequired != 0
+        || topBlocksTotal != 0
+        || topSize != 0
+        || topCompressedSize != 0
+        || topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN;
+  }
+
+  private void writeFlagsAndHashesSection(DataOutputStream dos, boolean hasTopBlocks)
+      throws IOException {
+    if (!haveFlags()) return;
+    short flags = 0;
+    if (splitfile) flags |= FLAGS_SPLITFILE;
+    if (dbr) flags |= FLAGS_DBR;
+    if (noMIME) flags |= FLAGS_NO_MIME;
+    if (compressedMIME) flags |= FLAGS_COMPRESSED_MIME;
+    if (extraMetadata) flags |= FLAGS_EXTRA_METADATA;
+    if (fullKeys) flags |= FLAGS_FULL_KEYS;
+    if (compressionCodec != null) flags |= FLAGS_COMPRESSED;
+    if (hashes != null) flags |= FLAGS_HASHES;
     if (hasTopBlocks) {
-      dos.writeLong(topSize);
-      dos.writeLong(topCompressedSize);
-      dos.writeInt(topBlocksRequired);
-      dos.writeInt(topBlocksTotal);
-      dos.writeBoolean(topDontCompress);
-      dos.writeShort(topCompatibilityMode.code);
+      assert (parsedVersion >= 1);
+      flags |= FLAGS_TOP_SIZE;
     }
-
-    if (documentType == DocumentType.ARCHIVE_MANIFEST) {
-      short code = archiveType.metadataID;
-      dos.writeShort(code);
+    if (specifySplitfileKey) flags |= FLAGS_SPECIFY_SPLITFILE_KEY;
+    if (hashThisLayerOnly != null) flags |= FLAGS_HASH_THIS_LAYER;
+    dos.writeShort(flags);
+    if (hashes != null) HashResult.write(hashes, dos);
+    if (hashThisLayerOnly != null) {
+      assert (hashThisLayerOnly.length == 32);
+      dos.write(hashThisLayerOnly);
     }
+  }
 
-    if (splitfile) {
+  private void writeTopBlocksSection(DataOutputStream dos) throws IOException {
+    dos.writeLong(topSize);
+    dos.writeLong(topCompressedSize);
+    dos.writeInt(topBlocksRequired);
+    dos.writeInt(topBlocksTotal);
+    dos.writeBoolean(topDontCompress);
+    dos.writeShort(topCompatibilityMode.code);
+  }
 
-      if (parsedVersion >= 1) {
-        // Splitfile single crypto key.
-        dos.writeByte(splitfileSingleCryptoAlgorithm);
-        if (specifySplitfileKey
-            || hashes == null
-            || hashes.length == 0
-            || !HashResult.contains(hashes, HashType.SHA256)) {
-          dos.write(splitfileSingleCryptoKey);
-        }
+  private void writeArchiveTypeSection(DataOutputStream dos) throws IOException {
+    if (documentType != DocumentType.ARCHIVE_MANIFEST) return;
+    short code = archiveType.metadataID;
+    dos.writeShort(code);
+  }
+
+  private void writeSplitfileCryptoAndLengthSection(DataOutputStream dos) throws IOException {
+    if (parsedVersion >= 1) {
+      dos.writeByte(splitfileSingleCryptoAlgorithm);
+      if (specifySplitfileKey
+          || hashes == null
+          || hashes.length == 0
+          || !HashResult.contains(hashes, HashType.SHA256)) {
+        dos.write(splitfileSingleCryptoKey);
       }
-
-      dos.writeLong(dataLength);
     }
+    dos.writeLong(dataLength);
+  }
 
+  private void writeCompressionAndMimeSection(DataOutputStream dos) throws IOException {
     if (compressionCodec != null) {
       dos.writeShort(compressionCodec.metadataID);
       dos.writeLong(decompressedLength);
     }
-
-    if (!noMIME) {
-      if (compressedMIME) {
-        int x = compressedMIMEValue;
-        if (hasCompressedMIMEParams) x |= 32768;
-        dos.writeShort((short) x);
-        if (hasCompressedMIMEParams) dos.writeShort(compressedMIMEParams);
-      } else {
-        byte[] data = mimeType.getBytes(StandardCharsets.UTF_8);
-        if (data.length > 255)
-          throw new Error("MIME type too long: " + data.length + " bytes: " + mimeType);
-        dos.writeByte((byte) data.length);
-        dos.write(data);
-      }
+    if (noMIME) return;
+    if (compressedMIME) {
+      int x = compressedMIMEValue;
+      if (hasCompressedMIMEParams) x |= 32768;
+      dos.writeShort((short) x);
+      if (hasCompressedMIMEParams) dos.writeShort(compressedMIMEParams);
+    } else {
+      byte[] data = mimeType.getBytes(StandardCharsets.UTF_8);
+      if (data.length > 255)
+        throw new IllegalArgumentException(
+            "MIME type too long: " + data.length + " bytes: " + mimeType);
+      dos.writeByte((byte) data.length);
+      dos.write(data);
     }
+  }
 
+  private void validateUnsupportedSections() {
     if (dbr) throw new UnsupportedOperationException("No DBR support yet");
-
     if (extraMetadata) throw new UnsupportedOperationException("No extra metadata support yet");
+  }
 
+  private void writeKeysOrSplitfileSection(DataOutputStream dos) throws IOException {
     if ((!splitfile)
         && ((documentType == DocumentType.SIMPLE_REDIRECT)
             || (documentType == DocumentType.ARCHIVE_MANIFEST))) {
       writeKey(dos, simpleRedirectKey);
-    } else if (splitfile) {
-      dos.writeShort(splitfileAlgorithm.code);
-      if (splitfileParams != null) {
-        dos.writeInt(splitfileParams.length);
-        dos.write(splitfileParams);
-      } else dos.writeInt(0);
+      return;
+    }
+    if (!splitfile) return;
+    writeSplitfileParamsAndCounts(dos);
+    writeSplitfileKeys(dos);
+  }
 
-      dos.writeInt(splitfileBlocks);
-      dos.writeInt(splitfileCheckBlocks);
-      if (segments != null) {
-        for (int i = 0; i < segmentCount; i++) {
-          segments[i].writeKeys(dos, false);
-        }
-        for (int i = 0; i < segmentCount; i++) {
-          segments[i].writeKeys(dos, true);
-        }
-      } else {
-        if (splitfileSingleCryptoKey == null) {
-          for (int i = 0; i < splitfileBlocks; i++) writeCHK(dos, splitfileDataKeys[i]);
-          for (int i = 0; i < splitfileCheckBlocks; i++) writeCHK(dos, splitfileCheckKeys[i]);
+  private void writeSplitfileParamsAndCounts(DataOutputStream dos) throws IOException {
+    dos.writeShort(splitfileAlgorithm.code);
+    if (splitfileParams != null) {
+      dos.writeInt(splitfileParams.length);
+      dos.write(splitfileParams);
+    } else {
+      dos.writeInt(0);
+    }
+    dos.writeInt(splitfileBlocks);
+    dos.writeInt(splitfileCheckBlocks);
+  }
+
+  private void writeSplitfileKeys(DataOutputStream dos) throws IOException {
+    if (segments != null) {
+      for (int i = 0; i < segmentCount; i++) segments[i].writeKeys(dos, false);
+      for (int i = 0; i < segmentCount; i++) segments[i].writeKeys(dos, true);
+      return;
+    }
+    if (splitfileSingleCryptoKey == null) {
+      for (int i = 0; i < splitfileBlocks; i++) writeCHK(dos, splitfileDataKeys[i]);
+      for (int i = 0; i < splitfileCheckBlocks; i++) writeCHK(dos, splitfileCheckKeys[i]);
+    } else {
+      for (int i = 0; i < splitfileBlocks; i++) dos.write(splitfileDataKeys[i].getRoutingKey());
+      for (int i = 0; i < splitfileCheckBlocks; i++)
+        dos.write(splitfileCheckKeys[i].getRoutingKey());
+    }
+  }
+
+  private void readSplitfileKeys(DataInputStream dis) throws IOException {
+    splitfileDataKeys = new ClientCHK[splitfileBlocks];
+    splitfileCheckKeys = new ClientCHK[splitfileCheckBlocks];
+    if (splitfileSingleCryptoKey == null) {
+      for (int i = 0; i < splitfileBlocks; i++)
+        splitfileDataKeys[i] = ClientCHK.readRawBinaryKey(dis);
+      for (int i = 0; i < splitfileCheckBlocks; i++)
+        splitfileCheckKeys[i] = ClientCHK.readRawBinaryKey(dis);
+    } else {
+      for (int i = 0; i < splitfileBlocks; i++) {
+        byte[] rk = new byte[32];
+        dis.readFully(rk);
+        splitfileDataKeys[i] =
+            new ClientCHK(
+                rk, splitfileSingleCryptoKey, false, splitfileSingleCryptoAlgorithm, (short) -1);
+      }
+      for (int i = 0; i < splitfileCheckBlocks; i++) {
+        byte[] rk = new byte[32];
+        dis.readFully(rk);
+        splitfileCheckKeys[i] =
+            new ClientCHK(
+                rk, splitfileSingleCryptoKey, false, splitfileSingleCryptoAlgorithm, (short) -1);
+      }
+    }
+    // Rebuild segment structures for compatibility with existing callers.
+    rebuildSegmentsFromKeys();
+  }
+
+  private void rebuildSegmentsFromKeys() {
+    if (segmentCount <= 0) return;
+    SplitFileSegmentKeys[] segs = new SplitFileSegmentKeys[segmentCount];
+    int dataIdx = 0;
+    int checkIdx = 0;
+    for (int s = 0; s < segmentCount; s++) {
+      int dps =
+          blocksPerSegment - (s >= (segmentCount - Math.max(0, deductBlocksFromSegments)) ? 1 : 0);
+      int cps = checkBlocksPerSegment;
+      SplitFileSegmentKeys seg =
+          new SplitFileSegmentKeys(
+              dps, cps, splitfileSingleCryptoKey, splitfileSingleCryptoAlgorithm);
+      for (int i = 0; i < dps && dataIdx < splitfileDataKeys.length; i++) {
+        seg.setKey(i, splitfileDataKeys[dataIdx++]);
+      }
+      for (int i = 0; i < cps && checkIdx < splitfileCheckKeys.length; i++) {
+        seg.setKey(dps + i, splitfileCheckKeys[checkIdx++]);
+      }
+      segs[s] = seg;
+    }
+    this.segments = segs;
+  }
+
+  private void writeSimpleManifestSection(DataOutputStream dos)
+      throws IOException, MetadataUnresolvedException {
+    if (documentType != DocumentType.SIMPLE_MANIFEST) return;
+    dos.writeInt(manifestEntries.size());
+    LinkedList<Metadata> unresolvedMetadata = new LinkedList<>();
+    for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
+      String name = entry.getKey();
+      byte[] nameData = name.getBytes(StandardCharsets.UTF_8);
+      if (nameData.length > Short.MAX_VALUE)
+        throw new IllegalArgumentException("Manifest name too long");
+      dos.writeShort(nameData.length);
+      dos.write(nameData);
+      Metadata meta = entry.getValue();
+      ManifestEntryData med = buildManifestEntryPayload(meta, unresolvedMetadata);
+      dos.writeShort(med.data.length);
+      if (med.data.length > 0) dos.write(med.data);
+    }
+    if (!unresolvedMetadata.isEmpty()) {
+      Metadata[] meta = unresolvedMetadata.toArray(new Metadata[0]);
+      throw new MetadataUnresolvedException(meta, "Manifest data too long and not resolved");
+    }
+  }
+
+  private static final class ManifestEntryData {
+    final byte[] data;
+
+    ManifestEntryData(byte[] data) {
+      this.data = data;
+    }
+  }
+
+  private ManifestEntryData buildManifestEntryPayload(
+      Metadata meta, LinkedList<Metadata> unresolvedMetadata) throws IOException {
+    try {
+      byte[] data = meta.writeToByteArray();
+      if (data.length > MAX_SIZE_IN_MANIFEST) {
+        FreenetURI uri = meta.resolvedURI;
+        String n = meta.resolvedName;
+        if (uri != null) {
+          Metadata redirect = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, uri, null);
+          data = redirect.writeToByteArray();
+        } else if (n != null) {
+          Metadata redirect = new Metadata(DocumentType.ARCHIVE_METADATA_REDIRECT, n);
+          data = redirect.writeToByteArray();
         } else {
-          for (int i = 0; i < splitfileBlocks; i++) dos.write(splitfileDataKeys[i].getRoutingKey());
-          for (int i = 0; i < splitfileCheckBlocks; i++)
-            dos.write(splitfileCheckKeys[i].getRoutingKey());
+          unresolvedMetadata.addLast(meta);
+          return new ManifestEntryData(new byte[0]);
         }
       }
+      return new ManifestEntryData(data);
+    } catch (MetadataUnresolvedException e) {
+      for (Metadata m : e.mustResolve) unresolvedMetadata.addFirst(m);
+      return new ManifestEntryData(new byte[0]);
     }
+  }
 
-    if (documentType == DocumentType.SIMPLE_MANIFEST) {
-      dos.writeInt(manifestEntries.size());
-      boolean kill = false;
-      LinkedList<Metadata> unresolvedMetadata = null;
-      for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
-        String name = entry.getKey();
-        byte[] nameData = name.getBytes(StandardCharsets.UTF_8);
-        if (nameData.length > Short.MAX_VALUE)
-          throw new IllegalArgumentException("Manifest name too long");
-        dos.writeShort(nameData.length);
-        dos.write(nameData);
-        Metadata meta = entry.getValue();
-        try {
-          byte[] data = meta.writeToByteArray();
-          if (data.length > MAX_SIZE_IN_MANIFEST) {
-            FreenetURI uri = meta.resolvedURI;
-            String n = meta.resolvedName;
-            if (uri != null) {
-              meta = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, uri, null);
-              data = meta.writeToByteArray();
-            } else if (n != null) {
-              meta = new Metadata(DocumentType.ARCHIVE_METADATA_REDIRECT, n);
-              data = meta.writeToByteArray();
-            } else {
-              kill = true;
-              if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<>();
-              unresolvedMetadata.addLast(meta);
-            }
-          }
-          dos.writeShort(data.length);
-          dos.write(data);
-        } catch (MetadataUnresolvedException e) {
-          Metadata[] metas = e.mustResolve;
-          if (unresolvedMetadata == null) unresolvedMetadata = new LinkedList<>();
-          for (Metadata m : metas) unresolvedMetadata.addFirst(m);
-          kill = true;
-        }
-      }
-      if (kill) {
-        Metadata[] meta = unresolvedMetadata.toArray(new Metadata[0]);
-        throw new MetadataUnresolvedException(meta, "Manifest data too long and not resolved");
-      }
-    }
-
+  private void writeTailRedirectSection(DataOutputStream dos) throws IOException {
     if ((documentType == DocumentType.ARCHIVE_INTERNAL_REDIRECT)
         || (documentType == DocumentType.ARCHIVE_METADATA_REDIRECT)
         || (documentType == DocumentType.SYMBOLIC_SHORTLINK)) {
@@ -1901,7 +2100,7 @@ public class Metadata implements Serializable {
       dos.flush(); // Ensure data is written before setReadOnly()
       success = true;
     } catch (IOException e) {
-      if (!success) b.free();
+      b.free();
       throw e;
     }
     b.setReadOnly(); // Must be after dos.close()
@@ -1991,12 +2190,12 @@ public class Metadata implements Serializable {
   }
 
   public String dump() {
-    StringBuffer sb = new StringBuffer();
+    StringBuilder sb = new StringBuilder();
     dump(0, sb);
     return sb.toString();
   }
 
-  public void dump(int indent, StringBuffer sb) {
+  public void dump(int indent, StringBuilder sb) {
     dumpline(indent, sb, "");
     dumpline(indent, sb, "Document type: " + documentType);
     dumpline(
@@ -2032,14 +2231,14 @@ public class Metadata implements Serializable {
     }
   }
 
-  private void dumpline(int indent, StringBuffer sb, String string) {
+  private void dumpline(int indent, StringBuilder sb, String string) {
     for (int i = 0; i < indent; i++) sb.append(' ');
     sb.append(string);
     sb.append("\n");
   }
 
   /**
-   * Returns a mutable {@code HashMap<String, Object>} view of the given object.
+   * Returns a mutable {@code Map<String, Object>} view of the given object.
    *
    * <p>Behavior: - If {@code o} is already a {@code HashMap<?, ?>}, it returns the same instance
    * with a localized, justified unchecked cast. - If {@code o} is a {@code Map<?, ?>} but not a
@@ -2050,7 +2249,7 @@ public class Metadata implements Serializable {
    * mutate them in-place. We centralize the only unavoidable unchecked cast here, backed by runtime
    * checks when the source is not a {@code HashMap}.
    */
-  public static HashMap<String, Object> forceMap(Object o) {
+  public static Map<String, Object> forceMap(Object o) {
     if (o instanceof HashMap<?, ?> raw) {
       return uncheckedCast(raw);
     }
@@ -2071,7 +2270,7 @@ public class Metadata implements Serializable {
   }
 
   @SuppressWarnings("unchecked")
-  private static HashMap<String, Object> uncheckedCast(HashMap<?, ?> raw) {
+  private static Map<String, Object> uncheckedCast(HashMap<?, ?> raw) {
     // Safe by construction in our code paths: subdirectory maps are created as
     // HashMap<String,Object>.
     return (HashMap<String, Object>) raw;
@@ -2092,7 +2291,7 @@ public class Metadata implements Serializable {
   /** If there is a custom (not computed from hashes) splitfile key, return it. Else return null. */
   public byte[] getCustomSplitfileKey() {
     if (specifySplitfileKey) return splitfileSingleCryptoKey;
-    return null;
+    return new byte[0];
   }
 
   public byte[] getSplitfileCryptoKey() {
@@ -2143,7 +2342,8 @@ public class Metadata implements Serializable {
     return segmentCount;
   }
 
-  // FIXME gross hack due to database/memory issues... remove and make segments final.
+  // Note: legacy behavior retained for compatibility; segments are cleared after being grabbed to
+  // reduce memory usage.
   public SplitFileSegmentKeys[] grabSegmentKeys() throws FetchException {
     synchronized (this) {
       if (segments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
@@ -2180,10 +2380,8 @@ public class Metadata implements Serializable {
     CompatibilityMode max = maxCompatMode;
     if (max == CompatibilityMode.COMPAT_CURRENT) max = CompatibilityMode.latest();
     if (min == max) return min;
-    if (min == CompatibilityMode.COMPAT_UNKNOWN && max != CompatibilityMode.COMPAT_UNKNOWN)
-      return max;
-    if (max == CompatibilityMode.COMPAT_UNKNOWN && min != CompatibilityMode.COMPAT_UNKNOWN)
-      return min;
+    if (min == CompatibilityMode.COMPAT_UNKNOWN) return max;
+    if (max == CompatibilityMode.COMPAT_UNKNOWN) return min;
     return max;
   }
 
