@@ -252,7 +252,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     this.metaStrings = prepareMetaStrings(metaStrings);
     this.addedMetaStrings = addedMetaStrings;
     if (LOG.isDebugEnabled()) LOG.debug("Metadata: {}", metadata);
-    this.clientMetadata = (metadata != null ? metadata.clone() : new ClientMetadata());
+    this.clientMetadata =
+        (metadata != null ? ClientMetadata.copyOf(metadata) : new ClientMetadata());
     thisKey = hasInitialMetadata ? FreenetURI.EMPTY_CHK_URI : key.getURI();
     if (origURI == null) throw new NullPointerException();
     this.uri = persistent ? new FreenetURI(origURI) : origURI;
@@ -468,7 +469,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (persistent && ah != null) ah = ah.cloneHandler();
     this.archiveMetadata = null;
     this.clientMetadata =
-        (fetcher.clientMetadata != null ? fetcher.clientMetadata.clone() : new ClientMetadata());
+        (fetcher.clientMetadata != null
+            ? ClientMetadata.copyOf(fetcher.clientMetadata)
+            : new ClientMetadata());
     this.metadata = newMeta;
     this.metaStrings = new ArrayList<>();
     this.addedMetaStrings = 0;

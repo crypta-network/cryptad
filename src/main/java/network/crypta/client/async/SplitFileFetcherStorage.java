@@ -701,7 +701,7 @@ public class SplitFileFetcherStorage {
           new Exception("debug"));
     }
     this.clientMetadata =
-        p.clientMetadata == null ? new ClientMetadata() : p.clientMetadata.clone();
+        p.clientMetadata == null ? new ClientMetadata() : ClientMetadata.copyOf(p.clientMetadata);
 
     SplitFileSegmentKeys[] segmentKeys = p.metadata.getSegmentKeys();
 
