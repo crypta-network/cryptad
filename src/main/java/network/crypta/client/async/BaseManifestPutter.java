@@ -1220,7 +1220,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   private String findDefaultNameExact(HashMap<String, Object> manifestElements) {
     for (String name : defaultDefaultNames) {
       Object o = manifestElements.get(name);
-      if (o == null || o instanceof HashMap) continue;
+      if (o == null || o instanceof Map) continue;
       return name;
     }
     return "";
@@ -1230,7 +1230,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     for (String canonicalName : defaultDefaultNames) {
       for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
         Object o = entry.getValue();
-        if (o == null || o instanceof HashMap) continue;
+        if (o == null || o instanceof Map) continue;
         if (entry.getKey().equalsIgnoreCase(canonicalName)) {
           return entry.getKey();
         }
@@ -2130,7 +2130,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       String name = entry.getKey();
       String fullName = prefix.isEmpty() ? name : prefix + '/' + name;
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
+      if (o instanceof Map) {
         flatten(Metadata.forceMap(o), v, fullName);
       } else if (o instanceof ManifestElement me) {
         v.add(new ManifestElement(me, fullName));
