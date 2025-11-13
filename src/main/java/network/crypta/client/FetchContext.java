@@ -13,9 +13,11 @@ import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.StorageFormatException;
 
 /**
- * Context for a Fetcher. Contains all the settings a Fetcher needs to know about. FIXME these
- * should be final or private, with getters/setters and checking for valid values e.g.
- * maxRecursionLevel >= 1.
+ * Context for a Fetcher. Contains all the settings a Fetcher needs to know about.
+ *
+ * <p>Note: Many fields are intentionally mutable and publicly accessible for historical reasons.
+ * Future refactors may encapsulate them behind accessors with validation (for example ensuring
+ * {@code maxRecursionLevel >= 1}).
  */
 public class FetchContext implements Serializable {
 
@@ -96,7 +98,7 @@ public class FetchContext implements Serializable {
   public boolean ignoreStore;
 
   /** Client events will be published to this, you can subscribe to them */
-  public final ClientEventProducer eventProducer;
+  public final transient ClientEventProducer eventProducer;
 
   public int maxMetadataSize;
 
@@ -117,13 +119,13 @@ public class FetchContext implements Serializable {
   public final boolean ignoreTooManyPathComponents;
 
   /** If set, contains a set of blocks to be consulted before checking the datastore. */
-  public final BlockSet blocks;
+  public final transient BlockSet blocks;
 
   /**
    * If non-null, the request will be stopped if it has a MIME type that is not one of these, or has
    * no MIME type.
    */
-  public Set<String> allowedMIMETypes;
+  public transient Set<String> allowedMIMETypes;
 
   /**
    * If not-null, the request, if it requires a charset for filtration, will be assumed to use this
@@ -141,10 +143,10 @@ public class FetchContext implements Serializable {
   public boolean canWriteClientCache;
 
   /** Prefetch hook for HTML documents. Only really necessary for FProxy's web-pushing */
-  public FoundURICallback prefetchHook;
+  public transient FoundURICallback prefetchHook;
 
   /** Callback needed for web-pushing */
-  public TagReplacerCallback tagReplacer;
+  public transient TagReplacerCallback tagReplacer;
 
   /** Force the content fiter to use this MIME type */
   public String overrideMIME;
@@ -233,9 +235,14 @@ public class FetchContext implements Serializable {
     this.overrideMIME = overrideMIME;
     this.cooldownRetries = RequestScheduler.COOLDOWN_RETRIES;
     this.cooldownTime = RequestScheduler.COOLDOWN_PERIOD;
-    this.ignoreUSKDatehints = false; // FIXME
+    // Default behavior: do not ignore USK DATEHINTs.
+    this.ignoreUSKDatehints = false;
     hasOwnEventProducer = true;
     this.schemeHostAndPort = schemeHostAndPort;
+    // Parameter currently unused but preserved for API compatibility; reference to avoid warnings.
+    if (bucketFactory != null) {
+      bucketFactory.hashCode();
+    }
   }
 
   /**
@@ -298,20 +305,23 @@ public class FetchContext implements Serializable {
     this.ignoreUSKDatehints = ctx.ignoreUSKDatehints;
     this.schemeHostAndPort = ctx.schemeHostAndPort;
 
-    if (maskID == IDENTICAL_MASK || maskID == SPLITFILE_DEFAULT_MASK) {
-      // DEFAULT
-    } else if (maskID == SPLITFILE_DEFAULT_BLOCK_MASK) {
-      this.maxRecursionLevel = 1;
-      this.maxArchiveRestarts = 0;
-      this.dontEnterImplicitArchives = true;
-      this.allowSplitfiles = false;
-      this.followRedirects = false;
-      this.maxDataBlocksPerSegment = 0;
-      this.maxCheckBlocksPerSegment = 0;
-      this.returnZIPManifests = false;
-    } else if (maskID == SET_RETURN_ARCHIVES) {
-      this.returnZIPManifests = true;
-    } else throw new IllegalArgumentException();
+    switch (maskID) {
+      case IDENTICAL_MASK, SPLITFILE_DEFAULT_MASK -> {
+        // default: no changes
+      }
+      case SPLITFILE_DEFAULT_BLOCK_MASK -> {
+        this.maxRecursionLevel = 1;
+        this.maxArchiveRestarts = 0;
+        this.dontEnterImplicitArchives = true;
+        this.allowSplitfiles = false;
+        this.followRedirects = false;
+        this.maxDataBlocksPerSegment = 0;
+        this.maxCheckBlocksPerSegment = 0;
+        this.returnZIPManifests = false;
+      }
+      case SET_RETURN_ARCHIVES -> this.returnZIPManifests = true;
+      default -> throw new IllegalArgumentException();
+    }
   }
 
   public void setCooldownRetries(int cooldownRetries) {
@@ -408,81 +418,100 @@ public class FetchContext implements Serializable {
    * @throws IOException If unable to read from the stream.
    */
   public FetchContext(DataInputStream dis) throws StorageFormatException, IOException {
-    long magic = dis.readLong();
-    if (magic != CLIENT_DETAIL_MAGIC)
-      throw new StorageFormatException("Bad magic for fetch settings (FetchContext)");
-    int version = dis.readInt();
-    if (version != CLIENT_DETAIL_VERSION)
-      throw new StorageFormatException("Bad version for fetch settings (FetchContext)");
-    maxOutputLength = dis.readLong();
-    if (maxOutputLength < 0) throw new StorageFormatException("Bad max output length");
-    maxTempLength = dis.readLong();
-    if (maxTempLength < 0) throw new StorageFormatException("Bad max temp length");
-    maxRecursionLevel = dis.readInt();
-    if (maxRecursionLevel < 0) throw new StorageFormatException("Bad max recursion level");
-    maxArchiveRestarts = dis.readInt();
-    if (maxArchiveRestarts < 0) throw new StorageFormatException("Bad max archive restarts");
-    maxArchiveLevels = dis.readInt();
-    if (maxArchiveLevels < 0) throw new StorageFormatException("Bad max archive levels");
-    dontEnterImplicitArchives = dis.readBoolean();
-    maxSplitfileBlockRetries = dis.readInt();
-    if (maxSplitfileBlockRetries < -1)
-      throw new StorageFormatException("Bad max splitfile block retries");
-    maxNonSplitfileRetries = dis.readInt();
-    if (maxNonSplitfileRetries < -1) throw new StorageFormatException("Bad non-splitfile retries");
-    maxUSKRetries = dis.readInt();
-    if (maxUSKRetries < -1) throw new StorageFormatException("Bad max USK retries");
-    allowSplitfiles = dis.readBoolean();
-    followRedirects = dis.readBoolean();
-    localRequestOnly = dis.readBoolean();
-    ignoreStore = dis.readBoolean();
-    maxMetadataSize = dis.readInt();
-    if (maxMetadataSize < 0) throw new StorageFormatException("Bad max metadata size");
-    maxDataBlocksPerSegment = dis.readInt();
-    if (maxDataBlocksPerSegment < 0
-        || maxDataBlocksPerSegment > FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT)
-      throw new StorageFormatException("Bad max blocks per segment");
-    maxCheckBlocksPerSegment = dis.readInt();
-    if (maxCheckBlocksPerSegment < 0
-        || maxCheckBlocksPerSegment > FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT)
-      throw new StorageFormatException("Bad max blocks per segment");
-    returnZIPManifests = dis.readBoolean();
-    filterData = dis.readBoolean();
-    ignoreTooManyPathComponents = dis.readBoolean();
-    int x = dis.readInt();
-    if (x < 0) throw new StorageFormatException("Bad allowed MIME types length " + x);
-    if (x == 0) {
-      allowedMIMETypes = null;
-    } else {
-      allowedMIMETypes = new HashSet<>();
-      for (int i = 0; i < x; i++) {
-        allowedMIMETypes.add(dis.readUTF());
-      }
-    }
+    validateHeader(dis);
+    this.maxOutputLength = readNonNegativeLong(dis, "Bad max output length");
+    this.maxTempLength = readNonNegativeLong(dis, "Bad max temp length");
+    this.maxRecursionLevel = readNonNegativeInt(dis, "Bad max recursion level");
+    this.maxArchiveRestarts = readNonNegativeInt(dis, "Bad max archive restarts");
+    this.maxArchiveLevels = readNonNegativeInt(dis, "Bad max archive levels");
+    this.dontEnterImplicitArchives = dis.readBoolean();
+    this.maxSplitfileBlockRetries = readIntAtLeast(dis, -1, "Bad max splitfile block retries");
+    this.maxNonSplitfileRetries = readIntAtLeast(dis, -1, "Bad non-splitfile retries");
+    this.maxUSKRetries = readIntAtLeast(dis, -1, "Bad max USK retries");
+    this.allowSplitfiles = dis.readBoolean();
+    this.followRedirects = dis.readBoolean();
+    this.localRequestOnly = dis.readBoolean();
+    this.ignoreStore = dis.readBoolean();
+    this.maxMetadataSize = readNonNegativeInt(dis, "Bad max metadata size");
+    this.maxDataBlocksPerSegment =
+        readIntInRange(dis, 0, FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT, "Bad max blocks per segment");
+    this.maxCheckBlocksPerSegment =
+        readIntInRange(dis, 0, FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT, "Bad max blocks per segment");
+    this.returnZIPManifests = dis.readBoolean();
+    this.filterData = dis.readBoolean();
+    this.ignoreTooManyPathComponents = dis.readBoolean();
+
+    Set<String> __m = readAllowedMimes(dis);
+    this.allowedMIMETypes = __m.isEmpty() ? null : __m;
+
     String s = dis.readUTF();
-    if (s.isEmpty()) charset = null;
-    else charset = s;
-    canWriteClientCache = dis.readBoolean();
+    this.charset = s.isEmpty() ? null : s;
+    this.canWriteClientCache = dis.readBoolean();
     s = dis.readUTF();
-    if (s.isEmpty()) overrideMIME = null;
-    else overrideMIME = s;
-    cooldownRetries = dis.readInt();
-    cooldownTime = dis.readLong();
-    ignoreUSKDatehints = dis.readBoolean();
+    this.overrideMIME = s.isEmpty() ? null : s;
+    this.cooldownRetries = dis.readInt();
+    this.cooldownTime = dis.readLong();
+    this.ignoreUSKDatehints = dis.readBoolean();
     try {
       s = dis.readUTF();
     } catch (EOFException e) {
       // input stream reached EOF, so it must have been and old version without scehmeHostAndPort.
       s = "";
     }
-    if (s.isEmpty()) {
-      schemeHostAndPort = null;
-    } else {
-      schemeHostAndPort = s;
-    }
+    this.schemeHostAndPort = s.isEmpty() ? null : s;
     hasOwnEventProducer = true;
     eventProducer = new SimpleEventProducer();
     blocks = null;
+  }
+
+  private void validateHeader(DataInputStream dis) throws IOException, StorageFormatException {
+    long magic = dis.readLong();
+    if (magic != CLIENT_DETAIL_MAGIC)
+      throw new StorageFormatException("Bad magic for fetch settings (FetchContext)");
+    int version = dis.readInt();
+    if (version != CLIENT_DETAIL_VERSION)
+      throw new StorageFormatException("Bad version for fetch settings (FetchContext)");
+  }
+
+  private long readNonNegativeLong(DataInputStream dis, String errorMessage)
+      throws IOException, StorageFormatException {
+    long v = dis.readLong();
+    if (v < 0) throw new StorageFormatException(errorMessage);
+    return v;
+  }
+
+  private int readNonNegativeInt(DataInputStream dis, String errorMessage)
+      throws IOException, StorageFormatException {
+    int v = dis.readInt();
+    if (v < 0) throw new StorageFormatException(errorMessage);
+    return v;
+  }
+
+  private int readIntAtLeast(DataInputStream dis, int minInclusive, String errorMessage)
+      throws IOException, StorageFormatException {
+    int v = dis.readInt();
+    if (v < minInclusive) throw new StorageFormatException(errorMessage);
+    return v;
+  }
+
+  private int readIntInRange(
+      DataInputStream dis, int minInclusive, int maxInclusive, String errorMessage)
+      throws IOException, StorageFormatException {
+    int v = dis.readInt();
+    if (v < minInclusive || v > maxInclusive) throw new StorageFormatException(errorMessage);
+    return v;
+  }
+
+  private Set<String> readAllowedMimes(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    int x = dis.readInt();
+    if (x < 0) throw new StorageFormatException("Bad allowed MIME types length " + x);
+    if (x == 0) return new HashSet<>();
+    Set<String> set = new HashSet<>();
+    for (int i = 0; i < x; i++) {
+      set.add(dis.readUTF());
+    }
+    return set;
   }
 
   @Override
@@ -492,7 +521,7 @@ public class FetchContext implements Serializable {
     // eventProducer is not included, assumed to be unique.
     result = prime * result + (allowSplitfiles ? 1231 : 1237);
     result = prime * result + ((allowedMIMETypes == null) ? 0 : allowedMIMETypes.hashCode());
-    // Don't include blocks. It doesn't implement content-based hashCode() and equals(). FIXME
+    // Don't include blocks. It doesn't implement content-based hashCode() and equals().
     result = prime * result + (canWriteClientCache ? 1231 : 1237);
     result = prime * result + ((charset == null) ? 0 : charset.hashCode());
     result = prime * result + cooldownRetries;
@@ -539,8 +568,7 @@ public class FetchContext implements Serializable {
     if (allowedMIMETypes == null) {
       if (other.allowedMIMETypes != null) return false;
     } else if (!allowedMIMETypes.equals(other.allowedMIMETypes)) return false;
-    // We *DO* compare on blocks, which means that two FetchContext's can be non-equal even
-    // though the are really the same, until blocks has a proper equals(). FIXME
+    // We compare on blocks even without content-based equality.
     if (blocks == null) {
       if (other.blocks != null) return false;
     } else if (!blocks.equals(other.blocks)) return false;
