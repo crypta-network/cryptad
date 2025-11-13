@@ -350,20 +350,4 @@ public class InsertContext implements Serializable {
   public SplitfileAlgorithm getSplitfileAlgorithm() {
     return splitfileAlgo;
   }
-
-  /**
-   * Call when migrating from db4o era. FIXME remove.
-   *
-   * @deprecated
-   */
-  @Deprecated
-  public void onResume() {
-    // Used to encode it as a long.
-    if (realCompatMode == null)
-      realCompatMode = CompatibilityMode.byCode((short) compatibilityMode);
-    // Max blocks was wrong too.
-    splitfileSegmentDataBlocks = FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT;
-    splitfileSegmentCheckBlocks = FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT;
-    splitfileAlgo = SplitfileAlgorithm.getByCode(splitfileAlgorithm);
-  }
 }
