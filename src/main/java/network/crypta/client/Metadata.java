@@ -1951,9 +1951,12 @@ public class Metadata implements Serializable {
     int dataIdx = 0;
     int checkIdx = 0;
     for (int s = 0; s < segmentCount; s++) {
-      int dps =
+      int nominalDps =
           blocksPerSegment - (s >= (segmentCount - Math.max(0, deductBlocksFromSegments)) ? 1 : 0);
-      int cps = checkBlocksPerSegment;
+      int remainingData = splitfileDataKeys != null ? (splitfileDataKeys.length - dataIdx) : 0;
+      int dps = Math.min(nominalDps, Math.max(remainingData, 0));
+      int remainingCheck = splitfileCheckKeys != null ? (splitfileCheckKeys.length - checkIdx) : 0;
+      int cps = Math.min(checkBlocksPerSegment, Math.max(remainingCheck, 0));
       SplitFileSegmentKeys seg =
           new SplitFileSegmentKeys(
               dps, cps, splitfileSingleCryptoKey, splitfileSingleCryptoAlgorithm);
