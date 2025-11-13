@@ -22,7 +22,6 @@ import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.FoundURICallback;
 import network.crypta.node.RequestScheduler;
-import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
@@ -51,7 +50,6 @@ class FetchContextTest {
   private static final boolean VALID_FILTER_DATA = true;
   private static final int VALID_MAX_DATABLOCKS = 10;
   private static final int VALID_MAX_CHECKBLOCKS = 10;
-  private static final BucketFactory VALID_BUCKET_FACTORY = new ArrayBucketFactory();
   private static final boolean VALID_IGNORE_TOO_MANY = false;
   private static final boolean VALID_CAN_WRITE_CLIENT_CACHE = true;
   private static final String VALID_CHARSET = "UTF-8";
