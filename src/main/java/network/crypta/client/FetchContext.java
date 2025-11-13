@@ -354,6 +354,214 @@ public class FetchContext implements Serializable {
     return cooldownRetries;
   }
 
+  public long getMaxOutputLength() {
+    return maxOutputLength;
+  }
+
+  public void setMaxOutputLength(long maxOutputLength) {
+    this.maxOutputLength = maxOutputLength;
+  }
+
+  public long getMaxTempLength() {
+    return maxTempLength;
+  }
+
+  public void setMaxTempLength(long maxTempLength) {
+    this.maxTempLength = maxTempLength;
+  }
+
+  public int getMaxRecursionLevel() {
+    return maxRecursionLevel;
+  }
+
+  public void setMaxRecursionLevel(int maxRecursionLevel) {
+    this.maxRecursionLevel = maxRecursionLevel;
+  }
+
+  public int getMaxArchiveRestarts() {
+    return maxArchiveRestarts;
+  }
+
+  public void setMaxArchiveRestarts(int maxArchiveRestarts) {
+    this.maxArchiveRestarts = maxArchiveRestarts;
+  }
+
+  public int getMaxArchiveLevels() {
+    return maxArchiveLevels;
+  }
+
+  public void setMaxArchiveLevels(int maxArchiveLevels) {
+    this.maxArchiveLevels = maxArchiveLevels;
+  }
+
+  public boolean getDontEnterImplicitArchives() {
+    return dontEnterImplicitArchives;
+  }
+
+  public void setDontEnterImplicitArchives(boolean dontEnterImplicitArchives) {
+    this.dontEnterImplicitArchives = dontEnterImplicitArchives;
+  }
+
+  public int getMaxSplitfileBlockRetries() {
+    return maxSplitfileBlockRetries;
+  }
+
+  public void setMaxSplitfileBlockRetries(int maxSplitfileBlockRetries) {
+    this.maxSplitfileBlockRetries = maxSplitfileBlockRetries;
+  }
+
+  public int getMaxNonSplitfileRetries() {
+    return maxNonSplitfileRetries;
+  }
+
+  public void setMaxNonSplitfileRetries(int maxNonSplitfileRetries) {
+    this.maxNonSplitfileRetries = maxNonSplitfileRetries;
+  }
+
+  public int getMaxUSKRetries() {
+    return maxUSKRetries;
+  }
+
+  public boolean getAllowSplitfiles() {
+    return allowSplitfiles;
+  }
+
+  public void setAllowSplitfiles(boolean allowSplitfiles) {
+    this.allowSplitfiles = allowSplitfiles;
+  }
+
+  public boolean getFollowRedirects() {
+    return followRedirects;
+  }
+
+  public void setFollowRedirects(boolean followRedirects) {
+    this.followRedirects = followRedirects;
+  }
+
+  public boolean getLocalRequestOnly() {
+    return localRequestOnly;
+  }
+
+  public void setLocalRequestOnly(boolean localRequestOnly) {
+    this.localRequestOnly = localRequestOnly;
+  }
+
+  public boolean getIgnoreStore() {
+    return ignoreStore;
+  }
+
+  public void setIgnoreStore(boolean ignoreStore) {
+    this.ignoreStore = ignoreStore;
+  }
+
+  public ClientEventProducer getEventProducer() {
+    return eventProducer;
+  }
+
+  public int getMaxMetadataSize() {
+    return maxMetadataSize;
+  }
+
+  public void setMaxMetadataSize(int maxMetadataSize) {
+    this.maxMetadataSize = maxMetadataSize;
+  }
+
+  public int getMaxDataBlocksPerSegment() {
+    return maxDataBlocksPerSegment;
+  }
+
+  public void setMaxDataBlocksPerSegment(int maxDataBlocksPerSegment) {
+    this.maxDataBlocksPerSegment = maxDataBlocksPerSegment;
+  }
+
+  public int getMaxCheckBlocksPerSegment() {
+    return maxCheckBlocksPerSegment;
+  }
+
+  public void setMaxCheckBlocksPerSegment(int maxCheckBlocksPerSegment) {
+    this.maxCheckBlocksPerSegment = maxCheckBlocksPerSegment;
+  }
+
+  public boolean getReturnZIPManifests() {
+    return returnZIPManifests;
+  }
+
+  public void setReturnZIPManifests(boolean returnZIPManifests) {
+    this.returnZIPManifests = returnZIPManifests;
+  }
+
+  public boolean getFilterData() {
+    return filterData;
+  }
+
+  public void setFilterData(boolean filterData) {
+    this.filterData = filterData;
+  }
+
+  public boolean getIgnoreTooManyPathComponents() {
+    return ignoreTooManyPathComponents;
+  }
+
+  public BlockSet getBlocks() {
+    return blocks;
+  }
+
+  public Set<String> getAllowedMIMETypes() {
+    return allowedMIMETypes;
+  }
+
+  public void setAllowedMIMETypes(Set<String> allowedMIMETypes) {
+    this.allowedMIMETypes = allowedMIMETypes;
+  }
+
+  public String getCharset() {
+    return charset;
+  }
+
+  public void setCharset(String charset) {
+    this.charset = charset;
+  }
+
+  public boolean getCanWriteClientCache() {
+    return canWriteClientCache;
+  }
+
+  public void setCanWriteClientCache(boolean canWriteClientCache) {
+    this.canWriteClientCache = canWriteClientCache;
+  }
+
+  public FoundURICallback getPrefetchHook() {
+    return prefetchHook;
+  }
+
+  public void setPrefetchHook(FoundURICallback prefetchHook) {
+    this.prefetchHook = prefetchHook;
+  }
+
+  public TagReplacerCallback getTagReplacer() {
+    return tagReplacer;
+  }
+
+  public void setTagReplacer(TagReplacerCallback tagReplacer) {
+    this.tagReplacer = tagReplacer;
+  }
+
+  public String getOverrideMIME() {
+    return overrideMIME;
+  }
+
+  public void setOverrideMIME(String overrideMIME) {
+    this.overrideMIME = overrideMIME;
+  }
+
+  public boolean getIgnoreUSKDatehints() {
+    return ignoreUSKDatehints;
+  }
+
+  public void setIgnoreUSKDatehints(boolean ignoreUSKDatehints) {
+    this.ignoreUSKDatehints = ignoreUSKDatehints;
+  }
+
   public String getSchemeHostAndPort() {
     return schemeHostAndPort;
   }
