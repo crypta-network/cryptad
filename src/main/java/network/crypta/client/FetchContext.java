@@ -9,7 +9,6 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.FoundURICallback;
 import network.crypta.client.filter.TagReplacerCallback;
 import network.crypta.node.RequestScheduler;
-import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.StorageFormatException;
 
 /**
@@ -187,7 +186,6 @@ public class FetchContext implements Serializable {
       boolean filterData,
       int maxDataBlocksPerSegment,
       int maxCheckBlocksPerSegment,
-      BucketFactory bucketFactory,
       ClientEventProducer producer,
       boolean ignoreTooManyPathComponents,
       boolean canWriteClientCache,
@@ -239,7 +237,6 @@ public class FetchContext implements Serializable {
     this.ignoreUSKDatehints = false;
     hasOwnEventProducer = true;
     this.schemeHostAndPort = schemeHostAndPort;
-    // Parameter currently unused but preserved for API compatibility.
   }
 
   /**

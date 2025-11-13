@@ -75,7 +75,6 @@ class SingleFileFetcherTest {
         false, /* filterData */
         0, /* maxDataBlocksPerSegment */
         0, /* maxCheckBlocksPerSegment */
-        null, /* bucketFactory (unused here) */
         new SimpleEventProducer(),
         ignoreTooMany, /* ignoreTooManyPathComponents */
         true, /* canWriteClientCache */

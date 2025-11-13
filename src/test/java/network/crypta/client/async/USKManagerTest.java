@@ -232,7 +232,6 @@ class USKManagerTest {
           false, // filterData
           1, // maxDataBlocksPerSegment
           1, // maxCheckBlocksPerSegment
-          null, // bucketFactory
           new SimpleEventProducer(), // eventProducer
           false, // ignoreTooManyPathComponents
           true, // canWriteClientCache

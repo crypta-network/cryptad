@@ -148,7 +148,6 @@ class USKSparseProxyCallbackTest {
         false,
         0,
         0,
-        bf,
         new SimpleEventProducer(),
         true,
         false,

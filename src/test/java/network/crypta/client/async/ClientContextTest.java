@@ -112,7 +112,6 @@ class ClientContextTest {
             true,
             16,
             16,
-            tempBucketFactory,
             new SimpleEventProducer(),
             false,
             true,

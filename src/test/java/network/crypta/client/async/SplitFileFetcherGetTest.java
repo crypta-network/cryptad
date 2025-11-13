@@ -86,7 +86,6 @@ class SplitFileFetcherGetTest {
             false,
             0,
             0,
-            null,
             new SimpleEventProducer(),
             false,
             true,
