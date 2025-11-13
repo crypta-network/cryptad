@@ -42,7 +42,6 @@ import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.RealCompressor;
-import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
@@ -144,7 +143,6 @@ class USKFetcherTagTest {
         false, // filterData
         0, // maxDataBlocksPerSegment
         0, // maxCheckBlocksPerSegment
-        size -> new ArrayBucket(), // BucketFactory
         new SimpleEventProducer(),
         true, // ignoreTooManyPathComponents
         true, // canWriteClientCache

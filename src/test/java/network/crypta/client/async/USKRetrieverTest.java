@@ -148,7 +148,6 @@ class USKRetrieverTest {
         false, // filterData
         0, // maxDataBlocksPerSegment
         0, // maxCheckBlocksPerSegment
-        size -> new ArrayBucket(), // BucketFactory for FetchContext (unused in USKRetriever)
         new SimpleEventProducer(),
         true, // ignoreTooManyPathComponents
         true, // canWriteClientCache

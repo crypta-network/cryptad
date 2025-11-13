@@ -158,9 +158,9 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
                   this,
                   uri,
                   ctx,
-                  new ArchiveContext(ctx.maxTempLength, ctx.maxArchiveLevels),
+                  new ArchiveContext(ctx.getMaxTempLength(), ctx.getMaxArchiveLevels()),
                   new SingleFileFetcher.CreationPolicy(
-                      ctx.maxNonSplitfileRetries, 0, true, true, false, false),
+                      ctx.getMaxNonSplitfileRetries(), 0, true, true, false, false),
                   new SingleFileFetcher.CreationRuntime(context, realTimeFlag, l));
       getter.schedule(context);
     } catch (MalformedURLException e) {
@@ -186,7 +186,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
           clientMetadata.getMIMEType());
     DecompressorThreadManager decompressorManager;
     Bucket finalResult;
-    long maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
+    long maxLen = Math.max(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
     try {
       finalResult = context.getBucketFactory(persistent()).makeBucket(maxLen);
     } catch (InsufficientDiskSpaceException e) {

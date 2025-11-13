@@ -200,8 +200,8 @@ public abstract class Toadlet {
       throws FetchException {
     // Honor the provided maxSize for this request.
     if (maxSize > 0) {
-      fctx.maxOutputLength = maxSize;
-      fctx.maxTempLength = maxSize;
+      fctx.setMaxOutputLength(maxSize);
+      fctx.setMaxTempLength(maxSize);
     }
     FetchWaiter fw = new FetchWaiter(clientContext);
     @SuppressWarnings("unused")

@@ -284,8 +284,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
               + "ms");
 
       FetchContext fctx = client.getFetchContext();
-      fctx.maxNonSplitfileRetries = 0;
-      fctx.maxSplitfileBlockRetries = 0;
+      fctx.setMaxNonSplitfileRetries(0);
+      fctx.setMaxSplitfileBlockRetries(0);
       RequestClient requestContext = new RequestClientBuilder().build();
 
       // PARSE FILE AND FETCH OLD STUFF IF APPROPRIATE

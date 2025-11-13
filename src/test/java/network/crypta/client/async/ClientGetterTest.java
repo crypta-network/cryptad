@@ -265,7 +265,6 @@ class ClientGetterTest {
         filter,
         0,
         0,
-        size -> new InMemoryBucket("factory"),
         new SimpleEventProducer(),
         true,
         true,

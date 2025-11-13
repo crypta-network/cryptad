@@ -81,7 +81,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
     assertEquals(uri.getKeyType(), "SSK");
     FetchContext ctx = client.getFetchContext(FILE_SIZE * 2);
-    ctx.localRequestOnly = true;
+    ctx.setLocalRequestOnly(true);
     FetchWaiter fw = new FetchWaiter(rc);
     client.fetch(uri, FILE_SIZE * 2, fw, ctx, (short) 0);
     return fw.waitForCompletion();

@@ -1132,8 +1132,8 @@ public class FCPServer implements Runnable, DownloadCache {
         new ClientGet(
             persistRebootOnly ? globalRebootClient : globalForeverClient,
             fetchURI,
-            defaultFetchContext.localRequestOnly,
-            defaultFetchContext.ignoreStore,
+            defaultFetchContext.getLocalRequestOnly(),
+            defaultFetchContext.getIgnoreStore(),
             filterData,
             QUEUE_MAX_RETRIES,
             QUEUE_MAX_RETRIES,

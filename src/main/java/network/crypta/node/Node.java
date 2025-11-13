@@ -3349,14 +3349,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     FetchContext ctx = clientCore.makeClient((short) 0, true, false).getFetchContext();
 
-    ctx.allowSplitfiles = false;
-    ctx.dontEnterImplicitArchives = true;
-    ctx.maxArchiveRestarts = 0;
-    ctx.maxMetadataSize = 256;
-    ctx.maxNonSplitfileRetries = 10;
-    ctx.maxOutputLength = 4096;
-    ctx.maxRecursionLevel = 2;
-    ctx.maxTempLength = 4096;
+    ctx.setAllowSplitfiles(false);
+    ctx.setDontEnterImplicitArchives(true);
+    ctx.setMaxArchiveRestarts(0);
+    ctx.setMaxMetadataSize(256);
+    ctx.setMaxNonSplitfileRetries(10);
+    ctx.setMaxOutputLength(4096);
+    ctx.setMaxRecursionLevel(2);
+    ctx.setMaxTempLength(4096);
 
     this.arkFetcherContext = ctx;
 

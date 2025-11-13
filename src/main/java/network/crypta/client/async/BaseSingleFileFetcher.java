@@ -479,7 +479,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   @Override
   public boolean preRegister(ClientContext context, boolean toNetwork) {
     if (!toNetwork) return false;
-    boolean localOnly = ctx.localRequestOnly;
+    boolean localOnly = ctx.getLocalRequestOnly();
     if (localOnly) {
       notFoundInStore(context);
       return true;
