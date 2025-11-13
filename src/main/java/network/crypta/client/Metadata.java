@@ -36,7 +36,35 @@ import network.crypta.support.io.NullOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Metadata parser/writer class. */
+/**
+ * Metadata represents the structured, serialized description of content stored or fetched by the
+ * Crypta node. It can describe simple redirects, manifests (directory‐like structures), archives
+ * and splitfiles (content composed of many CHK blocks with optional FEC). Instances are created
+ * when parsing on‑disk or network representations, or constructed by client code before
+ * serialization.
+ *
+ * <p>Typical usage follows a parse → inspect → act pattern during fetches, and a build → serialize
+ * → insert pattern during inserts. The class exposes helpers to read the header, manifest entries,
+ * and splitfile layout, while keeping low‑level binary details encapsulated. After parsing, some
+ * derived fields (for example segment counts) are computed from the serialized parameters to match
+ * the historical format expected by fetchers.
+ *
+ * <p>Thread-safety and mutability: a {@code Metadata} instance is mutable during construction and
+ * parsing. Once populated it is commonly treated as effectively immutable by callers. No internal
+ * synchronization is provided; publish safely if sharing across threads or prefer per‑thread
+ * instances. Larger structures (such as segment keys) may be shared read‑most after construction.
+ *
+ * <ul>
+ *   <li>Parses and writes versioned metadata with backwards‑compatible layout rules.
+ *   <li>Represents manifests and redirect entries using maps and {@link Metadata} children.
+ *   <li>Supports splitfiles including per‑segment and cross‑segment redundancy.
+ * </ul>
+ *
+ * @see #construct(byte[])
+ * @see #construct(network.crypta.support.api.Bucket)
+ * @see network.crypta.client.async.SplitFileSegmentKeys
+ * @see network.crypta.keys.ClientCHK
+ */
 public class Metadata implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(Metadata.class);
 
@@ -47,28 +75,44 @@ public class Metadata implements Serializable {
   /** Soft limit, to avoid memory DoS */
   static final int MAX_SPLITFILE_BLOCKS = 1000 * 1000;
 
+  /** Splitfile parameters: segmenting without any special deductions. */
   public static final short SPLITFILE_PARAMS_SIMPLE_SEGMENT = 0;
+
+  /** Splitfile parameters: last {@code N} segments lose one data block for balancing. */
   public static final short SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS = 1;
+
+  /** Splitfile parameters: include cross‑segment parity blocks for large files. */
   public static final short SPLITFILE_PARAMS_CROSS_SEGMENT = 2;
 
-  // URI at which this Metadata has been/will be inserted.
+  /** URI at which this metadata has been or will be inserted/resolved. */
   FreenetURI resolvedURI;
 
-  // Name at which this Metadata has been/will be inside container.
+  /** Name at which this metadata has been or will be stored inside a container. */
   String resolvedName;
 
   // Actual parsed data
 
-  // document type
+  /** Active document type for this metadata instance. */
   DocumentType documentType;
 
+  /**
+   * Identifies the high‑level kind of document represented by this metadata, such as a simple
+   * redirect, a manifest (directory), or archival/redirect variants.
+   */
   public enum DocumentType {
+    /** Simple redirect to a single target URI. */
     SIMPLE_REDIRECT((byte) 0),
+    /** Indirection layer pointing to another metadata block. */
     MULTI_LEVEL_METADATA((byte) 1),
+    /** Directory‑like map of names to files/sub‑manifests. */
     SIMPLE_MANIFEST((byte) 2),
+    /** Archive manifest describing packaged content. */
     ARCHIVE_MANIFEST((byte) 3),
+    /** Redirect to a path inside an archive. */
     ARCHIVE_INTERNAL_REDIRECT((byte) 4),
+    /** Redirect to metadata stored inside an archive. */
     ARCHIVE_METADATA_REDIRECT((byte) 5),
+    /** Human‑readable shortlink to a target name. */
     SYMBOLIC_SHORTLINK((byte) 6);
 
     final byte code;
@@ -529,6 +573,7 @@ public class Metadata implements Serializable {
 
   // Removed unused method readSplitfileKeysAndSegmentsFromStream(DataInputStream)
 
+  /** Parsed metadata version number (0 = legacy, 1 = current). */
   short parsedVersion;
 
   // 2 bytes of flags
@@ -600,7 +645,10 @@ public class Metadata implements Serializable {
    */
   short compressedMIMEValue;
 
+  /** Whether {@link #compressedMIMEParams} is present and valid. */
   boolean hasCompressedMIMEParams;
+
+  /** Compressed MIME parameter value when {@link #hasCompressedMIMEParams} is true. */
   short compressedMIMEParams;
 
   /** The simple redirect key */
@@ -611,53 +659,92 @@ public class Metadata implements Serializable {
    */
   private final int hashCode;
 
+  /** Splitfile algorithm in use for this document when {@link #splitfile} is true. */
   SplitfileAlgorithm splitfileAlgorithm;
 
+  /** Specifies the splitfile layout algorithm used for data and parity blocks. */
   public enum SplitfileAlgorithm {
+    /** No redundancy; data only. */
     NONREDUNDANT((short) 0),
+    /** Standard layout with forward‑error correction. */
     ONION_STANDARD((short) 1);
 
+    /** Numeric identifier for the algorithm as serialized on disk. */
     public final short code;
 
     SplitfileAlgorithm(short code) {
       this.code = code;
     }
 
+    /**
+     * Returns the algorithm enum for the given serialized code.
+     *
+     * @param s numeric code as stored in metadata.
+     * @return the matching {@link SplitfileAlgorithm}.
+     * @throws IllegalArgumentException if the code is out of range.
+     */
     public static SplitfileAlgorithm getByCode(short s) {
       if (s < 0 || s >= values().length) throw new IllegalArgumentException("Bad splitfile code");
       return values()[s];
     }
   }
 
+  /**
+   * Maximum payload size, in bytes, for values stored directly in a manifest entry. Larger values
+   * must be referenced indirectly.
+   */
   public static final int MAX_SIZE_IN_MANIFEST = Short.MAX_VALUE;
 
-  /** Splitfile parameters */
+  /** Raw splitfile parameters blob as serialized in metadata. */
   byte[] splitfileParams;
 
-  /** This includes cross-check blocks. */
+  /** Total data blocks across the entire splitfile (includes cross‑segment blocks). */
   int splitfileBlocks;
 
+  /** Total parity/check blocks across the entire splitfile. */
   int splitfileCheckBlocks;
+
+  /** Per‑block client keys for data blocks; populated when keys are present. */
   ClientCHK[] splitfileDataKeys;
+
+  /** Per‑block client keys for parity/check blocks; populated when keys are present. */
   ClientCHK[] splitfileCheckKeys;
 
   /** Used if splitfile single crypto key is enabled */
   byte splitfileSingleCryptoAlgorithm;
 
+  /** Common crypto key applied to all blocks when parsed version ≥ 1; otherwise {@code null}. */
   byte[] splitfileSingleCryptoKey;
-  // If false, the splitfile key can be computed from the hashes. If true, it must be specified.
+
+  /** If false, the splitfile key can be computed from hashes; if true, it must be specified. */
   private boolean specifySplitfileKey;
 
   /** As opposed to hashes of the final content. */
+  /** Hash of this layer only (not final data); optional and may be {@code null}. */
   byte[] hashThisLayerOnly;
 
+  /** Nominal number of data blocks per segment (excludes cross‑segment blocks). */
   int blocksPerSegment;
+
+  /** Number of parity/check blocks per segment. */
   int checkBlocksPerSegment;
+
+  /** Number of segments computed from the layout parameters. */
   int segmentCount;
+
+  /** How many trailing segments lose one data block for balancing. */
   int deductBlocksFromSegments;
+
+  /** Number of cross‑segment parity blocks per segment (0 when not used). */
   int crossCheckBlocks;
+
+  /** Per‑segment key lists; may be {@code null} until built. */
   SplitFileSegmentKeys[] segments;
+
+  /** Minimum compatibility mode inferred for this metadata. */
   CompatibilityMode minCompatMode = CompatibilityMode.COMPAT_UNKNOWN;
+
+  /** Maximum compatibility mode inferred for this metadata. */
   CompatibilityMode maxCompatMode = CompatibilityMode.COMPAT_UNKNOWN;
 
   // Manifests
@@ -667,14 +754,28 @@ public class Metadata implements Serializable {
   /** Archive internal redirect: name of file in archive SympolicShortLink: Target name */
   String targetName;
 
+  /** Client metadata such as MIME type; may be {@code null}. */
   ClientMetadata clientMetadata;
+
+  /** Array of hashes (final/original data), or {@code null} when not provided. */
   private HashResult[] hashes;
 
+  /** Top-level logical data size in bytes for progress reporting. */
   public final long topSize;
+
+  /** Top-level compressed size in bytes when compression applies; else equals {@link #topSize}. */
   public final long topCompressedSize;
+
+  /** Blocks required at the top level to decode the referenced content. */
   public final int topBlocksRequired;
+
+  /** Total blocks at the top level for the referenced content. */
   public final int topBlocksTotal;
+
+  /** Whether top-level compression is disabled for the referenced content. */
   public final boolean topDontCompress;
+
+  /** Declared compatibility mode for the top layer of this metadata. */
   public final CompatibilityMode topCompatibilityMode;
 
   // No static initialization required.
@@ -778,10 +879,17 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Parse a block of bytes into a Metadata structure. Constructor method because of need to catch
-   * impossible exceptions.
+   * Parse a block of bytes into a {@code Metadata} instance from an in‑memory byte array.
    *
-   * @throws MetadataParseException If the metadata is invalid.
+   * <p>The method validates the header and contents and constructs a fully populated {@code
+   * Metadata}. The input array is not retained by the returned object.
+   *
+   * @param data the serialized metadata bytes; the method reads the entire array and does not
+   *     modify it; must not be {@code null}.
+   * @return a parsed {@code Metadata} instance representing the provided bytes; never {@code null}
+   *     when parsing succeeds.
+   * @throws MetadataParseException if the data is malformed, unsupported for the current parser
+   *     version, or otherwise fails structural validation.
    */
   public static Metadata construct(byte[] data) throws MetadataParseException {
     try {
@@ -792,10 +900,16 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Parse a bucket of data into a Metadata structure.
+   * Parse a bucket of data into a {@code Metadata} instance.
    *
-   * @throws MetadataParseException If the parsing failed because of invalid metadata.
-   * @throws IOException If we could not read the metadata from the bucket.
+   * <p>The bucket is read sequentially; callers remain responsible for its lifecycle. The returned
+   * instance does not retain a reference to the bucket.
+   *
+   * @param data source {@link Bucket} providing the serialized metadata; must be readable for at
+   *     least {@link Bucket#size()} bytes.
+   * @return a parsed {@code Metadata} instance representing the stream contents.
+   * @throws MetadataParseException if the serialized form is invalid or unsupported.
+   * @throws IOException if an I/O error occurs while reading from the bucket.
    */
   public static Metadata construct(Bucket data) throws MetadataParseException, IOException {
     Metadata m;
@@ -828,9 +942,19 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Parse some metadata from a DataInputStream
+   * Parse metadata from a {@link DataInputStream} with a known remaining length.
    *
-   * @throws IOException If an I/O error occurs, or the data is incomplete.
+   * <p>The stream is read according to the on‑wire format: header and flags, optional top‑level
+   * fields, followed by manifest or splitfile sections. The constructor does not close the supplied
+   * stream.
+   *
+   * @param dis input stream positioned at the beginning of a serialized metadata structure; not
+   *     closed by this method; must not be {@code null}.
+   * @param length total number of bytes available for the metadata payload from {@code dis}; used
+   *     for bounds checking and manifest parsing decisions.
+   * @throws IOException if an I/O error occurs or the stream cannot supply the required bytes.
+   * @throws MetadataParseException if the payload is structurally invalid or uses an unsupported
+   *     version or document type.
    */
   public Metadata(DataInputStream dis, long length) throws IOException, MetadataParseException {
     hashCode = super.hashCode();
@@ -868,6 +992,14 @@ public class Metadata implements Serializable {
     }
   }
 
+  /**
+   * Derives the splitfile crypto key from the provided hashes. Requires a SHA‑256 result.
+   *
+   * @param hashes array of {@link HashResult}; must contain a SHA‑256 entry; must not be {@code
+   *     null} or empty.
+   * @return a 32‑byte key derived from the SHA‑256 of the final data.
+   * @throws IllegalArgumentException if {@code hashes} is missing a SHA‑256 entry.
+   */
   public static byte[] getCryptoKey(HashResult[] hashes) {
     if (hashes == null || hashes.length == 0 || !HashResult.contains(hashes, HashType.SHA256))
       throw new IllegalArgumentException(
@@ -876,6 +1008,12 @@ public class Metadata implements Serializable {
     return getCryptoKey(hash);
   }
 
+  /**
+   * Derives the splitfile crypto key directly from a SHA‑256 hash value.
+   *
+   * @param hash a 32‑byte SHA‑256 of the final data; must not be {@code null}.
+   * @return a 32‑byte key bytes array suitable for splitfile encryption.
+   */
   public static byte[] getCryptoKey(byte[] hash) {
     // This is exactly the same algorithm used by e.g. JFK for generating multiple session keys from
     // a single generated value.
@@ -887,6 +1025,16 @@ public class Metadata implements Serializable {
     return md.digest();
   }
 
+  /**
+   * Computes the seed used for cross‑segment parity generation from final‑data hashes and the
+   * optional hash of this layer only.
+   *
+   * @param hashes array of hashes of the final/original data (must include SHA‑256); used as
+   *     primary input.
+   * @param hashThisLayerOnly optional hash of this layer’s data (may be {@code null}); incorporated
+   *     for added uniqueness.
+   * @return seed bytes for cross‑segment parity; never {@code null} when inputs are valid.
+   */
   public static byte[] getCrossSegmentSeed(HashResult[] hashes, byte[] hashThisLayerOnly) {
     byte[] hash = hashThisLayerOnly;
     if (hash == null) {
@@ -898,6 +1046,12 @@ public class Metadata implements Serializable {
     return getCrossSegmentSeed(hash);
   }
 
+  /**
+   * Computes the cross‑segment parity seed from a single hash value (typically SHA‑256).
+   *
+   * @param hash a 32‑byte hash value; must not be {@code null}.
+   * @return seed bytes for cross‑segment parity; never {@code null}.
+   */
   public static byte[] getCrossSegmentSeed(byte[] hash) {
     // This is exactly the same algorithm used by e.g. JFK for generating multiple session keys from
     // a single generated value.
@@ -954,9 +1108,12 @@ public class Metadata implements Serializable {
   /**
    * Create a Metadata object and add data for redirection to it.
    *
-   * @param dir A map of names (string) to either files (same string) or directories (more
-   *     HashMap's)
-   * @throws MalformedURLException One of the URI:s were malformed
+   * @param dir a map from entry names to either strings (external redirects) or nested maps (child
+   *     directories). Entry names must be simple names without slashes.
+   * @return a new {@code Metadata} instance containing a simple redirect manifest populated from
+   *     the provided map.
+   * @throws MalformedURLException if a provided redirect string cannot be parsed as a valid {@link
+   *     FreenetURI}.
    */
   public static Metadata mkRedirectionManifest(Map<String, Object> dir)
       throws MalformedURLException {
@@ -968,6 +1125,10 @@ public class Metadata implements Serializable {
   /**
    * Create a Metadata object and add manifest entries from the given map. The map can contain
    * either string -> Metadata, or string -> map, the latter indicating subdirs.
+   *
+   * @param dir a map from entry names to either {@link Metadata} (files/redirects) or nested maps
+   *     (sub‑directories). Names must not contain {@code '/'}.
+   * @return a new {@code Metadata} instance whose manifest contains the provided entries.
    */
   public static Metadata mkRedirectionManifestWithMetadata(Map<String, Object> dir) {
     Metadata ret = new Metadata();
@@ -1057,10 +1218,15 @@ public class Metadata implements Serializable {
   /**
    * Create a really simple Metadata object.
    *
-   * @param docType The document type. Must be something that takes a single argument. At the moment
-   *     this means ARCHIVE_INTERNAL_REDIRECT.
-   * @param arg The argument; in the case of ARCHIVE_INTERNAL_REDIRECT, the filename in the archive
-   *     to read from.
+   * @param docType the document type; must be a kind that accepts a single argument (currently
+   *     {@link DocumentType#ARCHIVE_INTERNAL_REDIRECT} or {@link DocumentType#SYMBOLIC_SHORTLINK}).
+   * @param archiveType archive flavor when relevant (only used by archive‑related document types);
+   *     may be {@code null} for non‑archive types.
+   * @param compressionCodec compression codec associated with the content when applicable; may be
+   *     {@code null} when no compression applies.
+   * @param arg argument for the document type; for {@code ARCHIVE_INTERNAL_REDIRECT}, the path
+   *     inside the archive to read.
+   * @param cm optional client metadata (e.g., MIME type); may be {@code null} to use defaults.
    */
   public Metadata(
       DocumentType docType,
@@ -1132,6 +1298,17 @@ public class Metadata implements Serializable {
     topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
   }
 
+  /**
+   * Convenience constructor for redirect‑like documents that do not require top‑layer size/blocks
+   * details.
+   *
+   * @param docType the document type (redirect or archive‑related).
+   * @param archiveType archive flavor when relevant; {@code null} when not applicable.
+   * @param compressionCodec compression codec for archive payloads when relevant; {@code null} when
+   *     not applicable.
+   * @param uri target {@link FreenetURI} referenced by this entry.
+   * @param cm client metadata describing MIME type and related properties; may be {@code null}.
+   */
   public Metadata(
       DocumentType docType,
       ARCHIVE_TYPE archiveType,
@@ -1156,9 +1333,24 @@ public class Metadata implements Serializable {
   /**
    * Create another kind of simple Metadata object (a redirect or similar object).
    *
-   * @param docType The document type.
-   * @param uri The URI pointed to.
-   * @param cm The client metadata, if any.
+   * @param docType the document type (redirect or archive‑related).
+   * @param archiveType archive flavor when relevant; {@code null} when not applicable.
+   * @param compressionCodec compression codec for archive payloads when relevant; {@code null} when
+   *     not applicable.
+   * @param uri target {@link FreenetURI} referenced by this entry; must be a valid CHK for
+   *     splitfile payloads when full keys are not used.
+   * @param cm client metadata describing MIME type and related properties; may be {@code null}.
+   * @param origDataLength original (uncompressed) data length in bytes; non‑negative.
+   * @param origCompressedDataLength compressed data length in bytes when compression is used;
+   *     otherwise typically equals {@code origDataLength}.
+   * @param reqBlocks number of blocks required to decode at the top layer; non‑negative.
+   * @param totalBlocks total number of blocks at the top layer; non‑negative and ≥ {@code
+   *     reqBlocks}.
+   * @param topDontCompress whether top‑layer compression is disabled for the referenced payload.
+   * @param topCompatibilityMode declared top compatibility mode; must not be {@link
+   *     InsertContext.CompatibilityMode#COMPAT_CURRENT}.
+   * @param hashes optional array of hashes (e.g., SHA‑256) of the final data; may be {@code null}
+   *     or non‑empty.
    */
   public Metadata(
       DocumentType docType,
@@ -1498,7 +1690,13 @@ public class Metadata implements Serializable {
   /**
    * Write the data to a byte array.
    *
-   * @throws MetadataUnresolvedException
+   * @return a newly allocated byte array containing the serialized representation of this metadata;
+   *     never {@code null}.
+   * @throws MetadataUnresolvedException if the instance still references unresolved sub‑metadata at
+   *     the time of serialization (for example, missing manifest entries required by the format).
+   *     Callers should resolve or remove such references before invoking this method.
+   * @throws java.io.UncheckedIOException if an unexpected I/O error occurs while writing to the
+   *     in‑memory buffer.
    */
   public byte[] writeToByteArray() throws MetadataUnresolvedException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -1511,6 +1709,14 @@ public class Metadata implements Serializable {
     return baos.toByteArray();
   }
 
+  /**
+   * Computes the number of bytes that would be written by {@link #writeTo(DataOutputStream)}
+   * without allocating an intermediate buffer.
+   *
+   * @return total serialized length in bytes.
+   * @throws MetadataUnresolvedException if unresolved child metadata prevents serialization.
+   * @throws java.io.UncheckedIOException if an I/O error occurs while counting bytes.
+   */
   public long writtenLength() throws MetadataUnresolvedException {
     try (CountedOutputStream cos = new CountedOutputStream(new NullOutputStream());
         DataOutputStream dos = new DataOutputStream(cos)) {
@@ -1564,7 +1770,12 @@ public class Metadata implements Serializable {
     }
   }
 
-  /** Is a manifest? */
+  /**
+   * Indicates whether this instance represents a simple manifest document.
+   *
+   * @return {@code true} when {@link DocumentType#SIMPLE_MANIFEST} is the active document type;
+   *     {@code false} otherwise.
+   */
   public boolean isSimpleManifest() {
     return documentType == DocumentType.SIMPLE_MANIFEST;
   }
@@ -1572,7 +1783,10 @@ public class Metadata implements Serializable {
   /**
    * Get the sub-document in a manifest file with the given name.
    *
-   * @throws MetadataParseException
+   * @param name the child entry name to lookup within the current manifest; must be a simple name
+   *     without slashes.
+   * @return the {@code Metadata} document associated with {@code name}, or {@code null} when no
+   *     such entry exists.
    */
   public Metadata getDocument(String name) {
     return manifestEntries.get(name);
@@ -1581,6 +1795,10 @@ public class Metadata implements Serializable {
   /**
    * Return and remove a specific document. Used in persistent requests so that when removeFrom() is
    * called, the default document won't be removed, since it is being processed.
+   *
+   * @param name the child entry name to remove from the manifest; must not contain path separators.
+   * @return the removed {@code Metadata} document if present, or {@code null} if the entry did not
+   *     exist.
    */
   public Metadata grabDocument(String name) {
     return manifestEntries.remove(name);
@@ -1589,7 +1807,8 @@ public class Metadata implements Serializable {
   /**
    * The default document is the one which has an empty name.
    *
-   * @throws MetadataParseException
+   * @return the {@code Metadata} document mapped to the empty name within this manifest, or {@code
+   *     null} when no default is set.
    */
   public Metadata getDefaultDocument() {
     return getDocument("");
@@ -1598,6 +1817,8 @@ public class Metadata implements Serializable {
   /**
    * Return and remove the default document. Used in persistent requests so that when removeFrom()
    * is called, the default document won't be removed, since it is being processed.
+   *
+   * @return the removed default {@code Metadata} document, or {@code null} when none was present.
    */
   public Metadata grabDefaultDocument() {
     return grabDocument("");
@@ -1606,7 +1827,9 @@ public class Metadata implements Serializable {
   /**
    * Get all documents in the manifest (ignores default doc).
    *
-   * @throws MetadataParseException
+   * @return a mapping from non‑default entry names to their corresponding {@code Metadata}
+   *     documents; the returned map is a shallow copy and modifications do not affect this
+   *     instance.
    */
   public Map<String, Metadata> getDocuments() {
     HashMap<String, Metadata> docs = new HashMap<>();
@@ -1617,7 +1840,12 @@ public class Metadata implements Serializable {
     return docs;
   }
 
-  /** Does the metadata point to a single URI? */
+  /**
+   * Indicates whether this metadata points to a single target URI rather than a directory tree.
+   *
+   * @return {@code true} for simple redirect, multi‑level metadata, or archive manifest types;
+   *     {@code false} otherwise.
+   */
   public boolean isSingleFileRedirect() {
     return ((!splitfile)
         && ((documentType == DocumentType.SIMPLE_REDIRECT)
@@ -1625,12 +1853,22 @@ public class Metadata implements Serializable {
             || (documentType == DocumentType.ARCHIVE_MANIFEST)));
   }
 
-  /** Return the single target of this URI. */
+  /**
+   * Returns the single target {@link FreenetURI} when this instance represents a redirect‑like
+   * document.
+   *
+   * @return the target URI for redirect‑like types, or {@code null} when not applicable.
+   */
   public FreenetURI getSingleTarget() {
     return simpleRedirectKey;
   }
 
-  /** Is this a Archive manifest? */
+  /**
+   * Indicates whether this instance represents an archive manifest.
+   *
+   * @return {@code true} when {@link DocumentType#ARCHIVE_MANIFEST} is active; {@code false}
+   *     otherwise.
+   */
   public boolean isArchiveManifest() {
     return documentType == DocumentType.ARCHIVE_MANIFEST;
   }
@@ -1638,7 +1876,8 @@ public class Metadata implements Serializable {
   /**
    * Is this a archive internal metadata redirect?
    *
-   * @return
+   * @return {@code true} when {@link DocumentType#ARCHIVE_METADATA_REDIRECT} is active; {@code
+   *     false} otherwise.
    */
   public boolean isArchiveMetadataRedirect() {
     return documentType == DocumentType.ARCHIVE_METADATA_REDIRECT;
@@ -1647,15 +1886,19 @@ public class Metadata implements Serializable {
   /**
    * Is this a Archive internal redirect?
    *
-   * @return
+   * @return {@code true} when {@link DocumentType#ARCHIVE_INTERNAL_REDIRECT} is active; {@code
+   *     false} otherwise.
    */
   public boolean isArchiveInternalRedirect() {
     return documentType == DocumentType.ARCHIVE_INTERNAL_REDIRECT;
   }
 
   /**
-   * Return the name of the document referred to in the archive, if this is a archive internal
-   * redirect.
+   * Returns the name of the document referred to inside the archive when this is an
+   * archive‑internal redirect.
+   *
+   * @return the internal path name for archive redirects; throws {@link IllegalArgumentException}
+   *     for non‑archive redirects.
    */
   public String getArchiveInternalName() {
     if ((documentType != DocumentType.ARCHIVE_INTERNAL_REDIRECT)
@@ -1664,34 +1907,61 @@ public class Metadata implements Serializable {
     return targetName;
   }
 
-  /** Return the name of the document referred to in the dir, if this is a symbolic short link. */
+  /**
+   * Returns the name of the document referred to when this instance is a symbolic shortlink.
+   *
+   * @return the target name for {@link DocumentType#SYMBOLIC_SHORTLINK}; throws {@link
+   *     IllegalArgumentException} otherwise.
+   */
   public String getSymbolicShortlinkTargetName() {
     if (documentType != DocumentType.SYMBOLIC_SHORTLINK) throw new IllegalArgumentException();
     return targetName;
   }
 
-  /** Return the client metadata (MIME type etc). */
+  /**
+   * Returns the client metadata associated with this document, including MIME type information.
+   *
+   * @return the client metadata instance; may be {@code null} if not provided.
+   */
   public ClientMetadata getClientMetadata() {
     return clientMetadata;
   }
 
-  /** Is this a splitfile manifest? */
+  /**
+   * Indicates whether this document is a splitfile.
+   *
+   * @return {@code true} when the splitfile flag is set; {@code false} otherwise.
+   */
   public boolean isSplitfile() {
     return splitfile;
   }
 
-  /** Is this a simple splitfile? */
+  /**
+   * Indicates whether this document is a simple splitfile (non‑manifest redirect).
+   *
+   * @return {@code true} for simple redirect splitfiles; {@code false} otherwise.
+   */
   @SuppressWarnings("unused")
   public boolean isSimpleSplitfile() {
     return splitfile && (documentType == DocumentType.SIMPLE_REDIRECT);
   }
 
-  /** Is multi-level/indirect metadata? */
+  /**
+   * Indicates whether this document is multi‑level/indirect metadata.
+   *
+   * @return {@code true} when {@link DocumentType#MULTI_LEVEL_METADATA} is active; {@code false}
+   *     otherwise.
+   */
   public boolean isMultiLevelMetadata() {
     return documentType == DocumentType.MULTI_LEVEL_METADATA;
   }
 
-  /** What kind of archive is it? */
+  /**
+   * Returns the archive type, when applicable.
+   *
+   * @return the archive type for archive‑related documents; may be {@code null} when not
+   *     applicable.
+   */
   public ARCHIVE_TYPE getArchiveType() {
     return archiveType;
   }
@@ -1704,24 +1974,42 @@ public class Metadata implements Serializable {
     documentType = DocumentType.SIMPLE_REDIRECT;
   }
 
-  /** Is this a simple redirect? (for KeyExplorer) */
+  /**
+   * Indicates whether this document is a simple redirect (KeyExplorer helper).
+   *
+   * @return {@code true} when {@link DocumentType#SIMPLE_REDIRECT} is active; {@code false}
+   *     otherwise.
+   */
   public boolean isSimpleRedirect() {
     return documentType == DocumentType.SIMPLE_REDIRECT;
   }
 
-  /** Is noMime enabled? (for KeyExplorer) */
+  /**
+   * Indicates whether the {@code noMIME} flag is enabled (KeyExplorer helper).
+   *
+   * @return {@code true} when MIME is intentionally omitted; {@code false} otherwise.
+   */
   @SuppressWarnings("unused")
   public boolean isNoMimeEnabled() {
     return noMIME;
   }
 
-  /** get the resolved name (".metada-N") (for KeyExplorer) */
+  /**
+   * Returns the resolved metadata name (e.g., {@code .metadata-N}) used by KeyExplorer.
+   *
+   * @return the resolved name string; may be {@code null} if not assigned.
+   */
   @SuppressWarnings("unused")
   public String getResolvedName() {
     return resolvedName;
   }
 
-  /** Is this a symbilic shortlink? */
+  /**
+   * Indicates whether this document is a symbolic shortlink.
+   *
+   * @return {@code true} when {@link DocumentType#SYMBOLIC_SHORTLINK} is active; {@code false}
+   *     otherwise.
+   */
   public boolean isSymbolicShortlink() {
     return documentType == DocumentType.SYMBOLIC_SHORTLINK;
   }
@@ -1729,8 +2017,11 @@ public class Metadata implements Serializable {
   /**
    * Write the metadata as binary.
    *
-   * @throws IOException If an I/O error occurred while writing the data.
-   * @throws MetadataUnresolvedException
+   * @param dos destination stream to receive the serialized representation; the caller owns and
+   *     closes the stream.
+   * @throws IOException if an I/O error occurs while writing the data to {@code dos}.
+   * @throws MetadataUnresolvedException if unresolved child metadata prevents serialization;
+   *     callers should resolve dependent entries first.
    */
   public void writeTo(DataOutputStream dos) throws IOException, MetadataUnresolvedException {
     dos.writeLong(FREENET_METADATA_MAGIC);
@@ -2003,7 +2294,12 @@ public class Metadata implements Serializable {
     }
   }
 
-  /** have this metadata flags? */
+  /**
+   * Indicates whether this document type carries a flag section in its serialized form.
+   *
+   * @return {@code true} for document types that include the flags section; {@code false}
+   *     otherwise.
+   */
   public boolean haveFlags() {
     return ((documentType == DocumentType.SIMPLE_REDIRECT)
         || (documentType == DocumentType.MULTI_LEVEL_METADATA)
@@ -2013,54 +2309,116 @@ public class Metadata implements Serializable {
         || (documentType == DocumentType.SYMBOLIC_SHORTLINK));
   }
 
-  /** Get the splitfile type. */
+  /**
+   * Returns the splitfile algorithm associated with this metadata.
+   *
+   * @return the {@link SplitfileAlgorithm} value; may be {@code null} when not a splitfile.
+   */
   public SplitfileAlgorithm getSplitfileType() {
     return splitfileAlgorithm;
   }
 
+  /**
+   * Returns the data CHK keys for the splitfile when present.
+   *
+   * @return array of {@link ClientCHK} for data blocks, or {@code null} if keys are absent.
+   */
   @SuppressWarnings("unused")
   public ClientCHK[] getSplitfileDataKeys() {
     return splitfileDataKeys;
   }
 
+  /**
+   * Returns the parity/check CHK keys for the splitfile when present.
+   *
+   * @return array of {@link ClientCHK} for check blocks, or {@code null} if keys are absent.
+   */
   @SuppressWarnings("unused")
   public ClientCHK[] getSplitfileCheckKeys() {
     return splitfileCheckKeys;
   }
 
+  /**
+   * Indicates whether a compression codec is configured for this document.
+   *
+   * @return {@code true} when a codec is present; {@code false} otherwise.
+   */
   public boolean isCompressed() {
     return compressionCodec != null;
   }
 
+  /**
+   * Returns the compression codec for this document when applicable.
+   *
+   * @return the codec identifier or {@code null} when no compression applies.
+   */
   public COMPRESSOR_TYPE getCompressionCodec() {
     return compressionCodec;
   }
 
+  /**
+   * Returns the logical data length for this document in bytes.
+   *
+   * @return the data length; non‑negative.
+   */
   public long dataLength() {
     return dataLength;
   }
 
+  /**
+   * Returns the raw splitfile parameters blob as stored in metadata.
+   *
+   * @return byte array for splitfile params, or {@code null} when not a splitfile.
+   */
   public byte[] splitfileParams() {
     return splitfileParams;
   }
 
+  /**
+   * Returns the uncompressed data length for compressed content; equals data length otherwise.
+   *
+   * @return uncompressed length in bytes; non‑negative.
+   */
   public long uncompressedDataLength() {
     return this.decompressedLength;
   }
 
+  /**
+   * Returns the resolved URI for this metadata when available.
+   *
+   * @return the {@link FreenetURI} that this metadata was resolved/inserted at, or {@code null}.
+   */
   @SuppressWarnings("unused")
   public FreenetURI getResolvedURI() {
     return resolvedURI;
   }
 
+  /**
+   * Sets the resolved URI for this metadata (primarily used during insert flows).
+   *
+   * @param uri URI to associate with this metadata; may be {@code null} to clear.
+   */
   public void resolve(FreenetURI uri) {
     this.resolvedURI = uri;
   }
 
+  /**
+   * Sets the resolved name (e.g., {@code .metadata-N}) for this metadata.
+   *
+   * @param name resolved name string to record; may be {@code null} to clear.
+   */
   public void resolve(String name) {
     this.resolvedName = name;
   }
 
+  /**
+   * Serializes this metadata into a newly allocated random‑access bucket provided by the factory.
+   *
+   * @param bf factory used to allocate the destination bucket; must not be {@code null}.
+   * @return a read‑only bucket containing the serialized metadata bytes.
+   * @throws MetadataUnresolvedException if unresolved child metadata prevents serialization.
+   * @throws IOException if an I/O error occurs while writing to the allocated bucket.
+   */
   public RandomAccessBucket toBucket(BucketFactory bf)
       throws MetadataUnresolvedException, IOException {
     RandomAccessBucket b = bf.makeBucket(-1);
@@ -2075,21 +2433,36 @@ public class Metadata implements Serializable {
     return b;
   }
 
+  /**
+   * Indicates whether either the resolved URI or resolved name has been set.
+   *
+   * @return {@code true} when a resolved identifier is present; {@code false} otherwise.
+   */
   public boolean isResolved() {
     return (resolvedURI != null) || (resolvedName != null);
   }
 
+  /** Switches this document to an archive manifest, clearing incompatible client metadata. */
   public void setArchiveManifest() {
     archiveType = ARCHIVE_TYPE.getArchiveType(clientMetadata.getMIMEType());
     clientMetadata.clear();
     documentType = DocumentType.ARCHIVE_MANIFEST;
   }
 
+  /**
+   * Returns the MIME type from client metadata if available.
+   *
+   * @return MIME type string or {@code null} when not set.
+   */
   public String getMIMEType() {
     if (clientMetadata == null) return null;
     return clientMetadata.getMIMEType();
   }
 
+  /**
+   * Clears in‑memory splitfile key arrays and segment structures to reduce memory usage after they
+   * are no longer needed.
+   */
   @SuppressWarnings("unused")
   public void clearSplitfileKeys() {
     splitfileDataKeys = null;
@@ -2097,6 +2470,11 @@ public class Metadata implements Serializable {
     segments = null;
   }
 
+  /**
+   * Returns the number of entries in the manifest map.
+   *
+   * @return total entries, including the default document when present.
+   */
   public int countDocuments() {
     return manifestEntries.size();
   }
@@ -2132,10 +2510,10 @@ public class Metadata implements Serializable {
     }
 
     /**
-     * Add an item to the manifest
+     * Add an item to the manifest.
      *
-     * @param name the item name
-     * @param item
+     * @param name the entry name to add; must be unique within the manifest and not {@code null}.
+     * @param item the {@link Metadata} value for the entry; must not be {@code null}.
      */
     public void addItem(String name, Metadata item) {
       if (name == null || item == null) throw new NullPointerException();
@@ -2158,12 +2536,23 @@ public class Metadata implements Serializable {
     }
   }
 
+  /**
+   * Produces a human‑readable dump of this metadata for diagnostics and testing.
+   *
+   * @return a multi‑line string with key fields and layout information.
+   */
   public String dump() {
     StringBuilder sb = new StringBuilder();
     dump(0, sb);
     return sb.toString();
   }
 
+  /**
+   * Appends a human‑readable dump of this metadata to the supplied buffer.
+   *
+   * @param indent number of spaces to prefix each line with; must be non‑negative.
+   * @param sb destination buffer to receive the dump text; must not be {@code null}.
+   */
   public void dump(int indent, StringBuilder sb) {
     dumpline(indent, sb, "");
     dumpline(indent, sb, "Document type: " + documentType);
@@ -2217,6 +2606,11 @@ public class Metadata implements Serializable {
    * <p>Rationale: Some builder paths store subdirectories as {@code HashMap<String,Object>} and
    * mutate them in-place. We centralize the only unavoidable unchecked cast here, backed by runtime
    * checks when the source is not a {@code HashMap}.
+   *
+   * @param o object expected to be a map representation of a directory; may be any {@link Map}
+   *     implementation; keys must be strings.
+   * @return a mutable {@code Map<String,Object>} view; either the original map (when already a
+   *     {@link java.util.HashMap}) or a defensive copy; never {@code null}.
    */
   public static Map<String, Object> forceMap(Object o) {
     if (o instanceof HashMap<?, ?> raw) {
@@ -2245,74 +2639,162 @@ public class Metadata implements Serializable {
     return (HashMap<String, Object>) raw;
   }
 
+  /**
+   * Returns the parsed metadata format version (0 or 1).
+   *
+   * @return the version number parsed from the serialized form.
+   */
   public short getParsedVersion() {
     return parsedVersion;
   }
 
+  /**
+   * Indicates whether top‑level size/blocks information is present.
+   *
+   * @return {@code true} when any top‑level field is non‑zero; {@code false} otherwise.
+   */
   public boolean hasTopData() {
     return topSize != 0 || topCompressedSize != 0 || topBlocksRequired != 0 || topBlocksTotal != 0;
   }
 
+  /**
+   * Returns the set of hashes for the final/original data, or {@code null} when absent.
+   *
+   * @return array of {@link HashResult} values, or {@code null}.
+   */
   public HashResult[] getHashes() {
     return hashes;
   }
 
-  /** If there is a custom (not computed from hashes) splitfile key, return it. Else return null. */
+  /**
+   * Returns the custom splitfile key when explicitly specified (not derived from hashes).
+   *
+   * @return the key bytes when {@code specifySplitfileKey} is {@code true}; otherwise an empty
+   *     array.
+   */
   public byte[] getCustomSplitfileKey() {
     if (specifySplitfileKey) return splitfileSingleCryptoKey;
     return new byte[0];
   }
 
+  /**
+   * Returns the splitfile crypto key used for all blocks when {@code parsedVersion >= 1}.
+   *
+   * @return the key bytes; may be {@code null} for older versions without a common key.
+   */
   public byte[] getSplitfileCryptoKey() {
     return splitfileSingleCryptoKey;
   }
 
+  /**
+   * Returns the optional hash of this layer only (not the final data), or {@code null}.
+   *
+   * @return 32‑byte hash for this layer, or {@code null} when unavailable.
+   */
   public byte[] getHashThisLayerOnly() {
     return hashThisLayerOnly;
   }
 
+  /**
+   * Returns the splitfile crypto algorithm identifier byte.
+   *
+   * @return the algorithm code.
+   */
   public byte getSplitfileCryptoAlgorithm() {
     return splitfileSingleCryptoAlgorithm;
   }
 
+  /**
+   * Returns the declared top‑layer compatibility mode.
+   *
+   * @return top‑layer compatibility value.
+   */
   public CompatibilityMode getTopCompatibilityMode() {
     return topCompatibilityMode;
   }
 
+  /**
+   * Returns whether top‑layer compression is disabled.
+   *
+   * @return {@code true} if compression is disabled; {@code false} otherwise.
+   */
   public boolean getTopDontCompress() {
     return topDontCompress;
   }
 
+  /**
+   * Returns the numeric code for the top‑layer compatibility mode.
+   *
+   * @return short code corresponding to {@link #getTopCompatibilityMode()}.
+   */
   public short getTopCompatibilityCode() {
     return topCompatibilityMode.code;
   }
 
+  /**
+   * Returns the minimum compatibility mode inferred for this metadata.
+   *
+   * @return lower bound for compatibility mode.
+   */
   public CompatibilityMode getMinCompatMode() {
     return minCompatMode;
   }
 
+  /**
+   * Returns the maximum compatibility mode inferred for this metadata.
+   *
+   * @return upper bound for compatibility mode.
+   */
   public CompatibilityMode getMaxCompatMode() {
     return maxCompatMode;
   }
 
+  /**
+   * Returns number of cross‑segment parity blocks per segment (0 when not used).
+   *
+   * @return count of cross‑segment parity blocks.
+   */
   public int getCrossCheckBlocks() {
     return crossCheckBlocks;
   }
 
+  /**
+   * Returns number of check/parity blocks per segment.
+   *
+   * @return parity/check blocks per segment.
+   */
   public int getCheckBlocksPerSegment() {
     return checkBlocksPerSegment;
   }
 
+  /**
+   * Returns number of data blocks per segment (not including cross‑segment blocks).
+   *
+   * @return data blocks per segment.
+   */
   public int getDataBlocksPerSegment() {
     return blocksPerSegment;
   }
 
+  /**
+   * Returns the number of segments implied by the splitfile layout.
+   *
+   * @return segment count; non‑negative.
+   */
   public int getSegmentCount() {
     return segmentCount;
   }
 
   // Note: legacy behavior retained for compatibility; segments are cleared after being grabbed to
   // reduce memory usage.
+  /**
+   * Returns and clears the current segment key list array to reduce memory usage.
+   *
+   * @return previously stored {@link SplitFileSegmentKeys} array, or {@code null} when none
+   *     present.
+   * @throws FetchException if raw key arrays exist but segment structures are missing; re‑parse
+   *     metadata in that case.
+   */
   @SuppressWarnings("unused")
   public SplitFileSegmentKeys[] grabSegmentKeys() throws FetchException {
     synchronized (this) {
@@ -2326,6 +2808,13 @@ public class Metadata implements Serializable {
     }
   }
 
+  /**
+   * Returns the immutable segment key lists for this splitfile, or {@code null} if not built.
+   *
+   * @return an array of {@link SplitFileSegmentKeys}, or {@code null} when keys were not populated.
+   * @throws FetchException if the keys were cleared while the metadata still holds raw key arrays;
+   *     callers should re‑parse the metadata in that case.
+   */
   public SplitFileSegmentKeys[] getSegmentKeys() throws FetchException {
     synchronized (this) {
       if (segments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
@@ -2336,12 +2825,21 @@ public class Metadata implements Serializable {
     }
   }
 
+  /**
+   * Returns the number of trailing segments that lose one data block for balancing.
+   *
+   * @return number of trailing segments with one less data block.
+   */
   public int getDeductBlocksFromSegments() {
     return deductBlocksFromSegments;
   }
 
   /**
-   * Return a best-guess compatibility mode, guaranteed not to be COMPAT_UNKNOWN or COMPAT_CURRENT.
+   * Return a best‑guess compatibility mode, guaranteed not to be {@code COMPAT_UNKNOWN} or {@code
+   * COMPAT_CURRENT}.
+   *
+   * @return the most appropriate {@link CompatibilityMode} for this metadata when an exact top mode
+   *     is not available.
    */
   public CompatibilityMode guessCompatibilityMode() {
     CompatibilityMode mode = getTopCompatibilityMode();
@@ -2355,6 +2853,12 @@ public class Metadata implements Serializable {
     return max;
   }
 
+  /**
+   * Returns whether the provided byte is a recognized splitfile crypto algorithm code.
+   *
+   * @param cryptoAlgorithm algorithm identifier byte to test.
+   * @return {@code true} for valid codes, {@code false} otherwise.
+   */
   public static boolean isValidSplitfileCryptoAlgorithm(byte cryptoAlgorithm) {
     return cryptoAlgorithm == 0 || Key.isValidCryptoAlgorithm(cryptoAlgorithm);
   }
