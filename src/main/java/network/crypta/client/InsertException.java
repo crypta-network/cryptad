@@ -230,7 +230,7 @@ public class InsertException extends Exception {
     super(e.getMessage());
     extra = e.extra;
     mode = e.mode;
-    errorCodes = e.errorCodes == null ? null : e.errorCodes.clone();
+    errorCodes = FailureCodeTracker.copyOf(e.errorCodes);
     uri = e.uri;
   }
 
@@ -249,7 +249,7 @@ public class InsertException extends Exception {
     super(e.getMessage(), e.getCause(), /*enableSuppression*/ true, /*writableStackTrace*/ true);
     extra = e.extra;
     mode = e.mode;
-    errorCodes = e.errorCodes == null ? null : e.errorCodes.clone();
+    errorCodes = FailureCodeTracker.copyOf(e.errorCodes);
     uri = expectedURI;
     // Copy suppressed exceptions and the original stack trace frames.
     for (Throwable s : e.getSuppressed()) addSuppressed(s);
