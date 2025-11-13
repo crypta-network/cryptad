@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.DataInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -20,10 +21,13 @@ import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.crypt.SHA256;
+import network.crypta.keys.ClientCHK;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
+import network.crypta.keys.NodeCHK;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ArrayBucketFactory;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -315,8 +319,8 @@ class MetadataTest {
     // For coverage of constructor preconditions: when topCompatibilityMode < COMPAT_1255,
     // parsedVersion becomes 0 and v1-only inputs like splitfileCryptoKey must be null.
     // Minimal splitfile arrays (not used further in this test)
-    var data = new network.crypta.keys.ClientCHK[] {};
-    var check = new network.crypta.keys.ClientCHK[] {};
+    var data = new ClientCHK[] {};
+    var check = new ClientCHK[] {};
     ClientMetadata cm = new ClientMetadata("application/octet-stream");
 
     assertThrows(
@@ -348,5 +352,59 @@ class MetadataTest {
                 new byte[32],
                 false,
                 0));
+  }
+
+  @Test
+  void splitfileWithoutTopBlocks_preservesV1_andWritesCryptoParams() {
+    // Arrange: one minimal data key, no check keys, no top hashes/blocks.
+    SecureRandom rng = new SecureRandom();
+    byte[] routingKey = new byte[NodeCHK.KEY_LENGTH];
+    rng.nextBytes(routingKey);
+    byte[] splitKey = new byte[ClientCHK.CRYPTO_KEY_LENGTH];
+    rng.nextBytes(splitKey);
+    ClientCHK dataKey =
+        new ClientCHK(routingKey, splitKey, false, Key.ALGO_AES_CTR_256_SHA256, (short) -1);
+    Metadata meta = getMetadata(dataKey, splitKey);
+
+    // Assert: version remains 1 and crypto parameters are preserved.
+    assertEquals(1, meta.getParsedVersion(), "parsedVersion should be 1");
+    assertEquals(
+        Key.ALGO_AES_CTR_256_SHA256,
+        meta.getSplitfileCryptoAlgorithm(),
+        "Splitfile crypto algorithm must be preserved");
+    assertArrayEquals(
+        splitKey, meta.getSplitfileCryptoKey(), "Splitfile single crypto key must be preserved");
+  }
+
+  private static @NotNull Metadata getMetadata(ClientCHK dataKey, byte[] splitKey) {
+    ClientCHK[] dataURIs = new ClientCHK[] {dataKey};
+    ClientCHK[] checkURIs = new ClientCHK[] {};
+
+    // Act: build splitfile with compat >= 1255 (requires metadata v1) but no top section.
+    return new Metadata(
+        SplitfileAlgorithm.NONREDUNDANT,
+        dataURIs,
+        checkURIs,
+        /* segmentSize= */ 1,
+        /* checkSegmentSize= */ 0,
+        /* deductBlocksFromSegments= */ 0,
+        /* cm= */ null,
+        /* dataLength= */ 1024L,
+        /* archiveType= */ null,
+        /* compressionCodec= */ null,
+        /* decompressedLength= */ 0L,
+        /* isMetadata= */ false,
+        /* hashes= */ null,
+        /* hashThisLayerOnly= */ null,
+        /* origDataSize= */ 0L,
+        /* origCompressedDataSize= */ 0L,
+        /* requiredBlocks= */ 0,
+        /* totalBlocks= */ 0,
+        /* topDontCompress= */ false,
+        /* topCompatibilityMode= */ CompatibilityMode.COMPAT_1255,
+        /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
+        /* splitfileCryptoKey= */ splitKey,
+        /* specifySplitfileKey= */ true,
+        /* crossSegmentBlocks= */ 0);
   }
 }

@@ -1363,7 +1363,11 @@ public class Metadata implements Serializable {
     this.topBlocksTotal = tli2.blocksTotal;
     this.topDontCompress = tli2.dontCompress;
     this.topCompatibilityMode = tli2.compatMode;
-    parsedVersion = tli2.parsedVersion;
+    // Preserve the higher version requirement: initSplitfileCore() may have
+    // promoted parsedVersion to 1 based on compatibility mode even when the
+    // top-layer has no hashes/blocks (tli2.parsedVersion == 0). Do not
+    // downgrade, or we would omit splitfile crypto parameters on serialization.
+    parsedVersion = (short) Math.max(parsedVersion, tli2.parsedVersion);
     buildSplitfileParamsBytes(
         segmentSize,
         checkSegmentSize,
