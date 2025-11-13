@@ -118,15 +118,15 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     // You must insert with no content type, and be less than the size limit, and less than the
     // block size after compression!
     // If it doesn't fit, we'll still tell the user, but the message may not be easily readable.
-    ctxRevocation.allowSplitfiles = false;
-    ctxRevocation.maxArchiveLevels = 0;
-    ctxRevocation.followRedirects = false;
+    ctxRevocation.setAllowSplitfiles(false);
+    ctxRevocation.setMaxArchiveLevels(0);
+    ctxRevocation.setFollowRedirects(false);
     // big enough ?
-    ctxRevocation.maxOutputLength = NodeUpdateManager.MAX_REVOCATION_KEY_LENGTH;
-    ctxRevocation.maxTempLength = NodeUpdateManager.MAX_REVOCATION_KEY_TEMP_LENGTH;
-    ctxRevocation.maxSplitfileBlockRetries =
-        -1; // if we find content, try forever to get it; not used because of the above size limits.
-    ctxRevocation.maxNonSplitfileRetries = 0; // but return quickly normally
+    ctxRevocation.setMaxOutputLength(NodeUpdateManager.MAX_REVOCATION_KEY_LENGTH);
+    ctxRevocation.setMaxTempLength(NodeUpdateManager.MAX_REVOCATION_KEY_TEMP_LENGTH);
+    // if we find content, try forever to get it; not used because of the above size limits.
+    ctxRevocation.setMaxSplitfileBlockRetries(-1);
+    ctxRevocation.setMaxNonSplitfileRetries(0); // but return quickly normally
   }
 
   /**

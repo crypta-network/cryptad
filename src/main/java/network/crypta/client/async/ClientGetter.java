@@ -307,7 +307,7 @@ public class ClientGetter extends BaseClientGetter
     this.uri = uri;
     this.ctx = ctx;
     this.finished = false;
-    this.actx = new ArchiveContext(ctx.maxTempLength, ctx.maxArchiveLevels);
+    this.actx = new ArchiveContext(ctx.getMaxTempLength(), ctx.getMaxArchiveLevels());
     this.binaryBlobWriter = binaryBlobWriter;
     this.dontFinalizeBlobWriter = dontFinalizeBlobWriter;
     this.initialMetadata = initialMetadata;
@@ -397,10 +397,10 @@ public class ClientGetter extends BaseClientGetter
                 ctx,
                 actx,
                 new SingleFileFetcher.CreationPolicy(
-                    ctx.maxNonSplitfileRetries, 0, false, true, true, initialMetadata != null),
+                    ctx.getMaxNonSplitfileRetries(), 0, false, true, true, initialMetadata != null),
                 new SingleFileFetcher.CreationRuntime(context, realTimeFlag, -1));
       }
-      String overrideMIME = ctx.overrideMIME;
+      String overrideMIME = ctx.getOverrideMIME();
       if (overrideMIME != null) expectedMIME = overrideMIME;
     }
     return true;
@@ -480,7 +480,7 @@ public class ClientGetter extends BaseClientGetter
   }
 
   private boolean ensureCompatibleExtensionOrForwardError(String mimeType, ClientContext context) {
-    if (forceCompatibleExtension != null && ctx.filterData) {
+    if (forceCompatibleExtension != null && ctx.getFilterData()) {
       if (mimeType == null) {
         onFailure(
             new FetchException(
@@ -513,11 +513,11 @@ public class ClientGetter extends BaseClientGetter
     synchronized (this) {
       if (expectedSize > 0) maxLen = expectedSize;
     }
-    if (ctx.filterData && maxLen >= 0) {
+    if (ctx.getFilterData() && maxLen >= 0) {
       maxLen = expectedSize * 2 + 1024;
     }
     if (maxLen == -1) {
-      maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
+      maxLen = Math.max(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
     }
     return maxLen;
   }
@@ -582,7 +582,7 @@ public class ClientGetter extends BaseClientGetter
 
   private String computeMime(ClientMetadata clientMetadata) {
     String mimeType = (clientMetadata == null) ? null : clientMetadata.getMIMEType();
-    if (ctx.overrideMIME != null) mimeType = ctx.overrideMIME;
+    if (ctx.getOverrideMIME() != null) mimeType = ctx.getOverrideMIME();
     return mimeType;
   }
 
@@ -606,10 +606,10 @@ public class ClientGetter extends BaseClientGetter
               new ClientGetWorkerThread.Options(
                   computeMime(initialMetadata),
                   ctx.getSchemeHostAndPort(),
-                  ctx.filterData,
-                  ctx.charset,
-                  ctx.prefetchHook,
-                  ctx.tagReplacer,
+                  ctx.getFilterData(),
+                  ctx.getCharset(),
+                  ctx.getPrefetchHook(),
+                  ctx.getTagReplacer(),
                   context.linkFilterExceptionProvider));
       worker.start();
       try {
@@ -648,7 +648,7 @@ public class ClientGetter extends BaseClientGetter
       case UnsafeContentTypeException e -> {
         LOG.info("Error filtering content: will not validate", e);
         return e.createFetchException(
-            ctx.overrideMIME != null ? ctx.overrideMIME : expectedMIME, expectedSize);
+            ctx.getOverrideMIME() != null ? ctx.getOverrideMIME() : expectedMIME, expectedSize);
       }
       case URISyntaxException e -> {
         LOG.error("URISyntaxException converting a Crypta URI to a URI!: {}", e, e);
@@ -687,7 +687,7 @@ public class ClientGetter extends BaseClientGetter
     if (!finalizeBlobWriterOrForwardError(context)) return;
     File completionFile = getCompletionFile();
     assert (completionFile != null);
-    assert (!ctx.filterData);
+    assert (!ctx.getFilterData());
     LOG.info("Succeeding via truncation from {} to {}", tempFile, completionFile);
     try {
       FetchResult result =
@@ -730,8 +730,8 @@ public class ClientGetter extends BaseClientGetter
                   ctx.getSchemeHostAndPort(),
                   false,
                   null,
-                  ctx.prefetchHook,
-                  ctx.tagReplacer,
+                  ctx.getPrefetchHook(),
+                  ctx.getTagReplacer(),
                   context.linkFilterExceptionProvider));
       worker.start();
       if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
@@ -802,9 +802,9 @@ public class ClientGetter extends BaseClientGetter
   }
 
   private FetchException adjustTooBigForFilter(FetchException e) {
-    if (e.mode == FetchExceptionMode.TOO_BIG && ctx.filterData && e.finalizedSize()) {
+    if (e.mode == FetchExceptionMode.TOO_BIG && ctx.getFilterData() && e.finalizedSize()) {
       String mime = e.getExpectedMimeType();
-      if (ctx.overrideMIME != null) mime = ctx.overrideMIME;
+      if (ctx.getOverrideMIME() != null) mime = ctx.getOverrideMIME();
       if (mime != null && !mime.isEmpty()) {
         UnsafeContentTypeException unsafe = ContentFilter.checkMIMEType(mime);
         if (unsafe != null) return unsafe.recreateFetchException(e, mime);
@@ -821,7 +821,7 @@ public class ClientGetter extends BaseClientGetter
       ar = archiveRestarts;
     }
     if (LOG.isDebugEnabled()) LOG.debug("Archive restart on {} ar={}", this, ar);
-    if (ar > ctx.maxArchiveRestarts)
+    if (ar > ctx.getMaxArchiveRestarts())
       return new FetchException(FetchExceptionMode.TOO_MANY_ARCHIVE_RESTARTS);
     try {
       start(context);
@@ -937,7 +937,7 @@ public class ClientGetter extends BaseClientGetter
               finalized);
     }
     // Already off-thread.
-    ctx.eventProducer.produceEvent(e, context);
+    ctx.getEventProducer().produceEvent(e, context);
   }
 
   /**
@@ -951,7 +951,7 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.eventProducer.produceEvent(new SendingToNetworkEvent(), context1);
+              ctx.getEventProducer().produceEvent(new SendingToNetworkEvent(), context1);
               return false;
             });
   }
@@ -1028,7 +1028,7 @@ public class ClientGetter extends BaseClientGetter
    */
   public boolean restart(FreenetURI redirect, boolean filterData, ClientContext context)
       throws FetchException {
-    ctx.filterData = filterData;
+    ctx.setFilterData(filterData);
     return start(true, redirect, context);
   }
 
@@ -1121,12 +1121,12 @@ public class ClientGetter extends BaseClientGetter
     if (finalizedMetadata) return;
     String mime = null;
     if (!clientMetadata.isTrivial()) mime = clientMetadata.getMIMEType();
-    if (ctx.overrideMIME != null) mime = ctx.overrideMIME;
+    if (ctx.getOverrideMIME() != null) mime = ctx.getOverrideMIME();
     if (mime == null || mime.isEmpty()) return;
     synchronized (this) {
       expectedMIME = mime;
     }
-    if (ctx.filterData) {
+    if (ctx.getFilterData()) {
       UnsafeContentTypeException e = ContentFilter.checkMIMEType(mime);
       if (e != null) {
         throw e.createFetchException(mime, expectedSize);
@@ -1144,7 +1144,7 @@ public class ClientGetter extends BaseClientGetter
                 synchronized (this) {
                   mime = expectedMIME;
                 }
-                ctx.eventProducer.produceEvent(new ExpectedMIMEEvent(mime), context);
+                ctx.getEventProducer().produceEvent(new ExpectedMIMEEvent(mime), context);
                 return false;
               }
             });
@@ -1169,7 +1169,7 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.eventProducer.produceEvent(new ExpectedFileSizeEvent(size), context1);
+              ctx.getEventProducer().produceEvent(new ExpectedFileSizeEvent(size), context1);
               return false;
             });
   }
@@ -1309,10 +1309,15 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.eventProducer.produceEvent(
-                  new SplitfileCompatibilityModeEvent(
-                      min, max, customSplitfileKey, dontCompress, bottomLayer || definitiveAnyway),
-                  context1);
+              ctx.getEventProducer()
+                  .produceEvent(
+                      new SplitfileCompatibilityModeEvent(
+                          min,
+                          max,
+                          customSplitfileKey,
+                          dontCompress,
+                          bottomLayer || definitiveAnyway),
+                      context1);
               return false;
             });
   }
@@ -1333,7 +1338,7 @@ public class ClientGetter extends BaseClientGetter
         .getJobRunner(persistent())
         .queueNormalOrDrop(
             context1 -> {
-              ctx.eventProducer.produceEvent(new ExpectedHashesEvent(h), context1);
+              ctx.getEventProducer().produceEvent(new ExpectedHashesEvent(h), context1);
               return false;
             });
   }
@@ -1345,7 +1350,7 @@ public class ClientGetter extends BaseClientGetter
     }
     if (wakeupTime != Long.MAX_VALUE) {
       // Already off-thread.
-      ctx.eventProducer.produceEvent(new EnterFiniteCooldownEvent(wakeupTime), context);
+      ctx.getEventProducer().produceEvent(new EnterFiniteCooldownEvent(wakeupTime), context);
     }
   }
 

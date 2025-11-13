@@ -1406,9 +1406,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
             .getFetchContext();
     FetchContext tempContext =
         new FetchContext(seedContext, FetchContext.IDENTICAL_MASK, true, blocks);
-    tempContext.maxOutputLength = NodeUpdateManager.MAX_REVOCATION_KEY_LENGTH;
-    tempContext.maxTempLength = NodeUpdateManager.MAX_REVOCATION_KEY_TEMP_LENGTH;
-    tempContext.localRequestOnly = true;
+    tempContext.setMaxOutputLength(NodeUpdateManager.MAX_REVOCATION_KEY_LENGTH);
+    tempContext.setMaxTempLength(NodeUpdateManager.MAX_REVOCATION_KEY_TEMP_LENGTH);
+    tempContext.setLocalRequestOnly(true);
 
     final ArrayBucket cleanedBlob = new ArrayBucket();
     ClientGetCallback myCallback = buildRevocationCallback(temp, source, fromDisk, cleanedBlob);
@@ -2014,7 +2014,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             .getFetchContext();
     FetchContext tempContext =
         new FetchContext(seedContext, FetchContext.IDENTICAL_MASK, true, blocks);
-    tempContext.localRequestOnly = true;
+    tempContext.setLocalRequestOnly(true);
 
     final ArrayBucket cleanedBlob = new ArrayBucket();
 

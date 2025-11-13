@@ -294,8 +294,8 @@ class SingleFileFetcherTest {
     // Uri without metastrings
     FreenetURI uri = new FreenetURI("CHK", null);
     FetchContext ctx = newCtx(10_000, true /* ignoreTooMany */);
-    ctx.allowSplitfiles = false;
-    ctx.followRedirects = false;
+    ctx.setAllowSplitfiles(false);
+    ctx.setFollowRedirects(false);
 
     ClientKey mockKey = mock(ClientKey.class);
     try (MockedStatic<BaseClientKey> bck = Mockito.mockStatic(BaseClientKey.class)) {

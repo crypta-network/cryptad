@@ -28,20 +28,20 @@ public class FetchContext implements Serializable {
   public static final int SET_RETURN_ARCHIVES = 4;
 
   /** Maximum length of the final returned data */
-  public long maxOutputLength;
+  private long maxOutputLength;
 
   /**
    * Maximum length of data fetched in order to obtain the final data - metadata, containers, etc.
    */
-  public long maxTempLength;
+  private long maxTempLength;
 
   /**
    * 1 = only fetch a single block. 2 = allow one redirect, e.g. metadata block pointing to actual
    * data block. Etc. 0 may work sometimes but is not recommended.
    */
-  public int maxRecursionLevel;
+  private int maxRecursionLevel;
 
-  public int maxArchiveRestarts;
+  private int maxArchiveRestarts;
 
   /**
    * Maximum number of manifest lookups during a request. A manifest lookup is looking up a part of
@@ -55,9 +55,9 @@ public class FetchContext implements Serializable {
    *
    * @see ArchiveContext where this is enforced.
    */
-  public int maxArchiveLevels;
+  private int maxArchiveLevels;
 
-  public boolean dontEnterImplicitArchives;
+  private boolean dontEnterImplicitArchives;
 
   /**
    * Maximum number of retries (after the original attempt) for a splitfile block. -1 = try forever
@@ -67,7 +67,7 @@ public class FetchContext implements Serializable {
    * are nonfatal errors and we will retry. Note that after every 3 attempts the request is put on
    * the cooldown queue for 30 minutes, so the cost of retries = -1 is really not that high.
    */
-  public int maxSplitfileBlockRetries;
+  private int maxSplitfileBlockRetries;
 
   /**
    * Maximum number of retries (after the original attempt) for a non-splitfile block. -1 = try
@@ -78,44 +78,44 @@ public class FetchContext implements Serializable {
    * retry. Note that after every 3 attempts the request is put on the cooldown queue for 30
    * minutes, so the cost of retries = -1 is really not that high.
    */
-  public int maxNonSplitfileRetries;
+  private int maxNonSplitfileRetries;
 
   public final int maxUSKRetries;
 
   /** Whether to download splitfiles */
-  public boolean allowSplitfiles;
+  private boolean allowSplitfiles;
 
   /** Whether to follow simple redirects */
-  public boolean followRedirects;
+  private boolean followRedirects;
 
   /** If true, only read from the datastore and caches, do not send the request to the network */
-  public boolean localRequestOnly;
+  private boolean localRequestOnly;
 
   /**
    * If true, send the request to the network without checking whether the data is in the local
    * store
    */
-  public boolean ignoreStore;
+  private boolean ignoreStore;
 
   /** Client events will be published to this, you can subscribe to them */
-  public final transient ClientEventProducer eventProducer;
+  private final transient ClientEventProducer eventProducer;
 
-  public int maxMetadataSize;
+  private int maxMetadataSize;
 
   /** Maximum number of data blocks per segment for splitfiles */
-  public int maxDataBlocksPerSegment;
+  private int maxDataBlocksPerSegment;
 
   /** Maximum number of check blocks per segment for splitfiles. */
-  public int maxCheckBlocksPerSegment;
+  private int maxCheckBlocksPerSegment;
 
   /**
    * If true, and we get a ZIP manifest, and we have no meta-strings left, then return the manifest
    * contents as data.
    */
-  public boolean returnZIPManifests;
+  private boolean returnZIPManifests;
 
   /*If true, filter the fetched data*/
-  public boolean filterData;
+  private boolean filterData;
   public final boolean ignoreTooManyPathComponents;
 
   /** If set, contains a set of blocks to be consulted before checking the datastore. */
@@ -125,13 +125,13 @@ public class FetchContext implements Serializable {
    * If non-null, the request will be stopped if it has a MIME type that is not one of these, or has
    * no MIME type.
    */
-  public transient Set<String> allowedMIMETypes;
+  private transient Set<String> allowedMIMETypes;
 
   /**
    * If not-null, the request, if it requires a charset for filtration, will be assumed to use this
    * charset
    */
-  public String charset;
+  private String charset;
 
   /** Do we have responsibility for removing the ClientEventProducer from the database? */
   private final boolean hasOwnEventProducer;
@@ -140,16 +140,16 @@ public class FetchContext implements Serializable {
    * Can this request write to the client-cache? We don't store all requests in the client cache, in
    * particular big stuff usually isn't written to it, to maximise its effectiveness.
    */
-  public boolean canWriteClientCache;
+  private boolean canWriteClientCache;
 
   /** Prefetch hook for HTML documents. Only really necessary for FProxy's web-pushing */
-  public transient FoundURICallback prefetchHook;
+  private transient FoundURICallback prefetchHook;
 
   /** Callback needed for web-pushing */
-  public transient TagReplacerCallback tagReplacer;
+  private transient TagReplacerCallback tagReplacer;
 
   /** Force the content fiter to use this MIME type */
-  public String overrideMIME;
+  private String overrideMIME;
 
   /**
    * Number of attempts before we go into cooldown. Must be less than or equal to
@@ -165,7 +165,7 @@ public class FetchContext implements Serializable {
   private long cooldownTime;
 
   /** Ignore USK DATEHINTs */
-  public boolean ignoreUSKDatehints;
+  private boolean ignoreUSKDatehints;
 
   /** scheme, host and port: force the prefix of a URI. Example: https://localhost:1234 */
   private final String schemeHostAndPort;
@@ -649,8 +649,8 @@ public class FetchContext implements Serializable {
     this.filterData = dis.readBoolean();
     this.ignoreTooManyPathComponents = dis.readBoolean();
 
-    Set<String> __m = readAllowedMimes(dis);
-    this.allowedMIMETypes = __m.isEmpty() ? null : __m;
+    Set<String> mimes = readAllowedMimes(dis);
+    this.allowedMIMETypes = mimes.isEmpty() ? null : mimes;
 
     String s = dis.readUTF();
     this.charset = s.isEmpty() ? null : s;

@@ -259,10 +259,10 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     this.uri = persistent ? new FreenetURI(origURI) : origURI;
     this.actx = actx;
     this.recursionLevel = recursionLevel + 1;
-    if (recursionLevel > ctx.maxRecursionLevel)
+    if (recursionLevel > ctx.getMaxRecursionLevel())
       throw new FetchException(
           FetchExceptionMode.TOO_MUCH_RECURSION,
-          "Too much recursion: " + recursionLevel + " > " + ctx.maxRecursionLevel);
+          "Too much recursion: " + recursionLevel + " > " + ctx.getMaxRecursionLevel());
     this.decompressors = new LinkedList<>();
     this.topDontCompress = topDontCompress;
     this.topCompatibilityMode = topCompatibilityMode;
@@ -397,7 +397,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       data =
           block.decode(
               context.getBucketFactory(parent.persistent()),
-              (int) (Math.min(ctx.maxOutputLength, Integer.MAX_VALUE)),
+              (int) (Math.min(ctx.getMaxOutputLength(), Integer.MAX_VALUE)),
               false);
     } catch (KeyDecodeException e1) {
       if (LOG.isDebugEnabled()) LOG.debug("Decode failure: {}", e1, e1);
@@ -476,7 +476,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     this.metaStrings = new ArrayList<>();
     this.addedMetaStrings = 0;
     this.recursionLevel = fetcher.recursionLevel + 1;
-    if (recursionLevel > ctx.maxRecursionLevel)
+    if (recursionLevel > ctx.getMaxRecursionLevel())
       throw new FetchException(FetchExceptionMode.TOO_MUCH_RECURSION);
     this.thisKey = fetcher.thisKey;
     // Do not copy the decompressors. Whether the metadata/container is compressed
@@ -547,7 +547,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void handleMetadata(Bucket data, ClientContext context) {
-    if (!ctx.followRedirects) {
+    if (!ctx.getFollowRedirects()) {
       onFailure(
           new FetchException(
               FetchExceptionMode.INVALID_METADATA,
@@ -562,7 +562,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       data.free();
       return;
     }
-    if (data.size() > ctx.maxMetadataSize) {
+    if (data.size() > ctx.getMaxMetadataSize()) {
       onFailure(new FetchException(FetchExceptionMode.TOO_BIG_METADATA), false, context);
       data.free();
       return;
@@ -654,7 +654,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private boolean isResultTooBig(FetchResult result) {
-    return result.size() > ctx.maxOutputLength;
+    return result.size() > ctx.getMaxOutputLength();
   }
 
   private void failTooBig(FetchResult result, ClientContext context) {
@@ -802,8 +802,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private void handleTopDataAndHashesIfNoMetaStrings(ClientContext context) throws FetchException {
     if (!metaStrings.isEmpty()) return;
     if (metadata.hasTopData()) {
-      if ((metadata.topSize > ctx.maxOutputLength)
-          || (metadata.topCompressedSize > ctx.maxTempLength)) {
+      if ((metadata.topSize > ctx.getMaxOutputLength())
+          || (metadata.topCompressedSize > ctx.getMaxTempLength())) {
         if (metadata.isSimpleRedirect() || metadata.isSplitfile())
           clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
         throw new FetchException(
@@ -929,7 +929,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           "Is archive manifest (type={} codec={})",
           metadata.getArchiveType(),
           metadata.getCompressionCodec());
-    if (metaStrings.isEmpty() && ctx.returnZIPManifests) {
+    if (metaStrings.isEmpty() && ctx.getReturnZIPManifests()) {
       metadata.setSimpleRedirect();
       return false; // continue outer loop
     }
@@ -1163,8 +1163,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (metaStrings.isEmpty()
         && isFinal
         && clientMetadata.getMIMETypeNoParams() != null
-        && ctx.allowedMIMETypes != null
-        && !ctx.allowedMIMETypes.contains(clientMetadata.getMIMETypeNoParams())) {
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(clientMetadata.getMIMETypeNoParams())) {
       throw new FetchException(
           FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
     }
@@ -1285,8 +1285,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (metaStrings.isEmpty()
         && isFinal
         && mimeType != null
-        && ctx.allowedMIMETypes != null
-        && !ctx.allowedMIMETypes.contains(mimeType)) {
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(mimeType)) {
       throw new FetchException(
           FetchExceptionMode.WRONG_MIME_TYPE, -1, false, clientMetadata.getMIMEType());
     }
@@ -1331,7 +1331,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (handleTooManyPathComponentsIfNeeded(context)) return true;
     final long len = metadata.dataLength();
     final long uncompressedLen = metadata.isCompressed() ? metadata.uncompressedDataLength() : len;
-    if ((uncompressedLen > ctx.maxOutputLength) || (len > ctx.maxTempLength)) {
+    if ((uncompressedLen > ctx.getMaxOutputLength()) || (len > ctx.getMaxTempLength())) {
       boolean compressed = metadata.isCompressed();
       throw new FetchException(
           FetchExceptionMode.TOO_BIG,
@@ -1378,8 +1378,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (metaStrings.isEmpty()
         && isFinal
         && mimeType != null
-        && ctx.allowedMIMETypes != null
-        && !ctx.allowedMIMETypes.contains(mimeType)) {
+        && ctx.getAllowedMIMETypes() != null
+        && !ctx.getAllowedMIMETypes().contains(mimeType)) {
       long len = metadata.uncompressedDataLength();
       throw new FetchException(
           FetchExceptionMode.WRONG_MIME_TYPE, len, false, clientMetadata.getMIMEType());
@@ -1599,7 +1599,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       Bucket data;
       // Note: not strictly correct and unnecessary - archive size already checked against
       // ctx.max*Length inside SingleFileFetcher
-      long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
+      long maxLen = Math.min(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
       try {
         data = context.getBucketFactory(persistent).makeBucket(maxLen);
         try (PipedInputStream pipeIn = new PipedInputStream();
@@ -1769,7 +1769,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         ClientContext context) {
       Bucket finalData;
       // Pre-1255 keys lack top block sizes; only minor decompression/alloc perf impact.
-      long maxLen = Math.min(ctx.maxTempLength, ctx.maxOutputLength);
+      long maxLen = Math.min(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
       try {
         finalData = context.getBucketFactory(persistent).makeBucket(maxLen);
         try (PipedInputStream pipeIn = new PipedInputStream();
@@ -1979,8 +1979,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     BaseClientKey key = null;
     if (!policy.hasInitialMetadata) key = BaseClientKey.getBaseKey(uri);
     if ((!uri.hasMetaStrings())
-        && !ctx.allowSplitfiles
-        && !ctx.followRedirects
+        && !ctx.getAllowSplitfiles()
+        && !ctx.getFollowRedirects()
         && key instanceof ClientKey clientKey) {
       return new SimpleSingleFileFetcher(
           SimpleSingleFileFetcher.Cfg.create(

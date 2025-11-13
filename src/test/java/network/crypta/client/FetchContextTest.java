@@ -84,17 +84,17 @@ class FetchContextTest {
   @Test
   void constructor_whenValidValues_setsFieldsAndDefaults() {
     FetchContext ctx = createValidContext();
-    assertEquals(VALID_MAX_OUTPUT, ctx.maxOutputLength);
-    assertEquals(VALID_MAX_TEMP, ctx.maxTempLength);
-    assertEquals(VALID_MAX_RECURSION, ctx.maxRecursionLevel);
-    assertEquals(VALID_MAX_ARCHIVE_RESTARTS, ctx.maxArchiveRestarts);
-    assertEquals(VALID_MAX_ARCHIVE_LEVELS, ctx.maxArchiveLevels);
-    assertTrue(ctx.allowSplitfiles);
-    assertTrue(ctx.followRedirects);
-    assertFalse(ctx.localRequestOnly);
-    assertTrue(ctx.filterData);
-    assertEquals(VALID_MAX_DATABLOCKS, ctx.maxDataBlocksPerSegment);
-    assertEquals(VALID_MAX_CHECKBLOCKS, ctx.maxCheckBlocksPerSegment);
+    assertEquals(VALID_MAX_OUTPUT, ctx.getMaxOutputLength());
+    assertEquals(VALID_MAX_TEMP, ctx.getMaxTempLength());
+    assertEquals(VALID_MAX_RECURSION, ctx.getMaxRecursionLevel());
+    assertEquals(VALID_MAX_ARCHIVE_RESTARTS, ctx.getMaxArchiveRestarts());
+    assertEquals(VALID_MAX_ARCHIVE_LEVELS, ctx.getMaxArchiveLevels());
+    assertTrue(ctx.getAllowSplitfiles());
+    assertTrue(ctx.getFollowRedirects());
+    assertFalse(ctx.getLocalRequestOnly());
+    assertTrue(ctx.getFilterData());
+    assertEquals(VALID_MAX_DATABLOCKS, ctx.getMaxDataBlocksPerSegment());
+    assertEquals(VALID_MAX_CHECKBLOCKS, ctx.getMaxCheckBlocksPerSegment());
     assertEquals(RequestScheduler.COOLDOWN_RETRIES, ctx.getCooldownRetries());
     assertEquals(RequestScheduler.COOLDOWN_PERIOD, ctx.getCooldownTime());
     assertEquals(VALID_SCHEME, ctx.getSchemeHostAndPort());
@@ -412,8 +412,8 @@ class FetchContextTest {
     FetchContext copy = new FetchContext(base, FetchContext.IDENTICAL_MASK);
 
     // Event producer should be a new SimpleEventProducer, not the same mock
-    assertNotSame(base.eventProducer, copy.eventProducer);
-    assertInstanceOf(SimpleEventProducer.class, copy.eventProducer);
+    assertNotSame(base.getEventProducer(), copy.getEventProducer());
+    assertInstanceOf(SimpleEventProducer.class, copy.getEventProducer());
 
     // Configuration should be equal
     assertEquals(base, copy);
@@ -424,7 +424,7 @@ class FetchContextTest {
   void copyConstructor_whenKeepProducerTrue_preservesProducerInstance() {
     FetchContext base = createValidContext();
     FetchContext copy = new FetchContext(base, FetchContext.IDENTICAL_MASK, true, /*blocks*/ null);
-    assertSame(base.eventProducer, copy.eventProducer);
+    assertSame(base.getEventProducer(), copy.getEventProducer());
   }
 
   @Test
@@ -461,33 +461,33 @@ class FetchContextTest {
   void copyConstructor_whenSplitfileDefaultBlockMask_appliesRestrictions() {
     FetchContext base = createValidContext();
     // Ensure base has different values so mask effects are observable
-    base.maxRecursionLevel = 5;
-    base.maxArchiveRestarts = 2;
-    base.dontEnterImplicitArchives = false;
-    base.allowSplitfiles = true;
-    base.followRedirects = true;
-    base.maxDataBlocksPerSegment = 7;
-    base.maxCheckBlocksPerSegment = 8;
-    base.returnZIPManifests = true;
+    base.setMaxRecursionLevel(5);
+    base.setMaxArchiveRestarts(2);
+    base.setDontEnterImplicitArchives(false);
+    base.setAllowSplitfiles(true);
+    base.setFollowRedirects(true);
+    base.setMaxDataBlocksPerSegment(7);
+    base.setMaxCheckBlocksPerSegment(8);
+    base.setReturnZIPManifests(true);
 
     FetchContext masked = new FetchContext(base, FetchContext.SPLITFILE_DEFAULT_BLOCK_MASK);
 
-    assertEquals(1, masked.maxRecursionLevel);
-    assertEquals(0, masked.maxArchiveRestarts);
-    assertTrue(masked.dontEnterImplicitArchives);
-    assertFalse(masked.allowSplitfiles);
-    assertFalse(masked.followRedirects);
-    assertEquals(0, masked.maxDataBlocksPerSegment);
-    assertEquals(0, masked.maxCheckBlocksPerSegment);
-    assertFalse(masked.returnZIPManifests);
+    assertEquals(1, masked.getMaxRecursionLevel());
+    assertEquals(0, masked.getMaxArchiveRestarts());
+    assertTrue(masked.getDontEnterImplicitArchives());
+    assertFalse(masked.getAllowSplitfiles());
+    assertFalse(masked.getFollowRedirects());
+    assertEquals(0, masked.getMaxDataBlocksPerSegment());
+    assertEquals(0, masked.getMaxCheckBlocksPerSegment());
+    assertFalse(masked.getReturnZIPManifests());
   }
 
   @Test
   void copyConstructor_whenSetReturnArchivesMask_setsReturnZIPManifestsTrue() {
     FetchContext base = createValidContext();
-    base.returnZIPManifests = false;
+    base.setReturnZIPManifests(false);
     FetchContext masked = new FetchContext(base, FetchContext.SET_RETURN_ARCHIVES);
-    assertTrue(masked.returnZIPManifests);
+    assertTrue(masked.getReturnZIPManifests());
   }
 
   @Test
@@ -565,7 +565,7 @@ class FetchContextTest {
   @Test
   void writeTo_whenPrefetchHookPresent_expectUnsupportedOperationException() throws IOException {
     FetchContext ctx = createValidContext();
-    ctx.prefetchHook =
+    ctx.setPrefetchHook(
         new FoundURICallback() {
           @Override
           public void foundURI(network.crypta.keys.FreenetURI uri) {
@@ -590,7 +590,7 @@ class FetchContextTest {
             // Intentional no-op: this callback is only present to trigger
             // UnsupportedOperationException in writeTo().
           }
-        };
+        });
     try (var baos = new ByteArrayOutputStream();
         var dos = new DataOutputStream(baos)) {
       assertThrows(UnsupportedOperationException.class, () -> ctx.writeTo(dos));
@@ -600,7 +600,7 @@ class FetchContextTest {
   @Test
   void writeTo_whenTagReplacerPresent_expectUnsupportedOperationException() throws IOException {
     FetchContext ctx = createValidContext();
-    ctx.tagReplacer = (pt, uriProcessor) -> null;
+    ctx.setTagReplacer((pt, uriProcessor) -> null);
     try (var baos = new ByteArrayOutputStream();
         var dos = new DataOutputStream(baos)) {
       assertThrows(UnsupportedOperationException.class, () -> ctx.writeTo(dos));
@@ -611,11 +611,11 @@ class FetchContextTest {
   void writeToAndReadBack_whenNonNullFields_setRoundTripEqual() throws Exception {
     FetchContext ctx = createValidContext();
     // enrich fields to test serialization of sets and toggles
-    ctx.allowedMIMETypes = new HashSet<>(Set.of("text/html", "application/json"));
-    ctx.canWriteClientCache = true;
-    ctx.overrideMIME = "text/html";
-    ctx.ignoreUSKDatehints = true;
-    ctx.charset = "UTF-8";
+    ctx.setAllowedMIMETypes(new HashSet<>(Set.of("text/html", "application/json")));
+    ctx.setCanWriteClientCache(true);
+    ctx.setOverrideMIME("text/html");
+    ctx.setIgnoreUSKDatehints(true);
+    ctx.setCharset("UTF-8");
 
     byte[] bytes;
     try (var baos = new ByteArrayOutputStream();
@@ -638,49 +638,49 @@ class FetchContextTest {
   void readFrom_whenStreamOmitsSchemeHostAndPort_setsNull() throws Exception {
     // Manually serialize the "old" format without the final schemeHostAndPort UTF string.
     FetchContext ctx = createValidContext();
-    ctx.allowedMIMETypes = new HashSet<>(Set.of("text/plain"));
-    ctx.charset = null;
-    ctx.canWriteClientCache = false;
-    ctx.overrideMIME = null;
-    ctx.ignoreUSKDatehints = false;
+    ctx.setAllowedMIMETypes(new HashSet<>(Set.of("text/plain")));
+    ctx.setCharset(null);
+    ctx.setCanWriteClientCache(false);
+    ctx.setOverrideMIME(null);
+    ctx.setIgnoreUSKDatehints(false);
 
     byte[] bytes;
     try (var baos = new ByteArrayOutputStream();
         var dos = new DataOutputStream(baos)) {
       dos.writeLong(0x5ae53b0ce18dd821L); // magic
       dos.writeInt(1); // version
-      dos.writeLong(ctx.maxOutputLength);
-      dos.writeLong(ctx.maxTempLength);
-      dos.writeInt(ctx.maxRecursionLevel);
-      dos.writeInt(ctx.maxArchiveRestarts);
-      dos.writeInt(ctx.maxArchiveLevels);
-      dos.writeBoolean(ctx.dontEnterImplicitArchives);
-      dos.writeInt(ctx.maxSplitfileBlockRetries);
-      dos.writeInt(ctx.maxNonSplitfileRetries);
+      dos.writeLong(ctx.getMaxOutputLength());
+      dos.writeLong(ctx.getMaxTempLength());
+      dos.writeInt(ctx.getMaxRecursionLevel());
+      dos.writeInt(ctx.getMaxArchiveRestarts());
+      dos.writeInt(ctx.getMaxArchiveLevels());
+      dos.writeBoolean(ctx.getDontEnterImplicitArchives());
+      dos.writeInt(ctx.getMaxSplitfileBlockRetries());
+      dos.writeInt(ctx.getMaxNonSplitfileRetries());
       dos.writeInt(ctx.maxUSKRetries);
-      dos.writeBoolean(ctx.allowSplitfiles);
-      dos.writeBoolean(ctx.followRedirects);
-      dos.writeBoolean(ctx.localRequestOnly);
-      dos.writeBoolean(ctx.ignoreStore);
-      dos.writeInt(ctx.maxMetadataSize);
-      dos.writeInt(ctx.maxDataBlocksPerSegment);
-      dos.writeInt(ctx.maxCheckBlocksPerSegment);
-      dos.writeBoolean(ctx.returnZIPManifests);
-      dos.writeBoolean(ctx.filterData);
+      dos.writeBoolean(ctx.getAllowSplitfiles());
+      dos.writeBoolean(ctx.getFollowRedirects());
+      dos.writeBoolean(ctx.getLocalRequestOnly());
+      dos.writeBoolean(ctx.getIgnoreStore());
+      dos.writeInt(ctx.getMaxMetadataSize());
+      dos.writeInt(ctx.getMaxDataBlocksPerSegment());
+      dos.writeInt(ctx.getMaxCheckBlocksPerSegment());
+      dos.writeBoolean(ctx.getReturnZIPManifests());
+      dos.writeBoolean(ctx.getFilterData());
       dos.writeBoolean(ctx.ignoreTooManyPathComponents);
       // allowedMIMETypes (non-null and non-empty)
       dos.writeInt(1);
-      for (String s : ctx.allowedMIMETypes) {
+      for (String s : ctx.getAllowedMIMETypes()) {
         dos.writeUTF(s);
       }
       // charset empty -> null
       dos.writeUTF("");
-      dos.writeBoolean(ctx.canWriteClientCache);
+      dos.writeBoolean(ctx.getCanWriteClientCache());
       // override MIME empty -> null
       dos.writeUTF("");
       dos.writeInt(ctx.getCooldownRetries());
       dos.writeLong(ctx.getCooldownTime());
-      dos.writeBoolean(ctx.ignoreUSKDatehints);
+      dos.writeBoolean(ctx.getIgnoreUSKDatehints());
       // Intentionally stop here to simulate EOF before schemeHostAndPort
       dos.flush();
       bytes = baos.toByteArray();
@@ -701,7 +701,7 @@ class FetchContextTest {
     assertEquals(a, b);
     assertEquals(a.hashCode(), b.hashCode());
 
-    b.followRedirects = !a.followRedirects;
+    b.setFollowRedirects(!a.getFollowRedirects());
     assertNotEquals(a, b);
   }
 
