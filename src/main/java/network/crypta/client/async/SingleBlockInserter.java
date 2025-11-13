@@ -442,7 +442,9 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     if (LOG.isDebugEnabled()) LOG.debug("Failed: {}", String.valueOf(e));
     retries++;
     if ((retries > ctx.maxInsertRetries) && (ctx.maxInsertRetries != -1)) {
-      fail(InsertException.construct(persistent ? errors.clone() : errors), context);
+      fail(
+          InsertException.construct(persistent ? FailureCodeTracker.copyOf(errors) : errors),
+          context);
       return;
     }
     clearWakeupTime(context);

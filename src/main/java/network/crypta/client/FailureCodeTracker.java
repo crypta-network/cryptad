@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * <p>WARNING: Changing non-transient members on classes that are Serializable can result in
  * restarting downloads or losing uploads.
  */
-public class FailureCodeTracker implements Cloneable, Serializable {
+public class FailureCodeTracker implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(FailureCodeTracker.class);
 
   @Serial private static final long serialVersionUID = 1L;
@@ -235,13 +235,19 @@ public class FailureCodeTracker implements Cloneable, Serializable {
   }
 
   /**
-   * Copy the FailureCodeTracker. We implement Cloneable to shut up findbugs, but Object.clone()
-   * won't work because it's a shallow copy, so we implement it with merge().
+   * Create a defensive copy of the supplied tracker.
+   *
+   * <p>The returned instance preserves the {@code insert} mode and all accumulated counts at the
+   * time of copying. Passing {@code null} returns {@code null} to ease optional flows.
+   *
+   * @param source the tracker to copy; may be {@code null}
+   * @return a new tracker with equivalent state, or {@code null} when {@code source} is {@code
+   *     null}
    */
-  @Override
-  public FailureCodeTracker clone() {
-    FailureCodeTracker tracker = new FailureCodeTracker(insert);
-    tracker.merge(this);
+  public static FailureCodeTracker copyOf(FailureCodeTracker source) {
+    if (source == null) return null;
+    FailureCodeTracker tracker = new FailureCodeTracker(source.insert);
+    tracker.merge(source);
     return tracker;
   }
 

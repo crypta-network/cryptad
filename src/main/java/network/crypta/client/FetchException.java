@@ -547,7 +547,7 @@ public class FetchException extends Exception {
     initCause(e);
     this.mode = e.mode;
     this.newURI = e.newURI;
-    this.errorCodes = e.errorCodes == null ? null : e.errorCodes.clone();
+    this.errorCodes = FailureCodeTracker.copyOf(e.errorCodes);
     this.expectedMimeType = e.expectedMimeType;
     this.expectedSize = e.getExpectedSize();
     this.extraMessage = e.extraMessage;
@@ -1015,7 +1015,7 @@ public class FetchException extends Exception {
     if (cause != null) initCause(cause);
     this.mode = base.mode;
     this.newURI = base.newURI;
-    this.errorCodes = base.errorCodes == null ? null : base.errorCodes.clone();
+    this.errorCodes = FailureCodeTracker.copyOf(base.errorCodes);
     this.expectedMimeType = expectedMimeType;
     this.expectedSize = expectedSize;
     this.extraMessage = base.extraMessage;
