@@ -368,7 +368,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
       throws IOException, BinaryBlobFormatException {
     if (!binaryBlob) {
       ClientMetadata meta = cm;
-      if (meta != null) meta = persistent() ? meta.clone() : meta;
+      if (meta != null) meta = persistent() ? ClientMetadata.copyOf(meta) : meta;
       currentState =
           new SingleFileInserter(
               this,

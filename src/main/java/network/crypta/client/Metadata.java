@@ -260,7 +260,7 @@ public class Metadata implements Cloneable, Serializable {
         entry.setValue((Metadata) entry.getValue().clone());
       }
     }
-    if (clientMetadata != null) clientMetadata = clientMetadata.clone();
+    if (clientMetadata != null) clientMetadata = ClientMetadata.copyOf(clientMetadata);
   }
 
   /**
