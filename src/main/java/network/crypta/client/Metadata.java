@@ -37,7 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Metadata parser/writer class. */
-public class Metadata implements Cloneable, Serializable {
+public class Metadata implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(Metadata.class);
 
   @Serial private static final long serialVersionUID = 1L;
@@ -231,36 +231,102 @@ public class Metadata implements Cloneable, Serializable {
   static {
   }
 
-  @Override
-  public Object clone() {
-    try {
-      Metadata meta = (Metadata) super.clone();
-      meta.finishClone(this);
-      return meta;
-    } catch (CloneNotSupportedException e) {
-      throw new Error("Yes it is!");
+  /**
+   * Copy constructor.
+   *
+   * <p>Performs a field-by-field copy equivalent to the previous {@code clone()} behavior:
+   *
+   * <ul>
+   *   <li>Primitives, enums, strings, and references are copied as-is (shallow copy).
+   *   <li>{@code segments}, {@code hashes}, {@code manifestEntries}, and {@code clientMetadata} are
+   *       deep-copied to produce independent structures.
+   *   <li>The persistent {@link #hashCode} and the {@code top*} fields are preserved exactly.
+   * </ul>
+   *
+   * @param orig Source instance to copy.
+   * @throws NullPointerException if {@code orig} is {@code null}.
+   */
+  public Metadata(Metadata orig) {
+    if (orig == null) throw new NullPointerException("orig");
+    // Preserve persistent identity/hash and top-level immutable values.
+    this.hashCode = orig.hashCode;
+    this.topSize = orig.topSize;
+    this.topCompressedSize = orig.topCompressedSize;
+    this.topBlocksRequired = orig.topBlocksRequired;
+    this.topBlocksTotal = orig.topBlocksTotal;
+    this.topDontCompress = orig.topDontCompress;
+    this.topCompatibilityMode = orig.topCompatibilityMode;
+
+    // Shallow copy simple/reference fields (matches prior clone() + shallow semantics).
+    this.resolvedURI = orig.resolvedURI;
+    this.resolvedName = orig.resolvedName;
+    this.documentType = orig.documentType;
+    this.parsedVersion = orig.parsedVersion;
+    this.splitfile = orig.splitfile;
+    this.dbr = orig.dbr;
+    this.noMIME = orig.noMIME;
+    this.compressedMIME = orig.compressedMIME;
+    this.extraMetadata = orig.extraMetadata;
+    this.fullKeys = orig.fullKeys;
+    this.archiveType = orig.archiveType;
+    this.compressionCodec = orig.compressionCodec;
+    this.dataLength = orig.dataLength;
+    this.decompressedLength = orig.decompressedLength;
+    this.mimeType = orig.mimeType;
+    this.compressedMIMEValue = orig.compressedMIMEValue;
+    this.hasCompressedMIMEParams = orig.hasCompressedMIMEParams;
+    this.compressedMIMEParams = orig.compressedMIMEParams;
+    this.simpleRedirectKey = orig.simpleRedirectKey;
+    this.splitfileAlgorithm = orig.splitfileAlgorithm;
+    this.splitfileParams = orig.splitfileParams;
+    this.splitfileBlocks = orig.splitfileBlocks;
+    this.splitfileCheckBlocks = orig.splitfileCheckBlocks;
+    this.splitfileDataKeys = orig.splitfileDataKeys;
+    this.splitfileCheckKeys = orig.splitfileCheckKeys;
+    this.splitfileSingleCryptoAlgorithm = orig.splitfileSingleCryptoAlgorithm;
+    this.splitfileSingleCryptoKey = orig.splitfileSingleCryptoKey;
+    this.specifySplitfileKey = orig.specifySplitfileKey;
+    this.hashThisLayerOnly = orig.hashThisLayerOnly;
+    this.blocksPerSegment = orig.blocksPerSegment;
+    this.checkBlocksPerSegment = orig.checkBlocksPerSegment;
+    this.segmentCount = orig.segmentCount;
+    this.deductBlocksFromSegments = orig.deductBlocksFromSegments;
+    this.crossCheckBlocks = orig.crossCheckBlocks;
+    this.minCompatMode = orig.minCompatMode;
+    this.maxCompatMode = orig.maxCompatMode;
+    this.targetName = orig.targetName;
+
+    // Deep copy selected structures.
+    if (orig.segments != null) {
+      this.segments = new SplitFileSegmentKeys[orig.segments.length];
+      for (int i = 0; i < this.segments.length; i++) {
+        this.segments[i] = new SplitFileSegmentKeys(orig.segments[i]);
+      }
+    }
+    if (orig.hashes != null) {
+      this.hashes = new HashResult[orig.hashes.length];
+      for (int i = 0; i < this.hashes.length; i++) this.hashes[i] = orig.hashes[i].clone();
+    }
+    if (orig.manifestEntries != null) {
+      this.manifestEntries = new HashMap<>(orig.manifestEntries.size());
+      for (Map.Entry<String, Metadata> entry : orig.manifestEntries.entrySet()) {
+        Metadata value = entry.getValue();
+        this.manifestEntries.put(entry.getKey(), value == null ? null : new Metadata(value));
+      }
+    }
+    if (orig.clientMetadata != null) {
+      this.clientMetadata = ClientMetadata.copyOf(orig.clientMetadata);
     }
   }
 
-  /** Deep copy those fields that need to be deep copied after clone() */
-  private void finishClone(Metadata orig) {
-    if (orig.segments != null) {
-      segments = new SplitFileSegmentKeys[orig.segments.length];
-      for (int i = 0; i < segments.length; i++) {
-        segments[i] = new SplitFileSegmentKeys(orig.segments[i]);
-      }
-    }
-    if (hashes != null) {
-      hashes = new HashResult[orig.hashes.length];
-      for (int i = 0; i < hashes.length; i++) hashes[i] = orig.hashes[i].clone();
-    }
-    if (manifestEntries != null) {
-      manifestEntries = new HashMap<>(orig.manifestEntries);
-      for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
-        entry.setValue((Metadata) entry.getValue().clone());
-      }
-    }
-    if (clientMetadata != null) clientMetadata = ClientMetadata.copyOf(clientMetadata);
+  /**
+   * Copy factory for callers preferring a named method over a constructor.
+   *
+   * @param orig Source instance to copy.
+   * @return a deep copy following the same rules as {@link #Metadata(Metadata)}.
+   */
+  public static Metadata copyOf(Metadata orig) {
+    return new Metadata(orig);
   }
 
   /**

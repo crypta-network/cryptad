@@ -1506,7 +1506,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     // which fetches the archive, then calls
     // our Callback, which unpacks the archive, then
     // reschedules us.
-    Metadata newMeta = (Metadata) meta.clone();
+    Metadata newMeta = new Metadata(meta);
     newMeta.setSimpleRedirect();
     final SingleFileFetcher f;
     // Note: arguably archive data is "temporary", but
