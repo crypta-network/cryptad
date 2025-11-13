@@ -17,7 +17,7 @@ import network.crypta.support.io.StorageFormatException;
  * should be final or private, with getters/setters and checking for valid values e.g.
  * maxRecursionLevel >= 1.
  */
-public class FetchContext implements Cloneable, Serializable {
+public class FetchContext implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
   public static final int IDENTICAL_MASK = 0;
@@ -272,6 +272,7 @@ public class FetchContext implements Cloneable, Serializable {
     this.allowedMIMETypes = ctx.allowedMIMETypes;
     this.maxUSKRetries = ctx.maxUSKRetries;
     this.localRequestOnly = ctx.localRequestOnly;
+    this.ignoreStore = ctx.ignoreStore;
     this.maxArchiveLevels = ctx.maxArchiveLevels;
     this.maxMetadataSize = ctx.maxMetadataSize;
     this.maxNonSplitfileRetries = ctx.maxNonSplitfileRetries;
@@ -288,6 +289,7 @@ public class FetchContext implements Cloneable, Serializable {
     this.maxRecursionLevel = ctx.maxRecursionLevel;
     this.returnZIPManifests = ctx.returnZIPManifests;
     this.canWriteClientCache = ctx.canWriteClientCache;
+    this.charset = ctx.charset;
     this.prefetchHook = ctx.prefetchHook;
     this.tagReplacer = ctx.tagReplacer;
     this.overrideMIME = ctx.overrideMIME;
@@ -310,17 +312,6 @@ public class FetchContext implements Cloneable, Serializable {
     } else if (maskID == SET_RETURN_ARCHIVES) {
       this.returnZIPManifests = true;
     } else throw new IllegalArgumentException();
-  }
-
-  /** Make public, but just call parent for a field for field copy */
-  @Override
-  public FetchContext clone() {
-    try {
-      return (FetchContext) super.clone();
-    } catch (CloneNotSupportedException e) {
-      // Impossible
-      throw new Error(e);
-    }
   }
 
   public void setCooldownRetries(int cooldownRetries) {

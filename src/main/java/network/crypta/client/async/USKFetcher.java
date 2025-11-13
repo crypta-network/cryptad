@@ -638,9 +638,9 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     this.backgroundPoll = (options & OPT_POLL_FOREVER) != 0;
     this.keepLastData = (options & OPT_KEEP_LAST_DATA) != 0;
     this.checkStoreOnly = (options & OPT_CHECK_STORE_ONLY) != 0;
-    ctxDBR = ctx.clone();
+    ctxDBR = new FetchContext(ctx, FetchContext.IDENTICAL_MASK, true, null);
     if (ctx.followRedirects) {
-      this.ctx = ctx.clone();
+      this.ctx = new FetchContext(ctx, FetchContext.IDENTICAL_MASK, true, null);
       this.ctx.followRedirects = false;
     } else {
       this.ctx = ctx;
@@ -654,7 +654,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     if (ctx.ignoreStore) {
       ctxNoStore = this.ctx;
     } else {
-      ctxNoStore = this.ctx.clone();
+      ctxNoStore = new FetchContext(this.ctx, FetchContext.IDENTICAL_MASK, true, null);
       ctxNoStore.ignoreStore = true;
     }
     if (checkStoreOnly && LOG.isDebugEnabled()) LOG.debug("Just checking store on {}", this);

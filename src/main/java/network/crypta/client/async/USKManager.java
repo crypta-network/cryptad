@@ -122,7 +122,8 @@ public class USKManager {
     client.setMaxLength(FProxyToadlet.MAX_LENGTH_NO_PROGRESS);
     backgroundFetchContext = client.getFetchContext();
     backgroundFetchContext.followRedirects = false;
-    backgroundFetchContextIgnoreDBR = backgroundFetchContext.clone();
+    backgroundFetchContextIgnoreDBR =
+        new FetchContext(backgroundFetchContext, FetchContext.IDENTICAL_MASK, true, null);
     backgroundFetchContextIgnoreDBR.ignoreUSKDatehints = true;
     realFetchContext = client.getFetchContext();
     // Performance: I'm pretty sure there is no spatial locality in the underlying data, so it's
