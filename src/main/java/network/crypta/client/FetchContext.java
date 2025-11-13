@@ -239,10 +239,7 @@ public class FetchContext implements Serializable {
     this.ignoreUSKDatehints = false;
     hasOwnEventProducer = true;
     this.schemeHostAndPort = schemeHostAndPort;
-    // Parameter currently unused but preserved for API compatibility; reference to avoid warnings.
-    if (bucketFactory != null) {
-      bucketFactory.hashCode();
-    }
+    // Parameter currently unused but preserved for API compatibility.
   }
 
   /**
