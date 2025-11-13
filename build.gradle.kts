@@ -55,6 +55,7 @@ dependencies {
   testImplementation(libs.logbackClassic)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.mockitoJunitJupiter)
+  testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
 

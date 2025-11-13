@@ -37,6 +37,8 @@ slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", version.ref = "mockito" }
+# Mockito inline mock-maker is published up to 5.2.0; keep explicit to available version
+mockitoInline = { group = "org.mockito", name = "mockito-inline", version = "5.2.0" }
 hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
 objenesis = { group = "org.objenesis", name = "objenesis", version.ref = "objenesis" }
 picocli = { group = "info.picocli", name = "picocli", version.ref = "picocli" }
