@@ -77,7 +77,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     node.start(false);
     HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
     InsertContext ictx = client.getInsertContext(true);
-    ictx.localRequestOnly = true;
+    ictx.setLocalRequestOnly(true);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
     assertEquals(uri.getKeyType(), "SSK");
     FetchContext ctx = client.getFetchContext(FILE_SIZE * 2);

@@ -132,17 +132,17 @@ public class SplitFileInserterSender extends SendableInsert {
 
   @Override
   public boolean canWriteClientCache() {
-    return parent.ctx.canWriteClientCache;
+    return parent.ctx.isCanWriteClientCache();
   }
 
   @Override
   public boolean localRequestOnly() {
-    return parent.ctx.localRequestOnly;
+    return parent.ctx.isLocalRequestOnly();
   }
 
   @Override
   public boolean forkOnCacheable() {
-    return parent.ctx.forkOnCacheable;
+    return parent.ctx.isForkOnCacheable();
   }
 
   /**

@@ -50,7 +50,7 @@ class SimpleHealingQueueTest {
             /*extraInsertsSingleBlock*/ 0,
             /*extraInsertsSplitfileHeaderBlock*/ 0,
             /*compat*/ CompatibilityMode.COMPAT_CURRENT);
-    insertCtx.getCHKOnly = true; // make SingleBlockInserter.schedule() complete synchronously
+    insertCtx.setGetCHKOnly(true); // make SingleBlockInserter.schedule() complete synchronously
 
     // Minimal, deterministic ClientContext
     PriorityAwareExecutor directExec = new DirectExecutor();

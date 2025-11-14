@@ -1,5 +1,6 @@
 package network.crypta.client.events;
 
+import java.io.Serializable;
 import network.crypta.client.async.ClientContext;
 
 /**
@@ -28,7 +29,7 @@ import network.crypta.client.async.ClientContext;
  * @see ClientEventListener
  * @author oskar
  */
-public interface ClientEventProducer {
+public interface ClientEventProducer extends Serializable {
 
   /**
    * Sends the event to all currently registered listeners with contextual services.

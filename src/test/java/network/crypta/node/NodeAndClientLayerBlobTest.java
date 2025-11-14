@@ -60,7 +60,7 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
     // First do an ordinary insert.
     InsertContext ictx = client.getInsertContext(true);
-    ictx.localRequestOnly = true;
+    ictx.setLocalRequestOnly(true);
     InsertBlock block = generateBlock(random, false);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
     assertEquals(uri.getKeyType(), "SSK");

@@ -348,7 +348,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       }
       HashResult[] clientHashes = hashes;
       if (persistent) clientHashes = HashResult.copy(hashes);
-      ctx.eventProducer.produceEvent(new ExpectedHashesEvent(clientHashes), context);
+      ctx.getEventProducer().produceEvent(new ExpectedHashesEvent(clientHashes), context);
       origHashes = hashes;
     } else {
       hashes = origHashes; // Inherit so it goes all the way to the top.
@@ -445,8 +445,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
       RandomAccessBucket data,
       ClientContext context) {
     short codecID = bestCodec == null ? -1 : bestCodec.metadataID;
-    ctx.eventProducer.produceEvent(
-        new FinishedCompressionEvent(codecID, origSize, bestCompressedDataSize), context);
+    ctx.getEventProducer()
+        .produceEvent(
+            new FinishedCompressionEvent(codecID, origSize, bestCompressedDataSize), context);
     if (LOG.isDebugEnabled())
       LOG.debug("Compressed {} to {} on {} data = {}", origSize, data.size(), this, data);
   }
@@ -475,7 +476,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
             forSplitfile);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting without metadata: {} for {}", bi, this);
     cb.onTransition(this, bi, context);
-    if (ctx.earlyEncode && bi instanceof SingleBlockInserter inserter && isCHK)
+    if (ctx.isEarlyEncode() && bi instanceof SingleBlockInserter inserter && isCHK)
       inserter.getBlock(context);
     bi.schedule(context);
     if (!isUSK) cb.onBlockSetFinished(this, context);
@@ -540,7 +541,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
             context,
             persistent,
             shouldFreeData,
-            forSplitfile ? ctx.extraInsertsSplitfileHeaderBlock : ctx.extraInsertsSingleBlock,
+            forSplitfile
+                ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                : ctx.getExtraInsertsSingleBlock(),
             cryptoAlgorithm,
             forceCryptoKey);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting with metadata: {} for {}", dataPutter, this);
@@ -565,7 +568,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       ClientContext context)
       throws InsertException {
     MultiPutCompletionCallback mcb =
-        new MultiPutCompletionCallback(cb, parent, token, persistent, false, ctx.earlyEncode);
+        new MultiPutCompletionCallback(cb, parent, token, persistent, false, ctx.isEarlyEncode());
     SingleBlockInserter dataPutter =
         new SingleBlockInserter(
             parent,
@@ -584,7 +587,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
             context,
             persistent,
             shouldFreeData,
-            forSplitfile ? ctx.extraInsertsSplitfileHeaderBlock : ctx.extraInsertsSingleBlock,
+            forSplitfile
+                ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                : ctx.getExtraInsertsSingleBlock(),
             cryptoAlgorithm,
             forceCryptoKey);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting data: {} for {}", dataPutter, this);
@@ -620,7 +625,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     LOG.trace("{} : data {} meta {}", mcb, dataPutter, metaPutter);
     mcb.arm(context);
     dataPutter.schedule(context);
-    if (ctx.earlyEncode && metaPutter instanceof SingleBlockInserter inserter)
+    if (ctx.isEarlyEncode() && metaPutter instanceof SingleBlockInserter inserter)
       inserter.getBlock(context);
     metaPutter.schedule(context);
     if (!isUSK) cb.onBlockSetFinished(this, context);
@@ -662,7 +667,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               .splitfileCryptoKey(forceCryptoKey)
               .hashThisLayerOnly(hashThisLayerOnly)
               .hashes(hashes)
-              .topDontCompress((ctx.dontCompress || this.dontCompress))
+              .topDontCompress((ctx.isDontCompress() || this.dontCompress))
               .topRequiredBlocks(parent.getMinSuccessFetchBlocks())
               .topTotalBlocks(parent.getTotalBlocks())
               .origDataSize(origDataLength)
@@ -701,7 +706,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               .splitfileCryptoKey(forceCryptoKey)
               .hashThisLayerOnly(hashThisLayerOnly)
               .hashes(hashes)
-              .topDontCompress((ctx.dontCompress || this.dontCompress))
+              .topDontCompress((ctx.isDontCompress() || this.dontCompress))
               .topRequiredBlocks(parent.getMinSuccessFetchBlocks())
               .topTotalBlocks(parent.getTotalBlocks())
               .origDataSize(origDataLength)
@@ -744,7 +749,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
     BlockSizes sizes = determineBlockSizes(block.desiredURI.getKeyType().toUpperCase());
     long origSize = origData.size();
     long wantHashes = computeWantedHashes(origData.size());
-    boolean tryCompress = (origSize > sizes.blockSize) && !(ctx.dontCompress || this.dontCompress);
+    boolean tryCompress =
+        (origSize > sizes.blockSize) && !(ctx.isDontCompress() || this.dontCompress);
     if (tryCompress) {
       InsertCompressor.start(
           context,
@@ -849,7 +855,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (allowTopBlocks) {
       req = parent.getMinSuccessFetchBlocks();
       total = parent.totalBlocks;
-      topDontCompress = (ctx.dontCompress || this.dontCompress);
+      topDontCompress = (ctx.isDontCompress() || this.dontCompress);
       topCompatibilityMode = ctx.getCompatibilityMode();
       data = origDataLength;
       compressed = origCompressedDataLength;
@@ -937,7 +943,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
             freeData,
             persistent,
             realTimeFlag,
-            forSplitfile ? ctx.extraInsertsSplitfileHeaderBlock : ctx.extraInsertsSingleBlock,
+            forSplitfile
+                ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                : ctx.getExtraInsertsSingleBlock(),
             cryptoAlgorithm,
             forceCryptoKey);
       } catch (MalformedURLException e) {
@@ -962,7 +970,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
               context,
               persistent,
               freeData,
-              forSplitfile ? ctx.extraInsertsSplitfileHeaderBlock : ctx.extraInsertsSingleBlock,
+              forSplitfile
+                  ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                  : ctx.getExtraInsertsSingleBlock(),
               cryptoAlgorithm,
               forceCryptoKey);
       // pass uri to SBI
@@ -1369,7 +1379,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               metadataPutter,
               metadataBucket,
               metadataBucket.size());
-        if (!(ctx.earlyEncode || splitInsertSuccess)) return;
+        if (!(ctx.isEarlyEncode() || splitInsertSuccess)) return;
       }
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -1607,7 +1617,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       if (sfi != null) sfi.onResume(context);
       if (metadataPutter != null) metadataPutter.onResume(context);
       if (sfi != null) sfi.schedule(context);
-      if (metadataPutter != null && (ctx.earlyEncode || sfi == null || metaInsertStarted))
+      if (metadataPutter != null && (ctx.isEarlyEncode() || sfi == null || metaInsertStarted))
         metadataPutter.schedule(context);
     }
 
@@ -1682,8 +1692,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
   public void onStartCompression(COMPRESSOR_TYPE ctype, ClientContext context) {
     if (parent == cb) {
       if (ctx == null) throw new NullPointerException();
-      if (ctx.eventProducer == null) throw new NullPointerException();
-      ctx.eventProducer.produceEvent(new StartedCompressionEvent(ctype), context);
+      if (ctx.getEventProducer() == null) throw new NullPointerException();
+      ctx.getEventProducer().produceEvent(new StartedCompressionEvent(ctype), context);
     }
   }
 

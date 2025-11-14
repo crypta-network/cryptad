@@ -352,7 +352,7 @@ public class SplitFileInserterStorage {
     this.topDontCompress = topDontCompress;
     this.origDataSize = origDataSize;
     this.origCompressedDataSize = origCompressedDataSize;
-    this.maxRetries = ctx.maxInsertRetries;
+    this.maxRetries = ctx.getMaxInsertRetries();
     this.errors = new FailureCodeTracker(true);
     this.ticker = ticker;
     this.random = random;
@@ -399,7 +399,7 @@ public class SplitFileInserterStorage {
     int checkTotalDataBlocks = 0;
     underlyingOffsetDataSegments = new long[segs];
     keyLength = SplitFileInserterSegmentStorage.getKeyLength(this);
-    this.consecutiveRNFsCountAsSuccess = ctx.consecutiveRNFsCountAsSuccess;
+    this.consecutiveRNFsCountAsSuccess = ctx.getConsecutiveRNFsCountAsSuccess();
     segments =
         makeSegments(
             segmentSize,
@@ -712,7 +712,7 @@ public class SplitFileInserterStorage {
             : enforceMaxSegmentDataBlocks(
                 selectBaseSegments(totalDataBlocks, cmode),
                 totalDataBlocks,
-                ctx.splitfileSegmentDataBlocks);
+                ctx.getSplitfileSegmentDataBlocks());
     int computedSegmentSize =
         (cmode == CompatibilityMode.COMPAT_1250_EXACT) ? 128 : (totalDataBlocks + segs - 1) / segs;
     int deduct = calculateDeductBlocks(totalDataBlocks, computedSegmentSize, segs, cmode);

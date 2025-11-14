@@ -276,7 +276,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
           isMetadata,
           compressionCodec,
           sourceLength,
-          ctx.compressorDescriptor,
+          ctx.getCompressorDescriptor(),
           cryptoAlgorithm,
           cryptoKey);
     } catch (KeyEncodeException | InvalidCompressionCodecException e) {
@@ -441,7 +441,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     if (handleRouteNotFound(e, keyNum, context)) return;
     if (LOG.isDebugEnabled()) LOG.debug("Failed: {}", String.valueOf(e));
     retries++;
-    if ((retries > ctx.maxInsertRetries) && (ctx.maxInsertRetries != -1)) {
+    if ((retries > ctx.getMaxInsertRetries()) && (ctx.getMaxInsertRetries() != -1)) {
       fail(
           InsertException.construct(persistent ? FailureCodeTracker.copyOf(errors) : errors),
           context);
@@ -479,8 +479,9 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
         || e.code == LowLevelPutException.ROUTE_REALLY_NOT_FOUND) {
       consecutiveRNFs++;
       if (LOG.isDebugEnabled())
-        LOG.debug("Consecutive RNFs: {} / {}", consecutiveRNFs, ctx.consecutiveRNFsCountAsSuccess);
-      if (consecutiveRNFs >= ctx.consecutiveRNFsCountAsSuccess) {
+        LOG.debug(
+            "Consecutive RNFs: {} / {}", consecutiveRNFs, ctx.getConsecutiveRNFsCountAsSuccess());
+      if (consecutiveRNFs >= ctx.getConsecutiveRNFsCountAsSuccess()) {
         if (LOG.isDebugEnabled())
           LOG.debug("Consecutive RNFs: {} - counting as success", consecutiveRNFs);
         onSuccess(keyNum, getKeyNoEncode(), context);
@@ -540,10 +541,10 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
         return;
       }
     }
-    if (ctx.getCHKOnly || ctx.earlyEncode) {
+    if (ctx.isGetCHKOnly() || ctx.isEarlyEncode()) {
       tryEncode(context);
     }
-    if (ctx.getCHKOnly) {
+    if (ctx.isGetCHKOnly()) {
       onSuccess(null, getKeyNoEncode(), context);
     } else {
       getScheduler(context).registerInsert(this, persistent);
@@ -628,7 +629,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * while holding this instance's monitor.
    */
   private SuccessDecision decideOnSuccessLocked(ClientKey key) {
-    if (extraInserts > 0 && !ctx.getCHKOnly && ++completedInserts <= extraInserts) {
+    if (extraInserts > 0 && !ctx.isGetCHKOnly() && ++completedInserts <= extraInserts) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "Completed inserts {} of extra inserts {} on {}", completedInserts, extraInserts, this);
@@ -845,7 +846,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   @Override
   public SendableRequestSender getSender(ClientContext context) {
     String compress;
-    compress = ctx.compressorDescriptor;
+    compress = ctx.getCompressorDescriptor();
     return new MySendableRequestSender(compress, this);
   }
 
@@ -1035,17 +1036,17 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
 
   @Override
   public boolean canWriteClientCache() {
-    return ctx.canWriteClientCache;
+    return ctx.isCanWriteClientCache();
   }
 
   @Override
   public boolean localRequestOnly() {
-    return ctx.localRequestOnly;
+    return ctx.isLocalRequestOnly();
   }
 
   @Override
   public boolean forkOnCacheable() {
-    return ctx.forkOnCacheable;
+    return ctx.isForkOnCacheable();
   }
 
   @Override

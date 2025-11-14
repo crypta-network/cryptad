@@ -1561,7 +1561,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
               this.minSuccessFetchBlocks,
               this.blockSetFinalized);
     }
-    ctx.eventProducer.produceEvent(e, context);
+    ctx.getEventProducer().produceEvent(e, context);
   }
 
   @Override

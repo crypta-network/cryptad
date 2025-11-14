@@ -446,12 +446,12 @@ public class ClientPut extends ClientPutBase {
         getDataSize(),
         clientToken,
         started,
-        ctx.maxInsertRetries,
+        ctx.getMaxInsertRetries(),
         targetFilename,
         binaryBlob,
         this.ctx.getCompatibilityMode(),
-        this.ctx.dontCompress,
-        this.ctx.compressorDescriptor,
+        this.ctx.isDontCompress(),
+        this.ctx.getCompressorDescriptor(),
         isRealTime(),
         putter != null ? putter.getSplitfileCryptoKey() : null);
   }
@@ -574,7 +574,7 @@ public class ClientPut extends ClientPutBase {
 
   /** Probably not meaningful for ClientPutDir's */
   public COMPRESS_STATE isCompressing() {
-    if (ctx.dontCompress) return COMPRESS_STATE.WORKING;
+    if (ctx.isDontCompress()) return COMPRESS_STATE.WORKING;
     synchronized (this) {
       if (!compressed) return COMPRESS_STATE.WAITING; // An insert starts at compressing
       // The progress message persists... so we need to know whether we have

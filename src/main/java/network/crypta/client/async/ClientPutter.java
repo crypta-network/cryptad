@@ -452,7 +452,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
             || super.fatallyFailedBlocks > 0
             || super.successfulBlocks < super.totalBlocks)
         && !uri.isUSK()
-        && !ctx.getCHKOnly)
+        && !ctx.isGetCHKOnly())
       // USK auxiliary inserts are allowed to fail.
       // If only generating the key, splitfile may not have reported the blocks as inserted.
       LOG.error(
@@ -702,7 +702,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
               this.minSuccessFetchBlocks,
               this.blockSetFinalized);
     }
-    ctx.eventProducer.produceEvent(e, context);
+    ctx.getEventProducer().produceEvent(e, context);
   }
 
   /**
@@ -711,7 +711,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    */
   @Override
   protected void innerToNetwork(ClientContext context) {
-    ctx.eventProducer.produceEvent(new SendingToNetworkEvent(), context);
+    ctx.getEventProducer().produceEvent(new SendingToNetworkEvent(), context);
   }
 
   /** Called when we know exactly how many blocks will be needed. */
