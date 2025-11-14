@@ -393,9 +393,9 @@ class ClientRequestSelectorTest {
     network.crypta.client.FetchContext fctx =
         HighLevelSimpleClientImpl.makeDefaultFetchContext(
             1024, 1024, null, new SimpleEventProducer());
-    fctx.localRequestOnly = true;
-    fctx.ignoreStore = true;
-    fctx.canWriteClientCache = true;
+    fctx.setLocalRequestOnly(true);
+    fctx.setIgnoreStore(true);
+    fctx.setCanWriteClientCache(true);
     when(get.getContext()).thenReturn(fctx);
     when(get.realTimeFlag()).thenReturn(true);
     when(get.persistent()).thenReturn(false);

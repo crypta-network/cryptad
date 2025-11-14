@@ -139,7 +139,6 @@ class PluginJarUpdaterTest {
         false,
         1,
         1,
-        null,
         ep,
         false,
         true,

@@ -88,25 +88,27 @@ class HighLevelSimpleClientImplTest {
     FetchContext ctx = client.getFetchContext();
 
     // Assert representative fields and all key constants/defaults
-    assertEquals(1234L, ctx.maxOutputLength, "maxOutputLength should reflect client setting");
-    assertEquals(5678L, ctx.maxTempLength, "maxTempLength should reflect client setting");
-    assertEquals(1024 * 1024, ctx.maxMetadataSize);
-    assertEquals(HighLevelSimpleClientImpl.MAX_RECURSION, ctx.maxRecursionLevel);
-    assertEquals(HighLevelSimpleClientImpl.MAX_ARCHIVE_RESTARTS, ctx.maxArchiveRestarts);
-    assertEquals(HighLevelSimpleClientImpl.MAX_ARCHIVE_LEVELS, ctx.maxArchiveLevels);
-    assertEquals(HighLevelSimpleClientImpl.SPLITFILE_BLOCK_RETRIES, ctx.maxSplitfileBlockRetries);
-    assertEquals(HighLevelSimpleClientImpl.NON_SPLITFILE_RETRIES, ctx.maxNonSplitfileRetries);
-    assertEquals(HighLevelSimpleClientImpl.USK_RETRIES, ctx.maxUSKRetries);
-    assertEquals(HighLevelSimpleClientImpl.FETCH_SPLITFILES, ctx.allowSplitfiles);
-    assertEquals(HighLevelSimpleClientImpl.FOLLOW_REDIRECTS, ctx.followRedirects);
-    assertEquals(HighLevelSimpleClientImpl.LOCAL_REQUESTS_ONLY, ctx.localRequestOnly);
-    assertEquals(HighLevelSimpleClientImpl.FILTER_DATA, ctx.filterData);
+    assertEquals(1234L, ctx.getMaxOutputLength(), "maxOutputLength should reflect client setting");
+    assertEquals(5678L, ctx.getMaxTempLength(), "maxTempLength should reflect client setting");
+    assertEquals(1024 * 1024, ctx.getMaxMetadataSize());
+    assertEquals(HighLevelSimpleClientImpl.MAX_RECURSION, ctx.getMaxRecursionLevel());
+    assertEquals(HighLevelSimpleClientImpl.MAX_ARCHIVE_RESTARTS, ctx.getMaxArchiveRestarts());
+    assertEquals(HighLevelSimpleClientImpl.MAX_ARCHIVE_LEVELS, ctx.getMaxArchiveLevels());
     assertEquals(
-        HighLevelSimpleClientImpl.MAX_SPLITFILE_BLOCKS_PER_SEGMENT, ctx.maxDataBlocksPerSegment);
+        HighLevelSimpleClientImpl.SPLITFILE_BLOCK_RETRIES, ctx.getMaxSplitfileBlockRetries());
+    assertEquals(HighLevelSimpleClientImpl.NON_SPLITFILE_RETRIES, ctx.getMaxNonSplitfileRetries());
+    assertEquals(HighLevelSimpleClientImpl.USK_RETRIES, ctx.maxUSKRetries);
+    assertEquals(HighLevelSimpleClientImpl.FETCH_SPLITFILES, ctx.getAllowSplitfiles());
+    assertEquals(HighLevelSimpleClientImpl.FOLLOW_REDIRECTS, ctx.getFollowRedirects());
+    assertEquals(HighLevelSimpleClientImpl.LOCAL_REQUESTS_ONLY, ctx.getLocalRequestOnly());
+    assertEquals(HighLevelSimpleClientImpl.FILTER_DATA, ctx.getFilterData());
+    assertEquals(
+        HighLevelSimpleClientImpl.MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
+        ctx.getMaxDataBlocksPerSegment());
     assertEquals(
         HighLevelSimpleClientImpl.MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        ctx.maxCheckBlocksPerSegment);
-    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE, ctx.canWriteClientCache);
+        ctx.getMaxCheckBlocksPerSegment());
+    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE, ctx.getCanWriteClientCache());
   }
 
   @Test
@@ -119,8 +121,8 @@ class HighLevelSimpleClientImplTest {
     FetchContext ctx = client.getFetchContext(42L);
 
     // Assert: current implementation ignores the single-arg override
-    assertEquals(100L, ctx.maxOutputLength);
-    assertEquals(200L, ctx.maxTempLength);
+    assertEquals(100L, ctx.getMaxOutputLength());
+    assertEquals(200L, ctx.getMaxTempLength());
   }
 
   @Test
@@ -133,8 +135,8 @@ class HighLevelSimpleClientImplTest {
     FetchContext ctx = client.getFetchContext(8192L, "https://localhost:1234");
 
     // Assert: override applied when >= 0
-    assertEquals(8192L, ctx.maxOutputLength);
-    assertEquals(8192L, ctx.maxTempLength);
+    assertEquals(8192L, ctx.getMaxOutputLength());
+    assertEquals(8192L, ctx.getMaxTempLength());
   }
 
   @Test
@@ -144,11 +146,11 @@ class HighLevelSimpleClientImplTest {
 
     FetchContext ctx = HighLevelSimpleClientImpl.makeDefaultFetchContext(777L, 888L, bf, ep);
 
-    assertEquals(777L, ctx.maxOutputLength);
-    assertEquals(888L, ctx.maxTempLength);
-    assertSame(ep, ctx.eventProducer, "should use the provided event producer instance");
-    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE, ctx.canWriteClientCache);
-    assertEquals(HighLevelSimpleClientImpl.FILTER_DATA, ctx.filterData);
+    assertEquals(777L, ctx.getMaxOutputLength());
+    assertEquals(888L, ctx.getMaxTempLength());
+    assertSame(ep, ctx.getEventProducer(), "should use the provided event producer instance");
+    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE, ctx.getCanWriteClientCache());
+    assertEquals(HighLevelSimpleClientImpl.FILTER_DATA, ctx.getFilterData());
   }
 
   @Test
@@ -158,8 +160,8 @@ class HighLevelSimpleClientImplTest {
     FetchContext ctx = client.getFetchContext(0L, "https://example.org:4040");
 
     // Assert
-    assertEquals(0L, ctx.maxOutputLength);
-    assertEquals(0L, ctx.maxTempLength);
+    assertEquals(0L, ctx.getMaxOutputLength());
+    assertEquals(0L, ctx.getMaxTempLength());
 
     // Verify schemeHostAndPort private field via reflection to avoid adding public API
     Field f = FetchContext.class.getDeclaredField("schemeHostAndPort");
@@ -212,8 +214,8 @@ class HighLevelSimpleClientImplTest {
     assertNotSame(client, copy);
 
     FetchContext ctx = copy.getFetchContext();
-    assertEquals(111L, ctx.maxOutputLength);
-    assertEquals(222L, ctx.maxTempLength);
+    assertEquals(111L, ctx.getMaxOutputLength());
+    assertEquals(222L, ctx.getMaxTempLength());
 
     // RequestClient flags
     assertFalse(((HighLevelSimpleClientImpl) copy).persistent());
@@ -234,8 +236,8 @@ class HighLevelSimpleClientImplTest {
     client.fetch(uri, 4096L, cb, fctx, (short) 5);
 
     // Assert: fctx maxes updated and start called
-    assertEquals(4096L, fctx.maxOutputLength);
-    assertEquals(4096L, fctx.maxTempLength);
+    assertEquals(4096L, fctx.getMaxOutputLength());
+    assertEquals(4096L, fctx.getMaxTempLength());
     ArgumentCaptor<ClientGetter> cap = ArgumentCaptor.forClass(ClientGetter.class);
     verify(clientContext, times(1)).start(cap.capture());
     assertNotNull(cap.getValue());
@@ -282,7 +284,7 @@ class HighLevelSimpleClientImplTest {
     // Verify allowed types propagated into the getter's FetchContext
     ClientGetter getter = getterCap.getValue();
     FetchContext ctx = extractFetchContext(getter);
-    assertSame(allowed, ctx.allowedMIMETypes);
+    assertSame(allowed, ctx.getAllowedMIMETypes());
   }
 
   @Test

@@ -28,7 +28,6 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.support.api.LockableRandomAccessBuffer;
-import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.ResumeFailedException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -503,7 +502,6 @@ class SplitFileFetcherTest {
             false,
             0,
             0,
-            new ArrayBucketFactory(),
             new network.crypta.client.events.SimpleEventProducer(),
             true,
             true,

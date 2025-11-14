@@ -207,7 +207,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         ClientGetState state,
         ClientContext context) {
       Bucket data = null;
-      long maxLen = Math.max(ctx.maxTempLength, ctx.maxOutputLength);
+      long maxLen = Math.max(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
       try {
         data = context.getBucketFactory(false).makeBucket(maxLen);
         try (PipedInputStream pipeIn = new PipedInputStream();
@@ -638,24 +638,24 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     this.backgroundPoll = (options & OPT_POLL_FOREVER) != 0;
     this.keepLastData = (options & OPT_KEEP_LAST_DATA) != 0;
     this.checkStoreOnly = (options & OPT_CHECK_STORE_ONLY) != 0;
-    ctxDBR = ctx.clone();
-    if (ctx.followRedirects) {
-      this.ctx = ctx.clone();
-      this.ctx.followRedirects = false;
+    ctxDBR = new FetchContext(ctx, FetchContext.IDENTICAL_MASK, true, null);
+    if (ctx.getFollowRedirects()) {
+      this.ctx = new FetchContext(ctx, FetchContext.IDENTICAL_MASK, true, null);
+      this.ctx.setFollowRedirects(false);
     } else {
       this.ctx = ctx;
     }
-    ctxDBR.maxOutputLength = 1024;
-    ctxDBR.maxTempLength = 32768;
-    ctxDBR.filterData = false;
-    ctxDBR.maxArchiveLevels = 0;
-    ctxDBR.maxArchiveRestarts = 0;
-    if (checkStoreOnly) ctxDBR.localRequestOnly = true;
-    if (ctx.ignoreStore) {
+    ctxDBR.setMaxOutputLength(1024);
+    ctxDBR.setMaxTempLength(32768);
+    ctxDBR.setFilterData(false);
+    ctxDBR.setMaxArchiveLevels(0);
+    ctxDBR.setMaxArchiveRestarts(0);
+    if (checkStoreOnly) ctxDBR.setLocalRequestOnly(true);
+    if (ctx.getIgnoreStore()) {
       ctxNoStore = this.ctx;
     } else {
-      ctxNoStore = this.ctx.clone();
-      ctxNoStore.ignoreStore = true;
+      ctxNoStore = new FetchContext(this.ctx, FetchContext.IDENTICAL_MASK, true, null);
+      ctxNoStore.setIgnoreStore(true);
     }
     if (checkStoreOnly && LOG.isDebugEnabled()) LOG.debug("Just checking store on {}", this);
     // origUSK is a hint. We *do* want to check the edition given.
@@ -1212,7 +1212,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
   private DBRAttempt[] maybeAddDBRs(ClientContext context) {
     DBRAttempt[] atts = null;
     synchronized (this) {
-      if (!scheduledDBRs && !ctx.ignoreUSKDatehints) {
+      if (!scheduledDBRs && !ctx.getIgnoreUSKDatehints()) {
         atts = addDBRs(context);
       }
       scheduledDBRs = true;

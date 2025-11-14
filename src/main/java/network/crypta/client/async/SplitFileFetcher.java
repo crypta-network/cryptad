@@ -220,8 +220,8 @@ public class SplitFileFetcher
     cb.onExpectedSize(eventualLength, context);
     if (metadata.uncompressedDataLength() > 0) cb.onFinalizedMetadata();
     if (eventualLength > 0
-        && fetchContext.maxOutputLength > 0
-        && eventualLength > fetchContext.maxOutputLength) {
+        && fetchContext.getMaxOutputLength() > 0
+        && eventualLength > fetchContext.getMaxOutputLength()) {
       throw new FetchException(
           FetchExceptionMode.TOO_BIG, eventualLength, true, clientMetadata.getMIMEType());
     }
@@ -236,7 +236,7 @@ public class SplitFileFetcher
     if (isFinalFetch
         && cb instanceof FileGetCompletionCallback fileCallback
         && (decompressors == null || decompressors.isEmpty())
-        && !fetchContext.filterData) {
+        && !fetchContext.getFilterData()) {
       File targetFile = fileCallback.getCompletionFile();
       if (targetFile != null) {
         File tmp =
@@ -513,7 +513,7 @@ public class SplitFileFetcher
    * @return {@code true} when remote network requests are disabled for block retrieval
    */
   public boolean localRequestOnly() {
-    return blockFetchContext.localRequestOnly;
+    return blockFetchContext.getLocalRequestOnly();
   }
 
   /**

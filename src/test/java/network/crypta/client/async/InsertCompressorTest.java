@@ -180,7 +180,6 @@ class InsertCompressorTest {
             false,
             0,
             0,
-            new ArrayBucketFactory(),
             new SimpleEventProducer(),
             true,
             false,

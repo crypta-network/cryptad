@@ -190,7 +190,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
       data =
           block.decode(
               context.getBucketFactory(parent.persistent()),
-              (int) (Math.min(ctx.maxOutputLength, Integer.MAX_VALUE)),
+              (int) (Math.min(ctx.getMaxOutputLength(), Integer.MAX_VALUE)),
               false);
     } catch (KeyDecodeException e1) {
       if (LOG.isDebugEnabled()) LOG.debug("Decode failure: {}", e1, e1);

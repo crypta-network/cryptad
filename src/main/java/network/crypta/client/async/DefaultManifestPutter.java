@@ -65,7 +65,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long processSubdirsFit(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       ContainerSize wholeSize,
       boolean unlimited) {
@@ -81,14 +81,12 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void addAllSubdirsUnlimited(
-      ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
-      String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> manifestElements, String defaultName) {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+      if (o instanceof Map) {
+        Map<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingUnlimitedPutHandlers(containerBuilder, hm, defaultName);
@@ -98,14 +96,12 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void addAllSubdirsLimited(
-      ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
-      String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> manifestElements, String defaultName) {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+      if (o instanceof Map) {
+        Map<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingPutHandlers(containerBuilder, hm, defaultName);
@@ -116,7 +112,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long addEachSubdirInOwnContainer(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long tmpSize)
       throws TooManyFilesInsertException {
@@ -125,8 +121,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+      if (o instanceof Map) {
+        Map<String, Object> hm = Metadata.forceMap(o);
         ContainerBuilder subC = containerBuilder.makeSubContainer(name);
         makePutHandlers(subC, hm, defaultName, DEFAULT_MAX_CONTAINERSIZE, name);
         tmpSize += 512;
@@ -252,11 +248,11 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    * Ensure the tree contains only elements we understand, so we do not need further checking in the
    * pack algorithm
    */
-  private void verifyManifest(HashMap<String, Object> metadata) {
+  private void verifyManifest(Map<String, Object> metadata) {
     for (Map.Entry<String, Object> entry : metadata.entrySet()) {
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+      if (o instanceof Map) {
+        Map<String, Object> hm = Metadata.forceMap(o);
         verifyManifest(hm);
       } else if (!(o instanceof ManifestElement)) {
         throw new IllegalArgumentException("FATAL: unknown manifest element: " + o);
@@ -284,7 +280,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    */
   private long makePutHandlers(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long maxSize,
       String parentName)
@@ -345,7 +341,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long handleWholeTreeFits(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long maxSize,
       ContainerSize wholeSize) {
@@ -367,7 +363,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long handleRootFilesFit(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long maxSize,
       ContainerSize wholeSize)
@@ -390,7 +386,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long addRootFilesWhenFit(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       boolean useNoLimit,
       ContainerSize wholeSize) {
@@ -415,7 +411,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long fillSubdirsAfterRootFiles(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long maxSize,
       long tmpSize)
@@ -423,8 +419,8 @@ public class DefaultManifestPutter extends BaseManifestPutter {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
-      if (o instanceof HashMap) {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+      if (o instanceof Map) {
+        Map<String, Object> hm = Metadata.forceMap(o);
         if (tmpSize < maxSize - (512L * hm.size())) {
           containerBuilder.pushCurrentDir();
           containerBuilder.makeSubDirCD(name);
@@ -444,9 +440,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   private record SubdirContext(long maxSize, ContainerSize wholeSize, int minUsageForFiles) {}
 
   private RedirectStats extractRedirects(
-      ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
-      String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> manifestElements, String defaultName) {
     long tmpSizeDelta = 0;
     int minUsageForFiles = 0;
     Iterator<Map.Entry<String, Object>> iter = manifestElements.entrySet().iterator();
@@ -469,7 +463,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long handleSubdirs(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       SubdirContext subdirContext,
       long tmpSize)
@@ -501,7 +495,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private FillFilesResult fillContainerWithFiles(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
+      Map<String, Object> manifestElements,
       String defaultName,
       long maxSize,
       long tmpSize,
@@ -623,16 +617,14 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   /** Pack everything into a single container. */
   private void makeEveryThingUnlimitedPutHandlers(
-      ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
-      String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> manifestElements, String defaultName) {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
       if (o instanceof ManifestElement element) {
         containerBuilder.addItem(name, name, element, name.equals(defaultName));
       } else {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+        Map<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingUnlimitedPutHandlers(containerBuilder, hm, defaultName);
@@ -642,9 +634,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void makeEveryThingPutHandlers(
-      ContainerBuilder containerBuilder,
-      HashMap<String, Object> manifestElements,
-      String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> manifestElements, String defaultName) {
     for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
       String name = entry.getKey();
       Object o = entry.getValue();
@@ -654,7 +644,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
               name, element.getData(), element.getMimeTypeOverride(), name.equals(defaultName));
         else containerBuilder.addItem(name, name, element, name.equals(defaultName));
       } else {
-        HashMap<String, Object> hm = Metadata.forceMap(o);
+        Map<String, Object> hm = Metadata.forceMap(o);
         containerBuilder.pushCurrentDir();
         containerBuilder.makeSubDirCD(name);
         makeEveryThingPutHandlers(containerBuilder, hm, defaultName);

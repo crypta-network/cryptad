@@ -112,7 +112,6 @@ class ClientContextTest {
             true,
             16,
             16,
-            tempBucketFactory,
             new SimpleEventProducer(),
             false,
             true,
@@ -286,9 +285,9 @@ class ClientContextTest {
     assertNotNull(copy);
     assertNotSame(defaultFetchCtx, copy);
     // Event producer must be a new instance per copy
-    assertNotSame(defaultFetchCtx.eventProducer, copy.eventProducer);
+    assertNotSame(defaultFetchCtx.getEventProducer(), copy.getEventProducer());
     // Some representative field is preserved
-    assertEquals(defaultFetchCtx.maxRecursionLevel, copy.maxRecursionLevel);
+    assertEquals(defaultFetchCtx.getMaxRecursionLevel(), copy.getMaxRecursionLevel());
   }
 
   @Test

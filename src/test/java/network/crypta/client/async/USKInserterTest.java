@@ -175,7 +175,6 @@ class USKInserterTest {
                 false,
                 0,
                 0,
-                null,
                 new SimpleEventProducer(),
                 false,
                 false,

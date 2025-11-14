@@ -99,7 +99,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     addFile(filesByName, f.getName(), f);
   }
 
-  private void addFile(HashMap<String, Object> byName, String name, DirPutFile f)
+  private void addFile(Map<String, Object> byName, String name, DirPutFile f)
       throws MessageInvalidException {
     int idx = name.indexOf('/');
     if (idx == -1) {
@@ -109,7 +109,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       String after = name.substring(idx + 1);
       Object o = byName.get(before);
       if (o != null) {
-        if (o instanceof HashMap) {
+        if (o instanceof Map) {
           addFile(Metadata.forceMap(o), after, f);
         } else {
           throw new MessageInvalidException(
@@ -172,14 +172,14 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * containing ManifestElement's.
    */
   private void convertFilesByNameToManifestElements(
-      HashMap<String, Object> filesByName, HashMap<String, Object> manifestElements, Node node)
+      Map<String, Object> filesByName, HashMap<String, Object> manifestElements, Node node)
       throws MessageInvalidException {
 
     for (Map.Entry<String, Object> entry : filesByName.entrySet()) {
       String tempName = entry.getKey();
       Object val = entry.getValue();
       if (val instanceof HashMap) {
-        HashMap<String, Object> h = Metadata.forceMap(val);
+        Map<String, Object> h = Metadata.forceMap(val);
         HashMap<String, Object> manifests = new HashMap<>();
         manifestElements.put(tempName, manifests);
         convertFilesByNameToManifestElements(h, manifests, node);

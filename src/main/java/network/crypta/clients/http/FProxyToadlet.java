@@ -755,7 +755,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     FetchContext fctx = getFetchContext(maxSize, getSchemeHostAndPort(ctx));
     // max-size=-1 => use default
-    maxSize = fctx.maxOutputLength;
+    maxSize = fctx.getMaxOutputLength();
 
     // We should run the ContentFilter by default
     String forceString = httprequest.getParam("force");
@@ -767,14 +767,14 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
     if (restricted) maxRetries = -2;
     if (maxRetries >= -1) {
-      fctx.maxNonSplitfileRetries = maxRetries;
-      fctx.maxSplitfileBlockRetries = maxRetries;
+      fctx.setMaxNonSplitfileRetries(maxRetries);
+      fctx.setMaxSplitfileBlockRetries(maxRetries);
     }
-    if (!force && !httprequest.isParameterSet("forcedownload")) fctx.filterData = true;
+    if (!force && !httprequest.isParameterSet("forcedownload")) fctx.setFilterData(true);
     else if (LOG.isDebugEnabled()) LOG.debug("Content filter disabled via request parameter");
     // Load the fetch context with the callbacks needed for web-pushing, if enabled
     if (container.enableInlinePrefetch()) {
-      fctx.prefetchHook =
+      fctx.setPrefetchHook(
           new FoundURICallback() {
 
             final List<FreenetURI> uris = new ArrayList<>();
@@ -813,21 +813,21 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
                         }
                       });
             }
-          };
+          });
     }
     if (container.isFProxyWebPushingEnabled())
-      fctx.tagReplacer =
-          new PushingTagReplacerCallback(core.getFProxy().fetchTracker, defaultMaxSize, ctx);
+      fctx.setTagReplacer(
+          new PushingTagReplacerCallback(core.getFProxy().fetchTracker, defaultMaxSize, ctx));
 
     String requestedMimeType = httprequest.getParam("type", null);
-    fctx.overrideMIME = requestedMimeType;
+    fctx.setOverrideMIME(requestedMimeType);
     String override =
         (requestedMimeType == null) ? "" : "?type=" + URLEncoder.encode(requestedMimeType, true);
     String maybeCharset =
         httprequest.isParameterSet("maybecharset")
             ? httprequest.getParam("maybecharset", null)
             : null;
-    fctx.charset = maybeCharset;
+    fctx.setCharset(maybeCharset);
     if (override.isEmpty() && maybeCharset != null)
       override = "?maybecharset=" + URLEncoder.encode(maybeCharset, true);
     // No point passing ?force= across a redirect, since the key will change.

@@ -121,9 +121,10 @@ public class USKManager {
     client.setMaxIntermediateLength(FProxyToadlet.MAX_LENGTH_NO_PROGRESS);
     client.setMaxLength(FProxyToadlet.MAX_LENGTH_NO_PROGRESS);
     backgroundFetchContext = client.getFetchContext();
-    backgroundFetchContext.followRedirects = false;
-    backgroundFetchContextIgnoreDBR = backgroundFetchContext.clone();
-    backgroundFetchContextIgnoreDBR.ignoreUSKDatehints = true;
+    backgroundFetchContext.setFollowRedirects(false);
+    backgroundFetchContextIgnoreDBR =
+        new FetchContext(backgroundFetchContext, FetchContext.IDENTICAL_MASK, true, null);
+    backgroundFetchContextIgnoreDBR.setIgnoreUSKDatehints(true);
     realFetchContext = client.getFetchContext();
     // Performance: I'm pretty sure there is no spatial locality in the underlying data, so it's
     // okay to use the FAST_COMPARATOR here.
@@ -224,7 +225,7 @@ public class USKManager {
         persistent ? USKFetcherTag.Flag.PERSISTENT : null,
         realTime ? USKFetcherTag.Flag.REAL_TIME : null,
         keepLast ? USKFetcherTag.Flag.KEEP_LAST_DATA : null,
-        (checkStoreOnly || ctx.localRequestOnly) ? USKFetcherTag.Flag.CHECK_STORE_ONLY : null);
+        (checkStoreOnly || ctx.getLocalRequestOnly()) ? USKFetcherTag.Flag.CHECK_STORE_ONLY : null);
   }
 
   USKFetcher getFetcher(
@@ -529,7 +530,9 @@ public class USKManager {
           new USKFetcher(
               usk,
               this,
-              fctx.ignoreUSKDatehints ? backgroundFetchContextIgnoreDBR : backgroundFetchContext,
+              fctx.getIgnoreUSKDatehints()
+                  ? backgroundFetchContextIgnoreDBR
+                  : backgroundFetchContext,
               new USKFetcherWrapper(
                   usk, RequestStarter.UPDATE_PRIORITY_CLASS, realTimeFlag ? rcRT : rcBulk),
               3,
@@ -1014,7 +1017,7 @@ public class USKManager {
       ret.setProxy(proxy);
       toSub = proxy;
     }
-    subscribe(origUSK, toSub, runBackgroundFetch, fctx.ignoreUSKDatehints, client);
+    subscribe(origUSK, toSub, runBackgroundFetch, fctx.getIgnoreUSKDatehints(), client);
     return ret;
   }
 

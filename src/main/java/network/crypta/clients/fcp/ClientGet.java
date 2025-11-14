@@ -193,15 +193,15 @@ public class ClientGet extends ClientRequest
         true);
 
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
-    fctx.eventProducer.addEventListener(this);
-    fctx.localRequestOnly = dsOnly;
-    fctx.ignoreStore = ignoreDS;
-    fctx.maxNonSplitfileRetries = maxNonSplitfileRetries;
-    fctx.maxSplitfileBlockRetries = maxSplitfileRetries;
-    fctx.filterData = filterData;
-    fctx.maxOutputLength = maxOutputLength;
-    fctx.maxTempLength = maxOutputLength;
-    fctx.canWriteClientCache = writeToClientCache;
+    fctx.getEventProducer().addEventListener(this);
+    fctx.setLocalRequestOnly(dsOnly);
+    fctx.setIgnoreStore(ignoreDS);
+    fctx.setMaxNonSplitfileRetries(maxNonSplitfileRetries);
+    fctx.setMaxSplitfileBlockRetries(maxSplitfileRetries);
+    fctx.setFilterData(filterData);
+    fctx.setMaxOutputLength(maxOutputLength);
+    fctx.setMaxTempLength(maxOutputLength);
+    fctx.setCanWriteClientCache(writeToClientCache);
     compatMode = new CompatibilityAnalyser();
     // FIXME fctx.ignoreUSKDatehints = ignoreUSKDatehints;
     Bucket ret = null;
@@ -259,24 +259,24 @@ public class ClientGet extends ClientRequest
     // Create a Fetcher directly in order to get more fine-grained control,
     // since the client may override a few context elements.
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
-    fctx.eventProducer.addEventListener(this);
+    fctx.getEventProducer().addEventListener(this);
     // ignoreDS
-    fctx.localRequestOnly = message.dsOnly;
-    fctx.ignoreStore = message.ignoreDS;
-    fctx.maxNonSplitfileRetries = message.maxRetries;
-    fctx.maxSplitfileBlockRetries = message.maxRetries;
+    fctx.setLocalRequestOnly(message.dsOnly);
+    fctx.setIgnoreStore(message.ignoreDS);
+    fctx.setMaxNonSplitfileRetries(message.maxRetries);
+    fctx.setMaxSplitfileBlockRetries(message.maxRetries);
     // FIXME do something with verbosity !!
     // Has already been checked
-    fctx.maxOutputLength = message.maxSize;
-    fctx.maxTempLength = message.maxTempSize;
-    fctx.canWriteClientCache = message.writeToClientCache;
-    fctx.filterData = message.filterData;
-    fctx.ignoreUSKDatehints = message.ignoreUSKDatehints;
+    fctx.setMaxOutputLength(message.maxSize);
+    fctx.setMaxTempLength(message.maxTempSize);
+    fctx.setCanWriteClientCache(message.writeToClientCache);
+    fctx.setFilterData(message.filterData);
+    fctx.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
     compatMode = new CompatibilityAnalyser();
 
     if (message.allowedMIMETypes != null) {
-      fctx.allowedMIMETypes = new HashSet<>();
-      Collections.addAll(fctx.allowedMIMETypes, message.allowedMIMETypes);
+      fctx.setAllowedMIMETypes(new HashSet<>());
+      Collections.addAll(fctx.getAllowedMIMETypes(), message.allowedMIMETypes);
     }
 
     this.returnType = message.returnType;
@@ -302,7 +302,7 @@ public class ClientGet extends ClientRequest
             identifier,
             global);
       ret = new FileBucket(targetFile, false, true, false, false);
-      if (fctx.filterData) {
+      if (fctx.getFilterData()) {
         String name = targetFile.getName();
         int idx = name.lastIndexOf('.');
         if (idx != -1) {
@@ -341,7 +341,7 @@ public class ClientGet extends ClientRequest
       ret =
           core.getClientContext()
               .getBucketFactory(persistence == Persistence.FOREVER)
-              .makeBucket(fctx.maxOutputLength);
+              .makeBucket(fctx.getMaxOutputLength());
     }
 
     return new ClientGetter(
@@ -609,9 +609,9 @@ public class ClientGet extends ClientRequest
         clientToken,
         client.isGlobalQueue,
         started,
-        fctx.maxNonSplitfileRetries,
+        fctx.getMaxNonSplitfileRetries(),
         binaryBlob,
-        fctx.maxOutputLength,
+        fctx.getMaxOutputLength(),
         isRealTime());
   }
 
@@ -973,7 +973,7 @@ public class ClientGet extends ClientRequest
       compatMode = new CompatibilityAnalyser();
       expectedHashes = null;
       started = false;
-      if (disableFilterData) fctx.filterData = false;
+      if (disableFilterData) fctx.setFilterData(false);
     }
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
@@ -982,7 +982,7 @@ public class ClientGet extends ClientRequest
       }
     }
     try {
-      if (getter.restart(redirect, fctx.filterData, context)) {
+      if (getter.restart(redirect, fctx.getFilterData(), context)) {
         synchronized (this) {
           if (redirect != null) {
             this.uri = redirect;
@@ -1008,7 +1008,7 @@ public class ClientGet extends ClientRequest
   }
 
   public boolean filterData() {
-    return fctx.filterData;
+    return fctx.getFilterData();
   }
 
   @Override
@@ -1062,8 +1062,8 @@ public class ClientGet extends ClientRequest
 
     boolean filterData;
     boolean overriddenDataType;
-    filterData = fctx.filterData;
-    overriddenDataType = fctx.overrideMIME != null || fctx.charset != null;
+    filterData = fctx.getFilterData();
+    overriddenDataType = fctx.getOverrideMIME() != null || fctx.getCharset() != null;
 
     return new DownloadRequestStatus(
         identifier,
@@ -1224,7 +1224,7 @@ public class ClientGet extends ClientRequest
       fctx = context.getDefaultPersistentFetchContext();
     }
     this.fctx = fctx;
-    fctx.eventProducer.addEventListener(this);
+    fctx.getEventProducer().addEventListener(this);
     if (dis.readBoolean()) extensionCheck = dis.readUTF();
     else extensionCheck = null;
     if (dis.readBoolean()) {

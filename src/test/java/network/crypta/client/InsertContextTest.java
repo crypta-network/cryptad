@@ -46,7 +46,6 @@ class InsertContextTest {
       // No-op; used only for identity during serialization tests.
     }
   }
-
   private static InsertContext newContextWithDefaults(CompatibilityMode mode) {
     return new InsertContext(
         3, // maxRetries
@@ -224,7 +223,6 @@ class InsertContextTest {
     assertEquals(1, restoredListeners.length);
     assertInstanceOf(RecordingListener.class, restoredListeners[0]);
   }
-
   // ----- CompatibilityMode enum tests -----
 
   static Stream<CompatibilityMode> allModes() {

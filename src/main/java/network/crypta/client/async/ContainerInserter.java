@@ -6,7 +6,6 @@ import java.io.OutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -177,7 +176,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
    * Original manifest-like map used to build {@code .metadata} entries. See
    * ContainerBuilder._rootDir.
    */
-  private final HashMap<String, Object> origMetadata;
+  private final Map<String, Object> origMetadata;
 
   /** Archive format to build ({@link ARCHIVE_TYPE#TAR} or {@link ARCHIVE_TYPE#ZIP}). */
   private final ARCHIVE_TYPE archiveType;
@@ -497,7 +496,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
     return ARCHIVE_TYPE.ZIP.defaultMimeType();
   }
 
-  private Metadata makeManifest(HashMap<String, Object> manifestElements, String archivePrefix) {
+  private Metadata makeManifest(Map<String, Object> manifestElements, String archivePrefix) {
     SimpleManifestComposer smc = new Metadata.SimpleManifestComposer();
     for (Map.Entry<String, Object> me : manifestElements.entrySet()) {
       addEntryToComposer(smc, me.getKey(), me.getValue(), archivePrefix);
@@ -507,8 +506,8 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
   private void addEntryToComposer(
       SimpleManifestComposer smc, String name, Object value, String archivePrefix) {
-    if (value instanceof HashMap<?, ?>) {
-      HashMap<String, Object> hm = Metadata.forceMap(value);
+    if (value instanceof Map<?, ?>) {
+      Map<String, Object> hm = Metadata.forceMap(value);
       if (LOG.isTraceEnabled()) LOG.trace("Sub map for {} : {} elements", name, hm.size());
       smc.addItem(name, makeManifest(hm, archivePrefix + name + '/'));
       return;

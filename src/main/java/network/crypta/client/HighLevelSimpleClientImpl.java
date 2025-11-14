@@ -324,8 +324,8 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       FreenetURI uri, long maxSize, ClientGetCallback callback, FetchContext fctx, short prio)
       throws FetchException {
     if (maxSize > 0) {
-      fctx.maxOutputLength = maxSize;
-      fctx.maxTempLength = maxSize;
+      fctx.setMaxOutputLength(maxSize);
+      fctx.setMaxTempLength(maxSize);
     }
 
     return fetch(uri, callback, fctx, prio);
@@ -675,7 +675,6 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
         FILTER_DATA,
         MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
         MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        bucketFactory,
         eventProducer,
         false,
         CAN_WRITE_CLIENT_CACHE,
@@ -722,7 +721,6 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
         FILTER_DATA,
         MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
         MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        bucketFactory,
         eventProducer,
         false,
         CAN_WRITE_CLIENT_CACHE,
@@ -835,7 +833,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
   public void prefetch(
       FreenetURI uri, long timeout, long maxSize, Set<String> allowedTypes, short prio) {
     FetchContext ctx = getFetchContext(maxSize);
-    ctx.allowedMIMETypes = allowedTypes;
+    ctx.setAllowedMIMETypes(allowedTypes);
     final ClientGetter get =
         new ClientGetter(nullCallback, uri, ctx, prio, new NullBucket(), null, null);
     core.getTicker().queueTimedJob(() -> get.cancel(core.getClientContext()), timeout);

@@ -201,7 +201,7 @@ class SplitFileFetcherStorageTest {
         TestSplitfile.constructSingleSegment(dataBlocks * (long) BLOCK_SIZE, checkBlocks, false);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 0;
+    ctx.setMaxSplitfileBlockRetries(0);
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx);
     // Act
     boolean[] tried = new boolean[dataBlocks + checkBlocks];
@@ -226,7 +226,7 @@ class SplitFileFetcherStorageTest {
         TestSplitfile.constructSingleSegment(dataBlocks * (long) BLOCK_SIZE, checkBlocks, false);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 2;
+    ctx.setMaxSplitfileBlockRetries(2);
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx);
     // Act
     for (int i = 0; i < 3; i++) {
@@ -254,7 +254,7 @@ class SplitFileFetcherStorageTest {
         TestSplitfile.constructSingleSegment(dataBlocks * (long) BLOCK_SIZE, checkBlocks, false);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 5;
+    ctx.setMaxSplitfileBlockRetries(5);
     ctx.setCooldownRetries(3);
     ctx.setCooldownTime(cooldownTimeMs, true);
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx);
@@ -402,7 +402,7 @@ class SplitFileFetcherStorageTest {
     TestSplitfile test = TestSplitfile.constructSingleSegment(size, checkBlocks, true);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 2;
+    ctx.setMaxSplitfileBlockRetries(2);
     test.createStorage(cb, ctx);
     // No need to shut down the old storage.
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx, cb.getRAF());
@@ -434,7 +434,7 @@ class SplitFileFetcherStorageTest {
     TestSplitfile test = TestSplitfile.constructSingleSegment(size, checkBlocks, true);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 2;
+    ctx.setMaxSplitfileBlockRetries(2);
     test.createStorage(cb, ctx);
     // No need to shut down the old storage.
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx, cb.getRAF());
@@ -772,7 +772,7 @@ class SplitFileFetcherStorageTest {
     TestSplitfile test = TestSplitfile.constructSingleSegment(BLOCK_SIZE * 2L, 1, false);
     StorageCallback cb = test.createStorageCallback();
     FetchContext ctx = test.makeFetchContext();
-    ctx.maxSplitfileBlockRetries = 5;
+    ctx.setMaxSplitfileBlockRetries(5);
     SplitFileFetcherStorage storage = test.createStorage(cb, ctx);
 
     try {
