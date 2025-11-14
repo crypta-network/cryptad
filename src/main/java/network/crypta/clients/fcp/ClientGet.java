@@ -267,7 +267,7 @@ public class ClientGet extends ClientRequest
     // Has already been checked
     fctx.setMaxOutputLength(message.maxSize);
     fctx.setMaxTempLength(message.maxTempSize);
-    fctx.setCanWriteClientCache(message.writeToClientCache);
+    fctx.setCanWriteClientCache(message.shouldWriteToClientCache());
     fctx.setFilterData(message.filterData);
     fctx.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
     compatMode = new CompatibilityAnalyser();
