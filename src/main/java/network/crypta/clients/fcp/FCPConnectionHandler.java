@@ -644,8 +644,6 @@ public class FCPConnectionHandler implements Closeable {
           synchronized (this) {
             requestsByIdentifier.put(id, cp);
           }
-        } catch (IdentifierCollisionException e) {
-          success = false;
         } catch (MalformedURLException e) {
           failedMessage =
               new ProtocolErrorMessage(
@@ -673,11 +671,6 @@ public class FCPConnectionHandler implements Closeable {
                         putter =
                             new ClientPutDir(
                                 FCPConnectionHandler.this, message, buckets, wasDiskPut, server);
-                      } catch (IdentifierCollisionException e) {
-                        LOG.info("Identifier collision on " + this);
-                        FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-                        send(msg);
-                        return false;
                       } catch (MalformedURLException e) {
                         send(
                             new ProtocolErrorMessage(
@@ -701,7 +694,7 @@ public class FCPConnectionHandler implements Closeable {
                         putter.register(false);
                       } catch (IdentifierCollisionException e) {
                         LOG.info("Identifier collision on " + this);
-                        FCPMessage msg = new IdentifierCollisionMessage(id, global);
+                        FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
                         send(msg);
                         return false;
                       }
@@ -724,8 +717,6 @@ public class FCPConnectionHandler implements Closeable {
       } else {
         try {
           cp = new ClientPutDir(this, message, buckets, wasDiskPut, server);
-        } catch (IdentifierCollisionException e) {
-          success = false;
         } catch (MalformedURLException e) {
           failedMessage =
               new ProtocolErrorMessage(
