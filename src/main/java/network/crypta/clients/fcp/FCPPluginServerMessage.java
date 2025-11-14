@@ -4,8 +4,6 @@ import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * This class produces the network format for a FCP message which is send from a FCP server plugin
@@ -39,7 +37,6 @@ import org.slf4j.LoggerFactory;
  * @author xor (xor@freenetproject.org)
  */
 public class FCPPluginServerMessage extends DataCarryingMessage {
-  private static final Logger LOG = LoggerFactory.getLogger(FCPPluginServerMessage.class);
 
   /**
    * On-network format name of the message.
@@ -85,22 +82,6 @@ public class FCPPluginServerMessage extends DataCarryingMessage {
    * @see FCPPluginMessage#errorMessage
    */
   private final String errorMessage;
-
-  /**
-   * @deprecated Use {@link #FCPPluginServerMessage(String, String, SimpleFieldSet, Bucket, Boolean,
-   *     String, String)}.<br>
-   *     <br>
-   *     <b>ATTENTION:</b> Upon removal of this constructor, you should remove the backend
-   *     constructor so the only remaining constructor is the one which consumes a {@link
-   *     FCPPluginMessage}. Then you should remove all the member variables from this class which
-   *     duplicate the members of that class, and instead store a reference to an object of the
-   *     other class.
-   */
-  @Deprecated
-  public FCPPluginServerMessage(
-      String pluginname, String identifier2, SimpleFieldSet fs, Bucket bucket2) {
-    this(pluginname, identifier2, fs, bucket2, null, null, null);
-  }
 
   /**
    * @param pluginname The class name of the plugin which is sending the message.<br>
