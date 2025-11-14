@@ -36,7 +36,7 @@ import network.crypta.support.io.NullBucket;
  * inherited bucket map. All fields are final except the map inherited from {@link FeedMessage},
  * which is populated once in the constructor and then treated as read-only.
  */
-public class BookmarkFeed extends FeedMessage {
+public class BookmarkFeed extends N2NFeedMessage {
 
   /**
    * Public FCP message identifier for bookmark notifications, emitted by {@link #getName()} and
@@ -49,10 +49,6 @@ public class BookmarkFeed extends FeedMessage {
   private final String bookmarkTitle;
   private final FreenetURI bookmarkUri;
   private final boolean hasAnActivelink;
-  private final String sourceNodeName;
-  private final long composed;
-  private final long sent;
-  private final long received;
 
   /**
    * Create a bookmark feed entry populated with peer metadata, descriptive text, and bookmark
@@ -105,14 +101,19 @@ public class BookmarkFeed extends FeedMessage {
       FreenetURI bookmarkUri,
       String description,
       boolean hasAnActivelink) {
-    super(header, shortText, text, priorityClass, updatedTime);
+    super(
+        header,
+        shortText,
+        text,
+        priorityClass,
+        updatedTime,
+        sourceNodeName,
+        composed,
+        sent,
+        received);
     this.bookmarkTitle = bookmarkTitle;
     this.bookmarkUri = bookmarkUri;
     this.hasAnActivelink = hasAnActivelink;
-    this.sourceNodeName = sourceNodeName;
-    this.composed = composed;
-    this.sent = sent;
-    this.received = received;
     final Bucket descriptionBucket;
     if (description != null) {
       descriptionBucket = new ArrayBucket(description.getBytes(StandardCharsets.UTF_8));
@@ -138,10 +139,6 @@ public class BookmarkFeed extends FeedMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = super.getFieldSet();
-    fs.putSingle("SourceNodeName", sourceNodeName);
-    if (composed >= 0) fs.put("TimeComposed", composed);
-    if (sent >= 0) fs.put("TimeSent", sent);
-    if (received >= 0) fs.put("TimeReceived", received);
     fs.putSingle("Name", bookmarkTitle);
     fs.putSingle("URI", bookmarkUri.toString());
     fs.put("HasAnActivelink", hasAnActivelink);

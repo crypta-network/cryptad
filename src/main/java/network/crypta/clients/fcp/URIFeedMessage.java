@@ -35,7 +35,7 @@ import network.crypta.support.io.NullBucket;
  * @see FreenetURI
  * @see network.crypta.node.useralerts.DownloadFeedUserAlert
  */
-public class URIFeedMessage extends FeedMessage {
+public class URIFeedMessage extends N2NFeedMessage {
   /**
    * Protocol message name used on the FCP wire for URI feed notifications.
    *
@@ -47,10 +47,6 @@ public class URIFeedMessage extends FeedMessage {
   public static final String NAME = "URIFeed";
 
   private final FreenetURI uri;
-  private final String sourceNodeName;
-  private final long composed;
-  private final long sent;
-  private final long received;
 
   /**
    * Create a new URI-based feed message with node metadata and optional description text.
@@ -104,11 +100,16 @@ public class URIFeedMessage extends FeedMessage {
       long received,
       FreenetURI uri,
       String description) {
-    super(header, shortText, text, priorityClass, updatedTime);
-    this.sourceNodeName = sourceNodeName;
-    this.composed = composed;
-    this.sent = sent;
-    this.received = received;
+    super(
+        header,
+        shortText,
+        text,
+        priorityClass,
+        updatedTime,
+        sourceNodeName,
+        composed,
+        sent,
+        received);
     this.uri = Objects.requireNonNull(uri, "uri");
     final Bucket descriptionBucket;
     if (description != null) {
@@ -136,16 +137,6 @@ public class URIFeedMessage extends FeedMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = super.getFieldSet();
-    fs.putSingle("SourceNodeName", sourceNodeName);
-    if (composed != -1) {
-      fs.put("TimeComposed", composed);
-    }
-    if (sent != -1) {
-      fs.put("TimeSent", sent);
-    }
-    if (received != -1) {
-      fs.put("TimeReceived", received);
-    }
     fs.putSingle("URI", uri.toString());
     return fs;
   }
