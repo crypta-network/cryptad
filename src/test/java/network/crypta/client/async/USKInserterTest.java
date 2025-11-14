@@ -339,7 +339,7 @@ class USKInserterTest {
             0,
             0,
             InsertContext.CompatibilityMode.COMPAT_CURRENT);
-    ic.ignoreUSKDatehints = false;
+    ic.setIgnoreUSKDatehints(false);
 
     when(uskManager.getFetcherForInsertDontSchedule(
             any(USK.class),
@@ -405,7 +405,7 @@ class USKInserterTest {
             0,
             0,
             InsertContext.CompatibilityMode.COMPAT_CURRENT);
-    ic.ignoreUSKDatehints = true; // skip USK date hints path for determinism
+    ic.setIgnoreUSKDatehints(true); // skip USK date hints path for determinism
 
     USKInserter inserter =
         newInserter(
@@ -457,7 +457,7 @@ class USKInserterTest {
             0,
             0,
             InsertContext.CompatibilityMode.COMPAT_CURRENT);
-    ic.ignoreUSKDatehints = true; // deterministic: avoid date hints branch
+    ic.setIgnoreUSKDatehints(true); // deterministic: avoid date hints branch
 
     USKInserter inserter =
         newInserter(

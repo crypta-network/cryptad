@@ -131,19 +131,19 @@ public abstract class ClientPutBase extends ClientRequest
         clientToken,
         global);
     ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
-    ctx.getCHKOnly = getCHKOnly;
-    ctx.dontCompress = dontCompress;
-    ctx.eventProducer.addEventListener(this);
-    ctx.maxInsertRetries = maxRetries;
-    ctx.canWriteClientCache = canWriteClientCache;
-    ctx.compressorDescriptor = compressorDescriptor;
-    ctx.forkOnCacheable = forkOnCacheable;
-    ctx.extraInsertsSingleBlock = extraInsertsSingleBlock;
-    ctx.extraInsertsSplitfileHeaderBlock = extraInsertsSplitfileHeader;
+    ctx.setGetCHKOnly(getCHKOnly);
+    ctx.setDontCompress(dontCompress);
+    ctx.getEventProducer().addEventListener(this);
+    ctx.setMaxInsertRetries(maxRetries);
+    ctx.setCanWriteClientCache(canWriteClientCache);
+    ctx.setCompressorDescriptor(compressorDescriptor);
+    ctx.setForkOnCacheable(forkOnCacheable);
+    ctx.setExtraInsertsSingleBlock(extraInsertsSingleBlock);
+    ctx.setExtraInsertsSplitfileHeaderBlock(extraInsertsSplitfileHeader);
     ctx.setCompatibilityMode(compatibilityMode);
-    ctx.localRequestOnly = localRequestOnly;
-    ctx.earlyEncode = earlyEncode;
-    ctx.ignoreUSKDatehints = ignoreUSKDatehints;
+    ctx.setLocalRequestOnly(localRequestOnly);
+    ctx.setEarlyEncode(earlyEncode);
+    ctx.setIgnoreUSKDatehints(ignoreUSKDatehints);
     publicURI = this.uri.deriveRequestURIFromInsertURI();
   }
 
@@ -203,19 +203,19 @@ public abstract class ClientPutBase extends ClientRequest
         clientToken,
         global);
     ctx = core.getClientContext().getDefaultPersistentInsertContext();
-    ctx.getCHKOnly = getCHKOnly;
-    ctx.dontCompress = dontCompress;
-    ctx.eventProducer.addEventListener(this);
-    ctx.maxInsertRetries = maxRetries;
-    ctx.canWriteClientCache = canWriteClientCache;
-    ctx.compressorDescriptor = compressorDescriptor;
-    ctx.forkOnCacheable = forkOnCacheable;
-    ctx.extraInsertsSingleBlock = extraInsertsSingleBlock;
-    ctx.extraInsertsSplitfileHeaderBlock = extraInsertsSplitfileHeader;
-    ctx.localRequestOnly = localRequestOnly;
+    ctx.setGetCHKOnly(getCHKOnly);
+    ctx.setDontCompress(dontCompress);
+    ctx.getEventProducer().addEventListener(this);
+    ctx.setMaxInsertRetries(maxRetries);
+    ctx.setCanWriteClientCache(canWriteClientCache);
+    ctx.setCompressorDescriptor(compressorDescriptor);
+    ctx.setForkOnCacheable(forkOnCacheable);
+    ctx.setExtraInsertsSingleBlock(extraInsertsSingleBlock);
+    ctx.setExtraInsertsSplitfileHeaderBlock(extraInsertsSplitfileHeader);
+    ctx.setLocalRequestOnly(localRequestOnly);
     ctx.setCompatibilityMode(compatMode);
-    ctx.ignoreUSKDatehints = ignoreUSKDatehints;
-    ctx.earlyEncode = earlyEncode;
+    ctx.setIgnoreUSKDatehints(ignoreUSKDatehints);
+    ctx.setEarlyEncode(earlyEncode);
     publicURI = this.uri.deriveRequestURIFromInsertURI();
   }
 

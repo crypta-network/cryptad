@@ -61,9 +61,9 @@ class SplitFileInserterSenderTest {
             /*extraInsertsSplitfileHeaderBlock*/ 0,
             /*compatibilityMode*/ InsertContext.CompatibilityMode.COMPAT_CURRENT);
     // Default flags; individual tests may override
-    insertCtx.canWriteClientCache = true;
-    insertCtx.localRequestOnly = false;
-    insertCtx.forkOnCacheable = true;
+    insertCtx.setCanWriteClientCache(true);
+    insertCtx.setLocalRequestOnly(false);
+    insertCtx.setForkOnCacheable(true);
 
     // Create a Mockito mock instance of SplitFileInserter (constructor is heavy)
     parent = mock(SplitFileInserter.class, org.mockito.Mockito.withSettings().withoutAnnotations());
@@ -135,9 +135,9 @@ class SplitFileInserterSenderTest {
 
   @Test
   void canWriteClientCache_localRequestOnly_forkOnCacheable_reflectInsertContext() {
-    insertCtx.canWriteClientCache = false;
-    insertCtx.localRequestOnly = true;
-    insertCtx.forkOnCacheable = false;
+    insertCtx.setCanWriteClientCache(false);
+    insertCtx.setLocalRequestOnly(true);
+    insertCtx.setForkOnCacheable(false);
     SplitFileInserterSender sender = newSender();
 
     assertFalse(sender.canWriteClientCache());
@@ -273,8 +273,8 @@ class SplitFileInserterSenderTest {
   @Test
   void send_whenLocalRequestOnly_storesLocally_andReportsSuccess() throws Exception {
     // Arrange
-    insertCtx.localRequestOnly = true;
-    insertCtx.canWriteClientCache = true;
+    insertCtx.setLocalRequestOnly(true);
+    insertCtx.setCanWriteClientCache(true);
     SplitFileInserterSender sender = newSender();
     SplitFileInserterSegmentStorage segment = mock(SplitFileInserterSegmentStorage.class);
     int blockNo = 11;
@@ -318,9 +318,9 @@ class SplitFileInserterSenderTest {
   @Test
   void send_whenRemote_realPutAndSuccess() throws Exception {
     // Arrange
-    insertCtx.localRequestOnly = false;
-    insertCtx.canWriteClientCache = false;
-    insertCtx.forkOnCacheable = true;
+    insertCtx.setLocalRequestOnly(false);
+    insertCtx.setCanWriteClientCache(false);
+    insertCtx.setForkOnCacheable(true);
     SplitFileInserterSender sender = newSender();
     SplitFileInserterSegmentStorage segment = mock(SplitFileInserterSegmentStorage.class);
     int blockNo = 7;
@@ -366,7 +366,7 @@ class SplitFileInserterSenderTest {
   @Test
   void send_whenKeyCollision_translatesToInsertExceptionCollision() throws Exception {
     // Arrange
-    insertCtx.localRequestOnly = true;
+    insertCtx.setLocalRequestOnly(true);
     SplitFileInserterSender sender = newSender();
     SplitFileInserterSegmentStorage segment = mock(SplitFileInserterSegmentStorage.class);
     int blockNo = 4;

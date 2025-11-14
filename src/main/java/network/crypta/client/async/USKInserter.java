@@ -184,7 +184,7 @@ public class USKInserter
               parent.getClient(),
               context,
               persistent,
-              ctx.ignoreUSKDatehints);
+              ctx.isIgnoreUSKDatehints());
       if (LOG.isDebugEnabled()) LOG.debug("scheduled: {}", fetcher);
     }
     fetcher.schedule(context);
@@ -254,7 +254,7 @@ public class USKInserter
 
   private void insertSucceeded(ClientContext context, long edition) {
     // Inserts optional USK date hints after a successful content insert when configured.
-    if (ctx.ignoreUSKDatehints) {
+    if (ctx.isIgnoreUSKDatehints()) {
       if (LOG.isDebugEnabled()) LOG.debug("Inserted to edition {}", edition);
       cb.onSuccess(this, context);
       return;

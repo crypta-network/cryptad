@@ -543,7 +543,7 @@ public class SplitFileInserter
   public void schedule(ClientContext context) throws InsertException {
     cb.onBlockSetFinished(this, context);
     storageRef.get().start();
-    if (!ctx.getCHKOnly) {
+    if (!ctx.isGetCHKOnly()) {
       senderRef.get().clearWakeupTime(context);
       senderRef.get().schedule(context);
     }
@@ -623,7 +623,7 @@ public class SplitFileInserter
   @Override
   public void encodingProgress() {
     // We've encoded a segment. Start inserting the blocks we have immediately.
-    if (ctx.getCHKOnly) {
+    if (ctx.isGetCHKOnly()) {
       // We are not inserting any blocks. Wait for onHasKeys().
       return;
     }
@@ -643,7 +643,7 @@ public class SplitFileInserter
    */
   @Override
   public void onHasKeys() {
-    if (ctx.earlyEncode || ctx.getCHKOnly) {
+    if (ctx.isEarlyEncode() || ctx.isGetCHKOnly()) {
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
@@ -651,7 +651,7 @@ public class SplitFileInserter
                 try {
                   Metadata metadata = storageRef.get().encodeMetadata();
                   reportMetadata(metadata);
-                  if (ctx.getCHKOnly) onSucceeded(metadata);
+                  if (ctx.isGetCHKOnly()) onSucceeded(metadata);
                 } catch (IOException e) {
                   storageRef
                       .get()
@@ -684,7 +684,7 @@ public class SplitFileInserter
             jobCtx -> {
               if (LOG.isDebugEnabled()) LOG.debug("Succeeding on {}", SplitFileInserter.this);
               unregisterSender();
-              if (!(ctx.earlyEncode || ctx.getCHKOnly)) {
+              if (!(ctx.isEarlyEncode() || ctx.isGetCHKOnly())) {
                 reportMetadata(metadata);
               }
               cb.onSuccess(SplitFileInserter.this, jobCtx);

@@ -189,9 +189,9 @@ class SingleFileInserterTest {
         new InsertBlock(data, null, new FreenetURI("CHK", null, (byte[]) null, null, null));
 
     // Configure insert context to avoid scheduler path and synchronous behavior
-    insertCtx.getCHKOnly =
-        true; // so SingleBlockInserter.schedule() doesn't register with schedulers
-    insertCtx.earlyEncode = false; // avoid encode path that needs RandomSource
+    insertCtx.setGetCHKOnly(
+        true); // so SingleBlockInserter.schedule() doesn't register with schedulers
+    insertCtx.setEarlyEncode(false); // avoid encode path that needs RandomSource
 
     SingleFileInserter sfi =
         new SingleFileInserter(
@@ -319,7 +319,7 @@ class SingleFileInserterTest {
     RandomAccessBucket data = makeData("xyz".getBytes());
     InsertBlock block =
         new InsertBlock(data, null, new FreenetURI("CHK", null, (byte[]) null, null, null));
-    insertCtx.getCHKOnly = true; // downstream schedule avoids real schedulers
+    insertCtx.setGetCHKOnly(true); // downstream schedule avoids real schedulers
 
     SingleFileInserter sfi =
         new SingleFileInserter(

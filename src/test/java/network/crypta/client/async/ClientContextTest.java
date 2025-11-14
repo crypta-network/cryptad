@@ -302,12 +302,12 @@ class ClientContextTest {
         copy.getCompatibilityMode(),
         "compatibility mode should be preserved");
     assertEquals(
-        defaultInsertCtx.splitfileSegmentDataBlocks,
-        copy.splitfileSegmentDataBlocks,
+        defaultInsertCtx.getSplitfileSegmentDataBlocks(),
+        copy.getSplitfileSegmentDataBlocks(),
         "splitfile data blocks should be preserved");
     assertEquals(
-        defaultInsertCtx.splitfileSegmentCheckBlocks,
-        copy.splitfileSegmentCheckBlocks,
+        defaultInsertCtx.getSplitfileSegmentCheckBlocks(),
+        copy.getSplitfileSegmentCheckBlocks(),
         "splitfile check blocks should be preserved");
   }
 

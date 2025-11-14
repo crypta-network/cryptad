@@ -111,7 +111,7 @@ class ClientRequestSelectorTest {
     HashResult[] hashes = getHashes(data);
     MyCallback cb = new MyCallback();
     InsertContext context = InsertContext.copyOf(baseContext);
-    context.maxInsertRetries = 2;
+    context.setMaxInsertRetries(2);
     ClientRequestSelector keys = new ClientRequestSelector(true, false, false, null);
     SplitFileInserterStorage storage =
         new SplitFileInserterStorage(

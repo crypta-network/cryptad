@@ -171,21 +171,23 @@ class HighLevelSimpleClientImplTest {
   void getInsertContext_returnsDefaultsFromConstants() {
     InsertContext ic = client.getInsertContext(true);
 
-    assertEquals(HighLevelSimpleClientImpl.INSERT_RETRIES, ic.maxInsertRetries);
+    assertEquals(HighLevelSimpleClientImpl.INSERT_RETRIES, ic.getMaxInsertRetries());
     assertEquals(
         HighLevelSimpleClientImpl.CONSECUTIVE_RNFS_ASSUME_SUCCESS,
-        ic.consecutiveRNFsCountAsSuccess);
+        ic.getConsecutiveRNFsCountAsSuccess());
     assertEquals(
-        HighLevelSimpleClientImpl.SPLITFILE_BLOCKS_PER_SEGMENT, ic.splitfileSegmentDataBlocks);
+        HighLevelSimpleClientImpl.SPLITFILE_BLOCKS_PER_SEGMENT, ic.getSplitfileSegmentDataBlocks());
     assertEquals(
         HighLevelSimpleClientImpl.SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        ic.splitfileSegmentCheckBlocks);
-    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE_INSERTS, ic.canWriteClientCache);
-    assertEquals(network.crypta.node.Node.FORK_ON_CACHEABLE_DEFAULT, ic.forkOnCacheable);
-    assertEquals(HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK, ic.extraInsertsSingleBlock);
+        ic.getSplitfileSegmentCheckBlocks());
+    assertEquals(
+        HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE_INSERTS, ic.isCanWriteClientCache());
+    assertEquals(network.crypta.node.Node.FORK_ON_CACHEABLE_DEFAULT, ic.isForkOnCacheable());
+    assertEquals(
+        HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK, ic.getExtraInsertsSingleBlock());
     assertEquals(
         HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-        ic.extraInsertsSplitfileHeaderBlock);
+        ic.getExtraInsertsSplitfileHeaderBlock());
     assertEquals(CompatibilityMode.latest(), ic.getCompatibilityMode());
   }
 
@@ -194,9 +196,10 @@ class HighLevelSimpleClientImplTest {
     SimpleEventProducer ep = new SimpleEventProducer();
     InsertContext ic = HighLevelSimpleClientImpl.makeDefaultInsertContext(bucketFactory, ep);
 
-    assertEquals(HighLevelSimpleClientImpl.INSERT_RETRIES, ic.maxInsertRetries);
-    assertSame(ep, ic.eventProducer);
-    assertEquals(HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE_INSERTS, ic.canWriteClientCache);
+    assertEquals(HighLevelSimpleClientImpl.INSERT_RETRIES, ic.getMaxInsertRetries());
+    assertSame(ep, ic.getEventProducer());
+    assertEquals(
+        HighLevelSimpleClientImpl.CAN_WRITE_CLIENT_CACHE_INSERTS, ic.isCanWriteClientCache());
   }
 
   @Test

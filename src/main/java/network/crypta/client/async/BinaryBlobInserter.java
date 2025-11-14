@@ -78,8 +78,8 @@ public class BinaryBlobInserter implements ClientPutState {
       ClientContext context)
       throws IOException, BinaryBlobFormatException {
     this.ctx = ctx;
-    this.maxRetries = ctx.maxInsertRetries;
-    this.consecutiveRNFsCountAsSuccess = ctx.consecutiveRNFsCountAsSuccess;
+    this.maxRetries = ctx.getMaxInsertRetries();
+    this.consecutiveRNFsCountAsSuccess = ctx.getConsecutiveRNFsCountAsSuccess();
     this.parent = parent;
     this.clientContext = clientContext;
     this.errors = new FailureCodeTracker(true);

@@ -405,7 +405,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       short priority)
       throws InsertException {
     InsertContext context = getInsertContext(true);
-    context.getCHKOnly = getCHKOnly;
+    context.setGetCHKOnly(getCHKOnly);
     return insert(insert, filenameHint, isMetadata, priority, context);
   }
 

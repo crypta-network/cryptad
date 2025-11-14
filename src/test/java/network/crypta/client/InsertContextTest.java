@@ -2,16 +2,26 @@ package network.crypta.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
+import network.crypta.client.async.ClientContext;
+import network.crypta.client.events.ClientEvent;
+import network.crypta.client.events.ClientEventListener;
 import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SimpleEventProducer;
 import org.junit.jupiter.api.Test;
@@ -26,6 +36,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class InsertContextTest {
 
   @Mock private ClientEventProducer mockProducer;
+
+  private static final class RecordingListener implements ClientEventListener, Serializable {
+
+    @Serial private static final long serialVersionUID = 1L;
+
+    @Override
+    public void receive(ClientEvent ce, ClientContext context) {
+      // No-op; used only for identity during serialization tests.
+    }
+  }
 
   private static InsertContext newContextWithDefaults(CompatibilityMode mode) {
     return new InsertContext(
@@ -76,21 +96,21 @@ class InsertContextTest {
             mode);
 
     // Assert
-    assertFalse(ctx.dontCompress);
-    assertEquals(maxRetries, ctx.maxInsertRetries);
-    assertEquals(rnfsToSuccess, ctx.consecutiveRNFsCountAsSuccess);
-    assertEquals(dataBlocks, ctx.splitfileSegmentDataBlocks);
-    assertEquals(checkBlocks, ctx.splitfileSegmentCheckBlocks);
-    assertEquals(canWriteClientCache, ctx.canWriteClientCache);
-    assertEquals(forkOnCacheable, ctx.forkOnCacheable);
-    assertEquals(localRequestOnly, ctx.localRequestOnly);
-    assertEquals(descriptor, ctx.compressorDescriptor);
-    assertEquals(extraSingle, ctx.extraInsertsSingleBlock);
-    assertEquals(extraHeader, ctx.extraInsertsSplitfileHeaderBlock);
+    assertFalse(ctx.isDontCompress());
+    assertEquals(maxRetries, ctx.getMaxInsertRetries());
+    assertEquals(rnfsToSuccess, ctx.getConsecutiveRNFsCountAsSuccess());
+    assertEquals(dataBlocks, ctx.getSplitfileSegmentDataBlocks());
+    assertEquals(checkBlocks, ctx.getSplitfileSegmentCheckBlocks());
+    assertEquals(canWriteClientCache, ctx.isCanWriteClientCache());
+    assertEquals(forkOnCacheable, ctx.isForkOnCacheable());
+    assertEquals(localRequestOnly, ctx.isLocalRequestOnly());
+    assertEquals(descriptor, ctx.getCompressorDescriptor());
+    assertEquals(extraSingle, ctx.getExtraInsertsSingleBlock());
+    assertEquals(extraHeader, ctx.getExtraInsertsSplitfileHeaderBlock());
 
     assertEquals(SplitfileAlgorithm.ONION_STANDARD, ctx.getSplitfileAlgorithm());
-    assertFalse(ctx.ignoreUSKDatehints);
-    assertNotNull(ctx.eventProducer);
+    assertFalse(ctx.isIgnoreUSKDatehints());
+    assertNotNull(ctx.getEventProducer());
 
     assertEquals(mode, ctx.getCompatibilityMode());
     assertEquals(mode.ordinal(), ctx.getCompatibilityCode());
@@ -134,7 +154,7 @@ class InsertContextTest {
     // Assert
     assertEquals(original, copy);
     // eventProducer is intentionally the same reference in the copy constructor, verify identity
-    assertSame(original.eventProducer, copy.eventProducer);
+    assertSame(original.getEventProducer(), copy.getEventProducer());
   }
 
   @Test
@@ -142,7 +162,7 @@ class InsertContextTest {
     // Arrange
     InsertContext base = newContextWithDefaults(CompatibilityMode.COMPAT_1251);
     // The specialized constructor does not copy canWriteClientCache; keep semantics equal.
-    base.canWriteClientCache = false;
+    base.setCanWriteClientCache(false);
     SimpleEventProducer otherProducer = new SimpleEventProducer();
 
     // Act
@@ -152,7 +172,7 @@ class InsertContextTest {
     // equals() ignores eventProducer
     assertEquals(base, withOtherProducer);
     // but producers actually differ
-    assertNotEquals(base.eventProducer, withOtherProducer.eventProducer);
+    assertNotEquals(base.getEventProducer(), withOtherProducer.getEventProducer());
   }
 
   @Test
@@ -172,6 +192,37 @@ class InsertContextTest {
     // but hashCode differs (computed from realCompatMode ordinal).
     assertEquals(a, b);
     assertNotEquals(a.hashCode(), b.hashCode());
+  }
+
+  @Test
+  void serialization_preservesEventProducerListeners() throws Exception {
+    InsertContext original = newContextWithDefaults(CompatibilityMode.COMPAT_1468);
+    RecordingListener listener = new RecordingListener();
+
+    ClientEventProducer producer = original.getEventProducer();
+    assertInstanceOf(SimpleEventProducer.class, producer);
+    producer.addEventListener(listener);
+
+    byte[] serialized;
+    try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(original);
+      oos.flush();
+      serialized = baos.toByteArray();
+    }
+
+    InsertContext restored;
+    try (ByteArrayInputStream bais = new ByteArrayInputStream(serialized);
+        ObjectInputStream ois = new ObjectInputStream(bais)) {
+      restored = (InsertContext) ois.readObject();
+    }
+
+    ClientEventProducer restoredProducer = restored.getEventProducer();
+    assertInstanceOf(SimpleEventProducer.class, restoredProducer);
+    ClientEventListener[] restoredListeners =
+        ((SimpleEventProducer) restoredProducer).getEventListeners();
+    assertEquals(1, restoredListeners.length);
+    assertInstanceOf(RecordingListener.class, restoredListeners[0]);
   }
 
   // ----- CompatibilityMode enum tests -----

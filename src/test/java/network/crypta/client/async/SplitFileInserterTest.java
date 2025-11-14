@@ -290,7 +290,7 @@ class SplitFileInserterTest {
   @Test
   void schedule_whenCHKOnlyFalse_expectStartAndSenderScheduled() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.getCHKOnly = false;
+    ic.setGetCHKOnly(false);
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
@@ -315,7 +315,7 @@ class SplitFileInserterTest {
   @Test
   void schedule_whenCHKOnlyTrue_expectNoSenderScheduling() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.getCHKOnly = true;
+    ic.setGetCHKOnly(true);
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
@@ -363,7 +363,7 @@ class SplitFileInserterTest {
   @Test
   void encodingProgress_whenCHKOnlyTrue_doesNothing() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.getCHKOnly = true;
+    ic.setGetCHKOnly(true);
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
                 SplitFileInserterStorage.class,
@@ -384,7 +384,7 @@ class SplitFileInserterTest {
   @Test
   void encodingProgress_whenScheduleThrows_callsStorageFail() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.getCHKOnly = false;
+    ic.setGetCHKOnly(false);
     InsertException boom = new InsertException(InsertExceptionMode.INTERNAL_ERROR);
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
@@ -407,7 +407,7 @@ class SplitFileInserterTest {
   @Test
   void onHasKeys_whenEarlyEncodeTrue_encodesAndReportsMetadata() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.earlyEncode = true;
+    ic.setEarlyEncode(true);
 
     Metadata md = Mockito.mock(Metadata.class);
 
@@ -435,7 +435,7 @@ class SplitFileInserterTest {
   @Test
   void onHasKeys_whenCHKOnlyTrue_triggersSuccessAndFreesResources() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.getCHKOnly = true;
+    ic.setGetCHKOnly(true);
 
     Metadata md = Mockito.mock(Metadata.class);
 
@@ -466,8 +466,8 @@ class SplitFileInserterTest {
   @Test
   void onSucceeded_whenNotEarlyEncode_reportsMetadataAndSuccess() throws Exception {
     InsertContext ic = newInsertContext();
-    ic.earlyEncode = false;
-    ic.getCHKOnly = false;
+    ic.setEarlyEncode(false);
+    ic.setGetCHKOnly(false);
     Metadata md = Mockito.mock(Metadata.class);
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
