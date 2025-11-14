@@ -22,24 +22,45 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ClientPut URI=CHK@ // could as easily be an insertable SSK URI Metadata.ContentType=text/html
- * Identifier=Insert-1 // identifier, as always Verbosity=0 // just report when complete
- * MaxRetries=999999 // lots of retries PriorityClass=1 // FProxy priority level
+ * Represents a fully parsed ClientPut request flowing over the FCP control connection.
  *
- * <p>UploadFrom=direct // attached directly to this message DataLength=100 // 100kB or
- * UploadFrom=disk // upload a file from disk Filename=/home/toad/something.html
- * FileHash=021349568329403123 Data
+ * <p>Each instance is constructed once the peer's {@link SimpleFieldSet} payload passes validation,
+ * capturing the destination {@link FreenetURI}, persistence policy, upload mode, and optional hints
+ * such as compressor descriptors or redirect targets. The parsed structure is passed to the server
+ * pipeline so payload streaming, request accounting, and insert scheduling can start immediately
+ * without repeatedly decoding textual headers.
  *
- * <p>Neither IgnoreDS nor DSOnly make sense for inserts.
+ * <p>The object is effectively immutable after construction because all exposed fields are final
+ * and the payload bucket reference is managed by {@link DataCarryingMessage}. This design makes it
+ * safe for worker threads to hand the message between parser, queueing, and insert components
+ * without additional locking beyond the bucket lifecycle hooks.
+ *
+ * <ul>
+ *   <li>Validates metadata (URI, identifiers, persistence, compression, and file hints).
+ *   <li>Describes how payload bytes will be supplied (inline, disk file, or redirect).
+ *   <li>Exposes helper accessors for handler code invoked by {@link FCPConnectionHandler}.
+ * </ul>
+ *
+ * @see ClientPutBase
+ * @see ClientRequest
+ * @see HighLevelSimpleClientImpl
  */
 public class ClientPutMessage extends DataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutMessage.class);
 
+  /**
+   * Canonical FCP verb string for this message, reused by {@link #getName()} and server routing so
+   * that client responses, logging, and protocol negotiation remain stable across releases.
+   */
   public static final String NAME = "ClientPut";
+
+  private static final String FIELD_UPLOAD_FROM = "UploadFrom";
+  private static final String FIELD_DATA_LENGTH = "DataLength";
+  private static final String FIELD_VERBOSITY = "Verbosity";
 
   final FreenetURI uri;
   final String contentType;
-  final long dataLength;
+  final long payloadLength;
   final String identifier;
   final int verbosity;
   final int maxRetries;
@@ -79,16 +100,85 @@ public class ClientPutMessage extends DataCarryingMessage {
   final long metadataThreshold;
   final boolean ignoreUSKDatehints;
 
+  /**
+   * Parses a raw {@link SimpleFieldSet} describing a ClientPut request and builds an immutable
+   * representation.
+   *
+   * <p>This constructor validates every user-supplied field, normalizes defaults, and eagerly
+   * derives helper information such as upload source, compressor descriptors, and inferred
+   * filenames. It accepts inserts ranging from small inline payloads to multi-gigabyte redirected
+   * streams, and throws {@link MessageInvalidException} as soon as a constraint violation surfaces
+   * so the caller can reply with the appropriate protocol error. Callers should invoke it once per
+   * inbound message on the parsing thread before handing the resulting instance to worker queues.
+   *
+   * @param fs parsed field set containing client-provided headers and numeric properties for the
+   *     insert request
+   * @throws MessageInvalidException if any required field is missing, contradictory, malformed, or
+   *     violates node policy choices
+   */
   public ClientPutMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    String fnam = null;
     identifier = fs.get("Identifier");
     binaryBlob = fs.getBoolean("BinaryBlob", false);
     global = fs.getBoolean("Global", false);
     localRequestOnly = fs.getBoolean("LocalRequestOnly", false);
+    compatibilityMode = parseCompatibilityMode(fs, identifier, global);
+    String overrideKeyRaw = fs.get("OverrideSplitfileCryptoKey");
+    overrideSplitfileCryptoKey =
+        overrideKeyRaw == null
+            ? null
+            : decodeOverrideSplitfileCryptoKey(overrideKeyRaw, identifier, global);
+    if (identifier == null)
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD, "No Identifier", null, global);
+    UriParseResult uriParseResult = parseUri(fs, binaryBlob, identifier, global);
+    uri = uriParseResult.uri();
+    String filenameHint = uriParseResult.filenameHint();
+
+    verbosity =
+        parseOptionalIntOrZero(fs.get(FIELD_VERBOSITY), FIELD_VERBOSITY, identifier, global);
+    contentType = fs.get("Metadata.ContentType");
+    maxRetries = parseOptionalIntOrZero(fs.get("MaxRetries"), "MaxSize", identifier, global);
+    getCHKOnly = fs.getBoolean("GetCHKOnly", false);
+    priorityClass = parsePriorityClass(fs.get("PriorityClass"), identifier, global);
+
+    fileHash = fs.get(ClientPutBase.FILE_HASH);
+
+    UploadConfig uploadConfig = parseUploadSource(fs, identifier, global, filenameHint);
+    payloadLength = uploadConfig.length();
+    uploadFromType = uploadConfig.type();
+    origFilename = uploadConfig.originalFile();
+    redirectTarget = uploadConfig.redirectTarget();
+    filenameHint = uploadConfig.filenameHint();
+
+    dontCompress = fs.getBoolean("DontCompress", false);
+    persistence = Persistence.parseOrThrow(fs.get("Persistence"), identifier, global);
+    canWriteClientCache = fs.getBoolean("WriteToClientCache", false);
+    clientToken = fs.get("ClientToken");
+    targetFilename =
+        resolveTargetFilename(fs.get("TargetFilename"), filenameHint, uri, identifier, global);
+    earlyEncode = fs.getBoolean("EarlyEncode", false);
+    compressorDescriptor = parseCompressorDescriptor(fs.get("Codecs"), identifier, global);
+    if (fs.get("ForkOnCacheable") != null)
+      forkOnCacheable = fs.getBoolean("ForkOnCacheable", false);
+    else forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
+    extraInsertsSingleBlock =
+        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
+    extraInsertsSplitfileHeaderBlock =
+        fs.getInt(
+            "ExtraInsertsSplitfileHeaderBlock",
+            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
+    realTimeFlag = fs.getBoolean("RealTimeFlag", false);
+    metadataThreshold = fs.getLong("MetadataThreshold", -1);
+    ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
+  }
+
+  private static InsertContext.CompatibilityMode parseCompatibilityMode(
+      SimpleFieldSet fs, String identifier, boolean global) throws MessageInvalidException {
     String s = fs.get("CompatibilityMode");
-    InsertContext.CompatibilityMode cmode = null;
-    if (s == null) cmode = InsertContext.CompatibilityMode.COMPAT_DEFAULT;
-    else {
+    InsertContext.CompatibilityMode cmode;
+    if (s == null) {
+      cmode = InsertContext.CompatibilityMode.COMPAT_DEFAULT;
+    } else {
       try {
         cmode = InsertContext.CompatibilityMode.valueOf(s);
       } catch (IllegalArgumentException e) {
@@ -109,129 +199,113 @@ public class ClientPutMessage extends DataCarryingMessage {
         }
       }
     }
-    compatibilityMode = cmode.intern();
-    s = fs.get("OverrideSplitfileCryptoKey");
-    if (s == null) overrideSplitfileCryptoKey = null;
-    else
-      try {
-        overrideSplitfileCryptoKey = HexUtil.hexToBytes(s);
-      } catch (NumberFormatException e1) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Invalid splitfile crypto key (not hex)",
-            identifier,
-            global);
-      } catch (IndexOutOfBoundsException e1) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Invalid splitfile crypto key (too short)",
-            identifier,
-            global);
-      }
-    if (identifier == null)
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.MISSING_FIELD, "No Identifier", null, global);
+    return cmode.intern();
+  }
+
+  private static byte[] decodeOverrideSplitfileCryptoKey(
+      String rawKey, String identifier, boolean global) throws MessageInvalidException {
     try {
-      if (binaryBlob) uri = new FreenetURI("CHK@");
-      else {
-        String u = fs.get("URI");
-        if (u == null)
-          throw new MessageInvalidException(
-              ProtocolErrorMessage.MISSING_FIELD, "No URI", identifier, global);
-        FreenetURI uu = new FreenetURI(u);
-        String[] metas = uu.getAllMetaStrings();
-        if (metas != null && metas.length == 1) {
-          fnam = metas[0];
-          uu = uu.setMetaString(null);
-        } // if >1, will fail later
-        uri = uu;
+      return HexUtil.hexToBytes(rawKey);
+    } catch (NumberFormatException e1) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD,
+          "Invalid splitfile crypto key (not hex)",
+          identifier,
+          global);
+    } catch (IndexOutOfBoundsException e1) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD,
+          "Invalid splitfile crypto key (too short)",
+          identifier,
+          global);
+    }
+  }
+
+  private static UriParseResult parseUri(
+      SimpleFieldSet fs, boolean binaryBlob, String identifier, boolean global)
+      throws MessageInvalidException {
+    if (binaryBlob) {
+      try {
+        return new UriParseResult(new FreenetURI("CHK@"), null);
+      } catch (MalformedURLException e) {
+        throw new MessageInvalidException(
+            ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, e.getMessage(), identifier, global);
       }
+    }
+    String u = fs.get("URI");
+    if (u == null)
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD, "No URI", identifier, global);
+    try {
+      FreenetURI parsed = new FreenetURI(u);
+      String[] metas = parsed.getAllMetaStrings();
+      if (metas != null && metas.length == 1) {
+        String fnam = metas[0];
+        parsed = parsed.setMetaString(null);
+        return new UriParseResult(parsed, fnam);
+      }
+      return new UriParseResult(parsed, null);
     } catch (MalformedURLException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.FREENET_URI_PARSE_ERROR, e.getMessage(), identifier, global);
     }
-    String verbosityString = fs.get("Verbosity");
-    if (verbosityString == null) verbosity = 0;
-    else {
-      try {
-        verbosity = Integer.parseInt(verbosityString, 10);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing Verbosity field: " + e.getMessage(),
-            identifier,
-            global);
-      }
+  }
+
+  private static int parseOptionalIntOrZero(
+      String rawValue, String errorFieldName, String identifier, boolean global)
+      throws MessageInvalidException {
+    if (rawValue == null) {
+      return 0;
     }
-    contentType = fs.get("Metadata.ContentType");
-    String maxRetriesString = fs.get("MaxRetries");
-    if (maxRetriesString == null)
-      // default to 0
-      maxRetries = 0;
-    else {
-      try {
-        maxRetries = Integer.parseInt(maxRetriesString, 10);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing MaxSize field: " + e.getMessage(),
-            identifier,
-            global);
-      }
+    try {
+      return Integer.parseInt(rawValue, 10);
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing " + errorFieldName + " field: " + e.getMessage(),
+          identifier,
+          global);
     }
-    getCHKOnly = fs.getBoolean("GetCHKOnly", false);
-    String priorityString = fs.get("PriorityClass");
+  }
+
+  private static short parsePriorityClass(String priorityString, String identifier, boolean global)
+      throws MessageInvalidException {
     if (priorityString == null) {
-      // defaults to the one just below FProxy
-      priorityClass = RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
-    } else {
-      try {
-        priorityClass = Short.parseShort(priorityString);
-        if (!RequestStarter.isValidPriorityClass(priorityClass))
-          throw new MessageInvalidException(
-              ProtocolErrorMessage.INVALID_FIELD,
-              "Invalid priority class "
-                  + priorityClass
-                  + " - range is "
-                  + RequestStarter.PAUSED_PRIORITY_CLASS
-                  + " to "
-                  + RequestStarter.MAXIMUM_PRIORITY_CLASS,
-              identifier,
-              global);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing PriorityClass field: " + e.getMessage(),
-            identifier,
-            global);
-      }
+      return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
     }
-    // We do *NOT* check that FileHash is valid here for backward compatibility... and to make the
-    // override work
-    this.fileHash = fs.get(ClientPutBase.FILE_HASH);
-    String uploadFrom = fs.get("UploadFrom");
-    if ((uploadFrom == null) || uploadFrom.equalsIgnoreCase("direct")) {
-      uploadFromType = UploadFrom.DIRECT;
-      String dataLengthString = fs.get("DataLength");
-      if (dataLengthString == null)
+    try {
+      short parsed = Short.parseShort(priorityString);
+      if (!RequestStarter.isValidPriorityClass(parsed)) {
         throw new MessageInvalidException(
-            ProtocolErrorMessage.MISSING_FIELD,
-            "Need DataLength on a ClientPut",
-            identifier,
-            global);
-      try {
-        dataLength = Long.parseLong(dataLengthString, 10);
-      } catch (NumberFormatException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.ERROR_PARSING_NUMBER,
-            "Error parsing DataLength field: " + e.getMessage(),
+            ProtocolErrorMessage.INVALID_FIELD,
+            "Invalid priority class "
+                + parsed
+                + " - range is "
+                + RequestStarter.PAUSED_PRIORITY_CLASS
+                + " to "
+                + RequestStarter.MAXIMUM_PRIORITY_CLASS,
             identifier,
             global);
       }
-      this.origFilename = null;
-      redirectTarget = null;
-    } else if (uploadFrom.equalsIgnoreCase("disk")) {
-      uploadFromType = UploadFrom.DISK;
+      return parsed;
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing PriorityClass field: " + e.getMessage(),
+          identifier,
+          global);
+    }
+  }
+
+  private UploadConfig parseUploadSource(
+      SimpleFieldSet fs, String identifier, boolean global, String filenameHint)
+      throws MessageInvalidException {
+    String uploadFrom = fs.get(FIELD_UPLOAD_FROM);
+    if (uploadFrom == null || uploadFrom.equalsIgnoreCase("direct")) {
+      long length = parseDataLength(fs, identifier, global);
+      return new UploadConfig(length, UploadFrom.DIRECT, null, null, filenameHint);
+    }
+    if (uploadFrom.equalsIgnoreCase("disk")) {
       String filename = fs.get("Filename");
       if (filename == null)
         throw new MessageInvalidException(
@@ -240,102 +314,142 @@ public class ClientPutMessage extends DataCarryingMessage {
       if (!(f.exists() && f.isFile() && f.canRead()))
         throw new MessageInvalidException(
             ProtocolErrorMessage.FILE_NOT_FOUND, null, identifier, global);
-      dataLength = f.length();
-      this.bucket = new FileBucket(f, true, false, false, false);
-      this.origFilename = f;
-      redirectTarget = null;
-      if (fnam == null) fnam = origFilename.getName();
-    } else if (uploadFrom.equalsIgnoreCase("redirect")) {
-      uploadFromType = UploadFrom.REDIRECT;
-      String target = fs.get("TargetURI");
-      if (target == null)
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.MISSING_FIELD,
-            "TargetURI missing but UploadFrom=redirect",
-            identifier,
-            global);
-      try {
-        redirectTarget = new FreenetURI(target);
-      } catch (MalformedURLException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD, "Invalid TargetURI: " + e, identifier, global);
-      }
-      dataLength = 0;
-      origFilename = null;
+      bucket = new FileBucket(f, true, false, false, false);
+      String resolvedName = filenameHint != null ? filenameHint : f.getName();
+      return new UploadConfig(f.length(), UploadFrom.DISK, f, null, resolvedName);
+    }
+    if (uploadFrom.equalsIgnoreCase("redirect")) {
+      FreenetURI target = parseRedirectTarget(fs.get("TargetURI"), identifier, global);
       bucket = null;
-    } else
+      return new UploadConfig(0, UploadFrom.REDIRECT, null, target, filenameHint);
+    }
+    throw new MessageInvalidException(
+        ProtocolErrorMessage.INVALID_FIELD,
+        "UploadFrom invalid or unrecognized: " + uploadFrom,
+        identifier,
+        global);
+  }
+
+  private static long parseDataLength(SimpleFieldSet fs, String identifier, boolean global)
+      throws MessageInvalidException {
+    String dataLengthString = fs.get(FIELD_DATA_LENGTH);
+    if (dataLengthString == null)
       throw new MessageInvalidException(
-          ProtocolErrorMessage.INVALID_FIELD,
-          "UploadFrom invalid or unrecognized: " + uploadFrom,
+          ProtocolErrorMessage.MISSING_FIELD, "Need DataLength on a ClientPut", identifier, global);
+    try {
+      return Long.parseLong(dataLengthString, 10);
+    } catch (NumberFormatException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.ERROR_PARSING_NUMBER,
+          "Error parsing DataLength field: " + e.getMessage(),
           identifier,
           global);
-    dontCompress = fs.getBoolean("DontCompress", false);
-    String persistenceString = fs.get("Persistence");
-    persistence = Persistence.parseOrThrow(persistenceString, identifier, global);
-    canWriteClientCache = fs.getBoolean("WriteToClientCache", false);
-    clientToken = fs.get("ClientToken");
-    String f = fs.get("TargetFilename");
-    if (f != null) fnam = f;
-    if (fnam != null && fnam.indexOf('/') > -1) {
+    }
+  }
+
+  private static FreenetURI parseRedirectTarget(String rawTarget, String identifier, boolean global)
+      throws MessageInvalidException {
+    if (rawTarget == null)
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD,
+          "TargetURI missing but UploadFrom=redirect",
+          identifier,
+          global);
+    try {
+      return new FreenetURI(rawTarget);
+    } catch (MalformedURLException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD, "Invalid TargetURI: " + e, identifier, global);
+    }
+  }
+
+  private String resolveTargetFilename(
+      String targetOverride,
+      String inferredName,
+      FreenetURI parsedUri,
+      String identifier,
+      boolean global)
+      throws MessageInvalidException {
+    String candidate = targetOverride != null ? targetOverride : inferredName;
+    if (candidate != null && candidate.indexOf('/') > -1) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "TargetFilename must not contain slashes",
           identifier,
           global);
     }
-    if (fnam != null && fnam.isEmpty()) {
-      fnam = null; // Deliberate override to tell us not to create one.
+    if (candidate != null && candidate.isEmpty()) {
+      candidate = null;
     }
-    if (uri.getRoutingKey() == null && !uri.isKSK()) targetFilename = fnam;
-    else targetFilename = null;
-    earlyEncode = fs.getBoolean("EarlyEncode", false);
-    String codecs = fs.get("Codecs");
-    if (codecs != null) {
-      COMPRESSOR_TYPE[] ca;
-      try {
-        ca = COMPRESSOR_TYPE.getCompressorsArrayNoDefault(codecs);
-      } catch (InvalidCompressionCodecException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
-      }
-      if (ca == null || ca.length == 0) codecs = null;
+    if (parsedUri.getRoutingKey() == null && !parsedUri.isKSK()) {
+      return candidate;
     }
-    compressorDescriptor = codecs;
-    if (fs.get("ForkOnCacheable") != null)
-      forkOnCacheable = fs.getBoolean("ForkOnCacheable", false);
-    else forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
-    extraInsertsSingleBlock =
-        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
-    extraInsertsSplitfileHeaderBlock =
-        fs.getInt(
-            "ExtraInsertsSplitfileHeaderBlock",
-            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
-    realTimeFlag = fs.getBoolean("RealTimeFlag", false);
-    metadataThreshold = fs.getLong("MetadataThreshold", -1);
-    ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
+    return null;
   }
 
+  private static String parseCompressorDescriptor(String codecs, String identifier, boolean global)
+      throws MessageInvalidException {
+    if (codecs == null) {
+      return null;
+    }
+    try {
+      COMPRESSOR_TYPE[] ca = COMPRESSOR_TYPE.getCompressorsArrayNoDefault(codecs);
+      if (ca.length == 0) {
+        return null;
+      }
+      return codecs;
+    } catch (InvalidCompressionCodecException e) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, global);
+    }
+  }
+
+  private record UriParseResult(FreenetURI uri, String filenameHint) {}
+
+  private record UploadConfig(
+      long length,
+      UploadFrom type,
+      File originalFile,
+      FreenetURI redirectTarget,
+      String filenameHint) {}
+
+  /**
+   * Serializes this request back into the canonical {@link SimpleFieldSet} wire representation.
+   *
+   * <p>The returned structure mirrors the current in-memory state, including normalized upload
+   * configuration, persistence flags, metadata hints, and codec descriptors. Callers typically pass
+   * the snapshot to downstream protocol layers whenever the request must be echoed, logged, or
+   * forwarded to plugins for auditing or deferred processing.
+   *
+   * <pre>{@code
+   * SimpleFieldSet snapshot = message.getFieldSet();
+   * server.getConnection().send(snapshot);
+   * }</pre>
+   *
+   * @return freshly allocated field set carrying canonicalized headers describing this insert
+   *     request instance
+   */
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
     sfs.putSingle("URI", uri.toString());
     sfs.putSingle("Identifier", identifier);
-    sfs.put("Verbosity", verbosity);
+    sfs.put(FIELD_VERBOSITY, verbosity);
     sfs.put("MaxRetries", maxRetries);
     sfs.putSingle("Metadata.ContentType", contentType);
     sfs.putSingle("ClientToken", clientToken);
     switch (uploadFromType) {
       case DIRECT:
-        sfs.putSingle("UploadFrom", "direct");
-        sfs.put("DataLength", dataLength);
+        sfs.putSingle(FIELD_UPLOAD_FROM, "direct");
+        sfs.put(FIELD_DATA_LENGTH, payloadLength);
         break;
       case DISK:
-        sfs.putSingle("UploadFrom", "disk");
+        sfs.putSingle(FIELD_UPLOAD_FROM, "disk");
         sfs.putSingle("Filename", origFilename.getAbsolutePath());
-        sfs.put("DataLength", dataLength);
+        sfs.put(FIELD_DATA_LENGTH, payloadLength);
         break;
       case REDIRECT:
-        sfs.putSingle("UploadFrom", "redirect");
+        sfs.putSingle(FIELD_UPLOAD_FROM, "redirect");
         sfs.putSingle("TargetURI", redirectTarget.toString());
         break;
     }
@@ -349,11 +463,35 @@ public class ClientPutMessage extends DataCarryingMessage {
     return sfs;
   }
 
+  /**
+   * Returns the FCP message verb that identifies this structure to routers and serializers.
+   *
+   * <p>Client and server code rely on this value when populating response headers, wiring message
+   * dispatch tables, and recording telemetry grouped by verb. The implementation always returns
+   * {@link #NAME}, preserving the stable mapping between the Java type and the textual verb even if
+   * future refactors adjust construction details.
+   *
+   * @return constant verb that protocol dispatch tables expect for ClientPut traffic
+   */
   @Override
   public String getName() {
     return NAME;
   }
 
+  /**
+   * Initiates processing of this insert request by delegating to the connection handler.
+   *
+   * <p>The method is invoked on the handler thread after any payload bucket has been populated so
+   * that {@link DataCarryingMessage} invariants already hold. It forwards this instance, together
+   * with the owning {@link Node}, to {@link FCPConnectionHandler#startClientPut(ClientPutMessage)}
+   * so the handler can enforce quotas, schedule insert workers, or emit late validation errors to
+   * the client.
+   *
+   * @param handler connection handler that accepted the message and coordinates streaming
+   *     back-pressure
+   * @param node node instance used to resolve persistence settings and enforce configured limits
+   * @throws MessageInvalidException if the handler detects inconsistency during late validation
+   */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     handler.startClientPut(this);
@@ -362,7 +500,7 @@ public class ClientPutMessage extends DataCarryingMessage {
   /** Get the length of the trailing field. */
   @Override
   long dataLength() {
-    if (uploadFromType == UploadFrom.DIRECT) return dataLength;
+    if (uploadFromType == UploadFrom.DIRECT) return payloadLength;
     else return -1;
   }
 
@@ -387,6 +525,15 @@ public class ClientPutMessage extends DataCarryingMessage {
     return global;
   }
 
+  /**
+   * Releases any bucket resources associated with the payload of this message.
+   *
+   * <p>This hook lets handlers clean up deterministically after streaming completes or aborts
+   * prematurely. It frees the bucket exactly once, logging a warning when multiple invocations
+   * occur so ordering issues can be diagnosed. Callers should prefer invoking it from {@code
+   * finally} blocks to keep transient storage usage bounded even when inserts spawn long-running
+   * retries elsewhere.
+   */
   public void freeData() {
     if (bucket == null) {
       if (dataLength() <= 0) return; // Okay.
