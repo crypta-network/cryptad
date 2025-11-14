@@ -110,7 +110,7 @@ class ClientRequestSelectorTest {
     LockableRandomAccessBuffer data = generateData(r, size, smallRAFFactory);
     HashResult[] hashes = getHashes(data);
     MyCallback cb = new MyCallback();
-    InsertContext context = baseContext.clone();
+    InsertContext context = InsertContext.copyOf(baseContext);
     context.maxInsertRetries = 2;
     ClientRequestSelector keys = new ClientRequestSelector(true, false, false, null);
     SplitFileInserterStorage storage =
