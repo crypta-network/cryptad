@@ -429,11 +429,6 @@ public class ClientPutDir extends ClientPutBase {
   }
 
   @Override
-  protected String getTypeName() {
-    return "PUTDIR";
-  }
-
-  @Override
   public boolean hasSucceeded() {
     return succeeded;
   }

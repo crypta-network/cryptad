@@ -468,11 +468,6 @@ public class ClientPut extends ClientPutBase {
   }
 
   @Override
-  protected String getTypeName() {
-    return "PUT";
-  }
-
-  @Override
   public boolean hasSucceeded() {
     return succeeded;
   }
