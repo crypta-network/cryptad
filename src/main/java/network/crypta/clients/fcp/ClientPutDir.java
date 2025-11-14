@@ -6,6 +6,7 @@ import java.io.Serial;
 import java.net.MalformedURLException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -364,7 +365,7 @@ public class ClientPutDir extends ClientPutBase {
     manifestElements = null;
   }
 
-  private void freeData(HashMap<String, Object> manifestElements) {
+  private void freeData(Map<String, Object> manifestElements) {
     if (LOG.isDebugEnabled())
       LOG.debug(
           "freeData() inner on "
@@ -374,7 +375,7 @@ public class ClientPutDir extends ClientPutBase {
               + " size = "
               + manifestElements.size());
     for (Object o : manifestElements.values()) {
-      if (o instanceof HashMap) {
+      if (o instanceof Map) {
         freeData(Metadata.forceMap(o));
       } else {
         ManifestElement e = (ManifestElement) o;

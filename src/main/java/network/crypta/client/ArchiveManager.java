@@ -9,6 +9,7 @@ import java.io.PipedOutputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import network.crypta.client.async.ClientContext;
@@ -889,7 +890,7 @@ public class ArchiveManager {
     return x;
   }
 
-  private void addToDirectory(HashMap<String, Object> dir, String name, String prefix)
+  private void addToDirectory(Map<String, Object> dir, String name, String prefix)
       throws ArchiveFailureException {
     int x = name.indexOf('/');
     if (x < 0) {
