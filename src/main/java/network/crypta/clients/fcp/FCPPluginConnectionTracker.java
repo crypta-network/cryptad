@@ -17,36 +17,42 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Keeps a list of all {@link FCPPluginConnectionImpl}s which are connected to server plugins
- * running in the node. Allows the server plugins to query a client connection by its {@link UUID}.
- * <br>
- * <br>
+ * Tracks all {@link FCPPluginConnectionImpl} instances that represent in-progress plugin client
+ * connections so server plugins can retrieve a {@link UUID}-addressable handle whenever they need
+ * to resume a long-running workflow.
  *
- * <p>To understand the purpose of this, please consider the following:<br>
- * The normal flow of plugin FCP is that clients send messages to a server plugin, and the server
- * plugin immediately returns a reply from its message handling function {@link
- * ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.<br>
- * This might not be sufficient for certain usecases: The reply to a message might take quite some
- * time to compute, possibly hours. Then a reference to the original client connection needs to be
- * stored in the plugin's database, not memory. A {@link FCPPluginConnection} cannot be serialized
- * into a database, but an {@link UUID} can.<br>
- * Thus, this class exists to serve the purpose of allowing plugin servers to query client
- * connections by their ID (see {@link FCPPluginConnection#getID()}).
+ * <p>The tracker sits between {@link ServerSideFCPMessageHandler} implementations and the {@link
+ * PluginRespirator}: the latter still creates the connections, but once registered here a server
+ * can safely persist only the identifier and later call {@link #getConnection(UUID)} to recover the
+ * live channel. Connections are weakly referenced; when the client discards its strong reference,
+ * the tracker observes the {@link WeakReference} cleanup and treats the peer as closed, avoiding
+ * stale handles while still keeping lookup time logarithmic through the {@link TreeMap} index. The
+ * approach is deliberately conservative—no persistence is attempted—because only the client knows
+ * when state is safe to discard and because plugins may restart independently of the node.
  *
- * <p>Client connections are considered as closed once the client discards all strong references to
- * the {@link FCPPluginConnection}. Or in other words: A {@link FCPPluginConnection} is closed once
- * it becomes weakly reachable.<br>
- * Thus, this class is implemented by keeping {@link WeakReference}s to plugin client connections,
- * so they only stay in the memory of the tracker as long as they are still connected.
+ * <p>Lifecycle-wise, callers instantiate the tracker early during plugin startup, immediately call
+ * {@link #start()} to run the garbage-collection loop, and then invoke {@link
+ * #registerConnection(FCPPluginConnectionImpl)} for every client-side channel handed to a server
+ * handler. Shutdown requires no action because the supervising thread is a daemon. The class is
+ * thread-safe through an internal {@link ReadWriteLock}, so lookups and automatic pruning can run
+ * concurrently even under high churn.
  *
- * <p>After constructing an object of this class, you must call {@link #start()} to start its
- * garbage collection thread.<br>
- * For shutdown, no action is required: The thread will be a daemon thread and thus the JVM will
- * deal with shutdown.
+ * <ul>
+ *   <li><strong>Responsibilities:</strong> maintain a weak-reference index, expose lookups by ID,
+ *       and prune connections whose clients disconnected or crashed.
+ *   <li><strong>Threading:</strong> lookups use the read lock while the background thread holds the
+ *       write lock for removals; registration holds the write lock briefly.
+ *   <li><strong>Constraints:</strong> callers must not leak {@link FCPPluginConnectionImpl}
+ *       references to server plugins; they should provide adapters via {@link
+ *       FCPPluginConnectionImpl#getDefaultSendDirectionAdapter(SendDirection)} instead.
+ * </ul>
  *
+ * @see FCPPluginConnection
+ * @see PluginRespirator
  * @author xor (xor@freenetproject.org)
  */
 final class FCPPluginConnectionTracker extends NativeThread {
+  /** Logger dedicated to reporting tracker activity and unexpected shutdown signals. */
   private static final Logger LOG = LoggerFactory.getLogger(FCPPluginConnectionTracker.class);
 
   /**
@@ -62,7 +68,7 @@ final class FCPPluginConnectionTracker extends NativeThread {
    * Lock to guard {@link #connectionsByID} against concurrent modification.<br>
    * A {@link ReadWriteLock} because the suspected usage pattern is mostly reads, very few writes -
    * {@link ReadWriteLock} can do that faster than a regular Lock.<br>
-   * (A {@link ReentrantReadWriteLock} because thats the only implementation of {@link
+   * (A {@link ReentrantReadWriteLock} because that's the only implementation of {@link
    * ReadWriteLock}.)
    */
   private final ReadWriteLock connectionsByIDLock = new ReentrantReadWriteLock();
@@ -75,16 +81,32 @@ final class FCPPluginConnectionTracker extends NativeThread {
       new ReferenceQueue<>();
 
   /**
-   * We extend class {@link WeakReference} so we can store the ID of the connection:<br>
-   * When using a {@link ReferenceQueue} to get notified about nulled {@link WeakReference} values
-   * in {@link FCPPluginConnectionTracker#connectionsByID}, we need to remove those values from the
-   * {@link TreeMap}. For fast removal, we need their key in the map, which is the connection ID, so
-   * we should store it in the {@link WeakReference}.
+   * Weak reference wrapper that remembers the {@link UUID} belonging to a tracked connection so the
+   * enclosing tracker can erase map entries as soon as the referent becomes weakly reachable.
+   *
+   * <p>The {@link ReferenceQueue}-driven cleanup needs constant-time removal from the {@link
+   * #connectionsByID} index. Capturing the identifier on construction avoids an additional lookup
+   * or synchronization step when the queue is polled by {@link #realRun()}.
    */
   static final class ConnectionWeakReference extends WeakReference<FCPPluginConnectionImpl> {
 
+    /**
+     * Identifier copied from the referent to allow quick removal from {@link #connectionsByID}. The
+     * value exactly mirrors {@link FCPPluginConnection#getID()} and never mutates, so log
+     * statements and tree-map operations can correlate pruned entries with the plugin state that
+     * recorded the identifier originally.
+     */
     public final UUID connectionID;
 
+    /**
+     * Creates a weak reference for the supplied connection and immediately registers it with the
+     * {@link ReferenceQueue} monitored by the background thread.
+     *
+     * @param referent live connection to monitor; same object retrieved through {@link
+     *     #getConnection(UUID)}.
+     * @param referenceQueue queue shared by the tracker; receives signal when the referent
+     *     vanishes.
+     */
     public ConnectionWeakReference(
         FCPPluginConnectionImpl referent, ReferenceQueue<FCPPluginConnectionImpl> referenceQueue) {
 
@@ -94,14 +116,39 @@ final class FCPPluginConnectionTracker extends NativeThread {
   }
 
   /**
-   * Stores the {@link FCPPluginConnectionImpl} so in the future it can be obtained by its ID with
-   * {@link #getConnection(UUID)}.
+   * Signals that the daemon garbage-collection thread received an interrupt even though it is
+   * expected to run until JVM shutdown, allowing callers to preserve the cause.
+   */
+  private static final class TrackerInterruptedException extends IllegalStateException {
+    /**
+     * Wraps the original {@link InterruptedException} so logging retains the stack trace and
+     * shutdown hooks can differentiate between graceful stops and misconfiguration.
+     *
+     * @param cause interrupt raised while polling the queue; preserved for diagnostics.
+     */
+    TrackerInterruptedException(InterruptedException cause) {
+      super(
+          "Thread interruption requested even though this is a daemon thread!"
+              + " Exiting tracker thread.",
+          cause);
+    }
+  }
+
+  /**
+   * Registers a newly created client connection so it can later be located by callers that only
+   * know its {@link UUID}.
    *
-   * <p><b>Must</b> be called for any newly created {@link FCPPluginConnectionImpl} before passing
-   * it to {@link ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection,
-   * FCPPluginMessage)}.
+   * <p>Server plugins must invoke this immediately after creating an {@link
+   * FCPPluginConnectionImpl}, before handing the instance to {@link
+   * ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}. The
+   * tracker retains only a {@link WeakReference}, so holding a strong reference remains the
+   * client's responsibility. Duplicate registrations are harmless because {@link UUID}s are
+   * randomly generated; a later registration simply overwrites the previous weak reference entry.
+   * Explicit unregister operations are intentionally omitted because garbage collection provides
+   * the correct lifetime semantics.
    *
-   * <p>Unregistration is not supported and not necessary.
+   * @param connection newly created connection awaiting tracking; caller still retains strong
+   *     reference.
    */
   void registerConnection(FCPPluginConnectionImpl connection) {
     connectionsByIDLock.writeLock().lock();
@@ -115,35 +162,29 @@ final class FCPPluginConnectionTracker extends NativeThread {
   }
 
   /**
-   * For being indirectly exposed to implementors of server plugins, i.e. implementors of {@link
-   * ServerSideFCPMessageHandler}.<br>
-   * NOT for being used by clients: Clients using a {@link FCPPluginConnection} to connect to a
-   * server plugin have to keep a reference to the {@link FCPPluginConnection} in memory. See {@link
-   * PluginRespirator#connectToOtherPlugin(String, ClientSideFCPMessageHandler)}. <br>
-   * This is necessary because this class only keeps {@link WeakReference}s to the {@link
-   * FCPPluginConnection} objects. Once they are not referenced by a strong reference anymore they
-   * will be garbage collected and thus considered as disconnected.<br>
-   * The job of keeping the strong references is at the client.<br>
-   * <br>
-   * ATTENTION:<br>
-   * The returned FCPPluginConnectionImpl objects class shall not be handed out directly to server
-   * applications. Instead, only hand out a {@link DefaultSendDirectionAdapter} - which can be
-   * obtained by {@link FCPPluginConnectionImpl#getDefaultSendDirectionAdapter(SendDirection)}. <br>
-   * This has two reasons:<br>
-   * - The send functions which do not require a {@link SendDirection} will always throw an
-   * exception without an adapter ({@link #send(FCPPluginMessage)} and {@link
-   * #sendSynchronous(FCPPluginMessage, long)}).<br>
-   * - Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to ensure that
-   * the client disconnection mechanism of monitoring garbage collection works. The adapter prevents
-   * servers from keeping a strong reference by internally only keeping a {@link WeakReference} to
-   * the FCPPluginConnectionImpl.<br>
+   * Returns the still-live connection whose identifier matches the supplied value so server-side
+   * plugins can continue a dialogue that outlived the original handler invocation.
    *
-   * @param connectionID The value of {@link FCPPluginConnection#getID()} of a client connection
-   *     which has already sent a message to the server plugin via {@link
-   *     ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.
-   * @return The client connection with the given ID, for as long as the client is still connected.
-   * @throws IOException If there has been no connection with the given ID or if the client has
-   *     disconnected.
+   * <p>Only {@link ServerSideFCPMessageHandler} implementations should invoke this method. Clients
+   * must keep their own strong reference via {@link PluginRespirator#connectToOtherPlugin(String,
+   * ClientSideFCPMessageHandler)}; the tracker merely provides a lookup table backed by {@link
+   * WeakReference}s. If a client stops referencing the {@link FCPPluginConnection}, garbage
+   * collection removes it from the tracker and the lookup fails with {@link IOException}. Returned
+   * connections should not be handed to untrusted plugin code; instead, wrap them immediately using
+   * {@link FCPPluginConnectionImpl#getDefaultSendDirectionAdapter(SendDirection)} so consumers only
+   * interact with lightweight direction-specific facades.
+   *
+   * <pre>{@code
+   * var adapter = tracker.getConnection(clientId)
+   *     .getDefaultSendDirectionAdapter(SendDirection.TO_CLIENT);
+   * adapter.send(message);
+   * }</pre>
+   *
+   * @param connectionID identifier retrieved via {@link FCPPluginConnection#getID()} that the
+   *     plugin persisted for future reuse.
+   * @return live connection instance; release promptly so garbage collection still detects
+   *     disconnects.
+   * @throws IOException if the tracker lacks the entry or the client released its reference.
    */
   public FCPPluginConnectionImpl getConnection(UUID connectionID) throws IOException {
     ConnectionWeakReference ref = getConnectionWeakReference(connectionID);
@@ -159,9 +200,21 @@ final class FCPPluginConnectionTracker extends NativeThread {
   }
 
   /**
-   * Same as {@link #getConnection(UUID)} with the only difference of returning a {@link
-   * WeakReference} to the connection instead of the connection itself.<br>
-   * <b>Please do read its JavaDoc to understand when to use this!</b>
+   * Provides access to the {@link WeakReference} entry associated with a connection ID so callers
+   * can inspect reachability without creating a new strong reference.
+   *
+   * <p>This helper is primarily for advanced monitoring and should rarely be needed by plugin
+   * authors. It mirrors {@link #getConnection(UUID)} but preserves the weak semantics: if the
+   * referent has vanished, the returned reference already reports {@code null}, allowing the caller
+   * to surface a disconnect without momentarily reviving the object. Obtaining the weak reference
+   * still requires a {@link ReadWriteLock#readLock()} acquisition, so it is inexpensive even when
+   * performed frequently.
+   *
+   * @param connectionID identifier registered via {@link
+   *     #registerConnection(FCPPluginConnectionImpl)}; stale values signal disconnects.
+   * @return weak reference mirroring the tracker entry; clears when the client disconnects.
+   * @throws IOException if the identifier was never tracked or garbage collection removed the
+   *     entry.
    */
   ConnectionWeakReference getConnectionWeakReference(UUID connectionID) throws IOException {
 
@@ -179,7 +232,10 @@ final class FCPPluginConnectionTracker extends NativeThread {
             + connectionID);
   }
 
-  /** You must call {@link #start()} afterwards! */
+  /**
+   * Creates a tracker configured with the lowest thread priority and daemon status so it runs in
+   * the background without preventing JVM shutdown; callers must invoke {@link #start()}.
+   */
   public FCPPluginConnectionTracker() {
     super(
         "FCPPluginConnectionTracker Garbage-collector",
@@ -189,15 +245,19 @@ final class FCPPluginConnectionTracker extends NativeThread {
   }
 
   /**
-   * Garbage-collection thread: Polls {@link #closedConnectionsQueue} for connections whose {@link
-   * WeakReference} has been nulled and removes them from the {@link #connectionsByID} {@link
-   * TreeMap}.<br>
-   * <br>
-   * Notice: Do not call this function directly. To execute this, call {@link #start()}. This
-   * function is merely public because this class extends {@link NativeThread}.
+   * Main loop of the tracker thread that blocks on {@link #closedConnectionsQueue}, removes stale
+   * entries from the {@link #connectionsByID} map, and logs anomalies or interrupt requests.
+   *
+   * <p>Callers never invoke this method directly; {@link NativeThread#start()} arranges for it to
+   * run on a dedicated daemon thread. The loop intentionally never terminates, relying on the JVM
+   * to stop daemon threads during shutdown. Interrupts are promoted to {@link
+   * TrackerInterruptedException} after the interrupt flag is restored so diagnostic tools can
+   * capture the root cause. All other exceptions are logged and swallowed to keep the tracker alive
+   * even if a plugin sends malformed data.
    */
   @Override
   public void realRun() {
+    //noinspection InfiniteLoopStatement
     while (true) {
       try {
         ConnectionWeakReference closedConnection =
@@ -211,11 +271,10 @@ final class FCPPluginConnectionTracker extends NativeThread {
           assert (closedConnection == removedFromTree);
           if (LOG.isDebugEnabled()) {
             LOG.debug(
-                "Garbage-collecting closed connection: "
-                    + "remaining connections = "
-                    + connectionsByID.size()
-                    + "; connection ID = "
-                    + closedConnection.connectionID);
+                "Garbage-collecting closed connection: remaining connections = {}; connection ID ="
+                    + " {}",
+                connectionsByID.size(),
+                closedConnection.connectionID);
           }
         } finally {
           connectionsByIDLock.writeLock().unlock();
@@ -225,12 +284,13 @@ final class FCPPluginConnectionTracker extends NativeThread {
         // running: Daemon threads are force terminated during shutdown.
         // Thus, this thread does not need an exit mechanism, it can be an infinite loop. So
         // nothing should try to terminate it by InterruptedException. If it does happen
-        // nevertheless, we honor it by exiting the thread, because interrupt requests
-        // should never be ignored, but log it as an error.
-        LOG.error("Thread interruption requested even though this is a daemon thread!", e);
-        throw new RuntimeException(e);
-      } catch (Throwable t) {
-        LOG.error("Error in thread " + getName(), t);
+        // nevertheless, we honor it by exiting the thread because interrupt requests
+        // should never be ignored. Re-set the interrupted flag so callers can observe it and
+        // propagate context for debugging.
+        Thread.currentThread().interrupt();
+        throw new TrackerInterruptedException(e);
+      } catch (Exception e) {
+        LOG.error("Error in thread {}", getName(), e);
       }
     }
   }
