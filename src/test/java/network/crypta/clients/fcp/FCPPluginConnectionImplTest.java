@@ -2,17 +2,123 @@ package network.crypta.clients.fcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
+import network.crypta.clients.fcp.FCPPluginMessage.ClientPermissions;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ClientSideFCPMessageHandler;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler.ServerSideFCPMessageHandler;
 import org.junit.jupiter.api.Test;
 
-public final class FCPPluginConnectionImplTest {
+@SuppressWarnings("java:S100")
+final class FCPPluginConnectionImplTest {
+
+  @Test
+  void send_whenServerHandlerThrows_returnsInternalErrorReplyToClient() throws Exception {
+    // Arrange
+    ServerSideFCPMessageHandler server =
+        (connection, message) -> {
+          throw new IllegalStateException("boom");
+        };
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<FCPPluginMessage> replyRef = new AtomicReference<>();
+    ClientSideFCPMessageHandler client =
+        (connection, message) -> {
+          replyRef.set(message);
+          latch.countDown();
+          return null;
+        };
+    FCPPluginConnectionImpl connection =
+        FCPPluginConnectionImpl.constructForUnitTest(server, client);
+    FCPPluginMessage message = FCPPluginMessage.construct();
+
+    // Act
+    connection.send(SendDirection.TO_SERVER, message);
+
+    // Assert
+    assertTrue(latch.await(5, TimeUnit.SECONDS), "Client should see the generated error reply");
+    FCPPluginMessage reply = replyRef.get();
+    assertNotNull(reply);
+    assertTrue(reply.isReplyMessage());
+    assertFalse(reply.success);
+    assertEquals("InternalError", reply.errorCode);
+    assertNotNull(reply.errorMessage);
+    assertTrue(reply.errorMessage.contains("IllegalStateException"));
+  }
+
+  @Test
+  void getDefaultSendDirectionAdapter_whenSendingToServer_setsPermissionsAndCopiesMessage()
+      throws Exception {
+    // Arrange
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<FCPPluginMessage> delivered = new AtomicReference<>();
+    ServerSideFCPMessageHandler server =
+        (connection, message) -> {
+          delivered.set(message);
+          latch.countDown();
+          return null;
+        };
+    ClientSideFCPMessageHandler client = (connection, message) -> null;
+    FCPPluginConnectionImpl connection =
+        FCPPluginConnectionImpl.constructForUnitTest(server, client);
+    FCPPluginConnection adapter =
+        connection.getDefaultSendDirectionAdapter(SendDirection.TO_SERVER);
+    FCPPluginMessage original = FCPPluginMessage.construct();
+
+    // Act
+    adapter.send(original);
+
+    // Assert
+    assertTrue(latch.await(5, TimeUnit.SECONDS), "Server should receive the message");
+    FCPPluginMessage received = delivered.get();
+    assertNotNull(received);
+    assertEquals(ClientPermissions.ACCESS_DIRECT, received.permissions);
+    assertNotSame(original, received, "send() should wrap messages to stamp permissions");
+  }
+
+  @Test
+  void sendSynchronous_whenReplyMissing_timesOutAndCleansUpState() {
+    // Arrange
+    ServerSideFCPMessageHandler server = (connection, message) -> null;
+    ClientSideFCPMessageHandler client = (connection, message) -> null;
+    FCPPluginConnectionImpl connection =
+        FCPPluginConnectionImpl.constructForUnitTest(server, client);
+    FCPPluginMessage message = FCPPluginMessage.construct();
+
+    // Act + Assert
+    IOException ex =
+        assertThrows(
+            IOException.class,
+            () ->
+                connection.sendSynchronous(
+                    SendDirection.TO_SERVER, message, TimeUnit.MILLISECONDS.toNanos(20)),
+            "Timed out calls should surface as IOExceptions");
+    assertTrue(ex.getMessage().contains("timed out"));
+    assertEquals(0, connection.getSendSynchronousCount());
+  }
+
+  @Test
+  void send_whenDefaultDirectionMissing_throwsNoSendDirectionSpecifiedException() {
+    // Arrange
+    ServerSideFCPMessageHandler server = (connection, message) -> null;
+    ClientSideFCPMessageHandler client = (connection, message) -> null;
+    FCPPluginConnectionImpl connection =
+        FCPPluginConnectionImpl.constructForUnitTest(server, client);
+    FCPPluginMessage message = FCPPluginMessage.construct();
+
+    // Act + Assert
+    assertThrows(UnsupportedOperationException.class, () -> connection.send(message));
+  }
+
   /**
    * {@link FCPPluginConnectionImpl#sendSynchronous(SendDirection, FCPPluginMessage, long)} is
    * powered by an internal map which keeps track of synchronous sends which are waiting for a
@@ -27,14 +133,14 @@ public final class FCPPluginConnectionImplTest {
    * checking whether it is empty after all send threads have terminated.<br>
    */
   @Test
-  public void testSendSynchronousThreadSafety() throws InterruptedException {
+  void sendSynchronous_whenHundredThreadsRunInParallel_preservesRepliesAndCleansTable()
+      throws InterruptedException {
     // JUnit ignores failures in threads other than the threads which it runs tests from.
-    // Thus we pass failures out with this boolean.
-    // NOTICE: We also use JUnit assert*() / fail() even though they won't work in threads
-    // - to produce logging on stderr so you can tell where the failure happened. When adding
-    // more of those, make sure to do failure.set(true) BEFORE the assert*() / fail() as they
-    // will throw.
+    // Thus, we pass failures out with this boolean.
+    // NOTICE: Use the asyncErrors queue instead of direct assertions so failures surface on the
+    // main test thread after all workers join.
     final AtomicBoolean failure = new AtomicBoolean(false);
+    final ConcurrentLinkedQueue<String> asyncErrors = new ConcurrentLinkedQueue<>();
 
     // Notice: server must be kept referenced by our local variable for the whole duration of
     // the test, otherwise it would get GCed because the FCPPluginConnectionImpl which we will
@@ -51,10 +157,8 @@ public final class FCPPluginConnectionImplTest {
     final ClientSideFCPMessageHandler client =
         (connection, message) -> {
           failure.set(true);
-          fail(
-              "This test is about sendSynchronous() so the reply messages should not "
-                  + "hit the client message handler");
-          throw new UnsupportedOperationException();
+          asyncErrors.add("Reply unexpectedly routed to client handler");
+          return null;
         };
 
     final FCPPluginConnectionImpl connection =
@@ -81,18 +185,22 @@ public final class FCPPluginConnectionImplTest {
                   try {
                     final FCPPluginMessage reply =
                         connection.sendSynchronous(
-                            SendDirection.ToServer, message, TimeUnit.SECONDS.toNanos(10));
+                            SendDirection.TO_SERVER, message, TimeUnit.SECONDS.toNanos(10));
 
                     if (!threadIndex.equals(reply.params.get("replyToThread"))) {
                       failure.set(true);
+                      asyncErrors.add(
+                          "Thread "
+                              + threadIndex
+                              + " received reply for "
+                              + reply.params.get("replyToThread"));
                     }
-                    assertEquals(threadIndex, reply.params.get("replyToThread"));
                   } catch (IOException e) {
                     failure.set(true);
-                    fail("IOException " + e);
+                    asyncErrors.add("IOException " + e);
                   } catch (InterruptedException e) {
                     failure.set(true);
-                    fail("InterruptedException " + e);
+                    asyncErrors.add("InterruptedException " + e);
                   }
                 }
               });
@@ -109,7 +217,9 @@ public final class FCPPluginConnectionImplTest {
 
     assertFalse(
         failure.get(),
-        "JUnit failures cannot be passed out of threads, please check stdout/stderr.");
+        asyncErrors.isEmpty()
+            ? "No background failures expected"
+            : String.join(System.lineSeparator(), asyncErrors));
 
     assertEquals(
         0,
