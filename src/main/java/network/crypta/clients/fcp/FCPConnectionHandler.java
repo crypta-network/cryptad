@@ -644,8 +644,6 @@ public class FCPConnectionHandler implements Closeable {
           synchronized (this) {
             requestsByIdentifier.put(id, cp);
           }
-        } catch (IdentifierCollisionException e) {
-          success = false;
         } catch (MalformedURLException e) {
           failedMessage =
               new ProtocolErrorMessage(
@@ -673,11 +671,6 @@ public class FCPConnectionHandler implements Closeable {
                         putter =
                             new ClientPutDir(
                                 FCPConnectionHandler.this, message, buckets, wasDiskPut, server);
-                      } catch (IdentifierCollisionException e) {
-                        LOG.info("Identifier collision on " + this);
-                        FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
-                        send(msg);
-                        return false;
                       } catch (MalformedURLException e) {
                         send(
                             new ProtocolErrorMessage(
@@ -701,7 +694,7 @@ public class FCPConnectionHandler implements Closeable {
                         putter.register(false);
                       } catch (IdentifierCollisionException e) {
                         LOG.info("Identifier collision on " + this);
-                        FCPMessage msg = new IdentifierCollisionMessage(id, global);
+                        FCPMessage msg = new IdentifierCollisionMessage(id, message.global);
                         send(msg);
                         return false;
                       }
@@ -724,8 +717,6 @@ public class FCPConnectionHandler implements Closeable {
       } else {
         try {
           cp = new ClientPutDir(this, message, buckets, wasDiskPut, server);
-        } catch (IdentifierCollisionException e) {
-          success = false;
         } catch (MalformedURLException e) {
           failedMessage =
               new ProtocolErrorMessage(
@@ -742,7 +733,7 @@ public class FCPConnectionHandler implements Closeable {
       }
     }
 
-    if (message.persistence == Persistence.REBOOT)
+    if (message.persistence == Persistence.REBOOT && cp != null)
       try {
         cp.register(false);
       } catch (IdentifierCollisionException e) {
@@ -752,9 +743,12 @@ public class FCPConnectionHandler implements Closeable {
       // FIXME do we need to freeData???
       send(failedMessage);
       if (cp != null) cp.cancel(server.getCore().getClientContext());
-    } else {
+    } else if (cp != null) {
       if (LOG.isDebugEnabled()) LOG.debug("Starting " + cp);
       cp.start(server.getCore().getClientContext());
+    } else {
+      // Defensive fallback: cp can be null when constructor setup was skipped.
+      LOG.warn("ClientPutDir was not created for identifier {}", id);
     }
   }
 

@@ -981,10 +981,6 @@ public class QueueToadlet extends Toadlet
                           }
                           writePermanentRedirect(ctx, "Done", path());
                           return true;
-                        } catch (IdentifierCollisionException e) {
-                          LOG.error("Cannot put same directory twice in same millisecond");
-                          writePermanentRedirect(ctx, "Done", path());
-                          return false;
                         } catch (MalformedURLException e) {
                           writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
                           return false;
