@@ -57,21 +57,12 @@ public class RemovePersistentRequest extends FCPMessage {
 
                   @Override
                   public boolean run(ClientContext context) {
-                    try {
-                      ClientRequest req =
-                          handler.removePersistentForeverRequest(global, identifier);
-                      if (req == null) {
-                        LOG.error("Huh ? the request is null!");
-                        return false;
-                      }
-                      return true;
-                    } catch (MessageInvalidException e) {
-                      FCPMessage err =
-                          new ProtocolErrorMessage(
-                              e.protocolCode, false, e.getMessage(), e.ident, e.global);
-                      handler.send(err);
+                    ClientRequest req = handler.removePersistentForeverRequest(global, identifier);
+                    if (req == null) {
+                      LOG.error("Huh ? the request is null!");
                       return false;
                     }
+                    return true;
                   }
                 },
                 NativeThread.PriorityLevel.HIGH_PRIORITY.value);

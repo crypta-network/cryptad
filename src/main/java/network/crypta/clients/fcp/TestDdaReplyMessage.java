@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.clients.fcp.FCPConnectionHandler.DDACheckJob;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
@@ -14,24 +13,24 @@ import org.slf4j.LoggerFactory;
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
-public class TestDDAReplyMessage extends FCPMessage {
-  private static final Logger LOG = LoggerFactory.getLogger(TestDDAReplyMessage.class);
+public class TestDdaReplyMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDdaReplyMessage.class);
 
   public static final String name = "TestDDAReply";
   public static final String READ_FILENAME = "ReadFilename";
   public static final String WRITE_FILENAME = "WriteFilename";
   public static final String CONTENT_TO_WRITE = "ContentToWrite";
 
-  final DDACheckJob checkJob;
+  final DdaCheckJob checkJob;
 
-  TestDDAReplyMessage(DDACheckJob job) {
+  TestDdaReplyMessage(DdaCheckJob job) {
     this.checkJob = job;
   }
 
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
-    sfs.putSingle(TestDDARequestMessage.DIRECTORY, checkJob.directory.toString());
+    sfs.putSingle(TestDdaRequestMessage.DIRECTORY, checkJob.directory.toString());
 
     if (checkJob.readFilename != null) {
       sfs.putSingle(READ_FILENAME, checkJob.readFilename.toString());

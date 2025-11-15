@@ -370,8 +370,8 @@ public abstract class FCPMessage {
           new ClientPutComplexDirMessage(fs, bfTemp, bfPersistent);
       case SubscribeUSKMessage.NAME -> new SubscribeUSKMessage(fs);
       case UnsubscribeUSKMessage.NAME -> new UnsubscribeUSKMessage(fs);
-      case TestDDARequestMessage.NAME -> new TestDDARequestMessage(fs);
-      case TestDDAResponseMessage.NAME -> new TestDDAResponseMessage(fs);
+      case TestDdaRequestMessage.NAME -> new TestDdaRequestMessage(fs);
+      case TestDdaResponseMessage.NAME -> new TestDdaResponseMessage(fs);
       case ProbeRequest.NAME -> new ProbeRequest(fs);
       case FilterMessage.NAME -> new FilterMessage(fs, bfTemp);
       default -> null;

@@ -96,7 +96,7 @@ public class FCPConnectionInputHandler implements Runnable {
               FCPMessage.create(
                   messageType,
                   fs,
-                  handler.bf,
+                  handler.getServer().getCore().getTempBucketFactory(),
                   handler.getServer().getCore().getPersistentTempBucketFactory());
           if (msg == null) continue;
         } catch (MessageInvalidException e) {
@@ -129,7 +129,8 @@ public class FCPConnectionInputHandler implements Runnable {
         if (msg instanceof BaseDataCarryingMessage message) {
           // FIXME tidy up - coalesce with above and below try { } catch (MIE) {}'s?
           try {
-            message.readFrom(lis, handler.bf, handler.getServer());
+            message.readFrom(
+                lis, handler.getServer().getCore().getTempBucketFactory(), handler.getServer());
           } catch (MessageInvalidException e) {
             FCPMessage err =
                 new ProtocolErrorMessage(e.protocolCode, false, e.getMessage(), e.ident, e.global);

@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.clients.fcp.FCPConnectionHandler.DDACheckJob;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
@@ -14,22 +13,17 @@ import org.slf4j.LoggerFactory;
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
-public class TestDDARequestMessage extends FCPMessage {
-  private static final Logger LOG = LoggerFactory.getLogger(TestDDARequestMessage.class);
+public class TestDdaResponseMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDdaResponseMessage.class);
 
-  public static final String NAME = "TestDDARequest";
-  public static final String DIRECTORY = "Directory";
-  public static final String WANT_READ = "WantReadDirectory";
-  public static final String WANT_WRITE = "WantWriteDirectory";
+  public static final String NAME = "TestDDAResponse";
+  public static final String READ_CONTENT = "ReadContent";
 
   final String identifier;
-  final boolean wantRead, wantWrite;
+  final String readContent;
 
-  /**
-   * @throws MessageInvalidException
-   */
-  public TestDDARequestMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    identifier = fs.get(DIRECTORY);
+  public TestDdaResponseMessage(SimpleFieldSet sfs) throws MessageInvalidException {
+    identifier = sfs.get(TestDdaRequestMessage.DIRECTORY);
     if (identifier == null)
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "No Directory given!", null, false);
@@ -40,18 +34,7 @@ public class TestDDARequestMessage extends FCPMessage {
           null,
           false);
 
-    wantRead = fs.getBoolean(WANT_READ, false);
-    wantWrite = fs.getBoolean(WANT_WRITE, false);
-    if ((!wantRead) && (!wantWrite))
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.INVALID_MESSAGE,
-          "Both "
-              + WANT_READ
-              + " and "
-              + WANT_WRITE
-              + " are set to false: what's the point of sending a message?",
-          identifier,
-          false);
+    readContent = sfs.get(READ_CONTENT);
   }
 
   @Override
@@ -66,14 +49,33 @@ public class TestDDARequestMessage extends FCPMessage {
 
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    DDACheckJob job;
+    DdaCheckJob job;
     try {
-      job = handler.enqueueDDACheck(identifier, wantRead, wantWrite);
+      job = handler.popDDACheck(identifier);
     } catch (IllegalArgumentException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD, e.getMessage(), identifier, false);
     }
-    TestDDAReplyMessage reply = new TestDDAReplyMessage(job);
+    if (job == null)
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_MESSAGE,
+          "The node doesn't know that testDDA identifier! double check it! (" + identifier + ").",
+          identifier,
+          false);
+    else if ((job.readFilename != null) && (readContent == null))
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.MISSING_FIELD,
+          "You need to send "
+              + READ_CONTENT
+              + " back to the node if you specify "
+              + TestDdaRequestMessage.WANT_READ
+              + " in "
+              + TestDdaRequestMessage.NAME
+              + '.',
+          identifier,
+          false);
+
+    TestDdaCompleteMessage reply = new TestDdaCompleteMessage(handler, job, readContent);
     handler.send(reply);
   }
 }
