@@ -154,7 +154,7 @@ public class RequestStatusCache {
   public synchronized void addTo(List<RequestStatus> status) {
     // FIXME is it better to just synchronize on the RequestStatusCache when
     // rendering the downloads page, and when updating? Ugly though ...
-    for (RequestStatus req : requestsByIdentifier.values()) status.add(req.clone());
+    for (RequestStatus req : requestsByIdentifier.values()) status.add(req.copy());
   }
 
   public synchronized void updateExpectedMIME(String identifier, String foundDataMimeType) {
