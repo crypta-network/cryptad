@@ -410,13 +410,13 @@ public class ClientGet extends ClientRequest
           identifier,
           global);
     }
-    if (!handler.allowDDAFrom(diskFile, true)) {
+    if (!handler.ddaAccessController().allowDDAFrom(diskFile, true)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
           "Not allowed to download to "
               + diskFile
               + ". You might need to do a "
-              + TestDDARequestMessage.NAME
+              + TestDdaRequestMessage.NAME
               + " first.",
           identifier,
           global);

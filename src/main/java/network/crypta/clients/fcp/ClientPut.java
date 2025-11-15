@@ -459,7 +459,7 @@ public class ClientPut extends ClientPutBase {
       byte[] saltedHash = decodeFileHash(message.fileHash, identifier, global);
       return new DiskUploadContext(salt, saltedHash);
     }
-    if (!handler.allowDDAFrom(message.origFilename, false)) {
+    if (!handler.ddaAccessController().allowDDAFrom(message.origFilename, false)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
           "Not allowed to upload from "

@@ -2,7 +2,6 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.io.IOException;
-import network.crypta.clients.fcp.FCPConnectionHandler.DDACheckJob;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.FileUtil;
@@ -17,18 +16,18 @@ import org.slf4j.LoggerFactory;
  *
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
-public class TestDDACompleteMessage extends FCPMessage {
-  private static final Logger LOG = LoggerFactory.getLogger(TestDDACompleteMessage.class);
+public class TestDdaCompleteMessage extends FCPMessage {
+  private static final Logger LOG = LoggerFactory.getLogger(TestDdaCompleteMessage.class);
 
   public static final String name = "TestDDAComplete";
   public static final String READ_ALLOWED = "ReadDirectoryAllowed";
   public static final String WRITE_ALLOWED = "WriteDirectoryAllowed";
 
-  final DDACheckJob checkJob;
+  final DdaCheckJob checkJob;
   final String readContentFromClient;
   private final FCPConnectionHandler handler;
 
-  public TestDDACompleteMessage(FCPConnectionHandler handler, DDACheckJob job, String readContent) {
+  public TestDdaCompleteMessage(FCPConnectionHandler handler, DdaCheckJob job, String readContent) {
     this.checkJob = job;
     this.readContentFromClient = readContent;
     this.handler = handler;
@@ -38,7 +37,7 @@ public class TestDDACompleteMessage extends FCPMessage {
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
 
-    sfs.putSingle(TestDDARequestMessage.DIRECTORY, checkJob.directory.toString());
+    sfs.putSingle(TestDdaRequestMessage.DIRECTORY, checkJob.directory.toString());
 
     boolean isReadAllowed = false;
     boolean isWriteAllowed = false;
