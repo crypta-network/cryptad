@@ -100,7 +100,8 @@ public class ClientGet extends ClientRequest
   private final File targetFile;
 
   /** Bucket returned when the request was completed, if returnType == RETURN_TYPE_DIRECT. */
-  private transient Bucket returnBucketDirect;
+  @SuppressWarnings("java:S1948")
+  private Bucket returnBucketDirect;
 
   /** Indicates that the caller expects the result as a BinaryBlob stream rather than a bucket. */
   private final boolean binaryBlob;
@@ -109,7 +110,8 @@ public class ClientGet extends ClientRequest
   private final String extensionCheck;
 
   /** Metadata bucket supplied at creation time, relayed untouched to the {@link ClientGetter}. */
-  private final transient Bucket initialMetadata;
+  @SuppressWarnings("java:S1948")
+  private final Bucket initialMetadata;
 
   // Verbosity bitmasks
   private static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
