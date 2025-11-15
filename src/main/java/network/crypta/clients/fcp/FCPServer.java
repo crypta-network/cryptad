@@ -658,7 +658,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)}. Plugins must use that instead.
    * ATTENTION: Since this function is only to be used by the aforementioned connectToPlugin() which
    * in turn is only to be used by clients, the returned connection will have a default send
-   * direction of {@link SendDirection#ToServer}.
+   * direction of {@link SendDirection#TO_SERVER}.
    *
    * @see FCPPluginConnectionImpl The class JavaDoc of FCPPluginConnectionImpl explains the code
    *     path for both networked and non-networked FCP.
@@ -676,7 +676,7 @@ public class FCPServer implements Runnable, DownloadCache {
             messageHandler);
     // The constructor function already did this for us
     /* pluginConnectionTracker.registerConnection(connection); */
-    return connection.getDefaultSendDirectionAdapter(SendDirection.ToServer);
+    return connection.getDefaultSendDirectionAdapter(SendDirection.TO_SERVER);
   }
 
   /**
@@ -686,7 +686,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * <br>
    * ATTENTION: Since this function is only to be used by the aforementioned
    * getPluginConnectionByID() which in turn is only to be used by servers, the returned connection
-   * will have a default send direction of {@link SendDirection#ToClient}.
+   * will have a default send direction of {@link SendDirection#TO_CLIENT}.
    *
    * @see FCPPluginConnectionTracker The JavaDoc of FCPPluginConnectionTracker explains the general
    *     purpose of this mechanism.
@@ -694,7 +694,7 @@ public class FCPServer implements Runnable, DownloadCache {
   public final FCPPluginConnection getPluginConnectionByID(UUID connectionID) throws IOException {
     return pluginConnectionTracker
         .getConnection(connectionID)
-        .getDefaultSendDirectionAdapter(SendDirection.ToClient);
+        .getDefaultSendDirectionAdapter(SendDirection.TO_CLIENT);
   }
 
   public PersistentRequestClient registerRebootClient(

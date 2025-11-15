@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.pluginmanager.FredPluginFCPMessageHandler;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.StringValidityChecker;
@@ -118,6 +119,13 @@ public final class FCPPluginMessage {
    * field.)
    */
   public final String errorMessage;
+
+  /**
+   * Guard flag to detect accidental reuse of the same message instance. The flag is intentionally
+   * mutable to allow tracking whether this immutable message container has been handed to the send
+   * pipeline already.
+   */
+  private final AtomicBoolean sent = new AtomicBoolean(false);
 
   /**
    * @return True if the message is merely a reply to a previous message from your side.<br>
@@ -314,6 +322,16 @@ public final class FCPPluginMessage {
 
     return new FCPPluginMessage(
         permissions, identifier, params, data, success, errorCode, errorMessage);
+  }
+
+  /**
+   * Marks this message as having been sent already.
+   *
+   * @return {@code true} if this call marks the first send attempt, {@code false} if the message
+   *     was previously sent.
+   */
+  public boolean markSent() {
+    return sent.compareAndSet(false, true);
   }
 
   @Override

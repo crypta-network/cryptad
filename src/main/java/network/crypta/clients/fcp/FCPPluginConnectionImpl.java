@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.EnumMap;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -22,119 +22,47 @@ import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
-import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * <b>Please first read the JavaDoc of the interface {@link FCPPluginConnection} which specifies
- * this class.</b><br>
- * <br>
- * ATTENTION:<br>
- * Objects of this class shall not be handed out directly to server or client applications. Instead,
- * only hand out a {@link DefaultSendDirectionAdapter} - which can be obtained by {@link
- * #getDefaultSendDirectionAdapter(SendDirection)}.<br>
- * This has two reasons:<br>
- * - The send functions which do not require a {@link SendDirection} will always throw an exception
- * without an adapter ({@link #send(FCPPluginMessage)} and {@link #sendSynchronous(FCPPluginMessage,
- * long)}).<br>
- * - Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to ensure that
- * the client disconnection mechanism of monitoring garbage collection works, see {@link
- * PluginRespirator#connectToOtherPlugin(String, ClientSideFCPMessageHandler)}. The adapter prevents
- * servers from keeping a strong reference by internally only keeping a {@link WeakReference} to the
- * FCPPluginConnectionImpl.<br>
+ * Implements {@link FCPPluginConnection} for both networked and intra-node plugin interactions,
+ * providing routing, lifecycle tracking, and synchronous reply coordination.
  *
- * <h1>Internals</h1>
+ * <p>The implementation bridges {@link FCPConnectionHandler} instances, plugin-side handlers, and
+ * {@link PriorityAwareExecutor} workers so that plugins can exchange {@link FCPPluginMessage}
+ * objects with strict ordering guarantees. Each connection keeps weak references to plugins where
+ * required, and callers are expected to obtain {@link DefaultSendDirectionAdapter} instances via
+ * {@link #getDefaultSendDirectionAdapter(SendDirection)} instead of storing a raw connection. That
+ * indirection prevents leaking strong references, which would break garbage-collection-based
+ * disconnect detection.
  *
- * <br>
- * This section is not interesting to server or client implementations. You might want to read it if
- * you plan to work on the fred-side implementation of FCP plugin messaging.
+ * <p>Internally the class maintains synchronized maps of outstanding synchronous calls, guards
+ * every wait with a timeout, and turns handler failures into structured {@code InternalError}
+ * replies so dispatcher threads never die silently. Send paths accept both remote clients (messages
+ * arrive via {@link FCPPluginClientMessage} from {@link FCPServer}) and intra-node clients (bound
+ * through {@link PluginRespirator}). Regardless of origin, messages ultimately reach {@link
+ * ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.
  *
- * <h2>Code path of sending messages</h2>
+ * <p>Key behaviors that plugin developers should remember:
  *
- * <p>There are two possible code paths for client connections, depending upon the location of the
- * client. The server is always running inside the node.<br>
- * <br>
- * NOTICE: These two code paths only apply to asynchronous, non-blocking messages. For blocking,
- * synchronous messages sent by {@link #sendSynchronous(SendDirection, FCPPluginMessage, long)},
- * there is an overview at {@link #synchronousSends}. The overview was left out here because they
- * are built on top of regular messages, so the code paths mentioned here mostly apply.<br>
- * <br>
- * The two possible paths are:<br>
+ * <ul>
+ *   <li>Always call {@link #getDefaultSendDirectionAdapter(SendDirection)} and interact with the
+ *       adapter, otherwise direction-less sends throw immediately and the tracker cannot reclaim
+ *       the connection.
+ *   <li>Synchronous waits are expensive; prefer asynchronous handlers when possible, and use
+ *       generous timeouts that reflect remote workload.
+ *   <li>The connection UUID is stable for the lifetime of the transport and can be cached by
+ *       servers to send unsolicited replies via {@link
+ *       PluginRespirator#getPluginConnectionByID(UUID)}.
+ * </ul>
  *
- * <p>1. The server is running in the node, the client is not - also called networked FCP
- * connections:<br>
- * - The client connects to the node via network and sends FCP message of type <a
- * href="https://wiki.freenetproject.org/FCPv2/FCPPluginMessage">FCPPluginMessage</a> (which will be
- * internally represented by class {@link FCPPluginClientMessage}).<br>
- * - The {@link FCPServer} creates a {@link FCPConnectionHandler} whose {@link
- * FCPConnectionInputHandler} receives the FCP message.<br>
- * - The {@link FCPConnectionInputHandler} uses {@link FCPMessage#create(String, SimpleFieldSet)} to
- * parse the message and obtain the actual {@link FCPPluginClientMessage}.<br>
- * - The {@link FCPPluginClientMessage} uses {@link FCPConnectionHandler#getFCPPluginConnection(
- * String)} to obtain the FCPPluginConnection to the server.<br>
- * - The {@link FCPPluginClientMessage} uses {@link FCPPluginConnection#send(SendDirection,
- * FCPPluginMessage)} to send the message to the server plugin.<br>
- * - The FCP server plugin handles the message at {@link
- * ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.<br>
- * - As each FCPPluginConnection object exists for the lifetime of a network connection, the FCP
- * server plugin may store the UUID of the FCPPluginConnection and query it via {@link
- * PluginRespirator#getPluginConnectionByID(UUID)}. It can use this to send messages to the client
- * application on its own, that is not triggered by any client messages.<br>
- *
- * <p>2. The server and the client are running in the same node, also called intra-node FCP
- * connections:</br> - The client plugin uses {@link PluginRespirator#connectToOtherPlugin(String,
- * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)} to try to create a connection.<br>
- * - The {@link PluginRespirator} uses {@link FCPServer#createFCPPluginConnectionForIntraNodeFCP(
- * String, FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)} to get a FCPPluginConnection.
- * <br>
- * - The client plugin uses the send functions of the FCPPluginConnection. Those are the same as
- * with networked FCP connections.<br>
- * - The FCP server plugin handles the message at {@link
- * ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}. That
- * is the same handler as with networked FCP connections.<br>
- * - The client plugin keeps a strong reference to the FCPPluginConnection in memory as long as it
- * wants to keep the connection open.<br>
- * - Same as with networked FCP connections, the FCP server plugin can store the UUID of the
- * FCPPluginConnection and in the future re-obtain the connection by {@link
- * PluginRespirator#getPluginConnectionByID(UUID)}. It can use this to send messages to the client
- * application on its own, that is not triggered by any client messages. <br>
- * - Once the client plugin is done with the connection, it discards the strong reference to the
- * FCPPluginConnection. Because the {@link FCPPluginConnectionTracker} monitors garbage collection
- * of FCPPluginConnection objects, getting rid of all strong references to a FCPPluginConnection is
- * sufficient as a disconnection mechanism.<br>
- * Thus, an intra-node client connection is considered as disconnected once the FCPPluginConnection
- * is not strongly referenced by the client plugin anymore. If a server plugin then tries to obtain
- * the client connection by its UUID again (via the aforementioned {@link
- * PluginRespirator#getPluginConnectionByID(UUID)}, the get will fail. So if the server plugin
- * stores connection UUIDs, it needs no special disconnection mechanism except for periodically
- * trying to send a message to each client. Once obtaining the client connection by its UUID fails,
- * or sending the message fails, the server can opportunistically purge the UUID from its database.
- * <br>
- * This mechanism also works for networked FCP.<br>
+ * <p>The remainder of this file documents the dispatcher paths so maintainers can reason about
+ * prioritization, failure handling, and GC-triggered disconnects.
  */
 final class FCPPluginConnectionImpl implements FCPPluginConnection {
   private static final Logger LOG = LoggerFactory.getLogger(FCPPluginConnectionImpl.class);
-
-  /**
-   * Automatically set to true by {@link Logger} if the log level is set to {@link LogLevel#DEBUG}
-   * for this class. Used as performance optimization to prevent construction of the log strings if
-   * it is not necessary.
-   */
-  private static final boolean logDEBUG = false;
-
-  /**
-   * Automatically set to true by {@link Logger} if the log level is set to {@link LogLevel#MINOR}
-   * for this class. Used as performance optimization to prevent construction of the log strings if
-   * it is not necessary.
-   */
-  private static final boolean logMINOR = false;
-
-  static {
-    // Necessary for automatic setting of logDEBUG and logMINOR
-
-  }
 
   /**
    * Unique identifier among all {@link FCPPluginConnection}s.
@@ -157,9 +85,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   /**
    * The FCP server plugin to which this connection is connected.
    *
-   * <p>TODO: Optimization / Memory leak fix: Monitor this with a {@link ReferenceQueue} and if it
-   * becomes nulled, remove this FCPPluginConnectionImpl from the map {@link
-   * FCPConnectionHandler#pluginConnectionsByServerName}.<br>
+   * <p>Design note: Monitor this with a {@link ReferenceQueue} and if it becomes nulled, remove
+   * this FCPPluginConnectionImpl from the internal {@code pluginConnectionsByServerName} map held
+   * by {@link FCPConnectionHandler}.<br>
    * Currently, it seems not necessary:<br>
    * - It can only become null if the server plugin is unloaded / reloaded. Plugin unloading /
    * reloading requires user interaction or auto update and shouldn't happen frequently.<br>
@@ -175,7 +103,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * the past.<br>
    * NOTICE: If you do implement this, make sure to not rewrite the ReferenceQueue polling thread
    * but instead base it upon {@link FCPPluginConnectionTracker}. You should probably extract a
-   * generic class WeakValueMap from that one and use to to power both the existing class and the
+   * generic class WeakValueMap from that one and use it to power both the existing class and the
    * one which deals with this variable here.<br>
    * Also, once you've implemented ReferenceQueue monitoring, remove {@link #isServerDead()} as it
    * only was added for the opportunistic cleaning due to lack of a ReferenceQueue and is an ugly
@@ -212,7 +140,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
      */
     private final Condition completionSignal;
 
-    public FCPPluginMessage reply = null;
+    private FCPPluginMessage reply;
 
     public SynchronousSend(Condition completionSignal) {
       this.completionSignal = completionSignal;
@@ -258,12 +186,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * sendSynchronous() though, which could confuse it. But in that case it will probably just log an
    * error message and continue working as normal. <br>
    * <br>
-   * TODO: Optimization: We do not need the order of the map, and thus this could be a HashMap
-   * instead of a TreeMap. We do not use a HashMap for scalability: Java HashMaps never shrink, they
-   * only grow. As we cannot predict how much parallel synchronous sends server/client
-   * implementations will run, we do need a shrinking map. So we use TreeMap. We should use an
-   * automatically shrinking HashMap instead once we have one. This is also documented <a
-   * href="https://bugs.freenetproject.org/view.php?id=6320">in the bugtracker</a>.
+   * Design note: We do not need the order of the map, and thus this could be a HashMap instead of a
+   * TreeMap. We do not use a HashMap for scalability: Java HashMaps never shrink, they only grow.
+   * As we cannot predict how much parallel synchronous sends server/client implementations will
+   * run, we do need a shrinking map. So we use TreeMap until we have an automatically shrinking
+   * HashMap. This is also documented <a href="https://bugs.freenetproject.org/view.php?id=6320">in
+   * the bugtracker</a>.
    */
   private final TreeMap<String, SynchronousSend> synchronousSends = new TreeMap<>();
 
@@ -292,14 +220,20 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       new EnumMap<>(SendDirection.class);
 
   /**
-   * For being used by networked FCP connections:<br>
-   * The server is running within the node, and its message handler is accessible as an implementor
-   * of {@link ServerSideFCPMessageHandler}.<br>
-   * The client is not running within the node, it is attached by network with a {@link
-   * FCPConnectionHandler}.<br>
+   * Creates an implementation for the case where the server plugin executes inside the node and the
+   * client communicates over the network via {@link FCPConnectionHandler}.
    *
-   * @see #constructForNetworkedFCP(FCPPluginConnectionTracker, PriorityAwareExecutor,
-   *     PluginManager, String, FCPConnectionHandler) The public interface to this constructor.
+   * <p>The constructor wires the executor, stores the weak reference to the {@link
+   * ServerSideFCPMessageHandler}, registers the connection with the tracker—notably before creating
+   * the client adapter—and attaches the inbound {@link FCPConnectionHandler}. Public callers should
+   * prefer {@link #constructForNetworkedFCP(FCPPluginConnectionTracker, PriorityAwareExecutor,
+   * PluginManager, String, FCPConnectionHandler)} so registration and validation remain consistent.
+   *
+   * @param tracker tracker responsible for garbage-collection-based disconnect detection
+   * @param executor shared executor on which handler calls run with priority awareness
+   * @param serverPluginName human-readable server identifier that appears in logs
+   * @param serverPlugin concrete server-side handler that consumes the routed messages
+   * @param clientConnection inbound handler bound to the network socket for this client
    */
   private FCPPluginConnectionImpl(
       FCPPluginConnectionTracker tracker,
@@ -319,36 +253,32 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     this.server = new WeakReference<>(serverPlugin);
     this.client = null;
     this.clientConnection = clientConnection;
-    this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));
+    this.defaultSendDirectionAdapters.put(SendDirection.TO_SERVER, new SendToServerAdapter(this));
     // new SendToClientAdapter() will need to query this connection from the tracker already.
     // Thus, we have to register before constructing it.
     tracker.registerConnection(this);
     this.defaultSendDirectionAdapters.put(
-        SendDirection.ToClient, new SendToClientAdapter(tracker, id));
+        SendDirection.TO_CLIENT, new SendToClientAdapter(tracker, id));
   }
 
   /**
-   * For being used by networked FCP connections:<br>
-   * The server is running within the node, and its message handler will be queried from the {@link
-   * PluginManager} via the given String serverPluginName.<br>
-   * The client is not running within the node, it is attached by network with the given {@link
-   * FCPConnectionHandler} clientConnection.<br>
-   * <br>
-   * The returned connection is registered at the given {@link FCPPluginConnectionTracker}. <br>
-   * <br>
-   * ATTENTION:<br>
-   * Objects of this class shall not be handed out directly to server or client applications.
-   * Instead, only hand out a {@link DefaultSendDirectionAdapter} - which can be obtained by {@link
-   * #getDefaultSendDirectionAdapter(SendDirection)}.<br>
-   * This has two reasons:<br>
-   * - The send functions which do not require a {@link SendDirection} will always throw an
-   * exception without an adapter ({@link #send(FCPPluginMessage)} and {@link
-   * #sendSynchronous(FCPPluginMessage, long)}).<br>
-   * - Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to ensure that
-   * the client disconnection mechanism of monitoring garbage collection works, see {@link
-   * PluginRespirator#connectToOtherPlugin(String, ClientSideFCPMessageHandler)}. The adapter
-   * prevents servers from keeping a strong reference by internally only keeping a {@link
-   * WeakReference} to the FCPPluginConnectionImpl.<br>
+   * Factory for networked FCP conversations where the server stays local and the client connects
+   * through {@link FCPConnectionHandler}.
+   *
+   * <p>The method locates the server plug-in via {@link PluginManager}, registers the resulting
+   * connection with the tracker, and returns an instance whose default direction adapters can be
+   * given to plugins. Always hand out adapters rather than this raw instance so GC-based disconnect
+   * logic remains effective.
+   *
+   * @param tracker tracker that observes created connections and provides GC notifications
+   * @param executor execution pool shared by plugin dispatchers, honoring {@link
+   *     PrioritizedMessageHandler} hints
+   * @param serverPluginManager plugin registry used to look up the server-side handler
+   * @param serverPluginName canonical server identifier passed to the plugin manager
+   * @param clientConnection network-side handler representing the remote client
+   * @return fully initialized connection ready for adapter exposure
+   * @throws PluginNotFoundException if the requested server plug-in is not loaded or lacks an FCP
+   *     handler
    */
   static FCPPluginConnectionImpl constructForNetworkedFCP(
       FCPPluginConnectionTracker tracker,
@@ -373,17 +303,19 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   }
 
   /**
-   * For being used by intra-node connections between two plugins:<br>
-   * Both the server and the client are running within the same node, so objects of their FCP
-   * message handling interfaces are available:<br>
-   * The server's message handler is accessible as an implementor of {@link
-   * ServerSideFCPMessageHandler}.<br>
-   * The client's message handler is accessible as an implementor of {@link
-   * ClientSideFCPMessageHandler}.<br>
+   * Creates an implementation for intra-node connections where both sides execute inside the same
+   * JVM and expose handler interfaces directly.
    *
-   * @see #constructForIntraNodeFCP(FCPPluginConnectionTracker, PriorityAwareExecutor,
-   *     PluginManager, String, ClientSideFCPMessageHandler) The public interface to this
-   *     constructor.
+   * <p>This variant stores both handler references strongly, registers the connection before
+   * building the {@link SendToClientAdapter}, and omits any {@link FCPConnectionHandler} because
+   * the client lives in-process. The tracker registration ensures GC monitoring is active from the
+   * moment the connection exists.
+   *
+   * @param tracker tracker responsible for monitoring connection lifetimes
+   * @param executor executor pool powering message dispatch
+   * @param serverPluginName canonical server identifier used for logging and lookups
+   * @param server concrete server-side handler implementation
+   * @param client concrete client-side handler implementation
    */
   private FCPPluginConnectionImpl(
       FCPPluginConnectionTracker tracker,
@@ -403,38 +335,29 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     this.server = new WeakReference<>(server);
     this.client = client;
     this.clientConnection = null;
-    this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));
+    this.defaultSendDirectionAdapters.put(SendDirection.TO_SERVER, new SendToServerAdapter(this));
     // new SendToClientAdapter() will need to query this connection from the tracker already.
     // Thus, we have to register before constructing it.
     tracker.registerConnection(this);
     this.defaultSendDirectionAdapters.put(
-        SendDirection.ToClient, new SendToClientAdapter(tracker, id));
+        SendDirection.TO_CLIENT, new SendToClientAdapter(tracker, id));
   }
 
   /**
-   * For being used by intra-node connections between two plugins:<br>
-   * Both the server and the client are running within the same node, so their FCP interfaces are
-   * available:<br>
-   * The server plugin will be queried from given {@link PluginManager} via the given String
-   * serverPluginName.<br>
-   * The client message handler is available as the passed {@link ClientSideFCPMessageHandler}
-   * client.<br>
-   * <br>
-   * The returned connection is registered at the given {@link FCPPluginConnectionTracker}. <br>
-   * <br>
-   * ATTENTION:<br>
-   * Objects of this class shall not be handed out directly to server or client applications.
-   * Instead, only hand out a {@link DefaultSendDirectionAdapter} - which can be obtained by {@link
-   * #getDefaultSendDirectionAdapter(SendDirection)}.<br>
-   * This has two reasons:<br>
-   * - The send functions which do not require a {@link SendDirection} will always throw an
-   * exception without an adapter ({@link #send(FCPPluginMessage)} and {@link
-   * #sendSynchronous(FCPPluginMessage, long)}).<br>
-   * - Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to ensure that
-   * the client disconnection mechanism of monitoring garbage collection works, see {@link
-   * PluginRespirator#connectToOtherPlugin(String, ClientSideFCPMessageHandler)}. The adapter
-   * prevents servers from keeping a strong reference by internally only keeping a {@link
-   * WeakReference} to the FCPPluginConnectionImpl.<br>
+   * Factory for intra-node plug-in conversations where both handlers run inside the same JVM.
+   *
+   * <p>The method looks up the server from the {@link PluginManager}, registers the connection with
+   * the tracker, and returns an instance whose adapters can safely be handed to plugins. Default
+   * direction adapters should again be used instead of exposing the raw connection to avoid strong
+   * references leaking beyond the tracker.
+   *
+   * @param tracker tracker that keeps weak references and observes garbage-collection events
+   * @param executor executor powering message dispatch threads
+   * @param serverPluginManager plugin registry that exposes server handlers
+   * @param serverPluginName canonical server name used for lookups and logging
+   * @param client client-side handler owned by the requesting plug-in
+   * @return initialized connection with adapters for both directions
+   * @throws PluginNotFoundException if the requested server plug-in cannot be resolved
    */
   static FCPPluginConnectionImpl constructForIntraNodeFCP(
       FCPPluginConnectionTracker tracker,
@@ -458,36 +381,39 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   }
 
   /**
-   * ONLY for being used in unit tests.<br>
-   * This is similar to intra-node connections in regular operation: Both the server and client are
-   * running in the same VM. You must implement both the server and client side message handler in
-   * the unit test and pass them to this constructor.<br>
-   * <br>
-   * Notice: Some server plugins might use {@link PluginRespirator#getPluginConnectionByID(UUID)} to
-   * obtain FCPPluginConnectionImpl objects. They likely won't work with connections created by this
-   * because it doesn't create a PluginRespirator. To get a {@link PluginRespirator} available in
-   * unit tests, you might want to use {@link
-   * NodeStarter#createTestNode(NodeStarter.TestNodeParameters)} instead of this constructor:<br>
-   * - The test node can be used to load the plugin as a JAR.<br>
-   * - As loading a plugin by JAR is the same mode of operation as with a regular node, there will
-   * be a PluginRespirator available to it.<br>
-   * - {@link PluginRespirator#connectToOtherPlugin(String, ClientSideFCPMessageHandler)} can then
-   * be used for obtaining a FCPPluginConnection instead of this constructor. This also is the
-   * function to obtain a FCPPluginConnection which is used in regular mode of operation.<br>
-   * - The aforementioned {@link PluginRespirator#getPluginConnectionByID(UUID)} will then work for
-   * FCPPluginConnections obtained through the connectToOtherPlugin().
+   * Creates a lightweight connection pair for unit tests where both handlers are supplied directly.
+   *
+   * <p>The helper mirrors an intra-node setup: both handlers run in-process, the tracker is started
+   * automatically, and a {@link PooledExecutor} provides the necessary threading. It does
+   * <em>not</em> instantiate a {@link PluginRespirator}, so code that depends on {@link
+   * PluginRespirator#getPluginConnectionByID(UUID)} should instead spin up a full {@link
+   * NodeStarter#createTestNode(NodeStarter.TestNodeParameters)} instance to exercise the same code
+   * paths as production.
+   *
+   * @param server server-side handler implementation under test
+   * @param client client-side handler used to capture replies inside the unit test
+   * @return connection wired to the supplied handlers and backed by a fresh tracker
    */
   public static FCPPluginConnectionImpl constructForUnitTest(
       ServerSideFCPMessageHandler server, ClientSideFCPMessageHandler client) {
 
-    assert (server != null);
-    assert (client != null);
+    Objects.requireNonNull(server, "server");
+    Objects.requireNonNull(client, "client");
     FCPPluginConnectionTracker tracker = new FCPPluginConnectionTracker();
     tracker.start();
     return new FCPPluginConnectionImpl(
         tracker, new PooledExecutor(), server.toString(), server, client);
   }
 
+  /**
+   * Returns the stable UUID assigned to this connection when it was created.
+   *
+   * <p>The identifier remains valid for the lifetime of the transport and is used by {@link
+   * PluginRespirator#getPluginConnectionByID(UUID)} so plugins can send unsolicited messages later.
+   * Treat it as opaque; callers should not attempt to parse any structure from the UUID.
+   *
+   * @return immutable identifier unique among all live {@link FCPPluginConnection} instances
+   */
   @Override
   public UUID getID() {
     return id;
@@ -539,12 +465,33 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     }
   }
 
+  /**
+   * Sends a message in the specified direction without waiting for a reply.
+   *
+   * <p>The method stamps the correct {@link ClientPermissions}, pushes the payload onto either the
+   * network connection or the local handler, and logs a warning if callers attempt to reuse the
+   * same {@link FCPPluginMessage} instance twice. It is safe to invoke concurrently from multiple
+   * threads; prioritization is determined by {@link PrioritizedMessageHandler} implementations.
+   *
+   * @param direction direction to deliver the message; determines which adapter or connection is
+   *     used
+   * @param message immutable payload created through {@link FCPPluginMessage} helpers; must not be
+   *     reused
+   * @throws IOException if the underlying transport closes or cannot accept more data
+   */
   @Override
   public void send(final SendDirection direction, FCPPluginMessage message) throws IOException {
+    if (!message.markSent()) {
+      LOG.error(
+          "send(): Attempted to send FCPPluginMessage {} twice on {}. "
+              + "Re-sending the same instance is unsupported.",
+          message.identifier,
+          direction);
+    }
     // We first have to compute the message.permissions field ourselves - we shall ignore what
     // caller said for security.
     ClientPermissions currentClientPermissions =
-        (direction == SendDirection.ToClient)
+        (direction == SendDirection.TO_CLIENT)
             ? null // Server-to-client messages do not have permissions.
             : getCurrentClientPermissions();
 
@@ -562,7 +509,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
     // Now that the message is completely initialized, we can dump it to the logfile.
     if (LOG.isTraceEnabled()) {
-      LOG.trace("send(): direction = " + direction + "; " + "message = " + message);
+      LOG.trace("send(): direction = {}; message = {}", direction, message);
     }
 
     // True if the target server or client message handler is running in this VM.
@@ -570,17 +517,13 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // sending a message over the network.
     // Notice that we do not check for server != null because that is not allowed by this class.
     final boolean messageHandlerExistsLocally =
-        (direction == SendDirection.ToServer)
-            || (direction == SendDirection.ToClient && client != null);
+        (direction == SendDirection.TO_SERVER)
+            || (direction == SendDirection.TO_CLIENT && client != null);
 
     if (!messageHandlerExistsLocally) {
       dispatchMessageByNetwork(direction, message);
       return;
     }
-
-    assert (direction == SendDirection.ToServer ? server != null : client != null)
-        : "We already decided that the message handler exists locally. "
-            + "We should have only decided so if the handler is not null.";
 
     // The message handler is determined to be local at this point. There are two possible
     // types of local message handlers:
@@ -598,13 +541,15 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // sendSynchronous().
     // If there was no sendSynchronous() thread, it returns false, and we must continue to
     // handle case 1.
-    if (dispatchMessageLocallyToSendSynchronousThreadIfExisting(direction, message)) return;
+    if (dispatchMessageLocallyToSendSynchronousThreadIfExisting(message)) {
+      return;
+    }
 
     // We now know that the message handler is not attached by network, and that it is not a
     // sendSynchronous() thread. So the only thing it can be is a FredPluginFCPMessageHandler,
     // and we now determine whether it is the one of the client or the server.
     final FredPluginFCPMessageHandler messageHandler =
-        (direction == SendDirection.ToServer) ? server.get() : client;
+        (direction == SendDirection.TO_SERVER) ? server.get() : client;
 
     if (messageHandler == null) {
       // server is a WeakReference which can be nulled if the server plugin was unloaded.
@@ -614,7 +559,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       throw new IOException("The server plugin has been unloaded.");
     }
 
-    // We now have the right FredPluginFCPMessageHandler, it is still alive, and so we can can
+    // We now have the right FredPluginFCPMessageHandler, it is still alive, and so we can
     // pass the message to it.
     dispatchMessageLocallyToMessageHandler(messageHandler, direction, message);
   }
@@ -639,7 +584,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // So instead, for simplicity and reduced thread count, we just queue the message directly
     // to the network queue here and return.
 
-    assert (direction == SendDirection.ToClient)
+    assert (direction == SendDirection.TO_CLIENT)
         : "By design, this class always shall execute in the same VM as the server plugin. "
             + "So for networked messages, we should always be sending to the client.";
 
@@ -672,7 +617,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    *     especially their threading work internally is provided at the map which stores them.
    */
   private boolean dispatchMessageLocallyToSendSynchronousThreadIfExisting(
-      final SendDirection direction, final FCPPluginMessage message) {
+      final FCPPluginMessage message) {
 
     // Since the message handler is determined to be local at this point, we now must check
     // whether it is a blocking sendSynchronous() thread instead of a regular
@@ -697,8 +642,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // by *multiple* threads at once. We then read the map to check whether there is a
     //  waiter, and if there is, take the write lock to hand the message to it.
     // (The implementation of ReentrantReadWritelock does not allow upgrading a readLock()
-    // to a writeLock(), so we must release it in between and re-check afterwards.)
-    // TODO: Performance: If this turns out to be a bottleneck, add a
+    // to a writeLock(), so we must release it in between and re-check afterward.)
+    // Performance note: If this turns out to be a bottleneck, add a
     // "Synchronous={True, False}" flag to messages so we only have to check the table if
     // Synchronous=True, and can return false immediately otherwise. (If Synchronous=True, we
     // still will have to check the table whether a waiter is existing because it might have
@@ -724,8 +669,10 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         return false;
       }
 
-      assert (synchronousSend.reply == null)
-          : "One identifier should not be used for multiple messages or replies";
+      if (synchronousSend.reply != null) {
+        throw new IllegalStateException(
+            "One identifier should not be used for multiple messages or replies");
+      }
 
       synchronousSend.reply = message;
       // Wake up the waiting synchronousSend() thread
@@ -755,169 +702,20 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         new PrioRunnable() {
           @Override
           public void run() {
-            FCPPluginMessage reply = null;
+            FCPPluginMessage reply =
+                validateReply(
+                    direction, message, invokeHandlerForReply(messageHandler, direction, message));
 
-            try {
-              try {
-                reply =
-                    messageHandler.handlePluginFCPMessage(
-                        getDefaultSendDirectionAdapter(direction.invert()), message);
-              } catch (Error e) {
-                // TODO: Code quality: This is a workaround for Java 6 not having
-                // "catch(RuntimeException | Error e)". Once we are on Java 7, remove this
-                // catch() block, and catch both types with the catch() block below.
-                throw new RuntimeException(e);
-              }
-            } catch (RuntimeException e) {
-              // The message handler is a server or client implementation, and thus as third
-              // party code might have bugs. So we need to catch any undeclared throwables.
-              // Notice that this is not normal mode of operation: Instead of throwing,
-              // the JavaDoc requests message handlers to return a reply with success=false.
-
-              String errorMessage =
-                  "CryptadPluginFCPMessageHandler threw."
-                      + " See JavaDoc of its member interfaces for how signal errors properly."
-                      + " connection = "
-                      + FCPPluginConnectionImpl.this
-                      + "; SendDirection = "
-                      + direction
-                      + "; message = "
-                      + message;
-
-              LOG.error(errorMessage, e);
-
-              if (!message.isReplyMessage()) {
-                // If the original message was not a reply already, we are allowed to send a
-                // reply with success=false to indicate the error to the remote side.
-                // This allows possibly existing, waiting sendSynchronous() calls to fail
-                // quickly instead of having to wait for the timeout because no reply
-                // arrives.
-                reply =
-                    FCPPluginMessage.constructReplyMessage(
-                        message,
-                        null,
-                        null,
-                        false,
-                        "InternalError",
-                        errorMessage + "; Throwable = " + e);
-              }
-            }
-
-            if (reply != null) {
-              // TODO: Performance: The below checks might be converted to assert() or
-              // be prefixed with if (LOG.isDebugEnabled()).
-              // Not doing this now since the CryptadPluginFCPMessageHandler API which specifies
-              // those requirements is new and thus quite a few client applications might be
-              // converted to it soon, and do those beginners mistakes.
-              // After everyone has gotten used to it, we can move to the more lax checking.
-              // An alternate solution would be to not use the FCPPluginMessage object
-              // which was returned by the message handler but always re-construct it to
-              // follow the standards.
-
-              // Replying to replies is disallowed to prevent infinite bouncing.
-              if (message.isReplyMessage()) {
-                LOG.error(
-                    "CryptadPluginFCPMessageHandler tried to send a"
-                        + " reply to a reply. Discarding it. See JavaDoc of its member"
-                        + " interfaces for how to do this properly."
-                        + " connection = "
-                        + FCPPluginConnectionImpl.this
-                        + "; original message SendDirection = "
-                        + direction
-                        + "; original message = "
-                        + message
-                        + "; reply = "
-                        + reply);
-
-                reply = null;
-              } else if (!reply.isReplyMessage()) {
-                LOG.error(
-                    "CryptadPluginFCPMessageHandler tried to send a"
-                        + " non-reply message as reply. See JavaDoc of its member interfaces"
-                        + " for how to do this properly."
-                        + " connection = "
-                        + FCPPluginConnectionImpl.this
-                        + "; original message SendDirection = "
-                        + direction
-                        + "; original message = "
-                        + message
-                        + "; reply = "
-                        + reply);
-
-                reply = null;
-              } else if (!reply.identifier.equals(message.identifier)) {
-                LOG.error(
-                    "CryptadPluginFCPMessageHandler tried to send a"
-                        + " reply with with different identifier than original message."
-                        + " See JavaDoc of its member interfaces for how to do this properly."
-                        + " connection = "
-                        + FCPPluginConnectionImpl.this
-                        + "; original message SendDirection = "
-                        + direction
-                        + "; original message = "
-                        + message
-                        + "; reply = "
-                        + reply);
-
-                reply = null;
-              }
-            } else if (reply == null) {
-              if (!message.isReplyMessage()) {
-                // The message handler did not not ship a reply even though it would have
-                // been allowed to because the original message was not a reply.
-                // This shouldn't be done: Not sending a success reply at least will cause
-                // sendSynchronous() threads to keep waiting for the reply until timeout.
-                LOG.warn(
-                    "Cryptad did not receive a reply from the message "
-                        + "handler even though it was allowed to reply. "
-                        + "This would cause sendSynchronous() to timeout! "
-                        + " connection = "
-                        + FCPPluginConnectionImpl.this
-                        + "; SendDirection = "
-                        + direction
-                        + "; message = "
-                        + message);
-              }
-            }
-
-            // We already tried to set a reply if one is needed. If it is still null now, then
-            // we do not have to send one for sure, so we can return.
             if (reply == null) {
+              warnAboutMissingReply(direction, message);
               return;
             }
 
-            try {
-              send(direction.invert(), reply);
-            } catch (IOException e) {
-              // The remote partner has disconnected, which can happen during normal
-              // operation.
-              // There is nothing we can do to get the IOException out to the caller of the
-              // initial send() of the original message which triggered the reply sending.
-              // - We are in a different thread, the initial send() has returned already.
-              // So we just log it, because it still might indicate problems if we try to
-              // send after disconnection.
-              // We log it marked as from the messageHandler instead of the
-              // FCPPluginConnectionImpl:
-              // The messageHandler will be an object of the server or client plugin,
-              // from a class contained in it. So there is a chance that the developer
-              // has logging enabled for that class, and thus we log it marked as from that.
-
-              LOG.warn(
-                  "Sending reply from CryptadPluginFCPMessageHandler"
-                      + " failed, the connection was closed already."
-                      + " connection = "
-                      + FCPPluginConnectionImpl.this
-                      + "; original message SendDirection = "
-                      + direction
-                      + "; original message = "
-                      + message
-                      + "; reply = "
-                      + reply,
-                  e);
-            }
+            sendReplyFromHandler(direction, message, reply);
           }
 
           @Override
+          @SuppressWarnings("java:S1181")
           public int getPriority() {
             NativeThread.PriorityLevel priority = NativeThread.PriorityLevel.NORM_PRIORITY;
 
@@ -946,6 +744,145 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     executor.execute(messageDispatcher, messageDispatcher.toString());
   }
 
+  @SuppressWarnings("java:S1181")
+  private FCPPluginMessage invokeHandlerForReply(
+      FredPluginFCPMessageHandler messageHandler,
+      SendDirection direction,
+      FCPPluginMessage message) {
+    try {
+      return messageHandler.handlePluginFCPMessage(
+          getDefaultSendDirectionAdapter(direction.invert()), message);
+    } catch (Throwable t) {
+      return handleHandlerFailure(direction, message, t);
+    }
+  }
+
+  private FCPPluginMessage handleHandlerFailure(
+      SendDirection direction, FCPPluginMessage message, Throwable error) {
+    String errorMessage =
+        "CryptadPluginFCPMessageHandler threw."
+            + " See JavaDoc of its member interfaces for how signal errors properly."
+            + " connection = "
+            + this
+            + "; SendDirection = "
+            + direction
+            + "; message = "
+            + message;
+
+    LOG.error(errorMessage, error);
+
+    if (message.isReplyMessage()) {
+      return null;
+    }
+
+    return FCPPluginMessage.constructReplyMessage(
+        message, null, null, false, "InternalError", errorMessage + "; Throwable = " + error);
+  }
+
+  private FCPPluginMessage validateReply(
+      SendDirection direction, FCPPluginMessage original, FCPPluginMessage reply) {
+    if (reply == null) {
+      return null;
+    }
+
+    // Performance note: The below checks might be converted to assert() or be prefixed with if
+    // (LOG.isDebugEnabled()). They are intentionally kept active for clarity because the newer
+    // API is still easy to misuse.
+
+    if (original.isReplyMessage()) {
+      LOG.error(
+          "CryptadPluginFCPMessageHandler tried to send a reply to a reply. Discarding it. See"
+              + " JavaDoc of its member interfaces for how to do this properly. connection = {};"
+              + " original message SendDirection = {}; original message = {}; reply = {}",
+          this,
+          direction,
+          original,
+          reply);
+      return null;
+    }
+
+    if (!reply.isReplyMessage()) {
+      LOG.error(
+          "CryptadPluginFCPMessageHandler tried to send a non-reply message as reply. See JavaDoc"
+              + " of its member interfaces for how to do this properly. connection = {}; original"
+              + " message SendDirection = {}; original message = {}; reply = {}",
+          this,
+          direction,
+          original,
+          reply);
+      return null;
+    }
+
+    if (!reply.identifier.equals(original.identifier)) {
+      LOG.error(
+          "CryptadPluginFCPMessageHandler tried to send a reply with different identifier than the"
+              + " original message. connection = {}; original message SendDirection = {}; original"
+              + " message = {}; reply = {}",
+          this,
+          direction,
+          original,
+          reply);
+
+      return null;
+    }
+
+    return reply;
+  }
+
+  private void warnAboutMissingReply(SendDirection direction, FCPPluginMessage message) {
+    if (message.isReplyMessage()) {
+      return;
+    }
+
+    LOG.warn(
+        "Cryptad did not receive a reply from the message handler even though it was allowed to"
+            + " reply. This would cause sendSynchronous() to timeout! connection = {};"
+            + " SendDirection = {}; message = {}",
+        this,
+        direction,
+        message);
+  }
+
+  private void sendReplyFromHandler(
+      SendDirection direction, FCPPluginMessage message, FCPPluginMessage reply) {
+    try {
+      send(direction.invert(), reply);
+    } catch (IOException e) {
+      LOG.warn(
+          "Sending reply from CryptadPluginFCPMessageHandler failed, the connection was closed"
+              + " already. connection = {}; original message SendDirection = {}; original message"
+              + " = {}; reply = {}",
+          this,
+          direction,
+          message,
+          reply,
+          e);
+    }
+  }
+
+  /**
+   * Sends a request and blocks until its paired reply arrives or the timeout elapses.
+   *
+   * <p>The method installs a {@link SynchronousSend} record keyed by the message identifier, sends
+   * the payload using {@link #send(SendDirection, FCPPluginMessage)}, then waits on a {@link
+   * Condition}. Spurious wakeups are tolerated by re-checking the reply slot, and every code path
+   * removes its entry to avoid leaking memory. Timeouts raise {@link IOException} so callers can
+   * rebuild the connection. Reply messages are forbidden because they would deadlock the handshake.
+   *
+   * <pre>{@code
+   * var reply = connection.sendSynchronous(
+   *     SendDirection.TO_SERVER,
+   *     request,
+   *     TimeUnit.SECONDS.toNanos(30));
+   * }</pre>
+   *
+   * @param direction direction to deliver the outbound request
+   * @param message immutable request that must not already represent a reply
+   * @param timeoutNanoSeconds positive wait duration expressed in nanoseconds
+   * @return reply returned by the remote endpoint; {@link FCPPluginMessage#success} may be false
+   * @throws IOException if the timeout expires or the transport closes mid-flight
+   * @throws InterruptedException if the calling thread is interrupted while waiting
+   */
   @Override
   public FCPPluginMessage sendSynchronous(
       SendDirection direction, FCPPluginMessage message, long timeoutNanoSeconds)
@@ -958,10 +895,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
               + "But a reply is needed for sendSynchronous() to determine when to return.");
     }
 
-    assert (timeoutNanoSeconds > 0) : "Timeout should not be negative";
-
-    assert (timeoutNanoSeconds <= TimeUnit.MINUTES.toNanos(1))
-        : "Please use sane timeouts to prevent thread congestion";
+    if (timeoutNanoSeconds <= 0) {
+      throw new IllegalArgumentException("Timeout should be positive");
+    }
 
     synchronousSendsLock.writeLock().lock();
     try {
@@ -972,25 +908,25 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       // - The constructor of FCPPluginMessage which we tell the user to use in the JavaDoc
       //   does generate a random identifier, so collisions will only happen if the user
       //   ignores the JavaDoc or changes the constructor.
-      // - If the assert is not true, then the following put() will replace the old
+      // - If the assertion is not true, then the following put() will replace the old
       //   SynchronousSend, so its Condition will never get signaled, and its
       //   thread waiting in sendSynchronous() will timeout safely. It IS possible that this
       //   thread will then get a reply which does not belong to it. But the wrong reply will
       //   only affect the caller, the FCPPluginConnectionImpl will keep working fine,
-      //   especially no threads will become stalled for ever. As the caller is at fault for
+      //   especially no threads will become stalled forever. As the caller is at fault for
       //   the issue, it is fine if he breaks his own stuff :) The JavaDoc also documents this
 
-      assert (!synchronousSends.containsKey(message.identifier))
-          : "FCPPluginMessage.identifier should be unique";
+      if (synchronousSends.containsKey(message.identifier)) {
+        throw new IllegalStateException("FCPPluginMessage.identifier should be unique");
+      }
 
       synchronousSends.put(message.identifier, synchronousSend);
 
       if (LOG.isDebugEnabled()) {
         LOG.debug(
-            "sendSynchronous(): Started for identifier "
-                + message.identifier
-                + "; synchronousSends table size: "
-                + synchronousSends.size());
+            "sendSynchronous(): Started for identifier {}; synchronousSends table size: {}",
+            message.identifier,
+            synchronousSends.size());
       }
 
       send(direction, message);
@@ -1032,12 +968,15 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         // signaled we still need to check whether the semantic condition which would
         // trigger signaling is *really* met, which we do with this if:
         if (synchronousSend.reply != null) {
-          assert (synchronousSend.reply.identifier.equals(message.identifier));
+          if (!synchronousSend.reply.identifier.equals(message.identifier)) {
+            throw new IllegalStateException(
+                "Reply identifier does not match the original message identifier");
+          }
 
           return synchronousSend.reply;
         }
 
-        // The spurious wakeup described at the above if() has happened, so we loop.
+        // A spurious wakeup occurred, so loop again and continue waiting.
       } while (true);
     } finally {
       // We MUST always remove the SynchronousSend object which we added to the map,
@@ -1046,10 +985,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
       if (LOG.isDebugEnabled()) {
         LOG.debug(
-            "sendSynchronous(): Done for identifier "
-                + message.identifier
-                + "; synchronousSends table size: "
-                + synchronousSends.size());
+            "sendSynchronous(): Done for identifier {}; synchronousSends table size: {}",
+            message.identifier,
+            synchronousSends.size());
       }
 
       synchronousSendsLock.writeLock().unlock();
@@ -1063,15 +1001,15 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
    * <br>
    * An adapter is needed instead of storing this as a member variable in FCPPluginConnectionImpl
-   * because a single FCPPluginConnectionImpl object is used by both to the the server AND the
-   * client which it connects, and their default send direction will be different:<br>
+   * because a single FCPPluginConnectionImpl object is used by both to the server AND the client
+   * which it connects, and their default send direction will be different:<br>
    * A server will want to send to the client by default, but the client will want to default to
    * sending to the server.<br>
    * <br>
    * Is abstract and has two implementing child classes (to implement differing internal
    * requirements, see {@link #getConnection()}):<br>
-   * - {@link SendToClientAdapter} for default direction {@link SendDirection#ToClient}.<br>
-   * - {@link SendToServerAdapter} for default direction {@link SendDirection#ToServer}.<br>
+   * - {@link SendToClientAdapter} for default direction {@link SendDirection#TO_CLIENT}.<br>
+   * - {@link SendToServerAdapter} for default direction {@link SendDirection#TO_SERVER}.<br>
    * <br>
    * NOTICE: Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to
    * ensure that the client disconnection mechanism of monitoring garbage collection works. This
@@ -1130,7 +1068,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * Encapsulates a FCPPluginConnectionImpl object with a default {@link SendDirection} of {@link
-   * SendDirection#ToClient} to implement the send functions which don't require a direction
+   * SendDirection#TO_CLIENT} to implement the send functions which don't require a direction
    * parameter:<br>
    * - {@link FCPPluginConnection#send(FCPPluginMessage)}<br>
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
@@ -1171,7 +1109,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
      * reuse adapters instead of creating new ones with this constructor.
      */
     SendToClientAdapter(FCPPluginConnectionTracker tracker, UUID connectionID) {
-      super(SendDirection.ToClient);
+      super(SendDirection.TO_CLIENT);
 
       // Reuse the WeakReference from the FCPPluginConnectionTracker instead of creating our
       // own one since it has to keep a WeakReference for every connection anyway, and
@@ -1183,7 +1121,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         // FCPPluginConnectionImpl. While it is being constructed, it should not be
         // considered as disconnected already, and thus the FCPPluginConnectionTracker
         // should never throw IOException.
-        throw new RuntimeException("SHOULD NOT HAPPEN: ", e);
+        throw new IllegalStateException("Tracker unexpectedly reported a disconnect", e);
       }
     }
 
@@ -1215,7 +1153,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * Encapsulates a FCPPluginConnectionImpl object with a default {@link SendDirection} of {@link
-   * SendDirection#ToServer} to implement the send functions which don't require a direction
+   * SendDirection#TO_SERVER} to implement the send functions which don't require a direction
    * parameter:<br>
    * - {@link FCPPluginConnection#send(FCPPluginMessage)}<br>
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
@@ -1238,7 +1176,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
      * whenever possible to reuse adapters instead of creating new ones with this constructor.
      */
     SendToServerAdapter(FCPPluginConnectionImpl parent) {
-      super(SendDirection.ToServer);
+      super(SendDirection.TO_SERVER);
       this.parent = parent;
     }
 
@@ -1259,12 +1197,16 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   }
 
   /**
-   * Returns a {@link DefaultSendDirectionAdapter} (which implements FCPPluginConnection) wrapped
-   * around this FCPPluginConnectionImpl for which the following send functions will then always
-   * send to the {@link SendDirection} which was passed to this function:<br>
-   * - {@link FCPPluginConnection#send(FCPPluginMessage)}<br>
-   * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
-   * <br>
+   * Returns an adapter that locks the default {@link SendDirection} for callers lacking explicit
+   * routing.
+   *
+   * <p>Adapters keep weak references when facing server plugins so garbage-collection-based
+   * disconnects still work. Callers must use these adapters instead of caching {@code
+   * FCPPluginConnectionImpl} directly; otherwise synchronous send restrictions and lifecycle
+   * monitoring are bypassed.
+   *
+   * @param direction direction the adapter should target for all direction-less calls
+   * @return adapter implementing {@link FCPPluginConnection} with the requested default direction
    */
   public FCPPluginConnection getDefaultSendDirectionAdapter(SendDirection direction) {
     return defaultSendDirectionAdapters.get(direction);
@@ -1300,7 +1242,6 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * @see FCPPluginConnectionImpl#send(FCPPluginMessage)
    * @see FCPPluginConnectionImpl#sendSynchronous(FCPPluginMessage, long)
    */
-  @SuppressWarnings("serial")
   private static final class NoSendDirectionSpecifiedException
       extends UnsupportedOperationException {
 
