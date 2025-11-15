@@ -69,6 +69,14 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
     this.compressing = compressing;
   }
 
+  private UploadFileRequestStatus(UploadFileRequestStatus source) {
+    super(source);
+    this.dataSize = source.dataSize;
+    this.mimeType = source.mimeType;
+    this.origFilename = source.origFilename;
+    this.compressing = source.compressing;
+  }
+
   @Override
   public long getDataSize() {
     return dataSize;
@@ -95,5 +103,10 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
     String s = super.getPreferredFilename();
     if (s == null && origFilename != null) return origFilename.getName();
     return s;
+  }
+
+  @Override
+  public UploadFileRequestStatus copy() {
+    return new UploadFileRequestStatus(this);
   }
 }

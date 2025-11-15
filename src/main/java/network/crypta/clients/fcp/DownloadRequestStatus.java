@@ -134,6 +134,25 @@ public class DownloadRequestStatus extends RequestStatus {
     this.detectedDontCompress = dontCompress;
   }
 
+  private DownloadRequestStatus(DownloadRequestStatus source) {
+    super(source);
+    this.failureCode = source.failureCode;
+    this.failureReasonShort = source.failureReasonShort;
+    this.failureReasonLong = source.failureReasonLong;
+    this.mimeType = source.mimeType;
+    this.dataSize = source.dataSize;
+    this.destFilename = source.destFilename;
+    this.detectedCompatModes =
+        source.detectedCompatModes != null ? source.detectedCompatModes.clone() : null;
+    this.detectedSplitfileKey =
+        source.detectedSplitfileKey != null ? source.detectedSplitfileKey.clone() : null;
+    this.uri = source.uri;
+    this.filterData = source.filterData;
+    this.dataShadow = source.dataShadow;
+    this.overriddenDataType = source.overriddenDataType;
+    this.detectedDontCompress = source.detectedDontCompress;
+  }
+
   public final boolean toTempSpace() {
     return destFilename == null;
   }
@@ -210,5 +229,10 @@ public class DownloadRequestStatus extends RequestStatus {
     if (uri != null && (uri.hasMetaStrings() || uri.getDocName() != null))
       return uri.getPreferredFilename();
     return null;
+  }
+
+  @Override
+  public DownloadRequestStatus copy() {
+    return new DownloadRequestStatus(this);
   }
 }

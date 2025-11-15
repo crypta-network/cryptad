@@ -54,6 +54,12 @@ public class UploadDirRequestStatus extends UploadRequestStatus {
     this.totalFiles = files;
   }
 
+  private UploadDirRequestStatus(UploadDirRequestStatus source) {
+    super(source);
+    this.totalDataSize = source.totalDataSize;
+    this.totalFiles = source.totalFiles;
+  }
+
   private final long totalDataSize;
   private final int totalFiles;
 
@@ -68,5 +74,10 @@ public class UploadDirRequestStatus extends UploadRequestStatus {
   @Override
   public long getDataSize() {
     return totalDataSize;
+  }
+
+  @Override
+  public UploadDirRequestStatus copy() {
+    return new UploadDirRequestStatus(this);
   }
 }

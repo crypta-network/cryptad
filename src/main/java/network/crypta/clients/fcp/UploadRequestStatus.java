@@ -57,6 +57,15 @@ public abstract class UploadRequestStatus extends RequestStatus {
     this.failureReasonLong = failureReasonLong;
   }
 
+  protected UploadRequestStatus(UploadRequestStatus source) {
+    super(source);
+    this.finalURI = source.finalURI;
+    this.targetURI = source.targetURI;
+    this.failureCode = source.failureCode;
+    this.failureReasonShort = source.failureReasonShort;
+    this.failureReasonLong = source.failureReasonLong;
+  }
+
   synchronized void setFinished(
       boolean success,
       FreenetURI finalURI,

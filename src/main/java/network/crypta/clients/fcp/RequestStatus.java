@@ -17,7 +17,7 @@ import network.crypta.l10n.NodeL10n;
  *
  * @author toad
  */
-public abstract class RequestStatus implements Cloneable {
+public abstract class RequestStatus {
 
   private final String identifier;
   private boolean hasStarted;
@@ -97,6 +97,24 @@ public abstract class RequestStatus implements Cloneable {
     this.latestFailure = latestFailure != null ? (Date) latestFailure.clone() : null;
     this.isTotalFinalized = totalFinalized;
     this.persistence = persistence;
+  }
+
+  /** Copy constructor used by subclasses to provide defensive snapshots. */
+  protected RequestStatus(RequestStatus source) {
+    this.identifier = source.identifier;
+    this.persistence = source.persistence;
+    this.hasStarted = source.hasStarted;
+    this.hasFinished = source.hasFinished;
+    this.hasSucceeded = source.hasSucceeded;
+    this.priority = source.priority;
+    this.totalBlocks = source.totalBlocks;
+    this.minBlocks = source.minBlocks;
+    this.fetchedBlocks = source.fetchedBlocks;
+    this.latestSuccess = source.latestSuccess != null ? (Date) source.latestSuccess.clone() : null;
+    this.fatallyFailedBlocks = source.fatallyFailedBlocks;
+    this.failedBlocks = source.failedBlocks;
+    this.latestFailure = source.latestFailure != null ? (Date) source.latestFailure.clone() : null;
+    this.isTotalFinalized = source.isTotalFinalized;
   }
 
   public boolean hasSucceeded() {
@@ -215,11 +233,9 @@ public abstract class RequestStatus implements Cloneable {
     else return ret;
   }
 
-  public RequestStatus clone() {
-    try {
-      return (RequestStatus) super.clone();
-    } catch (CloneNotSupportedException e) {
-      throw new Error(e);
-    }
-  }
+  /**
+   * Create an immutable snapshot of this request status. Subclasses must return a new instance so
+   * callers can safely access the snapshot outside of internal locks.
+   */
+  public abstract RequestStatus copy();
 }
