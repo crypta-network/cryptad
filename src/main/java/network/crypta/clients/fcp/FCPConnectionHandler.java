@@ -733,7 +733,7 @@ public class FCPConnectionHandler implements Closeable {
       }
     }
 
-    if (message.persistence == Persistence.REBOOT)
+    if (message.persistence == Persistence.REBOOT && cp != null)
       try {
         cp.register(false);
       } catch (IdentifierCollisionException e) {
@@ -743,9 +743,12 @@ public class FCPConnectionHandler implements Closeable {
       // FIXME do we need to freeData???
       send(failedMessage);
       if (cp != null) cp.cancel(server.getCore().getClientContext());
-    } else {
+    } else if (cp != null) {
       if (LOG.isDebugEnabled()) LOG.debug("Starting " + cp);
       cp.start(server.getCore().getClientContext());
+    } else {
+      // Defensive fallback: cp can be null when constructor setup was skipped.
+      LOG.warn("ClientPutDir was not created for identifier {}", id);
     }
   }
 
