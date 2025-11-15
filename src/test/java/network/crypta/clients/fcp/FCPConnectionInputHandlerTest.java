@@ -23,7 +23,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -39,6 +38,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.LineReadingInputStream;
 import network.crypta.support.io.PersistentTempBucketFactory;
+import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -267,8 +267,7 @@ class FCPConnectionInputHandlerTest {
 
     TestContext ctx = new TestContext();
     ctx.handler = mock(FCPConnectionHandler.class);
-    ctx.bucketFactory = mock(BucketFactory.class);
-    setBucketFactory(ctx.handler, ctx.bucketFactory);
+    ctx.bucketFactory = mock(TempBucketFactory.class);
     ctx.server = mock(FCPServer.class);
     ctx.node = mock(Node.class);
     ctx.core = mock(NodeClientCore.class);
@@ -280,22 +279,13 @@ class FCPConnectionInputHandlerTest {
     when(ctx.handler.getServer()).thenReturn(ctx.server);
     lenient().when(ctx.server.getNode()).thenReturn(ctx.node);
     lenient().when(ctx.server.getCore()).thenReturn(ctx.core);
+    lenient().when(ctx.core.getTempBucketFactory()).thenReturn(ctx.bucketFactory);
     lenient().when(ctx.core.getPersistentTempBucketFactory()).thenReturn(ctx.persistentFactory);
     lenient().when(ctx.handler.isClosed()).thenReturn(false);
     lenient().when(ctx.handler.getConnectionIdentifierUUID()).thenReturn(UUID.randomUUID());
 
     ctx.inputHandler = new FCPConnectionInputHandler(ctx.handler);
     return ctx;
-  }
-
-  private static void setBucketFactory(FCPConnectionHandler handler, BucketFactory bucketFactory) {
-    try {
-      Field field = FCPConnectionHandler.class.getDeclaredField("bf");
-      field.setAccessible(true);
-      field.set(handler, bucketFactory);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new IllegalStateException("Unable to assign bucket factory", e);
-    }
   }
 
   private static String message(String name, String endMarker, String... kvPairs) {
@@ -336,7 +326,7 @@ class FCPConnectionInputHandlerTest {
     Node node;
     NodeClientCore core;
     Socket socket;
-    BucketFactory bucketFactory;
+    TempBucketFactory bucketFactory;
     PersistentTempBucketFactory persistentFactory;
   }
 
