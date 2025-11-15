@@ -183,7 +183,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
   /**
    * Resolves the target {@link FCPPluginConnection} and delivers the message using {@link
-   * SendDirection#ToServer}, translating lookup or transport failures into protocol-friendly
+   * SendDirection#TO_SERVER}, translating lookup or transport failures into protocol-friendly
    * exceptions.
    *
    * <p>The handler grants access to plugin-scoped connections; if the desired plugin cannot be
@@ -226,7 +226,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
     FCPPluginMessage message = constructFCPPluginMessage();
 
     try {
-      serverConnection.send(SendDirection.ToServer, message);
+      serverConnection.send(SendDirection.TO_SERVER, message);
     } catch (IOException e) {
       throw pluginUnavailable();
     }

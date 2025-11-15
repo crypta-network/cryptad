@@ -162,7 +162,7 @@ class FCPPluginClientMessageTest {
 
       ArgumentCaptor<FCPPluginMessage> messageCaptor =
           ArgumentCaptor.forClass(FCPPluginMessage.class);
-      Mockito.verify(connection).send(Mockito.eq(SendDirection.ToServer), messageCaptor.capture());
+      Mockito.verify(connection).send(Mockito.eq(SendDirection.TO_SERVER), messageCaptor.capture());
 
       FCPPluginMessage captured = messageCaptor.getValue();
       assertEquals(IDENTIFIER, captured.identifier);
@@ -180,7 +180,7 @@ class FCPPluginClientMessageTest {
       Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(connection);
       Mockito.doThrow(new IOException("boom"))
           .when(connection)
-          .send(Mockito.eq(SendDirection.ToServer), Mockito.any());
+          .send(Mockito.eq(SendDirection.TO_SERVER), Mockito.any());
       Node node = Mockito.mock(Node.class);
 
       MessageInvalidException ex =

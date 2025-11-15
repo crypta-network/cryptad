@@ -81,7 +81,7 @@ public final class FCPPluginConnectionImplTest {
                   try {
                     final FCPPluginMessage reply =
                         connection.sendSynchronous(
-                            SendDirection.ToServer, message, TimeUnit.SECONDS.toNanos(10));
+                            SendDirection.TO_SERVER, message, TimeUnit.SECONDS.toNanos(10));
 
                     if (!threadIndex.equals(reply.params.get("replyToThread"))) {
                       failure.set(true);

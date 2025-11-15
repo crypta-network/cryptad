@@ -319,12 +319,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     this.server = new WeakReference<>(serverPlugin);
     this.client = null;
     this.clientConnection = clientConnection;
-    this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));
+    this.defaultSendDirectionAdapters.put(SendDirection.TO_SERVER, new SendToServerAdapter(this));
     // new SendToClientAdapter() will need to query this connection from the tracker already.
     // Thus, we have to register before constructing it.
     tracker.registerConnection(this);
     this.defaultSendDirectionAdapters.put(
-        SendDirection.ToClient, new SendToClientAdapter(tracker, id));
+        SendDirection.TO_CLIENT, new SendToClientAdapter(tracker, id));
   }
 
   /**
@@ -403,12 +403,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     this.server = new WeakReference<>(server);
     this.client = client;
     this.clientConnection = null;
-    this.defaultSendDirectionAdapters.put(SendDirection.ToServer, new SendToServerAdapter(this));
+    this.defaultSendDirectionAdapters.put(SendDirection.TO_SERVER, new SendToServerAdapter(this));
     // new SendToClientAdapter() will need to query this connection from the tracker already.
     // Thus, we have to register before constructing it.
     tracker.registerConnection(this);
     this.defaultSendDirectionAdapters.put(
-        SendDirection.ToClient, new SendToClientAdapter(tracker, id));
+        SendDirection.TO_CLIENT, new SendToClientAdapter(tracker, id));
   }
 
   /**
@@ -541,10 +541,17 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   @Override
   public void send(final SendDirection direction, FCPPluginMessage message) throws IOException {
+    if (!message.markSent()) {
+      LOG.error(
+          "send(): Attempted to send FCPPluginMessage {} twice on {}. "
+              + "Re-sending the same instance is unsupported.",
+          message.identifier,
+          direction);
+    }
     // We first have to compute the message.permissions field ourselves - we shall ignore what
     // caller said for security.
     ClientPermissions currentClientPermissions =
-        (direction == SendDirection.ToClient)
+        (direction == SendDirection.TO_CLIENT)
             ? null // Server-to-client messages do not have permissions.
             : getCurrentClientPermissions();
 
@@ -570,15 +577,15 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // sending a message over the network.
     // Notice that we do not check for server != null because that is not allowed by this class.
     final boolean messageHandlerExistsLocally =
-        (direction == SendDirection.ToServer)
-            || (direction == SendDirection.ToClient && client != null);
+        (direction == SendDirection.TO_SERVER)
+            || (direction == SendDirection.TO_CLIENT && client != null);
 
     if (!messageHandlerExistsLocally) {
       dispatchMessageByNetwork(direction, message);
       return;
     }
 
-    assert (direction == SendDirection.ToServer ? server != null : client != null)
+    assert (direction == SendDirection.TO_SERVER ? server != null : client != null)
         : "We already decided that the message handler exists locally. "
             + "We should have only decided so if the handler is not null.";
 
@@ -604,7 +611,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // sendSynchronous() thread. So the only thing it can be is a FredPluginFCPMessageHandler,
     // and we now determine whether it is the one of the client or the server.
     final FredPluginFCPMessageHandler messageHandler =
-        (direction == SendDirection.ToServer) ? server.get() : client;
+        (direction == SendDirection.TO_SERVER) ? server.get() : client;
 
     if (messageHandler == null) {
       // server is a WeakReference which can be nulled if the server plugin was unloaded.
@@ -639,7 +646,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // So instead, for simplicity and reduced thread count, we just queue the message directly
     // to the network queue here and return.
 
-    assert (direction == SendDirection.ToClient)
+    assert (direction == SendDirection.TO_CLIENT)
         : "By design, this class always shall execute in the same VM as the server plugin. "
             + "So for networked messages, we should always be sending to the client.";
 
@@ -1070,8 +1077,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * <br>
    * Is abstract and has two implementing child classes (to implement differing internal
    * requirements, see {@link #getConnection()}):<br>
-   * - {@link SendToClientAdapter} for default direction {@link SendDirection#ToClient}.<br>
-   * - {@link SendToServerAdapter} for default direction {@link SendDirection#ToServer}.<br>
+   * - {@link SendToClientAdapter} for default direction {@link SendDirection#TO_CLIENT}.<br>
+   * - {@link SendToServerAdapter} for default direction {@link SendDirection#TO_SERVER}.<br>
    * <br>
    * NOTICE: Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to
    * ensure that the client disconnection mechanism of monitoring garbage collection works. This
@@ -1130,7 +1137,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * Encapsulates a FCPPluginConnectionImpl object with a default {@link SendDirection} of {@link
-   * SendDirection#ToClient} to implement the send functions which don't require a direction
+   * SendDirection#TO_CLIENT} to implement the send functions which don't require a direction
    * parameter:<br>
    * - {@link FCPPluginConnection#send(FCPPluginMessage)}<br>
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
@@ -1171,7 +1178,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
      * reuse adapters instead of creating new ones with this constructor.
      */
     SendToClientAdapter(FCPPluginConnectionTracker tracker, UUID connectionID) {
-      super(SendDirection.ToClient);
+      super(SendDirection.TO_CLIENT);
 
       // Reuse the WeakReference from the FCPPluginConnectionTracker instead of creating our
       // own one since it has to keep a WeakReference for every connection anyway, and
@@ -1215,7 +1222,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * Encapsulates a FCPPluginConnectionImpl object with a default {@link SendDirection} of {@link
-   * SendDirection#ToServer} to implement the send functions which don't require a direction
+   * SendDirection#TO_SERVER} to implement the send functions which don't require a direction
    * parameter:<br>
    * - {@link FCPPluginConnection#send(FCPPluginMessage)}<br>
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
@@ -1238,7 +1245,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
      * whenever possible to reuse adapters instead of creating new ones with this constructor.
      */
     SendToServerAdapter(FCPPluginConnectionImpl parent) {
-      super(SendDirection.ToServer);
+      super(SendDirection.TO_SERVER);
       this.parent = parent;
     }
 
