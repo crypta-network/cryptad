@@ -1021,15 +1021,10 @@ public class NodeClientCore implements Persistable {
   }
 
   private FCPServer initFcp(Node node) throws NodeInitException {
-    try {
-      FCPServer server = FCPServer.maybeCreate(node, this, node.getConfig(), fcpPersistentRoot);
-      getClientContext().setDownloadCache(server);
-      if (!killedDatabase()) server.load();
-      return server;
-    } catch (IOException | InvalidConfigValueException e) {
-      throw new NodeInitException(
-          NodeInitException.EXIT_COULD_NOT_START_FCP, "Could not start FCP: " + e);
-    }
+    FCPServer server = FCPServer.maybeCreate(node, this, node.getConfig(), fcpPersistentRoot);
+    getClientContext().setDownloadCache(server);
+    if (!killedDatabase()) server.load();
+    return server;
   }
 
   private static int registerMaxBackgroundUSKFetchers(SubConfig nodeConfig, int sortOrder) {

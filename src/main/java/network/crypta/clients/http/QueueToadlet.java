@@ -53,7 +53,6 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.DownloadRequestStatus;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.IdentifierCollisionException;
-import network.crypta.clients.fcp.MessageInvalidException;
 import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.clients.fcp.RequestStatus;
@@ -319,16 +318,6 @@ public class QueueToadlet extends Toadlet
             if (LOG.isDebugEnabled()) LOG.debug("Removing " + identifier);
             fcp.removeGlobalRequestBlocking(identifier);
           }
-        } catch (MessageInvalidException e) {
-          this.sendErrorPage(
-              ctx,
-              200,
-              l10n("failedToRemoveRequest"),
-              l10n(
-                  "failedToRemove",
-                  new String[] {"id", "message"},
-                  new String[] {identifier, e.getMessage()}));
-          return;
         } catch (PersistenceDisabledException e) {
           sendPersistenceDisabledError(ctx);
           return;
@@ -349,16 +338,6 @@ public class QueueToadlet extends Toadlet
               }
             }
           }
-        } catch (MessageInvalidException e) {
-          this.sendErrorPage(
-              ctx,
-              200,
-              l10n("failedToRemoveRequest"),
-              l10n(
-                  "failedToRemove",
-                  new String[] {"id", "message"},
-                  new String[] {identifier, e.getMessage()}));
-          return;
         } catch (PersistenceDisabledException e) {
           sendPersistenceDisabledError(ctx);
           return;
@@ -383,16 +362,6 @@ public class QueueToadlet extends Toadlet
               }
             }
           }
-        } catch (MessageInvalidException e) {
-          this.sendErrorPage(
-              ctx,
-              200,
-              l10n("failedToRemoveRequest"),
-              l10n(
-                  "failedToRemove",
-                  new String[] {"id", "message"},
-                  new String[] {identifier, e.getMessage()}));
-          return;
         } catch (PersistenceDisabledException e) {
           sendPersistenceDisabledError(ctx);
           return;
@@ -674,7 +643,7 @@ public class QueueToadlet extends Toadlet
                                   fcp.getCore());
                           if (clientPut != null)
                             try {
-                              fcp.startBlocking(clientPut, context);
+                              fcp.startBlocking(clientPut);
                             } catch (IdentifierCollisionException e) {
                               LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
@@ -831,7 +800,7 @@ public class QueueToadlet extends Toadlet
                                     + identifier);
                           if (clientPut != null)
                             try {
-                              fcp.startBlocking(clientPut, context);
+                              fcp.startBlocking(clientPut);
                             } catch (IdentifierCollisionException e) {
                               LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
@@ -969,7 +938,7 @@ public class QueueToadlet extends Toadlet
                                     + identifier);
                           if (clientPutDir != null) {
                             try {
-                              fcp.startBlocking(clientPutDir, context);
+                              fcp.startBlocking(clientPutDir);
                             } catch (IdentifierCollisionException e) {
                               LOG.error("Cannot put same file twice in same millisecond");
                               writePermanentRedirect(ctx, "Done", path());
