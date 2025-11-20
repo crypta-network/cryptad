@@ -381,13 +381,13 @@ public class FCPConnectionHandler implements Closeable {
    */
   public void setClientName(final String name) {
     this.clientName = name;
-    rebootClient = server.registerRebootClient(name, server.getCore(), this);
+    rebootClient = server.registerRebootClient(name, this);
     rebootClient.queuePendingMessagesOnConnectionRestartAsync(
         outputHandler, server.getCore().getClientContext());
     // Create foreverClient lazily. Everything that needs it (especially creating ClientGet's etc.)
     // runs on a database job.
     if (LOG.isDebugEnabled()) LOG.debug("Set client name: {}", name);
-    PersistentRequestClient client = server.getForeverClient(name, server.getCore(), this);
+    PersistentRequestClient client = server.getForeverClient(name, this);
     if (client != null) {
       synchronized (this) {
         foreverClient = client;
@@ -412,8 +412,7 @@ public class FCPConnectionHandler implements Closeable {
     synchronized (FCPConnectionHandler.this) {
       if (foreverClient != null) return foreverClient;
     }
-    PersistentRequestClient client =
-        server.registerForeverClient(name, server.getCore(), FCPConnectionHandler.this);
+    PersistentRequestClient client = server.registerForeverClient(name, FCPConnectionHandler.this);
     synchronized (FCPConnectionHandler.this) {
       foreverClient = client;
       FCPConnectionHandler.this.notifyAll();
