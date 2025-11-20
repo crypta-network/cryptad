@@ -1338,7 +1338,7 @@ public class ClientGet extends ClientRequest
    */
   public FetchExceptionMode getFailureReasonCode() {
     if (getFailedMessage == null) return null;
-    return getFailedMessage.code;
+    return getFailedMessage.failureMode;
   }
 
   /**
@@ -1519,7 +1519,7 @@ public class ClientGet extends ClientRequest
     String failureReasonShort = null;
     String failureReasonLong = null;
     if (getFailedMessage != null) {
-      failureCode = getFailedMessage.code;
+      failureCode = getFailedMessage.failureMode;
       failureReasonShort = getFailedMessage.getShortFailedMessage();
       failureReasonLong = getFailedMessage.getLongFailedMessage();
     }
