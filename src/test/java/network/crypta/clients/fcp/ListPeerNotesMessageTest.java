@@ -161,7 +161,7 @@ class ListPeerNotesMessageTest {
     assertEquals("node-3", peerNote.nodeIdentifier);
     assertEquals("secret-note", peerNote.noteText);
     assertEquals(Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT, peerNote.peerNoteType);
-    assertEquals("req-7", peerNote.identifier);
+    assertEquals("req-7", peerNote.messageIdentifier);
 
     EndListPeerNotesMessage endMessage =
         assertInstanceOf(EndListPeerNotesMessage.class, captor.getAllValues().get(1));
