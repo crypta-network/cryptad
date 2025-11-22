@@ -144,7 +144,7 @@ class ModifyPeerTest {
     assertSame(darknetPeerNode, sent.pn);
     assertTrue(sent.withMetadata);
     assertTrue(sent.withVolatile);
-    assertEquals(IDENTIFIER, sent.identifier);
+    assertEquals(IDENTIFIER, sent.messageIdentifier);
   }
 
   @Test
