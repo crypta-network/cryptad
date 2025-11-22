@@ -124,6 +124,6 @@ class GetNodeTest {
     assertTrue(sent.giveOpennetRef);
     assertFalse(sent.withPrivate);
     assertTrue(sent.withVolatile);
-    assertEquals("req-42", sent.identifier);
+    assertEquals("req-42", sent.requestIdentifier);
   }
 }
