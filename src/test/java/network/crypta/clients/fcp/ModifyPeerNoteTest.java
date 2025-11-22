@@ -216,7 +216,7 @@ class ModifyPeerNoteTest {
     assertEquals(NODE_IDENTIFIER, sent.nodeIdentifier);
     assertEquals(NOTE_TEXT, sent.noteText);
     assertEquals(Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT, sent.peerNoteType);
-    assertEquals(IDENTIFIER, sent.identifier);
+    assertEquals(IDENTIFIER, sent.messageIdentifier);
   }
 
   private static SimpleFieldSet baseFieldSet() {
