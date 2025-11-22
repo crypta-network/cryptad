@@ -91,13 +91,13 @@ class ListPeersMessageTest {
     assertEquals(peerOne, firstPeer.pn);
     assertTrue(firstPeer.withMetadata);
     assertTrue(firstPeer.withVolatile);
-    assertEquals("identifier", firstPeer.identifier);
+    assertEquals("identifier", firstPeer.messageIdentifier);
 
     PeerMessage secondPeer = (PeerMessage) sentMessages.get(1);
     assertEquals(peerTwo, secondPeer.pn);
     assertTrue(secondPeer.withMetadata);
     assertTrue(secondPeer.withVolatile);
-    assertEquals("identifier", secondPeer.identifier);
+    assertEquals("identifier", secondPeer.messageIdentifier);
 
     EndListPeersMessage endMessage = (EndListPeersMessage) sentMessages.get(2);
     assertEquals("identifier", endMessage.getFieldSet().get("Identifier"));

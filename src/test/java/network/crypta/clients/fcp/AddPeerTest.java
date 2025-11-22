@@ -202,7 +202,7 @@ class AddPeerTest {
     assertNotNull(sent);
     assertEquals(PeerMessage.class, sent.getClass());
     PeerMessage peerMessage = (PeerMessage) sent;
-    assertEquals(IDENTIFIER, peerMessage.identifier);
+    assertEquals(IDENTIFIER, peerMessage.messageIdentifier);
   }
 
   @Test

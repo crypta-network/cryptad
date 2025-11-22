@@ -116,7 +116,7 @@ class ListPeerMessageTest {
     assertEquals(peerNode, peerMessage.pn);
     assertTrue(peerMessage.withMetadata);
     assertTrue(peerMessage.withVolatile);
-    assertEquals("req-5", peerMessage.identifier);
+    assertEquals("req-5", peerMessage.messageIdentifier);
   }
 
   @Test
