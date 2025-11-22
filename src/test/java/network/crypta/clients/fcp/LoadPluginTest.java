@@ -133,7 +133,7 @@ class LoadPluginTest {
     ArgumentCaptor<ProtocolErrorMessage> message =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
     verify(handler).send(message.capture());
-    assertEquals(ProtocolErrorMessage.PLUGINS_DISABLED, message.getValue().code);
+    assertEquals(ProtocolErrorMessage.PLUGINS_DISABLED, message.getValue().getCode());
     assertEquals("Plugins disabled", message.getValue().extra);
     assertEquals("abc", message.getValue().ident);
     verifyNoInteractions(executor);
@@ -151,7 +151,7 @@ class LoadPluginTest {
     ArgumentCaptor<ProtocolErrorMessage> message =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
     verify(handler).send(message.capture());
-    assertEquals(ProtocolErrorMessage.INVALID_FIELD, message.getValue().code);
+    assertEquals(ProtocolErrorMessage.INVALID_FIELD, message.getValue().getCode());
     assertNotNull(message.getValue().extra);
     assertTrue(message.getValue().extra.contains("Was not able to guess"));
     verify(pluginManager, never()).startPluginOfficial(anyString(), anyBoolean());
@@ -236,7 +236,7 @@ class LoadPluginTest {
     ArgumentCaptor<ProtocolErrorMessage> message =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
     verify(handler).send(message.capture());
-    assertEquals(ProtocolErrorMessage.NO_SUCH_PLUGIN, message.getValue().code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_PLUGIN, message.getValue().getCode());
     assertEquals("abc", message.getValue().ident);
   }
 }

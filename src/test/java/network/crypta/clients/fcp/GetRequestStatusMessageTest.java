@@ -175,7 +175,7 @@ class GetRequestStatusMessageTest {
 
     ProtocolErrorMessage sent = errorCaptor.getValue();
     assertNotNull(sent);
-    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, sent.code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, sent.getCode());
     assertEquals(identifier, sent.ident);
     assertFalse(sent.fatal);
   }
@@ -203,7 +203,7 @@ class GetRequestStatusMessageTest {
     verify(handler).send(errorCaptor.capture());
 
     ProtocolErrorMessage error = errorCaptor.getValue();
-    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.getCode());
     assertEquals(identifier, error.ident);
     assertFalse(error.fatal);
   }
