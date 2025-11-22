@@ -1004,7 +1004,7 @@ public class ClientPut extends ClientPutBase {
     String failureReasonShort = null;
     String failureReasonLong = null;
     if (putFailedMessage != null) {
-      failureCode = putFailedMessage.code;
+      failureCode = putFailedMessage.failureMode;
       failureReasonShort = putFailedMessage.getShortFailedMessage();
       failureReasonLong = putFailedMessage.getLongFailedMessage();
     }

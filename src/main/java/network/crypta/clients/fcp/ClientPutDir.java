@@ -745,7 +745,7 @@ public class ClientPutDir extends ClientPutBase {
     InsertExceptionMode failureCode = null;
     String failureReasonShort = null;
     if (putFailedMessage != null) {
-      failureCode = putFailedMessage.code;
+      failureCode = putFailedMessage.failureMode;
       failureReasonShort = putFailedMessage.getLongFailedMessage();
     }
 
