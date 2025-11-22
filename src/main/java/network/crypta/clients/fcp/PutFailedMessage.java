@@ -4,10 +4,8 @@ import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
-import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.InsertException;
@@ -47,79 +45,77 @@ public class PutFailedMessage extends FCPMessage implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 
-  private static final ObjectStreamField[] serialPersistentFields = {
-    new ObjectStreamField("failureMode", InsertExceptionMode.class),
-    new ObjectStreamField("code", InsertExceptionMode.class), // legacy name
-    new ObjectStreamField("codeDescription", String.class),
-    new ObjectStreamField("extraDescription", String.class),
-    new ObjectStreamField("shortCodeDescription", String.class),
-    new ObjectStreamField("tracker", FailureCodeTracker.class),
-    new ObjectStreamField("expectedURI", FreenetURI.class),
-    new ObjectStreamField("requestIdentifier", String.class),
-    new ObjectStreamField("identifier", String.class), // legacy name
-    new ObjectStreamField("global", boolean.class),
-    new ObjectStreamField("isFatal", boolean.class)
-  };
+  private static final String FIELD_FAILURE_MODE = "failureMode";
+  private static final String FIELD_CODE_DESCRIPTION = "codeDescription";
+  private static final String FIELD_EXTRA_DESCRIPTION = "extraDescription";
+  private static final String FIELD_SHORT_CODE_DESCRIPTION = "shortCodeDescription";
+  private static final String FIELD_TRACKER = "tracker";
+  private static final String FIELD_EXPECTED_URI = "expectedURI";
+  private static final String FIELD_REQUEST_IDENTIFIER = "requestIdentifier";
+  private static final String FIELD_LEGACY_CODE = "code";
+  private static final String FIELD_LEGACY_IDENTIFIER = "identifier";
+  private static final String FIELD_GLOBAL = "global";
+  private static final String FIELD_IS_FATAL = "isFatal";
 
   /**
    * Failure mode that categorizes the insert error and drives fatality and retry semantics. The
    * value maps directly to {@link InsertExceptionMode} so clients can branch on protocol-defined
    * codes without parsing free-form strings.
    */
-  final InsertExceptionMode failureMode;
+  InsertExceptionMode failureMode;
 
   /**
    * Human-readable description of the failure code, either read from verbose message fields or
    * reconstructed from the numeric code. Intended for log output or UI labels where structured
    * codes are insufficient.
    */
-  final String codeDescription;
+  String codeDescription;
 
   /**
    * Optional extended diagnostic details supplied by the node; may be {@code null} when absent.
    * Contents often include specific reasons such as checksum mismatches or connectivity problems
    * that are not conveyed by the main code description.
    */
-  final String extraDescription;
+  String extraDescription;
 
   /**
    * Concise description intended for compact displays or log summaries of the failure condition.
    * This string is shorter than {@link #codeDescription} and suited to status tables or progress
    * indicators.
    */
-  final String shortCodeDescription;
+  String shortCodeDescription;
 
   /**
    * Optional tracker containing structured error counts and codes gathered during the insert
    * attempt. When present it allows clients to render detailed diagnostics or aggregate failure
    * statistics without parsing textual messages.
    */
-  final FailureCodeTracker tracker;
+  FailureCodeTracker tracker;
 
   /**
    * Expected URI for the inserted content when provided by the node; can be {@code null}. Clients
    * may use the value to confirm addressing expectations or to annotate user-facing error reports.
    */
-  final FreenetURI expectedURI;
+  FreenetURI expectedURI;
 
   /**
    * Identifier used by the client to correlate this message with the original request. The same
    * token is echoed back to the server in follow-up interactions and is required by the protocol.
    */
-  final String requestIdentifier;
+  String requestIdentifier;
 
   /**
    * Whether the originating request was submitted as a global request across peers. This flag
    * informs clients about scope so they can decide whether retries should remain global or fall
    * back to a local insert.
    */
-  final boolean global;
+  boolean global;
 
   /**
    * Indicates whether the node treats this failure as fatal for subsequent retries. Fatal errors
    * normally halt automated retry loops, while non-fatal ones may be retried after backoff.
    */
-  final boolean isFatal;
+  boolean isFatal;
 
   /**
    * Builds a failure message directly from an {@link InsertException} raised by the node.
@@ -191,17 +187,17 @@ public class PutFailedMessage extends FCPMessage implements Serializable {
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
     ObjectOutputStream.PutField fields = out.putFields();
-    fields.put("failureMode", failureMode);
-    fields.put("code", null); // legacy field left blank for forward streams
-    fields.put("codeDescription", codeDescription);
-    fields.put("extraDescription", extraDescription);
-    fields.put("shortCodeDescription", shortCodeDescription);
-    fields.put("tracker", tracker);
-    fields.put("expectedURI", expectedURI);
-    fields.put("requestIdentifier", requestIdentifier);
-    fields.put("identifier", null); // legacy field left blank for forward streams
-    fields.put("global", global);
-    fields.put("isFatal", isFatal);
+    fields.put(FIELD_FAILURE_MODE, failureMode);
+    fields.put(FIELD_LEGACY_CODE, null); // legacy field left blank for forward streams
+    fields.put(FIELD_CODE_DESCRIPTION, codeDescription);
+    fields.put(FIELD_EXTRA_DESCRIPTION, extraDescription);
+    fields.put(FIELD_SHORT_CODE_DESCRIPTION, shortCodeDescription);
+    fields.put(FIELD_TRACKER, tracker);
+    fields.put(FIELD_EXPECTED_URI, expectedURI);
+    fields.put(FIELD_REQUEST_IDENTIFIER, requestIdentifier);
+    fields.put(FIELD_LEGACY_IDENTIFIER, null); // legacy field left blank for forward streams
+    fields.put(FIELD_GLOBAL, global);
+    fields.put(FIELD_IS_FATAL, isFatal);
     out.writeFields();
   }
 
@@ -209,49 +205,33 @@ public class PutFailedMessage extends FCPMessage implements Serializable {
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     ObjectInputStream.GetField fields = in.readFields();
 
-    InsertExceptionMode mode = (InsertExceptionMode) fields.get("failureMode", null);
+    InsertExceptionMode mode = (InsertExceptionMode) fields.get(FIELD_FAILURE_MODE, null);
     if (mode == null) {
-      mode = (InsertExceptionMode) fields.get("code", null);
+      mode = (InsertExceptionMode) fields.get(FIELD_LEGACY_CODE, null);
     }
-    assignDeserializedField("failureMode", mode);
+    failureMode = mode;
 
-    String identifier = (String) fields.get("requestIdentifier", null);
+    String identifier = (String) fields.get(FIELD_REQUEST_IDENTIFIER, null);
     if (identifier == null) {
-      identifier = (String) fields.get("identifier", null);
+      identifier = (String) fields.get(FIELD_LEGACY_IDENTIFIER, null);
     }
-    assignDeserializedField("requestIdentifier", identifier);
+    requestIdentifier = identifier;
 
-    assignDeserializedField("codeDescription", (String) fields.get("codeDescription", null));
-    assignDeserializedField("extraDescription", (String) fields.get("extraDescription", null));
-    assignDeserializedField(
-        "shortCodeDescription", (String) fields.get("shortCodeDescription", null));
-    assignDeserializedField("tracker", (FailureCodeTracker) fields.get("tracker", null));
-    assignDeserializedField("expectedURI", (FreenetURI) fields.get("expectedURI", null));
-    assignDeserializedField("global", fields.get("global", false));
+    codeDescription = (String) fields.get(FIELD_CODE_DESCRIPTION, null);
+    extraDescription = (String) fields.get(FIELD_EXTRA_DESCRIPTION, null);
+    shortCodeDescription = (String) fields.get(FIELD_SHORT_CODE_DESCRIPTION, null);
+    tracker = (FailureCodeTracker) fields.get(FIELD_TRACKER, null);
+    expectedURI = (FreenetURI) fields.get(FIELD_EXPECTED_URI, null);
+    global = fields.get(FIELD_GLOBAL, false);
 
-    boolean fatal = fields.get("isFatal", false);
-    if (fields.defaulted("isFatal") && mode != null) {
+    boolean fatal = fields.get(FIELD_IS_FATAL, false);
+    if (fields.defaulted(FIELD_IS_FATAL) && mode != null) {
       fatal = InsertException.isFatal(mode);
     }
-    assignDeserializedField("isFatal", fatal);
+    isFatal = fatal;
 
     if (failureMode == null || requestIdentifier == null) {
       throw new InvalidObjectException("Missing required fields for PutFailedMessage");
-    }
-  }
-
-  private void assignDeserializedField(String fieldName, Object value)
-      throws InvalidObjectException {
-    try {
-      Field field = PutFailedMessage.class.getDeclaredField(fieldName);
-      field.setAccessible(true);
-      field.set(this, value);
-    } catch (ReflectiveOperationException e) {
-      InvalidObjectException wrapped =
-          new InvalidObjectException(
-              "Failed to set field '" + fieldName + "' during deserialization");
-      wrapped.initCause(e);
-      throw wrapped;
     }
   }
 
