@@ -1,7 +1,13 @@
 package network.crypta.clients.fcp;
 
+import java.io.IOException;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamField;
 import java.io.Serial;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.InsertException;
@@ -40,6 +46,20 @@ import network.crypta.support.SimpleFieldSet;
 public class PutFailedMessage extends FCPMessage implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
+
+  private static final ObjectStreamField[] serialPersistentFields = {
+    new ObjectStreamField("failureMode", InsertExceptionMode.class),
+    new ObjectStreamField("code", InsertExceptionMode.class), // legacy name
+    new ObjectStreamField("codeDescription", String.class),
+    new ObjectStreamField("extraDescription", String.class),
+    new ObjectStreamField("shortCodeDescription", String.class),
+    new ObjectStreamField("tracker", FailureCodeTracker.class),
+    new ObjectStreamField("expectedURI", FreenetURI.class),
+    new ObjectStreamField("requestIdentifier", String.class),
+    new ObjectStreamField("identifier", String.class), // legacy name
+    new ObjectStreamField("global", boolean.class),
+    new ObjectStreamField("isFatal", boolean.class)
+  };
 
   /**
    * Failure mode that categorizes the insert error and drives fatality and retry semantics. The
@@ -165,6 +185,73 @@ public class PutFailedMessage extends FCPMessage implements Serializable {
       tracker = new FailureCodeTracker(true, trackerSubset);
     } else {
       tracker = null;
+    }
+  }
+
+  @Serial
+  private void writeObject(ObjectOutputStream out) throws IOException {
+    ObjectOutputStream.PutField fields = out.putFields();
+    fields.put("failureMode", failureMode);
+    fields.put("code", null); // legacy field left blank for forward streams
+    fields.put("codeDescription", codeDescription);
+    fields.put("extraDescription", extraDescription);
+    fields.put("shortCodeDescription", shortCodeDescription);
+    fields.put("tracker", tracker);
+    fields.put("expectedURI", expectedURI);
+    fields.put("requestIdentifier", requestIdentifier);
+    fields.put("identifier", null); // legacy field left blank for forward streams
+    fields.put("global", global);
+    fields.put("isFatal", isFatal);
+    out.writeFields();
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    ObjectInputStream.GetField fields = in.readFields();
+
+    InsertExceptionMode mode = (InsertExceptionMode) fields.get("failureMode", null);
+    if (mode == null) {
+      mode = (InsertExceptionMode) fields.get("code", null);
+    }
+    assignDeserializedField("failureMode", mode);
+
+    String identifier = (String) fields.get("requestIdentifier", null);
+    if (identifier == null) {
+      identifier = (String) fields.get("identifier", null);
+    }
+    assignDeserializedField("requestIdentifier", identifier);
+
+    assignDeserializedField("codeDescription", (String) fields.get("codeDescription", null));
+    assignDeserializedField("extraDescription", (String) fields.get("extraDescription", null));
+    assignDeserializedField(
+        "shortCodeDescription", (String) fields.get("shortCodeDescription", null));
+    assignDeserializedField("tracker", (FailureCodeTracker) fields.get("tracker", null));
+    assignDeserializedField("expectedURI", (FreenetURI) fields.get("expectedURI", null));
+    assignDeserializedField("global", fields.get("global", false));
+
+    boolean fatal = fields.get("isFatal", false);
+    if (fields.defaulted("isFatal") && mode != null) {
+      fatal = InsertException.isFatal(mode);
+    }
+    assignDeserializedField("isFatal", fatal);
+
+    if (failureMode == null || requestIdentifier == null) {
+      throw new InvalidObjectException("Missing required fields for PutFailedMessage");
+    }
+  }
+
+  private void assignDeserializedField(String fieldName, Object value)
+      throws InvalidObjectException {
+    try {
+      Field field = PutFailedMessage.class.getDeclaredField(fieldName);
+      field.setAccessible(true);
+      field.set(this, value);
+    } catch (ReflectiveOperationException e) {
+      InvalidObjectException wrapped =
+          new InvalidObjectException(
+              "Failed to set field '" + fieldName + "' during deserialization");
+      wrapped.initCause(e);
+      throw wrapped;
     }
   }
 
