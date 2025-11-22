@@ -237,7 +237,7 @@ public class PersistentRequestClient {
     String shortFailMessage = null;
     String longFailMessage = null;
     if (msg != null) {
-      failureCode = msg.code;
+      failureCode = msg.failureMode;
       shortFailMessage = msg.getShortFailedMessage();
       longFailMessage = msg.getLongFailedMessage();
     }

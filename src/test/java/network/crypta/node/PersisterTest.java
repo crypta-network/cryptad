@@ -76,6 +76,32 @@ class PersisterTest {
   }
 
   @Test
+  void run_whenParentDirectoryMissing_createsDirAndPersists() throws Exception {
+    // Arrange: point persister to a nested directory that doesn't exist yet
+    File missingDir = new File(tempDir, "nested/missing");
+    File tmp = new File(missingDir, "throttle.tmp");
+    File tgt = new File(missingDir, "throttle.dat");
+
+    SimpleFieldSet sfs = new SimpleFieldSet(false);
+    sfs.putSingle("k", "v");
+    when(persistable.persistThrottlesToFieldSet()).thenReturn(sfs);
+
+    doAnswer(inv -> null)
+        .when(ticker)
+        .queueTimedJob(org.mockito.Mockito.any(Runnable.class), org.mockito.Mockito.anyLong());
+
+    Persister persister = new Persister(persistable, tmp, tgt, ticker);
+
+    // Act
+    persister.run();
+
+    // Assert: parent directory created, target written with expected content
+    assertTrue(tgt.isFile(), "persist target should exist after creating missing parent dirs");
+    SimpleFieldSet readBack = SimpleFieldSet.readFrom(tgt, false, true);
+    assertEquals("v", readBack.get("k"));
+  }
+
+  @Test
   void run_whenTempIsDirectory_logsAndSkipsWriteAndQueuesNext() {
     // Arrange: make temp path a directory so FileOutputStream throws FileNotFoundException
     // ("Is a directory")

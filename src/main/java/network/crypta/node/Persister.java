@@ -93,6 +93,12 @@ class Persister implements Runnable {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Trying to persist throttles...");
     }
+
+    // Ensure parent directories exist so persistence doesn't fail on missing temp/target paths.
+    if (!ensureParentDirectory(persistTemp) || !ensureParentDirectory(persistTarget)) {
+      return;
+    }
+
     SimpleFieldSet fs = persistable.persistThrottlesToFieldSet();
     try (FileOutputStream fos = new FileOutputStream(persistTemp)) {
       fs.writeToBigBuffer(fos);
@@ -110,6 +116,19 @@ class Persister implements Runnable {
     } catch (Exception e) {
       LOG.error("Could not move temp file to target: {}", e, e);
     }
+  }
+
+  /** Creates the parent directory for a file if it does not already exist. */
+  private boolean ensureParentDirectory(File file) {
+    File parent = file.getAbsoluteFile().getParentFile();
+    if (parent == null || parent.exists()) {
+      return true;
+    }
+    if (parent.mkdirs()) {
+      return true;
+    }
+    LOG.error("Could not create directory for throttle persistence: {}", parent);
+    return false;
   }
 
   /**
