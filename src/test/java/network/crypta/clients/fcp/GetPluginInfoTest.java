@@ -4,15 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import network.crypta.node.Node;
+import network.crypta.pluginmanager.FredPlugin;
+import network.crypta.pluginmanager.FredPluginFCP;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
+import network.crypta.pluginmanager.PluginReplySender;
+import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -166,7 +172,7 @@ class GetPluginInfoTest {
       long started,
       boolean includeDetails) {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn(PLUGIN_NAME);
-    when(pluginInfoWrapper.isFCPPlugin()).thenReturn(isFcpPlugin);
+    when(pluginInfoWrapper.getPlugin()).thenReturn(createPlugin(isFcpPlugin));
     if (!isFcpPlugin || includeDetails) {
       when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(isFcpServerPlugin);
     }
@@ -176,5 +182,25 @@ class GetPluginInfoTest {
       when(pluginInfoWrapper.getFilename()).thenReturn(filename);
       when(pluginInfoWrapper.getStarted()).thenReturn(started);
     }
+  }
+
+  private FredPlugin createPlugin(boolean isFcpPlugin) {
+    if (isFcpPlugin) {
+      return new LegacyFcpTestPlugin();
+    }
+    return mock(FredPlugin.class);
+  }
+
+  private static class LegacyFcpTestPlugin implements FredPlugin, FredPluginFCP {
+
+    @Override
+    public void terminate() {}
+
+    @Override
+    public void runPlugin(PluginRespirator pr) {}
+
+    @Override
+    public void handle(
+        PluginReplySender replysender, SimpleFieldSet params, Bucket data, int accesstype) {}
   }
 }
