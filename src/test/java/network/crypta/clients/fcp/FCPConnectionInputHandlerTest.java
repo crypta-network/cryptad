@@ -116,7 +116,7 @@ class FCPConnectionInputHandlerTest {
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(ctx.handler).send(captor.capture());
     ProtocolErrorMessage error = (ProtocolErrorMessage) captor.getValue();
-    assertEquals(ProtocolErrorMessage.CLIENT_HELLO_MUST_BE_FIRST_MESSAGE, error.code);
+    assertEquals(ProtocolErrorMessage.CLIENT_HELLO_MUST_BE_FIRST_MESSAGE, error.getCode());
     verify(ctx.handler).close();
   }
 
@@ -137,7 +137,7 @@ class FCPConnectionInputHandlerTest {
     withLineSequence(lines, ctx.inputHandler::realRun);
 
     ProtocolErrorMessage error = findError(ctx.handler, ProtocolErrorMessage.NO_LATE_CLIENT_HELLOS);
-    assertEquals(ProtocolErrorMessage.NO_LATE_CLIENT_HELLOS, error.code);
+    assertEquals(ProtocolErrorMessage.NO_LATE_CLIENT_HELLOS, error.getCode());
     verify(ctx.handler, never()).close();
   }
 
@@ -253,7 +253,7 @@ class FCPConnectionInputHandlerTest {
     return captor.getAllValues().stream()
         .filter(ProtocolErrorMessage.class::isInstance)
         .map(ProtocolErrorMessage.class::cast)
-        .filter(err -> err.code == code)
+        .filter(err -> err.getCode() == code)
         .findFirst()
         .orElseThrow(
             () ->

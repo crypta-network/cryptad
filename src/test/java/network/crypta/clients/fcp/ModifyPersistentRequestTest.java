@@ -273,7 +273,7 @@ class ModifyPersistentRequestTest {
     verify(handler, times(1)).send(errorCaptor.capture());
     ProtocolErrorMessage error = errorCaptor.getValue();
     assertNotNull(error);
-    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.getCode());
     assertFalse(error.fatal);
     assertEquals("req-9", error.ident);
     assertFalse(error.global);
@@ -313,7 +313,7 @@ class ModifyPersistentRequestTest {
     verify(handler, never())
         .getForeverRequest(anyBoolean(), any(FCPConnectionHandler.class), anyString());
     ProtocolErrorMessage error = errorCaptor.getValue();
-    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_IDENTIFIER, error.getCode());
     assertFalse(error.fatal);
     assertEquals("req-10", error.ident);
     assertTrue(error.global);

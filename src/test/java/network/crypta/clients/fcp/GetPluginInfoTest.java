@@ -84,7 +84,7 @@ class GetPluginInfoTest {
     verify(handler).send(captor.capture());
     ProtocolErrorMessage sent = captor.getValue();
 
-    assertEquals(ProtocolErrorMessage.NO_SUCH_PLUGIN, sent.code);
+    assertEquals(ProtocolErrorMessage.NO_SUCH_PLUGIN, sent.getCode());
     assertFalse(sent.fatal);
     assertFalse(sent.global);
     assertEquals(IDENTIFIER, sent.ident);
