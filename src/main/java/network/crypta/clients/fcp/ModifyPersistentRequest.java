@@ -1,6 +1,5 @@
 package network.crypta.clients.fcp;
 
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.node.Node;
@@ -11,11 +10,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * FCP message: Modify a persistent request.
+ * FCP message: Modify an existing persistent request associated with an FCP client.
  *
- * <p>ModifyPersistentRequest Identifier=request identifier Verbosity=1023 // change verbosity
- * PriorityClass=1 // change priority class ClientToken=new client token // change client token
- * MaxRetries=100 // change max retries Global=true EndMessage
+ * <p>This message is sent by an FCP client when it wants to adjust how a previously created
+ * persistent request is handled by the node without recreating the request. Typical adjustments
+ * include changing the request priority, switching between global and connection-local lifetimes,
+ * or updating the client token used to correlate notifications with the client application. The
+ * message does not itself create or remove a request; it only targets an already known identifier.
+ *
+ * <p>On receipt the node resolves the request identifier against its in-memory and, if enabled,
+ * persistent request stores. If the request is found, the node delegates to {@link
+ * ClientRequest#modifyRequest(String, short, FCPServer)} to apply the modifications and propagate
+ * them to the internal scheduling layer. If the identifier cannot be resolved, or if persistence is
+ * disabled when a globally persistent request is required, an appropriate {@link
+ * ProtocolErrorMessage} is sent back to the client instead of silently ignoring the request.
+ *
+ * <p>Wire format example:
+ *
+ * <pre>{@code
+ * ModifyPersistentRequest
+ * Identifier=request identifier
+ * Verbosity=1023          # optional, not interpreted here
+ * PriorityClass=1         # change priority class, -1 means leave unchanged
+ * ClientToken=new token   # change client token used in callbacks
+ * Global=true             # true for global (forever) requests, false for reboot-persistent
+ * EndMessage
+ * }</pre>
  */
 public class ModifyPersistentRequest extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ModifyPersistentRequest.class);
@@ -60,6 +80,24 @@ public class ModifyPersistentRequest extends FCPMessage {
     } else priorityClass = -1;
   }
 
+  /**
+   * Builds the {@link SimpleFieldSet} representation of this message for transmission over the FCP
+   * connection.
+   *
+   * <p>The returned structure always contains the {@code Identifier} field and a {@code Global}
+   * flag mirroring the values supplied by the client. The {@code PriorityClass} field is also
+   * present for every message instance; a negative value indicates that the node should leave the
+   * existing priority unchanged. When a non-{@code null} client token is supplied, it is encoded as
+   * the {@code ClientToken} field so that subsequent status notifications can be correlated by the
+   * client application.
+   *
+   * <p>A new {@link SimpleFieldSet} is allocated on each call and populated only from the immutable
+   * fields of this instance, so callers are free to modify the returned instance without affecting
+   * other invocations.
+   *
+   * @return a newly created field set containing the wire representation of this {@code
+   *     ModifyPersistentRequest}, suitable for sending over an FCP connection
+   */
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
@@ -70,11 +108,49 @@ public class ModifyPersistentRequest extends FCPMessage {
     return fs;
   }
 
+  /**
+   * Returns the protocol-level name used to identify this FCP message type.
+   *
+   * <p>The name is a stable constant defined by the FCP specification and is used both by clients
+   * when composing requests and by the node when emitting responses that refer back to this message
+   * type. Implementations of {@link FCPMessage} typically delegate to this method when deciding how
+   * to label a message on the wire or in diagnostic logs. The value never changes for the lifetime
+   * of the JVM and is shared by all instances of this class.
+   *
+   * @return the constant string {@code "ModifyPersistentRequest"} that identifies this message
+   *     type; never {@code null}
+   */
   @Override
   public String getName() {
     return NAME;
   }
 
+  /**
+   * Executes the modification against the node, updating the matching persistent request if it can
+   * be found.
+   *
+   * <p>The method first consults the connection's reboot-persistent request store via {@link
+   * FCPConnectionHandler#getRebootRequest(boolean, FCPConnectionHandler, String)}. When a matching
+   * request is found, the change is applied immediately on the caller's thread by invoking {@link
+   * ClientRequest#modifyRequest(String, short, FCPServer)} with the stored client token and
+   * priority. If no reboot-persistent request is present, a {@link PersistentJob} is queued on the
+   * client's job runner to search the forever-persistent store using {@link
+   * FCPConnectionHandler#getForeverRequest(boolean, FCPConnectionHandler, String)} and apply the
+   * same modification there.
+   *
+   * <p>If neither store contains the referenced identifier, a {@link ProtocolErrorMessage} with
+   * code {@link ProtocolErrorMessage#NO_SUCH_IDENTIFIER} is sent back to the client. When the
+   * persistence layer is disabled and a forever-persistent lookup would be required, the client is
+   * likewise informed that the identifier cannot be resolved. The operation is best-effort and does
+   * not retry automatically; callers should handle failures surfaced through the FCP connection.
+   *
+   * @param handler connection handler used to resolve the request identifier and send any protocol
+   *     error responses; must not be {@code null}
+   * @param node node instance providing access to the client core, persistent job runner, and FCP
+   *     server used to apply the modification; must not be {@code null}
+   * @throws MessageInvalidException if the identifier or request parameters violate protocol
+   *     constraints while attempting to execute the modification
+   */
   @Override
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
 
@@ -85,28 +161,25 @@ public class ModifyPersistentRequest extends FCPMessage {
             .getClientContext()
             .jobRunner
             .queue(
-                new PersistentJob() {
-
-                  @Override
-                  public boolean run(ClientContext context) {
-                    ClientRequest req = handler.getForeverRequest(global, handler, identifier);
-                    if (req == null) {
-                      LOG.error("Huh ? the request is null!");
-                      ProtocolErrorMessage msg =
-                          new ProtocolErrorMessage(
-                              ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
-                              false,
-                              null,
-                              identifier,
-                              global);
-                      handler.send(msg);
-                      return false;
-                    } else {
-                      req.modifyRequest(clientToken, priorityClass, handler.getServer());
-                    }
-                    return true;
-                  }
-                },
+                (PersistentJob)
+                    context -> {
+                      ClientRequest req1 = handler.getForeverRequest(global, handler, identifier);
+                      if (req1 == null) {
+                        LOG.error("Huh ? the request is null!");
+                        ProtocolErrorMessage msg =
+                            new ProtocolErrorMessage(
+                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                                false,
+                                null,
+                                identifier,
+                                global);
+                        handler.send(msg);
+                        return false;
+                      } else {
+                        req1.modifyRequest(clientToken, priorityClass, handler.getServer());
+                      }
+                      return true;
+                    },
                 NativeThread.PriorityLevel.NORM_PRIORITY.value);
       } catch (PersistenceDisabledException e) {
         ProtocolErrorMessage msg =
