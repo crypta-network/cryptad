@@ -174,6 +174,7 @@ public class ModuloTimeTriggeringPolicy<E>
     // policy does not report a boundary (e.g., when times are injected in tests).
     long minuteIndex = java.lang.Math.floorDiv(now, 60_000L);
     boolean minuteChanged = minuteIndex != lastMinuteIndex;
+    boolean observedPreviousMinute = lastMinuteIndex != Long.MIN_VALUE;
     lastMinuteIndex = minuteIndex;
 
     if (!aligned) {
@@ -191,7 +192,7 @@ public class ModuloTimeTriggeringPolicy<E>
       boundaryCount++; // retained for diagnostics; not used for decision
       return true;
     }
-    return minuteChanged;
+    return observedPreviousMinute && minuteChanged;
   }
 
   // Intentionally no override for time source; we rely on getCurrentTime() inherited from
