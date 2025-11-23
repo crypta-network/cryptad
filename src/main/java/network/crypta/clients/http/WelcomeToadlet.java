@@ -306,7 +306,7 @@ public class WelcomeToadlet extends Toadlet {
       }
       InsertBlock block = new InsertBlock(bucket, contentType, key);
       try {
-        key = this.insert(block, filenameHint, false);
+        key = this.insert(block, filenameHint);
         content =
             ctx.getPageMaker()
                 .getInfobox(
