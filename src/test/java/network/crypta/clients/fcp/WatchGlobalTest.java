@@ -112,6 +112,8 @@ class WatchGlobalTest {
     verify(handler, never()).send(org.mockito.ArgumentMatchers.any(FCPMessage.class));
     verify(handler).getRebootClient();
     verify(handler).getForeverClient();
+    verify(node).getClientCore();
+    verify(nodeClientCore).getFCPServer();
     verifyNoMoreInteractions(handler, rebootClient, node, nodeClientCore, nodeFcpServer);
   }
 
