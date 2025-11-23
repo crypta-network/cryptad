@@ -36,7 +36,7 @@ import network.crypta.node.NodeClientCore;
  */
 public class SubscribeUSK implements USKProgressCallback {
   final FCPConnectionHandler handler;
-  final String identifier;
+  final String clientIdentifier;
   final NodeClientCore core;
   final boolean dontPoll;
   final short prio;
@@ -63,12 +63,12 @@ public class SubscribeUSK implements USKProgressCallback {
       throws IdentifierCollisionException {
     this.handler = handler;
     this.dontPoll = message.dontPoll;
-    this.identifier = message.identifier;
+    this.clientIdentifier = message.clientIdentifier;
     this.core = core;
     this.usk = message.key;
     prio = message.prio;
     prioProgress = message.prioProgress;
-    handler.addUSKSubscription(identifier, this);
+    handler.addUSKSubscription(clientIdentifier, this);
     if ((!message.dontPoll) && message.sparsePoll)
       toUnsub =
           core.getUskManager()
@@ -120,7 +120,8 @@ public class SubscribeUSK implements USKProgressCallback {
       core.getUskManager().unsubscribe(key, toUnsub);
       return;
     }
-    FCPMessage msg = new SubscribedUSKUpdate(identifier, l, key, newKnownGood, newSlotToo);
+    // if(newKnownGood && !newSlotToo) return;
+    FCPMessage msg = new SubscribedUSKUpdate(clientIdentifier, l, key, newKnownGood, newSlotToo);
     handler.send(msg);
   }
 
@@ -175,7 +176,7 @@ public class SubscribeUSK implements USKProgressCallback {
    */
   @Override
   public void onSendingToNetwork(ClientContext context) {
-    handler.send(new SubscribedUSKSendingToNetworkMessage(identifier));
+    handler.send(new SubscribedUSKSendingToNetworkMessage(clientIdentifier));
   }
 
   /**
@@ -189,6 +190,6 @@ public class SubscribeUSK implements USKProgressCallback {
    */
   @Override
   public void onRoundFinished(ClientContext context) {
-    handler.send(new SubscribedUSKRoundFinishedMessage(identifier));
+    handler.send(new SubscribedUSKRoundFinishedMessage(clientIdentifier));
   }
 }
