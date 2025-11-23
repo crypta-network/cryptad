@@ -118,7 +118,7 @@ class ListPeerNotesMessageTest {
     UnknownNodeIdentifierMessage unknownMsg =
         assertInstanceOf(UnknownNodeIdentifierMessage.class, captor.getValue());
     assertEquals("node-unknown", unknownMsg.nodeIdentifier);
-    assertEquals("req-5", unknownMsg.identifier);
+    assertEquals("req-5", unknownMsg.messageIdentifier);
     verifyNoMoreInteractions(handler);
   }
 
