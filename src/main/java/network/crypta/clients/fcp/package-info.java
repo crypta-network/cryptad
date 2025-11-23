@@ -1,13 +1,34 @@
 /**
- * Freenet Client Protocol support. This is how the node talks to external clients (outside the
- * JVM). Lets the client layer do as much of the work as possible and avoids exposing block level
- * details to the clients, while providing plenty of status info, to avoid clients implementing
- * their own mutually incompatible metadata schemes when this can be avoided. (This does not mean we
- * should never let clients have access to blocks, of course). Supports most functionality,
- * including stats, darknet peers, persistent downloads etc.
+ * Implements the Freenet Client Protocol (FCP) used by Crypta to communicate with external
+ * applications over long-lived TCP connections. The package treats the node and every client as
+ * separate processes and focuses on pushing as much work as possible to the client side while
+ * shielding clients from block-level storage details. It surfaces rich, machine-readable status so
+ * that clients do not invent competing metadata formats, yet still allows access to raw blocks when
+ * an advanced integration explicitly opts in.
  *
- * <p>Some of the messages have support for parsing as a client, some code in
+ * <p>The API centers around {@link network.crypta.clients.fcp.FCPServer}, which accepts incoming
+ * sockets and hands them to {@link network.crypta.clients.fcp.FCPConnectionHandler}. Each request
+ * or response is represented by a concrete {@link network.crypta.clients.fcp.FCPMessage} subtype;
+ * the hierarchy distinguishes download/insert commands, plugin traffic, node stats, and connection
+ * control. Persistent requests, bandwidth probes, and peer-management commands maintain explicit
+ * identifiers so clients can survive reconnects without duplicating work.
  *
- * @see freenet.tools uses this, but we don't have a proper official Java FCP library.
+ * <p>Messages are designed for streaming and back-pressure: {@link
+ * network.crypta.clients.fcp.FCPConnectionInputHandler} parses frames incrementally, while {@link
+ * network.crypta.clients.fcp.FCPConnectionOutputHandler} preserves ordering and throttles per
+ * connection. Most operations are asynchronous; clients should watch completion and progress events
+ * instead of blocking. Implementations are thread-safe at the connection boundary, but individual
+ * message instances are typically single-use and should not be reused across threads.
+ *
+ * <ul>
+ *   <li>Supports transient and persistent download/insert lifecycles with explicit status updates.
+ *   <li>Exposes node visibility for peers, bandwidth, datastore sizing, and plugin inventory.
+ *   <li>Allows plugins to send and receive FCP payloads via {@link
+ *       network.crypta.clients.fcp.FCPPluginConnection} without bypassing node policy checks.
+ * </ul>
+ *
+ * @see network.crypta.clients.fcp.FCPServer
+ * @see network.crypta.clients.fcp.FCPMessage
+ * @see network.crypta.clients.fcp.FCPPluginConnection
  */
 package network.crypta.clients.fcp;
