@@ -194,7 +194,7 @@ class ModifyPeerNoteTest {
     assertInstanceOf(UnknownPeerNoteTypeMessage.class, captor.getValue());
     UnknownPeerNoteTypeMessage sent = (UnknownPeerNoteTypeMessage) captor.getValue();
     assertEquals(UNKNOWN_PEER_NOTE_TYPE, sent.peerNoteType);
-    assertEquals(IDENTIFIER, sent.identifier);
+    assertEquals(IDENTIFIER, sent.messageIdentifier);
   }
 
   @Test
