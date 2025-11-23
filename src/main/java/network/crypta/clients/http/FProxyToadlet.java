@@ -1642,7 +1642,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     server.register(
         contentFilterToadlet,
         "FProxyToadlet.categoryQueue",
-        ContentFilterToadlet.PATH,
+        ContentFilterToadlet.CONTENT_FILTER_PATH,
         true,
         "FProxyToadlet.filterFileTitle",
         "FProxyToadlet.filterFile",
