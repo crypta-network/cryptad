@@ -1,18 +1,19 @@
 package network.crypta.clients.http;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.text.ParseException;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class ReceivedCookieTest extends CookieTest {
+class ReceivedCookieTest {
 
-  static final String validEncodedCookie =
+  private static final String VALID_NAME = "SessionID";
+  private static final String VALID_VALUE = "abCd12345";
+
+  private static final String validEncodedCookie =
       " SessionID = \"abCd12345\" ;"
           + " $Version = 1 ;"
           + " $Path = \"/Freetalk\";"
@@ -20,64 +21,42 @@ public class ReceivedCookieTest extends CookieTest {
           + " $Expires = \"Sun, 25 Oct 2030 15:09:37 GMT\"; "
           + " $blah;";
 
+  private Cookie cookie;
+
   @BeforeEach
-  public void setUp() throws Exception {
-    super.setUp();
-
-    validExpiresDate =
-        Date.from(ZonedDateTime.of(2030, 10, 25, 15, 9, 37, 0, ZoneOffset.UTC).toInstant());
-
+  void setUp() throws Exception {
     cookie = ReceivedCookie.parseHeader(validEncodedCookie).getFirst();
   }
 
-  @Override
-  public void testGetDomain() {
-    // TODO: Implement.
+  @Test
+  void parseHeader_handlesVariousCookieFormats() throws ParseException {
+    ArrayList<ReceivedCookie> cookies;
+    Cookie parsedCookie;
+
+    parsedCookie = ReceivedCookie.parseHeader("SessionID=abCd12345").getFirst();
+    assertEquals(VALID_NAME.toLowerCase(), parsedCookie.getName());
+    assertEquals(VALID_VALUE, parsedCookie.getValue());
+
+    cookies = ReceivedCookie.parseHeader("SessionID=abCd12345;key2=valUe2");
+    parsedCookie = cookies.getFirst();
+    assertEquals(VALID_NAME.toLowerCase(), parsedCookie.getName());
+    assertEquals(VALID_VALUE, parsedCookie.getValue());
+    parsedCookie = cookies.get(1);
+    assertEquals("key2", parsedCookie.getName());
+    assertEquals("valUe2", parsedCookie.getValue());
+
+    parsedCookie =
+        ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;" + " $blah;").getFirst();
+    assertEquals(VALID_NAME.toLowerCase(), parsedCookie.getName());
+    assertEquals(VALID_VALUE, parsedCookie.getValue());
+
+    parsedCookie = ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;" + " $blah").getFirst();
+    assertEquals(VALID_NAME.toLowerCase(), parsedCookie.getName());
+    assertEquals(VALID_VALUE, parsedCookie.getValue());
   }
 
   @Test
-  public void testParseHeader() throws ParseException {
-    // The tests for getPath(), getName() etc will be executed using the parsed mCookie and
-    // therefore also test parseHeader() for valid values,
-    // we only need to test special cases here.
-
-    ArrayList<ReceivedCookie> cookies;
-    Cookie cookie;
-
-    // Plain firefox cookie
-
-    cookie = ReceivedCookie.parseHeader("SessionID=abCd12345").getFirst();
-    assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
-    assertEquals(VALID_VALUE, cookie.getValue());
-
-    // Two plain firefox cookies
-
-    cookies = ReceivedCookie.parseHeader("SessionID=abCd12345;key2=valUe2");
-    cookie = cookies.getFirst();
-    assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
-    assertEquals(VALID_VALUE, cookie.getValue());
-    cookie = cookies.get(1);
-    assertEquals(cookie.getName(), "key2");
-    assertEquals(cookie.getValue(), "valUe2");
-
-    // Key without value at end:
-
-    cookie = ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;" + " $blah;").getFirst();
-    assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
-    assertEquals(VALID_VALUE, cookie.getValue());
-
-    // Key without value and without semicolon at end
-    cookie = ReceivedCookie.parseHeader(" SessionID = \"abCd12345\" ;" + " $blah").getFirst();
-    assertEquals(VALID_NAME.toLowerCase(), cookie.getName());
-    assertEquals(VALID_VALUE, cookie.getValue());
-  }
-
-  @Override
-  public void testEncodeToHeaderValue() {
-    try {
-      cookie.encodeToHeaderValue();
-      fail("ReceivedCookie.encodeToHeaderValue() should throw UnsupportedOperationException!");
-    } catch (UnsupportedOperationException e) {
-    }
+  void encodeToHeaderValue_throwsUnsupportedOperation() {
+    assertThrows(UnsupportedOperationException.class, () -> cookie.encodeToHeaderValue());
   }
 }
