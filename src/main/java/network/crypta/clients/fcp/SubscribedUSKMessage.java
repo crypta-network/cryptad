@@ -76,7 +76,7 @@ public class SubscribedUSKMessage extends FCPMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet sfs = new SimpleFieldSet(true);
-    sfs.putSingle("Identifier", message.identifier);
+    sfs.putSingle("Identifier", message.clientIdentifier);
     sfs.putSingle("URI", message.key.getURI().toString());
     sfs.put("DontPoll", message.dontPoll);
 
