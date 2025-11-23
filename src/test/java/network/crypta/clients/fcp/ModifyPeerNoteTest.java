@@ -109,7 +109,7 @@ class ModifyPeerNoteTest {
     assertInstanceOf(UnknownNodeIdentifierMessage.class, captor.getValue());
     UnknownNodeIdentifierMessage sent = (UnknownNodeIdentifierMessage) captor.getValue();
     assertEquals(NODE_IDENTIFIER, sent.nodeIdentifier);
-    assertEquals(IDENTIFIER, sent.identifier);
+    assertEquals(IDENTIFIER, sent.messageIdentifier);
   }
 
   @Test

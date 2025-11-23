@@ -96,7 +96,7 @@ class ListPeerMessageTest {
     UnknownNodeIdentifierMessage unknownMsg =
         assertInstanceOf(UnknownNodeIdentifierMessage.class, sent);
     assertEquals("node-unknown", unknownMsg.nodeIdentifier);
-    assertEquals("req-4", unknownMsg.identifier);
+    assertEquals("req-4", unknownMsg.messageIdentifier);
   }
 
   @Test

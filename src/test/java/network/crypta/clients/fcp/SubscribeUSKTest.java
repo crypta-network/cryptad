@@ -111,7 +111,7 @@ class SubscribeUSKTest {
     verify(handler).send(captor.capture());
 
     SubscribedUSKUpdate update = captor.getValue();
-    assertEquals("id-open", update.messageIdentifier);
+    assertEquals("id-open", update.identifier);
     assertEquals(12L, update.edition);
     assertSame(message.key, update.key);
     assertTrue(update.newKnownGood);
