@@ -137,7 +137,7 @@ public class BookmarkManager implements RequestClient {
             .prefetch(
                 uri,
                 MINUTES.toMillis(60),
-                FProxyToadlet.MAX_LENGTH_WITH_PROGRESS,
+                FProxyToadlet.getMaxLengthWithProgress(),
                 null,
                 PRIORITY_PROGRESS);
         return;

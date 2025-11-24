@@ -163,26 +163,26 @@ public final class SimpleToadletServer
   private static class FProxyPassthruMaxSizeNoProgress extends LongCallback {
     @Override
     public Long get() {
-      return FProxyToadlet.MAX_LENGTH_NO_PROGRESS;
+      return FProxyToadlet.getMaxLengthNoProgress();
     }
 
     @Override
     public void set(Long val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      FProxyToadlet.MAX_LENGTH_NO_PROGRESS = val;
+      FProxyToadlet.setMaxLengthNoProgress(val);
     }
   }
 
   private static class FProxyPassthruMaxSizeProgress extends LongCallback {
     @Override
     public Long get() {
-      return FProxyToadlet.MAX_LENGTH_WITH_PROGRESS;
+      return FProxyToadlet.getMaxLengthWithProgress();
     }
 
     @Override
     public void set(Long val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      FProxyToadlet.MAX_LENGTH_WITH_PROGRESS = val;
+      FProxyToadlet.setMaxLengthWithProgress(val);
     }
   }
 
@@ -426,13 +426,7 @@ public final class SimpleToadletServer
     pushDataManager = new PushDataManager(getTicker());
     intervalPushManager = new IntervalPusherManager(getTicker(), pushDataManager);
     bookmarkManager = new BookmarkManager(core, publicGatewayMode());
-    try {
-      FProxyToadlet.maybeCreateFProxyEtc(core, node, node.getConfig(), this);
-    } catch (IOException e) {
-      LOG.error("Could not start fproxy: {}", e.toString(), e);
-      System.err.println("Could not start fproxy:");
-      e.printStackTrace();
-    }
+    FProxyRegistrar.maybeCreateFProxyEtc(core, node, node.getConfig(), this);
   }
 
   public void setCore(NodeClientCore core) {
@@ -788,7 +782,7 @@ public final class SimpleToadletServer
 
     fproxyConfig.register(
         "passthroughMaxSize",
-        FProxyToadlet.MAX_LENGTH_NO_PROGRESS,
+        FProxyToadlet.getMaxLengthNoProgress(),
         configItemOrder++,
         true,
         false,
@@ -796,10 +790,10 @@ public final class SimpleToadletServer
         "SimpleToadletServer.passthroughMaxSizeLong",
         new FProxyPassthruMaxSizeNoProgress(),
         true);
-    FProxyToadlet.MAX_LENGTH_NO_PROGRESS = fproxyConfig.getLong("passthroughMaxSize");
+    FProxyToadlet.setMaxLengthNoProgress(fproxyConfig.getLong("passthroughMaxSize"));
     fproxyConfig.register(
         "passthroughMaxSizeProgress",
-        FProxyToadlet.MAX_LENGTH_WITH_PROGRESS,
+        FProxyToadlet.getMaxLengthWithProgress(),
         configItemOrder++,
         true,
         false,
@@ -807,12 +801,12 @@ public final class SimpleToadletServer
         "SimpleToadletServer.passthroughMaxSizeProgressLong",
         new FProxyPassthruMaxSizeProgress(),
         true);
-    FProxyToadlet.MAX_LENGTH_WITH_PROGRESS = fproxyConfig.getLong("passthroughMaxSizeProgress");
+    FProxyToadlet.setMaxLengthWithProgress(fproxyConfig.getLong("passthroughMaxSizeProgress"));
     System.out.println(
         "Set fproxy max length to "
-            + FProxyToadlet.MAX_LENGTH_NO_PROGRESS
+            + FProxyToadlet.getMaxLengthNoProgress()
             + " and max length with progress to "
-            + FProxyToadlet.MAX_LENGTH_WITH_PROGRESS
+            + FProxyToadlet.getMaxLengthWithProgress()
             + " = "
             + fproxyConfig.getLong("passthroughMaxSizeProgress"));
 
