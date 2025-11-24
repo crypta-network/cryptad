@@ -20,10 +20,49 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.updater.CoreActionToadlet;
 
+/**
+ * Registers every FProxy-facing toadlet and menu entry exposed by the Crypta node.
+ *
+ * <p>This helper centralizes the wiring of the HTTP user interface: it constructs shared
+ * client-side helpers, instantiates each toadlet, assigns menu categories, and publishes them on
+ * the {@link SimpleToadletServer}. Callers invoke it once during node startup to ensure all public
+ * endpoints—browsing, queue management, configuration, alerts, and update actions—are available
+ * before handling requests. The registrar is intentionally package-private and stateless; it relies
+ * on the provided {@link NodeClientCore}, {@link Node}, and {@link Config} instances for runtime
+ * settings, threat posture, and plugin availability.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Creating a shared {@link HighLevelSimpleClient} and fetch tracker used by toadlets.
+ *   <li>Registering navigation menus under canonical categories for consistent UI grouping.
+ *   <li>Instantiating functional toadlets for downloads, uploads, security, plugins, chat, stats,
+ *       connectivity, first-time wizard flows, and core updates.
+ * </ul>
+ *
+ * <p>Thread-safety: registration is expected to run on a single startup thread; no internal state
+ * is retained after setup. Mutability is limited to injecting constructed toadlets into the server.
+ */
 final class FProxyRegistrar {
 
   private FProxyRegistrar() {}
 
+  /**
+   * Builds and registers the full FProxy toadlet set if the environment supports it.
+   *
+   * <p>The method seeds shared randomness, prepares a high-level client with interactive priority,
+   * wires a {@link FProxyFetchTracker}, and then registers every relevant toadlet with the provided
+   * server. Registration order aligns with menu placement: browsing first, followed by queue
+   * handlers, configuration, status/alerts, chat, and maintenance endpoints. Plugin-backed toadlets
+   * are added conditionally based on the node’s plugin manager. This method must be called exactly
+   * once during startup; it performs no deduplication and assumes the server is empty.
+   *
+   * @param core node client core supplying security levels, download directories, and RNG access;
+   *     must be initialized and non-null.
+   * @param node running node instance providing plugin manager and transport data; never null.
+   * @param config composite configuration used to enumerate sub-configs for dynamic toadlets.
+   * @param server toadlet server that exposes HTTP endpoints; expected to be in registration phase.
+   */
   static void maybeCreateFProxyEtc(
       NodeClientCore core, Node node, Config config, SimpleToadletServer server) {
 

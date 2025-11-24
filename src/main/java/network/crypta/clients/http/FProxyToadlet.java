@@ -65,6 +65,35 @@ import network.crypta.support.io.NoFreeBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Serves as the primary HTTP toadlet for Crypta’s Freenet proxy, mapping incoming browser
+ * navigation and download requests onto fetch operations inside the node. It routes GET/POST
+ * traffic for the root path, progress pages, configuration shortcuts, and large-file workflows
+ * while enforcing the node’s security posture and content-filtering rules.
+ *
+ * <p>The toadlet orchestrates request parsing, fetch context preparation, inline prefetch hooks,
+ * and progressive rendering so that interactive users receive timely feedback even when data is
+ * delayed. It respects gateway restrictions, threat levels, and MIME overrides while keeping
+ * downloads and inline views within configured size limits. Typical usage is a single instance
+ * created at startup and registered with the toadlet container.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Deriving user-visible URLs that encode size, retry, and filter preferences.
+ *   <li>Dispatching fetches with optional WebPush progress updates and rendering interim pages.
+ *   <li>Applying safety checks for dangerous RSS sniffing and content-type enforcement.
+ *   <li>Redirecting legacy paths and serving small static endpoints such as Atom feeds.
+ * </ul>
+ *
+ * <p>The class is not thread-safe; a single instance is reused by the container with per-request
+ * state kept in {@link GetRequestWorkflow}. It is immutable aside from static size limits that may
+ * be tuned at runtime by trusted code.
+ *
+ * @see Toadlet
+ * @see QueueToadlet
+ * @see FProxyFetchTracker
+ */
 public final class FProxyToadlet extends Toadlet implements RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(FProxyToadlet.class);
 
@@ -160,6 +189,14 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       (2 * 1024 * 1024) * 11 / 10; // 2MiB plus a bit due to buggy inserts
 
   static final URI welcome;
+
+  /**
+   * Default scheduling priority applied to user-facing FProxy fetches.
+   *
+   * <p>The value mirrors {@link RequestStarter#INTERACTIVE_PRIORITY_CLASS} so that progress pages,
+   * inline views, and interactive downloads are treated as latency-sensitive work relative to
+   * background tasks.
+   */
   public static final short PRIORITY = RequestStarter.INTERACTIVE_PRIORITY_CLASS;
 
   static {
@@ -175,22 +212,67 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   // Prefetch support uses a fixed upper bound; adjust here if configuration is added.
   static final int MAX_PREFETCH = 50;
 
+  /**
+   * Returns the maximum payload length, in bytes, allowed when a progress page is available.
+   *
+   * <p>This limit controls how large a response can be streamed while the browser displays a
+   * progress UI. It includes a small safety margin to accommodate inserts that slightly exceed the
+   * configured ceiling due to encoding overhead.
+   *
+   * @return maximum response size in bytes when progress feedback is enabled.
+   */
   public static long getMaxLengthWithProgress() {
     return maxLengthWithProgress;
   }
 
+  /**
+   * Sets the maximum payload length, in bytes, permitted when progress feedback is presented.
+   *
+   * <p>Callers should provide a positive value that reflects available memory and user experience
+   * goals; values are applied globally for subsequent requests. No synchronization is performed, so
+   * concurrent updates should be avoided.
+   *
+   * @param length new allowed size in bytes for progress-enabled transfers.
+   */
   public static void setMaxLengthWithProgress(long length) {
     maxLengthWithProgress = length;
   }
 
+  /**
+   * Returns the maximum payload length, in bytes, allowed when no progress page is sent.
+   *
+   * <p>This smaller ceiling is used for plain downloads and programmatic clients that cannot render
+   * progress UI, reducing resource usage for synchronous responses.
+   *
+   * @return maximum response size in bytes when progress feedback is disabled.
+   */
   public static long getMaxLengthNoProgress() {
     return maxLengthNoProgress;
   }
 
+  /**
+   * Sets the maximum payload length, in bytes, for transfers without progress rendering.
+   *
+   * <p>Use this to cap synchronous or programmatic fetches; the value should remain conservative to
+   * prevent accidental memory pressure when clients bypass the progress page workflow.
+   *
+   * @param length new allowed size in bytes for non-progress transfers.
+   */
   public static void setMaxLengthNoProgress(long length) {
     maxLengthNoProgress = length;
   }
 
+  /**
+   * Creates a toadlet bound to the given client and node services.
+   *
+   * <p>The constructor wires the high-level client with size limits suitable for non-progress
+   * transfers and caches references to the node core, client context, and fetch tracker. Instances
+   * are expected to be registered once with the container and reused across requests.
+   *
+   * @param client high-level fetch client used to perform HTTP-facing retrievals.
+   * @param core node core providing configuration, security levels, and download paths.
+   * @param tracker shared fetch tracker coordinating progress reporting and reuse.
+   */
   public FProxyToadlet(
       final HighLevelSimpleClient client, NodeClientCore core, FProxyFetchTracker tracker) {
     super(client);
@@ -206,6 +288,19 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     return true;
   }
 
+  /**
+   * Handles POST requests to the toadlet entry point, redirecting to the welcome page when
+   * applicable.
+   *
+   * <p>The method currently supports only root and servlet-prefixed paths, converting them into a
+   * temporary redirect toward the welcome workflow. Validation is defensive: it rejects null inputs
+   * and leaves other POST targets untouched.
+   *
+   * @param uri incoming request URI whose path determines redirect handling.
+   * @param req parsed HTTP request object supplying parameters and headers.
+   * @param ctx toadlet context for issuing redirects and access checks.
+   * @throws RedirectException if the request should be redirected to another path.
+   */
   public void handleMethodPOST(URI uri, HTTPRequest req, ToadletContext ctx)
       throws RedirectException {
     Objects.requireNonNull(req, "request");
@@ -417,16 +512,24 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         || (ctx.getContainer().publicGatewayMode() && !ctx.isAllowedFullAccess());
   }
 
+  /**
+   * Resolves a localized string within the FProxy domain.
+   *
+   * @param msg localization key suffix to be prefixed with {@code FProxyToadlet.}.
+   * @return resolved localized text, or a placeholder if no translation exists.
+   */
   public static String l10n(String msg) {
     return NodeL10n.getBase().getString(L10N_PREFIX + msg);
   }
 
   /**
-   * Does the first 512 bytes of the data contain anything that Firefox might regard as RSS? This is
-   * a horrible evil hack; we shouldn't be doing blacklisting, we should be doing whitelisting.
-   * REDFLAG Expect future security issues!
+   * Checks whether the first 512 bytes resemble an RSS document as detected by Firefox’s sniffer.
+   * This blacklist-style probe is a defensive workaround used before applying stricter MIME
+   * handling, and may be removed once a whitelist is available. REDFLAG: expect future tightening.
    *
-   * @throws IOException
+   * @param data bucket containing the fetched payload; only the first 512 bytes are inspected.
+   * @return {@code true} when the leading bytes match Firefox’s RSS sniffing heuristics.
+   * @throws IOException if the bucket stream cannot be read fully or is unexpectedly truncated.
    */
   private static boolean isSniffedAsFeed(Bucket data) throws IOException {
     int sz = (int) Math.min(data.size(), 512);
@@ -1714,6 +1817,14 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
   }
 
+  /**
+   * Returns a localized string using the FProxy prefix with pattern substitution.
+   *
+   * @param key localization key suffix combined with the {@code FProxyToadlet.} prefix.
+   * @param pattern placeholder names expected by the localization bundle.
+   * @param value replacement values matched positionally to {@code pattern}.
+   * @return localized text after substitutions, preserving bundle formatting rules.
+   */
   public static String l10n(String key, String[] pattern, String[] value) {
     return NodeL10n.getBase().getString(L10N_PREFIX + key, pattern, value);
   }
