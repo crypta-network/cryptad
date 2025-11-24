@@ -437,7 +437,6 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   private void processConfigSubmission(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     StringBuilder errbuf = new StringBuilder();
-    needRestart = false;
 
     String prefix = request.getPartAsStringFailsafe(PARAM_SUBCONFIG, MAX_PARAM_VALUE_SIZE);
     if (LOG.isDebugEnabled()) {
