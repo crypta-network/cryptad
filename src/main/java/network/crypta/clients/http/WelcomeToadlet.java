@@ -680,7 +680,7 @@ public class WelcomeToadlet extends Toadlet {
       } else if (uri.getQuery() != null && uri.getQuery().startsWith("_CHECKED_HTTP_=")) {
         // Redirect requests for escaped URLs using the old destination to ExternalLinkToadlet.
         super.writeTemporaryRedirect(
-            ctx, "Depreciated", ExternalLinkToadlet.PATH + '?' + uri.getQuery());
+            ctx, "Depreciated", ExternalLinkToadlet.EXTERNAL_LINK_PATH + '?' + uri.getQuery());
         return;
       }
     }

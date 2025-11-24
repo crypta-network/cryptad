@@ -121,7 +121,8 @@ class GenericReadFilterCallbackTest {
     String result = cb.processURI(input, null);
 
     assertEquals(
-        ExternalLinkToadlet.PATH + "?_CHECKED_HTTP_=http://example.com/path?q=a%20b", result);
+        ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?_CHECKED_HTTP_=http://example.com/path?q=a%20b",
+        result);
   }
 
   @Test

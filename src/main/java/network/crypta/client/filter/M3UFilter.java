@@ -140,8 +140,8 @@ public class M3UFilter implements ContentDataFilter {
       filtered = cb.processURI(uri, subMimetype, schemeHostAndPort, true);
 
       if (filtered != null
-          && !filtered.contains(ExternalLinkToadlet.PATH)
-          && !filtered.contains(ExternalLinkToadlet.magicHTTPEscapeString)) {
+          && !filtered.contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH)
+          && !filtered.contains(ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING)) {
         filtered += (filtered.contains("?") ? "&" : "?");
         long maxLengthNoProgress = (200L * 1024 * 1024 * 11) / 10;
         filtered += "max-size=" + maxLengthNoProgress;
