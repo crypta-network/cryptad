@@ -41,9 +41,8 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     }
 
     @Override
-    protected int customCompare(
-        PeerNodeStatus firstNode, PeerNodeStatus secondNode, String sortBy) {
-      switch (sortBy) {
+    protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
+      switch (this.sortBy) {
         case "name":
           return ((DarknetPeerNodeStatus) firstNode)
               .getName()
@@ -67,7 +66,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
               .getTheirVisibility()
               .compareTo(((DarknetPeerNodeStatus) secondNode).getTheirVisibility());
         default:
-          return super.customCompare(firstNode, secondNode, sortBy);
+          return super.customCompare(firstNode, secondNode);
       }
     }
 
