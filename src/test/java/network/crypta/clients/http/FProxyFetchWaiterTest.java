@@ -48,6 +48,8 @@ class FProxyFetchWaiterTest {
     FProxyFetchResult result = waiter.getResultFast();
 
     assertSame(fetchResult, result);
+    verify(progress).finished();
+    verify(progress).hasWaited();
     verify(progress).innerGetResult(false);
     verify(progress, never()).setHasWaited();
     verifyNoMoreInteractions(progress);
