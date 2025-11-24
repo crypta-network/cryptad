@@ -1,7 +1,7 @@
 package network.crypta.clients.http;
 
 import java.io.File;
-import java.util.Hashtable;
+import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
@@ -32,7 +32,7 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
         "input",
         new String[] {"type", "name", "value"},
         new String[] {
-          "submit", selectDir, NodeL10n.getBase().getString("ConfigToadlet.selectDirectory")
+          "submit", SELECT_DIR, NodeL10n.getBase().getString("ConfigToadlet.selectDirectory")
         });
     formNode.addChild(
         "input",
@@ -42,7 +42,7 @@ public class LocalDirectoryConfigToadlet extends LocalDirectoryToadlet {
   }
 
   @Override
-  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
+  protected Map<String, String> persistenceFields(Map<String, String> set) {
     set.remove("path");
     set.remove("formPassword");
     return set;

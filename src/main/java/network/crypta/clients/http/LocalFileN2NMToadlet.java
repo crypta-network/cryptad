@@ -1,7 +1,8 @@
 package network.crypta.clients.http;
 
 import java.io.File;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.NodeClientCore;
@@ -40,8 +41,8 @@ public class LocalFileN2NMToadlet extends LocalFileBrowserToadlet {
   protected void createSelectDirectoryButton(HTMLNode fileRow, String path, HTMLNode persistence) {}
 
   @Override
-  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<>();
+  protected Map<String, String> persistenceFields(Map<String, String> set) {
+    Map<String, String> fieldPairs = new HashMap<>();
     String message = set.get("message");
     if (message != null) fieldPairs.put("message", message);
     Set<String> keys = set.keySet();

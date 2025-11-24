@@ -1,7 +1,8 @@
 package network.crypta.clients.http;
 
 import java.io.File;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
@@ -35,7 +36,7 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
     node.addChild(
         "input",
         new String[] {"type", "name", "value"},
-        new String[] {"submit", selectFile, ContentFilterToadlet.l10n("selectFile")});
+        new String[] {"submit", SELECT_FILE, ContentFilterToadlet.l10n("selectFile")});
     node.addChild(
         "input",
         new String[] {"type", "name", "value"},
@@ -48,8 +49,8 @@ public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
       HTMLNode node, String absolutePath, HTMLNode persistence) {}
 
   @Override
-  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<>();
+  protected Map<String, String> persistenceFields(Map<String, String> set) {
+    Map<String, String> fieldPairs = new HashMap<>();
     String element = set.get("filter-operation");
     if (element != null) {
       fieldPairs.put("filter-operation", element);

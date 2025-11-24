@@ -2,7 +2,8 @@ package network.crypta.clients.http;
 
 import java.io.File;
 import java.net.MalformedURLException;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
@@ -37,8 +38,8 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
   }
 
   @Override
-  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<>();
+  protected Map<String, String> persistenceFields(Map<String, String> set) {
+    Map<String, String> fieldPairs = new HashMap<>();
     FreenetURI furi = null;
     String key = set.get("key");
     if (key != null) {

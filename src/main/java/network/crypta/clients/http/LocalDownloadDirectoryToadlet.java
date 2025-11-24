@@ -1,7 +1,8 @@
 package network.crypta.clients.http;
 
 import java.io.File;
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
@@ -34,7 +35,7 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
     formNode.addChild(
         "input",
         new String[] {"type", "name", "value"},
-        new String[] {"submit", selectDir, NodeL10n.getBase().getString("QueueToadlet.download")});
+        new String[] {"submit", SELECT_DIR, NodeL10n.getBase().getString("QueueToadlet.download")});
     formNode.addChild(
         "input",
         new String[] {"type", "name", "value"},
@@ -43,8 +44,8 @@ public class LocalDownloadDirectoryToadlet extends LocalDirectoryToadlet {
   }
 
   @Override
-  protected Hashtable<String, String> persistenceFields(Hashtable<String, String> set) {
-    Hashtable<String, String> fieldPairs = new Hashtable<>();
+  protected Map<String, String> persistenceFields(Map<String, String> set) {
+    Map<String, String> fieldPairs = new HashMap<>();
     // From bulk downloads, set download button.
     if (set.containsKey("bulkDownloads")) {
       fieldPairs.put("bulkDownloads", set.get("bulkDownloads"));

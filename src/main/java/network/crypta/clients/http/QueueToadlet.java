@@ -717,7 +717,7 @@ public class QueueToadlet extends Toadlet
           }
         }
         return;
-      } else if (request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
+      } else if (request.isPartSet(LocalFileBrowserToadlet.SELECT_FILE)) {
         final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
         if (LOG.isDebugEnabled()) LOG.debug("Inserting local file: " + filename);
         final File file = new File(filename);
@@ -865,7 +865,7 @@ public class QueueToadlet extends Toadlet
           }
         }
         return;
-      } else if (request.isPartSet(LocalFileBrowserToadlet.selectDir)) {
+      } else if (request.isPartSet(LocalFileBrowserToadlet.SELECT_DIR)) {
         final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
         if (LOG.isDebugEnabled()) LOG.debug("Inserting local directory: " + filename);
         final File file = new File(filename);

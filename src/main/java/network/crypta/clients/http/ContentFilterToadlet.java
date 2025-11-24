@@ -226,7 +226,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
           handleInvalidPart(e.getInvalidRequestPart(), ctx);
         }
         // Filter button on local file browser
-      } else if (request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
+      } else if (request.isPartSet(LocalFileBrowserToadlet.SELECT_FILE)) {
         handleFilterRequest(request, ctx, core, true);
         // Filter File button on filter page
       } else if (request.isPartSet("filter-upload")) {

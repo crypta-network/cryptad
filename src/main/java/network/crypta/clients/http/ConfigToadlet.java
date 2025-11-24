@@ -354,7 +354,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   }
 
   private boolean isReturningFromDirectorySelector(HTTPRequest request) {
-    return request.isPartSet(LocalFileBrowserToadlet.selectDir)
+    return request.isPartSet(LocalFileBrowserToadlet.SELECT_DIR)
         || request.isPartSet(PARAM_DECLINE_DEFAULT_RESET);
   }
 
@@ -714,7 +714,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
   }
 
   private SelectionOverride determineSelectionOverride(HTTPRequest req) {
-    if (req.isPartSet(PARAM_SELECT_FOR) && req.isPartSet(LocalFileBrowserToadlet.selectDir)) {
+    if (req.isPartSet(PARAM_SELECT_FOR) && req.isPartSet(LocalFileBrowserToadlet.SELECT_DIR)) {
       return new SelectionOverride(
           req.getPartAsStringFailsafe(PARAM_SELECT_FOR, MAX_PARAM_VALUE_SIZE),
           req.getPartAsStringFailsafe("filename", MAX_PARAM_VALUE_SIZE));
