@@ -98,23 +98,25 @@ class M3UFilterTest {
   void readFilter_whenSanitizedUriIsExternalLink_doesNotAppendMaxSize() throws Exception {
     FilterCallback callback = mock(FilterCallback.class);
     when(callback.processURI("song.mp3", "audio/mpeg", SCHEME_HOST_PORT, true))
-        .thenReturn(ExternalLinkToadlet.PATH + "?target=example");
+        .thenReturn(ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?target=example");
 
     String result = runFilter("song.mp3\n", callback);
 
-    assertEquals(ExternalLinkToadlet.PATH + "?target=example\n", result);
+    assertEquals(ExternalLinkToadlet.EXTERNAL_LINK_PATH + "?target=example\n", result);
   }
 
   @Test
   void readFilter_whenSanitizedUriContainsMagicEscape_doesNotAppendMaxSize() throws Exception {
     FilterCallback callback = mock(FilterCallback.class);
     when(callback.processURI("second.mp3", "audio/mpeg", SCHEME_HOST_PORT, true))
-        .thenReturn("http://filtered/" + ExternalLinkToadlet.magicHTTPEscapeString + "/second.mp3");
+        .thenReturn(
+            "http://filtered/" + ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3");
 
     String result = runFilter("second.mp3\n", callback);
 
     assertEquals(
-        "http://filtered/" + ExternalLinkToadlet.magicHTTPEscapeString + "/second.mp3\n", result);
+        "http://filtered/" + ExternalLinkToadlet.MAGIC_HTTP_ESCAPE_STRING + "/second.mp3\n",
+        result);
   }
 
   @Test

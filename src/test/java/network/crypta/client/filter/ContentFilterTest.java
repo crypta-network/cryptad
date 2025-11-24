@@ -106,7 +106,7 @@ public class ContentFilterTest {
 
     // External links are stripped/redirected
     assertTrue(htmlFilter(EXTERNAL_LINK_CHECK1).startsWith(EXTERNAL_LINK_OK));
-    assertTrue(htmlFilter(EXTERNAL_LINK_CHECK2).contains(ExternalLinkToadlet.PATH));
+    assertTrue(htmlFilter(EXTERNAL_LINK_CHECK2).contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH));
     assertTrue(htmlFilter(EXTERNAL_LINK_CHECK3).startsWith(EXTERNAL_LINK_OK));
   }
 
@@ -142,7 +142,7 @@ public class ContentFilterTest {
     // bug #2451
     assertEquals(POUNT_CHARACTER_ENCODING_TEST_RESULT, htmlFilter(POUNT_CHARACTER_ENCODING_TEST));
     // bug #2297
-    assertTrue(htmlFilter(PREVENT_FPROXY_ACCESS).contains(ExternalLinkToadlet.PATH));
+    assertTrue(htmlFilter(PREVENT_FPROXY_ACCESS).contains(ExternalLinkToadlet.EXTERNAL_LINK_PATH));
     // bug #2921
     assertTrue(htmlFilter(PREVENT_EXTERNAL_ACCESS_CSS_SIMPLE).contains(DIV_BLOCK));
     assertTrue(htmlFilter(PREVENT_EXTERNAL_ACCESS_CSS_ESCAPE).contains(DIV_BLOCK));
