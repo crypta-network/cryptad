@@ -118,7 +118,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                   HTMLNode.text(Math.abs(portsNotForwarded[0])),
                   HTMLNode.text(Math.abs(portsNotForwarded[1])),
                   HTMLNode.link(url),
-                  HTMLNode.link(ConnectivityToadlet.PATH)
+                  HTMLNode.link(ConnectivityToadlet.CONNECTIVITY_PATH)
                 });
       } else {
         LOG.error(ERR_UNKNOWN_PORTS + "{}", portsNotForwarded.length);

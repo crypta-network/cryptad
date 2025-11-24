@@ -18,21 +18,91 @@ import network.crypta.support.TimeUtil;
 import network.crypta.support.api.HTTPRequest;
 
 /**
- * Toadlet displaying information on the node's connectivity status. Eventually this will include
- * all information gathered by the node on its connectivity from plugins, local IP detection, packet
- * monitoring etc. For the moment it's just a dump of the AddressTracker.
+ * Toadlet that renders a human-readable dashboard about the node's current network connectivity. It
+ * surfaces live data gathered by {@link AddressTracker} instances backing each UDP socket handler
+ * and formats it into tables and infoboxes that are consumable through the web console.
+ *
+ * <p>The page is intended for operators who want to verify whether ports are reachable, how far
+ * packets are travelling before receiving replies, and whether the node is exchanging traffic with
+ * darknet peers or opennet introductions. The handler uses the {@link PageMaker} to assemble
+ * localized sections covering port configuration, connectivity summaries, and per-peer or per-IP
+ * traffic histories. When advanced mode is enabled it expands the page with gap timing breakdowns
+ * and initiator information so administrators can diagnose asymmetric paths or stalled peers.
+ *
+ * <p>Instances are lightweight and stateless beyond a reference to the {@link Node}; they query the
+ * node each time a request is processed, ensuring the view reflects the most recent tracker
+ * readings. All rendering occurs on the request thread; no mutable state is shared across requests,
+ * making the class thread-safe as long as the injected {@code Node} and client remain thread-safe.
+ * Typical usage registers the toadlet on the web interface under {@link #CONNECTIVITY_PATH} so that
+ * authenticated users can inspect connectivity without restarting the node.
+ *
+ * <ul>
+ *   <li>Shows port enablement and configured bindings for HTTP, FCP, and console interfaces.
+ *   <li>Displays port-forwarding status for each UDP socket handler with localized summaries.
+ *   <li>Provides advanced per-peer and per-address gap timelines when advanced mode is requested.
+ * </ul>
  *
  * @author toad
+ * @see AddressTracker
+ * @see network.crypta.clients.http.DarknetConnectionsToadlet
  */
 public class ConnectivityToadlet extends Toadlet {
 
+  private static final String HTML_CLASS_ATTR = "class";
+  private static final String ENABLED_KEY = "enabled";
+  private static final String TABLE_TAG = "table";
+  private static final String EMPTY_HEADER_LABEL = " ";
+  private static final String CONNECTIVITY_PORT_CLASS = "connectivity-port";
+  private static final String CONNECTIVITY_IP_CLASS = "connectivity-ip";
+  private static final String PATH_DELIMITER = "/";
+
+  /**
+   * Publicly visible path segment for registering the connectivity dashboard endpoint, including
+   * leading and trailing slashes as expected by the toadlet router for consistent URL generation.
+   */
+  public static final String CONNECTIVITY_PATH =
+      String.join(PATH_DELIMITER, "", "connectivity", "");
+
+  private record TrafficContext(String noreply, String local, String remote, long now) {}
+
   private final Node node;
 
+  /**
+   * Creates a new connectivity toadlet bound to the given client and node.
+   *
+   * <p>The constructor keeps only lightweight references; all connectivity data is fetched lazily
+   * during each request. Callers are expected to register the instance with the hosting web
+   * interface under {@link #CONNECTIVITY_PATH} so authenticated visitors can access the dashboard.
+   *
+   * @param client high-level HTTP client used by the superclass for rendering utilities; must not
+   *     be {@code null}.
+   * @param node node whose address trackers and configuration are rendered on incoming requests; it
+   *     should remain alive for the lifetime of this toadlet.
+   */
   protected ConnectivityToadlet(HighLevelSimpleClient client, Node node) {
     super(client);
     this.node = node;
   }
 
+  /**
+   * Handles HTTP GET requests by rendering the connectivity dashboard for the current node state.
+   *
+   * <p>The method constructs infobox sections describing port configuration, port-forwarding
+   * summaries for each UDP socket handler, and optionally advanced per-peer and per-address tables
+   * when advanced mode is enabled in the {@link ToadletContext}. All content is localized through
+   * {@link NodeL10n} and written as an HTML response without mutating node state. The call is
+   * idempotent and safe to repeat for periodic status polling.
+   *
+   * @param uri request URI; only the path is used for rendering context and localization.
+   * @param request parsed HTTP request containing parameters and authentication context; never
+   *     modified by this method.
+   * @param ctx toadlet execution context providing page builders and permission checks; must be
+   *     open and authorized for the caller.
+   * @throws ToadletContextClosedException if the client disconnects before the response is fully
+   *     written or the context is otherwise closed mid-render.
+   * @throws IOException if HTML generation or writing to the response stream fails for transport
+   *     reasons such as socket errors.
+   */
   public void handleMethodGET(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageMaker pageMaker = ctx.getPageMaker();
@@ -41,17 +111,36 @@ public class ConnectivityToadlet extends Toadlet {
         pageMaker.getPageNode(NodeL10n.getBase().getString("ConnectivityToadlet.title"), ctx);
     HTMLNode contentNode = page.getContentNode();
 
-    /* add alert summary box */
-    if (ctx.isAllowedFullAccess()) contentNode.addChild(ctx.getAlertManager().createSummary());
+    addAlerts(ctx, contentNode);
+    addPortInfobox(contentNode);
 
-    // our ports
-    HTMLNode portInfobox = contentNode.addChild("div", "class", "infobox infobox-normal");
-    portInfobox.addChild("div", "class", "infobox-header", l10nConn("nodePortsTitle"));
-    HTMLNode portInfoboxContent = portInfobox.addChild("div", "class", "infobox-content");
+    node.getIpDetector().addConnectionTypeBox(contentNode);
+
+    UdpSocketHandler[] handlers = node.getPacketSocketHandlers();
+
+    addSummary(contentNode, pageMaker, handlers);
+
+    if (ctx.isAdvancedModeEnabled()) {
+      addAdvancedDetails(contentNode, pageMaker, handlers);
+    }
+
+    writeHTMLReply(ctx, 200, "OK", page.generate());
+  }
+
+  private void addAlerts(ToadletContext ctx, HTMLNode contentNode) {
+    if (ctx.isAllowedFullAccess()) {
+      contentNode.addChild(ctx.getAlertManager().createSummary());
+    }
+  }
+
+  private void addPortInfobox(HTMLNode contentNode) {
+    HTMLNode portInfobox = contentNode.addChild("div", HTML_CLASS_ATTR, "infobox infobox-normal");
+    portInfobox.addChild("div", HTML_CLASS_ATTR, "infobox-header", l10nConn("nodePortsTitle"));
+    HTMLNode portInfoboxContent = portInfobox.addChild("div", HTML_CLASS_ATTR, "infobox-content");
     HTMLNode portInfoList = portInfoboxContent.addChild("ul");
-    SimpleFieldSet fproxyConfig = node.getConfig().get("fproxy").exportFieldSet(true);
-    SimpleFieldSet fcpConfig = node.getConfig().get("fcp").exportFieldSet(true);
-    SimpleFieldSet tmciConfig = node.getConfig().get("console").exportFieldSet(true);
+    SimpleFieldSet fproxyConfig = exportConfigSubset("fproxy");
+    SimpleFieldSet fcpConfig = exportConfigSubset("fcp");
+    SimpleFieldSet tmciConfig = exportConfigSubset("console");
     portInfoList.addChild(
         "li",
         NodeL10n.getBase()
@@ -60,7 +149,7 @@ public class ConnectivityToadlet extends Toadlet {
                 new String[] {"port"},
                 new String[] {Integer.toString(node.getFNPPort())}));
     int opennetPort = node.getOpennetFNPPort();
-    if (opennetPort > 0)
+    if (opennetPort > 0) {
       portInfoList.addChild(
           "li",
           NodeL10n.getBase()
@@ -68,50 +157,43 @@ public class ConnectivityToadlet extends Toadlet {
                   "DarknetConnectionsToadlet.opennetFnpPort",
                   new String[] {"port"},
                   new String[] {Integer.toString(opennetPort)}));
-    try {
-      if (fproxyConfig.getBoolean("enabled", false)) {
-        portInfoList.addChild(
-            "li",
-            NodeL10n.getBase()
-                .getString(
-                    "DarknetConnectionsToadlet.fproxyPort",
-                    new String[] {"port"},
-                    new String[] {Integer.toString(fproxyConfig.getInt("port"))}));
-      } else {
-        portInfoList.addChild("li", l10nConn("fproxyDisabled"));
-      }
-      if (fcpConfig.getBoolean("enabled", false)) {
-        portInfoList.addChild(
-            "li",
-            NodeL10n.getBase()
-                .getString(
-                    "DarknetConnectionsToadlet.fcpPort",
-                    new String[] {"port"},
-                    new String[] {Integer.toString(fcpConfig.getInt("port"))}));
-      } else {
-        portInfoList.addChild("li", l10nConn("fcpDisabled"));
-      }
-      if (tmciConfig.getBoolean("enabled", false)) {
-        portInfoList.addChild(
-            "li",
-            NodeL10n.getBase()
-                .getString(
-                    "DarknetConnectionsToadlet.tmciPort",
-                    new String[] {"port"},
-                    new String[] {Integer.toString(tmciConfig.getInt("port"))}));
-      } else {
-        portInfoList.addChild("li", l10nConn("tmciDisabled"));
-      }
-    } catch (FSParseException e) {
-      // ignore
     }
+    try {
+      addPortConfigLine(
+          portInfoList,
+          fproxyConfig,
+          "DarknetConnectionsToadlet.fproxyPort",
+          l10nConn("fproxyDisabled"));
+      addPortConfigLine(
+          portInfoList, fcpConfig, "DarknetConnectionsToadlet.fcpPort", l10nConn("fcpDisabled"));
+      addPortConfigLine(
+          portInfoList, tmciConfig, "DarknetConnectionsToadlet.tmciPort", l10nConn("tmciDisabled"));
+    } catch (FSParseException e) {
+      // Ignore malformed config so the page still renders.
+    }
+  }
 
-    // Add connection type box.
+  private SimpleFieldSet exportConfigSubset(String subsetName) {
+    return node.getConfig().get(subsetName).exportFieldSet(true);
+  }
 
-    node.getIpDetector().addConnectionTypeBox(contentNode);
+  private void addPortConfigLine(
+      HTMLNode portInfoList, SimpleFieldSet config, String l10nKey, String disabledLabel)
+      throws FSParseException {
+    if (config.getBoolean(ENABLED_KEY, false)) {
+      portInfoList.addChild(
+          "li",
+          NodeL10n.getBase()
+              .getString(
+                  l10nKey,
+                  new String[] {"port"},
+                  new String[] {Integer.toString(config.getInt("port"))}));
+      return;
+    }
+    portInfoList.addChild("li", disabledLabel);
+  }
 
-    UdpSocketHandler[] handlers = node.getPacketSocketHandlers();
-
+  private void addSummary(HTMLNode contentNode, PageMaker pageMaker, UdpSocketHandler[] handlers) {
     HTMLNode summaryContent =
         pageMaker.getInfobox(
             "#",
@@ -120,7 +202,7 @@ public class ConnectivityToadlet extends Toadlet {
             "connectivity-summary",
             true);
 
-    HTMLNode table = summaryContent.addChild("table", "border", "0");
+    HTMLNode table = summaryContent.addChild(TABLE_TAG, "border", "0");
 
     for (UdpSocketHandler handler : handlers) {
       AddressTracker tracker = handler.getAddressTracker();
@@ -128,141 +210,163 @@ public class ConnectivityToadlet extends Toadlet {
       row.addChild("td", handler.getTitle());
       row.addChild("td", AddressTracker.statusString(tracker.getPortForwardStatus()));
     }
+  }
 
-    if (ctx.isAdvancedModeEnabled()) {
+  private void addAdvancedDetails(
+      HTMLNode contentNode, PageMaker pageMaker, UdpSocketHandler[] handlers) {
+    TrafficContext trafficContext =
+        new TrafficContext(
+            localize("noreply"), localize("local"), localize("remote"), System.currentTimeMillis());
 
-      // One box per port
-
-      String noreply = l10n("noreply");
-      String local = l10n("local");
-      String remote = l10n("remote");
-      long now = System.currentTimeMillis();
-
-      for (UdpSocketHandler handler : handlers) {
-        // Peers
-        AddressTracker tracker = handler.getAddressTracker();
-        HTMLNode portsContent =
-            pageMaker.getInfobox(
-                "#",
-                NodeL10n.getBase()
-                    .getString(
-                        "ConnectivityToadlet.byPortTitle",
-                        new String[] {"port", "status", "tunnelLength"},
-                        new String[] {
-                          handler.getTitle(),
-                          AddressTracker.statusString(tracker.getPortForwardStatus()),
-                          TimeUtil.formatTime(tracker.getLongestSendReceiveGap())
-                        }),
-                contentNode,
-                "connectivity-port",
-                false);
-        PeerAddressTrackerItem[] items = tracker.getPeerAddressTrackerItems();
-        table = portsContent.addChild("table");
-        HTMLNode row = table.addChild("tr");
-        row.addChild("th", l10n("addressTitle"));
-        row.addChild("th", l10n("sentReceivedTitle"));
-        row.addChild("th", l10n("localRemoteTitle"));
-        row.addChild("th", l10n("firstSendLeadTime"));
-        row.addChild("th", l10n("firstReceiveLeadTime"));
-        for (int j = 0; j < AddressTrackerItem.TRACK_GAPS; j++) {
-          row.addChild("th", " "); // FIXME is <th/> valid??
-        }
-        for (PeerAddressTrackerItem item : items) {
-          row = table.addChild("tr");
-          // Address
-          row.addChild("td", item.peer.toString());
-          // Sent/received packets
-          row.addChild("td", item.packetsSent() + "/ " + item.packetsReceived());
-          // Initiator: local/remote FIXME something more graphical e.g. colored cells
-          row.addChild(
-              "td", item.packetsReceived() == 0 ? noreply : (item.weSentFirst() ? local : remote));
-          // Lead in time to first packet sent
-          row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstSentPacket()));
-          // Lead in time to first packet received
-          row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstReceivedPacket()));
-          Gap[] gaps = item.getGaps();
-          for (int k = 0; k < AddressTrackerItem.TRACK_GAPS; k++) {
-            row.addChild(
-                "td",
-                gaps[k].receivedPacketAt() == 0
-                    ? ""
-                    : (TimeUtil.formatTime(gaps[k].gapLength())
-                        + " @ "
-                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt())
-                        + " ago" /* fixme l10n */));
-          }
-        }
-
-        // IPs
-        portsContent =
-            pageMaker.getInfobox(
-                "#",
-                NodeL10n.getBase()
-                    .getString(
-                        "ConnectivityToadlet.byIPTitle",
-                        new String[] {"ip", "status", "tunnelLength"},
-                        new String[] {
-                          handler.getTitle(),
-                          AddressTracker.statusString(tracker.getPortForwardStatus()),
-                          TimeUtil.formatTime(tracker.getLongestSendReceiveGap())
-                        }),
-                contentNode,
-                "connectivity-ip",
-                false);
-        InetAddressAddressTrackerItem[] ipItems = tracker.getInetAddressTrackerItems();
-        table = portsContent.addChild("table");
-        row = table.addChild("tr");
-        row.addChild("th", l10n("addressTitle"));
-        row.addChild("th", l10n("sentReceivedTitle"));
-        row.addChild("th", l10n("localRemoteTitle"));
-        row.addChild("th", l10n("firstSendLeadTime"));
-        row.addChild("th", l10n("firstReceiveLeadTime"));
-        for (int j = 0; j < AddressTrackerItem.TRACK_GAPS; j++) {
-          row.addChild("th", " "); // FIXME is <th/> valid??
-        }
-        for (InetAddressAddressTrackerItem item : ipItems) {
-          row = table.addChild("tr");
-          // Address
-          row.addChild("td", item.addr.toString());
-          // Sent/received packets
-          row.addChild("td", item.packetsSent() + "/ " + item.packetsReceived());
-          // Initiator: local/remote FIXME something more graphical e.g. colored cells
-          row.addChild(
-              "td", item.packetsReceived() == 0 ? noreply : (item.weSentFirst() ? local : remote));
-          // Lead in time to first packet sent
-          row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstSentPacket()));
-          // Lead in time to first packet received
-          row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstReceivedPacket()));
-          Gap[] gaps = item.getGaps();
-          for (int k = 0; k < AddressTrackerItem.TRACK_GAPS; k++) {
-            row.addChild(
-                "td",
-                gaps[k].receivedPacketAt() == 0
-                    ? ""
-                    : (TimeUtil.formatTime(gaps[k].gapLength())
-                        + " @ "
-                        + TimeUtil.formatTime(now - gaps[k].receivedPacketAt())
-                        + " ago" /* fixme l10n */));
-          }
-        }
-      }
+    for (UdpSocketHandler handler : handlers) {
+      AddressTracker tracker = handler.getAddressTracker();
+      addPeerSection(contentNode, pageMaker, handler, tracker, trafficContext);
+      addIpSection(contentNode, pageMaker, handler, tracker, trafficContext);
     }
+  }
 
-    writeHTMLReply(ctx, 200, "OK", page.generate());
+  private void addPeerSection(
+      HTMLNode contentNode,
+      PageMaker pageMaker,
+      UdpSocketHandler handler,
+      AddressTracker tracker,
+      TrafficContext trafficContext) {
+    HTMLNode portsContent =
+        pageMaker.getInfobox(
+            "#",
+            NodeL10n.getBase()
+                .getString(
+                    "ConnectivityToadlet.byPortTitle",
+                    new String[] {"port", "status", "tunnelLength"},
+                    new String[] {
+                      handler.getTitle(),
+                      AddressTracker.statusString(tracker.getPortForwardStatus()),
+                      TimeUtil.formatTime(tracker.getLongestSendReceiveGap())
+                    }),
+            contentNode,
+            CONNECTIVITY_PORT_CLASS,
+            false);
+    PeerAddressTrackerItem[] items = tracker.getPeerAddressTrackerItems();
+    HTMLNode table = portsContent.addChild(TABLE_TAG);
+    addHeaderRow(table);
+    for (PeerAddressTrackerItem item : items) {
+      addTrackerRow(
+          table,
+          item,
+          item.peer.toString(),
+          trafficContext.noreply,
+          trafficContext.local,
+          trafficContext.remote,
+          trafficContext.now);
+    }
+  }
+
+  private void addIpSection(
+      HTMLNode contentNode,
+      PageMaker pageMaker,
+      UdpSocketHandler handler,
+      AddressTracker tracker,
+      TrafficContext trafficContext) {
+    HTMLNode portsContent =
+        pageMaker.getInfobox(
+            "#",
+            NodeL10n.getBase()
+                .getString(
+                    "ConnectivityToadlet.byIPTitle",
+                    new String[] {"ip", "status", "tunnelLength"},
+                    new String[] {
+                      handler.getTitle(),
+                      AddressTracker.statusString(tracker.getPortForwardStatus()),
+                      TimeUtil.formatTime(tracker.getLongestSendReceiveGap())
+                    }),
+            contentNode,
+            CONNECTIVITY_IP_CLASS,
+            false);
+    InetAddressAddressTrackerItem[] ipItems = tracker.getInetAddressTrackerItems();
+    HTMLNode table = portsContent.addChild(TABLE_TAG);
+    addHeaderRow(table);
+    for (InetAddressAddressTrackerItem item : ipItems) {
+      addTrackerRow(
+          table,
+          item,
+          item.addr.toString(),
+          trafficContext.noreply,
+          trafficContext.local,
+          trafficContext.remote,
+          trafficContext.now);
+    }
+  }
+
+  private void addHeaderRow(HTMLNode table) {
+    HTMLNode row = table.addChild("tr");
+    row.addChild("th", localize("addressTitle"));
+    row.addChild("th", localize("sentReceivedTitle"));
+    row.addChild("th", localize("localRemoteTitle"));
+    row.addChild("th", localize("firstSendLeadTime"));
+    row.addChild("th", localize("firstReceiveLeadTime"));
+    for (int j = 0; j < AddressTrackerItem.TRACK_GAPS; j++) {
+      row.addChild("th", EMPTY_HEADER_LABEL);
+    }
+  }
+
+  private void addTrackerRow(
+      HTMLNode table,
+      AddressTrackerItem item,
+      String address,
+      String noreply,
+      String local,
+      String remote,
+      long now) {
+    HTMLNode row = table.addChild("tr");
+    row.addChild("td", address);
+    row.addChild("td", item.packetsSent() + "/ " + item.packetsReceived());
+    row.addChild("td", initiatorLabel(item, noreply, local, remote));
+    row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstSentPacket()));
+    row.addChild("td", TimeUtil.formatTime(item.timeFromStartupToFirstReceivedPacket()));
+    Gap[] gaps = item.getGaps();
+    for (int k = 0; k < AddressTrackerItem.TRACK_GAPS; k++) {
+      row.addChild("td", gapLabel(gaps[k], now));
+    }
+  }
+
+  private String initiatorLabel(
+      AddressTrackerItem item, String noreply, String local, String remote) {
+    if (item.packetsReceived() == 0) {
+      return noreply;
+    }
+    return item.weSentFirst() ? local : remote;
+  }
+
+  private String gapLabel(Gap gap, long now) {
+    if (gap.receivedPacketAt() == 0) {
+      return "";
+    }
+    return TimeUtil.formatTime(gap.gapLength())
+        + " @ "
+        + TimeUtil.formatTime(now - gap.receivedPacketAt())
+        + " ago";
   }
 
   private String l10nConn(String string) {
     return NodeL10n.getBase().getString("DarknetConnectionsToadlet." + string);
   }
 
-  private String l10n(String key) {
+  private String localize(String key) {
     return NodeL10n.getBase().getString("ConnectivityToadlet." + key);
   }
 
-  public static final String PATH = "/connectivity/";
-
+  /**
+   * Returns the HTTP path under which this toadlet should be registered.
+   *
+   * <p>The path is returned with leading and trailing slashes to match the routing expectations of
+   * the hosting web server. It does not perform access checks; registration code should ensure only
+   * authenticated callers reach {@link #handleMethodGET(URI, HTTPRequest, ToadletContext)}.
+   *
+   * @return {@code "/connectivity/"} for routing the connectivity status page within the web
+   *     console.
+   */
   @Override
   public String path() {
-    return PATH;
+    return CONNECTIVITY_PATH;
   }
 }
