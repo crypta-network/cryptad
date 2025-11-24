@@ -523,12 +523,21 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private boolean handleStaticPaths()
         throws ToadletContextClosedException, IOException, RedirectException {
-      if (ks.equals("/")) {
-        handleRootWithoutKey();
-        return true;
+      switch (ks) {
+        case "/" -> {
+          handleRootWithoutKey();
+          return true;
+        }
+        case "/favicon.ico" -> {
+          return redirectTo(StaticToadlet.ROOT_URL + "favicon.ico");
+        }
+        case "/favicon.svg" -> {
+          return redirectTo(StaticToadlet.ROOT_URL + "favicon.svg");
+        }
+        default -> {
+          // fall through to additional path checks below
+        }
       }
-      if (ks.equals("/favicon.ico")) return redirectTo(StaticToadlet.ROOT_URL + "favicon.ico");
-      if (ks.equals("/favicon.svg")) return redirectTo(StaticToadlet.ROOT_URL + "favicon.svg");
       if (ks.startsWith("/feed/") || ks.equals("/feed")) return handleFeedRequest();
       if (ks.equals("/robots.txt") && ctx.doRobots()) {
         writeTextReply(ctx, 200, "Ok", "User-agent: *\nDisallow: /");
@@ -928,7 +937,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             "/",
             key);
       }
-      String extrasNoMime = extras;
       String updatedExtras = appendRequestedMimeType(extras, requestedMimeType, mimeType);
       long size = data.size();
 
@@ -937,7 +945,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
       if (!force && !forceDownloadRequested) {
         mimeType = adjustMimeForBrowserWorkarounds(mimeType);
-        if (handleDangerousRss(data, mimeType, now, extrasNoMime, updatedExtras, referer)) {
+        if (handleDangerousRss(data, mimeType, now, extras, updatedExtras, referer)) {
           return;
         }
       }
@@ -958,7 +966,12 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
 
     private boolean handleDangerousRss(
-        Bucket data, String mimeType, long now, String extrasNoMime, String extras, String referrer)
+        Bucket data,
+        String mimeType,
+        long now,
+        String extras,
+        String updatedExtras,
+        String referrer)
         throws IOException, ToadletContextClosedException {
       if (!isSniffedAsFeed(data) || mimeType.startsWith("application/rss+xml")) {
         return false;
@@ -989,7 +1002,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
                         + key.toString()
                         + "?type=text/plain&force="
                         + getForceValue(key, now)
-                        + extrasNoMime),
+                        + extras),
                 HTMLNode.STRONG
               });
       option = optionList.addChild("li");
@@ -999,7 +1012,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               "FProxyToadlet.openPossRSSForceDisk",
               new String[] {"link", "bold"},
               new HTMLNode[] {
-                HTMLNode.link("/" + key.toString() + "?forcedownload" + extras), HTMLNode.STRONG
+                HTMLNode.link("/" + key.toString() + "?forcedownload" + updatedExtras),
+                HTMLNode.STRONG
               });
       boolean mimeRss =
           mimeType.startsWith("application/xml+rss") || mimeType.startsWith("text/xml");
@@ -1012,7 +1026,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
                 new String[] {"link", "bold", "mime"},
                 new HTMLNode[] {
                   HTMLNode.link(
-                      "/" + key.toString() + "?force=" + getForceValue(key, now) + extras),
+                      "/" + key.toString() + "?force=" + getForceValue(key, now) + updatedExtras),
                   HTMLNode.STRONG,
                   HTMLNode.text(mimeType)
                 });
@@ -1029,7 +1043,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
                         + key.toString()
                         + "?type=application/xml+rss&force="
                         + getForceValue(key, now)
-                        + extrasNoMime),
+                        + extras),
                 HTMLNode.STRONG
               });
       addDownloadOptions(ctx, optionList, key, mimeType, true, false, core);
@@ -1198,17 +1212,18 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private void handleRedirectException(FetchException e)
         throws ToadletContextClosedException, IOException, RedirectException {
+      FreenetURI redirectUri = Objects.requireNonNull(e.newURI, "redirect URI is null");
       if (accept != null
           && (accept.startsWith("text/css") || accept.startsWith("image/"))
           && recursion + 1 < MAX_RECURSION) {
-        followRedirectRecursively(e);
+        followRedirectRecursively(redirectUri);
         return;
       }
       Toadlet.writePermanentRedirect(
           ctx,
           e.getMessage(),
           getLink(
-              e.newURI,
+              redirectUri,
               requestedMimeType,
               maxSize,
               httprequest.getParam(PARAM_FORCE, null),
@@ -1217,11 +1232,11 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               overrideSize));
     }
 
-    private void followRedirectRecursively(FetchException e)
+    private void followRedirectRecursively(FreenetURI redirectUri)
         throws RedirectException, ToadletContextClosedException, IOException {
       String link =
           getLink(
-              e.newURI,
+              redirectUri,
               requestedMimeType,
               maxSize,
               httprequest.getParam(PARAM_FORCE, null),
@@ -1314,10 +1329,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
       HTMLNode infobox = contentNode.addChild("div", CLASS_ATTRIBUTE, INFOBOX_ERROR_CLASS);
       infobox.addChild(
-          "div",
-          CLASS_ATTRIBUTE,
-          INFOBOX_HEADER_CLASS,
-          l10n("errorWithReason", "error", e.getShortMessage()));
+          "div", CLASS_ATTRIBUTE, INFOBOX_HEADER_CLASS, l10nErrorWithReason(e.getShortMessage()));
       HTMLNode infoboxContent = infobox.addChild("div", CLASS_ATTRIBUTE, INFOBOX_CONTENT_CLASS);
       HTMLNode fileInformationList = infoboxContent.addChild("ul");
       HTMLNode option = fileInformationList.addChild("li");
@@ -1636,9 +1648,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       return FProxyToadlet.l10n(key);
     }
 
-    private String l10n(String key, String pattern, String value) {
+    private String l10nErrorWithReason(String errorMessage) {
       return NodeL10n.getBase()
-          .getString(L10N_PREFIX + key, new String[] {pattern}, new String[] {value});
+          .getString(
+              L10N_PREFIX + "errorWithReason", new String[] {"error"}, new String[] {errorMessage});
     }
 
     private String getLink(
