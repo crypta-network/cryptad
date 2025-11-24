@@ -210,7 +210,8 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
     HTMLNode insertBox = infobox.getOuterNode();
     HTMLNode insertContent = infobox.getContentNode();
     HTMLNode insertForm =
-        ctx.addFormChild(insertContent, ContentFilterToadlet.PATH, "filterPreviewForm");
+        ctx.addFormChild(
+            insertContent, ContentFilterToadlet.CONTENT_FILTER_PATH, "filterPreviewForm");
     insertForm.addChild("#", l10n("filterFileLabel"));
     insertForm.addChild("br");
     insertForm.addChild("br");

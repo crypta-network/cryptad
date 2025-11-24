@@ -9,7 +9,7 @@ import network.crypta.support.HTMLNode;
 /** Local file browser for the content filter toadlet. */
 public class LocalFileFilterToadlet extends LocalFileBrowserToadlet {
   public static final String PATH = "/filter-browse/";
-  public static final String POST_TO = "/filterfile/";
+  public static final String POST_TO = ContentFilterToadlet.CONTENT_FILTER_PATH;
 
   public LocalFileFilterToadlet(NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
     super(core, highLevelSimpleClient);
