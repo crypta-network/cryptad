@@ -15,19 +15,16 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.text.NumberFormat;
-import java.util.ArrayList;
+import java.nio.file.Files;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
+import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -70,7 +67,6 @@ import network.crypta.node.useralerts.StoringUserEvent;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.HexUtil;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.SizeUtil;
 import network.crypta.support.TimeUtil;
@@ -81,6 +77,7 @@ import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -155,6 +152,9 @@ public class QueueToadlet extends Toadlet
       "Cannot put same file twice in same millisecond";
   private static final String ERROR_ACCESS_DENIED_FILE_KEY = "errorAccessDeniedFile";
   private static final String ERROR_NO_FILE_OR_CANNOT_READ = "errorNoFileOrCannotRead";
+  private static final String COMPRESS_LABEL = ", compress=";
+  private static final String OVERRIDE_SPLITFILE_KEY_LABEL = ", overrideSplitfileKey=";
+  private static final char[] HEX_ARRAY = "0123456789abcdef".toCharArray();
 
   private final NodeClientCore core;
   final FCPServer fcp;
@@ -238,7 +238,7 @@ public class QueueToadlet extends Toadlet
     try {
       CheckedHandler[] handlers = {
         () -> handleInsertLocal(request, ctx),
-        () -> handleSelectLocation(request, ctx),
+        () -> handleSelectLocation(request),
         () -> handleDeleteRequest(request, ctx),
         () -> handleRemoveRequest(request, ctx),
         () -> handleRemoveFinishedUploads(request, ctx),
@@ -279,25 +279,34 @@ public class QueueToadlet extends Toadlet
 
     FreenetURI insertURI;
     String keyType = request.getPartAsStringFailsafe("keytype", 10);
-    if ("CHK".equals(keyType)) {
-      insertURI = new FreenetURI("CHK@");
-      if (fiw != null) fiw.reportCanonicalInsert();
-    } else if ("SSK".equals(keyType)) {
-      insertURI = new FreenetURI("SSK@");
-      if (fiw != null) fiw.reportRandomInsert();
-    } else if ("specify".equals(keyType)) {
-      try {
-        String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
-        insertURI = new FreenetURI(u);
-        if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, u);
-      } catch (MalformedURLException mue1) {
-        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
+    switch (keyType) {
+      case "CHK" -> {
+        insertURI = new FreenetURI("CHK@");
+        if (fiw != null) fiw.reportCanonicalInsert();
+      }
+      case "SSK" -> {
+        insertURI = new FreenetURI("SSK@");
+        if (fiw != null) fiw.reportRandomInsert();
+      }
+      case "specify" -> {
+        try {
+          String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
+          insertURI = new FreenetURI(u);
+          if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, u);
+        } catch (MalformedURLException mue1) {
+          writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
+          return true;
+        }
+      }
+      case null, default -> {
+        writeError(
+            l10n("errorMustSpecifyKeyTypeTitle"),
+            l10n("errorMustSpecifyKeyType"),
+            ctx,
+            false,
+            true);
         return true;
       }
-    } else {
-      writeError(
-          l10n("errorMustSpecifyKeyTypeTitle"), l10n("errorMustSpecifyKeyType"), ctx, false, true);
-      return true;
     }
     MultiValueTable<String, String> responseHeaders =
         MultiValueTable.from(
@@ -321,8 +330,7 @@ public class QueueToadlet extends Toadlet
     return true;
   }
 
-  private boolean handleSelectLocation(HTTPRequest request, ToadletContext ctx)
-      throws RedirectException {
+  private boolean handleSelectLocation(HTTPRequest request) throws RedirectException {
     if (!request.isPartSet("select-location")) {
       return false;
     }
@@ -362,34 +370,45 @@ public class QueueToadlet extends Toadlet
 
   private void populateDeleteInfoList(HTTPRequest request, HTMLNode infoList) {
     for (String part : request.getParts()) {
-      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
-      part = part.substring(IDENTIFIER_PREFIX.length());
-      if (part.length() > 50) continue;
-
-      String identifier =
-          request.getPartAsStringFailsafe(IDENTIFIER_PREFIX + part, MAX_IDENTIFIER_LENGTH);
-      if (identifier == null) continue;
-      String filename =
-          request.getPartAsStringFailsafe(FILENAME_PREFIX + part, MAX_FILENAME_LENGTH);
-      String keyString = request.getPartAsStringFailsafe(KEY_PREFIX + part, MAX_KEY_LENGTH);
-      String type = request.getPartAsStringFailsafe("type-" + part, MAX_TYPE_LENGTH);
-      String size = request.getPartAsStringFailsafe("size-" + part, 50);
-      if (filename != null) {
-        addFilenameLine(infoList, keyString, filename);
-      }
-      if (type != null && !type.isEmpty()) {
-        addMimeTypeLine(request, infoList, type);
-      }
-      if (size != null) {
-        HTMLNode line = infoList.addChild("li");
-        line.addChild("#", NodeL10n.getBase().getString("FProxyToadlet.sizeLabel") + " " + size);
-      }
-      infoList.addChild("#", l10n("deleteFileFromTemp"));
-      infoList.addChild(
-          TAG_INPUT,
-          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE, ATTR_CHECKED},
-          new String[] {INPUT_TYPE_CHECKBOX, IDENTIFIER_PREFIX + part, identifier, ATTR_CHECKED});
+      processDeletePart(request, infoList, part);
     }
+  }
+
+  private void processDeletePart(HTTPRequest request, HTMLNode infoList, String part) {
+    if (!part.startsWith(IDENTIFIER_PREFIX)) {
+      return;
+    }
+    String identifierPart = part.substring(IDENTIFIER_PREFIX.length());
+    if (identifierPart.length() > 50) {
+      return;
+    }
+    String identifier =
+        request.getPartAsStringFailsafe(IDENTIFIER_PREFIX + identifierPart, MAX_IDENTIFIER_LENGTH);
+    if (identifier == null) {
+      return;
+    }
+    String filename =
+        request.getPartAsStringFailsafe(FILENAME_PREFIX + identifierPart, MAX_FILENAME_LENGTH);
+    String keyString = request.getPartAsStringFailsafe(KEY_PREFIX + identifierPart, MAX_KEY_LENGTH);
+    String type = request.getPartAsStringFailsafe("type-" + identifierPart, MAX_TYPE_LENGTH);
+    String size = request.getPartAsStringFailsafe("size-" + identifierPart, 50);
+    if (filename != null) {
+      addFilenameLine(infoList, keyString, filename);
+    }
+    if (type != null && !type.isEmpty()) {
+      addMimeTypeLine(request, infoList, type);
+    }
+    if (size != null) {
+      HTMLNode line = infoList.addChild("li");
+      line.addChild("#", NodeL10n.getBase().getString("FProxyToadlet.sizeLabel") + " " + size);
+    }
+    infoList.addChild("#", l10n("deleteFileFromTemp"));
+    infoList.addChild(
+        TAG_INPUT,
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE, ATTR_CHECKED},
+        new String[] {
+          INPUT_TYPE_CHECKBOX, IDENTIFIER_PREFIX + identifierPart, identifier, ATTR_CHECKED
+        });
   }
 
   private void addMimeTypeLine(HTTPRequest request, HTMLNode infoList, String type) {
@@ -434,15 +453,17 @@ public class QueueToadlet extends Toadlet
       return false;
     }
 
-    String identifier = "";
+    String identifier;
     try {
       for (String part : request.getParts()) {
-        if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
-        identifier = part.substring(IDENTIFIER_PREFIX.length());
-        if (identifier.length() > 50) continue;
-        identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-        if (LOG.isDebugEnabled()) LOG.debug("Removing {}", identifier);
-        fcp.removeGlobalRequestBlocking(identifier);
+        if (part.startsWith(IDENTIFIER_PREFIX)) {
+          String identifierPart = part.substring(IDENTIFIER_PREFIX.length());
+          if (identifierPart.length() <= 50) {
+            identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
+            if (LOG.isDebugEnabled()) LOG.debug("Removing {}", identifier);
+            fcp.removeGlobalRequestBlocking(identifier);
+          }
+        }
       }
     } catch (PersistenceDisabledException e) {
       sendPersistenceDisabledError(ctx);
@@ -458,15 +479,13 @@ public class QueueToadlet extends Toadlet
         || request.getPartAsStringFailsafe(REMOVE_FINISHED_UPLOADS_REQUEST, 128).isEmpty()) {
       return false;
     }
-    String identifier = "";
+    String identifier;
     try {
       RequestStatus[] reqs = fcp.getGlobalRequests();
       for (RequestStatus r : reqs) {
-        if (r instanceof UploadFileRequestStatus upload) {
-          if (upload.hasSucceeded()) {
-            identifier = upload.getIdentifier();
-            fcp.removeGlobalRequestBlocking(identifier);
-          }
+        if (r instanceof UploadFileRequestStatus upload && upload.hasSucceeded()) {
+          identifier = upload.getIdentifier();
+          fcp.removeGlobalRequestBlocking(identifier);
         }
       }
     } catch (PersistenceDisabledException e) {
@@ -483,18 +502,17 @@ public class QueueToadlet extends Toadlet
         || request.getPartAsStringFailsafe(REMOVE_FINISHED_DOWNLOADS_REQUEST, 128).isEmpty()) {
       return false;
     }
-    String identifier = "";
+    String identifier;
     try {
       RequestStatus[] reqs = fcp.getGlobalRequests();
       for (RequestStatus r : reqs) {
-        if (r instanceof DownloadRequestStatus download) {
-          if (download.isPersistent()
-              && download.hasSucceeded()
-              && download.isTotalFinalized()
-              && !download.toTempSpace()) {
-            identifier = download.getIdentifier();
-            fcp.removeGlobalRequestBlocking(identifier);
-          }
+        if (r instanceof DownloadRequestStatus download
+            && download.isPersistent()
+            && download.hasSucceeded()
+            && download.isTotalFinalized()
+            && !download.toTempSpace()) {
+          identifier = download.getIdentifier();
+          fcp.removeGlobalRequestBlocking(identifier);
         }
       }
     } catch (PersistenceDisabledException e) {
@@ -513,22 +531,34 @@ public class QueueToadlet extends Toadlet
     }
     boolean disableFilterData = request.isPartSet(DISABLE_FILTER_DATA);
 
-    String identifier = "";
     for (String part : request.getParts()) {
-      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
-      identifier = part.substring(IDENTIFIER_PREFIX.length());
-      if (identifier.length() > 50) continue;
-      identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-      if (LOG.isDebugEnabled()) LOG.debug("Restarting {}", identifier);
-      try {
-        fcp.restartBlocking(identifier, disableFilterData);
-      } catch (PersistenceDisabledException e) {
-        sendPersistenceDisabledError(ctx);
+      if (processRestartPart(request, ctx, disableFilterData, part)) {
         return true;
       }
     }
     writePermanentRedirect(ctx, "Done", path());
     return true;
+  }
+
+  private boolean processRestartPart(
+      HTTPRequest request, ToadletContext ctx, boolean disableFilterData, String part)
+      throws ToadletContextClosedException, IOException {
+    if (!part.startsWith(IDENTIFIER_PREFIX)) {
+      return false;
+    }
+    String identifierPart = part.substring(IDENTIFIER_PREFIX.length());
+    if (identifierPart.length() > 50) {
+      return false;
+    }
+    String identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
+    if (LOG.isDebugEnabled()) LOG.debug("Restarting {}", identifier);
+    try {
+      fcp.restartBlocking(identifier, disableFilterData);
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    return false;
   }
 
   private boolean handlePanic(HTTPRequest request, ToadletContext ctx)
@@ -617,7 +647,7 @@ public class QueueToadlet extends Toadlet
     }
 
     String[] keys = readBulkDownloadKeys(request, ctx);
-    if (keys == null || keys.length == 0) {
+    if (keys.length == 0) {
       return true;
     }
 
@@ -639,7 +669,7 @@ public class QueueToadlet extends Toadlet
     String[] keys = bulkDownloadsAsString.split("\n");
     if (bulkDownloadsAsString.isEmpty() || (keys.length < 1)) {
       writePermanentRedirect(ctx, "Done", path());
-      return null;
+      return new String[0];
     }
     return keys;
   }
@@ -746,24 +776,198 @@ public class QueueToadlet extends Toadlet
       String identifier,
       CompatibilityMode cmode,
       byte[] overrideSplitfileKey,
-      String filenameForKey) {}
+      String filenameForKey) {
+    @Override
+    public boolean equals(Object o) {
+      return o
+              instanceof
+              InsertUploadContext(
+                  var otherInsertURI,
+                  var otherFile,
+                  var otherCompress,
+                  var otherIdentifier,
+                  var otherCmode,
+                  var otherOverrideSplitfileKey,
+                  var otherFilenameForKey)
+          && compress == otherCompress
+          && Objects.equals(insertURI, otherInsertURI)
+          && Objects.equals(file, otherFile)
+          && Objects.equals(identifier, otherIdentifier)
+          && cmode == otherCmode
+          && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey)
+          && Objects.equals(filenameForKey, otherFilenameForKey);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(insertURI, file, compress, identifier, cmode, filenameForKey);
+      return 31 * result + Arrays.hashCode(overrideSplitfileKey);
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "InsertUploadContext{"
+          + "insertURI="
+          + insertURI
+          + ", file="
+          + file
+          + COMPRESS_LABEL
+          + compress
+          + ", identifier='"
+          + identifier
+          + '\''
+          + ", cmode="
+          + cmode
+          + OVERRIDE_SPLITFILE_KEY_LABEL
+          + Arrays.toString(overrideSplitfileKey)
+          + ", filenameForKey='"
+          + filenameForKey
+          + '\''
+          + '}';
+    }
+  }
+
+  private record InsertOptions(
+      boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
+    @Override
+    public boolean equals(Object o) {
+      return o
+              instanceof
+              InsertOptions(
+                  var otherCompress,
+                  var otherCmode,
+                  var otherOverrideSplitfileKey,
+                  var otherTarget)
+          && compress == otherCompress
+          && cmode == otherCmode
+          && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey)
+          && Objects.equals(target, otherTarget);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(compress, cmode, target);
+      return 31 * result + Arrays.hashCode(overrideSplitfileKey);
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "InsertOptions{"
+          + COMPRESS_LABEL
+          + compress
+          + ", cmode="
+          + cmode
+          + OVERRIDE_SPLITFILE_KEY_LABEL
+          + Arrays.toString(overrideSplitfileKey)
+          + ", target='"
+          + target
+          + '\''
+          + '}';
+    }
+  }
 
   private record LocalFileInsertParams(
-      File file,
-      String id,
-      String contentType,
-      FreenetURI uri,
-      boolean compress,
-      CompatibilityMode cmode,
-      byte[] overrideSplitfileKey,
-      String target) {}
+      File file, String id, String contentType, FreenetURI uri, InsertOptions options) {
+
+    boolean compress() {
+      return options.compress();
+    }
+
+    CompatibilityMode cmode() {
+      return options.cmode();
+    }
+
+    byte[] overrideSplitfileKey() {
+      return options.overrideSplitfileKey();
+    }
+
+    String target() {
+      return options.target();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return o
+              instanceof
+              LocalFileInsertParams(
+                  var otherFile,
+                  var otherId,
+                  var otherContentType,
+                  var otherUri,
+                  var otherOptions)
+          && Objects.equals(file, otherFile)
+          && Objects.equals(id, otherId)
+          && Objects.equals(contentType, otherContentType)
+          && Objects.equals(uri, otherUri)
+          && Objects.equals(options, otherOptions);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(file, id, contentType, uri, options);
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "LocalFileInsertParams{"
+          + "file="
+          + file
+          + ", id='"
+          + id
+          + '\''
+          + ", contentType='"
+          + contentType
+          + '\''
+          + ", uri="
+          + uri
+          + ", options="
+          + options
+          + '}';
+    }
+  }
 
   private record LocalDirInsertParams(
-      File file,
-      String identifier,
-      FreenetURI uri,
-      boolean compress,
-      byte[] overrideSplitfileKey) {}
+      File file, String identifier, FreenetURI uri, boolean compress, byte[] overrideSplitfileKey) {
+    @Override
+    public boolean equals(Object o) {
+      return o
+              instanceof
+              LocalDirInsertParams(
+                  var otherFile,
+                  var otherIdentifier,
+                  var otherUri,
+                  var otherCompress,
+                  var otherOverrideSplitfileKey)
+          && compress == otherCompress
+          && Objects.equals(file, otherFile)
+          && Objects.equals(identifier, otherIdentifier)
+          && Objects.equals(uri, otherUri)
+          && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(file, identifier, uri, compress);
+      return 31 * result + Arrays.hashCode(overrideSplitfileKey);
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "LocalDirInsertParams{"
+          + "file="
+          + file
+          + ", identifier='"
+          + identifier
+          + '\''
+          + ", uri="
+          + uri
+          + COMPRESS_LABEL
+          + compress
+          + OVERRIDE_SPLITFILE_KEY_LABEL
+          + Arrays.toString(overrideSplitfileKey)
+          + '}';
+    }
+  }
 
   private boolean handleChangePriorityActions(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
@@ -789,7 +993,7 @@ public class QueueToadlet extends Toadlet
     }
 
     final RandomAccessBucket copiedBucket = copyUploadedFile(params.file());
-    final CountDownLatch done = new CountDownLatch(1);
+    final SimpleLatch done = new SimpleLatch(1);
 
     if (!queueInsertUpload(params, copiedBucket, done, ctx)) {
       return true;
@@ -816,7 +1020,7 @@ public class QueueToadlet extends Toadlet
     boolean compress = !request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty();
     String identifier = file.getFilename() + FRED_SUFFIX + System.currentTimeMillis();
     CompatibilityMode cmode = parseCompatibilityMode(request);
-    byte[] overrideSplitfileKey = parseOverrideSplitfileKey(request);
+    byte[] overrideSplitfileKey = normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
     String filenameForKey =
         insertURI.getKeyType().equals("CHK") || "SSK".equals(keyType) ? file.getFilename() : null;
 
@@ -861,9 +1065,40 @@ public class QueueToadlet extends Toadlet
   private byte[] parseOverrideSplitfileKey(HTTPRequest request) {
     String rawKey = request.getPartAsStringFailsafe(OVERRIDE_SPLITFILE_KEY_FIELD, 65);
     if (rawKey != null && !rawKey.isEmpty()) {
-      return HexUtil.hexToBytes(rawKey);
+      return hexToBytes(rawKey);
     }
-    return null;
+    return new byte[0];
+  }
+
+  private byte[] normalizeOverrideSplitfileKey(byte[] overrideSplitfileKey) {
+    return overrideSplitfileKey.length == 0 ? null : overrideSplitfileKey;
+  }
+
+  private static byte[] hexToBytes(String hex) {
+    int length = hex.length();
+    if ((length & 1) != 0) {
+      return new byte[0];
+    }
+    byte[] out = new byte[length / 2];
+    for (int i = 0; i < length; i += 2) {
+      int hi = Character.digit(hex.charAt(i), 16);
+      int lo = Character.digit(hex.charAt(i + 1), 16);
+      if (hi < 0 || lo < 0) {
+        return new byte[0];
+      }
+      out[i / 2] = (byte) ((hi << 4) + lo);
+    }
+    return out;
+  }
+
+  private static String toHex(byte[] data) {
+    char[] out = new char[data.length * 2];
+    for (int i = 0; i < data.length; i++) {
+      int v = data[i] & 0xFF;
+      out[i * 2] = HEX_ARRAY[v >>> 4];
+      out[i * 2 + 1] = HEX_ARRAY[v & 0x0F];
+    }
+    return new String(out);
   }
 
   private RandomAccessBucket copyUploadedFile(HTTPUploadedFile file) throws IOException {
@@ -876,7 +1111,7 @@ public class QueueToadlet extends Toadlet
   private boolean queueInsertUpload(
       InsertUploadContext params,
       RandomAccessBucket copiedBucket,
-      CountDownLatch done,
+      SimpleLatch done,
       ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     try {
@@ -913,7 +1148,7 @@ public class QueueToadlet extends Toadlet
       throws IOException, ToadletContextClosedException {
     try {
       ClientPut clientPut = buildClientPut(params, copiedBucket);
-      if (clientPut != null && !startClientPut(clientPut, ctx)) {
+      if (!startClientPut(clientPut, ctx)) {
         return false;
       }
       writePermanentRedirect(ctx, "Done", path());
@@ -945,16 +1180,14 @@ public class QueueToadlet extends Toadlet
       LOG.error("Unresolved metadata in starting insert from data uploaded from browser: {}", e, e);
       writePermanentRedirect(ctx, "Done", path());
       return false;
-    } catch (Throwable t) {
-      writeInternalError(t, ctx);
+    } catch (Exception e) {
+      writeInternalError(e, ctx);
       return false;
     }
   }
 
   private ClientPut buildClientPut(InsertUploadContext params, RandomAccessBucket copiedBucket)
-      throws MalformedURLException,
-          NotAllowedException,
-          FileNotFoundException,
+      throws NotAllowedException,
           MetadataUnresolvedException,
           IdentifierCollisionException,
           IOException {
@@ -1003,12 +1236,13 @@ public class QueueToadlet extends Toadlet
     }
   }
 
-  private void awaitInsertCompletion(CountDownLatch done) {
+  private void awaitInsertCompletion(SimpleLatch done) {
     while (done.getCount() > 0) {
       try {
         done.await();
-      } catch (InterruptedException ignored) {
-        // Ignore
+      } catch (InterruptedException interrupted) {
+        Thread.currentThread().interrupt();
+        break;
       }
     }
   }
@@ -1024,7 +1258,7 @@ public class QueueToadlet extends Toadlet
       return true;
     }
 
-    CountDownLatch done = new CountDownLatch(1);
+    SimpleLatch done = new SimpleLatch(1);
     if (!queueLocalFileInsert(params, done, ctx)) {
       return true;
     }
@@ -1044,7 +1278,7 @@ public class QueueToadlet extends Toadlet
     String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
     boolean compress = request.isPartSet(COMPRESS_FIELD);
     CompatibilityMode cmode = parseCompatibilityMode(request);
-    byte[] overrideSplitfileKey = parseOverrideSplitfileKey(request);
+    byte[] overrideSplitfileKey = normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
     FreenetURI furi;
     if (key != null) {
       try {
@@ -1058,12 +1292,12 @@ public class QueueToadlet extends Toadlet
     }
 
     String target = (furi.getDocName() != null) ? null : file.getName();
-    return new LocalFileInsertParams(
-        file, identifier, contentType, furi, compress, cmode, overrideSplitfileKey, target);
+    InsertOptions options = new InsertOptions(compress, cmode, overrideSplitfileKey, target);
+    return new LocalFileInsertParams(file, identifier, contentType, furi, options);
   }
 
   private boolean queueLocalFileInsert(
-      LocalFileInsertParams params, CountDownLatch done, ToadletContext ctx)
+      LocalFileInsertParams params, SimpleLatch done, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     try {
       core.getClientLayerPersister()
@@ -1078,7 +1312,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private PersistentJob createLocalFileInsertJob(
-      LocalFileInsertParams params, CountDownLatch done, ToadletContext ctx) {
+      LocalFileInsertParams params, SimpleLatch done, ToadletContext ctx) {
     return new PersistentJob() {
 
       @Override
@@ -1108,18 +1342,8 @@ public class QueueToadlet extends Toadlet
       if (LOG.isDebugEnabled()) {
         LOG.debug("Started global request to insert {} to CHK@ as {}", params.file(), params.id());
       }
-      if (clientPut != null) {
-        try {
-          fcp.startBlocking(clientPut);
-          handedOff = true;
-        } catch (IdentifierCollisionException e) {
-          LOG.error(ERROR_SAME_FILE_MESSAGE);
-          writePermanentRedirect(ctx, "Done", path());
-          return false;
-        } catch (PersistenceDisabledException e) {
-          // Impossible???
-        }
-      }
+      fcp.startBlocking(clientPut);
+      handedOff = true;
       writePermanentRedirect(ctx, "Done", path());
       return true;
     } catch (IdentifierCollisionException e) {
@@ -1148,6 +1372,9 @@ public class QueueToadlet extends Toadlet
       LOG.error("Unresolved metadata in starting insert from data from file: {}", e, e);
       writePermanentRedirect(ctx, "Done", path());
       return false;
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return false;
     } finally {
       if (!handedOff) {
         bucket.free();
@@ -1156,9 +1383,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private ClientPut createLocalFileClientPut(LocalFileInsertParams params, FileBucket bucket)
-      throws MalformedURLException,
-          NotAllowedException,
-          FileNotFoundException,
+      throws NotAllowedException,
           MetadataUnresolvedException,
           IdentifierCollisionException,
           IOException {
@@ -1203,7 +1428,7 @@ public class QueueToadlet extends Toadlet
       return true;
     }
 
-    CountDownLatch done = new CountDownLatch(1);
+    SimpleLatch done = new SimpleLatch(1);
     if (!queueLocalDirInsert(params, done, ctx)) {
       return true;
     }
@@ -1221,7 +1446,7 @@ public class QueueToadlet extends Toadlet
     String identifier = file.getName() + FRED_SUFFIX + System.currentTimeMillis();
     String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
     boolean compress = request.isPartSet(COMPRESS_FIELD);
-    byte[] overrideSplitfileKey = parseOverrideSplitfileKey(request);
+    byte[] overrideSplitfileKey = normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
     FreenetURI furi;
     if (key != null) {
       try {
@@ -1237,7 +1462,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private boolean queueLocalDirInsert(
-      LocalDirInsertParams params, CountDownLatch done, ToadletContext ctx)
+      LocalDirInsertParams params, SimpleLatch done, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     try {
       core.getClientLayerPersister()
@@ -1252,7 +1477,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private PersistentJob createLocalDirInsertJob(
-      LocalDirInsertParams params, CountDownLatch done, ToadletContext ctx) {
+      LocalDirInsertParams params, SimpleLatch done, ToadletContext ctx) {
     return new PersistentJob() {
 
       @Override
@@ -1284,20 +1509,13 @@ public class QueueToadlet extends Toadlet
             params.uri(),
             params.identifier());
       }
-      if (clientPutDir != null) {
-        try {
-          fcp.startBlocking(clientPutDir);
-        } catch (IdentifierCollisionException e) {
-          LOG.error(ERROR_SAME_FILE_MESSAGE);
-          writePermanentRedirect(ctx, "Done", path());
-          return false;
-        } catch (PersistenceDisabledException e) {
-          sendPersistenceDisabledError(ctx);
-          return false;
-        }
-      }
+      fcp.startBlocking(clientPutDir);
       writePermanentRedirect(ctx, "Done", path());
       return true;
+    } catch (IdentifierCollisionException e) {
+      LOG.error(ERROR_SAME_FILE_MESSAGE);
+      writePermanentRedirect(ctx, "Done", path());
+      return false;
     } catch (MalformedURLException e) {
       writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
       return false;
@@ -1309,6 +1527,9 @@ public class QueueToadlet extends Toadlet
       return false;
     } catch (TooManyFilesInsertException e) {
       writeError(l10n("tooManyFilesInOneFolder"), l10n("tooManyFilesInOneFolder"), ctx);
+      return false;
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
       return false;
     }
   }
@@ -1362,7 +1583,7 @@ public class QueueToadlet extends Toadlet
     HTMLNode form = ctx.addFormChild(firstNode, path(), "recommendForm");
     List<String> identifierParts = extractIdentifierParts(request);
     int index = addFilenameInputsIfPresent(request, form, identifierParts);
-    index = addKeyInputs(request, form, identifierParts, index);
+    addKeyInputs(request, form, identifierParts, index);
 
     form.addChild(TAG_LABEL, "for", "descB", (l10n("recommendDescription") + ' '));
     form.addChild("br");
@@ -1411,7 +1632,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private List<String> extractIdentifierParts(HTTPRequest request) {
-    List<String> parts = new ArrayList<>();
+    List<String> parts = new LinkedList<>();
     for (String part : request.getParts()) {
       if (part.startsWith(IDENTIFIER_PREFIX)) {
         String trimmed = part.substring(IDENTIFIER_PREFIX.length());
@@ -1451,7 +1672,7 @@ public class QueueToadlet extends Toadlet
     return index;
   }
 
-  private int addKeyInputs(
+  private void addKeyInputs(
       HTTPRequest request, HTMLNode form, List<String> identifierParts, int startIndex) {
     int index = startIndex;
     for (String part : identifierParts) {
@@ -1469,7 +1690,6 @@ public class QueueToadlet extends Toadlet
           new String[] {INPUT_TYPE_HIDDEN, KEY_PREFIX + index, key});
       index++;
     }
-    return index;
   }
 
   private boolean handleRecommendUri(HTTPRequest request, ToadletContext ctx)
@@ -1478,7 +1698,7 @@ public class QueueToadlet extends Toadlet
       return false;
     }
     String description = request.getPartAsStringFailsafe("description", 32768);
-    ArrayList<FreenetURI> uris = new ArrayList<>();
+    List<FreenetURI> uris = new LinkedList<>();
     for (String part : request.getParts()) {
       if (!part.startsWith(KEY_PREFIX)) continue;
       String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
@@ -1503,7 +1723,7 @@ public class QueueToadlet extends Toadlet
   private void handleChangePriority(HTTPRequest request, ToadletContext ctx, String suffix)
       throws ToadletContextClosedException, IOException {
     short newPriority = Short.parseShort(request.getPartAsStringFailsafe(PRIORITY + suffix, 32));
-    String identifier = "";
+    String identifier;
     for (String part : request.getParts()) {
       if (part.startsWith(IDENTIFIER_PREFIX)) {
         identifier = part.substring(IDENTIFIER_PREFIX.length());
@@ -1526,7 +1746,7 @@ public class QueueToadlet extends Toadlet
       throws IOException, ToadletContextClosedException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n(DOWNLOAD_FILES), ctx);
     HTMLNode contentNode = page.getContentNode();
-    LOG.warn(e.toString());
+    LOG.warn("Download disallowed for path {}", downloadPath, e);
     HTMLNode alert =
         ctx.getPageMaker()
             .getInfobox(
@@ -1722,15 +1942,15 @@ public class QueueToadlet extends Toadlet
                     if (count) {
                       pageNode = buildCountPage(pageMaker, ctx);
                     } else {
-                      plainText = buildKeysList(context);
+                      plainText = buildKeysList();
                     }
                     return false;
                   } finally {
-                    synchronized (ow) {
+                    synchronized (ow.lock) {
                       ow.done = true;
                       ow.pageNode = pageNode;
                       ow.plainText = plainText;
-                      ow.notifyAll();
+                      ow.lock.notifyAll();
                     }
                   }
                 }
@@ -1768,21 +1988,22 @@ public class QueueToadlet extends Toadlet
     return pageNode;
   }
 
-  private String buildKeysList(ClientContext context) {
+  private String buildKeysList() {
     try {
-      return makeKeysList(context, uploads);
+      return makeKeysList(uploads);
     } catch (PersistenceDisabledException e) {
       return null;
     }
   }
 
   private OutputWrapper waitForOutput(OutputWrapper ow) {
-    synchronized (ow) {
+    synchronized (ow.lock) {
       while (!ow.done) {
         try {
-          ow.wait();
+          ow.lock.wait();
         } catch (InterruptedException e) {
-          // Ignore and continue waiting
+          Thread.currentThread().interrupt();
+          break;
         }
       }
       return ow;
@@ -1804,19 +2025,49 @@ public class QueueToadlet extends Toadlet
 
   private RequestIntent parseRequestIntent(final HTTPRequest request) {
     String requestPath = request.getPath().substring(path().length());
-    if (requestPath.isEmpty()) {
-      return RequestIntent.NORMAL;
+    return switch (requestPath) {
+      case "countRequests.html", "/countRequests.html" -> RequestIntent.COUNT;
+      case KEY_LIST_LOCATION -> RequestIntent.KEY_LIST;
+      default -> RequestIntent.NORMAL;
+    };
+  }
+
+  private static final class SimpleLatch {
+    private int count;
+    private final Object lock = new Object();
+
+    SimpleLatch(int count) {
+      this.count = count;
     }
-    if (requestPath.equals("countRequests.html") || requestPath.equals("/countRequests.html")) {
-      return RequestIntent.COUNT;
+
+    long getCount() {
+      synchronized (lock) {
+        return count;
+      }
     }
-    if (requestPath.equals(KEY_LIST_LOCATION)) {
-      return RequestIntent.KEY_LIST;
+
+    void await() throws InterruptedException {
+      synchronized (lock) {
+        while (count > 0) {
+          lock.wait();
+        }
+      }
     }
-    return RequestIntent.NORMAL;
+
+    void countDown() {
+      synchronized (lock) {
+        if (count > 0) {
+          count--;
+          if (count == 0) {
+            lock.notifyAll();
+          }
+        }
+      }
+    }
   }
 
   private static final class OutputWrapper {
+    final Object lock = new Object();
     boolean done;
     HTMLNode pageNode;
     String plainText;
@@ -1828,8 +2079,7 @@ public class QueueToadlet extends Toadlet
     KEY_LIST
   }
 
-  protected String makeKeysList(ClientContext context, boolean inserts)
-      throws PersistenceDisabledException {
+  protected String makeKeysList(boolean inserts) throws PersistenceDisabledException {
     RequestStatus[] reqs = fcp.getGlobalRequests();
 
     StringBuilder sb = new StringBuilder();
@@ -1897,27 +2147,14 @@ public class QueueToadlet extends Toadlet
           QueueColumn.KEY
         };
 
-    addCompletedSections(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
-    addFailureSections(
-        pageMaker,
-        ctx,
-        contentNode,
-        partitions,
-        priorityClasses,
-        advancedModeEnabled,
-        advancedModeFailure,
-        simpleModeFailure);
-    addMimeFailureSections(
-        pageMaker,
-        ctx,
-        contentNode,
-        partitions,
-        priorityClasses,
-        advancedModeEnabled,
-        jobComparator);
-    addUncompletedSections(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
+    RequestTableContext tableContext =
+        new RequestTableContext(pageMaker, ctx, priorityClasses, advancedModeEnabled);
+    FailureColumns failureColumns = new FailureColumns(advancedModeFailure, simpleModeFailure);
+
+    addCompletedSections(tableContext, contentNode, partitions);
+    addFailureSections(contentNode, partitions, failureColumns, tableContext);
+    addMimeFailureSections(tableContext, contentNode, partitions, jobComparator);
+    addUncompletedSections(tableContext, contentNode, partitions);
 
     if (!uploads) {
       contentNode.addChild(createBulkDownloadForm(ctx, pageMaker));
@@ -1962,6 +2199,135 @@ public class QueueToadlet extends Toadlet
     };
   }
 
+  private record RequestTableContext(
+      PageMaker pageMaker,
+      ToadletContext ctx,
+      String[] priorityClasses,
+      boolean advancedModeEnabled) {
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o
+          instanceof
+          RequestTableContext(
+              var otherPageMaker,
+              var otherCtx,
+              var otherPriorityClasses,
+              var otherAdvancedModeEnabled))) {
+        return false;
+      }
+      return advancedModeEnabled == otherAdvancedModeEnabled
+          && Objects.equals(pageMaker, otherPageMaker)
+          && Objects.equals(ctx, otherCtx)
+          && Arrays.equals(priorityClasses, otherPriorityClasses);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(pageMaker, ctx, advancedModeEnabled);
+      result = 31 * result + Arrays.hashCode(priorityClasses);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "RequestTableContext["
+          + "pageMaker="
+          + pageMaker
+          + ", ctx="
+          + ctx
+          + ", priorityClasses="
+          + Arrays.toString(priorityClasses)
+          + ", advancedModeEnabled="
+          + advancedModeEnabled
+          + ']';
+    }
+  }
+
+  private record FailureColumns(
+      QueueColumn[] advancedModeColumns, QueueColumn[] simpleModeColumns) {
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o
+          instanceof FailureColumns(var otherAdvancedModeColumns, var otherSimpleModeColumns))) {
+        return false;
+      }
+      return Arrays.equals(advancedModeColumns, otherAdvancedModeColumns)
+          && Arrays.equals(simpleModeColumns, otherSimpleModeColumns);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(advancedModeColumns);
+      result = 31 * result + Arrays.hashCode(simpleModeColumns);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "FailureColumns["
+          + "advancedModeColumns="
+          + Arrays.toString(advancedModeColumns)
+          + ", simpleModeColumns="
+          + Arrays.toString(simpleModeColumns)
+          + ']';
+    }
+  }
+
+  private record RowRenderContext(
+      ToadletContext ctx,
+      String[] priorityClasses,
+      boolean advancedModeEnabled,
+      long now,
+      QueueType queueType) {
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o
+          instanceof
+          RowRenderContext(
+              var otherCtx,
+              var otherPriorityClasses,
+              var otherAdvancedModeEnabled,
+              var otherNow,
+              var otherQueueType))) {
+        return false;
+      }
+      return advancedModeEnabled == otherAdvancedModeEnabled
+          && now == otherNow
+          && Objects.equals(ctx, otherCtx)
+          && Arrays.equals(priorityClasses, otherPriorityClasses)
+          && queueType == otherQueueType;
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(ctx, advancedModeEnabled, now, queueType);
+      result = 31 * result + Arrays.hashCode(priorityClasses);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "RowRenderContext["
+          + "ctx="
+          + ctx
+          + ", priorityClasses="
+          + Arrays.toString(priorityClasses)
+          + ", advancedModeEnabled="
+          + advancedModeEnabled
+          + ", now="
+          + now
+          + ", queueType="
+          + queueType
+          + ']';
+    }
+  }
+
   private void addPanicBoxIfNeeded(PageMaker pageMaker, ToadletContext ctx, HTMLNode contentNode) {
     if (SimpleToadletServer.isPanicButtonToBeShown) {
       contentNode.addChild(createPanicBox(pageMaker, ctx));
@@ -1969,45 +2335,33 @@ public class QueueToadlet extends Toadlet
   }
 
   private void addCompletedSections(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
-    addCompletedDownloadToTempSection(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
-    addCompletedDownloadToDiskSection(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
-    addCompletedUploadSection(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
-    addCompletedDirUploadSection(
-        pageMaker, ctx, contentNode, partitions, priorityClasses, advancedModeEnabled);
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
+    addCompletedDownloadToTempSection(tableContext, contentNode, partitions);
+    addCompletedDownloadToDiskSection(tableContext, contentNode, partitions);
+    addCompletedUploadSection(tableContext, contentNode, partitions);
+    addCompletedDirUploadSection(tableContext, contentNode, partitions);
   }
 
   private void addCompletedDownloadToTempSection(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
     if (partitions.completedDownloadToTemp.isEmpty()) {
       return;
     }
     contentNode.addChild("a", "id", "completedDownloadToTemp");
     HTMLNode completedDownloadsToTempContent =
-        pageMaker.getInfobox(
-            COMPLETED_REQUESTS,
-            l10n(
-                "completedDinTempDirectory",
-                new String[] {"size"},
-                new String[] {String.valueOf(partitions.completedDownloadToTemp.size())}),
-            contentNode,
-            "request-completed",
-            false);
+        tableContext
+            .pageMaker()
+            .getInfobox(
+                COMPLETED_REQUESTS,
+                l10n(
+                    "completedDinTempDirectory",
+                    new String[] {"size"},
+                    new String[] {String.valueOf(partitions.completedDownloadToTemp.size())}),
+                contentNode,
+                "request-completed",
+                false);
     QueueColumn[] columns =
-        advancedModeEnabled
+        tableContext.advancedModeEnabled()
             ? new QueueColumn[] {
               QueueColumn.IDENTIFIER,
               QueueColumn.SIZE,
@@ -2019,39 +2373,33 @@ public class QueueToadlet extends Toadlet
             : new QueueColumn[] {QueueColumn.SIZE, QueueColumn.KEY};
     completedDownloadsToTempContent.addChild(
         createRequestTable(
-            pageMaker,
-            ctx,
+            tableContext,
             partitions.completedDownloadToTemp,
             columns,
-            priorityClasses,
-            advancedModeEnabled,
             "completed-temp",
             QueueType.COMPLETED_DOWNLOAD_TO_TEMP));
   }
 
   private void addCompletedDownloadToDiskSection(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
     if (partitions.completedDownloadToDisk.isEmpty()) {
       return;
     }
     contentNode.addChild("a", "id", "completedDownloadToDisk");
     HTMLNode completedToDiskInfoboxContent =
-        pageMaker.getInfobox(
-            COMPLETED_REQUESTS,
-            l10n(
-                "completedDinDownloadDirectory",
-                new String[] {"size"},
-                new String[] {String.valueOf(partitions.completedDownloadToDisk.size())}),
-            contentNode,
-            "request-completed",
-            false);
+        tableContext
+            .pageMaker()
+            .getInfobox(
+                COMPLETED_REQUESTS,
+                l10n(
+                    "completedDinDownloadDirectory",
+                    new String[] {"size"},
+                    new String[] {String.valueOf(partitions.completedDownloadToDisk.size())}),
+                contentNode,
+                "request-completed",
+                false);
     QueueColumn[] columns =
-        advancedModeEnabled
+        tableContext.advancedModeEnabled()
             ? new QueueColumn[] {
               QueueColumn.IDENTIFIER,
               QueueColumn.FILENAME,
@@ -2064,39 +2412,33 @@ public class QueueToadlet extends Toadlet
             : new QueueColumn[] {QueueColumn.FILENAME, QueueColumn.SIZE, QueueColumn.KEY};
     completedToDiskInfoboxContent.addChild(
         createRequestTable(
-            pageMaker,
-            ctx,
+            tableContext,
             partitions.completedDownloadToDisk,
             columns,
-            priorityClasses,
-            advancedModeEnabled,
             "completed-disk",
             QueueType.COMPLETED_DOWNLOAD_TO_DISK));
   }
 
   private void addCompletedUploadSection(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
     if (partitions.completedUpload.isEmpty()) {
       return;
     }
     contentNode.addChild("a", "id", "completedUpload");
     HTMLNode completedUploadInfoboxContent =
-        pageMaker.getInfobox(
-            COMPLETED_REQUESTS,
-            l10n(
-                "completedU",
-                new String[] {"size"},
-                new String[] {String.valueOf(partitions.completedUpload.size())}),
-            contentNode,
-            "download-completed",
-            false);
+        tableContext
+            .pageMaker()
+            .getInfobox(
+                COMPLETED_REQUESTS,
+                l10n(
+                    "completedU",
+                    new String[] {"size"},
+                    new String[] {String.valueOf(partitions.completedUpload.size())}),
+                contentNode,
+                "download-completed",
+                false);
     QueueColumn[] columns =
-        advancedModeEnabled
+        tableContext.advancedModeEnabled()
             ? new QueueColumn[] {
               QueueColumn.IDENTIFIER,
               QueueColumn.FILENAME,
@@ -2108,39 +2450,33 @@ public class QueueToadlet extends Toadlet
             : new QueueColumn[] {QueueColumn.FILENAME, QueueColumn.SIZE, QueueColumn.KEY};
     completedUploadInfoboxContent.addChild(
         createRequestTable(
-            pageMaker,
-            ctx,
+            tableContext,
             partitions.completedUpload,
             columns,
-            priorityClasses,
-            advancedModeEnabled,
             "completed-upload-file",
             QueueType.COMPLETED_UPLOAD));
   }
 
   private void addCompletedDirUploadSection(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
     if (partitions.completedDirUpload.isEmpty()) {
       return;
     }
     contentNode.addChild("a", "id", "completedDirUpload");
     HTMLNode completedUploadDirContent =
-        pageMaker.getInfobox(
-            COMPLETED_REQUESTS,
-            l10n(
-                "completedUDirectory",
-                new String[] {"size"},
-                new String[] {String.valueOf(partitions.completedDirUpload.size())}),
-            contentNode,
-            "download-completed",
-            false);
+        tableContext
+            .pageMaker()
+            .getInfobox(
+                COMPLETED_REQUESTS,
+                l10n(
+                    "completedUDirectory",
+                    new String[] {"size"},
+                    new String[] {String.valueOf(partitions.completedDirUpload.size())}),
+                contentNode,
+                "download-completed",
+                false);
     QueueColumn[] columns =
-        advancedModeEnabled
+        tableContext.advancedModeEnabled()
             ? new QueueColumn[] {
               QueueColumn.IDENTIFIER,
               QueueColumn.FILES,
@@ -2151,40 +2487,33 @@ public class QueueToadlet extends Toadlet
             : new QueueColumn[] {QueueColumn.FILES, QueueColumn.TOTAL_SIZE, QueueColumn.KEY};
     completedUploadDirContent.addChild(
         createRequestTable(
-            pageMaker,
-            ctx,
+            tableContext,
             partitions.completedDirUpload,
             columns,
-            priorityClasses,
-            advancedModeEnabled,
             "completed-upload-dir",
             QueueType.COMPLETED_DIR_UPLOAD));
   }
 
   private void addUncompletedSections(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      HTMLNode contentNode,
-      QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+      RequestTableContext tableContext, HTMLNode contentNode, QueuePartitions partitions) {
     if (!partitions.uncompletedDownload.isEmpty()) {
       contentNode.addChild("a", "id", "uncompletedDownload");
       HTMLNode uncompletedContent =
-          pageMaker.getInfobox(
-              REQUESTS_IN_PROGRESS,
-              l10n(
-                  "wipD",
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.uncompletedDownload.size())}),
-              contentNode,
-              "download-progressing",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  REQUESTS_IN_PROGRESS,
+                  l10n(
+                      "wipD",
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.uncompletedDownload.size())}),
+                  contentNode,
+                  "download-progressing",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedDownload,
                 new QueueColumn[] {
                   QueueColumn.IDENTIFIER,
@@ -2193,27 +2522,22 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.MIME_TYPE,
                   QueueColumn.PROGRESS,
                   QueueColumn.LAST_ACTIVITY,
-                  /* FIXME: This column has been disabled since it will always show
-                   * "never" even if parts of the file transfer failed due to temporary
-                   * reasons such as "data not found" / "route not found" / etc. This is
-                   * due to shortcomings in the underlying event framework. Please
-                   * re-enable it once the underlying issue is fixed:
-                   * https://bugs.freenetproject.org/view.php?id=6526 */
+                  /* Column disabled because it currently always shows "never" even when
+                   * transfers hit temporary errors (data not found, route not found, etc.).
+                   * The underlying event framework needs to be fixed
+                   * (https://bugs.freenetproject.org/view.php?id=6526) before re-enabling. */
                   // QueueColumn.LAST_FAILURE,
                   QueueColumn.PERSISTENCE,
                   QueueColumn.FILENAME,
                   QueueColumn.KEY,
                   QueueColumn.COMPAT_MODE
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-download",
                 QueueType.UNCOMPLETED_DOWNLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedDownload,
                 new QueueColumn[] {
                   QueueColumn.PRIORITY,
@@ -2222,8 +2546,6 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.LAST_ACTIVITY,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-download",
                 QueueType.UNCOMPLETED_DOWNLOAD));
       }
@@ -2232,20 +2554,21 @@ public class QueueToadlet extends Toadlet
     if (!partitions.uncompletedUpload.isEmpty()) {
       contentNode.addChild("a", "id", "uncompletedUpload");
       HTMLNode uncompletedContent =
-          pageMaker.getInfobox(
-              REQUESTS_IN_PROGRESS,
-              l10n(
-                  "wipU",
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.uncompletedUpload.size())}),
-              contentNode,
-              "upload-progressing",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  REQUESTS_IN_PROGRESS,
+                  l10n(
+                      "wipU",
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.uncompletedUpload.size())}),
+                  contentNode,
+                  "upload-progressing",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedUpload,
                 new QueueColumn[] {
                   QueueColumn.IDENTIFIER,
@@ -2254,26 +2577,21 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.MIME_TYPE,
                   QueueColumn.PROGRESS,
                   QueueColumn.LAST_ACTIVITY,
-                  /* FIXME: This column has been disabled since it will always show
-                   * "never" even if parts of the file transfer failed due to temporary
-                   * reasons such as "data not found" / "route not found" / etc. This is
-                   * due to shortcomings in the underlying event framework. Please
-                   * re-enable it once the underlying issue is fixed:
-                   * https://bugs.freenetproject.org/view.php?id=6526 */
+                  /* Column disabled because it currently always shows "never" even when
+                   * transfers hit temporary errors (data not found, route not found, etc.).
+                   * The underlying event framework needs to be fixed
+                   * (https://bugs.freenetproject.org/view.php?id=6526) before re-enabling. */
                   // QueueColumn.LAST_FAILURE,
                   QueueColumn.PERSISTENCE,
                   QueueColumn.FILENAME,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-upload-file",
                 QueueType.UNCOMPLETED_UPLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedUpload,
                 new QueueColumn[] {
                   QueueColumn.PRIORITY,
@@ -2283,8 +2601,6 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.LAST_ACTIVITY,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-upload-file",
                 QueueType.UNCOMPLETED_UPLOAD));
       }
@@ -2293,42 +2609,38 @@ public class QueueToadlet extends Toadlet
     if (!partitions.uncompletedDirUpload.isEmpty()) {
       contentNode.addChild("a", "id", "uncompletedDirUpload");
       HTMLNode uncompletedContent =
-          pageMaker.getInfobox(
-              REQUESTS_IN_PROGRESS,
-              l10n(
-                  "wipDU",
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.uncompletedDirUpload.size())}),
-              contentNode,
-              "download-progressing upload-progressing",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  REQUESTS_IN_PROGRESS,
+                  l10n(
+                      "wipDU",
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.uncompletedDirUpload.size())}),
+                  contentNode,
+                  "download-progressing upload-progressing",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedDirUpload,
                 new QueueColumn[] {
                   QueueColumn.IDENTIFIER, QueueColumn.FILES, QueueColumn.PRIORITY,
                   QueueColumn.TOTAL_SIZE, QueueColumn.PROGRESS, QueueColumn.LAST_ACTIVITY,
-                  /* FIXME: This column has been disabled since it will always show
-                   * "never" even if parts of the file transfer failed due to temporary
-                   * reasons such as "data not found" / "route not found" / etc. This is
-                   * due to shortcomings in the underlying event framework. Please
-                   * re-enable it once the underlying issue is fixed:
-                   * https://bugs.freenetproject.org/view.php?id=6526 */
+                  /* Column disabled because it currently always shows "never" even when
+                   * transfers hit temporary errors (data not found, route not found, etc.).
+                   * The underlying event framework needs to be fixed
+                   * (https://bugs.freenetproject.org/view.php?id=6526) before re-enabling. */
                   // QueueColumn.LAST_FAILURE,
                   QueueColumn.PERSISTENCE, QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-upload-dir",
                 QueueType.UNCOMPLETED_DIR_UPLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.uncompletedDirUpload,
                 new QueueColumn[] {
                   QueueColumn.PRIORITY,
@@ -2338,8 +2650,6 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.LAST_ACTIVITY,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "uncompleted-upload-dir",
                 QueueType.UNCOMPLETED_DIR_UPLOAD));
       }
@@ -2347,46 +2657,38 @@ public class QueueToadlet extends Toadlet
   }
 
   private void addFailureSections(
-      PageMaker pageMaker,
-      ToadletContext ctx,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
-      QueueColumn[] advancedModeFailure,
-      QueueColumn[] simpleModeFailure) {
+      FailureColumns failureColumns,
+      RequestTableContext tableContext) {
     if (!partitions.failedDownload.isEmpty()) {
       contentNode.addChild("a", "id", "failedDownload");
       HTMLNode failedContent =
-          pageMaker.getInfobox(
-              FAILED_REQUESTS,
-              l10n(
-                  "failedD",
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.failedDownload.size())}),
-              contentNode,
-              "download-failed",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  FAILED_REQUESTS,
+                  l10n(
+                      "failedD",
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.failedDownload.size())}),
+                  contentNode,
+                  "download-failed",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedDownload,
-                advancedModeFailure,
-                priorityClasses,
-                advancedModeEnabled,
+                failureColumns.advancedModeColumns(),
                 "failed-download",
                 QueueType.FAILED_DOWNLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedDownload,
-                simpleModeFailure,
-                priorityClasses,
-                advancedModeEnabled,
+                failureColumns.simpleModeColumns(),
                 "failed-download",
                 QueueType.FAILED_DOWNLOAD));
       }
@@ -2395,35 +2697,31 @@ public class QueueToadlet extends Toadlet
     if (!partitions.failedUpload.isEmpty()) {
       contentNode.addChild("a", "id", "failedUpload");
       HTMLNode failedContent =
-          pageMaker.getInfobox(
-              FAILED_REQUESTS,
-              l10n(
-                  STATUS_FAILED_UPLOAD,
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.failedUpload.size())}),
-              contentNode,
-              "upload-failed",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  FAILED_REQUESTS,
+                  l10n(
+                      STATUS_FAILED_UPLOAD,
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.failedUpload.size())}),
+                  contentNode,
+                  "upload-failed",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedUpload,
-                advancedModeFailure,
-                priorityClasses,
-                advancedModeEnabled,
+                failureColumns.advancedModeColumns(),
                 "failed-upload-file",
                 QueueType.FAILED_UPLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedUpload,
-                simpleModeFailure,
-                priorityClasses,
-                advancedModeEnabled,
+                failureColumns.simpleModeColumns(),
                 "failed-upload-file",
                 QueueType.FAILED_UPLOAD));
       }
@@ -2432,20 +2730,21 @@ public class QueueToadlet extends Toadlet
     if (!partitions.failedDirUpload.isEmpty()) {
       contentNode.addChild("a", "id", "failedDirUpload");
       HTMLNode failedContent =
-          pageMaker.getInfobox(
-              FAILED_REQUESTS,
-              l10n(
-                  STATUS_FAILED_UPLOAD,
-                  new String[] {"size"},
-                  new String[] {String.valueOf(partitions.failedDirUpload.size())}),
-              contentNode,
-              "upload-failed",
-              false);
-      if (advancedModeEnabled) {
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  FAILED_REQUESTS,
+                  l10n(
+                      STATUS_FAILED_UPLOAD,
+                      new String[] {"size"},
+                      new String[] {String.valueOf(partitions.failedDirUpload.size())}),
+                  contentNode,
+                  "upload-failed",
+                  false);
+      if (tableContext.advancedModeEnabled()) {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedDirUpload,
                 new QueueColumn[] {
                   QueueColumn.IDENTIFIER,
@@ -2456,15 +2755,12 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.PERSISTENCE,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "failed-upload-dir",
                 QueueType.FAILED_DIR_UPLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
-                pageMaker,
-                ctx,
+                tableContext,
                 partitions.failedDirUpload,
                 new QueueColumn[] {
                   QueueColumn.FILES,
@@ -2473,8 +2769,6 @@ public class QueueToadlet extends Toadlet
                   QueueColumn.REASON,
                   QueueColumn.KEY
                 },
-                priorityClasses,
-                advancedModeEnabled,
                 "failed-upload-dir",
                 QueueType.FAILED_DIR_UPLOAD));
       }
@@ -2482,38 +2776,18 @@ public class QueueToadlet extends Toadlet
   }
 
   private void addMimeFailureSections(
-      PageMaker pageMaker,
-      ToadletContext ctx,
+      RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
       Comparator<RequestStatus> jobComparator) {
-    addBadMimeFailures(
-        pageMaker,
-        ctx,
-        contentNode,
-        partitions,
-        priorityClasses,
-        advancedModeEnabled,
-        jobComparator);
-    addUnknownMimeFailures(
-        pageMaker,
-        ctx,
-        contentNode,
-        partitions,
-        priorityClasses,
-        advancedModeEnabled,
-        jobComparator);
+    addBadMimeFailures(tableContext, contentNode, partitions, jobComparator);
+    addUnknownMimeFailures(tableContext, contentNode, partitions, jobComparator);
   }
 
   private void addBadMimeFailures(
-      PageMaker pageMaker,
-      ToadletContext ctx,
+      RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
       Comparator<RequestStatus> jobComparator) {
     if (partitions.failedBadMIMEType.isEmpty()) {
       return;
@@ -2526,15 +2800,17 @@ public class QueueToadlet extends Toadlet
       contentNode.addChild("a", "id", "failedDownload-badtype-" + atype);
       FilterMIMEType typeHandler = ContentFilter.getMIMEType(type);
       HTMLNode failedContent =
-          pageMaker.getInfobox(
-              FAILED_REQUESTS,
-              l10n(
-                  "failedDBadMIME",
-                  new String[] {"size", "type"},
-                  new String[] {String.valueOf(getters.size()), type}),
-              contentNode,
-              "download-failed-" + atype,
-              false);
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  FAILED_REQUESTS,
+                  l10n(
+                      "failedDBadMIME",
+                      new String[] {"size", "type"},
+                      new String[] {String.valueOf(getters.size()), type}),
+                  contentNode,
+                  "download-failed-" + atype,
+                  false);
       KnownUnsafeContentTypeException e = new KnownUnsafeContentTypeException(typeHandler);
       failedContent.addChild("p", l10n("badMIMETypeIntro", "type", type));
       List<String> detail = e.details();
@@ -2545,9 +2821,9 @@ public class QueueToadlet extends Toadlet
         }
       }
       failedContent.addChild("p", l10n("mimeProblemFetchAnyway"));
-      Collections.sort(getters, jobComparator);
+      getters.sort(jobComparator);
       QueueColumn[] columns =
-          advancedModeEnabled
+          tableContext.advancedModeEnabled()
               ? new QueueColumn[] {
                 QueueColumn.IDENTIFIER,
                 QueueColumn.FILENAME,
@@ -2558,12 +2834,9 @@ public class QueueToadlet extends Toadlet
               : new QueueColumn[] {QueueColumn.FILENAME, QueueColumn.SIZE, QueueColumn.KEY};
       failedContent.addChild(
           createRequestTable(
-              pageMaker,
-              ctx,
+              tableContext,
               getters,
               columns,
-              priorityClasses,
-              advancedModeEnabled,
               "failed-download-file-badmime",
               type,
               QueueType.FAILED_BAD_MIME_TYPE));
@@ -2571,12 +2844,9 @@ public class QueueToadlet extends Toadlet
   }
 
   private void addUnknownMimeFailures(
-      PageMaker pageMaker,
-      ToadletContext ctx,
+      RequestTableContext tableContext,
       HTMLNode contentNode,
       QueuePartitions partitions,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
       Comparator<RequestStatus> jobComparator) {
     if (partitions.failedUnknownMIMEType.isEmpty()) {
       return;
@@ -2588,22 +2858,24 @@ public class QueueToadlet extends Toadlet
       String atype = type.replace("-", "--").replace('/', '-');
       contentNode.addChild("a", "id", "failedDownload-unknowntype-" + atype);
       HTMLNode failedContent =
-          pageMaker.getInfobox(
-              FAILED_REQUESTS,
-              l10n(
-                  "failedDUnknownMIME",
-                  new String[] {"size", "type"},
-                  new String[] {String.valueOf(getters.size()), type}),
-              contentNode,
-              "download-failed-" + atype,
-              false);
+          tableContext
+              .pageMaker()
+              .getInfobox(
+                  FAILED_REQUESTS,
+                  l10n(
+                      "failedDUnknownMIME",
+                      new String[] {"size", "type"},
+                      new String[] {String.valueOf(getters.size()), type}),
+                  contentNode,
+                  "download-failed-" + atype,
+                  false);
       failedContent.addChild(
           "p",
           NodeL10n.getBase().getString("UnknownContentTypeException.explanation", "type", type));
       failedContent.addChild("p", l10n("mimeProblemFetchAnyway"));
-      Collections.sort(getters, jobComparator);
+      getters.sort(jobComparator);
       QueueColumn[] columns =
-          advancedModeEnabled
+          tableContext.advancedModeEnabled()
               ? new QueueColumn[] {
                 QueueColumn.IDENTIFIER,
                 QueueColumn.FILENAME,
@@ -2614,12 +2886,9 @@ public class QueueToadlet extends Toadlet
               : new QueueColumn[] {QueueColumn.FILENAME, QueueColumn.SIZE, QueueColumn.KEY};
       failedContent.addChild(
           createRequestTable(
-              pageMaker,
-              ctx,
+              tableContext,
               getters,
               columns,
-              priorityClasses,
-              advancedModeEnabled,
               "failed-download-file-unknownmime",
               type,
               QueueType.FAILED_UNKNOWN_MIME_TYPE));
@@ -2823,22 +3092,24 @@ public class QueueToadlet extends Toadlet
   }
 
   private void sortPartitions(QueuePartitions partitions, Comparator<RequestStatus> jobComparator) {
-    Collections.sort(partitions.completedDownloadToDisk, jobComparator);
-    Collections.sort(partitions.completedDownloadToTemp, jobComparator);
-    Collections.sort(partitions.completedUpload, jobComparator);
-    Collections.sort(partitions.completedDirUpload, jobComparator);
-    Collections.sort(partitions.failedDownload, jobComparator);
-    Collections.sort(partitions.failedUpload, jobComparator);
-    Collections.sort(partitions.failedDirUpload, jobComparator);
-    Collections.sort(partitions.uncompletedDownload, jobComparator);
-    Collections.sort(partitions.uncompletedUpload, jobComparator);
-    Collections.sort(partitions.uncompletedDirUpload, jobComparator);
+    partitions.completedDownloadToDisk.sort(jobComparator);
+    partitions.completedDownloadToTemp.sort(jobComparator);
+    partitions.completedUpload.sort(jobComparator);
+    partitions.completedDirUpload.sort(jobComparator);
+    partitions.failedDownload.sort(jobComparator);
+    partitions.failedUpload.sort(jobComparator);
+    partitions.failedDirUpload.sort(jobComparator);
+    partitions.uncompletedDownload.sort(jobComparator);
+    partitions.uncompletedUpload.sort(jobComparator);
+    partitions.uncompletedDirUpload.sort(jobComparator);
   }
 
   private void logTotals(QueuePartitions partitions) {
-    LOG.debug(
-        "Total queued downloads: {}", SizeUtil.formatSize(partitions.totalQueuedDownloadSize));
-    LOG.debug("Total queued uploads: {}", SizeUtil.formatSize(partitions.totalQueuedUploadSize));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Total queued downloads: {}", SizeUtil.formatSize(partitions.totalQueuedDownloadSize));
+      LOG.debug("Total queued uploads: {}", SizeUtil.formatSize(partitions.totalQueuedUploadSize));
+    }
   }
 
   private Comparator<RequestStatus> createJobComparator(final HTTPRequest request) {
@@ -2967,50 +3238,86 @@ public class QueueToadlet extends Toadlet
 
   private void handleDownloadPartition(DownloadRequestStatus download, QueuePartitions partitions) {
     if (download.hasSucceeded()) {
-      if (download.toTempSpace()) partitions.completedDownloadToTemp.add(download);
-      else partitions.completedDownloadToDisk.add(download);
+      addCompletedDownload(download, partitions);
     } else if (download.hasFinished()) {
-      FetchExceptionMode failureCode = download.getFailureCode();
-      String mimeType = download.getMIMEType();
-      if (mimeType == null
-          && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
-              || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
+      handleFinishedDownload(download, partitions);
+    } else {
+      handleUncompletedDownload(download, partitions);
+    }
+    partitions.added = true;
+  }
+
+  private void addCompletedDownload(DownloadRequestStatus download, QueuePartitions partitions) {
+    if (download.toTempSpace()) {
+      partitions.completedDownloadToTemp.add(download);
+    } else {
+      partitions.completedDownloadToDisk.add(download);
+    }
+  }
+
+  private void handleFinishedDownload(DownloadRequestStatus download, QueuePartitions partitions) {
+    FetchExceptionMode failureCode = download.getFailureCode();
+    String mimeType = normalizeMimeType(download, failureCode);
+    switch (failureCode) {
+      case CONTENT_VALIDATION_UNKNOWN_MIME -> addUnknownMimeFailure(download, partitions, mimeType);
+      case CONTENT_VALIDATION_BAD_MIME -> handleBadMimeFailure(download, partitions, mimeType);
+      default -> partitions.failedDownload.add(download);
+    }
+  }
+
+  private String normalizeMimeType(DownloadRequestStatus download, FetchExceptionMode failureCode) {
+    String mimeType = download.getMIMEType();
+    if (mimeType == null
+        && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
+            || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
+      if (LOG.isErrorEnabled()) {
         LOG.error(
             "MIME type is null but failure code is {} for {} : {}",
             FetchException.getMessage(failureCode),
             download.getIdentifier(),
             download.getURI());
-        mimeType = DefaultMIMETypes.DEFAULT_MIME_TYPE;
       }
-      if (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME) {
-        mimeType = ContentFilter.stripMIMEType(mimeType);
-        LinkedList<DownloadRequestStatus> list =
-            partitions.failedUnknownMIMEType.computeIfAbsent(mimeType, key -> new LinkedList<>());
-        list.add(download);
-      } else if (failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME) {
-        mimeType = ContentFilter.stripMIMEType(mimeType);
-        FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
-        LinkedList<DownloadRequestStatus> list;
-        if (type == null) {
-          LOG.error(
-              "Bad MIME failure code yet MIME is {} which does not have a handler!", mimeType);
-          list =
-              partitions.failedUnknownMIMEType.computeIfAbsent(mimeType, key -> new LinkedList<>());
-        } else {
-          list = partitions.failedBadMIMEType.computeIfAbsent(mimeType, key -> new LinkedList<>());
-        }
-        list.add(download);
-      } else {
-        partitions.failedDownload.add(download);
-      }
-    } else {
-      short prio = download.getPriority();
-      if (prio < partitions.lowestQueuedPrio) partitions.lowestQueuedPrio = prio;
-      partitions.uncompletedDownload.add(download);
-      long size = download.getDataSize();
-      if (size > 0) partitions.totalQueuedDownloadSize += size;
+      return DefaultMIMETypes.DEFAULT_MIME_TYPE;
     }
-    partitions.added = true;
+    return mimeType;
+  }
+
+  private void addUnknownMimeFailure(
+      DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
+    String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
+    LinkedList<DownloadRequestStatus> list =
+        partitions.failedUnknownMIMEType.computeIfAbsent(
+            normalizedMimeType, key -> new LinkedList<>());
+    list.add(download);
+  }
+
+  private void handleBadMimeFailure(
+      DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
+    String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
+    FilterMIMEType type = ContentFilter.getMIMEType(normalizedMimeType);
+    LinkedList<DownloadRequestStatus> list;
+    if (type == null) {
+      LOG.error(
+          "Bad MIME failure code yet MIME is {} which does not have a handler!",
+          normalizedMimeType);
+      list =
+          partitions.failedUnknownMIMEType.computeIfAbsent(
+              normalizedMimeType, key -> new LinkedList<>());
+    } else {
+      list =
+          partitions.failedBadMIMEType.computeIfAbsent(
+              normalizedMimeType, key -> new LinkedList<>());
+    }
+    list.add(download);
+  }
+
+  private void handleUncompletedDownload(
+      DownloadRequestStatus download, QueuePartitions partitions) {
+    short prio = download.getPriority();
+    if (prio < partitions.lowestQueuedPrio) partitions.lowestQueuedPrio = prio;
+    partitions.uncompletedDownload.add(download);
+    long size = download.getDataSize();
+    if (size > 0) partitions.totalQueuedDownloadSize += size;
   }
 
   private static final class QueuePartitions {
@@ -3086,8 +3393,9 @@ public class QueueToadlet extends Toadlet
     if ((fetched < 0) || (adjustedTotal <= 0)) {
       progressCell.addChild("span", ATTR_CLASS, "progress_fraction_unknown", l10n(UNKNOWN));
     } else {
-      addProgressBar(
-          progressCell, fetched, failed, fatallyFailed, min, adjustedTotal, finalized, upload);
+      ProgressBlockCounts progressCounts =
+          new ProgressBlockCounts(fetched, failed, fatallyFailed, min, adjustedTotal);
+      addProgressBar(progressCell, progressCounts, finalized, upload);
     }
     return progressCell;
   }
@@ -3113,38 +3421,39 @@ public class QueueToadlet extends Toadlet
     return (!advancedMode || total < min) ? min : total;
   }
 
+  private record ProgressBlockCounts(
+      int fetched, int failed, int fatallyFailed, int min, int total) {}
+
   private static void addProgressBar(
       HTMLNode progressCell,
-      int fetched,
-      int failed,
-      int fatallyFailed,
-      int min,
-      int total,
+      ProgressBlockCounts progressCounts,
       boolean finalized,
       boolean upload) {
-    int fetchedPercent = (int) (fetched / (double) total * 100);
-    int failedPercent = (int) (failed / (double) total * 100);
-    int fatallyFailedPercent = (int) (fatallyFailed / (double) total * 100);
-    int minPercent = (int) (min / (double) total * 100);
+    int fetchedPercent = (int) (progressCounts.fetched() / (double) progressCounts.total() * 100);
+    int failedPercent = (int) (progressCounts.failed() / (double) progressCounts.total() * 100);
+    int fatallyFailedPercent =
+        (int) (progressCounts.fatallyFailed() / (double) progressCounts.total() * 100);
+    int minPercent = (int) (progressCounts.min() / (double) progressCounts.total() * 100);
     HTMLNode progressBar = progressCell.addChild("div", ATTR_CLASS, "progressbar");
     progressBar.addChild(
         "div",
         new String[] {ATTR_CLASS, ATTR_STYLE},
         new String[] {"progressbar-done", CSS_WIDTH_PREFIX + fetchedPercent + "%;"});
 
-    if (failed > 0) {
+    if (progressCounts.failed() > 0) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
           new String[] {"progressbar-failed", CSS_WIDTH_PREFIX + failedPercent + "%;"});
     }
-    if (fatallyFailed > 0) {
+    if (progressCounts.fatallyFailed() > 0) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
           new String[] {"progressbar-failed2", CSS_WIDTH_PREFIX + fatallyFailedPercent + "%;"});
     }
-    if ((fetched + failed + fatallyFailed) < min) {
+    if ((progressCounts.fetched() + progressCounts.failed() + progressCounts.fatallyFailed())
+        < progressCounts.min()) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
@@ -3153,10 +3462,10 @@ public class QueueToadlet extends Toadlet
           });
     }
 
-    NumberFormat nf = NumberFormat.getInstance();
-    nf.setMaximumFractionDigits(1);
-    String prefix = '(' + Integer.toString(fetched) + "/ " + min + "): ";
-    addProgressTitle(progressBar, fetched, min, finalized, upload, nf, prefix);
+    String prefix =
+        '(' + Integer.toString(progressCounts.fetched()) + "/ " + progressCounts.min() + "): ";
+    addProgressTitle(
+        progressBar, progressCounts.fetched(), progressCounts.min(), finalized, upload, prefix);
   }
 
   private static void addProgressTitle(
@@ -3165,9 +3474,10 @@ public class QueueToadlet extends Toadlet
       int min,
       boolean finalized,
       boolean upload,
-      NumberFormat nf,
       String prefix) {
-    String percentText = nf.format((int) ((fetched / (double) min) * 1000) / 10.0) + '%';
+    double percent = min == 0 ? 0.0 : (fetched / (double) min) * 100.0;
+    double roundedPercent = Math.round(percent * 10.0) / 10.0;
+    String percentText = roundedPercent + "%";
     if (finalized) {
       progressBar.addChild(
           "div",
@@ -3219,13 +3529,11 @@ public class QueueToadlet extends Toadlet
   }
 
   private HTMLNode createPriorityControl(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      short priorityClass,
       String[] priorityClasses,
       boolean advancedModeEnabled,
       boolean isUpload,
       String controlSuffix) {
+    short selectedPriorityClass = RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS;
     HTMLNode priorityDiv = new HTMLNode("div", ATTR_CLASS, "request-priority nowrap");
     priorityDiv.addChild(
         TAG_INPUT,
@@ -3242,7 +3550,7 @@ public class QueueToadlet extends Toadlet
     HTMLNode prioritySelect = priorityDiv.addChild("select", ATTR_NAME, PRIORITY + controlSuffix);
     for (int p = 0; p < RequestStarter.NUMBER_OF_PRIORITY_CLASSES; p++) {
       if (p <= RequestStarter.INTERACTIVE_PRIORITY_CLASS && !advancedModeEnabled) continue;
-      if (p == priorityClass) {
+      if (p == selectedPriorityClass) {
         prioritySelect.addChild(
             "option",
             new String[] {ATTR_VALUE, "selected"},
@@ -3255,7 +3563,7 @@ public class QueueToadlet extends Toadlet
     return priorityDiv;
   }
 
-  private HTMLNode createRecommendControl(PageMaker pageMaker, ToadletContext ctx) {
+  private HTMLNode createRecommendControl() {
     HTMLNode recommendDiv = new HTMLNode("div", ATTR_CLASS, "request-recommend");
     recommendDiv.addChild(
         TAG_INPUT,
@@ -3268,8 +3576,7 @@ public class QueueToadlet extends Toadlet
    * Create a delete or restart control at the top of a table. It applies to whichever requests are
    * checked in the table below.
    */
-  private HTMLNode createDeleteControl(
-      PageMaker pageMaker, ToadletContext ctx, String mimeType, QueueType queueType) {
+  private HTMLNode createDeleteControl(String mimeType, QueueType queueType) {
     HTMLNode deleteDiv = new HTMLNode("div", ATTR_CLASS, "request-delete");
     if (queueType == QueueType.COMPLETED_DOWNLOAD_TO_TEMP) {
       deleteDiv.addChild(
@@ -3550,50 +3857,35 @@ public class QueueToadlet extends Toadlet
   }
 
   private HTMLNode createRequestTable(
-      PageMaker pageMaker,
-      ToadletContext ctx,
+      RequestTableContext tableContext,
       List<? extends RequestStatus> requests,
       QueueColumn[] columns,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
       String id,
       QueueType queueType) {
-    return createRequestTable(
-        pageMaker,
-        ctx,
-        requests,
-        columns,
-        priorityClasses,
-        advancedModeEnabled,
-        id,
-        null,
-        queueType);
+    return createRequestTable(tableContext, requests, columns, id, null, queueType);
   }
 
   private HTMLNode createRequestTable(
-      PageMaker pageMaker,
-      ToadletContext ctx,
+      RequestTableContext tableContext,
       List<? extends RequestStatus> requests,
       QueueColumn[] columns,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
       String id,
       String mimeType,
       QueueType queueType) {
+    Objects.requireNonNull(tableContext.pageMaker(), "pageMaker");
     boolean hasFriends = core.getNode().getDarknetConnections().length > 0;
     long now = System.currentTimeMillis();
 
     HTMLNode formDiv = new HTMLNode("div", ATTR_CLASS, "request-table-form");
-    HTMLNode form = createRequestForm(ctx, id, advancedModeEnabled, formDiv);
+    HTMLNode form =
+        createRequestForm(tableContext.ctx(), id, tableContext.advancedModeEnabled(), formDiv);
 
     createRequestTableButtons(
         form,
-        pageMaker,
-        ctx,
         mimeType,
         hasFriends,
-        advancedModeEnabled,
-        priorityClasses,
+        tableContext.advancedModeEnabled(),
+        tableContext.priorityClasses(),
         true,
         queueType);
 
@@ -3602,17 +3894,22 @@ public class QueueToadlet extends Toadlet
     headerRow.addChild("th");
     addHeaderCells(headerRow, columns);
 
-    addRequestRows(
-        table, requests, columns, priorityClasses, ctx, advancedModeEnabled, now, queueType);
+    RowRenderContext rowContext =
+        new RowRenderContext(
+            tableContext.ctx(),
+            tableContext.priorityClasses(),
+            tableContext.advancedModeEnabled(),
+            now,
+            queueType);
+
+    addRequestRows(table, requests, columns, rowContext);
 
     createRequestTableButtons(
         form,
-        pageMaker,
-        ctx,
         mimeType,
         hasFriends,
-        advancedModeEnabled,
-        priorityClasses,
+        tableContext.advancedModeEnabled(),
+        tableContext.priorityClasses(),
         false,
         queueType);
     return formDiv;
@@ -3704,43 +4001,24 @@ public class QueueToadlet extends Toadlet
       HTMLNode table,
       List<? extends RequestStatus> requests,
       QueueColumn[] columns,
-      String[] priorityClasses,
-      ToadletContext ctx,
-      boolean advancedModeEnabled,
-      long now,
-      QueueType queueType) {
+      RowRenderContext rowContext) {
     int index = 0;
     for (RequestStatus clientRequest : requests) {
-      addRequestRow(
-          table,
-          columns,
-          priorityClasses,
-          ctx,
-          advancedModeEnabled,
-          now,
-          queueType,
-          index++,
-          clientRequest);
+      addRequestRow(table, columns, rowContext, index++, clientRequest);
     }
   }
 
   private void addRequestRow(
       HTMLNode table,
       QueueColumn[] columns,
-      String[] priorityClasses,
-      ToadletContext ctx,
-      boolean advancedModeEnabled,
-      long now,
-      QueueType queueType,
+      RowRenderContext rowContext,
       int index,
       RequestStatus clientRequest) {
     HTMLNode requestRow = table.addChild("tr", ATTR_CLASS, PRIORITY + clientRequest.getPriority());
     requestRow.addChild(createCheckboxCell(clientRequest, index));
 
     for (QueueColumn column : columns) {
-      HTMLNode cell =
-          createColumnCell(
-              column, clientRequest, ctx, priorityClasses, advancedModeEnabled, now, queueType);
+      HTMLNode cell = createColumnCell(column, clientRequest, rowContext);
       if (cell != null) {
         requestRow.addChild(cell);
       }
@@ -3748,36 +4026,34 @@ public class QueueToadlet extends Toadlet
   }
 
   private HTMLNode createColumnCell(
-      QueueColumn column,
-      RequestStatus clientRequest,
-      ToadletContext ctx,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
-      long now,
-      QueueType queueType) {
+      QueueColumn column, RequestStatus clientRequest, RowRenderContext rowContext) {
     return switch (column) {
       case IDENTIFIER ->
           createIdentifierCell(
               clientRequest.getURI(),
               clientRequest.getIdentifier(),
               clientRequest instanceof UploadDirRequestStatus);
-      case SIZE -> createSizeCellForRequest(clientRequest, advancedModeEnabled);
+      case SIZE -> createSizeCellForRequest(clientRequest, rowContext.advancedModeEnabled());
       case MIME_TYPE -> createMimeTypeCell(clientRequest);
       case PERSISTENCE ->
           createPersistenceCell(clientRequest.isPersistent(), clientRequest.isPersistentForever());
       case KEY -> createKeyCellForRequest(clientRequest);
       case FILENAME -> createFilenameCellForRequest(clientRequest);
-      case PRIORITY -> createPriorityCell(clientRequest.getPriority(), priorityClasses);
+      case PRIORITY ->
+          createPriorityCell(clientRequest.getPriority(), rowContext.priorityClasses());
       case FILES -> createNumberCell(((UploadDirRequestStatus) clientRequest).getNumberOfFiles());
       case TOTAL_SIZE ->
           createSizeCell(
               ((UploadDirRequestStatus) clientRequest).getTotalDataSize(),
               true,
-              advancedModeEnabled);
-      case PROGRESS -> createProgressCellForRequest(ctx, clientRequest, queueType.isUpload);
+              rowContext.advancedModeEnabled());
+      case PROGRESS ->
+          createProgressCellForRequest(
+              rowContext.ctx(), clientRequest, rowContext.queueType().isUpload);
       case REASON -> createReasonCell(clientRequest.getFailureReason(false));
-      case LAST_ACTIVITY -> createLastActivityCell(now, clientRequest.getLastSuccess());
-      case LAST_FAILURE -> createLastFailureCell(now, clientRequest.getLastFailure());
+      case LAST_ACTIVITY ->
+          createLastActivityCell(rowContext.now(), clientRequest.getLastSuccess());
+      case LAST_FAILURE -> createLastFailureCell(rowContext.now(), clientRequest.getLastFailure());
       case COMPAT_MODE -> createCompatModeCellForRequest(clientRequest);
     };
   }
@@ -3831,7 +4107,7 @@ public class QueueToadlet extends Toadlet
           clientRequest.getFatalyFailedBlocks(),
           clientRequest.getMinBlocks(),
           clientRequest.getTotalBlocks(),
-          clientRequest.isTotalFinalized() || clientRequest instanceof UploadFileRequestStatus,
+          true,
           isUploadQueue);
     }
     return createProgressCell(
@@ -3843,7 +4119,7 @@ public class QueueToadlet extends Toadlet
         clientRequest.getFatalyFailedBlocks(),
         clientRequest.getMinBlocks(),
         clientRequest.getTotalBlocks(),
-        clientRequest.isTotalFinalized() || clientRequest instanceof UploadFileRequestStatus,
+        clientRequest.isTotalFinalized(),
         isUploadQueue);
   }
 
@@ -3860,28 +4136,20 @@ public class QueueToadlet extends Toadlet
 
   private void createRequestTableButtons(
       HTMLNode form,
-      PageMaker pageMaker,
-      ToadletContext ctx,
       String mimeType,
       boolean hasFriends,
       boolean advancedModeEnabled,
       String[] priorityClasses,
       boolean top,
       QueueType queueType) {
-    form.addChild(createDeleteControl(pageMaker, ctx, mimeType, queueType));
+    form.addChild(createDeleteControl(mimeType, queueType));
     if (hasFriends && !queueCannotRecommend(queueType)) {
-      form.addChild(createRecommendControl(pageMaker, ctx));
+      form.addChild(createRecommendControl());
     }
     if (!(queueType.isFailed || queueType.isCompleted)) {
       form.addChild(
           createPriorityControl(
-              pageMaker,
-              ctx,
-              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-              priorityClasses,
-              advancedModeEnabled,
-              queueType.isUpload,
-              top ? "_top" : "_bottom"));
+              priorityClasses, advancedModeEnabled, queueType.isUpload, top ? "_top" : "_bottom"));
     }
   }
 
@@ -3894,7 +4162,7 @@ public class QueueToadlet extends Toadlet
         new String[] {INPUT_TYPE_CHECKBOX, IDENTIFIER_PREFIX + counter, identifier});
     FreenetURI uri;
     long size = -1;
-    String filename = null;
+    String filename;
     if (clientRequest instanceof DownloadRequestStatus) {
       uri = clientRequest.getURI();
       size = clientRequest.getDataSize();
@@ -3933,8 +4201,7 @@ public class QueueToadlet extends Toadlet
         compatCell.addChild(
             "#",
             NodeL10n.getBase()
-                .getString(
-                    INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX + compat[0].name())); // FIXME l10n
+                .getString(INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX + compat[0].name()));
       else
         compatCell.addChild(
             "#",
@@ -3942,16 +4209,11 @@ public class QueueToadlet extends Toadlet
                     .getString(INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX + compat[0].name())
                 + " - "
                 + NodeL10n.getBase()
-                    .getString(
-                        INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX + compat[1].name())); // FIXME l10n
+                    .getString(INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX + compat[1].name()));
       byte[] overrideCryptoKey = get.getOverriddenSplitfileCryptoKey();
       if (overrideCryptoKey != null)
         compatCell.addChild(
-            "#",
-            " - "
-                + l10n("overriddenCryptoKeyInCompatCell")
-                + ": "
-                + HexUtil.bytesToHex(overrideCryptoKey));
+            "#", " - " + l10n("overriddenCryptoKeyInCompatCell") + ": " + toHex(overrideCryptoKey));
       if (get.detectedDontCompress())
         compatCell.addChild("#", " (" + l10n("dontCompressInCompatCell") + ")");
     }
@@ -3961,13 +4223,14 @@ public class QueueToadlet extends Toadlet
   /** List of completed request identifiers which the user hasn't acknowledged yet. */
   private final HashSet<String> completedRequestIdentifiers = new HashSet<>();
 
-  private final Map<String, GetCompletedEvent> completedGets = new LinkedHashMap<>();
-  private final Map<String, PutCompletedEvent> completedPuts = new LinkedHashMap<>();
-  private final Map<String, PutDirCompletedEvent> completedPutDirs = new LinkedHashMap<>();
+  private final Map<String, GetCompletedEvent> completedGets = new HashMap<>();
+  private final Map<String, PutCompletedEvent> completedPuts = new HashMap<>();
+  private final Map<String, PutDirCompletedEvent> completedPutDirs = new HashMap<>();
 
   @Override
   public void notifyFailure(ClientRequest req) {
-    // FIXME do something???
+    LOG.debug(
+        "Request {} failed; no further action registered in QueueToadlet", req.getIdentifier());
   }
 
   @Override
@@ -3985,7 +4248,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private void loadCompletedIdentifiers() throws PersistenceDisabledException {
-    String dl = uploads ? "uploads" : "downloads";
+    String dl = uploads ? DEFAULT_UPLOADS_SEGMENT : DEFAULT_DOWNLOADS_SEGMENT;
     File completedIdentifiersList = core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl);
     File completedIdentifiersListNew =
         core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl + ".bak");
@@ -3996,9 +4259,10 @@ public class QueueToadlet extends Toadlet
         readCompletedIdentifiers(oldCompletedIdentifiersList);
         migrated = true;
       }
-    } else if (!oldCompletedIdentifiersList.delete()) {
-      LOG.warn(
-          "Failed to delete legacy completed identifiers list {}", oldCompletedIdentifiersList);
+    } else {
+      deleteIfExists(
+          oldCompletedIdentifiersList,
+          "legacy completed identifiers list " + oldCompletedIdentifiersList);
     }
     final boolean writeAnyway = migrated;
     core.getClientContext()
@@ -4062,51 +4326,85 @@ public class QueueToadlet extends Toadlet
   }
 
   private void saveCompletedIdentifiers() {
-    String dl = uploads ? "uploads" : "downloads";
+    String dl = uploads ? DEFAULT_UPLOADS_SEGMENT : DEFAULT_DOWNLOADS_SEGMENT;
     File completedIdentifiersList = core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl);
     File completedIdentifiersListNew =
         core.getNode().userDir().file(COMPLETED_LIST_PREFIX + dl + ".bak");
-    File temp;
+    File temp = createTemporaryCompletedListFile();
+    if (temp == null) {
+      return;
+    }
+    if (!writeCompletedIdentifiers(temp)) {
+      return;
+    }
+    replaceCompletedListFiles(completedIdentifiersList, completedIdentifiersListNew, temp);
+  }
+
+  private File createTemporaryCompletedListFile() {
     try {
-      temp = File.createTempFile("completed.list", ".tmp", core.getNode().getUserDir());
+      File temp = File.createTempFile("completed.list", ".tmp", core.getNode().getUserDir());
       temp.deleteOnExit();
-      try (FileOutputStream fos = new FileOutputStream(temp);
-          OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-          BufferedWriter bw = new BufferedWriter(osw)) {
-        String[] identifiers;
-        synchronized (completedRequestIdentifiers) {
-          identifiers = completedRequestIdentifiers.toArray(new String[0]);
-        }
-        for (String identifier : identifiers) bw.write(identifier + '\n');
+      return temp;
+    } catch (IOException e) {
+      LOG.error("Unable to save completed requests list (can't find node directory?!!?): {}", e, e);
+      return null;
+    }
+  }
+
+  private boolean writeCompletedIdentifiers(File temp) {
+    try (FileOutputStream fos = new FileOutputStream(temp);
+        OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+        BufferedWriter bw = new BufferedWriter(osw)) {
+      String[] identifiers;
+      synchronized (completedRequestIdentifiers) {
+        identifiers = completedRequestIdentifiers.toArray(new String[0]);
       }
+      for (String identifier : identifiers) {
+        bw.write(identifier);
+        bw.write('\n');
+      }
+      return true;
     } catch (FileNotFoundException e) {
       LOG.error("Unable to save completed requests list (can't find node directory?!!?): {}", e, e);
-      return;
+      return false;
     } catch (IOException e) {
       LOG.error("Unable to save completed requests list: {}", e, e);
-      return;
+      return false;
     }
-    if (completedIdentifiersListNew.exists() && !completedIdentifiersListNew.delete()) {
-      LOG.warn(
-          "Unable to delete backup completed identifiers list {}", completedIdentifiersListNew);
-    }
+  }
+
+  private void replaceCompletedListFiles(
+      File completedIdentifiersList, File completedIdentifiersListNew, File temp) {
+    deleteIfExists(
+        completedIdentifiersListNew,
+        "backup completed identifiers list " + completedIdentifiersListNew);
     boolean renamedToBackup = temp.renameTo(completedIdentifiersListNew);
     if (!renamedToBackup) {
       LOG.error(
           "Unable to store completed identifiers list because unable to rename {} to {}",
           temp,
           completedIdentifiersListNew);
+      return;
     }
     if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
-      if (completedIdentifiersList.exists() && !completedIdentifiersList.delete()) {
-        LOG.warn(
-            "Unable to delete existing completed identifiers list {}", completedIdentifiersList);
-      }
+      deleteIfExists(
+          completedIdentifiersList,
+          "existing completed identifiers list " + completedIdentifiersList);
       if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
         LOG.error(
             "Unable to store completed identifiers list because unable to rename {} to {}",
             completedIdentifiersListNew,
             completedIdentifiersList);
+      }
+    }
+  }
+
+  private void deleteIfExists(File file, String description) {
+    if (file.exists()) {
+      try {
+        Files.delete(file.toPath());
+      } catch (IOException e) {
+        LOG.warn("Unable to delete {}", description, e);
       }
     }
   }
@@ -4118,43 +4416,50 @@ public class QueueToadlet extends Toadlet
       if (LOG.isDebugEnabled()) LOG.debug("Request hasn't finished: {} for {}", req, identifier);
       return;
     }
-    if (req instanceof ClientGet get) {
-      FreenetURI uri = get.getURI();
-      if (uri == null) {
-        LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
-        return;
+    switch (req) {
+      case ClientGet get -> {
+        FreenetURI uri = get.getURI();
+        if (uri == null) {
+          LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+          return;
+        }
+        long size = get.getDataSize();
+        GetCompletedEvent event = new GetCompletedEvent(identifier, uri, size);
+        synchronized (completedGets) {
+          completedGets.put(identifier, event);
+        }
+        core.getAlerts().register(event);
       }
-      long size = get.getDataSize();
-      GetCompletedEvent event = new GetCompletedEvent(identifier, uri, size);
-      synchronized (completedGets) {
-        completedGets.put(identifier, event);
+      case ClientPut put -> {
+        FreenetURI uri = put.getFinalURI();
+        if (uri == null) {
+          LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+          return;
+        }
+        long size = put.getDataSize();
+        PutCompletedEvent event = new PutCompletedEvent(identifier, uri, size);
+        synchronized (completedPuts) {
+          completedPuts.put(identifier, event);
+        }
+        core.getAlerts().register(event);
       }
-      core.getAlerts().register(event);
-    } else if (req instanceof ClientPut put) {
-      FreenetURI uri = put.getFinalURI();
-      if (uri == null) {
-        LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
-        return;
+      case ClientPutDir dir -> {
+        FreenetURI uri = dir.getFinalURI();
+        if (uri == null) {
+          LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+          return;
+        }
+        long size = dir.getTotalDataSize();
+        int files = dir.getNumberOfFiles();
+        PutDirCompletedEvent event = new PutDirCompletedEvent(identifier, uri, size, files);
+        synchronized (completedPutDirs) {
+          completedPutDirs.put(identifier, event);
+        }
+        core.getAlerts().register(event);
       }
-      long size = put.getDataSize();
-      PutCompletedEvent event = new PutCompletedEvent(identifier, uri, size);
-      synchronized (completedPuts) {
-        completedPuts.put(identifier, event);
+      default -> {
+        // No extra bookkeeping needed for other request types.
       }
-      core.getAlerts().register(event);
-    } else if (req instanceof ClientPutDir dir) {
-      FreenetURI uri = dir.getFinalURI();
-      if (uri == null) {
-        LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
-        return;
-      }
-      long size = dir.getTotalDataSize();
-      int files = dir.getNumberOfFiles();
-      PutDirCompletedEvent event = new PutDirCompletedEvent(identifier, uri, size, files);
-      synchronized (completedPutDirs) {
-        completedPutDirs.put(identifier, event);
-      }
-      core.getAlerts().register(event);
     }
   }
 
@@ -4176,18 +4481,26 @@ public class QueueToadlet extends Toadlet
     synchronized (completedRequestIdentifiers) {
       completedRequestIdentifiers.remove(identifier);
     }
-    if (req instanceof ClientGet)
-      synchronized (completedGets) {
-        completedGets.remove(identifier);
+    switch (req) {
+      case ClientGet ignored -> {
+        synchronized (completedGets) {
+          completedGets.remove(identifier);
+        }
       }
-    else if (req instanceof ClientPut)
-      synchronized (completedPuts) {
-        completedPuts.remove(identifier);
+      case ClientPut ignored -> {
+        synchronized (completedPuts) {
+          completedPuts.remove(identifier);
+        }
       }
-    else if (req instanceof ClientPutDir)
-      synchronized (completedPutDirs) {
-        completedPutDirs.remove(identifier);
+      case ClientPutDir ignored -> {
+        synchronized (completedPutDirs) {
+          completedPutDirs.remove(identifier);
+        }
       }
+      default -> {
+        // Nothing to remove for other request types.
+      }
+    }
     saveCompletedIdentifiersOffThread();
   }
 
@@ -4205,7 +4518,6 @@ public class QueueToadlet extends Toadlet
       normalizePath(System.getProperty("queue.downloads.path", DEFAULT_DOWNLOADS_SEGMENT));
 
   static final HTMLNode DOWNLOADS_LINK = HTMLNode.link(PATH_DOWNLOADS).setReadOnly();
-  static final HTMLNode UPLOADS_LINK = HTMLNode.link(PATH_UPLOADS).setReadOnly();
 
   @Override
   public String path() {
@@ -4280,7 +4592,7 @@ public class QueueToadlet extends Toadlet
 
     @Override
     public String getTitle() {
-      String title = null;
+      String title;
       synchronized (events) {
         if (events.size() == 1)
           title = l10n("downloadSucceededTitle", FILENAME, uri.getPreferredFilename());
@@ -4355,7 +4667,7 @@ public class QueueToadlet extends Toadlet
 
     @Override
     public String getTitle() {
-      String title = null;
+      String title;
       synchronized (events) {
         if (events.size() == 1)
           title = l10n("uploadSucceededTitle", FILENAME, uri.getPreferredFilename());
@@ -4434,7 +4746,7 @@ public class QueueToadlet extends Toadlet
 
     @Override
     public String getTitle() {
-      String title = null;
+      String title;
       synchronized (events) {
         if (events.size() == 1)
           title = l10n("siteUploadSucceededTitle", FILENAME, uri.getPreferredFilename());
