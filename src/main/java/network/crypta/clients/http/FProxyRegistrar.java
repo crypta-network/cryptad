@@ -153,7 +153,7 @@ final class FProxyRegistrar {
     server.register(
         uploadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
-        "/uploads/",
+        LocalFileInsertToadlet.UPLOADS_PATH,
         true,
         "FProxyToadlet.uploadsTitle",
         "FProxyToadlet.uploads",
@@ -173,7 +173,8 @@ final class FProxyRegistrar {
     uploadToadlet.setFIW(fiw);
 
     LocalFileInsertToadlet localFileInsertToadlet = new LocalFileInsertToadlet(core, client);
-    server.register(localFileInsertToadlet, null, LocalFileInsertToadlet.PATH, true, false);
+    server.register(
+        localFileInsertToadlet, null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false);
 
     ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client, core);
     server.register(
@@ -187,7 +188,7 @@ final class FProxyRegistrar {
         contentFilterToadlet);
 
     LocalFileFilterToadlet localFileFilterToadlet = new LocalFileFilterToadlet(core, client);
-    server.register(localFileFilterToadlet, null, LocalFileFilterToadlet.PATH, true, false);
+    server.register(localFileFilterToadlet, null, LocalFileFilterToadlet.BROWSE_PATH, true, false);
 
     SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, node);
     server.register(symlinkToadlet, null, "/sl/", true, false);
@@ -292,10 +293,10 @@ final class FProxyRegistrar {
         true,
         chatForumsToadlet);
 
-    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(node, core, client, "/friends/");
+    N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(node, core, client);
     server.register(n2ntmToadlet, null, "/send_n2ntm/", true, true);
     LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(core, client);
-    server.register(localFileN2NMToadlet, null, LocalFileN2NMToadlet.PATH, true, false);
+    server.register(localFileN2NMToadlet, null, LocalFileN2NMToadlet.BROWSE_PATH, true, false);
 
     BookmarkEditorToadlet bookmarkEditorToadlet = new BookmarkEditorToadlet(client, core);
     server.register(bookmarkEditorToadlet, null, "/bookmarkEditor/", true, false);
