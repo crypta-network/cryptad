@@ -129,7 +129,7 @@ public class N2NTMToadlet extends Toadlet {
     // Browse button clicked. Redirect.
     if (request.isPartSet("n2nm-browse")) {
       try {
-        throw new RedirectException(LocalFileN2NMToadlet.PATH);
+        throw new RedirectException(LocalFileN2NMToadlet.BROWSE_PATH);
       } catch (URISyntaxException e) {
         // Should be impossible because the browser is registered with .PATH.
       }

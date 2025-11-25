@@ -295,7 +295,7 @@ final class FProxyRegistrar {
     N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(node, core, client, "/friends/");
     server.register(n2ntmToadlet, null, "/send_n2ntm/", true, true);
     LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(core, client);
-    server.register(localFileN2NMToadlet, null, LocalFileN2NMToadlet.PATH, true, false);
+    server.register(localFileN2NMToadlet, null, LocalFileN2NMToadlet.BROWSE_PATH, true, false);
 
     BookmarkEditorToadlet bookmarkEditorToadlet = new BookmarkEditorToadlet(client, core);
     server.register(bookmarkEditorToadlet, null, "/bookmarkEditor/", true, false);
