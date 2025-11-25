@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -4223,9 +4224,9 @@ public class QueueToadlet extends Toadlet
   /** List of completed request identifiers which the user hasn't acknowledged yet. */
   private final HashSet<String> completedRequestIdentifiers = new HashSet<>();
 
-  private final Map<String, GetCompletedEvent> completedGets = new HashMap<>();
-  private final Map<String, PutCompletedEvent> completedPuts = new HashMap<>();
-  private final Map<String, PutDirCompletedEvent> completedPutDirs = new HashMap<>();
+  private final Map<String, GetCompletedEvent> completedGets = new LinkedHashMap<>();
+  private final Map<String, PutCompletedEvent> completedPuts = new LinkedHashMap<>();
+  private final Map<String, PutDirCompletedEvent> completedPutDirs = new LinkedHashMap<>();
 
   @Override
   public void notifyFailure(ClientRequest req) {
@@ -4514,8 +4515,7 @@ public class QueueToadlet extends Toadlet
 
   static final String PATH_UPLOADS =
       normalizePath(System.getProperty("queue.uploads.path", DEFAULT_UPLOADS_SEGMENT));
-  static final String PATH_DOWNLOADS =
-      normalizePath(System.getProperty("queue.downloads.path", DEFAULT_DOWNLOADS_SEGMENT));
+  static final String PATH_DOWNLOADS = FProxyToadlet.DOWNLOADS_PATH;
 
   static final HTMLNode DOWNLOADS_LINK = HTMLNode.link(PATH_DOWNLOADS).setReadOnly();
 

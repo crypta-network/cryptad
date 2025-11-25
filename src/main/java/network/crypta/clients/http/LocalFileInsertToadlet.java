@@ -10,7 +10,7 @@ import network.crypta.node.NodeClientCore;
 public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
 
   public static final String PATH = "/insert-browse/";
-  public static final String POST_TO = "/uploads/";
+  public static final String POST_TO = QueueToadlet.PATH_UPLOADS;
 
   public LocalFileInsertToadlet(NodeClientCore core, HighLevelSimpleClient highLevelSimpleClient) {
     super(core, highLevelSimpleClient);
