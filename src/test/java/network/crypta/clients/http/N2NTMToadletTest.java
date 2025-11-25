@@ -55,7 +55,7 @@ class N2NTMToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new N2NTMToadlet(node, core, client, "/friends/");
+    toadlet = new N2NTMToadlet(node, core, client);
   }
 
   @Test
