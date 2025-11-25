@@ -139,21 +139,21 @@ final class FProxyRegistrar {
     server.register(
         downloadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
-        FProxyToadlet.DOWNLOADS_PATH,
+        QueueToadlet.PATH_DOWNLOADS,
         true,
         "FProxyToadlet.downloadsTitle",
         "FProxyToadlet.downloads",
         false,
         downloadToadlet);
     LocalDownloadDirectoryToadlet localDownloadDirectoryToadlet =
-        new LocalDownloadDirectoryToadlet(core, client, FProxyToadlet.DOWNLOADS_PATH);
+        new LocalDownloadDirectoryToadlet(core, client, QueueToadlet.PATH_DOWNLOADS);
     server.register(
         localDownloadDirectoryToadlet, null, localDownloadDirectoryToadlet.path(), true, false);
     QueueToadlet uploadToadlet = new QueueToadlet(core, core.getFCPServer(), client, true);
     server.register(
         uploadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
-        LocalFileInsertToadlet.UPLOADS_PATH,
+        QueueToadlet.PATH_UPLOADS,
         true,
         "FProxyToadlet.uploadsTitle",
         "FProxyToadlet.uploads",
