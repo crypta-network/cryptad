@@ -188,7 +188,7 @@ final class FProxyRegistrar {
         contentFilterToadlet);
 
     LocalFileFilterToadlet localFileFilterToadlet = new LocalFileFilterToadlet(core, client);
-    server.register(localFileFilterToadlet, null, LocalFileFilterToadlet.PATH, true, false);
+    server.register(localFileFilterToadlet, null, LocalFileFilterToadlet.BROWSE_PATH, true, false);
 
     SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, node);
     server.register(symlinkToadlet, null, "/sl/", true, false);

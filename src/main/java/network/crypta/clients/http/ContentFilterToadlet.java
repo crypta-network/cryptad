@@ -206,7 +206,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
           ResultHandling resultHandling = getResultHandling(request);
           String mimeType = request.getPartAsStringFailsafe(MIME_TYPE_PART, 100);
           String location =
-              LocalFileFilterToadlet.PATH
+              LocalFileFilterToadlet.BROWSE_PATH
                   + '?'
                   + FILTER_OPERATION_PART
                   + '='
