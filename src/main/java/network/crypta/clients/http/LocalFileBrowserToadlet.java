@@ -425,6 +425,9 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
     }
 
     PageNode page = buildPage(currentPath, attemptedPath, persistenceFields, ctx);
+    if (page == null) {
+      return; // error response already sent
+    }
     writeHTMLReply(ctx, 200, "OK", page.generate());
   }
 
@@ -451,7 +454,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
 
     if (files == null) {
       sendErrorPage(ctx, 403, FORBIDDEN_TITLE, l10n(DIR_ACCESS_DENIED_KEY));
-      return page;
+      return null;
     }
 
     Arrays.sort(files, this::compareFiles);
