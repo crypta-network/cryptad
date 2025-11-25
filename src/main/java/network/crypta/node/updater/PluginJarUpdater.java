@@ -296,7 +296,7 @@ public class PluginJarUpdater extends NodeUpdater {
                 div.addChild(
                     "form",
                     new String[] {"action", "method"},
-                    new String[] {PproxyToadlet.PATH, "post"});
+                    new String[] {PproxyToadlet.PLUGINS_PATH, "post"});
             formNode.addChild(
                 INPUT,
                 new String[] {"type", "name", VALUE},

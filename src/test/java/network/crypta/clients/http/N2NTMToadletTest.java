@@ -16,6 +16,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,7 +56,7 @@ class N2NTMToadletTest {
 
   @BeforeEach
   void setUp() {
-    toadlet = new N2NTMToadlet(node, core, client, "/friends/");
+    toadlet = new N2NTMToadlet(node, core, client);
   }
 
   @Test
@@ -207,7 +208,8 @@ class N2NTMToadletTest {
   }
 
   @Test
-  void createN2NTMSendForm_whenAdvanced_addsFileControls() {
+  void createN2NTMSendForm_whenAdvanced_addsFileControls()
+      throws ToadletContextClosedException, IOException {
     HTMLNode contentNode = new HTMLNode("div");
     HashMap<String, String> peers = new HashMap<>();
     peers.put("7", "Bob");
