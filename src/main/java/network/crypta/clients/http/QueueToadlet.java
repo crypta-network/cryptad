@@ -106,18 +106,18 @@ public class QueueToadlet extends Toadlet
   }
 
   private enum QueueType {
-    CompletedDownloadToTemp(true, false, false),
-    CompletedDownloadToDisk(true, false, false),
-    CompletedUpload(true, false, true),
-    CompletedDirUpload(true, false, true),
-    FailedDownload(false, true, false),
-    FailedUpload(false, true, true),
-    FailedDirUpload(false, true, true),
-    FailedBadMIMEType(false, true, false),
-    FailedUnknownMIMEType(false, true, false),
-    UncompletedDownload(false, false, false),
-    UncompletedUpload(false, false, true),
-    UncompletedDirUpload(false, false, true);
+    COMPLETED_DOWNLOAD_TO_TEMP(true, false, false),
+    COMPLETED_DOWNLOAD_TO_DISK(true, false, false),
+    COMPLETED_UPLOAD(true, false, true),
+    COMPLETED_DIR_UPLOAD(true, false, true),
+    FAILED_DOWNLOAD(false, true, false),
+    FAILED_UPLOAD(false, true, true),
+    FAILED_DIR_UPLOAD(false, true, true),
+    FAILED_BAD_MIME_TYPE(false, true, false),
+    FAILED_UNKNOWN_MIME_TYPE(false, true, false),
+    UNCOMPLETED_DOWNLOAD(false, false, false),
+    UNCOMPLETED_UPLOAD(false, false, true),
+    UNCOMPLETED_DIR_UPLOAD(false, false, true);
 
     final boolean isCompleted;
     final boolean isFailed;
@@ -149,6 +149,22 @@ public class QueueToadlet extends Toadlet
   private final boolean uploads;
 
   private static final String KEY_LIST_LOCATION = "listKeys.txt";
+  private static final String ERROR_INVALID_URI = "errorInvalidURI";
+  private static final String ERROR_INVALID_URI_TO_U = "errorInvalidURIToU";
+  private static final String ERROR_INVALID_URI_TO_D = "errorInvalidURIToD";
+  private static final String IDENTIFIER_PREFIX = "identifier-";
+  private static final String FILENAME_PREFIX = "filename-";
+  private static final String KEY_PREFIX = "key-";
+  private static final String REMOVE_REQUEST = "remove_request";
+  private static final String DELETE_REQUEST = "delete_request";
+  private static final String COMPRESS_FIELD = "compress";
+  private static final String COMPATIBILITY_MODE_FIELD = "compatibilityMode";
+  private static final String OVERRIDE_SPLITFILE_KEY_FIELD = "overrideSplitfileKey";
+  private static final String TAG_INPUT = "input";
+  private static final String ATTR_TYPE = "type";
+  private static final String ATTR_NAME = "name";
+  private static final String ATTR_VALUE = "value";
+  private static final String ATTR_CHECKED = "checked";
 
   public QueueToadlet(
       NodeClientCore core, FCPServer fcp, HighLevelSimpleClient client, boolean uploads) {
@@ -174,916 +190,29 @@ public class QueueToadlet extends Toadlet
     }
 
     try {
-      // Browse... button on upload page
-      if (request.isPartSet("insert-local")) {
-
-        FreenetURI insertURI;
-        String keyType = request.getPartAsStringFailsafe("keytype", 10);
-        if ("CHK".equals(keyType)) {
-          insertURI = new FreenetURI("CHK@");
-          if (fiw != null) fiw.reportCanonicalInsert();
-        } else if ("SSK".equals(keyType)) {
-          insertURI = new FreenetURI("SSK@");
-          if (fiw != null) fiw.reportRandomInsert();
-        } else if ("specify".equals(keyType)) {
-          try {
-            String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
-            insertURI = new FreenetURI(u);
-            if (LOG.isDebugEnabled()) LOG.debug("Inserting key: " + insertURI + " (" + u + ")");
-          } catch (MalformedURLException mue1) {
-            writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx, false, true);
-            return;
-          }
-        } else {
-          writeError(
-              l10n("errorMustSpecifyKeyTypeTitle"),
-              l10n("errorMustSpecifyKeyType"),
-              ctx,
-              false,
-              true);
+      CheckedHandler[] handlers = {
+        () -> handleInsertLocal(request, ctx),
+        () -> handleSelectLocation(request, ctx),
+        () -> handleDeleteRequest(request, ctx),
+        () -> handleRemoveRequest(request, ctx),
+        () -> handleRemoveFinishedUploads(request, ctx),
+        () -> handleRemoveFinishedDownloads(request, ctx),
+        () -> handleRestartRequest(request, ctx),
+        () -> handlePanic(request, ctx),
+        () -> handleConfirmPanic(request, ctx),
+        () -> handleDownloadRequest(request, ctx),
+        () -> handleBulkDownloads(request, ctx),
+        () -> handleChangePriorityActions(request, ctx),
+        () -> handleInsertUpload(request, ctx),
+        () -> handleLocalFileSelection(request, ctx),
+        () -> handleLocalDirSelection(request, ctx),
+        () -> handleRecommendRequest(request, ctx),
+        () -> handleRecommendUri(request, ctx)
+      };
+      for (CheckedHandler handler : handlers) {
+        if (handler.handle()) {
           return;
         }
-        MultiValueTable<String, String> responseHeaders =
-            MultiValueTable.from(
-                "Location",
-                LocalFileInsertToadlet.PATH
-                    + "?key="
-                    + insertURI.toASCIIString()
-                    + "&compress="
-                    + (!(request.getPartAsStringFailsafe("compress", 128).isEmpty()))
-                    + "&compatibilityMode="
-                    + request.getPartAsStringFailsafe("compatibilityMode", 100)
-                    + "&overrideSplitfileKey="
-                    + request.getPartAsStringFailsafe("overrideSplitfileKey", 65));
-        ctx.sendReplyHeaders(302, "Found", responseHeaders, null, 0);
-        return;
-      } else if (request.isPartSet("select-location")) {
-        try {
-          throw new RedirectException(LocalDirectoryConfigToadlet.basePath() + "/downloads/");
-        } catch (URISyntaxException e) {
-          // Shouldn't happen, path is defined as such.
-        }
-      }
-
-      if (request.isPartSet("delete_request")
-          && !request.getPartAsStringFailsafe("delete_request", 128).isEmpty()) {
-        // Confirm box
-        PageNode page = ctx.getPageMaker().getPageNode(l10n("confirmDeleteTitle"), ctx);
-        HTMLNode inner = page.getContentNode();
-        HTMLNode content =
-            ctx.getPageMaker()
-                .getInfobox(
-                    "infobox-warning",
-                    l10n("confirmDeleteTitle"),
-                    inner,
-                    "confirm-delete-title",
-                    true);
-
-        HTMLNode deleteNode = new HTMLNode("p");
-        HTMLNode deleteForm = ctx.addFormChild(deleteNode, path(), "queueDeleteForm");
-        HTMLNode infoList = deleteForm.addChild("ul");
-
-        for (String part : request.getParts()) {
-          if (!part.startsWith("identifier-")) continue;
-          part = part.substring("identifier-".length());
-          if (part.length() > 50) continue; // It's just a number
-
-          String identifier =
-              request.getPartAsStringFailsafe("identifier-" + part, MAX_IDENTIFIER_LENGTH);
-          if (identifier == null) continue;
-          String filename =
-              request.getPartAsStringFailsafe("filename-" + part, MAX_FILENAME_LENGTH);
-          String keyString = request.getPartAsStringFailsafe("key-" + part, MAX_KEY_LENGTH);
-          String type = request.getPartAsStringFailsafe("type-" + part, MAX_TYPE_LENGTH);
-          String size = request.getPartAsStringFailsafe("size-" + part, 50);
-          if (filename != null) {
-            HTMLNode line = infoList.addChild("li");
-            line.addChild("#", NodeL10n.getBase().getString("FProxyToadlet.filenameLabel") + " ");
-            if (keyString != null) {
-              line.addChild("a", "href", "/" + keyString, filename);
-            } else {
-              line.addChild("#", filename);
-            }
-          }
-          if (type != null && !type.isEmpty()) {
-            HTMLNode line = infoList.addChild("li");
-            boolean finalized = request.isPartSet("finalizedType");
-            line.addChild(
-                "#",
-                NodeL10n.getBase()
-                    .getString(
-                        "FProxyToadlet." + (finalized ? "mimeType" : "expectedMimeType"),
-                        new String[] {"mime"},
-                        new String[] {type}));
-          }
-          if (size != null) {
-            HTMLNode line = infoList.addChild("li");
-            line.addChild(
-                "#", NodeL10n.getBase().getString("FProxyToadlet.sizeLabel") + " " + size);
-          }
-          infoList.addChild("#", l10n("deleteFileFromTemp"));
-          infoList.addChild(
-              "input",
-              new String[] {"type", "name", "value", "checked"},
-              new String[] {"checkbox", "identifier-" + part, identifier, "checked"});
-        }
-
-        content.addChild("p", l10n("confirmDelete"));
-        content.addChild(deleteNode);
-
-        deleteForm.addChild(
-            "input",
-            new String[] {"type", "name", "value"},
-            new String[] {"submit", "remove_request", NodeL10n.getBase().getString("Toadlet.yes")});
-        deleteForm.addChild(
-            "input",
-            new String[] {"type", "name", "value"},
-            new String[] {"submit", "cancel", NodeL10n.getBase().getString("Toadlet.no")});
-
-        this.writeHTMLReply(ctx, 200, "OK", page.generate());
-        return;
-      } else if (request.isPartSet("remove_request")
-          && !request.getPartAsStringFailsafe("remove_request", 128).isEmpty()) {
-        // Remove all requested (i.e. selected) requests from the queue, regardless of
-        // their status
-        // FIXME optimise into a single database job.
-
-        String identifier = "";
-        try {
-          for (String part : request.getParts()) {
-            if (!part.startsWith("identifier-")) continue;
-            identifier = part.substring("identifier-".length());
-            if (identifier.length() > 50) continue;
-            identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-            if (LOG.isDebugEnabled()) LOG.debug("Removing " + identifier);
-            fcp.removeGlobalRequestBlocking(identifier);
-          }
-        } catch (PersistenceDisabledException e) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
-      } else if (request.isPartSet("remove_finished_uploads_request")
-          && !request.getPartAsStringFailsafe("remove_finished_uploads_request", 128).isEmpty()) {
-        // Remove all finished single-file uploads
-        String identifier = "";
-        try {
-          RequestStatus[] reqs = fcp.getGlobalRequests();
-          for (RequestStatus r : reqs) {
-            if (r instanceof UploadFileRequestStatus upload) {
-              if (upload.hasSucceeded()) {
-                identifier = upload.getIdentifier();
-                fcp.removeGlobalRequestBlocking(identifier);
-              }
-            }
-          }
-        } catch (PersistenceDisabledException e) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
-
-      } else if (request.isPartSet("remove_finished_downloads_request")
-          && !request.getPartAsStringFailsafe("remove_finished_downloads_request", 128).isEmpty()) {
-        // Remove all finished downloads
-        String identifier = "";
-        try {
-          RequestStatus[] reqs = fcp.getGlobalRequests();
-          for (RequestStatus r : reqs) {
-            if (r instanceof DownloadRequestStatus download) {
-              if (download.isPersistent()
-                  && download.hasSucceeded()
-                  && download.isTotalFinalized()
-                  && !download.toTempSpace()) {
-                identifier = download.getIdentifier();
-                fcp.removeGlobalRequestBlocking(identifier);
-              }
-            }
-          }
-        } catch (PersistenceDisabledException e) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
-      } else if (request.isPartSet("restart_request")
-          && !request.getPartAsStringFailsafe("restart_request", 128).isEmpty()) {
-        boolean disableFilterData = request.isPartSet("disableFilterData");
-
-        String identifier = "";
-        for (String part : request.getParts()) {
-          if (!part.startsWith("identifier-")) continue;
-          identifier = part.substring("identifier-".length());
-          if (identifier.length() > 50) continue;
-          identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-          if (LOG.isDebugEnabled()) LOG.debug("Restarting " + identifier);
-          try {
-            fcp.restartBlocking(identifier, disableFilterData);
-          } catch (PersistenceDisabledException e) {
-            sendPersistenceDisabledError(ctx);
-            return;
-          }
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
-      } else if (request.isPartSet("panic")
-          && !request.getPartAsStringFailsafe("panic", 128).isEmpty()) {
-        if (SimpleToadletServer.noConfirmPanic) {
-          core.getNode().killMasterKeysFile();
-          core.getNode().panic();
-          sendPanicingPage(ctx);
-          core.getNode().finishPanic();
-          return;
-        } else {
-          sendConfirmPanicPage(ctx);
-          return;
-        }
-      } else if (request.isPartSet("confirmpanic")
-          && !request.getPartAsStringFailsafe("confirmpanic", 128).isEmpty()) {
-        core.getNode().killMasterKeysFile();
-        core.getNode().panic();
-        sendPanicingPage(ctx);
-        core.getNode().finishPanic();
-        return;
-      } else if (request.isPartSet("download")) {
-        // Queue a download
-        if (!request.isPartSet("key")) {
-          writeError(l10n("errorNoKey"), l10n("errorNoKeyToD"), ctx);
-          return;
-        }
-        String expectedMIMEType = null;
-        if (request.isPartSet("type")) {
-          expectedMIMEType = request.getPartAsStringFailsafe("type", MAX_TYPE_LENGTH);
-        }
-        FreenetURI fetchURI;
-        try {
-          fetchURI = new FreenetURI(request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH));
-        } catch (MalformedURLException e) {
-          writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToD"), ctx);
-          return;
-        }
-        String persistence = request.getPartAsStringFailsafe("persistence", 32);
-        String returnType = request.getPartAsStringFailsafe("return-type", 32);
-        boolean filterData = request.isPartSet("filterData");
-        String downloadPath;
-        File downloadsDir = null;
-        // Download to disk disabled and initialized.
-        if (request.isPartSet("path") && !FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
-          downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
-          try {
-            downloadsDir = getDownloadsDir(downloadPath);
-          } catch (NotAllowedException e) {
-            downloadDisallowedPage(e, downloadPath, ctx);
-            return;
-          }
-          // Downloading to disk not initialized and/or disabled.
-        } else returnType = "direct";
-        try {
-          fcp.makePersistentGlobalRequestBlocking(
-              fetchURI, filterData, expectedMIMEType, persistence, returnType, false, downloadsDir);
-        } catch (NotAllowedException e) {
-          this.writeError(l10n("errorDToDisk"), l10n("errorDToDiskConfig"), ctx);
-          return;
-        } catch (PersistenceDisabledException e) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
-      } else if (request.isPartSet("bulkDownloads")) {
-        String bulkDownloadsAsString = request.getPartAsStringFailsafe("bulkDownloads", 262144);
-        String[] keys = bulkDownloadsAsString.split("\n");
-        if (bulkDownloadsAsString.isEmpty() || (keys.length < 1)) {
-          writePermanentRedirect(ctx, "Done", path());
-          return;
-        }
-        LinkedList<String> success = new LinkedList<>(), failure = new LinkedList<>();
-        boolean filterData = request.isPartSet("filterData");
-        String target = request.getPartAsStringFailsafe("target", 128);
-        if (target == null) target = "direct";
-        String downloadPath;
-        File downloadsDir = null;
-        if (request.isPartSet("path") && !FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
-          downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
-          try {
-            downloadsDir = getDownloadsDir(downloadPath);
-          } catch (NotAllowedException e) {
-            downloadDisallowedPage(e, downloadPath, ctx);
-            return;
-          }
-        } else target = "direct";
-
-        for (int i = 0; i < keys.length; i++) {
-          String currentKey = keys[i];
-
-          // trim leading/trailing space
-          currentKey = currentKey.trim();
-          if (currentKey.isEmpty()) continue;
-
-          try {
-            FreenetURI fetchURI = new FreenetURI(currentKey);
-            fcp.makePersistentGlobalRequestBlocking(
-                fetchURI, filterData, null, "forever", target, false, downloadsDir);
-            success.add(fetchURI.toString(true, false));
-          } catch (Exception e) {
-            failure.add(currentKey);
-            LOG.error(
-                "An error occured while attempting to download key("
-                    + i
-                    + ") : "
-                    + currentKey
-                    + " : "
-                    + e.getMessage());
-          }
-        }
-
-        boolean displayFailureBox = !failure.isEmpty();
-        boolean displaySuccessBox = !success.isEmpty();
-
-        PageNode page = ctx.getPageMaker().getPageNode(l10n("downloadFiles"), ctx);
-        HTMLNode contentNode = page.getContentNode();
-
-        HTMLNode alertContent =
-            ctx.getPageMaker()
-                .getInfobox(
-                    (displayFailureBox ? "infobox-warning" : "infobox-info"),
-                    l10n("downloadFiles"),
-                    contentNode,
-                    "grouped-downloads",
-                    true);
-        if (displaySuccessBox) {
-          HTMLNode successDiv = alertContent.addChild("ul");
-          successDiv.addChild(
-              "#", l10n("enqueuedSuccessfully", "number", String.valueOf(success.size())));
-          for (String s : success) {
-            HTMLNode line = successDiv.addChild("li");
-            line.addChild("#", s);
-          }
-          successDiv.addChild("br");
-        }
-        if (displayFailureBox) {
-          HTMLNode failureDiv = alertContent.addChild("ul");
-          if (displayFailureBox) {
-            failureDiv.addChild(
-                "#", l10n("enqueuedFailure", "number", String.valueOf(failure.size())));
-            for (String f : failure) {
-              HTMLNode line = failureDiv.addChild("li");
-              line.addChild("#", f);
-            }
-          }
-          failureDiv.addChild("br");
-        }
-        alertContent.addChild(
-            "a", "href", path(), NodeL10n.getBase().getString("Toadlet.returnToQueuepage"));
-        writeHTMLReply(ctx, 200, "OK", page.generate());
-        return;
-      } else if (request.isPartSet("change_priority_top")) {
-        handleChangePriority(request, ctx, "_top");
-        return;
-      } else if (request.isPartSet("change_priority_bottom")) {
-        handleChangePriority(request, ctx, "_bottom");
-        return;
-        // FIXME factor out the next 3 items, they are very messy!
-      } else if (!request.getPartAsStringFailsafe("insert", 128).isEmpty()) {
-        final FreenetURI insertURI;
-        String keyType = request.getPartAsStringFailsafe("keytype", 10);
-        if ("CHK".equals(keyType)) {
-          insertURI = new FreenetURI("CHK@");
-          if (fiw != null) fiw.reportCanonicalInsert();
-        } else if ("SSK".equals(keyType)) {
-          insertURI = new FreenetURI("SSK@");
-          if (fiw != null) fiw.reportRandomInsert();
-        } else if ("specify".equals(keyType)) {
-          try {
-            String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
-            insertURI = new FreenetURI(u);
-            if (LOG.isDebugEnabled()) LOG.debug("Inserting key: " + insertURI + " (" + u + ")");
-          } catch (MalformedURLException mue1) {
-            writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx, false, true);
-            return;
-          }
-        } else {
-          writeError(
-              l10n("errorMustSpecifyKeyTypeTitle"),
-              l10n("errorMustSpecifyKeyType"),
-              ctx,
-              false,
-              true);
-          return;
-        }
-        final HTTPUploadedFile file = request.getUploadedFile("filename");
-        if (file == null || file.getFilename().trim().isEmpty()) {
-          writeError(l10n("errorNoFileSelected"), l10n("errorNoFileSelectedU"), ctx, false, true);
-          return;
-        }
-        final boolean compress = !request.getPartAsStringFailsafe("compress", 128).isEmpty();
-        final String identifier = file.getFilename() + "-fred-" + System.currentTimeMillis();
-        final String compatibilityMode = request.getPartAsStringFailsafe("compatibilityMode", 100);
-        final CompatibilityMode cmode;
-        if (compatibilityMode.isEmpty()) cmode = CompatibilityMode.COMPAT_DEFAULT.intern();
-        else cmode = CompatibilityMode.valueOf(compatibilityMode).intern();
-        String s = request.getPartAsStringFailsafe("overrideSplitfileKey", 65);
-        final byte[] overrideSplitfileKey;
-        if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
-        else overrideSplitfileKey = null;
-        final String fnam;
-        if (insertURI.getKeyType().equals("CHK") || keyType.equals("SSK"))
-          fnam = file.getFilename();
-        else fnam = null;
-        /* copy bucket data */
-        final RandomAccessBucket copiedBucket =
-            core.getPersistentTempBucketFactory().makeBucket(file.getData().size());
-        BucketTools.copy(file.getData(), copiedBucket);
-        final CountDownLatch done = new CountDownLatch(1);
-        try {
-          core.getClientLayerPersister()
-              .queue(
-                  new PersistentJob() {
-
-                    @Override
-                    public String toString() {
-                      return "QueueToadlet StartInsert";
-                    }
-
-                    @Override
-                    public boolean run(ClientContext context) {
-                      try {
-                        final ClientPut clientPut;
-                        try {
-                          clientPut =
-                              new ClientPut(
-                                  fcp.getGlobalForeverClient(),
-                                  insertURI,
-                                  identifier,
-                                  Integer.MAX_VALUE,
-                                  null,
-                                  RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-                                  Persistence.FOREVER,
-                                  null,
-                                  false,
-                                  !compress,
-                                  -1,
-                                  UploadFrom.DIRECT,
-                                  null,
-                                  file.getContentType(),
-                                  copiedBucket,
-                                  null,
-                                  fnam,
-                                  false,
-                                  false,
-                                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                                  false,
-                                  cmode,
-                                  overrideSplitfileKey,
-                                  false,
-                                  fcp.getCore());
-                          if (clientPut != null)
-                            try {
-                              fcp.startBlocking(clientPut);
-                            } catch (IdentifierCollisionException e) {
-                              LOG.error("Cannot put same file twice in same millisecond");
-                              writePermanentRedirect(ctx, "Done", path());
-                              return false;
-                            }
-                          writePermanentRedirect(ctx, "Done", path());
-                          return true;
-                        } catch (IdentifierCollisionException e) {
-                          LOG.error("Cannot put same file twice in same millisecond");
-                          writePermanentRedirect(ctx, "Done", path());
-                          return false;
-                        } catch (NotAllowedException e) {
-                          writeError(
-                              l10n("errorAccessDenied"),
-                              l10n("errorAccessDeniedFile", "file", file.getFilename()),
-                              ctx,
-                              false,
-                              true);
-                          return false;
-                        } catch (FileNotFoundException e) {
-                          writeError(
-                              l10n("errorNoFileOrCannotRead"),
-                              l10n("errorAccessDeniedFile", "file", file.getFilename()),
-                              ctx,
-                              false,
-                              true);
-                          return false;
-                        } catch (MalformedURLException mue1) {
-                          writeError(
-                              l10n("errorInvalidURI"),
-                              l10n("errorInvalidURIToU"),
-                              ctx,
-                              false,
-                              true);
-                          return false;
-                        } catch (MetadataUnresolvedException e) {
-                          LOG.error(
-                              "Unresolved metadata in starting insert from data uploaded from"
-                                  + " browser: "
-                                  + e,
-                              e);
-                          writePermanentRedirect(ctx, "Done", path());
-                          return false;
-                          // FIXME should this be a proper localised message? It shouldn't happen...
-                          // but we'd like to get reports if it does.
-                        } catch (Throwable t) {
-                          writeInternalError(t, ctx);
-                          return false;
-                        } finally {
-                          done.countDown();
-                        }
-                      } catch (IOException e) {
-                        // Ignore
-                        return false;
-                      } catch (ToadletContextClosedException e) {
-                        // Ignore
-                        return false;
-                      }
-                    }
-                  },
-                  NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        } catch (PersistenceDisabledException e1) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        while (done.getCount() > 0) {
-          try {
-            done.await();
-          } catch (InterruptedException e) {
-            // Ignore
-          }
-        }
-        return;
-      } else if (request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
-        final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
-        if (LOG.isDebugEnabled()) LOG.debug("Inserting local file: " + filename);
-        final File file = new File(filename);
-        final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
-        final String contentType = DefaultMIMETypes.guessMIMEType(filename, false);
-        final FreenetURI furi;
-        final String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
-        final boolean compress = request.isPartSet("compress");
-        final String compatibilityMode = request.getPartAsStringFailsafe("compatibilityMode", 100);
-        final CompatibilityMode cmode;
-        if (compatibilityMode.isEmpty()) cmode = CompatibilityMode.COMPAT_DEFAULT;
-        else cmode = CompatibilityMode.valueOf(compatibilityMode);
-        String s = request.getPartAsStringFailsafe("overrideSplitfileKey", 65);
-        final byte[] overrideSplitfileKey;
-        if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
-        else overrideSplitfileKey = null;
-        if (key != null) {
-          try {
-            furi = new FreenetURI(key);
-          } catch (MalformedURLException e) {
-            writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
-            return;
-          }
-        } else {
-          furi = new FreenetURI("CHK@");
-        }
-        final String target;
-        if (furi.getDocName() != null) target = null;
-        else target = file.getName();
-        final CountDownLatch done = new CountDownLatch(1);
-        try {
-          core.getClientLayerPersister()
-              .queue(
-                  new PersistentJob() {
-
-                    @Override
-                    public String toString() {
-                      return "QueueToadlet StartLocalFileInsert";
-                    }
-
-                    @Override
-                    public boolean run(ClientContext context) {
-                      final ClientPut clientPut;
-                      try {
-                        try {
-                          clientPut =
-                              new ClientPut(
-                                  fcp.getGlobalForeverClient(),
-                                  furi,
-                                  identifier,
-                                  Integer.MAX_VALUE,
-                                  null,
-                                  RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-                                  Persistence.FOREVER,
-                                  null,
-                                  false,
-                                  !compress,
-                                  -1,
-                                  UploadFrom.DISK,
-                                  file,
-                                  contentType,
-                                  new FileBucket(file, true, false, false, false),
-                                  null,
-                                  target,
-                                  false,
-                                  false,
-                                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                                  false,
-                                  cmode,
-                                  overrideSplitfileKey,
-                                  false,
-                                  fcp.getCore());
-                          if (LOG.isDebugEnabled())
-                            LOG.debug(
-                                "Started global request to insert "
-                                    + file
-                                    + " to CHK@ as "
-                                    + identifier);
-                          if (clientPut != null)
-                            try {
-                              fcp.startBlocking(clientPut);
-                            } catch (IdentifierCollisionException e) {
-                              LOG.error("Cannot put same file twice in same millisecond");
-                              writePermanentRedirect(ctx, "Done", path());
-                              return false;
-                            } catch (PersistenceDisabledException e) {
-                              // Impossible???
-                            }
-                          writePermanentRedirect(ctx, "Done", path());
-                          return true;
-                        } catch (IdentifierCollisionException e) {
-                          LOG.error("Cannot put same file twice in same millisecond");
-                          writePermanentRedirect(ctx, "Done", path());
-                          return false;
-                        } catch (MalformedURLException e) {
-                          writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
-                          return false;
-                        } catch (FileNotFoundException e) {
-                          writeError(
-                              l10n("errorNoFileOrCannotRead"),
-                              l10n("errorAccessDeniedFile", "file", target),
-                              ctx);
-                          return false;
-                        } catch (NotAllowedException e) {
-                          writeError(
-                              l10n("errorAccessDenied"),
-                              l10n(
-                                  "errorAccessDeniedFile",
-                                  new String[] {"file"},
-                                  new String[] {file.getName()}),
-                              ctx);
-                          return false;
-                        } catch (MetadataUnresolvedException e) {
-                          LOG.error(
-                              "Unresolved metadata in starting insert from data from file: " + e,
-                              e);
-                          writePermanentRedirect(ctx, "Done", path());
-                          return false;
-                          // FIXME should this be a proper localised message? It shouldn't happen...
-                          // but we'd like to get reports if it does.
-                        } finally {
-                          done.countDown();
-                        }
-                      } catch (IOException e) {
-                        // Ignore
-                        return false;
-                      } catch (ToadletContextClosedException e) {
-                        // Ignore
-                        return false;
-                      }
-                    }
-                  },
-                  NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        } catch (PersistenceDisabledException e1) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        while (done.getCount() > 0) {
-          try {
-            done.await();
-          } catch (InterruptedException e) {
-            // Ignore
-          }
-        }
-        return;
-      } else if (request.isPartSet(LocalFileBrowserToadlet.selectDir)) {
-        final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
-        if (LOG.isDebugEnabled()) LOG.debug("Inserting local directory: " + filename);
-        final File file = new File(filename);
-        final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
-        final FreenetURI furi;
-        final String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
-        final boolean compress = request.isPartSet("compress");
-        String s = request.getPartAsStringFailsafe("overrideSplitfileKey", 65);
-        final byte[] overrideSplitfileKey;
-        if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
-        else overrideSplitfileKey = null;
-        if (key != null) {
-          try {
-            furi = new FreenetURI(key);
-          } catch (MalformedURLException e) {
-            writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
-            return;
-          }
-        } else {
-          furi = new FreenetURI("CHK@");
-        }
-        final CountDownLatch done = new CountDownLatch(1);
-        try {
-          core.getClientLayerPersister()
-              .queue(
-                  new PersistentJob() {
-
-                    @Override
-                    public String toString() {
-                      return "QueueToadlet StartLocalDirInsert";
-                    }
-
-                    @Override
-                    public boolean run(ClientContext context) {
-                      ClientPutDir clientPutDir;
-                      try {
-                        try {
-                          clientPutDir =
-                              new ClientPutDir(
-                                  fcp.getGlobalForeverClient(),
-                                  furi,
-                                  identifier,
-                                  Integer.MAX_VALUE,
-                                  RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-                                  Persistence.FOREVER,
-                                  null,
-                                  false,
-                                  !compress,
-                                  -1,
-                                  file,
-                                  null,
-                                  false, /* make include hidden files configurable? FIXME */
-                                  false,
-                                  true,
-                                  false,
-                                  false,
-                                  Node.FORK_ON_CACHEABLE_DEFAULT,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-                                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-                                  false,
-                                  overrideSplitfileKey,
-                                  fcp.getCore());
-                          if (LOG.isDebugEnabled())
-                            LOG.debug(
-                                "Started global request to insert dir "
-                                    + file
-                                    + " to "
-                                    + furi
-                                    + " as "
-                                    + identifier);
-                          if (clientPutDir != null) {
-                            try {
-                              fcp.startBlocking(clientPutDir);
-                            } catch (IdentifierCollisionException e) {
-                              LOG.error("Cannot put same file twice in same millisecond");
-                              writePermanentRedirect(ctx, "Done", path());
-                              return false;
-                            } catch (PersistenceDisabledException e) {
-                              sendPersistenceDisabledError(ctx);
-                              return false;
-                            }
-                          }
-                          writePermanentRedirect(ctx, "Done", path());
-                          return true;
-                        } catch (MalformedURLException e) {
-                          writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
-                          return false;
-                        } catch (FileNotFoundException e) {
-                          writeError(
-                              l10n("errorNoFileOrCannotRead"),
-                              l10n("errorAccessDeniedFile", "file", file.toString()),
-                              ctx);
-                          return false;
-                        } catch (TooManyFilesInsertException e) {
-                          writeError(
-                              l10n("tooManyFilesInOneFolder"),
-                              l10n("tooManyFilesInOneFolder"),
-                              ctx);
-                          return false;
-                        } finally {
-                          done.countDown();
-                        }
-                      } catch (IOException e) {
-                        // Ignore
-                        return false;
-                      } catch (ToadletContextClosedException e) {
-                        // Ignore
-                        return false;
-                      }
-                    }
-                  },
-                  NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
-        } catch (PersistenceDisabledException e1) {
-          sendPersistenceDisabledError(ctx);
-          return;
-        }
-        while (done.getCount() > 0) {
-          try {
-            done.await();
-          } catch (InterruptedException e) {
-            // Ignore
-          }
-        }
-        return;
-      } else if (request.isPartSet("recommend_request")) {
-        PageNode page = ctx.getPageMaker().getPageNode(l10n("recommendAFileToFriends"), ctx);
-        HTMLNode contentNode = page.getContentNode();
-        HTMLNode infoboxContent =
-            ctx.getPageMaker()
-                .getInfobox(
-                    "#", l10n("recommendAFileToFriends"), contentNode, "recommend-file", true);
-        HTMLNode form = ctx.addFormChild(infoboxContent, path(), "recommendForm2");
-
-        int x = 0;
-        for (String part : request.getParts()) {
-          if (!part.startsWith("identifier-")) continue;
-          String key =
-              request.getPartAsStringFailsafe(
-                  "key-" + part.substring("identifier-".length()), MAX_KEY_LENGTH);
-          if (key == null || key.isEmpty()) {
-            continue;
-          }
-          form.addChild("#", l10n("key") + ":");
-          form.addChild("br");
-          form.addChild("#", key);
-          form.addChild("br");
-          form.addChild(
-              "input",
-              new String[] {"type", "name", "value"},
-              new String[] {"hidden", "key-" + x, key});
-          x += 1;
-        }
-        form.addChild("label", "for", "descB", (l10n("recommendDescription") + ' '));
-        form.addChild("br");
-        form.addChild(
-            "textarea",
-            new String[] {"id", "name", "row", "cols"},
-            new String[] {"descB", "description", "3", "70"});
-        form.addChild("br");
-        if (core.getNode().isFProxyJavascriptEnabled()) {
-          form.addChild(
-              "script",
-              new String[] {"type", "src"},
-              new String[] {"text/javascript", "/static/js/checkall.js"});
-        }
-        HTMLNode peerTable = form.addChild("table", "class", "darknet_connections");
-        if (core.getNode().isFProxyJavascriptEnabled()) {
-          HTMLNode headerRow = peerTable.addChild("tr");
-          headerRow
-              .addChild("th")
-              .addChild(
-                  "input",
-                  new String[] {"type", "onclick"},
-                  new String[] {"checkbox", "checkAll(this, 'darknet_connections')"});
-          headerRow.addChild("th", l10n("recommendToFriends"));
-        } else {
-          peerTable.addChild("tr").addChild("th", "colspan", "2", l10n("recommendToFriends"));
-        }
-        for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
-          HTMLNode peerRow = peerTable.addChild("tr", "class", "darknet_connections_normal");
-          peerRow
-              .addChild("td", "class", "peer-marker")
-              .addChild(
-                  "input",
-                  new String[] {"type", "name"},
-                  new String[] {"checkbox", "node_" + peer.hashCode()});
-          peerRow.addChild("td", "class", "peer-name").addChild("#", peer.getName());
-        }
-
-        form.addChild(
-            "input",
-            new String[] {"type", "name", "value"},
-            new String[] {"submit", "recommend_uri", l10n("recommend")});
-
-        this.writeHTMLReply(ctx, 200, "OK", page.generate());
-        return;
-      } else if (request.isPartSet("recommend_uri")) {
-        String description = request.getPartAsStringFailsafe("description", 32768);
-        ArrayList<FreenetURI> uris = new ArrayList<>();
-        for (String part : request.getParts()) {
-          if (!part.startsWith("key-")) continue;
-          String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
-          try {
-            FreenetURI furi = new FreenetURI(key);
-            uris.add(furi);
-          } catch (MalformedURLException e) {
-            writeError(l10n("errorInvalidURI"), l10n("errorInvalidURIToU"), ctx);
-            return;
-          }
-        }
-
-        for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
-          if (request.isPartSet("node_" + peer.hashCode())) {
-            for (FreenetURI furi : uris) peer.sendDownloadFeed(furi, description);
-          }
-        }
-        writePermanentRedirect(ctx, "Done", path());
-        return;
       }
     } finally {
       request.freeParts();
@@ -1091,13 +220,1022 @@ public class QueueToadlet extends Toadlet
     this.handleMethodGET(uri, new HTTPRequestImpl(uri, "GET"), ctx);
   }
 
+  @FunctionalInterface
+  private interface CheckedHandler {
+    boolean handle() throws ToadletContextClosedException, IOException, RedirectException;
+  }
+
+  private boolean handleInsertLocal(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("insert-local")) {
+      return false;
+    }
+
+    FreenetURI insertURI;
+    String keyType = request.getPartAsStringFailsafe("keytype", 10);
+    if ("CHK".equals(keyType)) {
+      insertURI = new FreenetURI("CHK@");
+      if (fiw != null) fiw.reportCanonicalInsert();
+    } else if ("SSK".equals(keyType)) {
+      insertURI = new FreenetURI("SSK@");
+      if (fiw != null) fiw.reportRandomInsert();
+    } else if ("specify".equals(keyType)) {
+      try {
+        String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
+        insertURI = new FreenetURI(u);
+        if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, u);
+      } catch (MalformedURLException mue1) {
+        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
+        return true;
+      }
+    } else {
+      writeError(
+          l10n("errorMustSpecifyKeyTypeTitle"), l10n("errorMustSpecifyKeyType"), ctx, false, true);
+      return true;
+    }
+    MultiValueTable<String, String> responseHeaders =
+        MultiValueTable.from(
+            "Location",
+            LocalFileInsertToadlet.PATH
+                + "?key="
+                + insertURI.toASCIIString()
+                + "&"
+                + COMPRESS_FIELD
+                + "="
+                + (!(request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty()))
+                + "&"
+                + COMPATIBILITY_MODE_FIELD
+                + "="
+                + request.getPartAsStringFailsafe(COMPATIBILITY_MODE_FIELD, 100)
+                + "&"
+                + OVERRIDE_SPLITFILE_KEY_FIELD
+                + "="
+                + request.getPartAsStringFailsafe(OVERRIDE_SPLITFILE_KEY_FIELD, 65));
+    ctx.sendReplyHeaders(302, "Found", responseHeaders, null, 0);
+    return true;
+  }
+
+  private boolean handleSelectLocation(HTTPRequest request, ToadletContext ctx)
+      throws RedirectException {
+    if (!request.isPartSet("select-location")) {
+      return false;
+    }
+    try {
+      throw new RedirectException(LocalDirectoryToadlet.basePath() + DEFAULT_DOWNLOADS_PATH);
+    } catch (URISyntaxException e) {
+      // Shouldn't happen, path is defined as such.
+    }
+    return true;
+  }
+
+  private boolean handleDeleteRequest(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet(DELETE_REQUEST)
+        || request.getPartAsStringFailsafe(DELETE_REQUEST, 128).isEmpty()) {
+      return false;
+    }
+    PageNode page = ctx.getPageMaker().getPageNode(l10n("confirmDeleteTitle"), ctx);
+    HTMLNode inner = page.getContentNode();
+    HTMLNode content =
+        ctx.getPageMaker()
+            .getInfobox(
+                "infobox-warning", l10n("confirmDeleteTitle"), inner, "confirm-delete-title", true);
+
+    HTMLNode deleteNode = new HTMLNode("p");
+    HTMLNode deleteForm = ctx.addFormChild(deleteNode, path(), "queueDeleteForm");
+    HTMLNode infoList = deleteForm.addChild("ul");
+
+    populateDeleteInfoList(request, infoList);
+    content.addChild("p", l10n("confirmDelete"));
+    content.addChild(deleteNode);
+    addDeleteFormButtons(deleteForm);
+
+    this.writeHTMLReply(ctx, 200, "OK", page.generate());
+    return true;
+  }
+
+  private void populateDeleteInfoList(HTTPRequest request, HTMLNode infoList) {
+    for (String part : request.getParts()) {
+      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+      part = part.substring(IDENTIFIER_PREFIX.length());
+      if (part.length() > 50) continue;
+
+      String identifier =
+          request.getPartAsStringFailsafe(IDENTIFIER_PREFIX + part, MAX_IDENTIFIER_LENGTH);
+      if (identifier == null) continue;
+      String filename =
+          request.getPartAsStringFailsafe(FILENAME_PREFIX + part, MAX_FILENAME_LENGTH);
+      String keyString = request.getPartAsStringFailsafe(KEY_PREFIX + part, MAX_KEY_LENGTH);
+      String type = request.getPartAsStringFailsafe("type-" + part, MAX_TYPE_LENGTH);
+      String size = request.getPartAsStringFailsafe("size-" + part, 50);
+      if (filename != null) {
+        addFilenameLine(infoList, keyString, filename);
+      }
+      if (type != null && !type.isEmpty()) {
+        addMimeTypeLine(request, infoList, type);
+      }
+      if (size != null) {
+        HTMLNode line = infoList.addChild("li");
+        line.addChild("#", NodeL10n.getBase().getString("FProxyToadlet.sizeLabel") + " " + size);
+      }
+      infoList.addChild("#", l10n("deleteFileFromTemp"));
+      infoList.addChild(
+          TAG_INPUT,
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE, ATTR_CHECKED},
+          new String[] {"checkbox", IDENTIFIER_PREFIX + part, identifier, ATTR_CHECKED});
+    }
+  }
+
+  private void addMimeTypeLine(HTTPRequest request, HTMLNode infoList, String type) {
+    HTMLNode line = infoList.addChild("li");
+    boolean finalized = request.isPartSet("finalizedType");
+    line.addChild(
+        "#",
+        NodeL10n.getBase()
+            .getString(
+                "FProxyToadlet." + (finalized ? "mimeType" : "expectedMimeType"),
+                new String[] {"mime"},
+                new String[] {type}));
+  }
+
+  private void addFilenameLine(HTMLNode infoList, String keyString, String filename) {
+    HTMLNode line = infoList.addChild("li");
+    line.addChild("#", NodeL10n.getBase().getString("FProxyToadlet.filenameLabel") + " ");
+    if (keyString != null) {
+      line.addChild("a", "href", "/" + keyString, filename);
+    } else {
+      line.addChild("#", filename);
+    }
+  }
+
+  private void addDeleteFormButtons(HTMLNode deleteForm) {
+    deleteForm.addChild(
+        TAG_INPUT,
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+        new String[] {"submit", REMOVE_REQUEST, NodeL10n.getBase().getString("Toadlet.yes")});
+    deleteForm.addChild(
+        TAG_INPUT,
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+        new String[] {"submit", "cancel", NodeL10n.getBase().getString("Toadlet.no")});
+  }
+
+  private boolean handleRemoveRequest(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet(REMOVE_REQUEST)
+        || request.getPartAsStringFailsafe(REMOVE_REQUEST, 128).isEmpty()) {
+      return false;
+    }
+
+    String identifier = "";
+    try {
+      for (String part : request.getParts()) {
+        if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+        identifier = part.substring(IDENTIFIER_PREFIX.length());
+        if (identifier.length() > 50) continue;
+        identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
+        if (LOG.isDebugEnabled()) LOG.debug("Removing {}", identifier);
+        fcp.removeGlobalRequestBlocking(identifier);
+      }
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
+  private boolean handleRemoveFinishedUploads(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("remove_finished_uploads_request")
+        || request.getPartAsStringFailsafe("remove_finished_uploads_request", 128).isEmpty()) {
+      return false;
+    }
+    String identifier = "";
+    try {
+      RequestStatus[] reqs = fcp.getGlobalRequests();
+      for (RequestStatus r : reqs) {
+        if (r instanceof UploadFileRequestStatus upload) {
+          if (upload.hasSucceeded()) {
+            identifier = upload.getIdentifier();
+            fcp.removeGlobalRequestBlocking(identifier);
+          }
+        }
+      }
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
+  private boolean handleRemoveFinishedDownloads(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("remove_finished_downloads_request")
+        || request.getPartAsStringFailsafe("remove_finished_downloads_request", 128).isEmpty()) {
+      return false;
+    }
+    String identifier = "";
+    try {
+      RequestStatus[] reqs = fcp.getGlobalRequests();
+      for (RequestStatus r : reqs) {
+        if (r instanceof DownloadRequestStatus download) {
+          if (download.isPersistent()
+              && download.hasSucceeded()
+              && download.isTotalFinalized()
+              && !download.toTempSpace()) {
+            identifier = download.getIdentifier();
+            fcp.removeGlobalRequestBlocking(identifier);
+          }
+        }
+      }
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
+  private boolean handleRestartRequest(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("restart_request")
+        || request.getPartAsStringFailsafe("restart_request", 128).isEmpty()) {
+      return false;
+    }
+    boolean disableFilterData = request.isPartSet("disableFilterData");
+
+    String identifier = "";
+    for (String part : request.getParts()) {
+      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+      identifier = part.substring(IDENTIFIER_PREFIX.length());
+      if (identifier.length() > 50) continue;
+      identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
+      if (LOG.isDebugEnabled()) LOG.debug("Restarting {}", identifier);
+      try {
+        fcp.restartBlocking(identifier, disableFilterData);
+      } catch (PersistenceDisabledException e) {
+        sendPersistenceDisabledError(ctx);
+        return true;
+      }
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
+  private boolean handlePanic(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("panic") || request.getPartAsStringFailsafe("panic", 128).isEmpty()) {
+      return false;
+    }
+    if (SimpleToadletServer.noConfirmPanic) {
+      core.getNode().killMasterKeysFile();
+      core.getNode().panic();
+      sendPanicingPage(ctx);
+      core.getNode().finishPanic();
+    } else {
+      sendConfirmPanicPage(ctx);
+    }
+    return true;
+  }
+
+  private boolean handleConfirmPanic(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("confirmpanic")
+        || request.getPartAsStringFailsafe("confirmpanic", 128).isEmpty()) {
+      return false;
+    }
+    core.getNode().killMasterKeysFile();
+    core.getNode().panic();
+    sendPanicingPage(ctx);
+    core.getNode().finishPanic();
+    return true;
+  }
+
+  private boolean handleDownloadRequest(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("download")) {
+      return false;
+    }
+    if (!request.isPartSet("key")) {
+      writeError(l10n("errorNoKey"), l10n("errorNoKeyToD"), ctx);
+      return true;
+    }
+    String expectedMIMEType = null;
+    if (request.isPartSet("type")) {
+      expectedMIMEType = request.getPartAsStringFailsafe("type", MAX_TYPE_LENGTH);
+    }
+    FreenetURI fetchURI;
+    try {
+      fetchURI = new FreenetURI(request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH));
+    } catch (MalformedURLException e) {
+      writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_D), ctx);
+      return true;
+    }
+    String persistence = request.getPartAsStringFailsafe("persistence", 32);
+    String returnType = request.getPartAsStringFailsafe("return-type", 32);
+    boolean filterData = request.isPartSet("filterData");
+    String downloadPath;
+    File downloadsDir = null;
+    if (request.isPartSet("path") && !FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
+      downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
+      try {
+        downloadsDir = getDownloadsDir(downloadPath);
+      } catch (NotAllowedException e) {
+        downloadDisallowedPage(e, downloadPath, ctx);
+        return true;
+      }
+    } else {
+      returnType = "direct";
+    }
+    try {
+      fcp.makePersistentGlobalRequestBlocking(
+          fetchURI, filterData, expectedMIMEType, persistence, returnType, false, downloadsDir);
+    } catch (NotAllowedException e) {
+      this.writeError(l10n("errorDToDisk"), l10n("errorDToDiskConfig"), ctx);
+      return true;
+    } catch (PersistenceDisabledException e) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
+  private boolean handleBulkDownloads(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("bulkDownloads")) {
+      return false;
+    }
+    String bulkDownloadsAsString = request.getPartAsStringFailsafe("bulkDownloads", 262144);
+    String[] keys = bulkDownloadsAsString.split("\n");
+    if (bulkDownloadsAsString.isEmpty() || (keys.length < 1)) {
+      writePermanentRedirect(ctx, "Done", path());
+      return true;
+    }
+    LinkedList<String> success = new LinkedList<>(), failure = new LinkedList<>();
+    boolean filterData = request.isPartSet("filterData");
+    String target = request.getPartAsStringFailsafe("target", 128);
+    if (target == null) target = "direct";
+    String downloadPath;
+    File downloadsDir = null;
+    if (request.isPartSet("path") && !FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
+      downloadPath = request.getPartAsStringFailsafe("path", MAX_FILENAME_LENGTH);
+      try {
+        downloadsDir = getDownloadsDir(downloadPath);
+      } catch (NotAllowedException e) {
+        downloadDisallowedPage(e, downloadPath, ctx);
+        return true;
+      }
+    } else target = "direct";
+
+    for (int i = 0; i < keys.length; i++) {
+      String currentKey = keys[i];
+      currentKey = currentKey.trim();
+      if (currentKey.isEmpty()) continue;
+
+      try {
+        FreenetURI fetchURI = new FreenetURI(currentKey);
+        fcp.makePersistentGlobalRequestBlocking(
+            fetchURI, filterData, null, "forever", target, false, downloadsDir);
+        success.add(fetchURI.toString(true, false));
+      } catch (Exception e) {
+        failure.add(currentKey);
+        LOG.error(
+            "An error occured while attempting to download key({}) : {} : {}",
+            i,
+            currentKey,
+            e.getMessage());
+      }
+    }
+
+    boolean displayFailureBox = !failure.isEmpty();
+    boolean displaySuccessBox = !success.isEmpty();
+
+    PageNode page = ctx.getPageMaker().getPageNode(l10n("downloadFiles"), ctx);
+    HTMLNode contentNode = page.getContentNode();
+
+    HTMLNode alertContent =
+        ctx.getPageMaker()
+            .getInfobox(
+                (displayFailureBox ? "infobox-warning" : "infobox-info"),
+                l10n("downloadFiles"),
+                contentNode,
+                "grouped-downloads",
+                true);
+    if (displaySuccessBox) {
+      HTMLNode successDiv = alertContent.addChild("ul");
+      successDiv.addChild(
+          "#", l10n("enqueuedSuccessfully", "number", String.valueOf(success.size())));
+      for (String s : success) {
+        HTMLNode line = successDiv.addChild("li");
+        line.addChild("#", s);
+      }
+      successDiv.addChild("br");
+    }
+    if (displayFailureBox) {
+      HTMLNode failureDiv = alertContent.addChild("ul");
+      failureDiv.addChild("#", l10n("enqueuedFailure", "number", String.valueOf(failure.size())));
+      for (String f : failure) {
+        HTMLNode line = failureDiv.addChild("li");
+        line.addChild("#", f);
+      }
+      failureDiv.addChild("br");
+    }
+    alertContent.addChild(
+        "a", "href", path(), NodeL10n.getBase().getString("Toadlet.returnToQueuepage"));
+    writeHTMLReply(ctx, 200, "OK", page.generate());
+    return true;
+  }
+
+  private boolean handleChangePriorityActions(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (request.isPartSet("change_priority_top")) {
+      handleChangePriority(request, ctx, "_top");
+      return true;
+    }
+    if (request.isPartSet("change_priority_bottom")) {
+      handleChangePriority(request, ctx, "_bottom");
+      return true;
+    }
+    return false;
+  }
+
+  private boolean handleInsertUpload(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (request.getPartAsStringFailsafe("insert", 128).isEmpty()) {
+      return false;
+    }
+    final FreenetURI insertURI;
+    String keyType = request.getPartAsStringFailsafe("keytype", 10);
+    if ("CHK".equals(keyType)) {
+      insertURI = new FreenetURI("CHK@");
+      if (fiw != null) fiw.reportCanonicalInsert();
+    } else if ("SSK".equals(keyType)) {
+      insertURI = new FreenetURI("SSK@");
+      if (fiw != null) fiw.reportRandomInsert();
+    } else if ("specify".equals(keyType)) {
+      try {
+        String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
+        insertURI = new FreenetURI(u);
+        if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, u);
+      } catch (MalformedURLException mue1) {
+        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
+        return true;
+      }
+    } else {
+      writeError(
+          l10n("errorMustSpecifyKeyTypeTitle"), l10n("errorMustSpecifyKeyType"), ctx, false, true);
+      return true;
+    }
+    final HTTPUploadedFile file = request.getUploadedFile("filename");
+    if (file == null || file.getFilename().trim().isEmpty()) {
+      writeError(l10n("errorNoFileSelected"), l10n("errorNoFileSelectedU"), ctx, false, true);
+      return true;
+    }
+    final boolean compress = !request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty();
+    final String identifier = file.getFilename() + "-fred-" + System.currentTimeMillis();
+    final String compatibilityMode = request.getPartAsStringFailsafe(COMPATIBILITY_MODE_FIELD, 100);
+    final CompatibilityMode cmode;
+    if (compatibilityMode.isEmpty()) cmode = CompatibilityMode.COMPAT_DEFAULT.intern();
+    else cmode = CompatibilityMode.valueOf(compatibilityMode).intern();
+    String s = request.getPartAsStringFailsafe(OVERRIDE_SPLITFILE_KEY_FIELD, 65);
+    final byte[] overrideSplitfileKey;
+    if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
+    else overrideSplitfileKey = null;
+    final String fnam;
+    if (insertURI.getKeyType().equals("CHK") || keyType.equals("SSK")) fnam = file.getFilename();
+    else fnam = null;
+
+    final RandomAccessBucket copiedBucket =
+        core.getPersistentTempBucketFactory().makeBucket(file.getData().size());
+    BucketTools.copy(file.getData(), copiedBucket);
+    final CountDownLatch done = new CountDownLatch(1);
+    try {
+      core.getClientLayerPersister()
+          .queue(
+              new PersistentJob() {
+
+                @Override
+                public String toString() {
+                  return "QueueToadlet StartInsert";
+                }
+
+                @Override
+                public boolean run(ClientContext context) {
+                  try {
+                    final ClientPut clientPut;
+                    try {
+                      clientPut =
+                          new ClientPut(
+                              fcp.getGlobalForeverClient(),
+                              insertURI,
+                              identifier,
+                              Integer.MAX_VALUE,
+                              null,
+                              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+                              Persistence.FOREVER,
+                              null,
+                              false,
+                              !compress,
+                              -1,
+                              UploadFrom.DIRECT,
+                              null,
+                              file.getContentType(),
+                              copiedBucket,
+                              null,
+                              fnam,
+                              false,
+                              false,
+                              Node.FORK_ON_CACHEABLE_DEFAULT,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                              false,
+                              cmode,
+                              overrideSplitfileKey,
+                              false,
+                              fcp.getCore());
+                      if (clientPut != null)
+                        try {
+                          fcp.startBlocking(clientPut);
+                        } catch (IdentifierCollisionException e) {
+                          LOG.error("Cannot put same file twice in same millisecond");
+                          writePermanentRedirect(ctx, "Done", path());
+                          return false;
+                        }
+                      writePermanentRedirect(ctx, "Done", path());
+                      return true;
+                    } catch (IdentifierCollisionException e) {
+                      LOG.error("Cannot put same file twice in same millisecond");
+                      writePermanentRedirect(ctx, "Done", path());
+                      return false;
+                    } catch (NotAllowedException e) {
+                      writeError(
+                          l10n("errorAccessDenied"),
+                          l10n("errorAccessDeniedFile", "file", file.getFilename()),
+                          ctx,
+                          false,
+                          true);
+                      return false;
+                    } catch (FileNotFoundException e) {
+                      writeError(
+                          l10n("errorNoFileOrCannotRead"),
+                          l10n("errorAccessDeniedFile", "file", file.getFilename()),
+                          ctx,
+                          false,
+                          true);
+                      return false;
+                    } catch (MalformedURLException mue1) {
+                      writeError(
+                          l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
+                      return false;
+                    } catch (MetadataUnresolvedException e) {
+                      LOG.error(
+                          "Unresolved metadata in starting insert from data uploaded from browser:"
+                              + " {}",
+                          e,
+                          e);
+                      writePermanentRedirect(ctx, "Done", path());
+                      return false;
+                    } catch (Throwable t) {
+                      writeInternalError(t, ctx);
+                      return false;
+                    } finally {
+                      done.countDown();
+                    }
+                  } catch (IOException e) {
+                    return false;
+                  } catch (ToadletContextClosedException e) {
+                    return false;
+                  }
+                }
+              },
+              NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
+    } catch (PersistenceDisabledException e1) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    while (done.getCount() > 0) {
+      try {
+        done.await();
+      } catch (InterruptedException e) {
+        // Ignore
+      }
+    }
+    return true;
+  }
+
+  private boolean handleLocalFileSelection(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
+      return false;
+    }
+    final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserting local file: {}", filename);
+    final File file = new File(filename);
+    final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
+    final String contentType = DefaultMIMETypes.guessMIMEType(filename, false);
+    final FreenetURI furi;
+    final String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
+    final boolean compress = request.isPartSet(COMPRESS_FIELD);
+    final String compatibilityMode = request.getPartAsStringFailsafe(COMPATIBILITY_MODE_FIELD, 100);
+    final CompatibilityMode cmode;
+    if (compatibilityMode.isEmpty()) cmode = CompatibilityMode.COMPAT_DEFAULT;
+    else cmode = CompatibilityMode.valueOf(compatibilityMode);
+    String s = request.getPartAsStringFailsafe(OVERRIDE_SPLITFILE_KEY_FIELD, 65);
+    final byte[] overrideSplitfileKey;
+    if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
+    else overrideSplitfileKey = null;
+    if (key != null) {
+      try {
+        furi = new FreenetURI(key);
+      } catch (MalformedURLException e) {
+        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
+        return true;
+      }
+    } else {
+      furi = new FreenetURI("CHK@");
+    }
+    final String target;
+    if (furi.getDocName() != null) target = null;
+    else target = file.getName();
+    final CountDownLatch done = new CountDownLatch(1);
+    try {
+      core.getClientLayerPersister()
+          .queue(
+              new PersistentJob() {
+
+                @Override
+                public String toString() {
+                  return "QueueToadlet StartLocalFileInsert";
+                }
+
+                @Override
+                public boolean run(ClientContext context) {
+                  final ClientPut clientPut;
+                  try {
+                    try {
+                      clientPut =
+                          new ClientPut(
+                              fcp.getGlobalForeverClient(),
+                              furi,
+                              identifier,
+                              Integer.MAX_VALUE,
+                              null,
+                              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+                              Persistence.FOREVER,
+                              null,
+                              false,
+                              !compress,
+                              -1,
+                              UploadFrom.DISK,
+                              file,
+                              contentType,
+                              new FileBucket(file, true, false, false, false),
+                              null,
+                              target,
+                              false,
+                              false,
+                              Node.FORK_ON_CACHEABLE_DEFAULT,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                              false,
+                              cmode,
+                              overrideSplitfileKey,
+                              false,
+                              fcp.getCore());
+                      if (LOG.isDebugEnabled())
+                        LOG.debug(
+                            "Started global request to insert {} to CHK@ as {}", file, identifier);
+                      if (clientPut != null)
+                        try {
+                          fcp.startBlocking(clientPut);
+                        } catch (IdentifierCollisionException e) {
+                          LOG.error("Cannot put same file twice in same millisecond");
+                          writePermanentRedirect(ctx, "Done", path());
+                          return false;
+                        } catch (PersistenceDisabledException e) {
+                          // Impossible???
+                        }
+                      writePermanentRedirect(ctx, "Done", path());
+                      return true;
+                    } catch (IdentifierCollisionException e) {
+                      LOG.error("Cannot put same file twice in same millisecond");
+                      writePermanentRedirect(ctx, "Done", path());
+                      return false;
+                    } catch (MalformedURLException e) {
+                      writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
+                      return false;
+                    } catch (FileNotFoundException e) {
+                      writeError(
+                          l10n("errorNoFileOrCannotRead"),
+                          l10n("errorAccessDeniedFile", "file", target),
+                          ctx);
+                      return false;
+                    } catch (NotAllowedException e) {
+                      writeError(
+                          l10n("errorAccessDenied"),
+                          l10n(
+                              "errorAccessDeniedFile",
+                              new String[] {"file"},
+                              new String[] {file.getName()}),
+                          ctx);
+                      return false;
+                    } catch (MetadataUnresolvedException e) {
+                      LOG.error(
+                          "Unresolved metadata in starting insert from data from file: {}", e, e);
+                      writePermanentRedirect(ctx, "Done", path());
+                      return false;
+                    } finally {
+                      done.countDown();
+                    }
+                  } catch (IOException e) {
+                    return false;
+                  } catch (ToadletContextClosedException e) {
+                    return false;
+                  }
+                }
+              },
+              NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
+    } catch (PersistenceDisabledException e1) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    while (done.getCount() > 0) {
+      try {
+        done.await();
+      } catch (InterruptedException e) {
+        // Ignore
+      }
+    }
+    return true;
+  }
+
+  private boolean handleLocalDirSelection(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet(LocalFileBrowserToadlet.selectDir)) {
+      return false;
+    }
+    final String filename = request.getPartAsStringFailsafe("filename", MAX_FILENAME_LENGTH);
+    if (LOG.isDebugEnabled()) LOG.debug("Inserting local directory: {}", filename);
+    final File file = new File(filename);
+    final String identifier = file.getName() + "-fred-" + System.currentTimeMillis();
+    final FreenetURI furi;
+    final String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
+    final boolean compress = request.isPartSet(COMPRESS_FIELD);
+    String s = request.getPartAsStringFailsafe(OVERRIDE_SPLITFILE_KEY_FIELD, 65);
+    final byte[] overrideSplitfileKey;
+    if (s != null && !s.isEmpty()) overrideSplitfileKey = HexUtil.hexToBytes(s);
+    else overrideSplitfileKey = null;
+    if (key != null) {
+      try {
+        furi = new FreenetURI(key);
+      } catch (MalformedURLException e) {
+        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
+        return true;
+      }
+    } else {
+      furi = new FreenetURI("CHK@");
+    }
+    final CountDownLatch done = new CountDownLatch(1);
+    try {
+      core.getClientLayerPersister()
+          .queue(
+              new PersistentJob() {
+
+                @Override
+                public String toString() {
+                  return "QueueToadlet StartLocalDirInsert";
+                }
+
+                @Override
+                public boolean run(ClientContext context) {
+                  ClientPutDir clientPutDir;
+                  try {
+                    try {
+                      clientPutDir =
+                          new ClientPutDir(
+                              fcp.getGlobalForeverClient(),
+                              furi,
+                              identifier,
+                              Integer.MAX_VALUE,
+                              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+                              Persistence.FOREVER,
+                              null,
+                              false,
+                              !compress,
+                              -1,
+                              file,
+                              null,
+                              false,
+                              false,
+                              true,
+                              false,
+                              false,
+                              Node.FORK_ON_CACHEABLE_DEFAULT,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                              false,
+                              overrideSplitfileKey,
+                              fcp.getCore());
+                      if (LOG.isDebugEnabled())
+                        LOG.debug(
+                            "Started global request to insert dir {} to {} as {}",
+                            file,
+                            furi,
+                            identifier);
+                      if (clientPutDir != null) {
+                        try {
+                          fcp.startBlocking(clientPutDir);
+                        } catch (IdentifierCollisionException e) {
+                          LOG.error("Cannot put same file twice in same millisecond");
+                          writePermanentRedirect(ctx, "Done", path());
+                          return false;
+                        } catch (PersistenceDisabledException e) {
+                          sendPersistenceDisabledError(ctx);
+                          return false;
+                        }
+                      }
+                      writePermanentRedirect(ctx, "Done", path());
+                      return true;
+                    } catch (MalformedURLException e) {
+                      writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
+                      return false;
+                    } catch (FileNotFoundException e) {
+                      writeError(
+                          l10n("errorNoFileOrCannotRead"),
+                          l10n("errorAccessDeniedFile", "file", file.toString()),
+                          ctx);
+                      return false;
+                    } catch (TooManyFilesInsertException e) {
+                      writeError(
+                          l10n("tooManyFilesInOneFolder"), l10n("tooManyFilesInOneFolder"), ctx);
+                      return false;
+                    } finally {
+                      done.countDown();
+                    }
+                  } catch (IOException e) {
+                    return false;
+                  } catch (ToadletContextClosedException e) {
+                    return false;
+                  }
+                }
+              },
+              NativeThread.PriorityLevel.HIGH_PRIORITY.value + 1);
+    } catch (PersistenceDisabledException e1) {
+      sendPersistenceDisabledError(ctx);
+      return true;
+    }
+    while (done.getCount() > 0) {
+      try {
+        done.await();
+      } catch (InterruptedException e) {
+        // Ignore
+      }
+    }
+    return true;
+  }
+
+  private boolean handleRecommendRequest(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("recommend_request")) {
+      return false;
+    }
+    PageNode page = ctx.getPageMaker().getPageNode(l10n("recommendToFriendsTitle"), ctx);
+    HTMLNode inner = page.getContentNode();
+
+    HTMLNode content =
+        ctx.getPageMaker()
+            .getInfobox(
+                "infobox-information",
+                l10n("recommendToFriendsTitle"),
+                inner,
+                "recommend-to-friends-title",
+                true);
+
+    HTMLNode firstNode = content.addChild("p");
+    HTMLNode form = ctx.addFormChild(firstNode, path(), "recommendForm");
+    int x = 0;
+    if (request.isPartSet("filename")) {
+      for (String part : request.getParts()) {
+        if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+        part = part.substring(IDENTIFIER_PREFIX.length());
+        if (part.length() > 50) continue;
+        String filename =
+            request.getPartAsStringFailsafe(FILENAME_PREFIX + part, MAX_FILENAME_LENGTH);
+        if (filename == null || filename.isEmpty()) continue;
+        HTMLNode inputnode = form.addChild(TAG_INPUT);
+        inputnode.addAttribute("type", "text");
+        inputnode.addAttribute("value", filename);
+        inputnode.addAttribute("readonly", "readonly");
+        form.addChild(
+            "input",
+            new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+            new String[] {"hidden", FILENAME_PREFIX + x, filename});
+        x += 1;
+      }
+      x = 0;
+      form.addChild("br");
+    }
+    for (String part : request.getParts()) {
+      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+      String key =
+          request.getPartAsStringFailsafe(
+              KEY_PREFIX + part.substring(IDENTIFIER_PREFIX.length()), MAX_KEY_LENGTH);
+      if (key == null || key.isEmpty()) {
+        continue;
+      }
+      form.addChild("#", l10n("key") + ":");
+      form.addChild("br");
+      form.addChild("#", key);
+      form.addChild("br");
+      form.addChild(
+          "input",
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+          new String[] {"hidden", KEY_PREFIX + x, key});
+      x += 1;
+    }
+    form.addChild("label", "for", "descB", (l10n("recommendDescription") + ' '));
+    form.addChild("br");
+    form.addChild(
+        "textarea",
+        new String[] {"id", "name", "row", "cols"},
+        new String[] {"descB", "description", "3", "70"});
+    form.addChild("br");
+    if (core.getNode().isFProxyJavascriptEnabled()) {
+      form.addChild(
+          "script",
+          new String[] {ATTR_TYPE, "src"},
+          new String[] {"text/javascript", "/static/js/checkall.js"});
+    }
+    HTMLNode peerTable = form.addChild("table", "class", "darknet_connections");
+    if (core.getNode().isFProxyJavascriptEnabled()) {
+      HTMLNode headerRow = peerTable.addChild("tr");
+      headerRow
+          .addChild("th")
+          .addChild(
+              "input",
+              new String[] {ATTR_TYPE, "onclick"},
+              new String[] {"checkbox", "checkAll(this, 'darknet_connections')"});
+      headerRow.addChild("th", l10n("recommendToFriends"));
+    } else {
+      peerTable.addChild("tr").addChild("th", "colspan", "2", l10n("recommendToFriends"));
+    }
+    for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
+      HTMLNode peerRow = peerTable.addChild("tr", "class", "darknet_connections_normal");
+      peerRow
+          .addChild("td", "class", "peer-marker")
+          .addChild(
+              "input",
+              new String[] {ATTR_TYPE, ATTR_NAME},
+              new String[] {"checkbox", "node_" + peer.hashCode()});
+      peerRow.addChild("td", "class", "peer-name").addChild("#", peer.getName());
+    }
+
+    form.addChild(
+        "input",
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+        new String[] {"submit", "recommend_uri", l10n("recommend")});
+
+    this.writeHTMLReply(ctx, 200, "OK", page.generate());
+    return true;
+  }
+
+  private boolean handleRecommendUri(HTTPRequest request, ToadletContext ctx)
+      throws ToadletContextClosedException, IOException {
+    if (!request.isPartSet("recommend_uri")) {
+      return false;
+    }
+    String description = request.getPartAsStringFailsafe("description", 32768);
+    ArrayList<FreenetURI> uris = new ArrayList<>();
+    for (String part : request.getParts()) {
+      if (!part.startsWith(KEY_PREFIX)) continue;
+      String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
+      try {
+        FreenetURI furi = new FreenetURI(key);
+        uris.add(furi);
+      } catch (MalformedURLException e) {
+        writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx);
+        return true;
+      }
+    }
+
+    for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
+      if (request.isPartSet("node_" + peer.hashCode())) {
+        for (FreenetURI furi : uris) peer.sendDownloadFeed(furi, description);
+      }
+    }
+    writePermanentRedirect(ctx, "Done", path());
+    return true;
+  }
+
   private void handleChangePriority(HTTPRequest request, ToadletContext ctx, String suffix)
       throws ToadletContextClosedException, IOException {
     short newPriority = Short.parseShort(request.getPartAsStringFailsafe("priority" + suffix, 32));
     String identifier = "";
     for (String part : request.getParts()) {
-      if (!part.startsWith("identifier-")) continue;
-      identifier = part.substring("identifier-".length());
+      if (!part.startsWith(IDENTIFIER_PREFIX)) continue;
+      identifier = part.substring(IDENTIFIER_PREFIX.length());
       if (identifier.length() > 50) continue;
       identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
       try {
@@ -1161,12 +1299,12 @@ public class QueueToadlet extends Toadlet
     form.addChild("p")
         .addChild(
             "input",
-            new String[] {"type", "name", "value"},
+            new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
             new String[] {"submit", "confirmpanic", l10n("confirmPanicButtonYes")});
     form.addChild("p")
         .addChild(
             "input",
-            new String[] {"type", "name", "value"},
+            new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
             new String[] {"submit", "noconfirmpanic", l10n("confirmPanicButtonNo")});
 
     if (uploads) content.addChild("p").addChild("a", "href", path(), l10n("backToUploadsPage"));
@@ -1324,11 +1462,12 @@ public class QueueToadlet extends Toadlet
                               + core.getRequestStarters()
                                   .chkFetchSchedulerRT
                                   .countPersistentWaitingKeys();
-                      LOG.debug("Total waiting CHKs: " + queued);
+                      LOG.debug("Total waiting CHKs: {}", queued);
                       long reallyQueued =
                           core.getRequestStarters().chkFetchSchedulerBulk.countQueuedRequests()
                               + core.getRequestStarters().chkFetchSchedulerRT.countQueuedRequests();
-                      LOG.debug("Total queued CHK requests (including transient): " + reallyQueued);
+                      LOG.debug(
+                          "Total queued CHK requests (including transient): {}", reallyQueued);
                       PageNode page = pageMaker.getPageNode(l10n("title"), ctx);
                       pageNode = page.getOuterNode();
                       HTMLNode contentNode = page.getContentNode();
@@ -1428,8 +1567,7 @@ public class QueueToadlet extends Toadlet
       RequestStatus[] reqs,
       ClientContext context,
       final HTTPRequest request,
-      ToadletContext ctx)
-      throws PersistenceDisabledException {
+      ToadletContext ctx) {
 
     // First, get the queued requests, and separate them into different types.
     LinkedList<DownloadRequestStatus> completedDownloadToDisk = new LinkedList<>();
@@ -1448,7 +1586,7 @@ public class QueueToadlet extends Toadlet
     Map<String, LinkedList<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
     Map<String, LinkedList<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
 
-    if (LOG.isDebugEnabled()) LOG.debug("Request count: " + reqs.length);
+    if (LOG.isDebugEnabled()) LOG.debug("Request count: {}", reqs.length);
 
     if (reqs.length < 1) {
       return sendEmptyQueuePage(ctx, pageMaker);
@@ -1473,12 +1611,10 @@ public class QueueToadlet extends Toadlet
               && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
                   || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
             LOG.error(
-                "MIME type is null but failure code is "
-                    + FetchException.getMessage(failureCode)
-                    + " for "
-                    + download.getIdentifier()
-                    + " : "
-                    + download.getURI());
+                "MIME type is null but failure code is {} for {} : {}",
+                FetchException.getMessage(failureCode),
+                download.getIdentifier(),
+                download.getURI());
             mimeType = DefaultMIMETypes.DEFAULT_MIME_TYPE;
           }
           if (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME) {
@@ -1495,9 +1631,7 @@ public class QueueToadlet extends Toadlet
             LinkedList<DownloadRequestStatus> list;
             if (type == null) {
               LOG.error(
-                  "Bad MIME failure code yet MIME is "
-                      + mimeType
-                      + " which does not have a handler!");
+                  "Bad MIME failure code yet MIME is {} which does not have a handler!", mimeType);
               list = failedUnknownMIMEType.get(mimeType);
               if (list == null) {
                 list = new LinkedList<>();
@@ -1553,8 +1687,8 @@ public class QueueToadlet extends Toadlet
     if (!added) {
       return sendEmptyQueuePage(ctx, pageMaker);
     }
-    LOG.debug("Total queued downloads: " + SizeUtil.formatSize(totalQueuedDownloadSize));
-    LOG.debug("Total queued uploads: " + SizeUtil.formatSize(totalQueuedUploadSize));
+    LOG.debug("Total queued downloads: {}", SizeUtil.formatSize(totalQueuedDownloadSize));
+    LOG.debug("Total queued uploads: {}", SizeUtil.formatSize(totalQueuedUploadSize));
 
     Comparator<RequestStatus> jobComparator =
         (firstRequest, secondRequest) -> {
@@ -1937,7 +2071,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-temp",
-                QueueType.CompletedDownloadToTemp));
+                QueueType.COMPLETED_DOWNLOAD_TO_TEMP));
       } else {
         completedDownloadsToTempContent.addChild(
             createRequestTable(
@@ -1948,7 +2082,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-temp",
-                QueueType.CompletedDownloadToTemp));
+                QueueType.COMPLETED_DOWNLOAD_TO_TEMP));
       }
     }
 
@@ -1982,7 +2116,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-disk",
-                QueueType.CompletedDownloadToDisk));
+                QueueType.COMPLETED_DOWNLOAD_TO_DISK));
       } else {
         completedToDiskInfoboxContent.addChild(
             createRequestTable(
@@ -1993,7 +2127,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-disk",
-                QueueType.CompletedDownloadToDisk));
+                QueueType.COMPLETED_DOWNLOAD_TO_DISK));
       }
     }
 
@@ -2026,7 +2160,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-upload-file",
-                QueueType.CompletedUpload));
+                QueueType.COMPLETED_UPLOAD));
       } else {
         completedUploadInfoboxContent.addChild(
             createRequestTable(
@@ -2037,7 +2171,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-upload-file",
-                QueueType.CompletedUpload));
+                QueueType.COMPLETED_UPLOAD));
       }
     }
 
@@ -2069,7 +2203,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-upload-dir",
-                QueueType.CompletedDirUpload));
+                QueueType.COMPLETED_DIR_UPLOAD));
       } else {
         completedUploadDirContent.addChild(
             createRequestTable(
@@ -2080,7 +2214,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "completed-upload-dir",
-                QueueType.CompletedDirUpload));
+                QueueType.COMPLETED_DIR_UPLOAD));
       }
     }
 
@@ -2106,7 +2240,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-download",
-                QueueType.FailedDownload));
+                QueueType.FAILED_DOWNLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
@@ -2117,7 +2251,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-download",
-                QueueType.FailedDownload));
+                QueueType.FAILED_DOWNLOAD));
       }
     }
 
@@ -2143,7 +2277,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-upload-file",
-                QueueType.FailedUpload));
+                QueueType.FAILED_UPLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
@@ -2154,7 +2288,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-upload-file",
-                QueueType.FailedUpload));
+                QueueType.FAILED_UPLOAD));
       }
     }
 
@@ -2188,7 +2322,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-upload-dir",
-                QueueType.FailedDirUpload));
+                QueueType.FAILED_DIR_UPLOAD));
       } else {
         failedContent.addChild(
             createRequestTable(
@@ -2205,7 +2339,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "failed-upload-dir",
-                QueueType.FailedDirUpload));
+                QueueType.FAILED_DIR_UPLOAD));
       }
     }
 
@@ -2254,7 +2388,7 @@ public class QueueToadlet extends Toadlet
                   advancedModeEnabled,
                   "failed-download-file-badmime",
                   type,
-                  QueueType.FailedBadMIMEType));
+                  QueueType.FAILED_BAD_MIME_TYPE));
         } else {
           failedContent.addChild(
               createRequestTable(
@@ -2266,7 +2400,7 @@ public class QueueToadlet extends Toadlet
                   advancedModeEnabled,
                   "failed-download-file-badmime",
                   type,
-                  QueueType.FailedBadMIMEType));
+                  QueueType.FAILED_BAD_MIME_TYPE));
         }
       }
     }
@@ -2311,7 +2445,7 @@ public class QueueToadlet extends Toadlet
                   advancedModeEnabled,
                   "failed-download-file-unknownmime",
                   type,
-                  QueueType.FailedUnknownMIMEType));
+                  QueueType.FAILED_UNKNOWN_MIME_TYPE));
         } else {
           failedContent.addChild(
               createRequestTable(
@@ -2323,7 +2457,7 @@ public class QueueToadlet extends Toadlet
                   advancedModeEnabled,
                   "failed-download-file-unknownmime",
                   type,
-                  QueueType.FailedUnknownMIMEType));
+                  QueueType.FAILED_UNKNOWN_MIME_TYPE));
         }
       }
     }
@@ -2368,7 +2502,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-download",
-                QueueType.UncompletedDownload));
+                QueueType.UNCOMPLETED_DOWNLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
@@ -2385,7 +2519,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-download",
-                QueueType.UncompletedDownload));
+                QueueType.UNCOMPLETED_DOWNLOAD));
       }
     }
 
@@ -2428,7 +2562,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-upload-file",
-                QueueType.UncompletedUpload));
+                QueueType.UNCOMPLETED_UPLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
@@ -2446,7 +2580,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-upload-file",
-                QueueType.UncompletedUpload));
+                QueueType.UNCOMPLETED_UPLOAD));
       }
     }
 
@@ -2483,7 +2617,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-upload-dir",
-                QueueType.UncompletedDirUpload));
+                QueueType.UNCOMPLETED_DIR_UPLOAD));
       } else {
         uncompletedContent.addChild(
             createRequestTable(
@@ -2501,7 +2635,7 @@ public class QueueToadlet extends Toadlet
                 priorityClasses,
                 advancedModeEnabled,
                 "uncompleted-upload-dir",
-                QueueType.UncompletedDirUpload));
+                QueueType.UNCOMPLETED_DIR_UPLOAD));
       }
     }
 
@@ -2548,81 +2682,117 @@ public class QueueToadlet extends Toadlet
       boolean finalized,
       boolean upload) {
     HTMLNode progressCell = new HTMLNode("td", "class", "request-progress");
+    if (handleEarlyProgressMessages(advancedMode, started, compressing, progressCell)) {
+      return progressCell;
+    }
+
+    int adjustedTotal = adjustTotal(advancedMode, min, total);
+
+    if ((fetched < 0) || (adjustedTotal <= 0)) {
+      progressCell.addChild("span", "class", "progress_fraction_unknown", l10n("unknown"));
+    } else {
+      addProgressBar(
+          progressCell, fetched, failed, fatallyFailed, min, adjustedTotal, finalized, upload);
+    }
+    return progressCell;
+  }
+
+  private static boolean handleEarlyProgressMessages(
+      boolean advancedMode, boolean started, COMPRESS_STATE compressing, HTMLNode progressCell) {
     if (!started) {
       progressCell.addChild("#", l10n("starting"));
-      return progressCell;
+      return true;
     }
     if (compressing == COMPRESS_STATE.WAITING && advancedMode) {
       progressCell.addChild("#", l10n("awaitingCompression"));
-      return progressCell;
+      return true;
     }
     if (compressing != COMPRESS_STATE.WORKING) {
       progressCell.addChild("#", l10n("compressing"));
-      return progressCell;
+      return true;
     }
+    return false;
+  }
 
-    // double frac = p.getSuccessFraction();
-    if (!advancedMode || total < min /* FIXME why? */) {
-      total = min;
-    }
+  private static int adjustTotal(boolean advancedMode, int min, int total) {
+    return (!advancedMode || total < min) ? min : total;
+  }
 
-    if ((fetched < 0) || (total <= 0)) {
-      progressCell.addChild("span", "class", "progress_fraction_unknown", l10n("unknown"));
-    } else {
-      int fetchedPercent = (int) (fetched / (double) total * 100);
-      int failedPercent = (int) (failed / (double) total * 100);
-      int fatallyFailedPercent = (int) (fatallyFailed / (double) total * 100);
-      int minPercent = (int) (min / (double) total * 100);
-      HTMLNode progressBar = progressCell.addChild("div", "class", "progressbar");
+  private static void addProgressBar(
+      HTMLNode progressCell,
+      int fetched,
+      int failed,
+      int fatallyFailed,
+      int min,
+      int total,
+      boolean finalized,
+      boolean upload) {
+    int fetchedPercent = (int) (fetched / (double) total * 100);
+    int failedPercent = (int) (failed / (double) total * 100);
+    int fatallyFailedPercent = (int) (fatallyFailed / (double) total * 100);
+    int minPercent = (int) (min / (double) total * 100);
+    HTMLNode progressBar = progressCell.addChild("div", "class", "progressbar");
+    progressBar.addChild(
+        "div",
+        new String[] {"class", "style"},
+        new String[] {"progressbar-done", "width: " + fetchedPercent + "%;"});
+
+    if (failed > 0) {
       progressBar.addChild(
           "div",
           new String[] {"class", "style"},
-          new String[] {"progressbar-done", "width: " + fetchedPercent + "%;"});
-
-      if (failed > 0)
-        progressBar.addChild(
-            "div",
-            new String[] {"class", "style"},
-            new String[] {"progressbar-failed", "width: " + failedPercent + "%;"});
-      if (fatallyFailed > 0)
-        progressBar.addChild(
-            "div",
-            new String[] {"class", "style"},
-            new String[] {"progressbar-failed2", "width: " + fatallyFailedPercent + "%;"});
-      if ((fetched + failed + fatallyFailed) < min)
-        progressBar.addChild(
-            "div",
-            new String[] {"class", "style"},
-            new String[] {"progressbar-min", "width: " + (minPercent - fetchedPercent) + "%;"});
-
-      NumberFormat nf = NumberFormat.getInstance();
-      nf.setMaximumFractionDigits(1);
-      String prefix = '(' + Integer.toString(fetched) + "/ " + min + "): ";
-      if (finalized) {
-        progressBar.addChild(
-            "div",
-            new String[] {"class", "title"},
-            new String[] {"progress_fraction_finalized", prefix + l10n("progressbarAccurate")},
-            nf.format((int) ((fetched / (double) min) * 1000) / 10.0) + '%');
-      } else {
-        String text = nf.format((int) ((fetched / (double) min) * 1000) / 10.0) + '%';
-        if (!finalized) text = fetched + " (" + text + "??)";
-        progressBar.addChild(
-            "div",
-            new String[] {"class", "title"},
-            new String[] {
-              "progress_fraction_not_finalized",
-              prefix
-                  + NodeL10n.getBase()
-                      .getString(
-                          upload
-                              ? "QueueToadlet.uploadProgressbarNotAccurate"
-                              : "QueueToadlet.progressbarNotAccurate")
-            },
-            text);
-      }
+          new String[] {"progressbar-failed", "width: " + failedPercent + "%;"});
     }
-    return progressCell;
+    if (fatallyFailed > 0) {
+      progressBar.addChild(
+          "div",
+          new String[] {"class", "style"},
+          new String[] {"progressbar-failed2", "width: " + fatallyFailedPercent + "%;"});
+    }
+    if ((fetched + failed + fatallyFailed) < min) {
+      progressBar.addChild(
+          "div",
+          new String[] {"class", "style"},
+          new String[] {"progressbar-min", "width: " + (minPercent - fetchedPercent) + "%;"});
+    }
+
+    NumberFormat nf = NumberFormat.getInstance();
+    nf.setMaximumFractionDigits(1);
+    String prefix = '(' + Integer.toString(fetched) + "/ " + min + "): ";
+    addProgressTitle(progressBar, fetched, min, finalized, upload, nf, prefix);
+  }
+
+  private static void addProgressTitle(
+      HTMLNode progressBar,
+      int fetched,
+      int min,
+      boolean finalized,
+      boolean upload,
+      NumberFormat nf,
+      String prefix) {
+    String percentText = nf.format((int) ((fetched / (double) min) * 1000) / 10.0) + '%';
+    if (finalized) {
+      progressBar.addChild(
+          "div",
+          new String[] {"class", "title"},
+          new String[] {"progress_fraction_finalized", prefix + l10n("progressbarAccurate")},
+          percentText);
+      return;
+    }
+    String text = fetched + " (" + percentText + "??)";
+    progressBar.addChild(
+        "div",
+        new String[] {"class", "title"},
+        new String[] {
+          "progress_fraction_not_finalized",
+          prefix
+              + NodeL10n.getBase()
+                  .getString(
+                      upload
+                          ? "QueueToadlet.uploadProgressbarNotAccurate"
+                          : "QueueToadlet.progressbarNotAccurate")
+        },
+        text);
   }
 
   private HTMLNode createNumberCell(int numberOfFiles) {
@@ -2662,7 +2832,7 @@ public class QueueToadlet extends Toadlet
     HTMLNode priorityDiv = new HTMLNode("div", "class", "request-priority nowrap");
     priorityDiv.addChild(
         "input",
-        new String[] {"type", "name", "value"},
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {
           "submit",
           "change_priority" + controlSuffix,
@@ -2692,7 +2862,7 @@ public class QueueToadlet extends Toadlet
     HTMLNode recommendDiv = new HTMLNode("div", "class", "request-recommend");
     recommendDiv.addChild(
         "input",
-        new String[] {"type", "name", "value"},
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {"submit", "recommend_request", l10n("recommendFilesToFriends")});
     return recommendDiv;
   }
@@ -2704,34 +2874,34 @@ public class QueueToadlet extends Toadlet
   private HTMLNode createDeleteControl(
       PageMaker pageMaker, ToadletContext ctx, String mimeType, QueueType queueType) {
     HTMLNode deleteDiv = new HTMLNode("div", "class", "request-delete");
-    if (queueType == QueueType.CompletedDownloadToTemp) {
+    if (queueType == QueueType.COMPLETED_DOWNLOAD_TO_TEMP) {
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
-          new String[] {"submit", "delete_request", l10n("deleteFilesFromTemp")});
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+          new String[] {"submit", DELETE_REQUEST, l10n("deleteFilesFromTemp")});
     } else if (!queueType.isCompleted) {
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"submit", "remove_request", l10n("cancelSelected")});
     } else {
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"submit", "remove_request", l10n("removeFilesFromList")});
     }
-    if (queueType == QueueType.CompletedDownloadToDisk) {
+    if (queueType == QueueType.COMPLETED_DOWNLOAD_TO_DISK) {
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {
             "submit", "remove_finished_downloads_request", l10n("removeFinishedDownloads")
           });
     }
-    if (queueType == QueueType.CompletedUpload) {
+    if (queueType == QueueType.COMPLETED_UPLOAD) {
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {
             "submit", "remove_finished_uploads_request", l10n("removeFinishedUploads")
           });
@@ -2740,14 +2910,13 @@ public class QueueToadlet extends Toadlet
       String restartName = NodeL10n.getBase().getString("QueueToadlet.restartSelected");
       deleteDiv.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"submit", "restart_request", restartName});
       if (mimeType != null) {
-        HTMLNode input =
-            deleteDiv.addChild(
-                "input",
-                new String[] {"type", "name", "value"},
-                new String[] {"checkbox", "disableFilterData", "disableFilterData"});
+        deleteDiv.addChild(
+            "input",
+            new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+            new String[] {"checkbox", "disableFilterData", "disableFilterData"});
         deleteDiv.addChild("#", l10n("disableFilter", "type", mimeType));
       }
     }
@@ -2767,7 +2936,7 @@ public class QueueToadlet extends Toadlet
             + ' ');
     panicForm.addChild(
         "input",
-        new String[] {"type", "name", "value"},
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {"submit", "panic", l10n("panicButton")});
     return panicBox;
   }
@@ -2856,12 +3025,12 @@ public class QueueToadlet extends Toadlet
         || FProxyToadlet.isDownloadDisabledOrUnsafe(ctx, core)) {
       downloadForm.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"hidden", "target", "direct"});
     } else if (threatLevel == PHYSICAL_THREAT_LEVEL.LOW) {
       downloadForm.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"hidden", "target", "disk"});
       selectLocation(downloadForm);
     } else {
@@ -2906,7 +3075,7 @@ public class QueueToadlet extends Toadlet
     downloadForm.addChild("br");
     downloadForm.addChild(
         "input",
-        new String[] {"type", "name", "value"},
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {"submit", "insert", l10n("download")});
     return downloadBox;
   }
@@ -2930,7 +3099,7 @@ public class QueueToadlet extends Toadlet
         });
     node.addChild(
         "input",
-        new String[] {"type", "name", "value"},
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
         new String[] {"submit", "select-location", l10n("browseToChange") + "..."});
   }
 
@@ -3011,11 +3180,7 @@ public class QueueToadlet extends Toadlet
     long now = System.currentTimeMillis();
 
     HTMLNode formDiv = new HTMLNode("div", "class", "request-table-form");
-    HTMLNode form =
-        ctx.addFormChild(
-            formDiv,
-            path(),
-            "request-table-form-" + id + (advancedModeEnabled ? "-advanced" : "-simple"));
+    HTMLNode form = createRequestForm(ctx, id, advancedModeEnabled, formDiv);
 
     createRequestTableButtons(
         form,
@@ -3030,193 +3195,12 @@ public class QueueToadlet extends Toadlet
 
     HTMLNode table = form.addChild("table", "class", "requests");
     HTMLNode headerRow = table.addChild("tr", "class", "table-header");
+    headerRow.addChild("th");
+    addHeaderCells(headerRow, columns);
 
-    // Checkbox header
-    headerRow.addChild("th"); // No description
+    addRequestRows(
+        table, requests, columns, priorityClasses, ctx, advancedModeEnabled, now, queueType);
 
-    // Add a header for each column.
-    for (QueueColumn column : columns) {
-      switch (column) {
-        case IDENTIFIER:
-          headerRow
-              .addChild("th")
-              .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
-              .addChild("#", l10n("identifier"));
-          break;
-        case SIZE:
-          headerRow
-              .addChild("th")
-              .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
-              .addChild("#", l10n("size"));
-          break;
-        case MIME_TYPE:
-          headerRow.addChild("th", l10n("mimeType"));
-          break;
-        case PERSISTENCE:
-          headerRow.addChild("th", l10n("persistence"));
-          break;
-        case KEY:
-          headerRow.addChild("th", l10n("key"));
-          break;
-        case FILENAME:
-          headerRow.addChild("th", l10n("fileName"));
-          break;
-        case PRIORITY:
-          headerRow.addChild("th", l10n("priority"));
-          break;
-        case FILES:
-          headerRow.addChild("th", l10n("files"));
-          break;
-        case TOTAL_SIZE:
-          headerRow.addChild("th", l10n("totalSize"));
-          break;
-        case PROGRESS:
-          headerRow
-              .addChild("th")
-              .addChild(
-                  "a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
-              .addChild("#", l10n("progress"));
-          break;
-        case REASON:
-          headerRow.addChild("th", l10n("reason"));
-          break;
-        case LAST_ACTIVITY:
-          headerRow
-              .addChild("th")
-              .addChild(
-                  "a",
-                  "href",
-                  (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
-                  l10n("lastActivity"));
-          break;
-        case LAST_FAILURE:
-          headerRow
-              .addChild("th")
-              .addChild(
-                  "a",
-                  "href",
-                  (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
-                  l10n("lastFailure"));
-          break;
-        case COMPAT_MODE:
-          headerRow.addChild("th", l10n("compatibilityMode"));
-          break;
-      }
-    }
-    // Add a row with a checkbox for each request.
-    int x = 0;
-    for (RequestStatus clientRequest : requests) {
-      HTMLNode requestRow = table.addChild("tr", "class", "priority" + clientRequest.getPriority());
-      requestRow.addChild(createCheckboxCell(clientRequest, x++));
-
-      for (QueueColumn column : columns) {
-        switch (column) {
-          case IDENTIFIER:
-            requestRow.addChild(
-                createIdentifierCell(
-                    clientRequest.getURI(),
-                    clientRequest.getIdentifier(),
-                    clientRequest instanceof UploadDirRequestStatus));
-            break;
-          case SIZE:
-            boolean isFinal = true;
-            if (clientRequest instanceof DownloadRequestStatus)
-              isFinal = clientRequest.isTotalFinalized();
-            requestRow.addChild(
-                createSizeCell(clientRequest.getDataSize(), isFinal, advancedModeEnabled));
-            break;
-          case MIME_TYPE:
-            if (clientRequest instanceof DownloadRequestStatus status1) {
-              requestRow.addChild(createTypeCell(status1.getMIMEType()));
-            } else if (clientRequest instanceof UploadFileRequestStatus status) {
-              requestRow.addChild(createTypeCell(status.getMIMEType()));
-            }
-            break;
-          case PERSISTENCE:
-            requestRow.addChild(
-                createPersistenceCell(
-                    clientRequest.isPersistent(), clientRequest.isPersistentForever()));
-            break;
-          case KEY:
-            if (clientRequest instanceof DownloadRequestStatus) {
-              requestRow.addChild(createKeyCell(clientRequest.getURI(), false));
-            } else if (clientRequest instanceof UploadFileRequestStatus status) {
-              requestRow.addChild(createKeyCell(status.getFinalURI(), false));
-            } else {
-              requestRow.addChild(
-                  createKeyCell(((UploadDirRequestStatus) clientRequest).getFinalURI(), true));
-            }
-            break;
-          case FILENAME:
-            if (clientRequest instanceof DownloadRequestStatus status1) {
-              requestRow.addChild(createFilenameCell(status1.getDestFilename()));
-            } else if (clientRequest instanceof UploadFileRequestStatus status) {
-              requestRow.addChild(createFilenameCell(status.getOrigFilename()));
-            }
-            break;
-          case PRIORITY:
-            requestRow.addChild(createPriorityCell(clientRequest.getPriority(), priorityClasses));
-            break;
-          case FILES:
-            requestRow.addChild(
-                createNumberCell(((UploadDirRequestStatus) clientRequest).getNumberOfFiles()));
-            break;
-          case TOTAL_SIZE:
-            requestRow.addChild(
-                createSizeCell(
-                    ((UploadDirRequestStatus) clientRequest).getTotalDataSize(),
-                    true,
-                    advancedModeEnabled));
-            break;
-          case PROGRESS:
-            if (clientRequest instanceof UploadFileRequestStatus status)
-              requestRow.addChild(
-                  createProgressCell(
-                      ctx.isAdvancedModeEnabled(),
-                      clientRequest.isStarted(),
-                      status.isCompressing(),
-                      clientRequest.getFetchedBlocks(),
-                      clientRequest.getFailedBlocks(),
-                      clientRequest.getFatalyFailedBlocks(),
-                      clientRequest.getMinBlocks(),
-                      clientRequest.getTotalBlocks(),
-                      clientRequest.isTotalFinalized()
-                          || clientRequest instanceof UploadFileRequestStatus,
-                      queueType.isUpload));
-            else
-              requestRow.addChild(
-                  createProgressCell(
-                      ctx.isAdvancedModeEnabled(),
-                      clientRequest.isStarted(),
-                      COMPRESS_STATE.WORKING,
-                      clientRequest.getFetchedBlocks(),
-                      clientRequest.getFailedBlocks(),
-                      clientRequest.getFatalyFailedBlocks(),
-                      clientRequest.getMinBlocks(),
-                      clientRequest.getTotalBlocks(),
-                      clientRequest.isTotalFinalized()
-                          || clientRequest instanceof UploadFileRequestStatus,
-                      queueType.isUpload));
-            break;
-          case REASON:
-            requestRow.addChild(createReasonCell(clientRequest.getFailureReason(false)));
-            break;
-          case LAST_ACTIVITY:
-            requestRow.addChild(createLastActivityCell(now, clientRequest.getLastSuccess()));
-            break;
-          case LAST_FAILURE:
-            requestRow.addChild(createLastFailureCell(now, clientRequest.getLastFailure()));
-            break;
-          case COMPAT_MODE:
-            if (clientRequest instanceof DownloadRequestStatus status) {
-              requestRow.addChild(createCompatModeCell(status));
-            } else {
-              requestRow.addChild("td");
-            }
-            break;
-        }
-      }
-    }
     createRequestTableButtons(
         form,
         pageMaker,
@@ -3228,6 +3212,254 @@ public class QueueToadlet extends Toadlet
         false,
         queueType);
     return formDiv;
+  }
+
+  private HTMLNode createRequestForm(
+      ToadletContext ctx, String id, boolean advancedModeEnabled, HTMLNode formDiv) {
+    return ctx.addFormChild(
+        formDiv,
+        path(),
+        "request-table-form-" + id + (advancedModeEnabled ? "-advanced" : "-simple"));
+  }
+
+  private void addHeaderCells(HTMLNode headerRow, QueueColumn[] columns) {
+    for (QueueColumn column : columns) {
+      addHeaderCell(headerRow, column);
+    }
+  }
+
+  private void addHeaderCell(HTMLNode headerRow, QueueColumn column) {
+    switch (column) {
+      case IDENTIFIER:
+        headerRow
+            .addChild("th")
+            .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
+            .addChild("#", l10n("identifier"));
+        break;
+      case SIZE:
+        headerRow
+            .addChild("th")
+            .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
+            .addChild("#", l10n("size"));
+        break;
+      case MIME_TYPE:
+        headerRow.addChild("th", l10n("mimeType"));
+        break;
+      case PERSISTENCE:
+        headerRow.addChild("th", l10n("persistence"));
+        break;
+      case KEY:
+        headerRow.addChild("th", l10n("key"));
+        break;
+      case FILENAME:
+        headerRow.addChild("th", l10n("fileName"));
+        break;
+      case PRIORITY:
+        headerRow.addChild("th", l10n("priority"));
+        break;
+      case FILES:
+        headerRow.addChild("th", l10n("files"));
+        break;
+      case TOTAL_SIZE:
+        headerRow.addChild("th", l10n("totalSize"));
+        break;
+      case PROGRESS:
+        headerRow
+            .addChild("th")
+            .addChild("a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
+            .addChild("#", l10n("progress"));
+        break;
+      case REASON:
+        headerRow.addChild("th", l10n("reason"));
+        break;
+      case LAST_ACTIVITY:
+        headerRow
+            .addChild("th")
+            .addChild(
+                "a",
+                "href",
+                (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
+                l10n("lastActivity"));
+        break;
+      case LAST_FAILURE:
+        headerRow
+            .addChild("th")
+            .addChild(
+                "a",
+                "href",
+                (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
+                l10n("lastFailure"));
+        break;
+      case COMPAT_MODE:
+        headerRow.addChild("th", l10n("compatibilityMode"));
+        break;
+    }
+  }
+
+  private void addRequestRows(
+      HTMLNode table,
+      List<? extends RequestStatus> requests,
+      QueueColumn[] columns,
+      String[] priorityClasses,
+      ToadletContext ctx,
+      boolean advancedModeEnabled,
+      long now,
+      QueueType queueType) {
+    int index = 0;
+    for (RequestStatus clientRequest : requests) {
+      addRequestRow(
+          table,
+          columns,
+          priorityClasses,
+          ctx,
+          advancedModeEnabled,
+          now,
+          queueType,
+          index++,
+          clientRequest);
+    }
+  }
+
+  private void addRequestRow(
+      HTMLNode table,
+      QueueColumn[] columns,
+      String[] priorityClasses,
+      ToadletContext ctx,
+      boolean advancedModeEnabled,
+      long now,
+      QueueType queueType,
+      int index,
+      RequestStatus clientRequest) {
+    HTMLNode requestRow = table.addChild("tr", "class", "priority" + clientRequest.getPriority());
+    requestRow.addChild(createCheckboxCell(clientRequest, index));
+
+    for (QueueColumn column : columns) {
+      addColumnCell(
+          requestRow,
+          column,
+          clientRequest,
+          ctx,
+          priorityClasses,
+          advancedModeEnabled,
+          now,
+          queueType);
+    }
+  }
+
+  private void addColumnCell(
+      HTMLNode requestRow,
+      QueueColumn column,
+      RequestStatus clientRequest,
+      ToadletContext ctx,
+      String[] priorityClasses,
+      boolean advancedModeEnabled,
+      long now,
+      QueueType queueType) {
+    switch (column) {
+      case IDENTIFIER:
+        requestRow.addChild(
+            createIdentifierCell(
+                clientRequest.getURI(),
+                clientRequest.getIdentifier(),
+                clientRequest instanceof UploadDirRequestStatus));
+        break;
+      case SIZE:
+        boolean isFinal =
+            !(clientRequest instanceof DownloadRequestStatus) || clientRequest.isTotalFinalized();
+        requestRow.addChild(
+            createSizeCell(clientRequest.getDataSize(), isFinal, advancedModeEnabled));
+        break;
+      case MIME_TYPE:
+        if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
+          requestRow.addChild(createTypeCell(downloadStatus.getMIMEType()));
+        } else if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
+          requestRow.addChild(createTypeCell(uploadStatus.getMIMEType()));
+        }
+        break;
+      case PERSISTENCE:
+        requestRow.addChild(
+            createPersistenceCell(
+                clientRequest.isPersistent(), clientRequest.isPersistentForever()));
+        break;
+      case KEY:
+        if (clientRequest instanceof DownloadRequestStatus) {
+          requestRow.addChild(createKeyCell(clientRequest.getURI(), false));
+        } else if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
+          requestRow.addChild(createKeyCell(uploadStatus.getFinalURI(), false));
+        } else {
+          requestRow.addChild(
+              createKeyCell(((UploadDirRequestStatus) clientRequest).getFinalURI(), true));
+        }
+        break;
+      case FILENAME:
+        if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
+          requestRow.addChild(createFilenameCell(downloadStatus.getDestFilename()));
+        } else if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
+          requestRow.addChild(createFilenameCell(uploadStatus.getOrigFilename()));
+        }
+        break;
+      case PRIORITY:
+        requestRow.addChild(createPriorityCell(clientRequest.getPriority(), priorityClasses));
+        break;
+      case FILES:
+        requestRow.addChild(
+            createNumberCell(((UploadDirRequestStatus) clientRequest).getNumberOfFiles()));
+        break;
+      case TOTAL_SIZE:
+        requestRow.addChild(
+            createSizeCell(
+                ((UploadDirRequestStatus) clientRequest).getTotalDataSize(),
+                true,
+                advancedModeEnabled));
+        break;
+      case PROGRESS:
+        if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
+          requestRow.addChild(
+              createProgressCell(
+                  ctx.isAdvancedModeEnabled(),
+                  clientRequest.isStarted(),
+                  uploadStatus.isCompressing(),
+                  clientRequest.getFetchedBlocks(),
+                  clientRequest.getFailedBlocks(),
+                  clientRequest.getFatalyFailedBlocks(),
+                  clientRequest.getMinBlocks(),
+                  clientRequest.getTotalBlocks(),
+                  clientRequest.isTotalFinalized()
+                      || clientRequest instanceof UploadFileRequestStatus,
+                  queueType.isUpload));
+        } else {
+          requestRow.addChild(
+              createProgressCell(
+                  ctx.isAdvancedModeEnabled(),
+                  clientRequest.isStarted(),
+                  COMPRESS_STATE.WORKING,
+                  clientRequest.getFetchedBlocks(),
+                  clientRequest.getFailedBlocks(),
+                  clientRequest.getFatalyFailedBlocks(),
+                  clientRequest.getMinBlocks(),
+                  clientRequest.getTotalBlocks(),
+                  clientRequest.isTotalFinalized()
+                      || clientRequest instanceof UploadFileRequestStatus,
+                  queueType.isUpload));
+        }
+        break;
+      case REASON:
+        requestRow.addChild(createReasonCell(clientRequest.getFailureReason(false)));
+        break;
+      case LAST_ACTIVITY:
+        requestRow.addChild(createLastActivityCell(now, clientRequest.getLastSuccess()));
+        break;
+      case LAST_FAILURE:
+        requestRow.addChild(createLastFailureCell(now, clientRequest.getLastFailure()));
+        break;
+      case COMPAT_MODE:
+        if (clientRequest instanceof DownloadRequestStatus downloadStatus) {
+          requestRow.addChild(createCompatModeCell(downloadStatus));
+        } else {
+          requestRow.addChild("td");
+        }
+        break;
+    }
   }
 
   private boolean queueCannotRecommend(QueueType queueType) {
@@ -3266,8 +3498,8 @@ public class QueueToadlet extends Toadlet
     String identifier = clientRequest.getIdentifier();
     cell.addChild(
         "input",
-        new String[] {"type", "name", "value"},
-        new String[] {"checkbox", "identifier-" + counter, identifier});
+        new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+        new String[] {"checkbox", IDENTIFIER_PREFIX + counter, identifier});
     FreenetURI uri;
     long size = -1;
     String filename = null;
@@ -3283,20 +3515,20 @@ public class QueueToadlet extends Toadlet
     if (uri != null) {
       cell.addChild(
           "input",
-          new String[] {"type", "name", "value"},
-          new String[] {"hidden", "key-" + counter, uri.toASCIIString()});
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+          new String[] {"hidden", KEY_PREFIX + counter, uri.toASCIIString()});
     }
     filename = clientRequest.getPreferredFilenameSafe();
     if (size != -1)
       cell.addChild(
           "input",
-          new String[] {"type", "name", "value"},
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {"hidden", "size-" + counter, Long.toString(size)});
     if (filename != null)
       cell.addChild(
           "input",
-          new String[] {"type", "name", "value"},
-          new String[] {"hidden", "filename-" + counter, filename});
+          new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
+          new String[] {"hidden", FILENAME_PREFIX + counter, filename});
     return cell;
   }
 
@@ -3355,7 +3587,7 @@ public class QueueToadlet extends Toadlet
   }
 
   private void saveCompletedIdentifiersOffThread() {
-    core.getExecutor().execute(() -> saveCompletedIdentifiers(), "Save completed identifiers");
+    core.getExecutor().execute(this::saveCompletedIdentifiers, "Save completed identifiers");
   }
 
   private void loadCompletedIdentifiers() throws PersistenceDisabledException {
@@ -3370,7 +3602,10 @@ public class QueueToadlet extends Toadlet
         readCompletedIdentifiers(oldCompletedIdentifiersList);
         migrated = true;
       }
-    } else oldCompletedIdentifiersList.delete();
+    } else if (!oldCompletedIdentifiersList.delete()) {
+      LOG.warn(
+          "Failed to delete legacy completed identifiers list {}", oldCompletedIdentifiersList);
+    }
     final boolean writeAnyway = migrated;
     core.getClientContext()
         .jobRunner
@@ -3427,7 +3662,7 @@ public class QueueToadlet extends Toadlet
       // Normal
       return false;
     } catch (IOException e) {
-      LOG.error("Could not read completed identifiers list from " + file);
+      LOG.error("Could not read completed identifiers list from {}", file);
       return false;
     }
   }
@@ -3451,29 +3686,40 @@ public class QueueToadlet extends Toadlet
         for (String identifier : identifiers) bw.write(identifier + '\n');
       }
     } catch (FileNotFoundException e) {
-      LOG.error("Unable to save completed requests list (can't find node directory?!!?): " + e, e);
+      LOG.error("Unable to save completed requests list (can't find node directory?!!?): {}", e, e);
       return;
     } catch (IOException e) {
-      LOG.error("Unable to save completed requests list: " + e, e);
+      LOG.error("Unable to save completed requests list: {}", e, e);
       return;
     }
-    completedIdentifiersListNew.delete();
-    temp.renameTo(completedIdentifiersListNew);
+    if (completedIdentifiersListNew.exists() && !completedIdentifiersListNew.delete()) {
+      LOG.warn(
+          "Unable to delete backup completed identifiers list {}", completedIdentifiersListNew);
+    }
+    boolean renamedToBackup = temp.renameTo(completedIdentifiersListNew);
+    if (!renamedToBackup) {
+      LOG.error(
+          "Unable to store completed identifiers list because unable to rename {} to {}",
+          temp,
+          completedIdentifiersListNew);
+    }
     if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
-      completedIdentifiersList.delete();
+      if (completedIdentifiersList.exists() && !completedIdentifiersList.delete()) {
+        LOG.warn(
+            "Unable to delete existing completed identifiers list {}", completedIdentifiersList);
+      }
       if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
         LOG.error(
-            "Unable to store completed identifiers list because unable to rename "
-                + completedIdentifiersListNew
-                + " to "
-                + completedIdentifiersList);
+            "Unable to store completed identifiers list because unable to rename {} to {}",
+            completedIdentifiersListNew,
+            completedIdentifiersList);
       }
     }
   }
 
   private void registerAlert(ClientRequest req) {
     final String identifier = req.getIdentifier();
-    if (LOG.isDebugEnabled()) LOG.debug("Registering alert for " + identifier);
+    if (LOG.isDebugEnabled()) LOG.debug("Registering alert for {}", identifier);
     if (!req.hasFinished()) {
       if (LOG.isDebugEnabled()) LOG.debug("Request hasn't finished: {} for {}", req, identifier);
       return;
@@ -3481,7 +3727,7 @@ public class QueueToadlet extends Toadlet
     if (req instanceof ClientGet get) {
       FreenetURI uri = get.getURI();
       if (uri == null) {
-        LOG.error("No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request {}", req);
         return;
       }
       long size = get.getDataSize();
@@ -3493,7 +3739,7 @@ public class QueueToadlet extends Toadlet
     } else if (req instanceof ClientPut put) {
       FreenetURI uri = put.getFinalURI();
       if (uri == null) {
-        LOG.error("No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request {}", req);
         return;
       }
       long size = put.getDataSize();
@@ -3505,7 +3751,7 @@ public class QueueToadlet extends Toadlet
     } else if (req instanceof ClientPutDir dir) {
       FreenetURI uri = dir.getFinalURI();
       if (uri == null) {
-        LOG.error("No URI for supposedly finished request " + req);
+        LOG.error("No URI for supposedly finished request {}", req);
         return;
       }
       long size = dir.getTotalDataSize();
@@ -3556,8 +3802,12 @@ public class QueueToadlet extends Toadlet
     return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
   }
 
-  static final String PATH_UPLOADS = "/uploads/";
-  static final String PATH_DOWNLOADS = "/downloads/";
+  private static final String DEFAULT_UPLOADS_PATH = "/uploads/";
+  private static final String DEFAULT_DOWNLOADS_PATH = "/downloads/";
+
+  static final String PATH_UPLOADS = System.getProperty("queue.uploads.path", DEFAULT_UPLOADS_PATH);
+  static final String PATH_DOWNLOADS =
+      System.getProperty("queue.downloads.path", DEFAULT_DOWNLOADS_PATH);
 
   static final HTMLNode DOWNLOADS_LINK = HTMLNode.link(PATH_DOWNLOADS).setReadOnly();
   static final HTMLNode UPLOADS_LINK = HTMLNode.link(PATH_UPLOADS).setReadOnly();
