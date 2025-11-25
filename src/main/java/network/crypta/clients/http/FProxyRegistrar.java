@@ -153,7 +153,7 @@ final class FProxyRegistrar {
     server.register(
         uploadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
-        "/uploads/",
+        LocalFileInsertToadlet.UPLOADS_PATH,
         true,
         "FProxyToadlet.uploadsTitle",
         "FProxyToadlet.uploads",
@@ -173,7 +173,8 @@ final class FProxyRegistrar {
     uploadToadlet.setFIW(fiw);
 
     LocalFileInsertToadlet localFileInsertToadlet = new LocalFileInsertToadlet(core, client);
-    server.register(localFileInsertToadlet, null, LocalFileInsertToadlet.PATH, true, false);
+    server.register(
+        localFileInsertToadlet, null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false);
 
     ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client, core);
     server.register(

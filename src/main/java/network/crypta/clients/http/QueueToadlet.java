@@ -206,7 +206,7 @@ public class QueueToadlet extends Toadlet
         MultiValueTable<String, String> responseHeaders =
             MultiValueTable.from(
                 "Location",
-                LocalFileInsertToadlet.PATH
+                LocalFileInsertToadlet.INSERT_BROWSE_PATH
                     + "?key="
                     + insertURI.toASCIIString()
                     + "&compress="
@@ -3556,7 +3556,7 @@ public class QueueToadlet extends Toadlet
     return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
   }
 
-  static final String PATH_UPLOADS = "/uploads/";
+  static final String PATH_UPLOADS = LocalFileInsertToadlet.UPLOADS_PATH;
   static final String PATH_DOWNLOADS = "/downloads/";
 
   static final HTMLNode DOWNLOADS_LINK = HTMLNode.link(PATH_DOWNLOADS).setReadOnly();
