@@ -76,7 +76,7 @@ public class InsertFreesiteToadlet extends Toadlet {
             contentBox.addChild("p"),
             "InsertFreesiteToadlet.contentFlogHelper",
             new String[] {"plugins"},
-            new HTMLNode[] {HTMLNode.link(PproxyToadlet.PATH)});
+            new HTMLNode[] {HTMLNode.link(PproxyToadlet.PLUGINS_PATH)});
 
     NodeL10n.getBase()
         .addL10nSubstitution(
