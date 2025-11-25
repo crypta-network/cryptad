@@ -439,7 +439,7 @@ public class QueueToadlet extends Toadlet
     MultiValueTable<String, String> responseHeaders =
         MultiValueTable.from(
             "Location",
-            LocalFileInsertToadlet.PATH
+            LocalFileInsertToadlet.INSERT_BROWSE_PATH
                 + "?key="
                 + insertURI.toASCIIString()
                 + "&"
@@ -1377,7 +1377,7 @@ public class QueueToadlet extends Toadlet
 
   private boolean handleLocalFileSelection(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    if (!request.isPartSet(LocalFileBrowserToadlet.selectFile)) {
+    if (!request.isPartSet(LocalFileBrowserToadlet.SELECT_FILE)) {
       return false;
     }
 
@@ -1547,7 +1547,7 @@ public class QueueToadlet extends Toadlet
 
   private boolean handleLocalDirSelection(HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    if (!request.isPartSet(LocalFileBrowserToadlet.selectDir)) {
+    if (!request.isPartSet(LocalFileBrowserToadlet.SELECT_DIR)) {
       return false;
     }
 
