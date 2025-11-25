@@ -263,7 +263,7 @@ public final class SimpleToadletServer
 
     @Override
     public String[] getPossibleValues() {
-      return THEME.possibleValues;
+      return THEME.possibleValues();
     }
   }
 
