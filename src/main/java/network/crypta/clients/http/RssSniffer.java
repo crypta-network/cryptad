@@ -1,6 +1,31 @@
 package network.crypta.clients.http;
 
+/**
+ * Utility helpers for detecting RSS or Atom XML roots in incoming HTTP payload prefixes.
+ *
+ * <p>This class provides a lightweight, allocation-free scan that looks only at the initial bytes
+ * of an entity body to decide whether a browser is likely to sniff the content as a feed. It is
+ * intended for callers that already possess a small prefix (typically a few kilobytes read for MIME
+ * sniffing) and need to force a download instead of inline rendering when a feed is detected. The
+ * logic recognizes top-level {@code <rss}, {@code <feed}, and {@code <rdf:RDF} tags even when they
+ * are preceded by XML declarations or comments. Callers should not pass unbounded streams; the
+ * input is treated as immutable and no additional I/O occurs during detection.
+ *
+ * <p>The class is stateless and thread-safe. All methods are static and throw no checked
+ * exceptions, making it safe to invoke from network pipelines or pre-processing filters where
+ * defensive checks are desired but latency and memory overhead must remain minimal.
+ *
+ * <ul>
+ *   <li>Responsibilities: detect browser feed sniffing cues in raw byte prefixes.
+ *   <li>Notable behavior: ignores XML comments and processing instructions before root tags.
+ *   <li>Thread safety: fully immutable utility with no shared state.
+ * </ul>
+ */
 public class RssSniffer {
+
+  private RssSniffer() {
+    throw new IllegalStateException("Utility class");
+  }
 
   /**
    * Look for any of the following strings as top-level XML tags: &lt;rss &lt;feed &lt;rdf:RDF
@@ -8,6 +33,14 @@ public class RssSniffer {
    * <p>If they start at the beginning of the file, or are preceded by one or more &lt;! or &lt;?
    * tags, then firefox will read it as RSS. In which case we must force it to be downloaded to
    * disk.
+   *
+   * <p>The scan is limited to the supplied prefix and does not read additional bytes. It tolerates
+   * XML declarations and comments before the root element but otherwise requires the tag to be the
+   * first top-level element. The method performs a simple byte comparison without charset decoding
+   * and is therefore insensitive to XML prolog encoding hints.
+   *
+   * @param prefix initial bytes from the HTTP entity body; may be truncated
+   * @return true when a recognized feed root tag appears as first top-level tag
    */
   public static boolean isSniffedAsFeed(byte[] prefix) {
     int tlt = indexOfTopLevelTag(prefix);
