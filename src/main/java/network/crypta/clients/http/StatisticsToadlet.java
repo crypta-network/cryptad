@@ -236,7 +236,7 @@ public class StatisticsToadlet extends Toadlet {
                 l10n("getLogs"));
       logsList
           .addChild("li")
-          .addChild("a", "href", TranslationToadlet.TOADLET_URL + "?getOverrideTranlationFile")
+          .addChild("a", "href", TranslationToadlet.TOADLET_URL + "?getOverrideTranslationFile")
           .addChild(
               "#", NodeL10n.getBase().getString("TranslationToadlet.downloadTranslationsFile"));
       logsList
