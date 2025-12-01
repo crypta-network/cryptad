@@ -130,23 +130,18 @@ class SymlinkerToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenTargetContainsSpaces_returnsHtmlError() {
+  void handleMethodGET_whenTargetContainsSpaces_redirectsWithEncodedPath() throws Exception {
     when(subConfig.getStringArr("symlinks")).thenReturn(new String[0]);
     SymlinkerToadlet toadlet = new SymlinkerToadlet(client, node);
     toadlet.addLink("/bad/", "/target with space/", false);
 
-    assertDoesNotThrow(
-        () -> toadlet.handleMethodGET(new URI("http://localhost/bad/here"), request, ctx));
+    RedirectException redirect =
+        assertThrows(
+            RedirectException.class,
+            () -> toadlet.handleMethodGET(new URI("http://localhost/bad/here"), request, ctx));
 
-    verify(ctx)
-        .sendReplyHeaders(
-            org.mockito.ArgumentMatchers.eq(200),
-            org.mockito.ArgumentMatchers.eq("OK"),
-            isNull(),
-            org.mockito.ArgumentMatchers.eq("text/html; charset=utf-8"),
-            anyLong(),
-            org.mockito.ArgumentMatchers.eq(false));
-    verify(ctx).writeData(any(byte[].class), anyInt(), anyInt());
+    assertEquals("/target with space/here", redirect.getTarget().getPath());
+    assertEquals("/target%20with%20space/here", redirect.getTarget().getRawPath());
   }
 
   private SymlinkerToadlet createToadletWithConfigLinks(String... links) {
