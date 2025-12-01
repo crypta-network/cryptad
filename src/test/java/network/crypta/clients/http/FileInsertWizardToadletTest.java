@@ -227,17 +227,6 @@ class FileInsertWizardToadletTest {
     }
 
     @Override
-    public void sendReplyHeaders(
-        int code,
-        String desc,
-        MultiValueTable<String, String> mvt,
-        String mimeType,
-        long length,
-        java.util.Date mTime) {
-      this.statusCode = code;
-    }
-
-    @Override
     public void sendReplyHeadersStatic(
         int code,
         String desc,

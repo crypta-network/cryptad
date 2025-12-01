@@ -211,17 +211,6 @@ class HTTPRequestImplTest {
       }
 
       @Override
-      public void sendReplyHeaders(
-          int code,
-          String desc,
-          MultiValueTable<String, String> mvt,
-          String mimeType,
-          long length,
-          java.util.Date mTime) {
-        throw new UnsupportedOperationException();
-      }
-
-      @Override
       public void sendReplyHeadersStatic(
           int code,
           String desc,

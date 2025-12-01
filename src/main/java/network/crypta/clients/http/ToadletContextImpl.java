@@ -248,19 +248,6 @@ public class ToadletContextImpl implements ToadletContext {
     sendReplyHeaders(code, desc, mvt, mimeType, length, null, false, false, enableJavascript);
   }
 
-  @Deprecated
-  public void sendReplyHeaders(
-      int code,
-      String desc,
-      MultiValueTable<String, String> mvt,
-      String mimeType,
-      long length,
-      Date mTime)
-      throws ToadletContextClosedException, IOException {
-    if (mTime != null) sendReplyHeadersStatic(code, desc, mvt, mimeType, length, mTime);
-    else sendReplyHeaders(code, desc, mvt, mimeType, length);
-  }
-
   public void sendReplyHeadersStatic(
       int replyCode,
       String replyDescription,
