@@ -1236,7 +1236,7 @@ public class Node implements TimeSkewDetectorCallback {
       fproxyConfig.finishedInitialization();
       toadlets.start();
       return toadlets;
-    } catch (IOException | InvalidConfigValueException e4) {
+    } catch (InvalidConfigValueException e4) {
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_START_FPROXY, "Could not start FProxy: " + e4);
     }
