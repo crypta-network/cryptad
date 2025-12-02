@@ -23,7 +23,7 @@ public class CodeTest {
       return;
     }
 
-    int lim = fecMath.gfSize + 1;
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode maybeNative = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode pureCode = new PureCode(KK, lim)) {
       int[] index = new int[KK];
@@ -83,7 +83,7 @@ public class CodeTest {
 
   @Test
   public void testSimpleRev() {
-    int lim = fecMath.gfSize + 1;
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
@@ -99,7 +99,7 @@ public class CodeTest {
 
   @Test
   public void testSimple() {
-    int lim = fecMath.gfSize + 1;
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
@@ -114,7 +114,7 @@ public class CodeTest {
 
   @Test
   public void testShifted() {
-    int lim = fecMath.gfSize + 1;
+    int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
       int[] index = new int[KK];
