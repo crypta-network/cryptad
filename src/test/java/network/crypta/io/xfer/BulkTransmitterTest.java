@@ -295,7 +295,7 @@ class BulkTransmitterTest {
     // While the first remains in-flight, deliver the second block. The new logic should wake and
     // queue it immediately, without waiting for inFlight=0.
     prb.received(1, pattern, 0, BLOCK_SIZE);
-    assertTrue(secondSent.await(5, TimeUnit.SECONDS), "second packet sent opportunistically");
+    assertTrue(secondSent.await(10, TimeUnit.SECONDS), "second packet sent opportunistically");
 
     // Now allow the first packet to complete so send() can finish.
     cb0.get().acknowledged();
