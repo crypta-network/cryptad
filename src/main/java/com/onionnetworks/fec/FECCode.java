@@ -209,9 +209,10 @@ public abstract class FECCode implements AutoCloseable {
    * @param k Number of systematic packets expected at the start of {@code pkts}; must be less than
    *     or equal to {@code pkts.length}.
    */
-  protected static final void copyShuffle(Buffer[] pkts, int index[], int k) {
+  protected static void copyShuffle(Buffer[] pkts, int[] index, int k) {
     byte[] b = null;
-    for (int i = 0; i < k; ) {
+    int i = 0;
+    while (i < k) {
       if (index[i] >= k || index[i] == i) {
         i++;
       } else {
@@ -252,8 +253,9 @@ public abstract class FECCode implements AutoCloseable {
    * @param k Number of systematic packets expected at the front of the array; must not exceed the
    *     array length.
    */
-  protected static final void shuffle(byte[][] pkts, int[] pktsOff, int[] index, int k) {
-    for (int i = 0; i < k; ) {
+  protected static void shuffle(byte[][] pkts, int[] pktsOff, int[] index, int k) {
+    int i = 0;
+    while (i < k) {
       if (index[i] >= k || index[i] == i) {
         i++;
       } else {
