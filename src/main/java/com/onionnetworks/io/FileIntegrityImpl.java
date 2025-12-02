@@ -4,18 +4,58 @@ import com.onionnetworks.util.Buffer;
 import com.onionnetworks.util.Util;
 
 /**
- * This class provides a way to access various structures needed to check the integrity of a file.
+ * Immutable container for integrity metadata associated with a file.
+ *
+ * <p>This implementation stores the digest algorithm name, the overall file hash, and a hash for
+ * each fixed-size block of the file. It performs basic validation in the constructor to ensure the
+ * supplied hashes align with the expected block layout and size. Callers typically obtain an
+ * instance from code that already computed the hashes, then pass it to verification routines that
+ * compare hashes against bytes read from disk or the network. Because the internal arrays are not
+ * defensively copied, callers should treat the provided {@code Buffer} instances as read-only after
+ * construction to preserve integrity guarantees.
+ *
+ * <p>The class is thread-safe for concurrent reads after construction: all fields are {@code final}
+ * and no mutation occurs. It does not perform any I/O itself; it simply exposes the precomputed
+ * values needed by {@link FileIntegrity} consumers. Typical usage patterns include: reading the
+ * algorithm name to initialize a message digest, requesting individual block hashes during
+ * streaming verification, and comparing {@link #getFileHash()} when all blocks have been processed.
+ *
+ * <ul>
+ *   <li>Validates non-null inputs and non-negative sizes during construction.
+ *   <li>Computes the expected block count using ceiling division to cover partial tails.
+ *   <li>Assumes callers manage the lifecycle of the supplied buffers.
+ * </ul>
  *
  * @author Justin F. Chapweske
  */
 public class FileIntegrityImpl implements FileIntegrity {
 
-  private String algo;
-  private Buffer fileHash;
-  private Buffer[] blockHashes;
-  private int blockSize, blockCount;
-  private long fileSize;
+  private final String algo;
+  private final Buffer fileHash;
+  private final Buffer[] blockHashes;
+  private final int blockSize;
+  private final int blockCount;
+  private final long fileSize;
 
+  /**
+   * Creates an immutable snapshot of file-integrity data for a single file instance.
+   *
+   * <p>All inputs must already reflect the same digest algorithm. The constructor checks for null
+   * references, enforces non-negative sizes, and verifies the number of provided block hashes
+   * matches the ceiling of {@code fileSize / blockSize}. The supplied arrays are stored by
+   * reference; callers should avoid mutating them after construction to prevent divergence between
+   * stored hashes and the represented file.
+   *
+   * @param algorithm message-digest algorithm name (e.g., {@code "SHA-256"}); must not be null.
+   * @param fileHash hash of the complete file content using {@code algorithm}; must not be null.
+   * @param blockHashes ordered hashes for each block from offset 0 upward; array must not be null.
+   * @param fileSize total file length in bytes; must be zero or positive.
+   * @param blockSize configured block size in bytes; must be positive for non-empty files.
+   * @throws NullPointerException if {@code algorithm}, {@code fileHash}, or {@code blockHashes} is
+   *     {@code null}.
+   * @throws IllegalArgumentException if {@code fileSize} or {@code blockSize} is negative, or if
+   *     {@code blockHashes.length} does not equal the computed block count.
+   */
   public FileIntegrityImpl(
       String algorithm, Buffer fileHash, Buffer[] blockHashes, long fileSize, int blockSize) {
     if (algorithm == null) {
@@ -41,51 +81,82 @@ public class FileIntegrityImpl implements FileIntegrity {
   }
 
   /**
-   * @return the message digest algorithm used to create the the hashes.
+   * Returns the message-digest algorithm name used to create every hash in this instance.
+   *
+   * <p>The algorithm is the exact string provided at construction time and should be compatible
+   * with {@link java.security.MessageDigest#getInstance(String)} when initializing verifiers.
+   *
+   * @return algorithm identifier; callers must not assume normalization beyond the provided value.
    */
   public String getAlgorithm() {
     return algo;
   }
 
   /**
-   * Specifies the size of each block. This size should be a power of 2 and all blocks will be this
-   * size, expect for the last block which may be equal to or less than the block size (but not 0).
+   * Reports the configured block size, in bytes, used when computing per-block hashes.
    *
-   * @return the block size.
+   * <p>All blocks except the tail share this size; the final block may be shorter when {@code
+   * fileSize} is not an exact multiple. The value is identical to the constructor argument and
+   * should typically be a power of two for efficient alignment, although no enforcement occurs
+   * here.
+   *
+   * @return positive integer size in bytes; unchanged from construction input.
    */
   public int getBlockSize() {
     return blockSize;
   }
 
   /**
-   * @return the size of the file.
+   * Returns the total file size, in bytes, that the stored hashes describe.
+   *
+   * <p>The value represents the original length supplied to the constructor. Verification routines
+   * can use it to detect truncated data or to compute stream boundaries when iterating blocks.
+   *
+   * @return non-negative length in bytes for the represented file.
    */
   public long getFileSize() {
     return fileSize;
   }
 
   /**
-   * Returns the number of blocks that make up the file. This value will be equal to
-   * ceil(fileSize/blockSize).
+   * Returns the number of logical blocks whose hashes are stored in this instance.
    *
-   * @return the block count.
+   * <p>The count equals {@code ceil(fileSize / blockSize)} and therefore includes a final partial
+   * block when the file length is not evenly divisible by the block size. It is precomputed during
+   * construction to support fast bounds checking when retrieving block hashes.
+   *
+   * @return positive count when {@code fileSize > 0}; otherwise zero for an empty file.
    */
   public int getBlockCount() {
     return blockCount;
   }
 
   /**
-   * @return the hash of the specified block.
+   * Returns the hash of the specified block index.
+   *
+   * <p>The returned {@link Buffer} is the same object provided at construction time; callers should
+   * treat it as immutable to preserve integrity. Block numbering starts at zero and increases
+   * sequentially toward the end of the file.
+   *
+   * @param blockNum zero-based block index to retrieve; must be within stored bounds.
+   * @return block hash buffer representing the requested block's digest bytes.
+   * @throws IllegalArgumentException if {@code blockNum} is negative or greater than or equal to
+   *     {@link #getBlockCount()}.
    */
   public Buffer getBlockHash(int blockNum) {
     if (blockNum < 0 || blockNum >= blockCount) {
-      throw new IllegalArgumentException("Invalide block #" + blockNum);
+      throw new IllegalArgumentException("Invalid block #" + blockNum);
     }
     return blockHashes[blockNum];
   }
 
   /**
-   * @return the hash of the entire file.
+   * Returns the digest of the entire file content using {@link #getAlgorithm()}.
+   *
+   * <p>The buffer reference is shared with the constructor input; callers should avoid modification
+   * to keep the stored metadata consistent with the underlying file.
+   *
+   * @return hash buffer for the whole file, covering every byte from start to end.
    */
   public Buffer getFileHash() {
     return fileHash;
