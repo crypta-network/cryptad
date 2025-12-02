@@ -718,7 +718,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       } catch (URISyntaxException e) {
         LOG.error("Unexpected syntax error in URI: {}", e.getMessage(), e);
         writeTemporaryRedirect(
-            ctx, "Internal error. Please check logs and report.", WelcomeToadlet.PATH);
+            ctx, "Internal error. Please check logs and report.", WelcomeToadlet.ROOT_PATH);
       }
     }
 
