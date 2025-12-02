@@ -106,7 +106,7 @@ class ExternalLinkToadletTest {
 
     verify(context)
         .sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
-    assertEquals(WelcomeToadlet.PATH, headersCaptor.getValue().getFirst("Location"));
+    assertEquals(WelcomeToadlet.ROOT_PATH, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test
@@ -139,7 +139,7 @@ class ExternalLinkToadletTest {
     verify(context)
         .sendReplyHeaders(eq(302), eq("Found"), headersCaptor.capture(), isNull(), eq(0L));
     verify(context, never()).writeData(any(byte[].class), anyInt(), anyInt());
-    assertEquals(WelcomeToadlet.PATH, headersCaptor.getValue().getFirst("Location"));
+    assertEquals(WelcomeToadlet.ROOT_PATH, headersCaptor.getValue().getFirst("Location"));
   }
 
   @Test

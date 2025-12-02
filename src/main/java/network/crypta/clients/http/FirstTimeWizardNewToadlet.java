@@ -159,7 +159,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     if (formModel.isValid()) {
       formModel.save();
-      super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.PATH);
+      super.writeTemporaryRedirect(ctx, "Wizard complete", WelcomeToadlet.ROOT_PATH);
     }
 
     // form model not valid
