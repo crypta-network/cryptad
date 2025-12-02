@@ -37,9 +37,9 @@ public class JournalingRAF extends FilterRAF {
 
     // Can be null from deleteJournal()
     if (journal != null) {
-      // Use _raf.getFile() because renameTo() may have failed and was
+      // Use delegateRaf.getFile() because renameTo() may have failed and was
       // forced to fall back.
-      journal.setTargetFile(_raf.getFile());
+      journal.setTargetFile(delegateRaf.getFile());
 
       // flush here because it is important that the journal stay in
       // sync on this operation.

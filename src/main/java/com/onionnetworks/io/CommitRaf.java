@@ -38,7 +38,7 @@ public class CommitRaf extends FilterRAF {
       }
     }
 
-    _raf.seekAndWrite(pos, b, off, len);
+    delegateRaf.seekAndWrite(pos, b, off, len);
 
     // call this after seekAndWrite() to allow exceptions to be thrown, if
     // there are any.
@@ -117,7 +117,7 @@ public class CommitRaf extends FilterRAF {
       if (getMode().equals("r")
           && (length() == 0 || committed.equals(new RangeSet(new Range(0, length() - 1))))) {
 
-        return _raf.seekAndRead(pos, b, off, len);
+        return delegateRaf.seekAndRead(pos, b, off, len);
       }
 
       if (r == null) {
@@ -142,7 +142,7 @@ public class CommitRaf extends FilterRAF {
         } else {
           // (int) cast is safe because size() can't be larger than
           // len
-          return _raf.seekAndRead(pos, b, off, (int) first.size());
+          return delegateRaf.seekAndRead(pos, b, off, (int) first.size());
         }
       } else {
 
@@ -193,7 +193,7 @@ public class CommitRaf extends FilterRAF {
   }
 
   public synchronized void close() throws IOException {
-    _raf.close();
+    delegateRaf.close();
     this.notifyAll();
   }
 }
