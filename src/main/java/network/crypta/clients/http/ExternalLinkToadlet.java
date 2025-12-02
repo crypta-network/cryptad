@@ -93,7 +93,7 @@ public class ExternalLinkToadlet extends Toadlet {
     // Redirecting here restarts the welcome flow when it is still in progress; that behaviour is
     // intentional until the wizard gains partial-resume support.
     if (request.getPartAsStringFailsafe("Go", 32).isEmpty() || url.isEmpty()) {
-      url = WelcomeToadlet.PATH;
+      url = WelcomeToadlet.ROOT_PATH;
     }
     MultiValueTable<String, String> headers = MultiValueTable.from("Location", url);
     ctx.sendReplyHeaders(302, "Found", headers, null, 0);
@@ -124,7 +124,7 @@ public class ExternalLinkToadlet extends Toadlet {
     // Unexpected: a URL should have been specified.
     if (request.getParam(MAGIC_HTTP_ESCAPE_STRING).isEmpty()) {
       MultiValueTable<String, String> headers =
-          MultiValueTable.from("Location", WelcomeToadlet.PATH);
+          MultiValueTable.from("Location", WelcomeToadlet.ROOT_PATH);
       ctx.sendReplyHeaders(302, "Found", headers, null, 0);
       return;
     }
