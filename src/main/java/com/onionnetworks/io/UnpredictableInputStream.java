@@ -113,7 +113,7 @@ public class UnpredictableInputStream extends FilterInputStream {
    * @throws IOException if an I/O error occurs while reading from the wrapped stream.
    */
   @Override
-  public int read(byte[] b) throws IOException {
+  public int read(byte @NotNull [] b) throws IOException {
     if (closed) {
       throw new IOException("Stream closed");
     }
