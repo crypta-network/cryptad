@@ -53,6 +53,14 @@ public class UnpredictableInputStream extends FilterInputStream {
     super(is);
   }
 
+  @Override
+  public int read() throws IOException {
+    if (closed) {
+      throw new IOException("Stream closed");
+    }
+    return super.read();
+  }
+
   /**
    * Closes this stream and its wrapped source, preventing further randomized I/O operations.
    *
