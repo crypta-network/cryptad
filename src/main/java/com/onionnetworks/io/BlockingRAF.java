@@ -7,9 +7,32 @@ import com.onionnetworks.util.Tuple;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
+/**
+ * Random-access file wrapper that intentionally blocks readers until requested ranges become
+ * available. The wrapper collects pending read requests, writes arriving data directly into the
+ * caller-provided buffers when possible, and coordinates with writers using intrinsic locking and
+ * {@link Object#wait()} / {@link Object#notifyAll()} to avoid busy waiting.
+ *
+ * <p>Use this class when a consumer thread must wait for producers to append data to a shared
+ * random-access file without polling. A typical flow is:
+ *
+ * <ol>
+ *   <li>Reader calls {@link #seekAndRead(long, byte[], int, int)}; the call blocks and registers
+ *       its desired range.
+ *   <li>Writer calls {@link #seekAndWrite(long, byte[], int, int)}; data is copied into any waiting
+ *       buffers and the write is persisted to the delegate {@link RAF}.
+ *   <li>Reader wakes when its start position is written, returning the number of bytes now
+ *       available.
+ * </ol>
+ *
+ * <p>State is guarded by the instance monitor; methods are synchronized to preserve invariants
+ * around {@code written} ranges and the {@code buffers} registry. The class is mutable and not
+ * thread-safe outside its own synchronization. Exceptions set via {@link
+ * #setException(IOException)} are propagated to readers and writers to fail fast. Closing or
+ * switching to read-only mode wakes blocked threads so they can react promptly.
+ */
 public class BlockingRAF extends FilterRAF {
 
   RangeSet written = new RangeSet();
@@ -20,17 +43,38 @@ public class BlockingRAF extends FilterRAF {
   // each other.
   Map<Object, Tuple> buffers = new HashMap<>();
 
+  /**
+   * Creates a blocking wrapper around the supplied random-access file.
+   *
+   * @param raf delegate {@link RAF} instance that performs the actual I/O; must be non-null and
+   *     already configured with the desired mode.
+   */
   public BlockingRAF(RAF raf) {
     super(raf);
   }
 
+  /**
+   * Writes data to the delegate and wakes any blocked readers whose requested ranges intersect the
+   * write. The written range is recorded so subsequent reads can bypass blocking.
+   *
+   * @param pos absolute position in the underlying file where the write begins; zero-based and
+   *     non-negative.
+   * @param b source byte array containing the data to write; must not be null.
+   * @param off offset within {@code b} to start reading bytes from; must satisfy {@code 0 <= off <=
+   *     b.length}.
+   * @param len number of bytes to write from the array; zero is allowed and results in no range
+   *     tracking.
+   * @throws IOException if the delegate refuses the write, an exception was set via {@link
+   *     #setException(IOException)}, or the RAF is closed.
+   */
+  @Override
   public synchronized void seekAndWrite(long pos, byte[] b, int off, int len) throws IOException {
     // exception
     if (e != null) {
       throw e;
     }
 
-    _raf.seekAndWrite(pos, b, off, len);
+    delegateRaf.seekAndWrite(pos, b, off, len);
 
     // call this after seekAndWrite() to allow exceptions to be thrown, if
     // there are any.
@@ -51,8 +95,7 @@ public class BlockingRAF extends FilterRAF {
 
     Range r = new Range(pos, pos + len - 1);
 
-    for (Iterator<Map.Entry<Object, Tuple>> it = buffers.entrySet().iterator(); it.hasNext(); ) {
-      Map.Entry<Object, Tuple> entry = it.next();
+    for (Map.Entry<Object, Tuple> entry : buffers.entrySet()) {
       Tuple t = entry.getValue();
       Range r2 = (Range) t.getLeft();
       Buffer buf = (Buffer) t.getRight();
@@ -77,11 +120,38 @@ public class BlockingRAF extends FilterRAF {
     }
   }
 
+  /**
+   * Unsupported operation in this wrapper; always throws an {@link IOException}. Use {@link
+   * #seekAndRead(long, byte[], int, int)} instead for partial reads that coordinate with the
+   * blocking semantics.
+   *
+   * @param pos absolute position to read from; ignored because the method always fails.
+   * @param b destination buffer that would have received data; ignored in this implementation.
+   * @param off offset into {@code b}; ignored because the call fails.
+   * @param len number of bytes requested; ignored because the call fails.
+   * @throws IOException unconditionally, to signal that full reads are not supported by this class.
+   */
+  @Override
   public synchronized void seekAndReadFully(long pos, byte[] b, int off, int len)
       throws IOException {
     throw new IOException("unsupported operation");
   }
 
+  /**
+   * Attempts to read a range of bytes, blocking until the requested start position becomes
+   * available or an exceptional condition occurs. When the data arrives while blocked, bytes are
+   * copied directly into the caller's buffer without an intermediate allocation.
+   *
+   * @param pos absolute position in the file to begin reading; must be non-negative.
+   * @param b destination array supplied by the caller to receive data; must not be null.
+   * @param off offset into {@code b} where bytes are stored; must be within the array bounds.
+   * @param len maximum number of bytes to read; zero yields an immediate return of zero.
+   * @return the number of bytes made available starting at {@code pos}; equals the written segment
+   *     length when direct write occurs.
+   * @throws IOException if the RAF is closed, set to read-only during the wait, or an exception was
+   *     injected with {@link #setException(IOException)}.
+   */
+  @Override
   public synchronized int seekAndRead(long pos, byte[] b, int off, int len) throws IOException {
 
     // Will the bytes be written directly to the buffer?
@@ -93,54 +163,21 @@ public class BlockingRAF extends FilterRAF {
     // for direct write.
     Object key = new Object();
 
-    while (!isClosed() && e == null && !getMode().equals("r") && len != 0) {
+    while (shouldBlock(len)) {
 
       if (r == null) {
-        // This is the range we are interested in.
         r = new Range(pos, pos + len - 1);
       }
 
-      // Get the ranges in common.
-      RangeSet rs = new RangeSet();
-      rs.add(r);
-      RangeSet avail = written.intersect(rs);
-      Range first = null;
-      if (!avail.isEmpty()) {
-        first = (Range) avail.iterator().next();
-      }
+      Range first = firstAvailableRange(r);
 
       if (written.contains(pos)) {
-
-        if (directWrite) {
-          // The data was written directly to the buffer.
-          return (int) first.size();
-        } else {
-          // (int) cast is safe because size() can't be larger than
-          // len
-          return _raf.seekAndRead(pos, b, off, (int) first.size());
-        }
-      } else {
-
-        // The data will be written directly to the buffer.
-        directWrite = true;
-
-        if (first != null) {
-          // Change the range of interest to only include bytes which
-          // have yet to be written.
-          r = new Range(pos, first.getMin() - 1);
-        }
-
-        // Make the buffer available to be written to.
-        buffers.put(key, new Tuple(r, new Buffer(b, off, len)));
-
-        try {
-          this.wait();
-        } catch (InterruptedException ie) {
-          throw new InterruptedIOException(ie.getMessage());
-        } finally {
-          buffers.remove(key);
-        }
+        return readAvailable(directWrite, first, pos, b, off);
       }
+
+      directWrite = true;
+      r = pendingRange(pos, r, first);
+      waitForData(key, pos, r, b, off, len);
     }
 
     // exception
@@ -151,7 +188,7 @@ public class BlockingRAF extends FilterRAF {
     // We only block during r/w mode.  For read-only we use the
     // normal behavior.
     if (getMode().equals("r")) {
-      return _raf.seekAndRead(pos, b, off, len);
+      return delegateRaf.seekAndRead(pos, b, off, len);
     }
 
     // RAF closed
@@ -168,18 +205,88 @@ public class BlockingRAF extends FilterRAF {
     throw new IllegalStateException("Method should have already " + "returned.");
   }
 
+  /**
+   * Switches the underlying RAF to read-only mode and unblocks any waiting threads so they can
+   * resume using delegate reads. Readers still pending will wake and delegate to the underlying RAF
+   * on their next iteration.
+   *
+   * @throws IOException if the delegate fails to enter read-only mode.
+   */
+  @Override
   public synchronized void setReadOnly() throws IOException {
-    _raf.setReadOnly();
+    delegateRaf.setReadOnly();
     this.notifyAll();
   }
 
+  /**
+   * Records an exception that will be thrown by future read or write attempts and wakes any blocked
+   * threads so they observe it promptly. The stored exception remains until another call replaces
+   * it or the RAF is closed.
+   *
+   * @param e exception to surface to waiting or subsequent operations; must not be null to avoid
+   *     masking the intended failure signal.
+   */
   public synchronized void setException(IOException e) {
     this.e = e;
     this.notifyAll();
   }
 
+  /**
+   * Closes the underlying RAF and wakes all blocked threads. Further reads or writes will fail with
+   * an {@link IOException}.
+   *
+   * @throws IOException if the delegate refuses to close.
+   */
+  @Override
   public synchronized void close() throws IOException {
-    _raf.close();
+    delegateRaf.close();
     this.notifyAll();
+  }
+
+  private Range firstAvailableRange(Range range) {
+    RangeSet requested = new RangeSet();
+    requested.add(range);
+    RangeSet available = written.intersect(requested);
+    return available.isEmpty() ? null : available.iterator().next();
+  }
+
+  private boolean shouldBlock(int len) {
+    return !isClosed() && e == null && !getMode().equals("r") && len != 0;
+  }
+
+  private int readAvailable(boolean directWrite, Range first, long pos, byte[] b, int off)
+      throws IOException {
+    if (directWrite) {
+      return (int) first.size();
+    }
+    return delegateRaf.seekAndRead(pos, b, off, (int) first.size());
+  }
+
+  private Range pendingRange(long pos, Range currentRange, Range firstAvailable) {
+    if (firstAvailable == null) {
+      return currentRange;
+    }
+    return new Range(pos, firstAvailable.getMin() - 1);
+  }
+
+  private synchronized void waitForData(
+      Object key, long startPos, Range range, byte[] b, int off, int len)
+      throws InterruptedIOException {
+    boolean wasEmpty = buffers.isEmpty();
+    buffers.put(key, new Tuple(range, new Buffer(b, off, len)));
+    if (wasEmpty) {
+      // Wake up any waiters (e.g., tests) that need to know a buffer was registered.
+      this.notifyAll();
+    }
+    try {
+      while (shouldBlock(len) && !written.contains(startPos)) {
+        this.wait();
+      }
+    } catch (InterruptedException ie) {
+      Thread.currentThread().interrupt();
+      throw new InterruptedIOException(ie.getMessage());
+    } finally {
+      buffers.remove(key);
+    }
   }
 }
