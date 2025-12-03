@@ -114,6 +114,9 @@ public class UnpredictableInputStream extends FilterInputStream {
    */
   @Override
   public int read(byte[] b) throws IOException {
+    if (closed) {
+      throw new IOException("Stream closed");
+    }
     // This method must block until data is available, thus we will
     // keep reading on a 0 byte result.
     if (b.length == 0) {
@@ -146,6 +149,9 @@ public class UnpredictableInputStream extends FilterInputStream {
    */
   @Override
   public int read(byte @NotNull [] b, int off, int len) throws IOException {
+    if (closed) {
+      throw new IOException("Stream closed");
+    }
     // Even though FilterInputStream's JavaDoc claims that this method
     // must block until data is available, the current FilterInputStream
     // implementation doesn't even enforce that.
