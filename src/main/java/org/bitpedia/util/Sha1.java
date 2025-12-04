@@ -81,6 +81,11 @@ public final class Sha1 extends MessageDigest {
     return new Sha1(cloneDelegate(delegate));
   }
 
+  @Override
+  public Object clone() {
+    return copy();
+  }
+
   /**
    * Resets this digest to its initial, empty state.
    *
