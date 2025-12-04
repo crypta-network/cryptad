@@ -157,8 +157,8 @@ public final class Hash {
    * Verifies that the hash of the provided data matches the expected value.
    *
    * <p>The internal state is reset before hashing the provided input and reset again after
-   * finalization. Comparison uses {@link MessageDigest#isEqual(byte[], byte[])} to reduce timing
-   * side-channel leakage.
+   * finalization. Comparison uses {@link java.security.MessageDigest#isEqual(byte[], byte[])} to
+   * reduce timing side-channel leakage.
    *
    * @param hash the expected hash value
    * @param data the data to hash
