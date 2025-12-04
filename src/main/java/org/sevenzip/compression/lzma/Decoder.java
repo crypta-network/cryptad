@@ -8,6 +8,34 @@ import java.io.OutputStream;
 import org.sevenzip.compression.lz.OutWindow;
 import org.sevenzip.compression.rangecoder.BitTreeDecoder;
 
+/**
+ * Streaming LZMA decoder that materializes compressed input into an {@link OutWindow} backed output
+ * buffer.
+ *
+ * <p>The decoder drives the reference range-coder implementation and LZ-style repetition tracking
+ * to reconstruct bytes in order. Callers typically configure the instance once with {@link
+ * #setDecoderProperties(byte[])} and reuse it across streams by providing fresh input and output
+ * streams to {@link #code(InputStream, OutputStream, long)}. Internally the type manages
+ * probability models for literals, match lengths, and distances, along with a sliding window to
+ * satisfy back-references. The class is stateful and <strong>not</strong> thread-safe; confine each
+ * instance to a single decoding pipeline or provide external synchronization if shared.
+ *
+ * <p>Lifecycle expectations:
+ *
+ * <ul>
+ *   <li>Create an instance and configure properties (dictionary size and lc/lp/pb parameters).
+ *   <li>Invoke {@code code(...)} with an input stream positioned at the start of an LZMA payload
+ *       and an output stream ready to receive plain bytes.
+ *   <li>Repeat with new streams as needed; the decoder reinitializes internal models per call.
+ * </ul>
+ *
+ * <p>Performance considerations: buffer sizes follow the encoded dictionary; decoding proceeds
+ * byte-by-byte with frequent small range-coder updates. Avoid sharing the same {@link
+ * java.io.InputStream} or {@link java.io.OutputStream} across concurrent decodes. Errors surfaced
+ * as {@link IOException} indicate malformed input or I/O failures and leave the instance in an
+ * undefined state until reinitialized via a new {@link #code(InputStream, OutputStream, long)}
+ * call.
+ */
 public class Decoder {
   static class LenDecoder {
     short[] choice = new short[2];
@@ -129,6 +157,14 @@ public class Decoder {
 
   int posStateMask;
 
+  /**
+   * Creates a decoder with uninitialized models and window buffers sized on first configuration.
+   *
+   * <p>The constructor performs no I/O and allocates only constant-size probability structures; the
+   * dictionary buffer is deferred to the first successful {@link #setDecoderProperties(byte[])} or
+   * {@link #setDictionarySize(int)} call. Instances are mutable and should be configured before
+   * decoding to avoid validation failures.
+   */
   public Decoder() {
     for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++)
       posSlotDecoder[i] = new BitTreeDecoder(Base.NUM_POS_SLOT_BITS);
@@ -175,6 +211,35 @@ public class Decoder {
     rangeDecoder.init();
   }
 
+  /**
+   * Decodes a single LZMA stream from {@code inStream} into {@code outStream} until {@code outSize}
+   * bytes are produced or the stream signals end-of-data.
+   *
+   * <p>This method resets internal probability models, attaches the provided streams, and then
+   * iteratively emits literals or back-references according to the encoded payload. The operation
+   * is blocking and must not be called concurrently on the same instance. A negative {@code
+   * outSize} requests decoding until the end marker; non-negative values cap output length and
+   * allow early termination when the requested byte count is reached.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * Decoder decoder = new Decoder();
+   * decoder.setDecoderProperties(props);
+   * boolean ok = decoder.code(in, out, -1);
+   * }</pre>
+   *
+   * @param inStream source of compressed bytes; must be positioned at the beginning of the LZMA
+   *     stream and remain readable for the duration of decoding.
+   * @param outStream destination for decompressed bytes; must accept writes and remain open until
+   *     decoding completes, though it is not closed by this method.
+   * @param outSize number of bytes to decode, or a negative value to continue until the encoded end
+   *     marker; values are interpreted as a 64-bit signed length.
+   * @return {@code true} when decoding finishes without validation errors; {@code false} if the
+   *     input violates format invariants before reaching the requested length.
+   * @throws IOException if reading from {@code inStream} or writing to {@code outStream} fails, or
+   *     if model initialization cannot proceed due to upstream I/O errors.
+   */
   public boolean code(InputStream inStream, OutputStream outStream, long outSize)
       throws IOException {
     rangeDecoder.setStream(inStream);
@@ -313,6 +378,21 @@ public class Decoder {
     }
   }
 
+  /**
+   * Applies the lc/lp/pb parameters and dictionary size encoded in a five-byte LZMA properties
+   * header.
+   *
+   * <p>The method interprets the first byte as packed literal-context, literal-position, and
+   * position-state bits, then reads a little-endian 32-bit dictionary size from the remaining
+   * bytes. It initializes probability models and buffers accordingly. Callers should invoke this
+   * once per decoder configuration; repeated calls update the state and may reallocate the output
+   * window when dictionary sizes change.
+   *
+   * @param properties five-byte property block from the start of an LZMA stream; must contain
+   *     packed lc/lp/pb in the first byte followed by a 32-bit little-endian dictionary size.
+   * @return {@code true} when parameters are valid and internal structures are updated; {@code
+   *     false} when validation fails due to length or out-of-range values.
+   */
   public boolean setDecoderProperties(byte[] properties) {
     if (properties.length < 5) return false;
     int val = properties[0] & 0xFF;
