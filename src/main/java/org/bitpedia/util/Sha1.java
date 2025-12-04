@@ -82,6 +82,7 @@ public final class Sha1 extends MessageDigest {
   }
 
   @Override
+  @SuppressWarnings({"MethodDoesntCallSuperMethod", "java:S2975", "java:S1182"})
   public Object clone() {
     return copy();
   }
