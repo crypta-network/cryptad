@@ -1,10 +1,54 @@
-// LZ.BinTree
-
 package org.sevenzip.compression.lz;
 
 import java.io.IOException;
 
+/**
+ * Binary-tree based match finder used by the LZMA encoder to discover repeated byte sequences
+ * efficiently. The structure extends {@link InWindow} to reuse buffered sliding-window semantics
+ * and augments it with hash buckets and a binary tree that tracks recent positions. Clients
+ * typically configure the finder with {@link #setType(int)} and {@link #createMatchFinder(int, int,
+ * int, int)}, attach an input stream through the {@link InWindow} API, and then alternate calls to
+ * {@link #getMatches(int[])} and {@link #skip(int)} while the encoder advances. Instances are
+ * mutable, not thread-safe, and should be confined to a single compression pipeline.
+ *
+ * <p>Responsibilities include maintaining cyclic buffers that hold left/right child links,
+ * computing rolling hashes for fast candidate retrieval, and normalizing stored offsets when
+ * indexes grow large. The finder limits traversal depth via {@code cutValue} to bound worst-case
+ * cost even on adversarial data. Invariants: {@code pos} always reflects the current window index,
+ * {@code cyclicBufferPos} remains within {@code [0, cyclicBufferSize)}, and hash tables never store
+ * negative values.
+ *
+ * <p>Notable behaviors:
+ *
+ * <ul>
+ *   <li>Supports two hash configurations: short direct matches (2 bytes) or full hash arrays (3–4
+ *       bytes) for longer lookups.
+ *   <li>Automatically normalizes stored positions near {@link #K_MAX_VAL_FOR_NORMALIZE} to prevent
+ *       integer overflow while preserving relative distances.
+ *   <li>Separates match discovery ({@link #getMatches(int[])}) from state advancement ({@link
+ *       #skip(int)}) so encoders can probe or fast-forward selectively.
+ * </ul>
+ *
+ * @see InWindow
+ */
 public class BinTree extends InWindow {
+
+  /**
+   * Creates a new, uninitialized match finder with default hash configuration. Callers must choose
+   * a hash type via {@link #setType(int)}, size buffers through {@link #createMatchFinder(int, int,
+   * int, int)}, and attach a stream on the {@link InWindow} API before collecting matches. This
+   * constructor performs no allocation beyond the superclass and is intentionally lightweight so
+   * the encoder can instantiate multiple finders when experimenting with settings.
+   *
+   * <p>This body is intentionally empty because all configuration happens through subsequent
+   * setters and the inherited window wiring; construction itself must stay side effect free for
+   * reuse by different encoder setups.
+   */
+  public BinTree() {
+    // Intentionally empty: setup is deferred to setter-style methods to keep construction side
+    // effect free.
+  }
+
   int cyclicBufferPos;
   int cyclicBufferSize = 0;
   int matchMaxLen;
@@ -30,6 +74,19 @@ public class BinTree extends InWindow {
   int kMinMatchCheck = 4;
   int kFixHashSize = K_HASH2_SIZE + K_HASH3_SIZE;
 
+  /**
+   * Configures the hash strategy based on the number of bytes to hash for initial candidate
+   * selection.
+   *
+   * <p>Values greater than two enable full hash arrays with three- and four-byte signatures,
+   * favoring accuracy at the cost of memory. Values of two or less switch to a lightweight mode
+   * that relies on direct-byte comparisons with minimal hash tables, suitable for tiny dictionaries
+   * or constrained environments. Must be invoked before {@link #createMatchFinder(int, int, int,
+   * int)} so that buffer sizing matches the chosen strategy.
+   *
+   * @param numHashBytes number of leading bytes used to build hash keys; must be positive and
+   *     typically 2–4 depending on match finder variant.
+   */
   public void setType(int numHashBytes) {
     hashArray = (numHashBytes > 2);
     if (hashArray) {
@@ -43,6 +100,18 @@ public class BinTree extends InWindow {
     }
   }
 
+  /**
+   * Resets internal buffers and hash tables, then primes the window by delegating to {@link
+   * InWindow#init()}.
+   *
+   * <p>After initialization the current position is zero, all hash and tree links are cleared to
+   * {@link #K_EMPTY_HASH_VALUE}, and offsets are adjusted via {@link #reduceOffsets(int)} to keep
+   * indices aligned. Callers must set the input stream on the inherited API before invoking this
+   * method. Subsequent calls to {@link #getMatches(int[])} or {@link #skip(int)} assume this setup
+   * has completed successfully.
+   *
+   * @throws IOException if the underlying stream cannot be read while priming the window buffer.
+   */
   @Override
   public void init() throws IOException {
     super.init();
@@ -51,6 +120,20 @@ public class BinTree extends InWindow {
     reduceOffsets(-1);
   }
 
+  /**
+   * Advances the current position by one byte, updating the cyclic buffer pointer and normalizing
+   * offsets when necessary.
+   *
+   * <p>This method increments {@code pos}, slides the cyclic pointer with wrap-around, and
+   * delegates to {@link InWindow#movePos()} to shift or refill the underlying window. When the
+   * absolute position reaches {@link #K_MAX_VAL_FOR_NORMALIZE}, stored offsets are compacted
+   * through {@link #normalize()} to avoid integer overflow while preserving match distances.
+   * Callers should use this in lockstep with match collection or skipping to keep the tree
+   * consistent.
+   *
+   * @throws IOException if additional data must be read from the stream during the move and the
+   *     read fails.
+   */
   @Override
   public void movePos() throws IOException {
     if (++cyclicBufferPos >= cyclicBufferSize) cyclicBufferPos = 0;
@@ -58,6 +141,24 @@ public class BinTree extends InWindow {
     if (pos == K_MAX_VAL_FOR_NORMALIZE) normalize();
   }
 
+  /**
+   * Allocates and wires all buffers required for binary-tree match finding given the chosen
+   * dictionary and lookahead sizes.
+   *
+   * <p>The method sizes the cyclic buffer, hash arrays, and window reservation based on the history
+   * size and match length limits. It also derives {@code cutValue}, which caps tree traversal depth
+   * to balance speed and match quality. Call this exactly once after {@link #setType(int)} and
+   * before {@link #init()} so the inherited window knows its keep-before/after sizes.
+   *
+   * @param historySize maximum backward distance (dictionary size) in bytes that matches may span;
+   *     must be positive and not exceed {@link #K_MAX_VAL_FOR_NORMALIZE} minus a small margin.
+   * @param keepAddBufferBefore extra bytes kept before the current position to tolerate backward
+   *     lookups beyond {@code historySize}; often zero in typical LZMA usage.
+   * @param matchMaxLen maximum match length to report; governs buffer sizing and traversal cut-off;
+   *     must be at least the encoder's fast-bytes setting.
+   * @param keepAddBufferAfter additional lookahead bytes preserved after the current position to
+   *     reduce refills during long matches; non-negative.
+   */
   public void createMatchFinder(
       int historySize, int keepAddBufferBefore, int matchMaxLen, int keepAddBufferAfter) {
     if (historySize > K_MAX_VAL_FOR_NORMALIZE - 256) return;
@@ -98,6 +199,23 @@ public class BinTree extends InWindow {
     }
   }
 
+  /**
+   * Collects match candidates at the current position and writes alternating length/distance pairs
+   * into the supplied buffer.
+   *
+   * <p>The method hashes the current prefix, probes recent positions via the binary tree, and
+   * returns the number of integers written (twice the number of matches). Each even index contains
+   * a match length, and the subsequent odd index holds the backward distance minus one. When
+   * lookahead is insufficient the method advances the position and returns zero. Tree traversal is
+   * bounded by {@code cutValue} to prevent excessive scanning. The caller owns the {@code
+   * distances} array and must size it to at least {@code 2 * matchMaxLen}.
+   *
+   * @param distances target array that receives length and distance pairs; must be non-null and
+   *     large enough for all potential matches.
+   * @return count of integers stored in {@code distances}; zero when no match is recorded due to
+   *     insufficient lookahead or empty history.
+   * @throws IOException if advancing the position triggers a window refill that fails.
+   */
   public int getMatches(int[] distances) throws IOException {
     int lenLimit;
     if (pos + matchMaxLen <= streamPos) lenLimit = matchMaxLen;
@@ -154,6 +272,19 @@ public class BinTree extends InWindow {
     return offset;
   }
 
+  /**
+   * Advances the match finder state by the requested number of positions without emitting matches.
+   *
+   * <p>Useful when the encoder selects a literal or already knows the distance to use. The method
+   * repeats internal hashing and tree maintenance for each skipped byte to keep structures in sync,
+   * but discards any collected matches. Traversal depth obeys {@code cutValue} to maintain bounded
+   * complexity. Negative values are not allowed; zero is a no-op aside from boundary checks.
+   *
+   * @param num number of positions to advance; must be non-negative and typically small relative to
+   *     the dictionary size.
+   * @throws IOException if window movement while skipping requires reading from the stream and the
+   *     read fails.
+   */
   public void skip(int num) throws IOException {
     do {
       int lenLimit;
