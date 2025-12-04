@@ -614,22 +614,25 @@ public class Submission {
       return;
     }
 
-    if (0 == mp3.sampleRate) {
+    if (0 == mp3.getSampleRate()) {
       bc.setWarning(Bitcollider.WARNING_NOTMP3);
       return;
     }
 
-    addAttribute("tag.mp3.duration", "" + mp3.duration);
-    if (0 == mp3.bitRate) {
-      addAttribute("tag.mp3.bitrate", "" + mp3.avgBitRate);
+    addAttribute("tag.mp3.duration", "" + mp3.getDuration());
+    if (0 == mp3.getBitRate()) {
+      addAttribute("tag.mp3.bitrate", "" + mp3.getAvgBitRate());
       addAttribute("tag.mp3.vbr", "y");
     } else {
-      addAttribute("tag.mp3.bitrate", "" + mp3.bitRate);
+      addAttribute("tag.mp3.bitrate", "" + mp3.getBitRate());
     }
 
-    addAttribute("tag.mp3.samplerate", "" + mp3.sampleRate);
-    addAttribute("tag.mp3.stereo", mp3.stereo ? "y" : "n");
-    addAttribute("tag.mp3.audio_sha1", Base32.encode(mp3.audioSha));
+    addAttribute("tag.mp3.samplerate", "" + mp3.getSampleRate());
+    addAttribute("tag.mp3.stereo", mp3.isStereo() ? "y" : "n");
+    byte[] audioSha = mp3.getAudioSha();
+    if (audioSha != null) {
+      addAttribute("tag.mp3.audio_sha1", Base32.encode(audioSha));
+    }
 
     Id3Handler.Id3Info info = Id3Handler.readId3Tags(fileName);
     if (null != info) {
