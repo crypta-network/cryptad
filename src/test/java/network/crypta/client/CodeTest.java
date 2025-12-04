@@ -33,7 +33,7 @@ public class CodeTest {
       }
 
       byte[] src = new byte[KK * PACKET_SIZE];
-      Util.rand.nextBytes(src);
+      Util.getRand().nextBytes(src);
       Buffer[] srcBufs = createBuffers(src);
 
       byte[] repair = new byte[KK * PACKET_SIZE];
@@ -140,7 +140,7 @@ public class CodeTest {
    */
   private static void encodeDecode(FECCode encode, FECCode decode, int[] index) {
     byte[] src = new byte[KK * PACKET_SIZE];
-    Util.rand.nextBytes(src);
+    Util.getRand().nextBytes(src);
     Buffer[] srcBufs = createBuffers(src);
 
     byte[] repair = new byte[KK * PACKET_SIZE];
