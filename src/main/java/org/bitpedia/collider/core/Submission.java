@@ -399,22 +399,22 @@ public class Submission {
     make sure that an audioSha was generated. If not, then the
     mp3 routines deemed that this was not a valid mp3 file
     and we should skip the mp3 tag generation */
-    if (mp3Check && (0 == mp3.sampleRate)) {
+    if (mp3Check && (0 == mp3.getSampleRate())) {
       bc.setWarning(Bitcollider.WARNING_NOTMP3);
       mp3Check = false;
     } else {
       if (mp3Check) {
-        addAttribute("tag.mp3.duration", "" + mp3.duration);
-        if (0 == mp3.bitRate) {
-          addAttribute("tag.mp3.bitrate", "" + mp3.avgBitRate);
+        addAttribute("tag.mp3.duration", "" + mp3.getDuration());
+        if (0 == mp3.getBitRate()) {
+          addAttribute("tag.mp3.bitrate", "" + mp3.getAvgBitRate());
           addAttribute("tag.mp3.vbr", "y");
         } else {
-          addAttribute("tag.mp3.bitrate", "" + mp3.bitRate);
+          addAttribute("tag.mp3.bitrate", "" + mp3.getBitRate());
         }
 
-        addAttribute("tag.mp3.samplerate", "" + mp3.sampleRate);
-        addAttribute("tag.mp3.stereo", mp3.stereo ? "y" : "n");
-        addAttribute("tag.mp3.audio_sha1", Base32.encode(mp3.audioSha));
+        addAttribute("tag.mp3.samplerate", "" + mp3.getSampleRate());
+        addAttribute("tag.mp3.stereo", mp3.isStereo() ? "y" : "n");
+        addAttribute("tag.mp3.audio_sha1", Base32.encode(mp3.getAudioSha()));
 
         Id3Handler.Id3Info info = Id3Handler.readId3Tags(fileName);
         if (null != info) {
