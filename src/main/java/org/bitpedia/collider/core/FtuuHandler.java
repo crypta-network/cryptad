@@ -7,7 +7,29 @@ package org.bitpedia.collider.core;
 
 import java.nio.ByteBuffer;
 
+/**
+ * Computes Bitzi FTUU fingerprints by combining a lead-segment MD5 digest with a rolling weak hash
+ * over later portions of a file. Callers create an instance, invoke {@link #analyzeInit()}, stream
+ * data in order with {@link #analyzeUpdate(byte[], int, int)}, then obtain a 20-byte digest via
+ * {@link #analyzeFinal()}. The design favors large files: only the most recent 307,200-byte window
+ * is retained while maintaining deterministic results regardless of chunking strategy. This class
+ * performs no I/O and is not thread-safe; use one handler per concurrent computation and manage
+ * synchronization externally when necessary.
+ *
+ * <p>The resulting digest layout matches historic Bitzi expectations: the first 16 bytes are the
+ * MD5 of the first segment, and the final 4 bytes (little-endian) capture the CRC-based small hash
+ * plus total length. Consumers can store or transmit the digest directly or encode it with {@link
+ * #bitziEncodeBase64(byte[], int, byte[])} for textual transport.
+ */
 public class FtuuHandler {
+
+  /**
+   * Constructs a new handler with no preexisting state. Call {@link #analyzeInit()} before
+   * processing data to ensure internal buffers and counters are reset for the upcoming file.
+   */
+  public FtuuHandler() {
+    // Intentionally empty: actual state is allocated and reset in analyzeInit() to allow reuse.
+  }
 
   private static final int FTSEG_SIZE = 307200;
 
@@ -86,7 +108,23 @@ public class FtuuHandler {
   private byte[] rollingBuffer; // the last 307,200 bytes read
   private long nextSampleStart; // position where the next 307,200 range to be smallHashed ends
 
-  /* Update the 4-byte running small hash; also from giFT project */
+  /**
+   * Updates the rolling 32-bit small hash using the CRC-32 lookup table adopted from the giFT
+   * project.
+   *
+   * <p>This helper accepts a preexisting accumulator so callers can process non-contiguous slices
+   * without reinitializing. It treats input bytes as unsigned values and advances the hash by
+   * iterating {@code len} positions starting at {@code ofs}.
+   *
+   * @param data source buffer containing the data to incorporate; must not be {@code null}.
+   * @param ofs zero-based offset into {@code data} where hashing begins; must fall within the array
+   *     bounds.
+   * @param len number of bytes to process starting at {@code ofs}; negative values are unsupported.
+   * @param hash current accumulator, typically {@code 0xffffffff} for a new computation or the
+   *     result of a previous call for incremental hashing.
+   * @return updated accumulator after incorporating the requested slice; reuse it as {@code hash}
+   *     for subsequent calls.
+   */
   public static int hashSmallHash(byte[] data, int ofs, int len, int hash) {
 
     int i;
@@ -99,8 +137,21 @@ public class FtuuHandler {
     return hash;
   }
 
-  //	 dirt simple base64 encoding. caller should ensure out has enough space.
-  //	 no '=' padding provided, but string is zero-terminated.
+  /**
+   * Encodes {@code len} bytes from {@code raw} into Bitzi's base64 alphabet without padding and
+   * appends a zero byte terminator.
+   *
+   * <p>The caller is responsible for sizing {@code out}. A safe capacity is {@code ceil(len * 4.0 /
+   * 3.0) + 1} bytes to hold all digits and the terminator. No '=' padding or whitespace is emitted.
+   * The terminator allows legacy code to treat the result as a zero-terminated C string without
+   * scanning length separately.
+   *
+   * @param raw input buffer supplying bytes to encode; bytes beyond {@code len} are ignored.
+   * @param len exact number of bytes from {@code raw} to encode; must be non-negative and within
+   *     the array bounds.
+   * @param out destination buffer that receives base64 digits followed by a trailing zero byte; it
+   *     is written sequentially starting at index {@code 0}.
+   */
   public static void bitziEncodeBase64(byte[] raw, int len, byte[] out) {
 
     String base64digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -108,7 +159,7 @@ public class FtuuHandler {
     int bitPosition = 7;
     int rawIndex = 0;
     int strIndex = 0;
-    int bit = 0;
+    int bit;
     int digit = 0;
 
     while (rawIndex < len) {
@@ -136,6 +187,13 @@ public class FtuuHandler {
     out[strIndex] = 0;
   }
 
+  /**
+   * Initializes internal buffers and resets accumulators to begin computing a new FTUU digest.
+   *
+   * <p>Call this method exactly once before streaming any file bytes through {@link
+   * #analyzeUpdate(byte[], int, int)}. Reuse the same handler instance for multiple files by
+   * calling {@code analyzeInit()} again between files.
+   */
   public void analyzeInit() {
 
     md5 = new Md5Handler();
@@ -148,6 +206,19 @@ public class FtuuHandler {
     nextSampleStart = 0x100000;
   }
 
+  /**
+   * Feeds the next contiguous chunk of file data into the MD5 and small-hash calculation.
+   *
+   * <p>Chunks may be any size, but they must be provided in original file order. The first 307,200
+   * bytes contribute to the MD5 portion; subsequent bytes populate the rolling buffer used for
+   * sampling. The method mutates internal state and is not thread-safe.
+   *
+   * @param input buffer containing the bytes to ingest; must not be {@code null}.
+   * @param ofs offset within {@code input} where this chunk begins; must satisfy {@code 0 <= ofs <=
+   *     input.length - inputLen}.
+   * @param inputLen number of bytes from {@code input} to process; values below zero are
+   *     unsupported but zero-length chunks are allowed as no-ops.
+   */
   public void analyzeUpdate(byte[] input, int ofs, int inputLen) {
 
     int firstPart = inputLen;
@@ -158,11 +229,11 @@ public class FtuuHandler {
         // don't overshoot the segsize
         firstPart = FTSEG_SIZE - (int) nextPos;
       }
-      md5.analyzeUpdate(input, (int) firstPart);
+      md5.analyzeUpdate(input, ofs, firstPart);
       nextPos += firstPart;
       if (firstPart < inputLen) {
         // continue with the rest of the input
-        analyzeUpdate(input, firstPart, inputLen - firstPart);
+        analyzeUpdate(input, ofs + firstPart, inputLen - firstPart);
       }
       return;
     }
@@ -196,21 +267,32 @@ public class FtuuHandler {
       firstPart = FTSEG_SIZE - (int) (nextPos % FTSEG_SIZE);
     }
 
-    System.arraycopy(input, 0, rollingBuffer, (int) (nextPos % FTSEG_SIZE), firstPart);
+    System.arraycopy(input, ofs, rollingBuffer, (int) (nextPos % FTSEG_SIZE), firstPart);
     nextPos += firstPart;
 
     if (firstPart < inputLen) {
       // continue with the rest of the input
-      analyzeUpdate(input, firstPart, inputLen - firstPart);
+      analyzeUpdate(input, ofs + firstPart, inputLen - firstPart);
     }
   }
 
+  /**
+   * Completes the current computation and returns a fresh 20-byte FTUU digest.
+   *
+   * <p>The digest consists of the MD5 of the first 307,200 bytes followed by the little-endian
+   * small-hash field that incorporates sampled regions and XORs in the total byte count. Calling
+   * this method does not reset the handler; to compute another digest, invoke {@link
+   * #analyzeInit()} again before streaming more data.
+   *
+   * @return newly allocated array containing the combined fingerprint; callers own the returned
+   *     buffer and may modify or persist it as needed.
+   */
   public byte[] analyzeFinal() {
 
     // finalize MD5
     byte[] md5Digest = md5.analyzeFinal();
 
-    // decide whether or not to rollback smallhash
+    // decide whether to rollback smallhash
     if (nextPos < ((nextSampleStart >> 1) + 2 * FTSEG_SIZE)) {
       // the last FTSEG_SIZE bytes overlap the last internal sample
       // pretend like the last smallHash processing never happened
@@ -231,7 +313,7 @@ public class FtuuHandler {
       // wraparound or do an endseg < FTSEG_SIZE
       smallHash = hashSmallHash(rollingBuffer, 0, (int) (nextPos % FTSEG_SIZE), smallHash);
     } // else filesize was <= FTSEG_SIZE, no smallHashing of endseg necessary
-    smallHash ^= nextPos;
+    smallHash ^= (int) nextPos;
 
     ByteBuffer bbuf = ByteBuffer.allocate(4);
     bbuf.putInt(smallHash);
