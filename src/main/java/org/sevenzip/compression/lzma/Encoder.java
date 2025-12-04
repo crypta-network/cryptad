@@ -8,9 +8,44 @@ import org.sevenzip.ICodeProgress;
 import org.sevenzip.compression.lz.BinTree;
 import org.sevenzip.compression.rangecoder.BitTreeEncoder;
 
+/**
+ * Streaming LZMA encoder responsible for turning an {@link InputStream} into compressed bytes while
+ * tracking coder state, repetition distances, and price tables.
+ *
+ * <p>This implementation mirrors the reference LZMA algorithm and exposes the same tuning knobs
+ * used by command-line tools: dictionary size, fast-bytes limit, match-finder choice, and literal
+ * context settings. Callers typically configure the encoder, set input/output streams, and invoke
+ * {@link #code(InputStream, OutputStream, ICodeProgress)} to perform a full pass; lower-level entry
+ * points such as {@link #codeOneBlock(long[], long[], boolean[])} can be used by advanced
+ * orchestrators that want tighter progress control. Instances are stateful and not thread-safe; a
+ * new encoder should be created per logical compression job. The encoder retains internal buffers
+ * sized to the configured dictionary and fast-bytes window and updates probability models as bytes
+ * are written. Flushing emits end markers when requested, enabling decoders to detect stream
+ * termination reliably.
+ *
+ * <ul>
+ *   <li><strong>Responsibilities:</strong> manage match finding, price tables, range coding, and
+ *       repetition tracking during compression.
+ *   <li><strong>Mutability:</strong> heavily stateful; reuse only when resetting all tuning
+ *       parameters and streams.
+ *   <li><strong>Thread safety:</strong> not thread-safe; synchronize externally when sharing.
+ * </ul>
+ *
+ * @see org.sevenzip.compression.lzma.Decoder
+ * @see org.sevenzip.compression.rangecoder.Encoder
+ */
 public class Encoder {
   // Match finder type constants (BT2/BT4) in UPPER_SNAKE_CASE per conventions
+  /**
+   * Identifier for the binary-tree match finder using two-byte hashing. Use when memory is tight or
+   * ultra-fast initialization is preferred over match quality.
+   */
   public static final int MATCH_FINDER_TYPE_BT2 = 0;
+
+  /**
+   * Identifier for the binary-tree match finder using four-byte hashing. This is the default and
+   * offers better match quality at the cost of additional memory and preprocessing time.
+   */
   public static final int MATCH_FINDER_TYPE_BT4 = 1;
 
   static final int INFINITY_PRICE = 0xFFFFFFF;
@@ -706,6 +741,11 @@ public class Encoder {
     numFastBytesPrev = numFastBytes;
   }
 
+  /**
+   * Constructs a new encoder instance with default dictionary size, fast-bytes setting, and BT4
+   * match finder. Internal probability models and buffers are allocated lazily; {@link #create()}
+   * and {@link #setStreams(InputStream, OutputStream)} must be invoked before compression.
+   */
   public Encoder() {
     for (int i = 0; i < NUM_OPTS; i++) optimum[i] = new Optimal();
     for (int i = 0; i < Base.NUM_LEN_TO_POS_STATES; i++)
@@ -1227,6 +1267,25 @@ public class Encoder {
     return false;
   }
 
+  /**
+   * Compresses a single logical block using the currently configured streams and updates progress
+   * arrays in place.
+   *
+   * <p>This call advances internal position counters, emits literals or matches as needed, and
+   * stops when the encoder determines a flush point or detects the end of input. Callers typically
+   * loop on this method until {@code finished[0]} becomes {@code true}. The method expects the
+   * input and output arrays to be at least length one and will overwrite index {@code 0} on each
+   * invocation.
+   *
+   * @param inSize single-element array updated with total bytes consumed from the input stream in
+   *     this invocation; must be non-null and length ≥ 1.
+   * @param outSize single-element array receiving the encoded byte count written by the range
+   *     encoder; must be non-null and length ≥ 1.
+   * @param finished single-element boolean array set to {@code true} when the encoder finishes the
+   *     entire stream or reaches a flush condition; must be non-null and length ≥ 1.
+   * @throws IOException if reading from the input stream or writing encoded bytes fails at any
+   *     point during processing.
+   */
   public void codeOneBlock(long[] inSize, long[] outSize, boolean[] finished) throws IOException {
     inSize[0] = 0;
     outSize[0] = 0;
@@ -1303,6 +1362,25 @@ public class Encoder {
   long[] processedOutSize = new long[1];
   boolean[] finished = new boolean[1];
 
+  /**
+   * Compresses the entire {@link InputStream} to the provided {@link OutputStream}, reporting
+   * progress through an optional callback.
+   *
+   * <p>The method initializes internal match finders, iteratively calls {@link
+   * #codeOneBlock(long[], long[], boolean[])}, and guarantees that resources are released even when
+   * exceptions occur. Compression stops when the input is exhausted or the encoder emits an
+   * explicit end marker. The method is blocking and not thread-safe; invoke it from a dedicated
+   * worker thread when used in asynchronous systems.
+   *
+   * @param inStream source of uncompressed bytes; must remain readable for the duration of the
+   *     call; not closed by this method.
+   * @param outStream destination for encoded bytes; must accept streaming writes; flushed and
+   *     released when encoding completes.
+   * @param progress optional progress reporter notified with cumulative in/out sizes after each
+   *     block; may be {@code null} to disable callbacks.
+   * @throws IOException if the encoder cannot read from the input or write to the output stream at
+   *     any step of the compression loop.
+   */
   public void code(InputStream inStream, OutputStream outStream, ICodeProgress progress)
       throws IOException {
     needReleaseMFStream = false;
@@ -1321,9 +1399,26 @@ public class Encoder {
     }
   }
 
+  /**
+   * Byte length of the serialized LZMA property header emitted by {@link #writeCoderProperties}.
+   */
   public static final int PROP_SIZE = 5;
+
   byte[] properties = new byte[PROP_SIZE];
 
+  /**
+   * Writes the five-byte LZMA property header describing literal and dictionary configuration to
+   * the supplied stream.
+   *
+   * <p>The header encodes position state bits, literal position bits, literal context bits, and the
+   * dictionary size in little-endian order, matching the canonical 7-Zip LZMA header layout.
+   * Callers should invoke this before writing compressed data so decoders can reconstruct the same
+   * settings.
+   *
+   * @param outStream destination stream that receives the property bytes; must remain writable
+   *     throughout the call.
+   * @throws IOException if the property bytes cannot be written to the provided stream.
+   */
   public void writeCoderProperties(OutputStream outStream) throws IOException {
     properties[0] =
         (byte) ((posStateBits * 5 + numLiteralPosStateBits) * 9 + numLiteralContextBits);
@@ -1372,12 +1467,36 @@ public class Encoder {
     alignPriceCount = 0;
   }
 
+  /**
+   * Sets the encoder algorithm profile, trading speed for compression ratio.
+   *
+   * <p>Valid values are {@code 0} (fast), {@code 1} (normal), and {@code 2} (maximum). Values
+   * outside this range are ignored and the previous setting remains in effect. The choice affects
+   * internal heuristics only; stream format compatibility is unchanged.
+   *
+   * @param algorithm profile selector in the inclusive range {@code 0..2}; other values are
+   *     rejected without side effects.
+   * @return {@code true} when the value is accepted and recorded; {@code false} when rejected.
+   */
   public boolean setAlgorithm(int algorithm) {
     // Accept historical values 0..2 (0=fast, 1=normal, 2=max). Values outside this
     // range are rejected to match typical LZMA command-line expectations.
     return algorithm >= 0 && algorithm <= 2;
   }
 
+  /**
+   * Configures the dictionary size used by the match finder and probability models.
+   *
+   * <p>The supplied size must be between {@code 1 << Base.DIC_LOG_SIZE_MIN} and {@code 1 << 29}
+   * inclusive. Larger dictionaries generally improve compression for long inputs but consume more
+   * memory and initialization time. On success, the internal distance table size is recalculated to
+   * maintain pricing consistency.
+   *
+   * @param dictionarySize desired dictionary in bytes; must fall within the supported range or the
+   *     request is ignored.
+   * @return {@code true} when the size is accepted and internal tables are updated; {@code false}
+   *     when the value falls outside allowed bounds.
+   */
   public boolean setDictionarySize(int dictionarySize) {
     int kDicLogSizeMaxCompress = 29;
     if (dictionarySize < (1 << Base.DIC_LOG_SIZE_MIN)
@@ -1391,12 +1510,35 @@ public class Encoder {
     return true;
   }
 
+  /**
+   * Sets the fast-bytes threshold that bounds greedy match extension before falling back to the
+   * optimal parser.
+   *
+   * <p>Valid values are between {@code 5} and {@code Base.MATCH_MAX_LEN} inclusive. Lower values
+   * favor speed while higher values allow longer matches to be accepted eagerly. When the input is
+   * out of range, the prior configuration is preserved.
+   *
+   * @param numFastBytes maximum number of bytes for quick match processing; must be within the
+   *     allowed range to take effect.
+   * @return {@code true} if the value is recorded; {@code false} when rejected as invalid.
+   */
   public boolean setNumFastBytes(int numFastBytes) {
     if (numFastBytes < 5 || numFastBytes > Base.MATCH_MAX_LEN) return false;
     this.numFastBytes = numFastBytes;
     return true;
   }
 
+  /**
+   * Selects the match finder implementation used during compression.
+   *
+   * <p>Accepts {@link #MATCH_FINDER_TYPE_BT2} or {@link #MATCH_FINDER_TYPE_BT4}; values outside
+   * {@code 0..2} are rejected. Changing the match finder after creation discards any cached match
+   * finder state to ensure the new type is applied on the next {@link #create()} call.
+   *
+   * @param matchFinderIndex numeric identifier for the desired match finder; see constants for
+   *     supported values.
+   * @return {@code true} when the identifier is recognized and stored; {@code false} otherwise.
+   */
   public boolean setMatchFinder(int matchFinderIndex) {
     if (matchFinderIndex < 0 || matchFinderIndex > 2) return false;
     int matchFinderIndexPrev = matchFinderType;
@@ -1408,6 +1550,24 @@ public class Encoder {
     return true;
   }
 
+  /**
+   * Configures literal context bits (lc), literal position bits (lp), and position state bits (pb)
+   * that influence probability model selection.
+   *
+   * <p>Each value must be within the bounds defined by {@link Base#NUM_LIT_CONTEXT_BITS_MAX},
+   * {@link Base#NUM_LIT_POS_STATES_BITS_ENCODING_MAX}, and {@link
+   * Base#NUM_POS_STATES_BITS_ENCODING_MAX}. Accepted values update the corresponding masks used
+   * during encoding; invalid inputs are rejected without altering existing state.
+   *
+   * @param lc literal context bits in the inclusive range {@code 0..8}; higher values improve
+   *     textual compression at the cost of model size.
+   * @param lp literal position bits in the inclusive range {@code 0..4}; useful for data with
+   *     fixed-byte structures.
+   * @param pb position state bits in the inclusive range {@code 0..4}; affects match/literal
+   *     decision granularity.
+   * @return {@code true} when all values are valid and applied; {@code false} when any argument is
+   *     outside its supported range.
+   */
   public boolean setLcLpPb(int lc, int lp, int pb) {
     if (lp < 0
         || lp > Base.NUM_LIT_POS_STATES_BITS_ENCODING_MAX
@@ -1422,6 +1582,15 @@ public class Encoder {
     return true;
   }
 
+  /**
+   * Enables or disables writing an explicit end-of-stream marker after the final encoded symbol.
+   *
+   * <p>When enabled, decoders can reliably detect the end of the compressed stream even if the
+   * uncompressed size is unknown. Disabling the marker can be useful in container formats that
+   * convey length separately.
+   *
+   * @param endMarkerMode {@code true} to append the end marker; {@code false} to omit it.
+   */
   public void setEndMarkerMode(boolean endMarkerMode) {
     writeEndMark = endMarkerMode;
   }
