@@ -85,9 +85,11 @@ tasks.withType<Test>().configureEach {
   include("network/crypta/**/*Test.class")
   include("com/onionnetworks/**/*Test.class")
   include("org/bitpedia/**/*Test.class")
+  include("org/sevenzip/**/*Test.class")
   exclude("network/crypta/**/*$*Test.class")
   exclude("com/onionnetworks/**/*$*Test.class")
   exclude("org/bitpedia/**/*$*Test.class")
+  exclude("org/sevenzip/**/*$*Test.class")
   // Point tests expecting old layout to new standard resource locations
   systemProperty("test.l10npath_test", "src/test/resources/network/crypta/l10n/")
   systemProperty("test.l10npath_main", "src/main/resources/network/crypta/l10n/")
