@@ -77,11 +77,11 @@ class TigerTest {
   }
 
   @Test
-  void clone_whenClonedMidStream_producesIndependentDigests() throws CloneNotSupportedException {
+  void copy_whenCopiedMidStream_producesIndependentDigests() {
     Tiger tiger = new Tiger();
     tiger.engineUpdate("abc".getBytes(StandardCharsets.US_ASCII), 0, 3);
 
-    Tiger clone = (Tiger) tiger.clone();
+    Tiger clone = tiger.copy();
 
     tiger.engineUpdate("def".getBytes(StandardCharsets.US_ASCII), 0, 3);
     clone.engineUpdate("xyz".getBytes(StandardCharsets.US_ASCII), 0, 3);
