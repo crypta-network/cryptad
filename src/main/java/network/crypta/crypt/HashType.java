@@ -76,12 +76,53 @@ public enum HashType {
       return new Ed2MessageDigest();
     }
     if (this == TTH) {
-      return new TigerTree();
+      return new TigerTreeMessageDigest(new TigerTree());
     }
     try {
       return MessageDigest.getInstance(javaName, provider);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("Unsupported digest algorithm " + javaName, e);
+    }
+  }
+
+  /** MessageDigest adapter that delegates to the streaming TigerTree implementation. */
+  private static final class TigerTreeMessageDigest extends MessageDigest {
+    private final TigerTree delegate;
+
+    TigerTreeMessageDigest(TigerTree delegate) {
+      super("tigertree");
+      this.delegate = delegate;
+    }
+
+    @Override
+    protected int engineGetDigestLength() {
+      return delegate.getDigestLength();
+    }
+
+    @Override
+    protected void engineUpdate(byte input) {
+      delegate.update(input);
+    }
+
+    @Override
+    protected void engineUpdate(byte[] input, int offset, int len) {
+      delegate.update(input, offset, len);
+    }
+
+    @Override
+    protected byte[] engineDigest() {
+      return delegate.digest();
+    }
+
+    @Override
+    protected int engineDigest(byte[] buf, int offset, int len)
+        throws java.security.DigestException {
+      return delegate.digest(buf, offset, len);
+    }
+
+    @Override
+    protected void engineReset() {
+      delegate.reset();
     }
   }
 }

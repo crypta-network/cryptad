@@ -1,6 +1,5 @@
 package network.crypta.crypt;
 
-import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -8,9 +7,9 @@ import java.util.List;
 /**
  * Computes several cryptographic hashes over the same byte stream in one pass.
  *
- * <p>This utility owns one {@link MessageDigest} per {@link HashType} selected via a bit mask. Feed
- * data through {@link #update(byte[], int, int)} and obtain all results via {@link #getResults()}.
- * The order of results follows {@link HashType#values()}.
+ * <p>This utility owns one {@link java.security.MessageDigest} per {@link HashType} selected via a
+ * bit mask. Feed data through {@link #update(byte[], int, int)} and obtain all results via {@link
+ * #getResults()}. The order of results follows {@link HashType#values()}.
  *
  * <p>Thread-safety: not thread-safe. Create a new instance per computation and use it from a single
  * thread.
@@ -40,7 +39,7 @@ final class MultiHashDigester {
   /**
    * Finalizes all digests and returns their values.
    *
-   * <p>Each call completes the underlying {@link MessageDigest} instances (they are reset after
+   * <p>Each call completes the underlying {@link StreamingHash} instances (they are reset after
    * completion). Subsequent calls to {@link #update(byte[], int, int)} start a new computation.
    *
    * <p>The returned list is unmodifiable and ordered according to {@link HashType#values()}.
@@ -76,7 +75,7 @@ final class MultiHashDigester {
 
   private static class Digester {
     private final HashType hashType;
-    private final MessageDigest digest;
+    private final java.security.MessageDigest digest;
 
     Digester(HashType hashType) {
       this.hashType = hashType;
