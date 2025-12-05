@@ -1,31 +1,51 @@
 package org.spaceroots.mantissa.fitting;
 
+import java.io.Serial;
 import org.spaceroots.mantissa.estimation.EstimatedParameter;
 import org.spaceroots.mantissa.estimation.EstimationException;
 import org.spaceroots.mantissa.estimation.Estimator;
-import org.spaceroots.mantissa.estimation.GaussNewtonEstimator;
 import org.spaceroots.mantissa.functions.ExhaustedSampleException;
 import org.spaceroots.mantissa.functions.FunctionException;
 
 /**
- * This class implements a curve fitting specialized for sinusoids.
+ * Curve fitter for single-frequency harmonic signals.
  *
- * <p>Harmonic fitting is a very simple case of curve fitting. The estimated coefficients are the
- * amplitude a, the pulsation omega and the phase phi: <code>f (t) = a cos (omega t + phi)</code>.
- * They are searched by a least square estimator initialized with a rough guess based on integrals.
+ * <p>Provides least-squares estimation of amplitude {@code a}, pulsation {@code omega}, and phase
+ * {@code phi} for the model {@code f(t) = a cos(omega t + phi)}. Instances manage three {@link
+ * EstimatedParameter} coefficients and delegate iterative solving to an injected {@link Estimator}.
+ * When constructed without an initial vector, the fitter derives a first guess from sorted sample
+ * points using {@link HarmonicCoefficientsGuesser}, which expects at least four measurements with
+ * varied abscissae.
  *
- * <p>This class <emph>is by no means optimized</emph>, neither versus space nor versus time
- * performance.
+ * <p>The class stores measurements in insertion order and performs a defensive sort before
+ * computing guesses to stabilize the integral-based heuristic. The fitter mutates the shared
+ * coefficient objects during estimation; callers may reuse the instance across runs provided they
+ * supply fresh measurements or reset estimates as needed. The implementation is not synchronized
+ * and should be confined to a single thread per instance.
  *
- * @version $Id: HarmonicFitter.java 1709 2006-12-03 21:16:50Z luc $
+ * <ul>
+ *   <li>Responsibilities: coefficient priming, delegate setup, and harmonic value/gradient helpers.
+ *   <li>Limitations: optimized neither for memory nor for real-time execution.
+ * </ul>
+ *
+ * @see AbstractCurveFitter
+ * @see HarmonicCoefficientsGuesser
  * @author L. Maisonobe
+ * @version $Id: HarmonicFitter.java 1709 2006-12-03 21:16:50Z luc $
  */
 public class HarmonicFitter extends AbstractCurveFitter {
 
   /**
-   * Simple constructor.
+   * Creates a fitter that will compute its own initial coefficient guess.
    *
-   * @param estimator estimator to use for the fitting
+   * <p>Constructs a three-parameter harmonic fitter and seeds the parameters with neutral starting
+   * values ({@code a=2π}, {@code omega=0}, {@code phi=0}). The instance records that a heuristic
+   * first guess is still required; the next call to {@link #fit()} will sort the accumulated
+   * measurements, derive an initial estimate via {@link HarmonicCoefficientsGuesser}, and then
+   * launch the delegated estimator.
+   *
+   * @param estimator least-squares estimator driving iterations; must accept three parameters and
+   *     produce updated estimates
    */
   public HarmonicFitter(Estimator estimator) {
     super(3, estimator);
@@ -36,14 +56,18 @@ public class HarmonicFitter extends AbstractCurveFitter {
   }
 
   /**
-   * Simple constructor.
+   * Creates a fitter using caller-provided coefficient estimates.
    *
-   * <p>This constructor can be used when a first estimate of the coefficients is already known.
+   * <p>Use this constructor when the caller already holds an amplitude, pulsation, and phase
+   * estimate that should seed the solver. The provided array is retained and mutated directly by
+   * the fitter, so subsequent calls to {@link #fit()} will update the same objects. Because an
+   * initial vector is present, no heuristic guessing is performed unless the caller resets the
+   * {@code firstGuessNeeded} flag manually.
    *
-   * @param coefficients first estimate of the coefficients. A reference to this array is hold by
-   *     the newly created object. Its elements will be adjusted during the fitting process and they
-   *     will be set to the adjusted coefficients at the end.
-   * @param estimator estimator to use for the fitting
+   * @param coefficients mutable parameter array ordered as {@code a}, {@code omega}, {@code phi};
+   *     must contain three non-null entries ready for adjustment
+   * @param estimator estimator to iterate the least-squares problem; configured for three
+   *     parameters
    */
   public HarmonicFitter(EstimatedParameter[] coefficients, Estimator estimator) {
     super(coefficients, estimator);
@@ -51,61 +75,21 @@ public class HarmonicFitter extends AbstractCurveFitter {
   }
 
   /**
-   * Simple constructor.
+   * Performs harmonic least-squares estimation using the configured estimator.
    *
-   * @param maxIterations maximum number of iterations allowed
-   * @param convergence criterion threshold below which we do not need to improve the criterion
-   *     anymore
-   * @param steadyStateThreshold steady state detection threshold, the problem has reached a steady
-   *     state (read converged) if <code>Math.abs (Jn - Jn-1) < Jn * convergence</code>, where
-   *     <code>Jn</code> and <code>Jn-1</code> are the current and preceding criterion value (square
-   *     sum of the weighted residuals of considered measurements).
-   * @param epsilon threshold under which the matrix of the linearized problem is considered
-   *     singular (see {@link org.spaceroots.mantissa.linalg.SquareMatrix#solve(
-   *     org.spaceroots.mantissa.linalg.Matrix,double) SquareMatrix.solve}).
-   * @deprecated replaced by {@link #HarmonicFitter(Estimator)} as of version 7.0
+   * <p>When a first guess is required, the method validates that at least four measurements are
+   * present, sorts them to stabilize the heuristic, and delegates initial value computation to
+   * {@link HarmonicCoefficientsGuesser}. It then invokes the superclass implementation, which
+   * forwards the prepared parameters and measurements to the injected {@link Estimator}. After a
+   * successful call, {@code firstGuessNeeded} is cleared so subsequent invocations reuse the
+   * current estimates unless measurements or coefficients are reset by the caller.
+   *
+   * @return array containing the updated estimates ordered as {@code a}, {@code omega}, {@code
+   *     phi}; the array is managed by the fitter
+   * @throws EstimationException if fewer than four measurements are available or if guessing or
+   *     estimation fails inside the delegate
    */
-  @Deprecated
-  public HarmonicFitter(
-      int maxIterations, double convergence, double steadyStateThreshold, double epsilon) {
-    this(new GaussNewtonEstimator(maxIterations, convergence, steadyStateThreshold, epsilon));
-  }
-
-  /**
-   * Simple constructor.
-   *
-   * <p>This constructor can be used when a first estimate of the coefficients is already known.
-   *
-   * @param coefficients first estimate of the coefficients. A reference to this array is hold by
-   *     the newly created object. Its elements will be adjusted during the fitting process and they
-   *     will be set to the adjusted coefficients at the end.
-   * @param maxIterations maximum number of iterations allowed
-   * @param convergence criterion threshold below which we do not need to improve the criterion
-   *     anymore
-   * @param steadyStateThreshold steady state detection threshold, the problem has reached a steady
-   *     state (read converged) if <code>Math.abs (Jn - Jn-1) < Jn * convergence</code>, where
-   *     <code>Jn</code> and <code>Jn-1</code> are the current and preceding criterion value (square
-   *     sum of the weighted residuals of considered measurements).
-   * @param epsilon threshold under which the matrix of the linearized problem is considered
-   *     singular (see {@link org.spaceroots.mantissa.linalg.SquareMatrix#solve(
-   *     org.spaceroots.mantissa.linalg.Matrix,double) SquareMatrix.solve}).
-   * @deprecated replaced by {@link #HarmonicFitter(EstimatedParameter[], Estimator)} as of version
-   *     7.0
-   */
-  @Deprecated
-  public HarmonicFitter(
-      EstimatedParameter[] coefficients,
-      int maxIterations,
-      double convergence,
-      double steadyStateThreshold,
-      double epsilon) {
-    this(
-        coefficients,
-        new GaussNewtonEstimator(
-            maxIterations, convergence,
-            steadyStateThreshold, epsilon));
-  }
-
+  @Override
   public double[] fit() throws EstimationException {
     if (firstGuessNeeded) {
       if (measurements.size() < 4) {
@@ -123,9 +107,7 @@ public class HarmonicFitter extends AbstractCurveFitter {
         coefficients[0].setEstimate(guesser.getA());
         coefficients[1].setEstimate(guesser.getOmega());
         coefficients[2].setEstimate(guesser.getPhi());
-      } catch (ExhaustedSampleException e) {
-        throw new EstimationException(e);
-      } catch (FunctionException e) {
+      } catch (ExhaustedSampleException | FunctionException e) {
         throw new EstimationException(e);
       }
 
@@ -136,30 +118,41 @@ public class HarmonicFitter extends AbstractCurveFitter {
   }
 
   /**
-   * Get the current amplitude coefficient estimate. Get a, where <code>
-   * f (t) = a cos (omega t + phi)</code>
+   * Get the current amplitude coefficient estimate.
    *
-   * @return current amplitude coefficient estimate
+   * <p>Returns the latest in-memory value of {@code a} used by the fitter. Before the first solve
+   * it reflects the constructor seed; after {@link #fit()} completes it contains the optimized
+   * amplitude corresponding to the most recent measurement set. Callers may read it between
+   * iterations to monitor convergence or after solving to persist the result.
+   *
+   * @return current amplitude estimate as a double; value is mutable and owned by the fitter
    */
   public double getAmplitude() {
     return coefficients[0].getEstimate();
   }
 
   /**
-   * Get the current pulsation coefficient estimate. Get omega, where <code>
-   * f (t) = a cos (omega t + phi)</code>
+   * Get the current pulsation coefficient estimate.
    *
-   * @return current pulsation coefficient estimate
+   * <p>Exposes the stored {@code omega} value representing angular frequency. Prior to solving it
+   * matches the initial seed; after {@link #fit()} the value is whatever the estimator last
+   * computed. The returned primitive is a snapshot, while the underlying {@link EstimatedParameter}
+   * remains mutable for subsequent runs.
+   *
+   * @return present pulsation estimate in radians per unit abscissa; snapshot of mutable state
    */
   public double getPulsation() {
     return coefficients[1].getEstimate();
   }
 
   /**
-   * Get the current phase coefficient estimate. Get phi, where <code>f (t) = a cos (omega t + phi)
-   * </code>
+   * Get the current phase coefficient estimate.
    *
-   * @return current phase coefficient estimate
+   * <p>Returns the {@code phi} parameter representing phase offset applied to the cosine model. It
+   * may be the seed value or an optimized result depending on whether {@link #fit()} has run. The
+   * number is not normalized; callers may wrap it to {@code [-π, π]} or another range if desired.
+   *
+   * @return present phase estimate in radians; snapshot that may change on subsequent fits
    */
   public double getPhase() {
     return coefficients[2].getEstimate();
@@ -168,8 +161,13 @@ public class HarmonicFitter extends AbstractCurveFitter {
   /**
    * Get the value of the function at x according to the current parameters value.
    *
-   * @param x abscissa at which the theoretical value is requested
-   * @return theoretical value at x
+   * <p>Evaluates {@code f(x) = a cos(omega x + phi)} using the fitter's current estimates without
+   * modifying them. This helper is useful for inspecting residuals, plotting predicted curves, or
+   * building custom merit functions prior to solving. It performs no validation of the estimates
+   * and assumes they represent a consistent harmonic parameterization.
+   *
+   * @param x abscissa at which the theoretical value is requested; any real value is accepted
+   * @return computed model value at {@code x} based on the latest coefficient estimates
    */
   public double valueAt(double x) {
     double a = coefficients[0].getEstimate();
@@ -181,9 +179,16 @@ public class HarmonicFitter extends AbstractCurveFitter {
   /**
    * Get the derivative of the function at x with respect to parameter p.
    *
-   * @param x abscissa at which the partial derivative is requested
-   * @param p parameter with respect to which the derivative is requested
-   * @return partial derivative
+   * <p>Computes the partial derivative of {@code f(x)} with respect to one of the harmonic
+   * parameters while holding the others constant. The method relies on identity checks against the
+   * internally stored {@link EstimatedParameter} instances; callers should pass the same objects
+   * obtained from the fitter rather than newly created parameter instances.
+   *
+   * @param x abscissa at which the partial derivative is requested; accepts any finite value
+   * @param p parameter with respect to which the derivative is requested; must be one of the
+   *     fitter's internal coefficient objects
+   * @return partial derivative value for the requested parameter at {@code x}; based on current
+   *     estimates
    */
   public double partial(double x, EstimatedParameter p) {
     double a = coefficients[0].getEstimate();
@@ -191,15 +196,18 @@ public class HarmonicFitter extends AbstractCurveFitter {
     double phi = coefficients[2].getEstimate();
     if (p == coefficients[0]) {
       return Math.cos(omega * x + phi);
-    } else if (p == coefficients[1]) {
-      return -a * x * Math.sin(omega * x + phi);
     } else {
-      return -a * Math.sin(omega * x + phi);
+      double v = Math.sin(omega * x + phi);
+      if (p == coefficients[1]) {
+        return -a * x * v;
+      } else {
+        return -a * v;
+      }
     }
   }
 
   /** Indicator of the need to compute a first guess of the coefficients. */
   private boolean firstGuessNeeded;
 
-  private static final long serialVersionUID = -8722683066277473450L;
+  @Serial private static final long serialVersionUID = -8722683066277473450L;
 }
