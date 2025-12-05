@@ -1,21 +1,29 @@
 package org.spaceroots.mantissa.ode;
 
+import java.io.Serial;
+
 /**
- * This class implements a step interpolator for the classical fourth order Runge-Kutta integrator.
+ * Dense-output interpolator tailored for the classical fourth-order Runge-Kutta scheme.
  *
- * <p>This interpolator allows to compute dense output inside the last step computed. The
- * interpolation equation is consistent with the integration scheme :
+ * <p>The interpolator reconstructs intermediate states inside the most recently completed
+ * integration step, making it possible to evaluate the continuous trajectory without reducing the
+ * solver step size. It applies the closed-form dense-output polynomial associated with the RK4
+ * tableau, using the already computed stage derivatives {@code y'_1} through {@code y'_4} to avoid
+ * any additional function calls. Clients typically obtain instances from {@link
+ * ClassicalRungeKuttaIntegrator} via the standard step handler API and invoke {@link
+ * #setInterpolatedTime(double)} to position the interpolation cursor within the step. The state
+ * returned by {@link #getInterpolatedState()} is immutable to callers but backed by internal
+ * buffers reused across calls; copy the array if retaining it beyond the current notification.
  *
- * <pre>
- *   y(t_n + theta h) = y (t_n + h)
- *                    + (1 - theta) (h/6) [ (-4 theta^2 + 5 theta - 1) y'_1
- *                                          +(4 theta^2 - 2 theta - 2) (y'_2 + y'_3)
- *                                          -(4 theta^2 +   theta + 1) y'_4
- *                                        ]
- * </pre>
+ * <p>Invariants and notable behaviors:
  *
- * where theta belongs to [0 ; 1] and where y'_1 to y'_4 are the four evaluations of the derivatives
- * already computed during the step.
+ * <ul>
+ *   <li>Interpolation is defined for {@code 0 ≤ theta ≤ 1}, where {@code theta} measures progress
+ *       from the previous grid point to the current one.
+ *   <li>Instances are reused by the integrator; {@link #copy()} provides an isolated snapshot when
+ *       step handlers need to preserve state across callbacks.
+ *   <li>The class is not thread-safe; use distinct instances per integrator thread.
+ * </ul>
  *
  * @see ClassicalRungeKuttaIntegrator
  * @version $Id: ClassicalRungeKuttaStepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
@@ -25,39 +33,59 @@ class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator
     implements StepInterpolator {
 
   /**
-   * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
-   * RungeKuttaStepInterpolator#reinitialize} method should be called before using the instance in
-   * order to initialize the internal arrays. This constructor is used only in order to delay the
-   * initialization in some cases. The {@link RungeKuttaIntegrator} class uses the prototyping
-   * design pattern to create the step interpolators by cloning an uninitialized model and latter
-   * initializing the copy.
+   * Simple constructor used by the integrator's prototype mechanism to create fresh interpolators.
+   * The instance starts in an uninitialized state; callers must invoke {@link
+   * RungeKuttaStepInterpolator#reinitialize(FirstOrderDifferentialEquations,double[],double[][],boolean)}
+   * before the first use so that the internal state buffers point to the step data managed by the
+   * integrator. This deferred initialization keeps allocation costs low when many interpolators are
+   * cloned for event or handler chains.
    */
   public ClassicalRungeKuttaStepInterpolator() {}
 
   /**
-   * Copy constructor.
+   * Copy constructor that performs a deep copy of all mutable interpolation buffers.
    *
-   * @param interpolator interpolator to copy from. The copy is a deep copy: its arrays are
-   *     separated from the original arrays of the instance
+   * <p>The copied instance shares no arrays with the source, allowing step handlers to retain the
+   * duplicate safely after the integrator proceeds to the next step. Scalar configuration such as
+   * direction flags are copied verbatim.
+   *
+   * @param interpolator interpolator to copy from; must be already initialized for meaningful data.
    */
   public ClassicalRungeKuttaStepInterpolator(ClassicalRungeKuttaStepInterpolator interpolator) {
     super(interpolator);
   }
 
+  /**
+   * Create an independent clone of this interpolator with detached state arrays.
+   *
+   * <p>Use this method when a step handler needs to retain interpolation results beyond the current
+   * callback. The returned instance can be moved to different interpolation times without affecting
+   * the original, because all internal buffers are duplicated during cloning.
+   *
+   * @return a new {@code ClassicalRungeKuttaStepInterpolator} holding copies of the current state
+   *     arrays and configuration flags.
+   */
   @Override
   public ClassicalRungeKuttaStepInterpolator copy() {
     return new ClassicalRungeKuttaStepInterpolator(this);
   }
 
   /**
-   * Compute the state at the interpolated time. This is the main processing method that should be
-   * implemented by the derived classes to perform the interpolation.
+   * Compute the state vector corresponding to the current interpolated time within the step.
    *
-   * @param theta normalized interpolation abscissa within the step (theta is zero at the previous
-   *     time step and one at the current time step)
-   * @param oneMinusThetaH time gap between the interpolated time and the current time
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>The implementation evaluates the dense-output polynomial associated with the RK4 tableau
+   * using the four stored derivative evaluations {@code yDotK}. The {@code theta} argument defines
+   * where the interpolation point lies between the previous grid point and the current one, while
+   * {@code oneMinusThetaH} supplies the precomputed time offset in seconds. The method overwrites
+   * the internal {@code interpolatedState} buffer; callers should access it via {@link
+   * #getInterpolatedState()} after invocation.
+   *
+   * @param theta normalized abscissa in {@code [0, 1]} representing progress across the current
+   *     integration step; values outside the range lead to extrapolation.
+   * @param oneMinusThetaH signed time gap between the interpolated instant and the current step end
+   *     time, typically {@code (1 - theta) * h} where {@code h} is the step size.
+   * @throws DerivativeException propagated if a user-supplied derivative function triggers it
+   *     during interpolation support logic in the parent class.
    */
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
@@ -77,5 +105,9 @@ class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator
     }
   }
 
-  private static final long serialVersionUID = -6576285612589783992L;
+  /**
+   * Serialization version identifier preserving compatibility for persisted interpolator snapshots
+   * across library releases that retain the same field layout.
+   */
+  @Serial private static final long serialVersionUID = -6576285612589783992L;
 }
