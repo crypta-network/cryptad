@@ -3,22 +3,29 @@ package org.spaceroots.mantissa.estimation;
 import java.io.Serializable;
 
 /**
- * This class represents measurements in estimation problems.
+ * Weighted scalar measurement participating in a least-squares estimation run.
  *
- * <p>This abstract class implements all the methods needed to handle measurements in a general way.
- * It defines neither the {@link #getTheoreticalValue getTheoreticalValue} nor the {@link
- * #getPartial getPartial} methods, which should be defined by sub-classes according to the specific
- * problem.
+ * <p>This abstract type encapsulates the shared metadata needed by an estimation solver while
+ * delegating model-specific details to subclasses. Each measurement carries an immutable weight
+ * that scales its contribution to the cost function and a measured value that represents the raw
+ * observation. Subclasses provide the link to the model by implementing {@link
+ * #getTheoreticalValue()} and {@link #getPartial(EstimatedParameter)}, both of which must evaluate
+ * the current parameter estimate maintained by the solver and supplied through {@link
+ * EstimationProblem#getAllParameters()} or by direct access when the measurement is an inner class.
  *
- * <p>The {@link #getTheoreticalValue getTheoreticalValue} and {@link #getPartial getPartial}
- * methods must always use the current estimate of the parameters set by the solver in the problem.
- * These parameters can be retrieved through the {@link EstimationProblem#getAllParameters
- * EstimationProblem.getAllParameters} method if the measurements are independant of the problem, or
- * directly if they are implemented as inner classes of the problem.
+ * <p>Instances can be marked as ignored via {@link #setIgnored(boolean)} to temporarily exclude bad
+ * or outlying measurements without altering the surrounding problem definition. The ignore flag is
+ * mutable, but the weight and measured value are fixed after construction so residuals remain
+ * consistent across iterations. This class is deliberately lightweight and thread-hostile:
+ * instances are expected to be confined to the solver thread that owns the current parameter vector
+ * rather than shared concurrently.
  *
- * <p>The instances for which the <code>ignored</code> flag is set through the {@link #setIgnored
- * setIgnored} method are ignored by the solvers. This can be used to reject wrong measurements at
- * some steps of the estimation.
+ * <ul>
+ *   <li>Responsibilities: store observed value, expose residual and partial derivatives, convey
+ *       per-measurement weighting.
+ *   <li>Notable behaviors: optional exclusion via an ignore flag; residual computed lazily from
+ *       theoretical value.
+ * </ul>
  *
  * @see EstimationProblem
  * @version $Id: WeightedMeasurement.java 1679 2005-12-16 11:12:23Z luc $
@@ -27,106 +34,160 @@ import java.io.Serializable;
 public abstract class WeightedMeasurement implements Serializable {
 
   /**
-   * Simple constructor. Build a measurement with the given parameters, and set its ignore flag to
-   * false.
+   * Build a measurement with a fixed weight and observed value, initially considered valid.
    *
-   * @param weight weight of the measurement in the least squares problem (two common choices are
-   *     either to use 1.0 for all measurements, or to use a value proportional to the inverse of
-   *     the variance of the measurement type)
-   * @param measuredValue measured value
+   * <p>This constructor is convenient for the common case where all measurements start included in
+   * the optimization. The {@code weight} scales the contribution of the residual to the global cost
+   * (use 1.0 for uniform influence or the inverse of the expected variance for heteroscedastic
+   * data). The {@code measuredValue} is stored verbatim and later compared to the theoretical value
+   * returned by {@link #getTheoreticalValue()} to compute residuals. The ignore flag defaults to
+   * {@code false} so solvers will consume the measurement unless it is explicitly toggled later.
+   *
+   * @param weight positive scaling factor for this measurement within the least-squares objective;
+   *     values near zero effectively down-weight outliers.
+   * @param measuredValue raw observed quantity expressed in the same units as the theoretical
+   *     counterpart computed by the model.
    */
-  public WeightedMeasurement(double weight, double measuredValue) {
+  protected WeightedMeasurement(double weight, double measuredValue) {
     this.weight = weight;
     this.measuredValue = measuredValue;
     ignored = false;
   }
 
   /**
-   * Simple constructor. Build a measurement with the given parameters
+   * Build a measurement with explicit weight, observed value, and initial ignore policy.
    *
-   * @param weight weight of the measurement in the least squares problem
-   * @param measuredValue measured value
-   * @param ignored true if the measurement should be ignored
+   * <p>Use this constructor when some observations should start excluded (for example, points
+   * flagged during preprocessing) while still keeping their data available for later inclusion. The
+   * {@code weight} and {@code measuredValue} behave identically to the single-argument constructor,
+   * but the {@code ignored} flag immediately controls whether the solver should skip the
+   * measurement. Downstream code may toggle the flag via {@link #setIgnored(boolean)} to re-enable
+   * or suppress the measurement as iterative filters converge.
+   *
+   * @param weight positive scaling factor that modulates how much this measurement contributes to
+   *     the accumulated chi-square error term.
+   * @param measuredValue raw observed quantity expressed in the domain expected by the model; it is
+   *     never modified after construction.
+   * @param ignored whether the measurement is initially excluded from solver computations; {@code
+   *     true} keeps it silent until explicitly re-enabled.
    */
-  public WeightedMeasurement(double weight, double measuredValue, boolean ignored) {
+  protected WeightedMeasurement(double weight, double measuredValue, boolean ignored) {
     this.weight = weight;
     this.measuredValue = measuredValue;
     this.ignored = ignored;
   }
 
   /**
-   * Get the weight of the measurement in the least squares problem
+   * Return the scalar weight applied to this measurement in the least-squares objective.
    *
-   * @return weight
+   * <p>The weight is immutable after construction. Larger values make the residual associated with
+   * this measurement influence parameter updates more strongly, while smaller values down-weight it
+   * relative to other observations. Callers typically pick weights consistent with the inverse
+   * variance of the measurement noise model.
+   *
+   * @return immutable weight scaling factor; callers must not assume any specific normalization.
    */
   public double getWeight() {
     return weight;
   }
 
   /**
-   * Get the measured value
+   * Return the raw measured value captured for this observation.
    *
-   * @return measured value
+   * <p>The value is stored exactly as provided to the constructor and is never normalized or
+   * altered by the solver. It should be expressed in the same units and reference frame as the
+   * theoretical value computed by {@link #getTheoreticalValue()} to avoid bias in residuals.
+   *
+   * @return immutable measured value retained for residual computation and reporting.
    */
   public double getMeasuredValue() {
     return measuredValue;
   }
 
   /**
-   * Get the residual for this measurement The residual is the measured value minus the theoretical
-   * value.
+   * Compute the residual between the observed and theoretical values.
    *
-   * @return residual
+   * <p>The residual equals {@code measuredValue - getTheoreticalValue()}. It is evaluated lazily
+   * using the current parameter estimates held by the solver, so repeated calls may produce
+   * different values as iterations progress. The method performs no bounds checking; callers should
+   * ensure the underlying model remains numerically stable for the current parameter set.
+   *
+   * @return signed residual in the same units as the measurement; positive values indicate the
+   *     observation exceeds the model prediction.
    */
   public double getResidual() {
     return measuredValue - getTheoreticalValue();
   }
 
   /**
-   * Get the theoretical value expected for this measurement
+   * Compute the theoretical value predicted by the model for the current parameters.
    *
-   * <p>The theoretical value is the value expected for this measurement if the model and its
-   * parameter were all perfectly known.
+   * <p>Implementations must read the most recent parameter estimates supplied by the solver so the
+   * returned value reflects the solver's current iterate. The method should avoid side effects and
+   * be deterministic for a fixed parameter vector because solvers may invoke it repeatedly while
+   * assembling residuals and Jacobians. Implementations are responsible for any domain checks
+   * needed to keep the model well-defined.
    *
-   * <p>The value must be computed using the current estimate of the parameters set by the solver in
-   * the problem.
-   *
-   * @return theoretical value
+   * @return model-predicted value expressed in the same units as {@link #getMeasuredValue()}, ready
+   *     for residual computation.
    */
   public abstract double getTheoreticalValue();
 
   /**
-   * Get the partial derivative of the {@link #getTheoreticalValue theoretical value} according to
-   * the parameter.
+   * Return the partial derivative of the theoretical value with respect to a parameter.
    *
-   * <p>The value must be computed using the current estimate of the parameters set by the solver in
-   * the problem.
+   * <p>The derivative must be evaluated at the current parameter estimate managed by the solver.
+   * Implementations should return zero for parameters that do not influence the measurement and
+   * should be careful to keep derivative calculations numerically stable for ill-conditioned
+   * models. Solvers typically build a Jacobian matrix by calling this method for each parameter
+   * referenced by the measurement.
    *
-   * @param parameter parameter against which the partial derivative should be computed
-   * @return partial derivative of the {@link #getTheoreticalValue theoretical value}
+   * @param parameter parameter whose influence on the theoretical value is being differentiated;
+   *     must refer to a parameter known to the surrounding {@link EstimationProblem}.
+   * @return partial derivative value; positive numbers indicate the theoretical value increases
+   *     when the parameter grows.
    */
   public abstract double getPartial(EstimatedParameter parameter);
 
   /**
-   * Set the ignore flag to the specified value Setting the ignore flag to true allow to reject
-   * wrong measurements, which sometimes can be detected only rather late.
+   * Update the ignore flag to include or exclude this measurement from solver computations.
    *
-   * @param ignored value for the ignore flag
+   * <p>Setting {@code ignored} to {@code true} removes the measurement from subsequent residual and
+   * Jacobian calculations, which is useful for discarding late-detected outliers without altering
+   * the problem structure. The flag can be flipped back to {@code false} if a measurement is
+   * rehabilitated after additional validation steps. The method is not synchronized; callers should
+   * coordinate access if measurements are shared across threads.
+   *
+   * @param ignored {@code true} to skip this measurement in solver iterations; {@code false} to
+   *     reinstate it.
    */
   public void setIgnored(boolean ignored) {
     this.ignored = ignored;
   }
 
   /**
-   * Check if this measurement should be ignored
+   * Indicate whether this measurement is currently excluded from solver processing.
    *
-   * @return true if the measurement should be ignored
+   * <p>The return value reflects the most recent call to {@link #setIgnored(boolean)} or the
+   * constructor initialization. Solvers typically inspect this flag before consuming the
+   * measurement; callers may also use it for reporting or diagnostics.
+   *
+   * @return {@code true} when the measurement is flagged as ignored and therefore omitted from cost
+   *     and Jacobian assembly; {@code false} otherwise.
    */
   public boolean isIgnored() {
     return ignored;
   }
 
+  /** Immutable weight applied to this measurement in the global least-squares objective. */
   private final double weight;
+
+  /** Observed scalar value against which the model prediction is compared. */
   private final double measuredValue;
+
+  /**
+   * Mutable flag controlling whether the measurement participates in solver calculations; toggled
+   * through {@link #setIgnored(boolean)}.
+   */
   private boolean ignored;
 }
