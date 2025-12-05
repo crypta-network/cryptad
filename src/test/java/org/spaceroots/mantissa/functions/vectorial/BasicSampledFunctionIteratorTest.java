@@ -94,6 +94,7 @@ class BasicSampledFunctionIteratorTest {
     iterator.nextSamplePoint();
 
     assertThrows(ExhaustedSampleException.class, iterator::nextSamplePoint);
+    // size() is called once on the initial read and twice on the exhausted call (guard + message)
     verify(function, times(3)).size();
     verify(function, times(1)).samplePointAt(0);
     verifyNoMoreInteractions(function);
