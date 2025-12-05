@@ -223,6 +223,7 @@ public class TigerTree implements StreamingHash {
   @Override
   public void reset() {
     bufferOffset = 0;
+    blockCount = 0;
     nodes = new LinkedList<>();
     tiger.reset();
   }
