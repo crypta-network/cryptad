@@ -224,16 +224,16 @@ public class PolynomialFraction implements Serializable {
     }
 
     Polynomial.DivisionResult res = Polynomial.Rational.euclidianDivision(a, b);
-    while (res.remainder.getDegree() != 0) {
+    while (res.remainder().getDegree() != 0) {
       a = b;
-      b = res.remainder;
+      b = res.remainder();
       res = Polynomial.Rational.euclidianDivision(a, b);
     }
 
-    if (res.remainder.isZero()) {
+    if (res.remainder().isZero()) {
       // there is a common factor we can remove
-      p = Polynomial.Rational.euclidianDivision(p, b).quotient;
-      q = Polynomial.Rational.euclidianDivision(q, b).quotient;
+      p = Polynomial.Rational.euclidianDivision(p, b).quotient();
+      q = Polynomial.Rational.euclidianDivision(q, b).quotient();
     }
 
     if (q.getDegree() == 0) {
