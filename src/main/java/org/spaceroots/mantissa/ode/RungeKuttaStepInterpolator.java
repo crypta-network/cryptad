@@ -72,7 +72,7 @@ abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolator {
    * @param interpolator interpolator to copy from; must already be finalized for accurate
    *     interpolation results.
    */
-  public RungeKuttaStepInterpolator(RungeKuttaStepInterpolator interpolator) {
+  protected RungeKuttaStepInterpolator(RungeKuttaStepInterpolator interpolator) {
 
     super(interpolator);
 
@@ -142,9 +142,9 @@ abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolator {
 
     // save the local attributes
     out.writeInt(yDotK.length);
-    for (int k = 0; k < yDotK.length; ++k) {
+    for (double[] doubles : yDotK) {
       for (int i = 0; i < currentState.length; ++i) {
-        out.writeDouble(yDotK[k][i]);
+        out.writeDouble(doubles[i]);
       }
     }
 
@@ -186,9 +186,7 @@ abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolator {
       // we can now set the interpolated time and state
       setInterpolatedTime(t);
     } catch (DerivativeException e) {
-      IOException ioe = new IOException();
-      ioe.initCause(e);
-      throw ioe;
+      throw new IOException(e);
     }
   }
 
