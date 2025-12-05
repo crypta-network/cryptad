@@ -149,7 +149,7 @@ public class PolynomialFitter extends AbstractCurveFitter {
    */
   public double partial(double x, EstimatedParameter p) {
     if (p instanceof PolynomialCoefficient) {
-      return Math.pow(x, ((PolynomialCoefficient) p).degree);
+      return Math.pow(x, ((PolynomialCoefficient) p).getDegree());
     }
     throw new RuntimeException("internal error");
   }
