@@ -48,7 +48,8 @@ import java.io.ObjectOutput;
  * @author E. Hairer and G. Wanner (fortran version)
  * @author L. Maisonobe (Java port)
  */
-class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator {
+class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
+    implements StepInterpolator {
 
   /** Slope at the beginning of the step. */
   private double[] y0Dot;
@@ -193,13 +194,8 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator {
     }
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public GraggBulirschStoerStepInterpolator copy() {
     return new GraggBulirschStoerStepInterpolator(this);
   }
 

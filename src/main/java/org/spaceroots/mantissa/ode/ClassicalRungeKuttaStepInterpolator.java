@@ -21,7 +21,8 @@ package org.spaceroots.mantissa.ode;
  * @version $Id: ClassicalRungeKuttaStepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator {
+class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator
+    implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -43,13 +44,8 @@ class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator {
     super(interpolator);
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public ClassicalRungeKuttaStepInterpolator copy() {
     return new ClassicalRungeKuttaStepInterpolator(this);
   }
 

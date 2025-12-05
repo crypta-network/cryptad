@@ -12,7 +12,8 @@ import java.io.ObjectOutput;
  * @version $Id: DormandPrince853StepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
+class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator
+    implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -68,13 +69,8 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
     yTmp = null;
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public DormandPrince853StepInterpolator copy() {
     return new DormandPrince853StepInterpolator(this);
   }
 

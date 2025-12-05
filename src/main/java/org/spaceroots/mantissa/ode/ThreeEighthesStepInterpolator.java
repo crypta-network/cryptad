@@ -22,7 +22,7 @@ package org.spaceroots.mantissa.ode;
  * @version $Id: ThreeEighthesStepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-class ThreeEighthesStepInterpolator extends RungeKuttaStepInterpolator {
+class ThreeEighthesStepInterpolator extends RungeKuttaStepInterpolator implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -44,13 +44,8 @@ class ThreeEighthesStepInterpolator extends RungeKuttaStepInterpolator {
     super(interpolator);
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public ThreeEighthesStepInterpolator copy() {
     return new ThreeEighthesStepInterpolator(this);
   }
 

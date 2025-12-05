@@ -16,7 +16,7 @@ import java.io.ObjectOutput;
  * @version $Id: DummyStepInterpolator.java 1721 2007-10-07 20:21:25Z luc $
  * @author L. Maisonobe
  */
-public class DummyStepInterpolator extends AbstractStepInterpolator {
+public class DummyStepInterpolator extends AbstractStepInterpolator implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -38,6 +38,20 @@ public class DummyStepInterpolator extends AbstractStepInterpolator {
    */
   protected DummyStepInterpolator(double[] y, boolean forward) {
     super(y, forward);
+  }
+
+  /**
+   * Copy constructor.
+   *
+   * @param interpolator interpolator to copy from
+   */
+  protected DummyStepInterpolator(DummyStepInterpolator interpolator) {
+    super(interpolator);
+  }
+
+  @Override
+  public DummyStepInterpolator copy() {
+    return new DummyStepInterpolator(this);
   }
 
   /**

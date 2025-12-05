@@ -181,7 +181,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     // set up an interpolator sharing the integrator arrays
     AbstractStepInterpolator interpolator;
     if (handler.requiresDenseOutput() || (!switchesHandler.isEmpty())) {
-      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.clone();
+      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.copy();
       rki.reinitialize(equations, yTmp, yDotK, forward);
       interpolator = rki;
     } else {
@@ -258,7 +258,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
 
           // Switching functions handling
           interpolator.storeTime(stepStart + stepSize);
-          if (switchesHandler.evaluateStep(interpolator)) {
+          if (switchesHandler.evaluateStep((StepInterpolator) interpolator)) {
             // reject the step to match exactly the next switch time
             hNew = switchesHandler.getEventTime() - stepStart;
           } else {
@@ -286,7 +286,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
 
       // provide the step data to the step handler
       interpolator.storeTime(stepStart);
-      handler.handleStep(interpolator, lastStep);
+      handler.handleStep((StepInterpolator) interpolator, lastStep);
 
       if (fsal) {
         // save the last evaluation for the next step

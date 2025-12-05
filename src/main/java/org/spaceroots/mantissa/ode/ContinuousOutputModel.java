@@ -81,7 +81,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
         throw new IllegalArgumentException("propagation direction mismatch");
       }
 
-      StepInterpolator lastInterpolator = steps.get(index);
+      StepInterpolator lastInterpolator = (StepInterpolator) steps.get(index);
       double current = lastInterpolator.getCurrentTime();
       double previous = lastInterpolator.getPreviousTime();
       double step = current - previous;
@@ -92,7 +92,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
     }
 
     for (AbstractStepInterpolator ai : model.steps) {
-      steps.add((AbstractStepInterpolator) ai.clone());
+      steps.add(ai.copy());
     }
 
     index = steps.size() - 1;
@@ -142,7 +142,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
     }
 
     ai.finalizeStep();
-    steps.add((AbstractStepInterpolator) ai.clone());
+    steps.add(ai.copy());
 
     if (isLast) {
       finalTime = ai.getCurrentTime();
@@ -196,11 +196,11 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
     try {
       // initialize the search with the complete steps table
       int iMin = 0;
-      StepInterpolator sMin = steps.get(iMin);
+      StepInterpolator sMin = (StepInterpolator) steps.get(iMin);
       double tMin = 0.5 * (sMin.getPreviousTime() + sMin.getCurrentTime());
 
       int iMax = steps.size() - 1;
-      StepInterpolator sMax = steps.get(iMax);
+      StepInterpolator sMax = (StepInterpolator) steps.get(iMax);
       double tMax = 0.5 * (sMax.getPreviousTime() + sMax.getCurrentTime());
 
       // handle points outside of the integration interval
@@ -220,7 +220,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
       while (iMax - iMin > 5) {
 
         // use the last estimated index as the splitting index
-        StepInterpolator si = steps.get(index);
+        StepInterpolator si = (StepInterpolator) steps.get(index);
         int location = locatePoint(time, si);
         if (location < 0) {
           iMax = index;
@@ -236,7 +236,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
 
         // compute a new estimate of the index in the reduced table slice
         int iMed = (iMin + iMax) / 2;
-        StepInterpolator sMed = steps.get(iMed);
+        StepInterpolator sMed = (StepInterpolator) steps.get(iMed);
         double tMed = 0.5 * (sMed.getPreviousTime() + sMed.getCurrentTime());
 
         if ((Math.abs(tMed - tMin) < 1e-6) || (Math.abs(tMax - tMed) < 1e-6)) {
@@ -270,11 +270,11 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
 
       // now the table slice is very small, we perform an iterative search
       index = iMin;
-      while ((index <= iMax) && (locatePoint(time, steps.get(index)) > 0)) {
+      while ((index <= iMax) && (locatePoint(time, (StepInterpolator) steps.get(index)) > 0)) {
         ++index;
       }
 
-      StepInterpolator si = steps.get(index);
+      StepInterpolator si = (StepInterpolator) steps.get(index);
 
       si.setInterpolatedTime(time);
 

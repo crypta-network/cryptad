@@ -8,7 +8,8 @@ package org.spaceroots.mantissa.ode;
  * @version $Id: DormandPrince54StepInterpolator.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */
-class DormandPrince54StepInterpolator extends RungeKuttaStepInterpolator {
+class DormandPrince54StepInterpolator extends RungeKuttaStepInterpolator
+    implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -54,13 +55,8 @@ class DormandPrince54StepInterpolator extends RungeKuttaStepInterpolator {
     }
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public DormandPrince54StepInterpolator copy() {
     return new DormandPrince54StepInterpolator(this);
   }
 

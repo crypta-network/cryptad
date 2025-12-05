@@ -132,7 +132,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
     // set up an interpolator sharing the integrator arrays
     AbstractStepInterpolator interpolator;
     if (handler.requiresDenseOutput() || (!switchesHandler.isEmpty())) {
-      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.clone();
+      RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.copy();
       rki.reinitialize(equations, yTmp, yDotK, forward);
       interpolator = rki;
     } else {
@@ -185,7 +185,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
         // Switching functions handling
         interpolator.storeTime(stepStart + stepSize);
-        if (switchesHandler.evaluateStep(interpolator)) {
+        if (switchesHandler.evaluateStep((StepInterpolator) interpolator)) {
           needUpdate = true;
           stepSize = switchesHandler.getEventTime() - stepStart;
         } else {
@@ -205,7 +205,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
       // provide the step data to the step handler
       interpolator.storeTime(stepStart);
-      handler.handleStep(interpolator, lastStep);
+      handler.handleStep((StepInterpolator) interpolator, lastStep);
 
       if (fsal) {
         // save the last evaluation for the next step

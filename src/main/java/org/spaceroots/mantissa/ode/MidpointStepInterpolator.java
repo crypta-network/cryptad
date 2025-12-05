@@ -17,7 +17,7 @@ package org.spaceroots.mantissa.ode;
  * @version $Id: MidpointStepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-class MidpointStepInterpolator extends RungeKuttaStepInterpolator {
+class MidpointStepInterpolator extends RungeKuttaStepInterpolator implements StepInterpolator {
 
   /**
    * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
@@ -39,13 +39,8 @@ class MidpointStepInterpolator extends RungeKuttaStepInterpolator {
     super(interpolator);
   }
 
-  /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
-   *
-   * @return a copy of the instance
-   */
-  public Object clone() {
+  @Override
+  public MidpointStepInterpolator copy() {
     return new MidpointStepInterpolator(this);
   }
 
