@@ -4,12 +4,77 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintStream;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.sevenzip.compression.lzma.Decoder;
 import org.sevenzip.compression.lzma.Encoder;
 
+/**
+ * Executes a self-contained LZMA compression benchmark harness used by the Crypta project.
+ *
+ * <p>The class generates pseudo-random data, compresses it with the bundled {@link Encoder}, and
+ * validates two consecutive {@link Decoder} runs against a CRC to verify correctness. It focuses on
+ * predictable, reproducible measurements rather than raw throughput, using a fixed synthetic data
+ * generator that exercises both literal and back-reference paths. All I/O stays in memory to avoid
+ * skew from filesystem latency, and logging is routed through a custom handler that mirrors {@code
+ * System.out} without closing it.
+ *
+ * <p>Instances are never created; all state lives in static helpers so callers only invoke {@link
+ * #lzmaBenchmark(int, int)}. The benchmark is not thread-safe because it reuses mutable buffers and
+ * stream wrappers, so call it from a single thread or coordinate external locking if embedding
+ * within a concurrent test runner.
+ *
+ * <ul>
+ *   <li>Generates deterministic random input for repeatable runs.
+ *   <li>Reports encode/decode speed and derived MIPS-style ratings.
+ *   <li>Stops early for invalid dictionary sizes or zero iterations.
+ * </ul>
+ *
+ * @see Encoder
+ * @see Decoder
+ */
 public class LzmaBench {
   private LzmaBench() {}
+
+  private static final Logger LOGGER = Logger.getLogger(LzmaBench.class.getName());
+
+  static {
+    LOGGER.setUseParentHandlers(false);
+    Handler handler =
+        new Handler() {
+          @Override
+          public void publish(LogRecord logRecord) {
+            if (!isLoggable(logRecord)) return;
+            try (PrintStream out = currentSystemOut()) {
+              out.print(logRecord.getMessage());
+              out.flush();
+            }
+          }
+
+          @Override
+          public void flush() {
+            try (PrintStream out = currentSystemOut()) {
+              out.flush();
+            }
+          }
+
+          @Override
+          public void close() {
+            try (PrintStream out = currentSystemOut()) {
+              out.flush();
+            }
+          }
+        };
+    handler.setLevel(Level.INFO);
+    LOGGER.addHandler(handler);
+    LOGGER.setLevel(Level.INFO);
+  }
 
   static final int K_ADDITIONAL_SIZE = (1 << 21);
   static final int K_COMPRESSED_ADDITIONAL_SIZE = (1 << 10);
@@ -269,20 +334,20 @@ public class LzmaBench {
   static void printValue(long v) {
     String s = "";
     s += v;
-    for (int i = 0; i + s.length() < 6; i++) System.out.print(" ");
-    System.out.print(s);
+    for (int i = 0; i + s.length() < 6; i++) logPrint(" ");
+    logPrint(s);
   }
 
   static void printRating(long rating) {
     printValue(rating / 1000000);
-    System.out.print(" MIPS");
+    logPrint(" MIPS");
   }
 
   static void printResults(
       int dictionarySize, long elapsedTime, long size, boolean decompressMode, long secondSize) {
     long speed = myMultDiv64(size, elapsedTime);
     printValue(speed / 1024);
-    System.out.print(" KB/s  ");
+    logPrint(" KB/s  ");
     long rating;
     if (decompressMode) rating = getDecompressRating(elapsedTime, size, secondSize);
     else rating = getCompressRating(dictionarySize, elapsedTime, size);
@@ -313,14 +378,32 @@ public class LzmaBench {
     return decodeTime;
   }
 
+  /**
+   * Runs the in-memory LZMA benchmark for the requested number of iterations and dictionary size.
+   *
+   * <p>Each iteration regenerates deterministic pseudo-random data, compresses it with a configured
+   * {@link Encoder}, and immediately decodes the result twice to validate integrity via CRC
+   * comparison. The method logs per-iteration throughput and cumulative averages, expressed in
+   * kilobytes per second and a derived command-rate metric. Execution stops early when the caller
+   * requests zero iterations or an undersized dictionary, allowing lightweight feature checks
+   * without touching disk. The routine is single-threaded and reuses internal buffers, so callers
+   * should serialize concurrent invocations to avoid interleaved logging or mutated state.
+   *
+   * @param numIterations number of encode/decode passes to perform; must be positive to run the
+   *     benchmark loop.
+   * @param dictionarySize LZMA dictionary size in bytes; must be at least {@code 1 << 18} (256 KB)
+   *     to satisfy encoder constraints.
+   * @throws java.io.IOException if an I/O wrapper detects a bounds error while reading or writing
+   *     the internal byte arrays.
+   */
   public static void lzmaBenchmark(int numIterations, int dictionarySize)
       throws java.io.IOException {
     if (numIterations <= 0) return;
     if (dictionarySize < (1 << 18)) {
-      System.out.println("\nError: dictionary size for benchmark must be >= 18 (256 KB)");
+      logPrintln("\nError: dictionary size for benchmark must be >= 18 (256 KB)");
       return;
     }
-    System.out.print("\n       Compressing                Decompressing\n\n");
+    logPrint("\n       Compressing                Decompressing\n\n");
 
     Encoder encoder = new Encoder();
     Decoder decoder = new Decoder();
@@ -376,9 +459,9 @@ public class LzmaBench {
                 kBufferSize, compressedSize, compressedBuffer, crcOutStream, decoder, crc);
         long benchSize = kBufferSize - progressInfo.inSize;
         printResults(dictionarySize, encodeTime, benchSize, false, 0);
-        System.out.print("     ");
+        logPrint("     ");
         printResults(dictionarySize, decodeTime, kBufferSize, true, compressedSize);
-        System.out.println();
+        logPrintln("");
 
         totalBenchSize += benchSize;
         totalEncodeTime += encodeTime;
@@ -386,15 +469,53 @@ public class LzmaBench {
         totalCompressedSize += compressedSize;
       }
     }
-    System.out.println("---------------------------------------------------");
+    logPrintln("---------------------------------------------------");
     printResults(dictionarySize, totalEncodeTime, totalBenchSize, false, 0);
-    System.out.print("     ");
+    logPrint("     ");
     printResults(
         dictionarySize,
         totalDecodeTime,
         kBufferSize * (long) numIterations,
         true,
         totalCompressedSize);
-    System.out.println("    Average");
+    logPrintln("    Average");
+  }
+
+  private static void logPrint(String message) {
+    LOGGER.log(Level.INFO, () -> message);
+  }
+
+  private static void logPrintln(String message) {
+    LOGGER.log(Level.INFO, () -> message + System.lineSeparator());
+  }
+
+  private static final MethodHandle SYSTEM_OUT_HANDLE;
+
+  static {
+    try {
+      SYSTEM_OUT_HANDLE =
+          MethodHandles.lookup().findStaticGetter(System.class, "out", PrintStream.class);
+    } catch (ReflectiveOperationException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
+
+  private static PrintStream currentSystemOut() {
+    try {
+      return new NonClosingPrintStream((PrintStream) SYSTEM_OUT_HANDLE.invokeExact());
+    } catch (Throwable throwable) {
+      throw new IllegalStateException("Unable to access System.out", throwable);
+    }
+  }
+
+  private static final class NonClosingPrintStream extends PrintStream {
+    NonClosingPrintStream(PrintStream delegate) {
+      super(delegate);
+    }
+
+    @Override
+    public void close() {
+      flush();
+    }
   }
 }
