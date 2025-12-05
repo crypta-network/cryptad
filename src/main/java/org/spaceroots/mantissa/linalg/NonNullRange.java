@@ -28,7 +28,7 @@ import java.io.Serializable;
  * @version $Id: NonNullRange.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */
-class NonNullRange implements Serializable {
+public class NonNullRange implements Serializable {
 
   /** Index in row/column count of the first non-null element. */
   public final int begin;
