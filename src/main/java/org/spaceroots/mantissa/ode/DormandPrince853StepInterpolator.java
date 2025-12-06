@@ -3,23 +3,49 @@ package org.spaceroots.mantissa.ode;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.Serial;
 
 /**
- * This class represents an interpolator over the last step during an ODE integration for the 8(5,3)
- * Dormand-Prince integrator.
+ * Step interpolator for the Dormand–Prince 8(5,3) Runge-Kutta method.
+ *
+ * <p>This implementation reconstructs intermediate states inside the last accepted integration
+ * step, allowing dense output and precise event localization without re-running derivative
+ * evaluations. Instances are typically created as lightweight prototypes by {@link
+ * DormandPrince853Integrator} and are reinitialized per step with shared work arrays to minimize
+ * allocations. The interpolator assumes the owning integrator keeps the Butcher tableau weights and
+ * all stage derivatives consistent with the 8(5,3) scheme and that {@link #doFinalize()} is invoked
+ * before any interpolation after a step is stored.
+ *
+ * <p>Objects are mutable and reused; they hold transient state like cached slope vectors {@code v}
+ * and temporary buffers. They are not thread-safe and must stay confined to the integrator thread.
+ * Typical usage flow is: construct (or clone) → {@link
+ * #reinitialize(FirstOrderDifferentialEquations, double[], double[][], boolean)} → {@link
+ * #storeTime(double)} → (lazy) {@link #computeInterpolatedState(double, double)} whenever a handler
+ * requests intermediate values.
+ *
+ * <ul>
+ *   <li>Produces dense trajectories consistent with the Dormand–Prince error estimator.
+ *   <li>Performs up to three extra derivative evaluations to complete high-order interpolation
+ *       stages.
+ *   <li>Serializable to support restartable integrations with cached slopes.
+ * </ul>
  *
  * @see DormandPrince853Integrator
  * @version $Id: DormandPrince853StepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
+class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator
+    implements StepInterpolator {
 
   /**
-   * Simple constructor. This constructor builds an instance that is not usable yet, the {@link
-   * #reinitialize} method should be called before using the instance in order to initialize the
-   * internal arrays. This constructor is used only in order to delay the initialization in some
-   * cases. The {@link RungeKuttaFehlbergIntegrator} uses the prototyping design pattern to create
-   * the step interpolators by cloning an uninitialized model and latter initializing the copy.
+   * Simple constructor for prototype creation.
+   *
+   * <p>The instance starts without allocated work arrays because the dimension of the state vector
+   * is unknown at this point. It becomes usable only after a call to {@link
+   * #reinitialize(FirstOrderDifferentialEquations, double[], double[][], boolean)}, which allocates
+   * slope caches and temporary buffers based on the current problem size. Integrators create one
+   * prototype and then clone it per step to avoid repeatedly wiring new interpolators from scratch;
+   * the lazy setup keeps cloning cheap while deferring allocations until the first actual step.
    */
   public DormandPrince853StepInterpolator() {
     super();
@@ -30,10 +56,16 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
   }
 
   /**
-   * Copy constructor.
+   * Copy constructor that deep-copies cached slopes and vectors.
    *
-   * @param interpolator interpolator to copy from. The copy is a deep copy: its arrays are
-   *     separated from the original arrays of the instance
+   * <p>The new instance duplicates the interpolation buffers and the three lazily evaluated slope
+   * arrays so that later mutations do not affect the source interpolator. If the source has not yet
+   * been initialized with a state vector, the clone remains uninitialized and will allocate its
+   * buffers during the next {@link #reinitialize(FirstOrderDifferentialEquations, double[],
+   * double[][], boolean)} call.
+   *
+   * @param interpolator interpolator to copy from; may be uninitialized, in which case the clone
+   *     also starts without allocated vectors but retains the same finalized-step status.
    */
   public DormandPrince853StepInterpolator(DormandPrince853StepInterpolator interpolator) {
 
@@ -69,31 +101,41 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
   }
 
   /**
-   * Clone the instance. the copy is a deep copy: its arrays are separated from the original arrays
-   * of the instance
+   * Create an independent copy of this interpolator.
    *
-   * @return a copy of the instance
+   * <p>The clone preserves the cached step data, interpolation vectors, and lazily computed stage
+   * derivatives so that it can provide identical dense output even after the original advances to
+   * another step. Callers typically clone before handing the interpolator to user code to avoid
+   * races with the integrator reusing the instance for subsequent steps. The copy remains mutable
+   * and should not be shared across threads.
+   *
+   * @return a new interpolator instance whose internal arrays are deep-copied from this one to
+   *     prevent shared mutable state between clones.
    */
-  public Object clone() {
+  @Override
+  public DormandPrince853StepInterpolator copy() {
     return new DormandPrince853StepInterpolator(this);
   }
 
   /**
-   * Reinitialize the instance Some Runge-Kutta-Fehlberg integrators need fewer functions
-   * evaluations than their counterpart step interpolators. So the interpolator should perform the
-   * last evaluations they need by themselves. The {@link RungeKuttaFehlbergIntegrator
-   * RungeKuttaFehlbergIntegrator} abstract class calls this method in order to let the step
-   * interpolator perform the evaluations it needs. These evaluations will be performed during the
-   * call to <code>doFinalize</code> if any, i.e. only if the step handler either calls the {@link
-   * AbstractStepInterpolator#finalizeStep finalizeStep} method or the {@link
-   * AbstractStepInterpolator#getInterpolatedState getInterpolatedState} method (for an interpolator
-   * which needs a finalization) or if it clones the step interpolator.
+   * Reinitialize the interpolator with the data of the current step.
    *
-   * @param equations set of differential equations being integrated
-   * @param y reference to the integrator array holding the state at the end of the step
-   * @param yDotK reference to the integrator array holding all the intermediate slopes
-   * @param forward integration direction indicator
+   * <p>This method binds the shared state and slope arrays produced by the integrator to this
+   * interpolator, allocates per-dimension buffers, and resets the lazily computed interpolation
+   * vectors. It must be invoked once per accepted step before any call to {@link
+   * #computeInterpolatedState(double, double)}. Subsequent calls overwrite previous bindings and
+   * discard cached vectors to reflect the new step data.
+   *
+   * @param equations set of differential equations being integrated; never {@code null} and used
+   *     for any deferred derivative evaluations.
+   * @param y reference to the integrator array holding the state at the end of the step; contents
+   *     are read but not copied.
+   * @param yDotK reference to the integrator array holding all intermediate stage slopes from the
+   *     Dormand–Prince tableau; the array is reused directly.
+   * @param forward integration direction indicator; {@code true} for increasing time, {@code false}
+   *     for backward integration.
    */
+  @Override
   public void reinitialize(
       FirstOrderDifferentialEquations equations, double[] y, double[][] yDotK, boolean forward) {
 
@@ -117,25 +159,38 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
   }
 
   /**
-   * Store the current step time.
+   * Store the current step time and invalidate cached vectors.
    *
-   * @param t current time
+   * <p>Calling this resets the interpolation buffers so that subsequent calls to {@link
+   * #computeInterpolatedState(double, double)} will recompute the interpolation polynomials for the
+   * new step boundaries. Integrators call this once each time a step is accepted and before any
+   * dense output requests are served.
+   *
+   * @param t current time, expressed in the same units as the integrator independent variable.
    */
+  @Override
   public void storeTime(double t) {
     super.storeTime(t);
     vectorsInitialized = false;
   }
 
   /**
-   * Compute the state at the interpolated time. This is the main processing method that should be
-   * implemented by the derived classes to perform the interpolation.
+   * Compute the interpolated state inside the current step.
    *
-   * @param theta normalized interpolation abscissa within the step (theta is zero at the previous
-   *     time step and one at the current time step)
-   * @param oneMinusThetaH time gap between the interpolated time and the current time
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>The method lazily builds high-order interpolation vectors the first time it is invoked after
+   * a step is stored, performing up to three additional derivative evaluations via {@link
+   * #doFinalize()} if they have not already been executed. Subsequent calls within the same step
+   * reuse the cached vectors. The interpolation uses the Dormand–Prince dense output coefficients
+   * and preserves the direction of integration for both forward and backward flows.
+   *
+   * @param theta normalized interpolation abscissa within the step; {@code 0} corresponds to the
+   *     start of the step and {@code 1} to its end.
+   * @param oneMinusThetaH time gap between the interpolated time and the current step end; computed
+   *     as {@code (1 - theta) * h} and may be negative for backward integration.
+   * @throws DerivativeException propagated if the user-supplied derivative function throws while
+   *     evaluating any of the deferred stages needed for interpolation.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 
@@ -155,14 +210,14 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
       for (int i = 0; i < interpolatedState.length; ++i) {
         v[0][i] =
             h
-                * (b_01 * yDotK[0][i]
-                    + b_06 * yDotK[5][i]
-                    + b_07 * yDotK[6][i]
-                    + b_08 * yDotK[7][i]
-                    + b_09 * yDotK[8][i]
-                    + b_10 * yDotK[9][i]
-                    + b_11 * yDotK[10][i]
-                    + b_12 * yDotK[11][i]);
+                * (B_01 * yDotK[0][i]
+                    + B_06 * yDotK[5][i]
+                    + B_07 * yDotK[6][i]
+                    + B_08 * yDotK[7][i]
+                    + B_09 * yDotK[8][i]
+                    + B_10 * yDotK[9][i]
+                    + B_11 * yDotK[10][i]
+                    + B_12 * yDotK[11][i]);
         v[1][i] = h * yDotK[0][i] - v[0][i];
         v[2][i] = v[0][i] - v[1][i] - h * yDotK[12][i];
         for (int k = 0; k < d.length; ++k) {
@@ -206,11 +261,17 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
   }
 
   /**
-   * Really finalize the step. Perform the last 3 functions evaluations (k14, k15, k16)
+   * Complete the step by evaluating the remaining Dormand–Prince stages.
    *
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>This method computes the stage derivatives k14, k15, and k16 required only for dense output,
+   * not for the embedded error estimate. It reuses the shared work arrays and writes the results
+   * into {@code yDotKLast}. The method is invoked lazily by {@link
+   * #computeInterpolatedState(double, double)} when interpolation data are first needed.
+   *
+   * @throws DerivativeException propagated if the user-supplied differential equations object
+   *     throws during any of the additional derivative evaluations.
    */
+  @Override
   protected void doFinalize() throws DerivativeException {
 
     double s;
@@ -218,70 +279,74 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
     // k14
     for (int j = 0; j < currentState.length; ++j) {
       s =
-          k14_01 * yDotK[0][j]
-              + k14_06 * yDotK[5][j]
-              + k14_07 * yDotK[6][j]
-              + k14_08 * yDotK[7][j]
-              + k14_09 * yDotK[8][j]
-              + k14_10 * yDotK[9][j]
-              + k14_11 * yDotK[10][j]
-              + k14_12 * yDotK[11][j]
-              + k14_13 * yDotK[12][j];
+          K14_01 * yDotK[0][j]
+              + K14_06 * yDotK[5][j]
+              + K14_07 * yDotK[6][j]
+              + K14_08 * yDotK[7][j]
+              + K14_09 * yDotK[8][j]
+              + K14_10 * yDotK[9][j]
+              + K14_11 * yDotK[10][j]
+              + K14_12 * yDotK[11][j]
+              + K14_13 * yDotK[12][j];
       yTmp[j] = currentState[j] + h * s;
     }
-    equations.computeDerivatives(previousTime + c14 * h, yTmp, yDotKLast[0]);
+    equations.computeDerivatives(previousTime + C14 * h, yTmp, yDotKLast[0]);
 
     // k15
     for (int j = 0; j < currentState.length; ++j) {
       s =
-          k15_01 * yDotK[0][j]
-              + k15_06 * yDotK[5][j]
-              + k15_07 * yDotK[6][j]
-              + k15_08 * yDotK[7][j]
-              + k15_09 * yDotK[8][j]
-              + k15_10 * yDotK[9][j]
-              + k15_11 * yDotK[10][j]
-              + k15_12 * yDotK[11][j]
-              + k15_13 * yDotK[12][j]
-              + k15_14 * yDotKLast[0][j];
+          K15_01 * yDotK[0][j]
+              + K15_06 * yDotK[5][j]
+              + K15_07 * yDotK[6][j]
+              + K15_08 * yDotK[7][j]
+              + K15_09 * yDotK[8][j]
+              + K15_10 * yDotK[9][j]
+              + K15_11 * yDotK[10][j]
+              + K15_12 * yDotK[11][j]
+              + K15_13 * yDotK[12][j]
+              + K15_14 * yDotKLast[0][j];
       yTmp[j] = currentState[j] + h * s;
     }
-    equations.computeDerivatives(previousTime + c15 * h, yTmp, yDotKLast[1]);
+    equations.computeDerivatives(previousTime + C15 * h, yTmp, yDotKLast[1]);
 
     // k16
     for (int j = 0; j < currentState.length; ++j) {
       s =
-          k16_01 * yDotK[0][j]
-              + k16_06 * yDotK[5][j]
-              + k16_07 * yDotK[6][j]
-              + k16_08 * yDotK[7][j]
-              + k16_09 * yDotK[8][j]
-              + k16_10 * yDotK[9][j]
-              + k16_11 * yDotK[10][j]
-              + k16_12 * yDotK[11][j]
-              + k16_13 * yDotK[12][j]
-              + k16_14 * yDotKLast[0][j]
-              + k16_15 * yDotKLast[1][j];
+          K16_01 * yDotK[0][j]
+              + K16_06 * yDotK[5][j]
+              + K16_07 * yDotK[6][j]
+              + K16_08 * yDotK[7][j]
+              + K16_09 * yDotK[8][j]
+              + K16_10 * yDotK[9][j]
+              + K16_11 * yDotK[10][j]
+              + K16_12 * yDotK[11][j]
+              + K16_13 * yDotK[12][j]
+              + K16_14 * yDotKLast[0][j]
+              + K16_15 * yDotKLast[1][j];
       yTmp[j] = currentState[j] + h * s;
     }
-    equations.computeDerivatives(previousTime + c16 * h, yTmp, yDotKLast[2]);
+    equations.computeDerivatives(previousTime + C16 * h, yTmp, yDotKLast[2]);
   }
 
   /**
-   * Save the state of the instance.
+   * Save the state of the interpolator for serialization.
    *
-   * @param out stream where to save the state
-   * @exception IOException in case of write error
+   * <p>The method ensures deferred stages are computed, then writes the cached slopes and the base
+   * class data so that the interpolator can be restored later with identical interpolation
+   * capabilities. It preserves ordering so {@link #readExternal(ObjectInput)} can mirror the
+   * layout.
+   *
+   * @param out stream where to save the state; must remain open for the duration of the write.
+   * @exception IOException in case of write error while persisting slopes or delegated base state.
    */
+  @Override
   public void writeExternal(ObjectOutput out) throws IOException {
 
     try {
       // save the local attributes
       finalizeStep();
     } catch (DerivativeException e) {
-      IOException ioe = new IOException();
-      ioe.initCause(e);
-      throw ioe;
+      throw new IOException(e);
     }
     out.writeInt(currentState.length);
     for (int i = 0; i < currentState.length; ++i) {
@@ -295,11 +360,16 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
   }
 
   /**
-   * Read the state of the instance.
+   * Read the state of the interpolator from an external stream.
    *
-   * @param in stream where to read the state from
-   * @exception IOException in case of read error
+   * <p>All slope arrays and the base interpolator state are restored to allow dense output to
+   * resume exactly where a serialized integration left off. The method allocates necessary arrays
+   * based on the serialized dimension before delegating to the superclass for shared fields.
+   *
+   * @param in stream where to read the state from; the caller retains ownership of the stream.
+   * @exception IOException in case of read error or truncated data that prevent slope recovery.
    */
+  @Override
   public void readExternal(ObjectInput in) throws IOException {
 
     // read the local attributes
@@ -319,74 +389,153 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
     super.readExternal(in);
   }
 
-  /** Last evaluations. */
+  /** Cached stage derivatives k14, k15, and k16 computed lazily for dense output. */
   private double[][] yDotKLast;
 
-  /** Temporary state vector. */
+  /** Temporary state vector used when forming intermediate trial states for derivative calls. */
   private double[] yTmp;
 
-  /** Vectors for interpolation. */
+  /** Interpolation polynomial vectors built once per step and reused for subsequent queries. */
   private double[][] v;
 
-  /** Initialization indicator for the interpolation vectors. */
+  /** Flag indicating whether {@link #v} contains data consistent with the stored step. */
   private boolean vectorsInitialized;
 
   // external weights of the integrator,
   // note that b_02 through b_05 are null
-  private static double b_01 = 104257.0 / 1920240.0;
-  private static double b_06 = 3399327.0 / 763840.0;
-  private static double b_07 = 66578432.0 / 35198415.0;
-  private static double b_08 = -1674902723.0 / 288716400.0;
-  private static double b_09 = 54980371265625.0 / 176692375811392.0;
-  private static double b_10 = -734375.0 / 4826304.0;
-  private static double b_11 = 171414593.0 / 851261400.0;
-  private static double b_12 = 137909.0 / 3084480.0;
+  /** External weight {@code b1} from the Dormand–Prince 8(5,3) Butcher tableau. */
+  private static final double B_01 = 104257.0 / 1920240.0;
+
+  /** External weight {@code b6} used in the dense output polynomial. */
+  private static final double B_06 = 3399327.0 / 763840.0;
+
+  /** External weight {@code b7} scaling the seventh stage derivative. */
+  private static final double B_07 = 66578432.0 / 35198415.0;
+
+  /** External weight {@code b8} applied to the eighth stage derivative. */
+  private static final double B_08 = -1674902723.0 / 288716400.0;
+
+  /** External weight {@code b9} contributing to the principal solution estimate. */
+  private static final double B_09 = 54980371265625.0 / 176692375811392.0;
+
+  /** External weight {@code b10} for the tenth stage derivative. */
+  private static final double B_10 = -734375.0 / 4826304.0;
+
+  /** External weight {@code b11} for the eleventh stage derivative. */
+  private static final double B_11 = 171414593.0 / 851261400.0;
+
+  /** External weight {@code b12} involved in the twelfth stage combination. */
+  private static final double B_12 = 137909.0 / 3084480.0;
 
   // k14 for interpolation only
-  private static double c14 = 1.0 / 10.0;
+  /** Abscissa for the fourteenth stage used solely during dense output completion. */
+  private static final double C14 = 1.0 / 10.0;
 
-  private static double k14_01 = 13481885573.0 / 240030000000.0 - b_01;
-  private static double k14_06 = 0.0 - b_06;
-  private static double k14_07 = 139418837528.0 / 549975234375.0 - b_07;
-  private static double k14_08 = -11108320068443.0 / 45111937500000.0 - b_08;
-  private static double k14_09 = -1769651421925959.0 / 14249385146080000.0 - b_09;
-  private static double k14_10 = 57799439.0 / 377055000.0 - b_10;
-  private static double k14_11 = 793322643029.0 / 96734250000000.0 - b_11;
-  private static double k14_12 = 1458939311.0 / 192780000000.0 - b_12;
-  private static double k14_13 = -4149.0 / 500000.0;
+  /** Weight for yDotK[0] when constructing stage k14. */
+  private static final double K14_01 = 13481885573.0 / 240030000000.0 - B_01;
+
+  /** Weight for yDotK[5] when constructing stage k14. */
+  private static final double K14_06 = 0.0 - B_06;
+
+  /** Weight for yDotK[6] when constructing stage k14. */
+  private static final double K14_07 = 139418837528.0 / 549975234375.0 - B_07;
+
+  /** Weight for yDotK[7] when constructing stage k14. */
+  private static final double K14_08 = -11108320068443.0 / 45111937500000.0 - B_08;
+
+  /** Weight for yDotK[8] when constructing stage k14. */
+  private static final double K14_09 = -1769651421925959.0 / 14249385146080000.0 - B_09;
+
+  /** Weight for yDotK[9] when constructing stage k14. */
+  private static final double K14_10 = 57799439.0 / 377055000.0 - B_10;
+
+  /** Weight for yDotK[10] when constructing stage k14. */
+  private static final double K14_11 = 793322643029.0 / 96734250000000.0 - B_11;
+
+  /** Weight for yDotK[11] when constructing stage k14. */
+  private static final double K14_12 = 1458939311.0 / 192780000000.0 - B_12;
+
+  /** Weight for yDotK[12] when constructing stage k14. */
+  private static final double K14_13 = -4149.0 / 500000.0;
 
   // k15 for interpolation only
-  private static double c15 = 1.0 / 5.0;
+  /** Abscissa for the fifteenth stage used only for dense output reconstruction. */
+  private static final double C15 = 1.0 / 5.0;
 
-  private static double k15_01 = 1595561272731.0 / 50120273500000.0 - b_01;
-  private static double k15_06 = 975183916491.0 / 34457688031250.0 - b_06;
-  private static double k15_07 = 38492013932672.0 / 718912673015625.0 - b_07;
-  private static double k15_08 = -1114881286517557.0 / 20298710767500000.0 - b_08;
-  private static double k15_09 = 0.0 - b_09;
-  private static double k15_10 = 0.0 - b_10;
-  private static double k15_11 = -2538710946863.0 / 23431227861250000.0 - b_11;
-  private static double k15_12 = 8824659001.0 / 23066716781250.0 - b_12;
-  private static double k15_13 = -11518334563.0 / 33831184612500.0;
-  private static double k15_14 = 1912306948.0 / 13532473845.0;
+  /** Weight for yDotK[0] when constructing stage k15. */
+  private static final double K15_01 = 1595561272731.0 / 50120273500000.0 - B_01;
+
+  /** Weight for yDotK[5] when constructing stage k15. */
+  private static final double K15_06 = 975183916491.0 / 34457688031250.0 - B_06;
+
+  /** Weight for yDotK[6] when constructing stage k15. */
+  private static final double K15_07 = 38492013932672.0 / 718912673015625.0 - B_07;
+
+  /** Weight for yDotK[7] when constructing stage k15. */
+  private static final double K15_08 = -1114881286517557.0 / 20298710767500000.0 - B_08;
+
+  /** Weight for yDotK[8] when constructing stage k15. */
+  private static final double K15_09 = 0.0 - B_09;
+
+  /** Weight for yDotK[9] when constructing stage k15. */
+  private static final double K15_10 = 0.0 - B_10;
+
+  /** Weight for yDotK[10] when constructing stage k15. */
+  private static final double K15_11 = -2538710946863.0 / 23431227861250000.0 - B_11;
+
+  /** Weight for yDotK[11] when constructing stage k15. */
+  private static final double K15_12 = 8824659001.0 / 23066716781250.0 - B_12;
+
+  /** Weight for yDotK[12] when constructing stage k15. */
+  private static final double K15_13 = -11518334563.0 / 33831184612500.0;
+
+  /** Weight for yDotKLast[0] when constructing stage k15. */
+  private static final double K15_14 = 1912306948.0 / 13532473845.0;
 
   // k16 for interpolation only
-  private static double c16 = 7.0 / 9.0;
+  /** Abscissa for the sixteenth stage, evaluated solely for interpolation support. */
+  private static final double C16 = 7.0 / 9.0;
 
-  private static double k16_01 = -13613986967.0 / 31741908048.0 - b_01;
-  private static double k16_06 = -4755612631.0 / 1012344804.0 - b_06;
-  private static double k16_07 = 42939257944576.0 / 5588559685701.0 - b_07;
-  private static double k16_08 = 77881972900277.0 / 19140370552944.0 - b_08;
-  private static double k16_09 = 22719829234375.0 / 63689648654052.0 - b_09;
-  private static double k16_10 = 0.0 - b_10;
-  private static double k16_11 = 0.0 - b_11;
-  private static double k16_12 = 0.0 - b_12;
-  private static double k16_13 = -1199007803.0 / 857031517296.0;
-  private static double k16_14 = 157882067000.0 / 53564469831.0;
-  private static double k16_15 = -290468882375.0 / 31741908048.0;
+  /** Weight for yDotK[0] when constructing stage k16. */
+  private static final double K16_01 = -13613986967.0 / 31741908048.0 - B_01;
+
+  /** Weight for yDotK[5] when constructing stage k16. */
+  private static final double K16_06 = -4755612631.0 / 1012344804.0 - B_06;
+
+  /** Weight for yDotK[6] when constructing stage k16. */
+  private static final double K16_07 = 42939257944576.0 / 5588559685701.0 - B_07;
+
+  /** Weight for yDotK[7] when constructing stage k16. */
+  private static final double K16_08 = 77881972900277.0 / 19140370552944.0 - B_08;
+
+  /** Weight for yDotK[8] when constructing stage k16. */
+  private static final double K16_09 = 22719829234375.0 / 63689648654052.0 - B_09;
+
+  /** Weight for yDotK[9] when constructing stage k16. */
+  private static final double K16_10 = 0.0 - B_10;
+
+  /** Weight for yDotK[10] when constructing stage k16. */
+  private static final double K16_11 = 0.0 - B_11;
+
+  /** Weight for yDotK[11] when constructing stage k16. */
+  private static final double K16_12 = 0.0 - B_12;
+
+  /** Weight for yDotK[12] when constructing stage k16. */
+  private static final double K16_13 = -1199007803.0 / 857031517296.0;
+
+  /** Weight for yDotKLast[0] when constructing stage k16. */
+  private static final double K16_14 = 157882067000.0 / 53564469831.0;
+
+  /** Weight for yDotKLast[1] when constructing stage k16. */
+  private static final double K16_15 = -290468882375.0 / 31741908048.0;
 
   // interpolation weights
   // (beware that only the non-null values are in the table)
-  private static double[][] d = {
+  /**
+   * Dense-output weight matrix {@code d[k][j]} that combines base and additional stages into the
+   * interpolation polynomial coefficients.
+   */
+  private static final double[][] d = {
     {
       -17751989329.0 / 2106076560.0,
       4272954039.0 / 7539864640.0,
@@ -445,5 +594,6 @@ class DormandPrince853StepInterpolator extends RungeKuttaStepInterpolator {
     }
   };
 
-  private static final long serialVersionUID = 4165537490327432186L;
+  /** Serialization identifier preserving stream compatibility across versions. */
+  @Serial private static final long serialVersionUID = 4165537490327432186L;
 }

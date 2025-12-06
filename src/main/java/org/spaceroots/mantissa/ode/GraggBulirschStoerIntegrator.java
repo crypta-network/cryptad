@@ -826,7 +826,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
           // Switching functions handling
           if (!reject) {
             interpolator.storeTime(stepStart + stepSize);
-            if (switchesHandler.evaluateStep(interpolator)) {
+            if (switchesHandler.evaluateStep((StepInterpolator) interpolator)) {
               reject = true;
               hNew = Math.abs(switchesHandler.getEventTime() - stepStart);
             }
@@ -853,7 +853,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
         // provide the step data to the step handler
         interpolator.storeTime(stepStart);
-        handler.handleStep(interpolator, lastStep);
+        handler.handleStep((StepInterpolator) interpolator, lastStep);
 
         if (switchesHandler.reset(stepStart, y) && !lastStep) {
           // some switching function has triggered changes that
