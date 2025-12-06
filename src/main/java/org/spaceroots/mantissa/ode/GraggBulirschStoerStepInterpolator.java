@@ -3,45 +3,36 @@ package org.spaceroots.mantissa.ode;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.Serial;
 
 /**
- * This class implements an interpolator for the Gragg-Bulirsch-Stoer integrator.
+ * Dense-output interpolator used by the Gragg-Bulirsch-Stoer integrator.
  *
- * <p>This interpolator compute dense output inside the last step produced by a Gragg-Bulirsch-Stoer
- * integrator.
+ * <p>The interpolator reconstructs states and derivatives anywhere inside the last accepted step
+ * produced by {@link GraggBulirschStoerIntegrator}. It evaluates Hermite-like polynomials whose
+ * coefficients are derived from step end-points and midpoint derivative estimates, allowing client
+ * code to query the solution with sub-step resolution without re-running the integrator. Typical
+ * usage is to call {@link #computeCoefficients(int, double)} once a step is accepted, then invoke
+ * {@link #setInterpolatedTime(double)} (inherited from the base class) repeatedly to obtain dense
+ * output through {@link #getInterpolatedState()}.
  *
- * <p>This implementation is basically a reimplementation in Java of the <a
- * href="http://www.unige.ch/math/folks/hairer/prog/nonstiff/odex.f">odex</a> fortran code by E.
- * Hairer and G. Wanner. The redistribution policy for this code is available <a
- * href="http://www.unige.ch/~hairer/prog/licence.txt">here</a>, for convenience, it is reproduced
- * below.
+ * <p>The class maintains no internal synchronization; instances are mutable and must be confined to
+ * a single integration thread. State remains valid only until the integrator advances past the
+ * buffered step. Polynomial degree grows with extrapolation order, trading accuracy for additional
+ * computation; {@link #estimateError(double[])} gives a normalized error hint for callers deciding
+ * whether dense evaluations are trustworthy at the chosen order.
  *
- * <table border="0" width="80%" cellpadding="10" align="center" bgcolor="#E0E0E0">
- * <tr><td>Copyright (c) 2004, Ernst Hairer</td></tr>
- *
- * <tr><td>Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
  * <ul>
- *  <li>Redistributions of source code must retain the above copyright
- *      notice, this list of conditions and the following disclaimer.</li>
- *  <li>Redistributions in binary form must reproduce the above copyright
- *      notice, this list of conditions and the following disclaimer in the
- *      documentation and/or other materials provided with the distribution.</li>
- * </ul></td></tr>
+ *   <li>Computes and stores interpolation polynomials up to the requested degree.
+ *   <li>Supports serialization so checkpointed integrators can be restored mid-step.
+ *   <li>Mirrors the algorithms from the original Fortran <a
+ *       href="http://www.unige.ch/math/folks/hairer/prog/nonstiff/odex.f">odex</a> implementation,
+ *       retaining the same error-control heuristics.
+ * </ul>
  *
- * <tr><td><strong>THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING,
- * BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- * FOR A  PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</strong></td></tr>
- * </table>
+ * <p>Redistribution and use in source and binary forms, with or without modification, are permitted
+ * under the terms reproduced from the original distribution notice available <a
+ * href="http://www.unige.ch/~hairer/prog/licence.txt">here</a>.
  *
  * @see GraggBulirschStoerIntegrator
  * @version $Id: GraggBulirschStoerStepInterpolator.java 1702 2006-09-10 19:52:58Z luc $
@@ -52,19 +43,19 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
     implements StepInterpolator {
 
   /** Slope at the beginning of the step. */
-  private double[] y0Dot;
+  private final double[] y0Dot;
 
   /** State at the end of the step. */
-  private double[] y1;
+  private final double[] y1;
 
   /** Slope at the end of the step. */
-  private double[] y1Dot;
+  private final double[] y1Dot;
 
   /**
    * Derivatives at the middle of the step. element 0 is state at midpoint, element 1 is first
    * derivative ...
    */
-  private double[][] yMidDots;
+  private final double[][] yMidDots;
 
   /** Interpolation polynoms. */
   private double[][] polynoms;
@@ -76,54 +67,68 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   private int currentDegree;
 
   /**
-   * Reallocate the internal tables. Reallocate the internal tables in order to be able to handle
-   * interpolation polynoms up to the given degree
+   * Reallocate the internal tables in order to be able to handle interpolation polynoms up to the
+   * given degree.
    *
-   * @param maxDegree maximal degree to handle
+   * @param maxDegree maximal degree to handle when recomputing polynomial storage
    */
   private void resetTables(int maxDegree) {
 
     if (maxDegree < 0) {
-      polynoms = null;
-      errfac = null;
-      currentDegree = -1;
+      clearTables();
+      return;
+    }
+
+    initializePolynoms(maxDegree);
+    initializeErrorFactors(maxDegree);
+    currentDegree = 0;
+  }
+
+  private void clearTables() {
+    polynoms = null;
+    errfac = null;
+    currentDegree = -1;
+  }
+
+  private void initializePolynoms(int maxDegree) {
+    double[][] newPols = new double[maxDegree + 1][];
+    if (polynoms != null) {
+      System.arraycopy(polynoms, 0, newPols, 0, polynoms.length);
+      for (int i = polynoms.length; i < newPols.length; ++i) {
+        newPols[i] = new double[currentState.length];
+      }
     } else {
-
-      double[][] newPols = new double[maxDegree + 1][];
-      if (polynoms != null) {
-        System.arraycopy(polynoms, 0, newPols, 0, polynoms.length);
-        for (int i = polynoms.length; i < newPols.length; ++i) {
-          newPols[i] = new double[currentState.length];
-        }
-      } else {
-        for (int i = 0; i < newPols.length; ++i) {
-          newPols[i] = new double[currentState.length];
-        }
+      for (int i = 0; i < newPols.length; ++i) {
+        newPols[i] = new double[currentState.length];
       }
-      polynoms = newPols;
+    }
+    polynoms = newPols;
+  }
 
-      // initialize the error factors array for interpolation
-      if (maxDegree <= 4) {
-        errfac = null;
-      } else {
-        errfac = new double[maxDegree - 4];
-        for (int i = 0; i < errfac.length; ++i) {
-          int ip5 = i + 5;
-          errfac[i] = 1.0 / (ip5 * ip5);
-          double e = 0.5 * Math.sqrt(((double) (i + 1)) / ip5);
-          for (int j = 0; j <= i; ++j) {
-            errfac[i] *= e / (j + 1);
-          }
-        }
+  private void initializeErrorFactors(int maxDegree) {
+    if (maxDegree <= 4) {
+      errfac = null;
+      return;
+    }
+
+    errfac = new double[maxDegree - 4];
+    for (int i = 0; i < errfac.length; ++i) {
+      int ip5 = i + 5;
+      errfac[i] = 1.0 / (ip5 * ip5);
+      double e = 0.5 * Math.sqrt(((double) (i + 1)) / ip5);
+      for (int j = 0; j <= i; ++j) {
+        errfac[i] *= e / (j + 1);
       }
-
-      currentDegree = 0;
     }
   }
 
   /**
-   * Simple constructor. This constructor should not be used directly, it is only intended for the
-   * serialization process.
+   * Simple constructor intended only for the serialization framework.
+   *
+   * <p>Creates an uninitialized instance whose arrays are null and whose internal tables are sized
+   * for no interpolation degree. Regular callers should let the owning integrator build instances
+   * with the parameterized constructor so state vectors are immediately wired; this form exists so
+   * deserialization can populate fields manually before use.
    */
   public GraggBulirschStoerStepInterpolator() {
     y0Dot = null;
@@ -134,15 +139,20 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   }
 
   /**
-   * Simple constructor.
+   * Constructor wiring the current step data produced by the integrator.
    *
-   * @param y reference to the integrator array holding the current state
-   * @param y0Dot reference to the integrator array holding the slope at the beginning of the step
-   * @param y1 reference to the integrator array holding the state at the end of the step
-   * @param y1Dot reference to the integrator array holding the slope at theend of the step
+   * @param y reference to the integrator array holding the current state values, reused by the
+   *     interpolator without copying
+   * @param y0Dot reference to the integrator array holding the slope at the beginning of the step;
+   *     same length and indexing as {@code y}
+   * @param y1 reference to the integrator array holding the state at the end of the step that will
+   *     be interpolated
+   * @param y1Dot reference to the integrator array holding the slope at the end of the step, used
+   *     for Hermite coefficients
    * @param yMidDots reference to the integrator array holding the derivatives at the middle point
-   *     of the step
-   * @param forward integration direction indicator
+   *     of the step for increasing interpolation orders
+   * @param forward integration direction indicator; {@code true} for forward time, {@code false}
+   *     for backward integration
    */
   public GraggBulirschStoerStepInterpolator(
       double[] y,
@@ -162,10 +172,14 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   }
 
   /**
-   * Copy constructor.
+   * Copy constructor performing a deep copy of polynomial storage.
    *
-   * @param interpolator interpolator to copy from. The copy is a deep copy: its arrays are
-   *     separated from the original arrays of the instance
+   * <p>Copies base interpolator state and duplicates all polynomial arrays up to the current degree
+   * so that dense evaluations on the new instance do not share mutable storage with the source.
+   * Temporary derivative buffers are deliberately left null to minimize memory footprint.
+   *
+   * @param interpolator interpolator to copy from; array contents are duplicated so the new
+   *     instance evolves independently of the source
    */
   public GraggBulirschStoerStepInterpolator(GraggBulirschStoerStepInterpolator interpolator) {
 
@@ -191,9 +205,23 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
         System.arraycopy(interpolator.polynoms[i], 0, polynoms[i], 0, dimension);
       }
       currentDegree = interpolator.currentDegree;
+      errfac = interpolator.errfac == null ? null : interpolator.errfac.clone();
+      return;
     }
+
+    errfac = null;
   }
 
+  /**
+   * Create a deep copy of this interpolator.
+   *
+   * <p>The returned instance preserves the same polynomial degree and coefficients so it can
+   * produce identical dense output for the current step, yet owns independent arrays to avoid
+   * accidental cross-thread mutation. Subsequent calls to {@link #computeCoefficients(int, double)}
+   * on either instance will diverge safely.
+   *
+   * @return a new interpolator carrying the same step data while owning separate mutable storage
+   */
   @Override
   public GraggBulirschStoerStepInterpolator copy() {
     return new GraggBulirschStoerStepInterpolator(this);
@@ -202,8 +230,14 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   /**
    * Compute the interpolation coefficients for dense output.
    *
-   * @param mu degree of the interpolation polynom
-   * @param h current step
+   * <p>This method must be invoked once a trial step is accepted so that subsequent calls to {@link
+   * #setInterpolatedTime(double)} can evaluate intermediate states. It fills the polynomial arrays
+   * up to degree {@code mu + 4}, expanding storage if necessary. Callers should reuse the instance
+   * across steps to avoid allocations.
+   *
+   * @param mu degree of the interpolation polynom, typically derived from the extrapolation order
+   *     chosen by the integrator
+   * @param h current step size in integration units; sign matches the integration direction
    */
   public void computeCoefficients(int mu, double h) {
 
@@ -214,55 +248,77 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
     currentDegree = mu + 4;
 
     for (int i = 0; i < currentState.length; ++i) {
+      computeCoefficientsForIndex(mu, h, i);
+    }
+  }
 
-      double yp0 = h * y0Dot[i];
-      double yp1 = h * y1Dot[i];
-      double ydiff = y1[i] - currentState[i];
-      double aspl = ydiff - yp1;
-      double bspl = yp0 - ydiff;
+  private void computeCoefficientsForIndex(int mu, double h, int index) {
 
-      polynoms[0][i] = currentState[i];
-      polynoms[1][i] = ydiff;
-      polynoms[2][i] = aspl;
-      polynoms[3][i] = bspl;
+    double yp0 = h * y0Dot[index];
+    double yp1 = h * y1Dot[index];
+    double ydiff = y1[index] - currentState[index];
+    double aspl = ydiff - yp1;
+    double bspl = yp0 - ydiff;
 
-      if (mu < 0) {
-        return;
-      }
+    polynoms[0][index] = currentState[index];
+    polynoms[1][index] = ydiff;
+    polynoms[2][index] = aspl;
+    polynoms[3][index] = bspl;
 
-      // compute the remaining coefficients
-      double ph0 = 0.5 * (currentState[i] + y1[i]) + 0.125 * (aspl + bspl);
-      polynoms[4][i] = 16 * (yMidDots[0][i] - ph0);
+    if (mu < 0) {
+      return;
+    }
 
-      if (mu > 0) {
-        double ph1 = ydiff + 0.25 * (aspl - bspl);
-        polynoms[5][i] = 16 * (yMidDots[1][i] - ph1);
+    computeHigherDegreeCoefficients(mu, index, yp0, yp1, ydiff, aspl, bspl);
+  }
 
-        if (mu > 1) {
-          double ph2 = yp1 - yp0;
-          polynoms[6][i] = 16 * (yMidDots[2][i] - ph2 + polynoms[4][i]);
+  private void computeHigherDegreeCoefficients(
+      int mu, int index, double yp0, double yp1, double ydiff, double aspl, double bspl) {
 
-          if (mu > 2) {
-            double ph3 = 6 * (bspl - aspl);
-            polynoms[7][i] = 16 * (yMidDots[3][i] - ph3 + 3 * polynoms[5][i]);
+    double ph0 = 0.5 * (currentState[index] + y1[index]) + 0.125 * (aspl + bspl);
+    polynoms[4][index] = 16 * (yMidDots[0][index] - ph0);
 
-            for (int j = 4; j <= mu; ++j) {
-              double fac1 = 0.5 * j * (j - 1);
-              double fac2 = 2 * fac1 * (j - 2) * (j - 3);
-              polynoms[j + 4][i] =
-                  16 * (yMidDots[j][i] + fac1 * polynoms[j + 2][i] - fac2 * polynoms[j][i]);
-            }
-          }
-        }
-      }
+    if (mu == 0) {
+      return;
+    }
+
+    double ph1 = ydiff + 0.25 * (aspl - bspl);
+    polynoms[5][index] = 16 * (yMidDots[1][index] - ph1);
+
+    if (mu == 1) {
+      return;
+    }
+
+    double ph2 = yp1 - yp0;
+    polynoms[6][index] = 16 * (yMidDots[2][index] - ph2 + polynoms[4][index]);
+
+    if (mu == 2) {
+      return;
+    }
+
+    double ph3 = 6 * (bspl - aspl);
+    polynoms[7][index] = 16 * (yMidDots[3][index] - ph3 + 3 * polynoms[5][index]);
+
+    for (int j = 4; j <= mu; ++j) {
+      double fac1 = 0.5 * j * (j - 1);
+      double fac2 = 2 * fac1 * (j - 2) * (j - 3);
+      polynoms[j + 4][index] =
+          16 * (yMidDots[j][index] + fac1 * polynoms[j + 2][index] - fac2 * polynoms[j][index]);
     }
   }
 
   /**
    * Estimate interpolation error.
    *
-   * @param scale scaling array
-   * @return estimate of the interpolation error
+   * <p>The estimate uses the highest available polynomial degree and the precomputed error factors
+   * described in the original algorithm. It returns a weighted root-mean-square norm of the leading
+   * term scaled by {@code scale}, and falls back to zero when the degree is insufficient to form an
+   * error estimate.
+   *
+   * @param scale scaling array matching the state dimension; each entry must be non-zero to avoid
+   *     division errors and should reflect acceptable absolute or relative magnitudes
+   * @return estimate of the interpolation error; zero when degree is below five or scaling hides
+   *     the contribution
    */
   public double estimateError(double[] scale) {
     double error = 0;
@@ -277,14 +333,19 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   }
 
   /**
-   * Compute the state at the interpolated time. This is the main processing method that should be
-   * implemented by the derived classes to perform the interpolation.
+   * Compute the state at the interpolated time.
    *
-   * @param theta normalized interpolation abscissa within the step (theta is zero at the previous
-   *     time step and one at the current time step)
-   * @param oneMinusThetaH time gap between the interpolated time and the current time
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>Uses the stored polynomial coefficients to build the dense solution corresponding to the
+   * current value of {@code theta}. The computation is side-effect free except for writing the
+   * inherited {@code interpolatedState} array. The method assumes coefficients have already been
+   * prepared by {@link #computeCoefficients(int, double)} for the current step.
+   *
+   * @param theta normalized interpolation abscissa within the step; {@code 0} targets the previous
+   *     step end, {@code 1} targets the current end, and intermediate values return dense output
+   * @param oneMinusThetaH time gap between the interpolated time and the current time; must match
+   *     the step direction so derived classes can reuse it consistently
+   * @throws DerivativeException propagated unchanged if the underlying user function signalled an
+   *     error while evaluating derivatives needed for interpolation
    */
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
@@ -298,26 +359,37 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
 
     for (int i = 0; i < dimension; ++i) {
       interpolatedState[i] =
-          polynoms[0][i]
-              + theta
-                  * (polynoms[1][i]
-                      + oneMinusTheta * (polynoms[2][i] * theta + polynoms[3][i] * oneMinusTheta));
+          baseInterpolatedValue(
+              theta, oneMinusTheta, polynoms[0][i], polynoms[1][i], polynoms[2][i], polynoms[3][i]);
 
       if (currentDegree > 3) {
-        double c = polynoms[currentDegree][i];
-        for (int j = currentDegree - 1; j > 3; --j) {
-          c = polynoms[j][i] + c * theta05 / (j - 3);
-        }
-        interpolatedState[i] += t4 * c;
+        interpolatedState[i] += t4 * interpolateHigherDegree(theta05, i);
       }
     }
+  }
+
+  private double baseInterpolatedValue(
+      double theta, double oneMinusTheta, double p0, double p1, double p2, double p3) {
+    return p0 + theta * (p1 + oneMinusTheta * (p2 * theta + p3 * oneMinusTheta));
+  }
+
+  private double interpolateHigherDegree(double theta05, int index) {
+    double c = polynoms[currentDegree][index];
+    for (int j = currentDegree - 1; j > 3; --j) {
+      c = polynoms[j][index] + c * theta05 / (j - 3);
+    }
+    return c;
   }
 
   /**
    * Save the state of the instance.
    *
-   * @param out stream where to save the state
-   * @exception IOException in case of write error
+   * <p>Serialization stores only the polynomial coefficients and degree for the current step; it
+   * does not persist transient work arrays. Callers must ensure the base interpolator state has
+   * already been prepared before invoking this method.
+   *
+   * @param out stream where to save the state; must remain open for the duration of the write
+   * @throws IOException in case of write error or if the target stream rejects data
    */
   public void writeExternal(ObjectOutput out) throws IOException {
 
@@ -338,8 +410,14 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
   /**
    * Read the state of the instance.
    *
-   * @param in stream where to read the state from
-   * @exception IOException in case of read error
+   * <p>Restores the base interpolator data and all polynomial coefficients for the pending step.
+   * After deserialization, the interpolator is ready to answer dense-output queries at the time
+   * supplied through {@link #setInterpolatedTime(double)} during this method.
+   *
+   * @param in stream where to read the state from; must supply the same structure written by {@link
+   *     #writeExternal(ObjectOutput)}
+   * @throws IOException in case of read error or when a derivative evaluation fails while restoring
+   *     the interpolated time
    */
   public void readExternal(ObjectInput in) throws IOException {
 
@@ -362,11 +440,9 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
       // we can now set the interpolated time and state
       setInterpolatedTime(t);
     } catch (DerivativeException e) {
-      IOException ioe = new IOException();
-      ioe.initCause(e);
-      throw ioe;
+      throw new IOException(e);
     }
   }
 
-  private static final long serialVersionUID = 7320613236731409847L;
+  @Serial private static final long serialVersionUID = 7320613236731409847L;
 }
