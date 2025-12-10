@@ -1,44 +1,51 @@
 package org.spaceroots.mantissa.ode;
 
 /**
- * This abstract class holds the common part of all adaptive stepsize integrators for Ordinary
- * Differential Equations.
+ * Base class for integrators that adapt their step size while solving ordinary differential
+ * equations.
  *
- * <p>These algorithms perform integration with stepsize control, which means the user does not
- * specify the integration step but rather a tolerance on error. The error threshold is computed as
+ * <p>The class centralizes step bounds, tolerance bookkeeping and initialization so concrete
+ * algorithms can focus on method-specific interpolation and local error estimation. For each state
+ * component {@code i}, the error threshold is {@code absTol_i + relTol_i * max(|y_m|, |y_{m+1}|)};
+ * scalar tolerances are broadcast when vector forms are not provided. A tentative step is accepted
+ * when {@code sqrt(sum((errEst_i / threshold_i)^2) / n) < 1}, where {@code n} is the state
+ * dimension, otherwise the step is rejected and retried with a modified size.
  *
- * <pre>
- * threshold_i = absTol_i + relTol_i * max (abs (ym), abs (ym+1))
- * </pre>
+ * <p>Instances are mutable and not thread-safe; each integrator should be confined to one
+ * integration sequence at a time. Typical usage:
  *
- * where absTol_i is the absolute tolerance for component i of the state vector and relTol_i is the
- * relative tolerance for the same component. The user can also use only two scalar values absTol
- * and relTol which will be used for all components.
+ * <ul>
+ *   <li>Construct a subclass with minimum/maximum step bounds and tolerances.
+ *   <li>Optionally set an initial step, register step handlers, and add switching functions for
+ *       event detection.
+ *   <li>Call the subclass implementation of {@code integrate(...)} to evolve from {@code t0} to the
+ *       target time, allowing the integrator to grow or shrink steps as needed.
+ * </ul>
  *
- * <p>If the estimated error for ym+1 is such that
+ * <p>During integration the instance tracks the current step start and signed step size to support
+ * dense output and event location. Call {@link #resetInternalState()} before reusing an integrator
+ * for a new run to avoid leaking previous state.
  *
- * <pre>
- * sqrt((sum (errEst_i / threshold_i)^2 ) / n) < 1
- * </pre>
- *
- * (where n is the state vector dimension) then the step is accepted, otherwise the step is rejected
- * and a new attempt is made with a new stepsize.
- *
+ * @see FirstOrderIntegrator
+ * @see SwitchingFunction
  * @version $Id: AdaptiveStepsizeIntegrator.java 1719 2007-09-26 19:46:57Z luc $
  * @author L. Maisonobe
  */
 public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator {
 
   /**
-   * Build an integrator with the given stepsize bounds. The default step handler does nothing.
+   * Build an integrator with scalar tolerances and explicit step size bounds.
    *
-   * @param minStep minimal step (must be positive even for backward integration), the last step can
-   *     be smaller than this
-   * @param maxStep maximal step (must be positive even for backward integration)
-   * @param scalAbsoluteTolerance allowed absolute error
-   * @param scalRelativeTolerance allowed relative error
+   * <p>The created instance installs a no-op step handler and immediately resets its internal
+   * bookkeeping. Step bounds must be strictly positive even for backward integration. Scalar
+   * tolerances are applied to every component when estimating local truncation error.
+   *
+   * @param minStep minimal allowed step magnitude; positive even when integrating backward.
+   * @param maxStep maximal allowed step magnitude; positive and not smaller than {@code minStep}.
+   * @param scalAbsoluteTolerance uniform absolute error tolerance applied to all components.
+   * @param scalRelativeTolerance uniform relative error tolerance applied to all components.
    */
-  public AdaptiveStepsizeIntegrator(
+  protected AdaptiveStepsizeIntegrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
 
     this.minStep = minStep;
@@ -59,15 +66,20 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   }
 
   /**
-   * Build an integrator with the given stepsize bounds. The default step handler does nothing.
+   * Build an integrator with per-component tolerances and step size bounds.
    *
-   * @param minStep minimal step (must be positive even for backward integration), the last step can
-   *     be smaller than this
-   * @param maxStep maximal step (must be positive even for backward integration)
-   * @param vecAbsoluteTolerance allowed absolute error
-   * @param vecRelativeTolerance allowed relative error
+   * <p>Vector tolerances let callers adapt admissible error to the magnitude of each state
+   * coordinate. Arrays are used as provided; callers must ensure their length matches the problem
+   * dimension. The default step handler performs no action until replaced.
+   *
+   * @param minStep minimal allowed step magnitude; positive even when integrating backward.
+   * @param maxStep maximal allowed step magnitude; positive and not smaller than {@code minStep}.
+   * @param vecAbsoluteTolerance absolute error tolerance for each component; must align with state
+   *     dimension and contain non-negative entries.
+   * @param vecRelativeTolerance relative error tolerance for each component; must align with state
+   *     dimension and contain non-negative entries.
    */
-  public AdaptiveStepsizeIntegrator(
+  protected AdaptiveStepsizeIntegrator(
       double minStep,
       double maxStep,
       double[] vecAbsoluteTolerance,
@@ -91,16 +103,18 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   }
 
   /**
-   * Set the initial step size.
+   * Set an explicit initial step size to be reused by the next integration run.
    *
-   * <p>This method allows the user to specify an initial positive step size instead of letting the
-   * integrator guess it by itself. If this method is not called before integration is started, the
-   * initial step size will be estimated by the integrator.
+   * <p>A positive value inside {@code [minStep, maxStep]} is honored directly by {@link
+   * #initializeStep(FirstOrderDifferentialEquations, boolean, int, double[], double, double[],
+   * double[], double[], double[])}. Negative or out-of-range values instruct the integrator to
+   * estimate an initial step from the derivatives instead. The stored value is not persisted across
+   * calls to {@link #resetInternalState()}.
    *
-   * @param initialStepSize initial step size to use (must be positive even for backward integration
-   *     ; providing a negative value or a value outside of the min/max step interval will lead the
-   *     integrator to ignore the value and compute the initial step size by itself)
+   * @param initialStepSize desired starting step; must be positive and within configured bounds, or
+   *     it is ignored in favor of automatic estimation.
    */
+  @SuppressWarnings("unused")
   public void setInitialStepSize(double initialStepSize) {
     if ((initialStepSize < minStep) || (initialStepSize > maxStep)) {
       initialStep = -1.0;
@@ -110,31 +124,44 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   }
 
   /**
-   * Set the step handler for this integrator. The handler will be called by the integrator for each
-   * accepted step.
+   * Set the step handler that will be invoked after each accepted step.
    *
-   * @param handler handler for the accepted steps
+   * <p>Handlers receive interpolated state information from the concrete integrator implementation.
+   * Passing {@code null} is unsupported; use {@link DummyStepHandler#getInstance()} when no output
+   * is needed. The supplied instance remains active until replaced by another call.
+   *
+   * @param handler non-null callback used to process or observe accepted steps during integration.
    */
   public void setStepHandler(StepHandler handler) {
     this.handler = handler;
   }
 
   /**
-   * Get the step handler for this integrator.
+   * Get the currently registered step handler.
    *
-   * @return the step handler for this integrator
+   * <p>The returned instance is the same object supplied via {@link #setStepHandler(StepHandler)}
+   * or the default dummy handler if none was set. Callers should treat the handler according to its
+   * own thread-safety guarantees.
+   *
+   * @return active handler invoked after each accepted step; never {@code null}.
    */
   public StepHandler getStepHandler() {
     return handler;
   }
 
   /**
-   * Add a switching function to the integrator.
+   * Add a switching function that will be monitored during integration.
    *
-   * @param function switching function
-   * @param maxCheckInterval maximal time interval between switching function checks (this interval
-   *     prevents missing sign changes in case the integration steps becomes very large)
-   * @param convergence convergence threshold in the event time search
+   * <p>Switching functions usually represent zero-crossing events. They are sampled at least every
+   * {@code maxCheckInterval} units of the independent variable to avoid missed sign changes, and
+   * event times are refined until successive estimates differ by less than {@code convergence}.
+   * Functions are processed in the order they are registered.
+   *
+   * @param function event function to monitor; must not be {@code null}.
+   * @param maxCheckInterval maximum time between evaluations of the function; must be positive and
+   *     expressed in the same units as the integration variable.
+   * @param convergence absolute convergence threshold for event time search; must be positive and
+   *     appropriate for the problem scale.
    */
   public void addSwitchingFunction(
       SwitchingFunction function, double maxCheckInterval, double convergence) {
@@ -142,20 +169,32 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   }
 
   /**
-   * Initialize the integration step.
+   * Estimate an initial step size using scaling factors and derivative information.
    *
-   * @param equations differential equations set
-   * @param forward forward integration indicator
-   * @param order order of the method
-   * @param scale scaling vector for the state vector
-   * @param t0 start time
-   * @param y0 state vector at t0
-   * @param yDot0 first time derivative of y0
-   * @param y1 work array for a state vector
-   * @param yDot1 work array for the first time derivative of y1
-   * @return first integration step
-   * @exception DerivativeException this exception is propagated to the caller if the underlying
-   *     user function triggers one
+   * <p>If a valid explicit value was supplied via {@link #setInitialStepSize(double)}, it is
+   * returned immediately with the correct sign for the requested direction. Otherwise, a heuristic
+   * step is derived from the ratio of scaled state and derivative norms, refined with a trial Euler
+   * step, and finally clamped to the configured minimum and maximum step sizes.
+   *
+   * @param equations system of first-order differential equations providing derivative evaluation;
+   *     must not be {@code null}.
+   * @param forward {@code true} to integrate toward increasing time, {@code false} to integrate
+   *     backward.
+   * @param order order of the integration method that will consume the step; influences the scaling
+   *     of the heuristic.
+   * @param scale per-component scaling factors applied to the state vector; must match {@code y0}
+   *     length and contain only non-zero values.
+   * @param t0 starting independent variable value associated with {@code y0}.
+   * @param y0 state vector at {@code t0}; not modified by this method.
+   * @param yDot0 first derivative of {@code y0}; computed by {@code equations} and reused in place.
+   * @param y1 workspace receiving a trial state after an Euler prediction; length must match {@code
+   *     y0}.
+   * @param yDot1 workspace receiving the derivative at the trial state; length must match {@code
+   *     y0}.
+   * @return signed initial step size bounded by configured limits and oriented according to {@code
+   *     forward}.
+   * @throws DerivativeException if {@code equations} fails while evaluating derivatives at the
+   *     trial point.
    */
   public double initializeStep(
       FirstOrderDifferentialEquations equations,
@@ -231,13 +270,18 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   }
 
   /**
-   * Filter the integration step.
+   * Clamp a proposed step size to configured bounds, optionally rejecting undersized values.
    *
-   * @param h signed step
-   * @param acceptSmall if true, steps smaller than the minimal value are silently increased up to
-   *     this value, if false such small steps generate an exception
-   * @return a bounded integration step (h if no bound is reach, or a bounded value)
-   * @exception IntegratorException if the step is too small and acceptSmall is false
+   * <p>The returned value preserves the sign of {@code h} while ensuring its magnitude lies inside
+   * {@code [minStep, maxStep]}. When {@code acceptSmall} is {@code false} and the proposed
+   * magnitude is smaller than {@code minStep}, an {@link IntegratorException} is raised; otherwise
+   * the step is increased to exactly the minimum magnitude.
+   *
+   * @param h candidate signed step size before bounding; may be positive or negative.
+   * @param acceptSmall {@code true} to silently clamp values below {@code minStep}, {@code false}
+   *     to throw instead of enlarging them.
+   * @return bounded step size that respects configured limits while keeping the original sign.
+   * @throws IntegratorException if {@code acceptSmall} is {@code false} and {@code |h| < minStep}.
    */
   protected double filterStep(double h, boolean acceptSmall) throws IntegratorException {
 
@@ -260,72 +304,145 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
     return h;
   }
 
-  public abstract void integrate(
-      FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
-      throws DerivativeException, IntegratorException;
-
+  /**
+   * Get the start time of the current integration step.
+   *
+   * <p>Before any integration or after a reset the value is {@link Double#NaN}, indicating no
+   * active step is in progress. Concrete integrators update this value whenever they propose or
+   * accept a step so that step handlers and switching functions can access the accurate origin of
+   * the interpolation interval.
+   *
+   * @return time coordinate at the beginning of the current step, or {@code NaN} when unset.
+   */
   public double getCurrentStepStart() {
     return stepStart;
   }
 
+  /**
+   * Get the signed size of the current integration step.
+   *
+   * <p>The sign reflects the integration direction. Immediately after construction or reset, the
+   * value is initialized to the geometric mean of the minimum and maximum step bounds. During
+   * integration, it contains the step length last computed by the adaptive controller, which is
+   * useful for diagnostic logging or for dense output interpolation that needs the current step
+   * width.
+   *
+   * @return current signed step size chosen by the integrator, or the initial guess when unset.
+   */
   public double getCurrentStepsize() {
     return stepSize;
   }
 
-  /** Reset internal state to dummy values. */
+  /**
+   * Reset internal step-related state to sentinel values.
+   *
+   * <p>This method should be called before reusing the integrator for a new problem to avoid mixing
+   * state between runs. It clears the current step start to {@link Double#NaN} and reinitializes
+   * the step size to a neutral guess derived from the configured bounds, giving subclasses a clean
+   * baseline for their next initialization phase.
+   */
   protected void resetInternalState() {
     stepStart = Double.NaN;
     stepSize = Math.sqrt(minStep * maxStep);
   }
 
   /**
-   * Get the minimal step.
+   * Get the minimal admissible step magnitude configured for this integrator.
    *
-   * @return minimal step
+   * <p>This lower bound prevents the adaptive controller from shrinking steps to values that would
+   * make progress numerically insignificant or cause excessive round-off errors.
+   *
+   * @return strictly positive lower bound applied when filtering proposed steps.
    */
   public double getMinStep() {
     return minStep;
   }
 
   /**
-   * Get the maximal step.
+   * Get the maximal admissible step magnitude configured for this integrator.
    *
-   * @return maximal step
+   * <p>This upper bound caps aggressive growth of the step size so that event detection and local
+   * truncation error estimates remain reliable even when the solution behaves smoothly.
+   *
+   * @return strictly positive upper bound applied when filtering proposed steps.
    */
   public double getMaxStep() {
     return maxStep;
   }
 
-  /** Minimal step. */
-  private double minStep;
+  /**
+   * Lower bound for step magnitudes; used by {@link #filterStep(double, boolean)} and step
+   * initialization heuristics. The value is fixed at construction time and remains constant for the
+   * lifetime of the integrator instance.
+   */
+  private final double minStep;
 
-  /** Maximal step. */
-  private double maxStep;
+  /**
+   * Upper bound for step magnitudes; prevents adaptive schemes from growing beyond safe limits for
+   * the problem scale. The value is immutable after construction to keep filtering logic
+   * predictable.
+   */
+  private final double maxStep;
 
-  /** User supplied initial step. */
+  /**
+   * Optional user-supplied initial step size; a negative value signals that automatic estimation
+   * should be used instead. The value is mutable between runs and is consumed by {@link
+   * #initializeStep(FirstOrderDifferentialEquations, boolean, int, double[], double, double[],
+   * double[], double[], double[])}.
+   */
   private double initialStep;
 
-  /** Allowed absolute scalar error. */
+  /**
+   * Absolute error tolerance applied uniformly when vector tolerances are not provided. Subclasses
+   * consult this value while computing normalized error estimates, ensuring each component is
+   * measured against a consistent absolute scale.
+   */
   protected double scalAbsoluteTolerance;
 
-  /** Allowed relative scalar error. */
+  /**
+   * Relative error tolerance applied uniformly when vector tolerances are not provided. It scales
+   * the acceptable error proportionally to the magnitude of each state component during adaptive
+   * control.
+   */
   protected double scalRelativeTolerance;
 
-  /** Allowed absolute vectorial error. */
+  /**
+   * Per-component absolute error tolerances aligned with the problem dimension, if configured.
+   * Concrete integrators use these values directly when available to refine normalized error
+   * metrics.
+   */
   protected double[] vecAbsoluteTolerance;
 
-  /** Allowed relative vectorial error. */
+  /**
+   * Per-component relative error tolerances aligned with the problem dimension, if configured.
+   * Enables heterogeneous scaling so larger-magnitude components do not dominate the adaptive
+   * controller.
+   */
   protected double[] vecRelativeTolerance;
 
-  /** Step handler. */
+  /**
+   * Callback invoked after each accepted step; defaults to a no-op handler. Concrete integrators
+   * call the handler to expose interpolated state values, enabling users to collect dense output or
+   * drive side effects such as logging.
+   */
   protected StepHandler handler;
 
-  /** Switching functions handler. */
+  /**
+   * Aggregates registered switching functions and coordinates event detection. It controls sampling
+   * frequency, root finding and state changes triggered by events encountered during the adaptive
+   * integration process.
+   */
   protected SwitchingFunctionsHandler switchesHandler;
 
-  /** Current step start time. */
+  /**
+   * Time coordinate of the current step start; {@link Double#NaN} when uninitialized. Updated by
+   * concrete integrators as they progress through the domain.
+   */
   protected double stepStart;
 
-  /** Current stepsize. */
+  /**
+   * Signed length of the current step; initialized to the geometric mean of configured bounds.
+   * Values are adapted continuously by concrete integrators in response to local error estimates.
+   */
   protected double stepSize;
 }
