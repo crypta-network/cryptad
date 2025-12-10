@@ -175,7 +175,18 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
       acceptStep(y, yTmp);
       boolean stopRequested = switchesHandler.stop();
-      lastStep = stopRequested || isLastStep(stepIndex, nbStep);
+      boolean lastStepCandidate = stopRequested || isLastStep(stepIndex, nbStep);
+
+      if (stepResult.needStepAdjustment && !stopRequested) {
+        nbStep = computeNumberOfSteps(stepStart, t);
+        stepSize = computeStepSize(stepStart, t, nbStep);
+        stepIndex = 0;
+        lastStepCandidate = false;
+      } else {
+        ++stepIndex;
+      }
+
+      lastStep = lastStepCandidate;
 
       interpolator.storeTime(stepStart);
       handler.handleStep((StepInterpolator) interpolator, lastStep);
@@ -184,15 +195,6 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
       if (switchesHandler.reset(stepStart, y) && !lastStep) {
         equations.computeDerivatives(stepStart, y, yDotK[0]);
-      }
-
-      if (stepResult.needStepAdjustment && !stopRequested) {
-        nbStep = computeNumberOfSteps(stepStart, t);
-        stepSize = computeStepSize(stepStart, t, nbStep);
-        stepIndex = 0;
-        lastStep = false;
-      } else {
-        ++stepIndex;
       }
     }
 
