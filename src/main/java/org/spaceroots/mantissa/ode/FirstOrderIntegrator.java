@@ -1,11 +1,29 @@
 package org.spaceroots.mantissa.ode;
 
 /**
- * This interface represents a first order integrator for differential equations.
+ * Integrates systems of first order ordinary differential equations.
  *
- * <p>The classes which are devoted to solve first order differential equations should implement
- * this interface. The problems which can be handled should implement the {@link
- * FirstOrderDifferentialEquations} interface.
+ * <p>Implementations advance a state vector forward or backward in time while delegating the actual
+ * derivative computation to a user-supplied {@link FirstOrderDifferentialEquations} model. The
+ * integrator controls step sizes, calls {@link StepHandler} listeners after accepted steps, and
+ * monitors {@link SwitchingFunction switching functions} to stop or reset the integration when
+ * event surfaces are crossed. A single integrator instance typically carries mutable state (current
+ * step size, cached derivatives) and is therefore intended for single-threaded use per integration
+ * run.
+ *
+ * <p>Typical usage follows this sequence:
+ *
+ * <ol>
+ *   <li>Create or configure the integrator implementation.
+ *   <li>Install a {@link StepHandler} to record accepted steps or drive downstream computation.
+ *   <li>Optionally register one or more {@link SwitchingFunction} instances to detect events.
+ *   <li>Call {@link #integrate(FirstOrderDifferentialEquations, double, double[], double,
+ *       double[])} with initial state and target time.
+ * </ol>
+ *
+ * <p>Integrators are free to adapt step sizes, but they must respect event detection constraints
+ * and guarantee that the provided {@code y} array reflects the state at the last completed step
+ * when the call returns.
  *
  * @see FirstOrderDifferentialEquations
  * @see StepHandler
@@ -18,34 +36,56 @@ public interface FirstOrderIntegrator {
   /**
    * Get the name of the method.
    *
-   * @return name of the method
+   * <p>The returned identifier should remain stable across versions of a given implementation so
+   * that logging and downstream tooling can attribute results to a concrete integration scheme
+   * (e.g., Dormand–Prince 8(5,3), Gragg–Bulirsch–Stoer). The name is purely informational and has
+   * no bearing on runtime behavior.
+   *
+   * @return human-friendly identifier of the integration algorithm currently in use
    */
-  public String getName();
+  String getName();
 
   /**
    * Set the step handler for this integrator. The handler will be called by the integrator for each
    * accepted step.
    *
-   * @param handler handler for the accepted steps
+   * <p>Only one handler is stored; successive calls replace the previous handler. Step handlers can
+   * accumulate results, stream intermediate states elsewhere, or enforce user-defined consistency
+   * checks. They are invoked on every accepted step, which may differ from internal trial steps
+   * when an adaptive scheme rejects some candidates.
+   *
+   * @param handler handler for the accepted steps, invoked in chronological order; must not be
+   *     {@code null}
    */
-  public void setStepHandler(StepHandler handler);
+  void setStepHandler(StepHandler handler);
 
   /**
    * Get the step handler for this integrator.
    *
-   * @return the step handler for this integrator
+   * <p>This accessor is useful for querying or decorating an existing handler without replacing it.
+   * If no handler has been configured, implementations typically return a default noop handler that
+   * discards step information.
+   *
+   * @return the step handler for this integrator, never {@code null}
    */
-  public StepHandler getStepHandler();
+  @SuppressWarnings("unused")
+  StepHandler getStepHandler();
 
   /**
    * Add a switching function to the integrator.
    *
-   * @param function switching function
-   * @param maxCheckInterval maximal time interval between switching function checks (this interval
-   *     prevents missing sign changes in case the integration steps becomes very large)
-   * @param convergence convergence threshold in the event time search
+   * <p>Switching functions detect sign changes of an event indicator and can stop the integration,
+   * reset state, or alter step sizes when a zero crossing occurs. Multiple functions may be
+   * registered; they are evaluated independently according to the integrator's event handling
+   * policy.
+   *
+   * @param function switching function whose sign changes indicate an event condition
+   * @param maxCheckInterval maximal time interval between function evaluations to avoid missing
+   *     sign changes during large internal steps
+   * @param convergence convergence threshold for locating the event time within the bracketing
+   *     interval
    */
-  public void addSwitchingFunction(
+  void addSwitchingFunction(
       SwitchingFunction function, double maxCheckInterval, double convergence);
 
   /**
@@ -56,18 +96,29 @@ public interface FirstOrderIntegrator {
    * <p>Since this method stores some internal state variables made available in its public
    * interface during integration ({@link #getCurrentStepsize()}), it is <em>not</em> thread-safe.
    *
-   * @param equations differential equations to integrate
-   * @param t0 initial time
-   * @param y0 initial value of the state vector at t0
-   * @param t target time for the integration (can be set to a value smaller than <code>t0</code>
-   *     for backward integration)
-   * @param y placeholder where to put the state vector at each successful step (and hence at the
-   *     end of integration), can be the same object as y0
-   * @throws IntegratorException if the integrator cannot perform integration
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>The {@code y} array is updated in place to reflect the state at the end of each accepted
+   * step and on return holds the state at {@code t}. Implementations may perform backward
+   * integration when {@code t} is less than {@code t0}. All arrays must match the dimensionality
+   * declared by {@code equations}.
+   *
+   * <pre>{@code
+   * double[] state = {...};
+   * integrator.setStepHandler(myHandler);
+   * integrator.integrate(model, 0.0, state, 10.0, state);
+   * }</pre>
+   *
+   * @param equations differential equations to integrate; defines dimension and derivative
+   *     function; must not be {@code null}
+   * @param t0 initial time expressed in the same units expected by the model
+   * @param y0 initial value of the state vector at {@code t0}; length must match problem dimension
+   * @param t target time for the integration; may be less than {@code t0} for backward integration
+   * @param y placeholder updated with the state after each accepted step and on completion; may be
+   *     the same array instance as {@code y0}
+   * @throws IntegratorException if the integrator cannot converge or encounters configuration
+   *     issues
+   * @throws DerivativeException if the user-supplied derivative computation fails or rejects input
    */
-  public void integrate(
+  void integrate(
       FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
       throws DerivativeException, IntegratorException;
 
@@ -80,9 +131,10 @@ public interface FirstOrderIntegrator {
    *
    * <p>The result is undefined if the method is called outside of calls to {@link #integrate}
    *
-   * @return current value of the step start time t<sub>i</sub>
+   * @return current value of the step start time t<sub>i</sub>; meaningful only during integration
    */
-  public double getCurrentStepStart();
+  @SuppressWarnings("unused")
+  double getCurrentStepStart();
 
   /**
    * Get the current value of the integration stepsize.
@@ -93,7 +145,8 @@ public interface FirstOrderIntegrator {
    *
    * <p>The result is undefined if the method is called outside of calls to {@link #integrate}
    *
-   * @return current value of the stepsize
+   * @return current value of the stepsize being attempted for the ongoing step
    */
-  public double getCurrentStepsize();
+  @SuppressWarnings("unused")
+  double getCurrentStepsize();
 }
