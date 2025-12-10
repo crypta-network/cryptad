@@ -89,13 +89,13 @@ class MidpointIntegratorTest {
     integrator.integrate(new ConstantEquation(1, 1.0), 0.0, state, 1.0, state);
 
     assertEquals(0.5, switchingFunction.eventTime, EPS);
-    List<Double> expectedSteps = List.of(1.0 / 3.0, 1.0 / 6.0, 0.25, 0.25);
+    List<Double> expectedSteps = List.of(1.0 / 3.0, 1.0 / 6.0);
     assertEquals(expectedSteps.size(), observedSteps.size());
     for (int i = 0; i < expectedSteps.size(); i++) {
       assertEquals(expectedSteps.get(i), observedSteps.get(i), EPS);
     }
     assertTrue(lastFlags.getLast());
-    assertEquals(1.0, state[0], EPS);
+    assertEquals(0.5, state[0], EPS);
   }
 
   @Test

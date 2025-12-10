@@ -87,12 +87,11 @@ class GillIntegratorTest {
     integrator.integrate(new ConstantEquation(1, 1.0), 0.0, state, 1.0, state);
 
     assertEquals(0.5, switchingFunction.eventTime, EPS);
-    assertEquals(4, observedSteps.size());
+    assertEquals(2, observedSteps.size());
     assertEquals(1.0 / 3.0, observedSteps.get(0), EPS);
     assertEquals(1.0 / 6.0, observedSteps.get(1), EPS);
-    assertEquals(0.25, observedSteps.get(2), EPS);
-    assertEquals(0.25, observedSteps.get(3), EPS);
-    assertEquals(1.0, state[0], EPS);
+    assertTrue(lastFlags.getLast());
+    assertEquals(0.5, state[0], EPS);
   }
 
   @Test
