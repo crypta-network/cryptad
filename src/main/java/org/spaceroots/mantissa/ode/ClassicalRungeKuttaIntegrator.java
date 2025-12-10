@@ -1,10 +1,16 @@
 package org.spaceroots.mantissa.ode;
 
 /**
- * This class implements the classical fourth order Runge-Kutta integrator for Ordinary Differential
- * Equations (it is the most often used Runge-Kutta method).
+ * Classic fourth-order explicit Runge–Kutta integrator for first-order ordinary differential
+ * equations.
  *
- * <p>This method is an explicit Runge-Kutta method, its Butcher-array is the following one :
+ * <p>This implementation keeps a constant, user-specified step size and wires the canonical RK4
+ * Butcher tableau shown below. It is a good general-purpose choice when the right-hand side is
+ * smooth, accuracy requirements are moderate, and an adaptive scheme is unnecessary or too costly.
+ * The integrator is mutable and not thread-safe; create one instance per concurrent integration and
+ * reuse it sequentially to avoid repeated allocation of stage buffers and interpolators.
+ *
+ * <p>Butcher tableau used by this class:
  *
  * <pre>
  *    0  |  0    0    0    0
@@ -15,6 +21,15 @@ package org.spaceroots.mantissa.ode;
  *       | 1/6  1/3  1/3  1/6
  * </pre>
  *
+ * <ul>
+ *   <li>Uses the shared {@link RungeKuttaIntegrator} control flow for event handling and dense
+ *       output.
+ *   <li>Pairs with {@link ClassicalRungeKuttaStepInterpolator} to expose continuous trajectories
+ *       across each fixed step.
+ *   <li>Requires callers to choose a step small enough for stability; no error control is performed
+ *       internally.
+ * </ul>
+ *
  * @see EulerIntegrator
  * @see GillIntegrator
  * @see MidpointIntegrator
@@ -24,7 +39,7 @@ package org.spaceroots.mantissa.ode;
  */
 public class ClassicalRungeKuttaIntegrator extends RungeKuttaIntegrator {
 
-  private static final String methodName = "classical Runge-Kutta";
+  private static final String METHOD_NAME = "classical Runge-Kutta";
 
   private static final double[] c = {1.0 / 2.0, 1.0 / 2.0, 1.0};
 
@@ -33,20 +48,32 @@ public class ClassicalRungeKuttaIntegrator extends RungeKuttaIntegrator {
   private static final double[] b = {1.0 / 6.0, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 6.0};
 
   /**
-   * Simple constructor. Build a fourth-order Runge-Kutta integrator with the given step.
+   * Build a fourth-order Runge–Kutta integrator that advances with a fixed time step.
    *
-   * @param step integration step
+   * <p>The provided step size is applied unchanged for every attempted step; event handling may
+   * temporarily shorten a single step to land exactly on an event boundary, after which the nominal
+   * size is restored. Choose the value based on problem smoothness and desired accuracy, bearing in
+   * mind that RK4 has local error on the order of {@code O(h^5)} and global error on the order of
+   * {@code O(h^4)}.
+   *
+   * @param step positive, fixed integration step expressed in the same time units as the underlying
+   *     differential equations; values that are zero or excessively large may lead to {@link
+   *     IntegratorException} during a run.
    */
   public ClassicalRungeKuttaIntegrator(double step) {
     super(false, c, a, b, new ClassicalRungeKuttaStepInterpolator(), step);
   }
 
   /**
-   * Get the name of the method.
+   * Return the human-readable identifier for this integration method.
    *
-   * @return name of the method
+   * <p>The name is stable across versions and can be used in logs, user interfaces, or selection
+   * menus where multiple fixed-step schemes are exposed. It does not change with step size or other
+   * runtime configuration.
+   *
+   * @return immutable string {@code "classical Runge-Kutta"} describing this RK4 implementation.
    */
   public String getName() {
-    return methodName;
+    return METHOD_NAME;
   }
 }
