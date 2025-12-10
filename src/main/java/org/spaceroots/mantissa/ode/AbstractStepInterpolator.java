@@ -3,6 +3,7 @@ package org.spaceroots.mantissa.ode;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.Serializable;
 
 /**
  * Base class for dense-output interpolators that reconstruct the ODE state between grid points.
@@ -35,7 +36,7 @@ import java.io.ObjectOutput;
  * @version $Id: AbstractStepInterpolator.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */
-public abstract class AbstractStepInterpolator {
+public abstract class AbstractStepInterpolator implements Serializable {
 
   /** Previous grid point time, i.e. the start of the current step, in integration units. */
   protected double previousTime;
