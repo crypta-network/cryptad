@@ -33,7 +33,7 @@ import java.io.ObjectOutput;
  * @version $Id: RungeKuttaStepInterpolator.java 1666 2005-12-15 16:37:55Z luc $
  * @author L. Maisonobe
  */
-abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolator {
+public abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolator {
 
   /**
    * Simple constructor.
