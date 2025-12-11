@@ -95,10 +95,10 @@ public class NelderMead extends DirectSearchOptimizer {
     // the simplex has n+1 point if dimension is n
     int n = simplex.length - 1;
 
-    double smallest = simplex[0].cost;
-    double secondLargest = simplex[n - 1].cost;
-    double largest = simplex[n].cost;
-    double[] xLargest = simplex[n].point;
+    double smallest = simplex[0].cost();
+    double secondLargest = simplex[n - 1].cost();
+    double largest = simplex[n].cost();
+    double[] xLargest = simplex[n].point();
 
     double[] centroid = computeCentroid(n);
     double[] xR = reflect(centroid, xLargest);
@@ -128,7 +128,7 @@ public class NelderMead extends DirectSearchOptimizer {
   private double[] computeCentroid(int n) {
     double[] centroid = new double[n];
     for (int i = 0; i < n; ++i) {
-      double[] x = simplex[i].point;
+      double[] x = simplex[i].point();
       for (int j = 0; j < n; ++j) {
         centroid[j] += x[j];
       }
@@ -195,9 +195,9 @@ public class NelderMead extends DirectSearchOptimizer {
   }
 
   private void shrinkSimplex(int n) throws CostException {
-    double[] xSmallest = simplex[0].point;
+    double[] xSmallest = simplex[0].point();
     for (int i = 1; i < simplex.length; ++i) {
-      double[] x = simplex[i].point;
+      double[] x = simplex[i].point();
       for (int j = 0; j < n; ++j) {
         x[j] = xSmallest[j] + sigma * (x[j] - xSmallest[j]);
       }

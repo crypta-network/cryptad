@@ -81,7 +81,7 @@ public class MultiDirectional extends DirectSearchOptimizer {
 
       // save the original vertex
       PointCostPair[] original = simplex;
-      double originalCost = original[0].cost;
+      double originalCost = original[0].cost();
 
       // perform a reflection step
       double reflectedCost = evaluateNewSimplex(original, 1.0);
@@ -124,14 +124,14 @@ public class MultiDirectional extends DirectSearchOptimizer {
    */
   private double evaluateNewSimplex(PointCostPair[] original, double coeff) throws CostException {
 
-    double[] xSmallest = original[0].point;
+    double[] xSmallest = original[0].point();
     int n = xSmallest.length;
 
     // create the linearly transformed simplex
     simplex = new PointCostPair[n + 1];
     simplex[0] = original[0];
     for (int i = 1; i <= n; ++i) {
-      double[] xOriginal = original[i].point;
+      double[] xOriginal = original[i].point();
       double[] xTransformed = new double[n];
       for (int j = 0; j < n; ++j) {
         xTransformed[j] = xSmallest[j] + coeff * (xSmallest[j] - xOriginal[j]);
@@ -141,7 +141,7 @@ public class MultiDirectional extends DirectSearchOptimizer {
 
     // evaluate it
     evaluateSimplex();
-    return simplex[0].cost;
+    return simplex[0].cost();
   }
 
   /** Expansion coefficient. */

@@ -18,10 +18,10 @@ class MultiDirectionalTest {
     PointCostPair result =
         optimizer.minimizes(x -> x[0] * x[0], 20, checker, new double[] {1.0}, new double[] {2.0});
 
-    assertEquals(0.0, result.point[0], EPS);
-    assertEquals(0.0, result.cost, EPS);
-    assertArrayEquals(new double[] {0.0}, optimizer.simplex[0].point, EPS);
-    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point, EPS);
+    assertEquals(0.0, result.point()[0], EPS);
+    assertEquals(0.0, result.cost(), EPS);
+    assertArrayEquals(new double[] {0.0}, optimizer.simplex[0].point(), EPS);
+    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point(), EPS);
   }
 
   @Test
@@ -32,10 +32,10 @@ class MultiDirectionalTest {
     PointCostPair result =
         optimizer.minimizes(x -> x[0], 20, checker, new double[] {1.0}, new double[] {3.0});
 
-    assertEquals(-3.0, result.point[0], EPS);
-    assertEquals(-3.0, result.cost, EPS);
-    assertArrayEquals(new double[] {-3.0}, optimizer.simplex[0].point, EPS);
-    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point, EPS);
+    assertEquals(-3.0, result.point()[0], EPS);
+    assertEquals(-3.0, result.cost(), EPS);
+    assertArrayEquals(new double[] {-3.0}, optimizer.simplex[0].point(), EPS);
+    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point(), EPS);
   }
 
   @Test
@@ -48,10 +48,10 @@ class MultiDirectionalTest {
         optimizer.minimizes(
             x -> Math.abs(x[0]), 20, checker, new double[] {1.0}, new double[] {3.0});
 
-    assertEquals(0.0, result.point[0], EPS);
-    assertEquals(0.0, result.cost, EPS);
-    assertArrayEquals(new double[] {0.0}, optimizer.simplex[0].point, EPS);
-    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point, EPS);
+    assertEquals(0.0, result.point()[0], EPS);
+    assertEquals(0.0, result.cost(), EPS);
+    assertArrayEquals(new double[] {0.0}, optimizer.simplex[0].point(), EPS);
+    assertArrayEquals(new double[] {1.0}, optimizer.simplex[1].point(), EPS);
   }
 
   /** Stops the optimization loop after a fixed number of convergence checks. */

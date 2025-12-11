@@ -518,8 +518,8 @@ public abstract class DirectSearchOptimizer {
     // evaluate the cost at all non-evaluated simplex points
     for (int i = 0; i < simplex.length; ++i) {
       PointCostPair pair = simplex[i];
-      if (Double.isNaN(pair.cost)) {
-        simplex[i] = new PointCostPair(pair.point, evaluateCost(pair.point));
+      if (Double.isNaN(pair.cost())) {
+        simplex[i] = new PointCostPair(pair.point(), evaluateCost(pair.point()));
       }
     }
 
@@ -539,7 +539,7 @@ public abstract class DirectSearchOptimizer {
   protected void replaceWorstPoint(PointCostPair pointCostPair) {
     int n = simplex.length - 1;
     for (int i = 0; i < n; ++i) {
-      if (simplex[i].cost > pointCostPair.cost) {
+      if (simplex[i].cost() > pointCostPair.cost()) {
         PointCostPair tmp = simplex[i];
         simplex[i] = pointCostPair;
         pointCostPair = tmp;
@@ -556,7 +556,7 @@ public abstract class DirectSearchOptimizer {
         } else if (o2 == null) {
           return -1;
         }
-        return Double.compare(o1.cost, o2.cost);
+        return Double.compare(o1.cost(), o2.cost());
       };
 
   /**

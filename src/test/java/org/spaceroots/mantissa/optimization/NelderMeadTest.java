@@ -26,10 +26,10 @@ class NelderMeadTest {
     optimizer.minimizes(costs, 10, new IterationChecker(0), vertices);
 
     // Assert
-    assertEquals(1.0, optimizer.simplex[0].cost, 1e-12);
-    assertEquals(1.5, optimizer.simplex[1].cost, 1e-12);
-    assertEquals(2.0, optimizer.simplex[2].cost, 1e-12);
-    assertArrayEquals(new double[] {1.0, -2.0}, optimizer.simplex[1].point, 1e-12);
+    assertEquals(1.0, optimizer.simplex[0].cost(), 1e-12);
+    assertEquals(1.5, optimizer.simplex[1].cost(), 1e-12);
+    assertEquals(2.0, optimizer.simplex[2].cost(), 1e-12);
+    assertArrayEquals(new double[] {1.0, -2.0}, optimizer.simplex[1].point(), 1e-12);
   }
 
   @Test
@@ -48,8 +48,8 @@ class NelderMeadTest {
     optimizer.minimizes(costs, 10, new IterationChecker(0), vertices);
 
     // Assert
-    assertEquals(0.5, optimizer.simplex[0].cost, 1e-12);
-    assertArrayEquals(new double[] {1.5, -4.0}, optimizer.simplex[0].point, 1e-12);
+    assertEquals(0.5, optimizer.simplex[0].cost(), 1e-12);
+    assertArrayEquals(new double[] {1.5, -4.0}, optimizer.simplex[0].point(), 1e-12);
   }
 
   @Test
@@ -69,8 +69,8 @@ class NelderMeadTest {
     optimizer.minimizes(costs, 10, new IterationChecker(0), vertices);
 
     // Assert
-    assertEquals(0.25, optimizer.simplex[1].cost, 1e-12);
-    assertArrayEquals(new double[] {-0.75, 0.0}, optimizer.simplex[1].point, 1e-12);
+    assertEquals(0.25, optimizer.simplex[1].cost(), 1e-12);
+    assertArrayEquals(new double[] {-0.75, 0.0}, optimizer.simplex[1].point(), 1e-12);
   }
 
   @Test
@@ -90,11 +90,11 @@ class NelderMeadTest {
     optimizer.minimizes(costs, 15, new IterationChecker(0), vertices);
 
     // Assert
-    assertEquals(0.0, optimizer.simplex[0].cost, 1e-12);
-    assertEquals(0.25, optimizer.simplex[1].cost, 1e-12);
-    assertEquals(1.0, optimizer.simplex[2].cost, 1e-12);
-    assertArrayEquals(new double[] {0.5, 0.0}, optimizer.simplex[1].point, 1e-12);
-    assertArrayEquals(new double[] {0.0, 1.0}, optimizer.simplex[2].point, 1e-12);
+    assertEquals(0.0, optimizer.simplex[0].cost(), 1e-12);
+    assertEquals(0.25, optimizer.simplex[1].cost(), 1e-12);
+    assertEquals(1.0, optimizer.simplex[2].cost(), 1e-12);
+    assertArrayEquals(new double[] {0.5, 0.0}, optimizer.simplex[1].point(), 1e-12);
+    assertArrayEquals(new double[] {0.0, 1.0}, optimizer.simplex[2].point(), 1e-12);
   }
 
   @Test
