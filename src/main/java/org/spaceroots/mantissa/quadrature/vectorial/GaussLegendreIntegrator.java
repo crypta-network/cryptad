@@ -106,10 +106,11 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
    *
    * <p>The method partitions the range {@code [a, b]} into equal segments close to {@code rawStep}
    * and evaluates the supplied {@link ComputableFunction} at the precomputed nodes inside each
-   * segment. If {@code a > b}, the bounds are swapped transparently so the caller need not reorder
-   * inputs. The returned vector contains one integrated component per function dimension and scales
-   * linearly with the number of evaluations. The integrator is deterministic and thread-safe when
-   * the provided function is itself thread-safe.
+   * segment. The orientation of the integral is preserved: if {@code a > b} the computation is
+   * performed over {@code [b, a]} and the final vector is negated to follow standard calculus
+   * conventions. The returned vector contains one integrated component per function dimension and
+   * scales linearly with the number of evaluations. The integrator is deterministic and thread-safe
+   * when the provided function is itself thread-safe.
    *
    * @param f vector-valued integrand; must accept points inside each interior sub-interval node
    * @param a lower integration bound, inclusive if {@code a <= b}, otherwise swapped with {@code b}
@@ -120,8 +121,10 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
    */
   public double[] integrate(ComputableFunction f, double a, double b) throws FunctionException {
 
-    // swap the integration bounds if they are not in ascending order
+    int orientation = 1;
+    // swap the integration bounds if they are not in ascending order and remember orientation
     if (b < a) {
+      orientation = -1;
       double tmp = b;
       b = a;
       a = tmp;
@@ -149,6 +152,12 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
 
     for (int k = 0; k < sum.length; ++k) {
       sum[k] *= halfStep;
+    }
+
+    if (orientation < 0) {
+      for (int k = 0; k < sum.length; ++k) {
+        sum[k] = -sum[k];
+      }
     }
 
     return sum;

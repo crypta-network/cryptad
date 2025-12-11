@@ -54,7 +54,7 @@ class GaussLegendreIntegratorTest {
   }
 
   @Test
-  void integrate_whenBoundsProvidedInReverse_returnsSameResult() throws FunctionException {
+  void integrate_whenBoundsProvidedInReverse_returnsNegatedResult() throws FunctionException {
     GaussLegendreIntegrator integrator = new GaussLegendreIntegrator(3, 0.7);
     ComputableFunction affine =
         new ComputableFunction() {
@@ -73,7 +73,7 @@ class GaussLegendreIntegratorTest {
     double[] reversed = integrator.integrate(affine, 2.0, -1.0);
 
     assertEquals(6.0, forward[0], EPS);
-    assertArrayEquals(forward, reversed, EPS);
+    assertArrayEquals(new double[] {-forward[0]}, reversed, EPS);
   }
 
   @Test
