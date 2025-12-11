@@ -1,20 +1,28 @@
 package org.spaceroots.mantissa.ode;
 
 /**
- * This interface represents a second order differential equations set.
+ * Models a system of coupled second order differential equations for numerical integration.
  *
- * <p>This interface should be implemented by all real second order differential equation problems
- * before they can be handled by the integrators {@link SecondOrderIntegrator#integrate} method.
+ * <p>Implementations expose the mathematical model required by {@link SecondOrderIntegrator}
+ * instances: given a time {@code t}, the current state vector {@code y}, and its first derivative
+ * {@code yDot}, they supply the second derivative {@code yDDot}. The interface is deliberately
+ * minimal so application code can supply domain-specific state containers, parameter handling, and
+ * validation without constraining integrator implementations. Typical use wraps a physics or
+ * engineering model whose natural form is {@code d2Y/dt^2 = f(t, Y, dY/dt)}, such as rigid-body
+ * motion, oscillator chains, or orbital mechanics.
  *
- * <p>A second order differential equations problem, as seen by an integrator is the second time
- * derivative <code>d2Y/dt^2</code> of a state vector <code>Y</code>, both being one dimensional
- * arrays. From the integrator point of view, this derivative depends only on the current time
- * <code>t</code>, on the state vector <code>Y</code> and on the first time derivative of the state
- * vector.
+ * <p>Instances are generally stateless and thread-safe if the underlying model is immutable; an
+ * integrator may call the methods repeatedly with new array instances or may reuse arrays for
+ * efficiency. Implementors should document any assumptions about array lengths or mutability and
+ * avoid retaining references to caller-provided buffers. While parameter sets external to the state
+ * vector are allowed, they must remain consistent for the duration of an integration pass to avoid
+ * undefined trajectories.
  *
- * <p>For real problems, the derivative depends also on parameters that do not belong to the state
- * vector (dynamical model constants for example). These constants are completely outside of the
- * scope of this interface, the classes that implement it are allowed to handle them as they want.
+ * <ul>
+ *   <li>Defines the dimension of the state space for all subsequent derivative evaluations.
+ *   <li>Supplies the second derivative needed by position/velocity based integrators.
+ *   <li>Provides a bridge for converting to first order form via {@link FirstOrderConverter}.
+ * </ul>
  *
  * @see SecondOrderIntegrator
  * @see FirstOrderConverter
@@ -26,22 +34,42 @@ package org.spaceroots.mantissa.ode;
 public interface SecondOrderDifferentialEquations {
 
   /**
-   * Get the dimension of the problem.
+   * Returns the fixed size of the state space described by this system.
    *
-   * @return dimension of the problem
+   * <p>The dimension is the number of scalar components in the state vector {@code y}. It must
+   * remain constant throughout an integration and must match the lengths of the arrays passed to
+   * {@link #computeSecondDerivatives(double, double[], double[], double[])}. Implementations are
+   * expected to validate array sizes in their derivative computation and may signal mismatches
+   * through a {@link DerivativeException}. Integrators typically call this method once during
+   * initialization to allocate working buffers, so returning a consistent value is essential for
+   * predictable memory usage and performance.
+   *
+   * @return the number of scalar state components that every argument array must contain
    */
-  public int getDimension();
+  int getDimension();
 
   /**
-   * Get the current time derivative of the state vector.
+   * Computes the second derivative of the state for the supplied time and first derivative.
    *
-   * @param t current value of the independant <I>time</I> variable
-   * @param y array containing the current value of the state vector
-   * @param yDot array containing the current value of the first derivative of the state vector
-   * @param yDDot placeholder array where to put the second time derivative of the state vector
-   * @throws DerivativeException this exception is propagated to the caller if the underlying user
-   *     function triggers one
+   * <p>The implementation must fill {@code yDDot} with {@code d2Y/dt2} values that correspond to
+   * the provided time {@code t}, state {@code y}, and first derivative {@code yDot}. All arrays are
+   * caller-owned and sized to {@link #getDimension()} elements; implementations should neither
+   * resize nor retain them. This method is typically invoked many times per integration step, so it
+   * should perform minimal allocation and be deterministic for identical inputs. If the model
+   * cannot evaluate the derivative (for example because of invalid state, domain errors, or missing
+   * parameters), it should throw a {@link DerivativeException} to abort the current integration
+   * pass cleanly.
+   *
+   * @param t current value of the independent time variable, expressed in the model's time units
+   * @param y array containing the current value of the state vector; length must match {@link
+   *     #getDimension()}
+   * @param yDot array containing the current value of the first derivative of the state vector;
+   *     length must equal {@link #getDimension()}
+   * @param yDDot preallocated array to receive the computed second derivative; sized to {@link
+   *     #getDimension()}
+   * @throws DerivativeException if the derivative cannot be computed for the supplied state and
+   *     time or if array lengths are inconsistent
    */
-  public void computeSecondDerivatives(double t, double[] y, double[] yDot, double[] yDDot)
+  void computeSecondDerivatives(double t, double[] y, double[] yDot, double[] yDDot)
       throws DerivativeException;
 }
