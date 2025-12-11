@@ -207,5 +207,6 @@ public abstract class RungeKuttaStepInterpolator extends AbstractStepInterpolato
    * It is provided by {@link #reinitialize(FirstOrderDifferentialEquations, double[], double[][],
    * boolean)} and is not owned by the interpolator.
    */
+  @SuppressWarnings("java:S1948")
   protected FirstOrderDifferentialEquations equations;
 }
