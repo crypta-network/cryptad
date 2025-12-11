@@ -299,6 +299,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
   private int index;
 
   /** Steps table. */
+  @SuppressWarnings("java:S1948")
   private final List<AbstractStepInterpolator> steps;
 
   private int findIndex(double time, int iMin, int iMax, double tMin, double tMax) {
