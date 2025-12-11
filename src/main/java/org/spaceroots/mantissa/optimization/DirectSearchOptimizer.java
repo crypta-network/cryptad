@@ -10,33 +10,26 @@ import org.spaceroots.mantissa.random.UniformRandomGenerator;
 import org.spaceroots.mantissa.random.VectorialSampleStatistics;
 
 /**
- * This class implements simplex-based direct search optimization algorithms.
+ * Base support for simplex-based direct search optimization algorithms.
  *
- * <p>Direct search method only use cost function values, they don't need derivatives and don't
- * either try to compute approximation of the derivatives. According to a 1996 paper by Margaret H.
- * Wright (<a href="http://cm.bell-labs.com/cm/cs/doc/96/4-02.ps.gz">Direct Search Methods: Once
- * Scorned, Now Respectable</a>), they are used when either the computation of the derivative is
- * impossible (noisy functions, unpredictable dicontinuities) or difficult (complexity, computation
- * cost). In the first cases, rather than an optimum, a <em>not too bad</em> point is desired. In
- * the latter cases, an optimum is desired but cannot be reasonably found. In all cases direct
- * search methods can be useful.
+ * <p>This helper wires common tasks such as constructing initial simplices, tracking multi-start
+ * restarts, counting function evaluations, and sorting candidate vertices. Concrete subclasses (for
+ * example {@link NelderMead} or {@link MultiDirectional}) only have to implement the simplex update
+ * strategy while inheriting all scaffolding for evaluating cost functions and managing convergence.
+ * Direct search methods consume only objective values and avoid derivative estimates, which makes
+ * them suitable for noisy targets, discontinuous responses, and models where derivatives are either
+ * unavailable or too expensive to evaluate.
  *
- * <p>Simplex-based direct search methods are based on comparison of the cost function values at the
- * vertices of a simplex (which is a set of n+1 points in dimension n) that is updated by the
- * algorithms steps.
+ * <p>Typical use follows a short lifecycle: build or supply a simplex, select single-start or
+ * multi-start execution, run {@code minimizes(...)} until convergence, then inspect the best point
+ * or all collected minima. Instances are mutable but not thread-safe; each optimizer should be used
+ * by a single thread at a time and discarded or reconfigured between independent runs.
  *
- * <p>The instances can be built either in single-start or in multi-start mode. Multi-start is a
- * traditional way to try to avoid beeing trapped in a local minimum and miss the global minimum of
- * a function. It can also be used to verify the convergence of an algorithm. In multi-start mode,
- * the {@link #minimizes(CostFunction, int, ConvergenceChecker, double[], double[]) minimizes}
- * method returns the best minimum found after all starts, and the {@link #getMinima getMinima}
- * method can be used to retrieve all minima from all starts (including the one already provided by
- * the {@link #minimizes(CostFunction, int, ConvergenceChecker, double[], double[]) minimizes}
- * method).
- *
- * <p>This class is the base class performing the boilerplate simplex initialization and handling.
- * The simplex update by itself is performed by the derived classes according to the implemented
- * algorithms.
+ * <ul>
+ *   <li>Supports deterministic simplices (boxes) or randomized generators for restart points.
+ *   <li>Counts evaluations so callers can enforce budgets via {@code maxEvaluations}.
+ *   <li>Retains per-start outcomes, enabling diagnostics of stalled runs and local minima.
+ * </ul>
  *
  * @author Luc Maisonobe
  * @version $Id: DirectSearchOptimizer.java 1709 2006-12-03 21:16:50Z luc $
@@ -50,29 +43,30 @@ public abstract class DirectSearchOptimizer {
   protected DirectSearchOptimizer() {}
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function starting from the edges of an axis-aligned box.
    *
-   * <p>The initial simplex is built from two vertices that are considered to represent two opposite
-   * vertices of a box parallel to the canonical axes of the space. The simplex is the subset of
-   * vertices encountered while going from vertexA to vertexB travelling along the box edges only.
-   * This can be seen as a scaled regular simplex using the projected separation between the given
-   * points as the scaling factor along each coordinate axis.
+   * <p>This convenience overload constructs a simplex whose vertices lie on the path that walks the
+   * edges between {@code vertexA} and {@code vertexB}. The resulting shape mirrors a regular
+   * simplex scaled independently along each coordinate using the projected separation of the two
+   * supplied corners. The optimizer runs in single-start mode and stops at the first convergence or
+   * when the evaluation budget is exhausted.
    *
-   * <p>The optimization is performed in single-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param vertexA first vertex
-   * @param vertexB last vertex
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function evaluated for every candidate point; must be side-effect free or
+   *     tolerant to repeated calls
+   * @param maxEvaluations maximum number of cost evaluations allowed for this run; the final count
+   *     may slightly exceed the limit because complete simplices are assessed as atomic steps
+   * @param checker strategy that inspects the sorted simplex to decide when convergence has been
+   *     reached
+   * @param vertexA first box corner used to seed the simplex; array length defines the search
+   *     dimension and values are interpreted as coordinates
+   * @param vertexB opposite box corner; each coordinate provides the scaling factor relative to
+   *     {@code vertexA}
+   * @return point/cost pair representing the best vertex at convergence for this single start
+   * @throws CostException if the cost function signals a failure while being evaluated
+   * @throws NoConvergenceException if the optimizer could not satisfy the checker before the
+   *     evaluation budget was exceeded
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f,
       int maxEvaluations,
@@ -90,33 +84,32 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function using multi-start exploration of a box-derived simplex.
    *
-   * <p>The initial simplex is built from two vertices that are considered to represent two opposite
-   * vertices of a box parallel to the canonical axes of the space. The simplex is the subset of
-   * vertices encountered while going from vertexA to vertexB travelling along the box edges only.
-   * This can be seen as a scaled regular simplex using the projected separation between the given
-   * points as the scaling factor along each coordinate axis.
+   * <p>The initial simplex mirrors {@link #minimizes(CostFunction, int, ConvergenceChecker,
+   * double[], double[])} but restarts the search up to {@code starts} times. Each restart draws a
+   * new simplex from a Gaussian generator centered in the provided box with per-axis standard
+   * deviations matching half the box width. This increases the chances of escaping poor local
+   * minima and provides diagnostics across independent trajectories.
    *
-   * <p>The optimization is performed in multi-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param vertexA first vertex
-   * @param vertexB last vertex
-   * @param starts number of starts to perform (including the first one), multi-start is disabled if
-   *     value is less than or equal to 1
-   * @param seed seed for the random vector generator (32 bits integers array). If null, the current
-   *     time will be used for the generator initialization.
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function evaluated at every candidate vertex; should be deterministic for
+   *     meaningful comparisons
+   * @param maxEvaluations maximum number of cost evaluations permitted per start; final usage may
+   *     exceed the limit by at most the simplex size because evaluations are grouped
+   * @param checker strategy that inspects the current simplex ordering to decide when the search
+   *     has converged
+   * @param vertexA first corner of the axis-aligned box used to scale and place the simplex
+   * @param vertexB opposite corner of the box; must have the same dimension as {@code vertexA}
+   * @param starts number of independent starts to attempt; values below two fall back to
+   *     single-start operation
+   * @param seed optional 32-bit seed array used to initialize the restart random generator; when
+   *     {@code null}, the generator is seeded from the current time
+   * @return best point/cost pair observed across all starts, sorted by ascending cost
+   * @throws CostException if evaluating the cost function fails for any candidate point
+   * @throws NoConvergenceException if every attempted start exhausts the evaluation budget without
+   *     satisfying the convergence checker
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f,
       int maxEvaluations,
@@ -127,12 +120,12 @@ public abstract class DirectSearchOptimizer {
       int[] seed)
       throws CostException, NoConvergenceException {
 
-    // set up the simplex travelling around the box
+    // set up the simplex traveling around the box
     buildSimplex(vertexA, vertexB);
 
     // we consider the simplex could have been produced by a generator
     // having its mean value at the center of the box, the standard
-    // deviation along each axe beeing the corresponding half size
+    // deviation along each axe being the corresponding half size
     double[] mean = new double[vertexA.length];
     double[] standardDeviation = new double[vertexA.length];
     for (int i = 0; i < vertexA.length; ++i) {
@@ -150,24 +143,25 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function from an explicitly provided simplex in single-start mode.
    *
-   * <p>The simplex is built from all its vertices.
+   * <p>Callers supply all simplex vertices, allowing deterministic reproducibility and advanced
+   * seeding strategies. The simplex is evaluated once, then iterated using the subclass-defined
+   * rule until the convergence checker signals completion or the evaluation limit is reached.
    *
-   * <p>The optimization is performed in single-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param vertices array containing all vertices of the simplex
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function invoked for each vertex as needed; should tolerate ordering differences
+   *     during sorting
+   * @param maxEvaluations maximum number of cost evaluations permitted; batches covering the whole
+   *     simplex can cause a slight overrun relative to this cap
+   * @param checker convergence logic that inspects the ordered simplex and determines when to stop
+   * @param vertices complete simplex vertices; array length must be {@code n + 1} for an {@code
+   *     n}-dimensional search space
+   * @return point/cost pair representing the best vertex when the single run ends
+   * @throws CostException if evaluating {@code f} fails for any supplied vertex
+   * @throws NoConvergenceException if convergence is not reached before the evaluation budget is
+   *     consumed
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f, int maxEvaluations, ConvergenceChecker checker, double[][] vertices)
       throws CostException, NoConvergenceException {
@@ -181,29 +175,33 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function from an explicit simplex with optional multi-start restarts.
    *
-   * <p>The simplex is built from all its vertices.
+   * <p>The supplied simplex is analyzed to compute its mean and covariance, which seed a correlated
+   * Gaussian generator used to build fresh simplices on each restart. This preserves the caller's
+   * initial geometry while enabling exploration around it. Each start is capped by the supplied
+   * evaluation budget and judged by the provided convergence checker.
    *
-   * <p>The optimization is performed in multi-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param vertices array containing all vertices of the simplex
-   * @param starts number of starts to perform (including the first one), multi-start is disabled if
-   *     value is less than or equal to 1
-   * @param seed seed for the random vector generator (32 bits integers array). If null, the current
-   *     time will be used for the generator initialization.
-   * @return the point/cost pairs giving the minimal cost
-   * @exception NotPositiveDefiniteMatrixException if the vertices array is degenerated
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function invoked for every vertex; should be stable under repeated sampling near
+   *     the same point
+   * @param maxEvaluations maximum number of cost evaluations per start; full-simplex evaluations
+   *     can make the realized total exceed the nominal limit by up to {@code n + 1}
+   * @param checker component that inspects the ordered simplex after each iteration to decide
+   *     whether convergence has been achieved
+   * @param vertices complete set of simplex vertices defining the initial search region; length
+   *     must match the dimensionality plus one
+   * @param starts number of independent starts to attempt; values under two disable multi-start and
+   *     reuse the initial simplex only
+   * @param seed optional 32-bit seed array for the correlated generator; {@code null} selects a
+   *     time-based seed
+   * @return best point/cost pair found across the performed starts in ascending cost order
+   * @throws NotPositiveDefiniteMatrixException if the covariance derived from {@code vertices} is
+   *     singular or ill-conditioned
+   * @throws CostException if the cost function cannot be evaluated for a candidate vertex
+   * @throws NoConvergenceException if all starts exhaust their budgets without satisfying the
+   *     convergence checker
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f,
       int maxEvaluations,
@@ -218,8 +216,8 @@ public abstract class DirectSearchOptimizer {
 
     // compute the statistical properties of the simplex points
     VectorialSampleStatistics statistics = new VectorialSampleStatistics();
-    for (int i = 0; i < vertices.length; ++i) {
-      statistics.add(vertices[i]);
+    for (double[] vertex : vertices) {
+      statistics.add(vertex);
     }
 
     RandomVectorGenerator rvg =
@@ -234,24 +232,25 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function using a randomly generated simplex in single-start mode.
    *
-   * <p>The simplex is built randomly.
+   * <p>The first vector produced by {@code generator} defines the search dimension and becomes the
+   * first simplex vertex; subsequent draws populate the remaining vertices. This variant is useful
+   * when callers want stochastic seeding while delegating restart control to the optimizer.
    *
-   * <p>The optimization is performed in single-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param generator random vector generator
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function evaluated at each vertex; should be robust to random sampling near the
+   *     same region
+   * @param maxEvaluations maximum number of cost evaluations to perform before aborting the start;
+   *     the final tally can exceed the target by up to the simplex size
+   * @param checker convergence policy executed after every simplex iteration to decide whether the
+   *     search has settled
+   * @param generator source of candidate vertices; must always return vectors of identical length
+   * @return best point/cost pair reached during the single randomized start
+   * @throws CostException if evaluating {@code f} fails for any generated vertex
+   * @throws NoConvergenceException if convergence is not detected before the evaluation limit is
+   *     hit
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f,
       int maxEvaluations,
@@ -268,26 +267,29 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Minimizes a cost function.
+   * Minimizes a cost function using randomized simplices across multiple starts.
    *
-   * <p>The simplex is built randomly.
+   * <p>Each start draws {@code n + 1} vectors from {@code generator} to form a new simplex and runs
+   * until the convergence checker fires or the per-start evaluation limit is reached. This is
+   * helpful when the landscape contains many local minima and randomized re-seeding improves
+   * coverage of the search space.
    *
-   * <p>The optimization is performed in multi-start mode.
-   *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @param generator random vector generator
-   * @param starts number of starts to perform (including the first one), multi-start is disabled if
-   *     value is less than or equal to 1
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * @param f cost function applied to every candidate point; should yield comparable values across
+   *     randomized starts
+   * @param maxEvaluations maximum number of evaluations allowed per start; complete simplex passes
+   *     can slightly exceed this target
+   * @param checker component that inspects the ordered simplex and decides when the algorithm has
+   *     converged
+   * @param generator random vector generator that must produce consistently sized vectors across
+   *     calls
+   * @param starts number of independent randomized starts; values below two revert to single-start
+   *     behavior without additional random draws
+   * @return lowest-cost point/cost pair discovered after sorting the outcomes from all starts
+   * @throws CostException if any evaluation of the cost function fails
+   * @throws NoConvergenceException if every start exceeds the evaluation cap without satisfying the
+   *     convergence checker
    */
+  @SuppressWarnings("unused")
   public PointCostPair minimizes(
       CostFunction f,
       int maxEvaluations,
@@ -309,7 +311,7 @@ public abstract class DirectSearchOptimizer {
    *
    * <p>The two vertices are considered to represent two opposite vertices of a box parallel to the
    * canonical axes of the space. The simplex is the subset of vertices encountered while going from
-   * vertexA to vertexB travelling along the box edges only. This can be seen as a scaled regular
+   * vertexA to vertexB traveling along the box edges only. This can be seen as a scaled regular
    * simplex using the projected separation between the given points as the scaling factor along
    * each coordinate axis.
    *
@@ -321,7 +323,7 @@ public abstract class DirectSearchOptimizer {
     int n = vertexA.length;
     simplex = new PointCostPair[n + 1];
 
-    // set up the simplex travelling around the box
+    // set up the simplex traveling around the box
     for (int i = 0; i <= n; ++i) {
       double[] vertex = new double[n];
       if (i > 0) {
@@ -374,62 +376,60 @@ public abstract class DirectSearchOptimizer {
   }
 
   /**
-   * Set up multi-start mode.
+   * Set up multi-start mode with the provided generator.
    *
-   * @param starts number of starts to perform (including the first one), multi-start is disabled if
-   *     value is less than or equal to 1
-   * @param generator random vector generator to use for restarts
+   * <p>Calling this method replaces any previous start configuration. When {@code starts} is less
+   * than two the optimizer falls back to single-start mode and clears the generator reference. The
+   * caller retains control of generator state and seeding.
+   *
+   * @param starts number of starts to perform, including the first run; values under two disable
+   *     additional restarts
+   * @param generator random vector generator used to create fresh simplices between starts; ignored
+   *     when single-start fallback is activated
    */
   public void setMultiStart(int starts, RandomVectorGenerator generator) {
     if (starts < 2) {
       this.starts = 1;
       this.generator = null;
-      minima = null;
     } else {
       this.starts = starts;
       this.generator = generator;
-      minima = null;
     }
+    minima = null;
   }
 
   /**
-   * Get all the minima found during the last call to {@link #minimizes(CostFunction, int,
-   * ConvergenceChecker, double[], double[]) minimizes}.
+   * Get all minima recorded during the last call to {@code minimizes(...)}.
    *
-   * <p>The optimizer stores all the minima found during a set of restarts when multi-start mode is
-   * enabled. The {@link #minimizes(CostFunction, int, ConvergenceChecker, double[], double[])
-   * minimizes} method returns the best point only. This method returns all the points found at the
-   * end of each starts, including the best one already returned by the {@link
-   * #minimizes(CostFunction, int, ConvergenceChecker, double[], double[]) minimizes} method. The
-   * array as one element for each start as specified in the constructor (it has one element only if
-   * optimizer has been set up for single-start).
+   * <p>The returned array contains one entry per start, sorted from lowest to highest cost for
+   * converged runs, followed by {@code null} entries for starts that exhausted their evaluation
+   * budgets. In single-start mode the array contains one element. The array is a shallow clone so
+   * callers can examine results without mutating optimizer state.
    *
-   * <p>The array containing the minima is ordered with the results from the runs that did converge
-   * first, sorted from lowest to highest minimum cost, and null elements corresponding to the runs
-   * that did not converge (all elements will be null if the {@link #minimizes(CostFunction, int,
-   * ConvergenceChecker, double[], double[]) minimizes} method throwed a {@link
-   * NoConvergenceException NoConvergenceException}).
-   *
-   * @return array containing the minima, or null if {@link #minimizes(CostFunction, int,
-   *     ConvergenceChecker, double[], double[]) minimizes} has not been called
+   * @return ordered minima from the previous optimization run, or {@code null} if {@code minimizes}
+   *     has not been executed yet
    */
+  @SuppressWarnings("unused")
   public PointCostPair[] getMinima() {
-    return (PointCostPair[]) minima.clone();
+    return minima == null ? null : minima.clone();
   }
 
   /**
-   * Minimizes a cost function.
+   * Core minimization loop shared by all public overloads.
    *
-   * @param f cost function
-   * @param maxEvaluations maximal number of function calls for each start (note that the number
-   *     will be checked <em>after</em> complete simplices have been evaluated, this means that in
-   *     some cases this number will be exceeded by a few units, depending on the dimension of the
-   *     problem)
-   * @param checker object to use to check for convergence
-   * @return the point/cost pairs giving the minimal cost
-   * @exception CostException if the cost function throws one during the search
-   * @exception NoConvergenceException if none of the starts did converge (it is not thrown if at
-   *     least one start did converge)
+   * <p>This method assumes the simplex and start configuration have already been prepared. It
+   * executes each start by iterating the simplex until the convergence checker succeeds or the
+   * evaluation cap is reached. Results for every start are retained and sorted before the best one
+   * is returned.
+   *
+   * @param f cost function applied to candidate points; must be thread-compatible with sequential
+   *     invocation from this optimizer
+   * @param maxEvaluations maximum number of cost function calls allowed per start; full simplex
+   *     evaluation steps can raise the observed total slightly above the limit
+   * @param checker convergence logic used after each simplex iteration to detect completion
+   * @return lowest-cost point/cost pair found across all starts after sorting outcomes
+   * @throws CostException if evaluating the cost function fails
+   * @throws NoConvergenceException if every attempted start stops because of the evaluation cap
    */
   private PointCostPair minimizes(CostFunction f, int maxEvaluations, ConvergenceChecker checker)
       throws CostException, NoConvergenceException {
@@ -443,15 +443,16 @@ public abstract class DirectSearchOptimizer {
       evaluations = 0;
       evaluateSimplex();
 
-      for (boolean loop = true; loop; ) {
+      boolean finished = false;
+      while (!finished) {
         if (checker.converged(simplex)) {
           // we have found a minimum
           minima[i] = simplex[0];
-          loop = false;
+          finished = true;
         } else if (evaluations >= maxEvaluations) {
           // this start did not converge, try a new one
           minima[i] = null;
-          loop = false;
+          finished = true;
         } else {
           iterateSimplex();
         }
@@ -463,7 +464,7 @@ public abstract class DirectSearchOptimizer {
       }
     }
 
-    // sort the minima from lowest cost to highest cost, followed by
+    // sort the minima from the lowest cost to the highest cost, followed by
     // null elements
     Arrays.sort(minima, pointCostPairComparator);
 
@@ -476,17 +477,28 @@ public abstract class DirectSearchOptimizer {
     return minima[0];
   }
 
-  /** Compute the next simplex of the algorithm. */
+  /**
+   * Compute the next simplex of the algorithm.
+   *
+   * <p>Implementations update {@link #simplex} in-place by producing a new set of vertices ordered
+   * by ascending cost. Typical strategies include reflection, expansion, contraction, or shrink
+   * steps. This method is invoked repeatedly until a convergence checker signals completion or the
+   * evaluation budget is exceeded.
+   *
+   * @throws CostException if evaluating newly generated vertices fails or is refused by the cost
+   *     function
+   */
   protected abstract void iterateSimplex() throws CostException;
 
   /**
    * Evaluate the cost on one point.
    *
-   * <p>A side effect of this method is to count the number of function evaluations
+   * <p>A side effect of this method is to count the number of function evaluations.
    *
-   * @param x point on which the cost function should be evaluated
-   * @return cost at the given point
-   * @exception CostException if no cost can be computed for the parameters
+   * @param x point on which the cost function should be evaluated; must have the same dimension as
+   *     the simplex points
+   * @return cost at the given point as reported by the configured {@link CostFunction}
+   * @throws CostException if no cost can be computed for the parameters
    */
   protected double evaluateCost(double[] x) throws CostException {
     evaluations++;
@@ -496,31 +508,38 @@ public abstract class DirectSearchOptimizer {
   /**
    * Evaluate all the non-evaluated points of the simplex.
    *
-   * @exception CostException if no cost can be computed for the parameters
+   * <p>Only vertices whose cost is {@link Double#NaN} are evaluated. The simplex is resorted in
+   * ascending order after evaluation so that index {@code 0} always holds the current best point.
+   *
+   * @throws CostException if no cost can be computed for the parameters
    */
   protected void evaluateSimplex() throws CostException {
 
     // evaluate the cost at all non-evaluated simplex points
     for (int i = 0; i < simplex.length; ++i) {
       PointCostPair pair = simplex[i];
-      if (Double.isNaN(pair.cost)) {
-        simplex[i] = new PointCostPair(pair.point, evaluateCost(pair.point));
+      if (Double.isNaN(pair.cost())) {
+        simplex[i] = new PointCostPair(pair.point(), evaluateCost(pair.point()));
       }
     }
 
-    // sort the simplex from lowest cost to highest cost
+    // sort the simplex from the lowest cost to the highest cost
     Arrays.sort(simplex, pointCostPairComparator);
   }
 
   /**
    * Replace the worst point of the simplex by a new point.
    *
-   * @param pointCostPair point to insert
+   * <p>The new point is inserted in cost order, pushing former points toward the end of the array
+   * and placing the worst point at the last position. Callers must ensure the provided point has
+   * already been evaluated.
+   *
+   * @param pointCostPair point to insert; its {@code cost} field must be a valid numeric value
    */
   protected void replaceWorstPoint(PointCostPair pointCostPair) {
     int n = simplex.length - 1;
     for (int i = 0; i < n; ++i) {
-      if (simplex[i].cost > pointCostPair.cost) {
+      if (simplex[i].cost() > pointCostPair.cost()) {
         PointCostPair tmp = simplex[i];
         simplex[i] = pointCostPair;
         pointCostPair = tmp;
@@ -531,19 +550,23 @@ public abstract class DirectSearchOptimizer {
 
   /** Comparator for {@link PointCostPair PointCostPair} objects. */
   private static final Comparator<PointCostPair> pointCostPairComparator =
-      new Comparator<PointCostPair>() {
-        @Override
-        public int compare(PointCostPair o1, PointCostPair o2) {
-          if (o1 == null) {
-            return (o2 == null) ? 0 : 1;
-          } else if (o2 == null) {
-            return -1;
-          }
-          return Double.compare(o1.cost, o2.cost);
+      (o1, o2) -> {
+        if (o1 == null) {
+          return (o2 == null) ? 0 : 1;
+        } else if (o2 == null) {
+          return -1;
         }
+        return Double.compare(o1.cost(), o2.cost());
       };
 
-  /** Simplex. */
+  /**
+   * Simplex currently processed by the optimizer.
+   *
+   * <p>The array length is always {@code n + 1} for an {@code n}-dimensional problem and remains
+   * sorted in ascending cost order after each call to {@link #evaluateSimplex()} or {@link
+   * #iterateSimplex()}. Subclasses may mutate elements in-place but should preserve the ordering
+   * contract expected by convergence checkers.
+   */
   protected PointCostPair[] simplex;
 
   /** Cost function. */
