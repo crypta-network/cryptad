@@ -111,9 +111,10 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
    * <p>The method partitions {@code [a, b]} into equal-width segments whose size is derived from
    * the configured raw step. For each segment it evaluates the function at precomputed interior
    * points, scales the results by the Gauss-Legendre weights, and accumulates a running sum. When
-   * the bounds are provided in descending order, the algorithm swaps them to preserve mathematical
-   * sign consistency. No adaptive refinement or error estimation is performed; accuracy depends on
-   * function smoothness, the chosen rule order, and the resulting step width.
+   * the bounds are provided in descending order, the algorithm integrates over the magnitude of the
+   * interval and reapplies a negative sign so that orientation is preserved. No adaptive refinement
+   * or error estimation is performed; accuracy depends on function smoothness, the chosen rule
+   * order, and the resulting step width.
    *
    * <pre>{@code
    * ComputableFunction f = x -> Math.sin(x);
@@ -136,11 +137,13 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
   @Override
   public double integrate(ComputableFunction f, double a, double b) throws FunctionException {
 
-    // swap the bounds if they are not in ascending order
+    double orientation = 1.0;
+    // use ascending bounds for quadrature while keeping the caller's requested sign
     if (b < a) {
       double tmp = b;
       b = a;
       a = tmp;
+      orientation = -1.0;
     }
 
     // adjust the step according to the bounds
@@ -158,7 +161,7 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
       midPoint += step;
     }
 
-    return halfStep * sum;
+    return orientation * halfStep * sum;
   }
 
   private final double[][] weightedRoots;

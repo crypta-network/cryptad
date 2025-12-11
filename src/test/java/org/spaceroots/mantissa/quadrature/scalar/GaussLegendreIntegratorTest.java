@@ -29,7 +29,7 @@ class GaussLegendreIntegratorTest {
   }
 
   @Test
-  void integrate_whenBoundsReversed_expectCorrectIntegralAndEvaluationCount()
+  void integrate_whenBoundsReversed_expectSignedIntegralAndEvaluationCount()
       throws FunctionException {
     double rawStep = 1.0;
     GaussLegendreIntegrator integrator = new GaussLegendreIntegrator(3, rawStep);
@@ -44,7 +44,7 @@ class GaussLegendreIntegratorTest {
 
     double intervalLength = 3.0;
     long expectedSteps = Math.round(0.5 + intervalLength / rawStep);
-    assertEquals(1.5 * intervalLength, result, 1.0e-12);
+    assertEquals(-1.5 * intervalLength, result, 1.0e-12);
     assertEquals(expectedSteps * integrator.getEvaluationsPerStep(), evaluations.get());
   }
 
