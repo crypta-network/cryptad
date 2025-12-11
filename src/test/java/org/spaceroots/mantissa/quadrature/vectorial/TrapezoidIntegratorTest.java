@@ -1,6 +1,7 @@
 package org.spaceroots.mantissa.quadrature.vectorial;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,10 @@ class TrapezoidIntegratorTest {
   void integrate_whenFunctionExceptionFromIterator_propagates() {
     // Arrange
     VectorialValuedPair[] samples =
-        new VectorialValuedPair[] {new VectorialValuedPair(0.0, new double[] {0.0})};
+        new VectorialValuedPair[] {
+          new VectorialValuedPair(0.0, new double[] {0.0}),
+          new VectorialValuedPair(1.0, new double[] {1.0})
+        };
     SampledFunctionIterator iterator = new StubIterator(samples, 1, true);
     TrapezoidIntegrator integrator = new TrapezoidIntegrator();
 
@@ -56,6 +60,21 @@ class TrapezoidIntegratorTest {
 
     // Act + Assert
     assertThrows(ExhaustedSampleException.class, () -> integrator.integrate(iterator));
+  }
+
+  @Test
+  void integrate_whenOnlyOneSample_returnsNull() throws Exception {
+    // Arrange
+    VectorialValuedPair[] samples =
+        new VectorialValuedPair[] {new VectorialValuedPair(0.0, new double[] {1.0, 2.0})};
+    SampledFunctionIterator iterator = new StubIterator(samples);
+    TrapezoidIntegrator integrator = new TrapezoidIntegrator();
+
+    // Act
+    double[] result = integrator.integrate(iterator);
+
+    // Assert
+    assertNull(result);
   }
 
   /**

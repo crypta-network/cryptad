@@ -73,7 +73,7 @@ public class TrapezoidIntegrator implements SampledFunctionIntegrator {
       throws ExhaustedSampleException, FunctionException {
 
     TrapezoidIntegratorSampler sampler = new TrapezoidIntegratorSampler(iter);
-    double[] sum = sampler.nextSamplePoint().y;
+    double[] sum = null;
     while (sampler.hasNext()) {
       sum = sampler.nextSamplePoint().y;
     }
