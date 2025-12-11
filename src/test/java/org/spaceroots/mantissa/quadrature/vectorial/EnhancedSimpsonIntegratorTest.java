@@ -1,6 +1,7 @@
 package org.spaceroots.mantissa.quadrature.vectorial;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -42,6 +43,16 @@ class EnhancedSimpsonIntegratorTest {
     double[] result = new EnhancedSimpsonIntegrator().integrate(new ListIterator(points));
 
     assertArrayEquals(new double[] {2.0, 4.0}, result, 1.0e-12);
+  }
+
+  @Test
+  void integrate_whenOnlyOneSample_returnsNull()
+      throws ExhaustedSampleException, FunctionException {
+    List<VectorialValuedPair> points = List.of(pair(0.0, new double[] {1.0, 2.0}));
+
+    double[] result = new EnhancedSimpsonIntegrator().integrate(new ListIterator(points));
+
+    assertNull(result);
   }
 
   @Test

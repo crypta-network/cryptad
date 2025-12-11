@@ -54,11 +54,11 @@ public class EnhancedSimpsonIntegrator implements SampledFunctionIntegrator {
       throws ExhaustedSampleException, FunctionException {
 
     EnhancedSimpsonIntegratorSampler sampler = new EnhancedSimpsonIntegratorSampler(iter);
-    double[] sum;
+    double[] sum = null;
 
-    do {
+    while (sampler.hasNext()) {
       sum = sampler.nextSamplePoint().y;
-    } while (sampler.hasNext());
+    }
 
     return sum;
   }
