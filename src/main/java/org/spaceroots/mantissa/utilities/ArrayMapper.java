@@ -158,7 +158,7 @@ public class ArrayMapper {
    */
   public void updateObjects(double[] data) {
     for (ArrayMapperEntry entry : domainObjects) {
-      entry.object.mapStateFromArray(entry.offset, data);
+      entry.object().mapStateFromArray(entry.offset(), data);
     }
   }
 
@@ -195,7 +195,7 @@ public class ArrayMapper {
    */
   public void updateArray(double[] data) {
     for (ArrayMapperEntry entry : domainObjects) {
-      entry.object.mapStateToArray(entry.offset, data);
+      entry.object().mapStateToArray(entry.offset(), data);
     }
   }
 
