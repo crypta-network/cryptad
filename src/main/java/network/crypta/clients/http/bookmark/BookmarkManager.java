@@ -409,11 +409,11 @@ public class BookmarkManager implements RequestClient {
         hasBeenParsedWithoutAnyProblem = false;
       } else {
         try {
-          int nbBookmarks = sfs.getInt(BookmarkItem.NAME);
+          int nbBookmarks = sfs.getInt(BookmarkItem.BOOKMARK_PREFIX);
           int nbCategories = sfs.getInt(BookmarkCategory.SFS_KEY);
 
           for (int i = 0; i < nbBookmarks; i++) {
-            SimpleFieldSet subset = sfs.getSubset(BookmarkItem.NAME + i);
+            SimpleFieldSet subset = sfs.getSubset(BookmarkItem.BOOKMARK_PREFIX + i);
             try {
               BookmarkItem item = new BookmarkItem(subset, this, node.getAlerts());
               String name = (isRoot ? "" : prefix + category.name) + '/' + item.name;
@@ -466,8 +466,8 @@ public class BookmarkManager implements RequestClient {
 
     List<BookmarkItem> bi = cat.getItems();
     for (int i = 0; i < bi.size(); i++)
-      sfs.put(BookmarkItem.NAME + i, bi.get(i).getSimpleFieldSet());
-    sfs.put(BookmarkItem.NAME, bi.size());
+      sfs.put(BookmarkItem.BOOKMARK_PREFIX + i, bi.get(i).getSimpleFieldSet());
+    sfs.put(BookmarkItem.BOOKMARK_PREFIX, bi.size());
 
     return sfs;
   }

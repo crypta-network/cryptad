@@ -398,7 +398,7 @@ class BookmarkCategoryTest {
     assertEquals("Root", sfs.get("Name"));
     SimpleFieldSet content = sfs.getSubset("Content");
     assertEquals(0, content.getInt(BookmarkCategory.SFS_KEY));
-    assertEquals(0, content.getInt(BookmarkItem.NAME));
+    assertEquals(0, content.getInt(BookmarkItem.BOOKMARK_PREFIX));
   }
 
   @Test
@@ -419,12 +419,12 @@ class BookmarkCategoryTest {
 
     SimpleFieldSet content = sfs.getSubset("Content");
     assertEquals(1, content.getInt(BookmarkCategory.SFS_KEY));
-    assertEquals(1, content.getInt(BookmarkItem.NAME));
+    assertEquals(1, content.getInt(BookmarkItem.BOOKMARK_PREFIX));
 
     SimpleFieldSet childSfs = content.getSubset(BookmarkCategory.SFS_KEY + "0");
     assertEquals(CATEGORY_CHILD, childSfs.get("Name"));
 
-    SimpleFieldSet itemSfs = content.getSubset(BookmarkItem.NAME + "0");
+    SimpleFieldSet itemSfs = content.getSubset(BookmarkItem.BOOKMARK_PREFIX + "0");
     assertEquals("Item", itemSfs.get("Name"));
     assertEquals("Desc", itemSfs.get("Description"));
   }
