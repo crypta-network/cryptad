@@ -17,6 +17,11 @@ spotless {
   }
   kotlinGradle {
     target("**/*.gradle.kts")
+    // Avoid scanning generated build output (including Spotless' own working directories) and IDE
+    // metadata which may contain non-UTF8 content or filenames.
+    targetExclude("**/build/**")
+    targetExclude("**/.gradle/**")
+    targetExclude("**/.idea/**")
     ktfmt("0.58").googleStyle()
   }
 }
