@@ -23,7 +23,7 @@ public class PushDataManager {
   private final Map<String, List<UpdateEvent>> awaitingNotifications = new HashMap<>();
 
   /** What elements are on the page */
-  private final Map<String, List<BaseUpdateableElement>> pages = new HashMap<>();
+  private final Map<String, List<BaseUpdatableElement>> pages = new HashMap<>();
 
   /** What pages are on the element. It is redundant with the pages map. */
   private final Map<String, List<String>> elements = new HashMap<>();
@@ -111,7 +111,7 @@ public class PushDataManager {
    * @param requestUniqueId - The requestId that rendered the element
    * @param element - The element that is rendered
    */
-  public synchronized void elementRendered(String requestUniqueId, BaseUpdateableElement element) {
+  public synchronized void elementRendered(String requestUniqueId, BaseUpdatableElement element) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Element is rendered in page:" + requestUniqueId + " element:" + element);
     }
@@ -148,12 +148,12 @@ public class PushDataManager {
    * @param requestId - The requestId that needs the element.
    * @param id - The element's id
    */
-  public synchronized BaseUpdateableElement getRenderedElement(String requestId, String id) {
+  public synchronized BaseUpdatableElement getRenderedElement(String requestId, String id) {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Getting element data for element:" + id + " in page:" + requestId);
     }
     if (pages.get(requestId) != null)
-      for (BaseUpdateableElement element : pages.get(requestId)) {
+      for (BaseUpdatableElement element : pages.get(requestId)) {
         if (element.getUpdaterId(requestId).compareTo(id) == 0) {
           element.updateState(false);
           return element;
@@ -295,7 +295,7 @@ public class PushDataManager {
     isKeepaliveReceived.remove(requestId);
     isFirstKeepaliveReceived.remove(requestId);
     // Iterate over all the pushed elements present on the page
-    for (BaseUpdateableElement element : new ArrayList<>(pages.get(requestId))) {
+    for (BaseUpdatableElement element : new ArrayList<>(pages.get(requestId))) {
       pages.get(requestId).remove(element);
       // FIXME why can't we just unconditionally remove(requestId) at the end?
       if (pages.get(requestId).isEmpty()) {

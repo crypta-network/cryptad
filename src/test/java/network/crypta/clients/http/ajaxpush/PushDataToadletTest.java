@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.ToadletContext;
-import network.crypta.clients.http.updateableelements.BaseUpdateableElement;
+import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
@@ -49,7 +49,7 @@ class PushDataToadletTest {
 
   @Mock private PushDataManager pushDataManager;
 
-  @Mock private BaseUpdateableElement element;
+  @Mock private BaseUpdatableElement element;
 
   @Test
   void path_whenCalled_expectUpdaterConstant() {

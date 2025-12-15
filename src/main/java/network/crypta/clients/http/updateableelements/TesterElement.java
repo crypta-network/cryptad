@@ -8,7 +8,7 @@ import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
 
 /** A pushed element that counts up every second. Only for testing purposes. */
-public class TesterElement extends BaseUpdateableElement {
+public class TesterElement extends BaseUpdatableElement {
 
   private int status = 0;
 

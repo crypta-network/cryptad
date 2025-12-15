@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** A pushed image, the progress is shown with the ImageCreatorToadlet */
-public class ImageElement extends BaseUpdateableElement {
+public class ImageElement extends BaseUpdatableElement {
   private static final Logger LOG = LoggerFactory.getLogger(ImageElement.class);
 
   static {

@@ -14,7 +14,7 @@ import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
 
 /** A pushed element that renders the progress bar when loading a page. */
-public class ProgressBarElement extends BaseUpdateableElement {
+public class ProgressBarElement extends BaseUpdatableElement {
 
   /** The tracker that the Fetcher can be acquired */
   private final FProxyFetchTracker tracker;

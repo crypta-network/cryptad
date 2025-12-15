@@ -17,7 +17,7 @@ import network.crypta.support.SizeUtil;
 /**
  * This pushed element renders the information box when a page is downloading on the progress page.
  */
-public class ProgressInfoElement extends BaseUpdateableElement {
+public class ProgressInfoElement extends BaseUpdatableElement {
 
   private final FProxyFetchTracker tracker;
   private final FreenetURI key;
