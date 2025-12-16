@@ -26,7 +26,7 @@ import network.crypta.support.api.HTTPRequest;
  *   <li>Map the posted button selection to the next wizard step identifier.
  * </ul>
  */
-public class BANDWIDTH implements Step {
+public class Bandwidth implements Step {
   private static final String TAG_INPUT = "input";
   private static final String ATTR_VALUE = "value";
   private static final String INPUT_TYPE_SUBMIT = "submit";
@@ -38,7 +38,7 @@ public class BANDWIDTH implements Step {
    * effects. Instances may be safely reused across multiple requests, provided the surrounding
    * wizard wiring does not attach request-scoped state to the instance.
    */
-  public BANDWIDTH() {
+  public Bandwidth() {
     // Intentionally empty: this wizard step is stateless.
   }
 

@@ -19,8 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100")
-class BANDWIDTHTest {
+class BandwidthTest {
 
   @Mock HTTPRequest request;
   @Mock PageHelper helper;
@@ -34,7 +33,7 @@ class BANDWIDTHTest {
   })
   void postStep_whenPartsSubmitted_expectCorrectNextStep(
       boolean yesPartSet, boolean noPartSet, String expectedStepName) {
-    BANDWIDTH step = new BANDWIDTH();
+    Bandwidth step = new Bandwidth();
 
     when(request.isPartSet(anyString()))
         .thenAnswer(
@@ -56,7 +55,7 @@ class BANDWIDTHTest {
 
   @Test
   void getStep_whenInvoked_buildsPromptAndSubmitButtons() {
-    BANDWIDTH step = new BANDWIDTH();
+    Bandwidth step = new Bandwidth();
 
     String expectedTitle = WizardL10n.l10n("step3Title");
     String expectedHeader = WizardL10n.l10n("bandwidthLimit");
