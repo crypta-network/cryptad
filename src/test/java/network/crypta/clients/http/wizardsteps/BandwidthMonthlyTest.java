@@ -162,7 +162,7 @@ class BandwidthMonthlyTest {
     String html = pageContent.generate();
 
     long[] expectedCaps =
-        new long[] {(long) Math.ceil(BandwidthLimit.minMonthlyLimit), 100, 150, 250, 500};
+        new long[] {(long) Math.ceil(BandwidthLimit.MIN_MONTHLY_LIMIT), 100, 150, 250, 500};
     for (long cap : expectedCaps) {
       assertHtmlHasHiddenCapToInput(html, String.valueOf(cap));
       assertTrue(html.contains(cap + " GB"), "Missing display label for cap " + cap);
@@ -238,7 +238,7 @@ class BandwidthMonthlyTest {
     step.getStep(request, helper);
 
     String html = pageContent.generate();
-    assertHtmlHasHiddenCapToInput(html, String.valueOf(BandwidthLimit.minMonthlyLimit));
+    assertHtmlHasHiddenCapToInput(html, String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT));
     String expectedSubmitLabel = WizardL10n.l10n("bandwidthMonthlyUseMinimum");
     assertTrue(html.contains(HTMLEncoder.encode(expectedSubmitLabel)));
   }

@@ -46,7 +46,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
   private static final String TYPE_SUBMIT = "submit";
 
   private static final long[] caps = {
-    (long) Math.ceil(BandwidthLimit.minMonthlyLimit), 100, 150, 250, 500
+    (long) Math.ceil(BandwidthLimit.MIN_MONTHLY_LIMIT), 100, 150, 250, 500
   };
 
   /**
@@ -96,7 +96,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
                   new String[] {"requested", "minimum", "useMinimum"},
                   new String[] {
                     parseTarget,
-                    String.valueOf(Math.round(BandwidthLimit.minMonthlyLimit)),
+                    String.valueOf(Math.round(BandwidthLimit.MIN_MONTHLY_LIMIT)),
                     WizardL10n.l10n("bandwidthMonthlyUseMinimum")
                   }));
 
@@ -104,7 +104,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", "name", ATTR_VALUE},
-          new String[] {"hidden", PARAM_CAP_TO, String.valueOf(BandwidthLimit.minMonthlyLimit)});
+          new String[] {"hidden", PARAM_CAP_TO, String.valueOf(BandwidthLimit.MIN_MONTHLY_LIMIT)});
       minimumForm.addChild(
           TAG_INPUT,
           new String[] {"type", ATTR_VALUE},
