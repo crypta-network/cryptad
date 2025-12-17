@@ -30,7 +30,7 @@ package network.crypta.clients.http.updateableelements;
  */
 public final class UpdaterConstants {
   /**
-   * Creates an instance of the constants holder.
+   * Creates an instance of the constants' holder.
    *
    * <p>This class is designed for static access; instantiation has no effect and provides no
    * additional behavior. The public constructor is retained for compatibility with historical
