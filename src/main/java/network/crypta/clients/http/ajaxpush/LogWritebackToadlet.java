@@ -104,6 +104,6 @@ public class LogWritebackToadlet extends Toadlet {
    */
   @Override
   public String path() {
-    return UpdaterConstants.logWritebackPath;
+    return UpdaterConstants.LOG_WRITEBACK_PATH;
   }
 }

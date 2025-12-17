@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see network.crypta.clients.http.updateableelements.PushDataManager#keepAliveReceived(String)
- * @see network.crypta.clients.http.updateableelements.UpdaterConstants#keepalivePath
+ * @see network.crypta.clients.http.updateableelements.UpdaterConstants#KEEPALIVE_PATH
  */
 public class PushKeepaliveToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushKeepaliveToadlet.class);
@@ -103,6 +103,6 @@ public class PushKeepaliveToadlet extends Toadlet {
    */
   @Override
   public String path() {
-    return UpdaterConstants.keepalivePath;
+    return UpdaterConstants.KEEPALIVE_PATH;
   }
 }

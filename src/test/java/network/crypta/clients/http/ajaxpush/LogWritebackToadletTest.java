@@ -44,7 +44,7 @@ class LogWritebackToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.logWritebackPath, path);
+    assertEquals(UpdaterConstants.LOG_WRITEBACK_PATH, path);
   }
 
   @Test

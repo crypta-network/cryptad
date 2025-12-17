@@ -74,7 +74,7 @@ class DismissAlertToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.dismissAlertPath, path);
+    assertEquals(UpdaterConstants.DISMISS_ALERT_PATH, path);
   }
 
   private static final class CapturingDismissAlertToadlet extends DismissAlertToadlet {

@@ -60,7 +60,7 @@ class PushDataToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.dataPath, path);
+    assertEquals(UpdaterConstants.DATA_PATH, path);
   }
 
   @ParameterizedTest

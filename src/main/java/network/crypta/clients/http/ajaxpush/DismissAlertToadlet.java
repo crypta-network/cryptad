@@ -90,13 +90,13 @@ public class DismissAlertToadlet extends Toadlet {
   /**
    * Returns the HTTP mount path for this toadlet.
    *
-   * <p>The container registers this endpoint under {@link UpdaterConstants#dismissAlertPath}. The
+   * <p>The container registers this endpoint under {@link UpdaterConstants#DISMISS_ALERT_PATH}. The
    * value is stable and is used by client-side scripts to issue dismissal requests.
    *
    * @return Absolute path fragment for the dismiss-alert endpoint.
    */
   @Override
   public String path() {
-    return UpdaterConstants.dismissAlertPath;
+    return UpdaterConstants.DISMISS_ALERT_PATH;
   }
 }

@@ -209,7 +209,7 @@ class PushNotificationToadletTest {
 
     String result = toadlet.path();
 
-    assertEquals(UpdaterConstants.notificationPath, result);
+    assertEquals(UpdaterConstants.NOTIFICATION_PATH, result);
   }
 
   private static final class CapturingPushNotificationToadlet extends PushNotificationToadlet {

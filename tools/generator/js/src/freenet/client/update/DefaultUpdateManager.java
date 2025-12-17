@@ -68,7 +68,7 @@ public class DefaultUpdateManager implements IUpdateManager {
 		String elementId = message;
 		FreenetJs.log("DefaultUpdateManager updated:elementid:" + elementId);
 		// Sends a request asking for data for the updated element
-		FreenetRequest.sendRequest(UpdaterConstants.dataPath, new QueryParameter[] { new QueryParameter("requestId", FreenetJs.requestId),
+		FreenetRequest.sendRequest(UpdaterConstants.DATA_PATH, new QueryParameter[] { new QueryParameter("requestId", FreenetJs.requestId),
 				new QueryParameter("elementId", elementId) }, new UpdaterRequestCallback(elementId));
 		// Notifies the listeners
 		for (IUpdateListener l : listeners) {

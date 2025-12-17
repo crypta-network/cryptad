@@ -178,7 +178,7 @@ public class MessageManager {
 					public void onMouseDown(MouseDownEvent event) {
 						// Only send a request if the message is originated from the server
 						if (m.getAnchor() != null) {
-							FreenetRequest.sendRequest(UpdaterConstants.dismissAlertPath, new QueryParameter("anchor", m.getAnchor()), new RequestCallback() {
+							FreenetRequest.sendRequest(UpdaterConstants.DISMISS_ALERT_PATH, new QueryParameter("anchor", m.getAnchor()), new RequestCallback() {
 								@Override
 								public void onResponseReceived(Request request, Response response) {
 									// When a response is got, the server is already removed the message. We can remove it too safely

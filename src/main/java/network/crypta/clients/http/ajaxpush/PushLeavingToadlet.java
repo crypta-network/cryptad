@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Notifying the server that the client has left and returning a small success body.
  * </ul>
  *
- * @see UpdaterConstants#leavingPath
+ * @see UpdaterConstants#LEAVING_PATH
  */
 public class PushLeavingToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushLeavingToadlet.class);
@@ -90,10 +90,11 @@ public class PushLeavingToadlet extends Toadlet {
    * and avoid hard-coding a separate copy; using this method keeps routing consistent with the
    * updater/push subsystem.
    *
-   * @return the HTTP path that maps to this toadlet, typically {@link UpdaterConstants#leavingPath}
+   * @return the HTTP path that maps to this toadlet, typically {@link
+   *     UpdaterConstants#LEAVING_PATH}
    */
   @Override
   public String path() {
-    return UpdaterConstants.leavingPath;
+    return UpdaterConstants.LEAVING_PATH;
   }
 }
