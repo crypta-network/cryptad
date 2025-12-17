@@ -158,6 +158,6 @@ class PushFailoverToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.failoverPath, path);
+    assertEquals(UpdaterConstants.FAILOVER_PATH, path);
   }
 }

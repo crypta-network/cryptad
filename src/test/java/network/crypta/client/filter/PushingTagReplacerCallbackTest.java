@@ -75,7 +75,7 @@ class PushingTagReplacerCallbackTest {
     when(container.isFProxyWebPushingEnabled()).thenReturn(true);
     // Avoid background activity
     when(container.getTicker()).thenReturn(new NoopTicker());
-    // Provide a PushDataManager (mock is fine; BaseUpdateableElement.init will call
+    // Provide a PushDataManager (mock is fine; BaseUpdatableElement.init will call
     // elementRendered)
     PushDataManager pdm = mock(PushDataManager.class);
     when(container.getPushDataManager()).thenReturn(pdm);

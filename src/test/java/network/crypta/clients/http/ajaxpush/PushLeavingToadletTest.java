@@ -173,6 +173,6 @@ class PushLeavingToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.leavingPath, path);
+    assertEquals(UpdaterConstants.LEAVING_PATH, path);
   }
 }

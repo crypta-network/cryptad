@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import network.crypta.clients.http.updateableelements.BaseUpdateableElement;
+import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,9 +32,9 @@ class IntervalPusherManagerTest {
 
   @Mock private PushDataManager pushDataManager;
 
-  @Mock private BaseUpdateableElement firstElement;
+  @Mock private BaseUpdatableElement firstElement;
 
-  @Mock private BaseUpdateableElement secondElement;
+  @Mock private BaseUpdatableElement secondElement;
 
   private IntervalPusherManager manager;
 

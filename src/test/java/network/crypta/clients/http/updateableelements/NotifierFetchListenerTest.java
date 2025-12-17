@@ -16,7 +16,7 @@ class NotifierFetchListenerTest {
 
   @Mock private PushDataManager pushManager;
 
-  @Mock private BaseUpdateableElement element;
+  @Mock private BaseUpdatableElement element;
 
   @Test
   void onEvent_whenCalled_updatesElementWithIdFromElement() {

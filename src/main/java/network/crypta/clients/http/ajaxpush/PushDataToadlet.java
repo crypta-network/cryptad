@@ -9,7 +9,7 @@ import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletContext;
 import network.crypta.clients.http.ToadletContextClosedException;
-import network.crypta.clients.http.updateableelements.BaseUpdateableElement;
+import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
 import network.crypta.clients.http.updateableelements.UpdaterConstants;
 import network.crypta.support.Base64;
 import network.crypta.support.api.HTTPRequest;
@@ -17,10 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Serves the current rendered state of a pushed, updateable element.
+ * Serves the current rendered state of a pushed, updatable element.
  *
  * <p>This toadlet is part of the browser-side “AJAX push” mechanism: client-side JavaScript polls
- * {@link network.crypta.clients.http.updateableelements.UpdaterConstants#dataPath} and expects the
+ * {@link network.crypta.clients.http.updateableelements.UpdaterConstants#DATA_PATH} and expects the
  * server to return a compact payload describing how to update the DOM for a previously rendered
  * element. The request identifies both the page/request session and the specific element via query
  * parameters. The element identifier is expected to be Base64-like and therefore may contain {@code
@@ -29,9 +29,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>On success, the reply body is formatted as {@code SUCCESS:<type>:<children>} where {@code
  * <type>} is the UTF-8 Base64 encoding of {@link
- * network.crypta.clients.http.updateableelements.BaseUpdateableElement#getUpdaterType()} and {@code
+ * network.crypta.clients.http.updateableelements.BaseUpdatableElement#getUpdaterType()} and {@code
  * <children>} is the UTF-8 Base64 encoding of {@link
- * network.crypta.clients.http.updateableelements.BaseUpdateableElement#generateChildren()}.
+ * network.crypta.clients.http.updateableelements.BaseUpdatableElement#generateChildren()}.
  *
  * <ul>
  *   <li>Responsibilities: translate request parameters into a rendered-element lookup and return a
@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * @see network.crypta.clients.http.updateableelements.PushDataManager
- * @see network.crypta.clients.http.updateableelements.BaseUpdateableElement
+ * @see network.crypta.clients.http.updateableelements.BaseUpdatableElement
  * @see network.crypta.clients.http.updateableelements.UpdaterConstants
  */
 public class PushDataToadlet extends Toadlet {
@@ -98,7 +98,7 @@ public class PushDataToadlet extends Toadlet {
         elementId.replace(
             " ", "+"); // This is needed, because BASE64 has '+', but it is an HTML escape for ' '
     if (LOG.isDebugEnabled()) LOG.debug("Fetching push data for elementId={}", elementId);
-    BaseUpdateableElement node =
+    BaseUpdatableElement node =
         ((SimpleToadletServer) ctx.getContainer())
             .getPushDataManager()
             .getRenderedElement(requestId, elementId);
@@ -120,12 +120,12 @@ public class PushDataToadlet extends Toadlet {
    *
    * <p>The returned value is used by the toadlet container for routing and by clients to locate the
    * endpoint that serves update payloads. The path is stable and defined by {@link
-   * network.crypta.clients.http.updateableelements.UpdaterConstants#dataPath}.
+   * network.crypta.clients.http.updateableelements.UpdaterConstants#DATA_PATH}.
    *
    * @return The absolute path prefix under which this toadlet is reachable.
    */
   @Override
   public String path() {
-    return UpdaterConstants.dataPath;
+    return UpdaterConstants.DATA_PATH;
   }
 }

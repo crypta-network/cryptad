@@ -64,7 +64,7 @@ public class LongPollingConnectionManager implements IConnectionManager {
 	private void sendRequest() {
 		// Only send if running
 		if (running == true) {
-			sentRequest = FreenetRequest.sendRequest(UpdaterConstants.notificationPath, new QueryParameter("requestId", FreenetJs.requestId), new RequestCallback() {
+			sentRequest = FreenetRequest.sendRequest(UpdaterConstants.NOTIFICATION_PATH, new QueryParameter("requestId", FreenetJs.requestId), new RequestCallback() {
 				@Override
 				public void onResponseReceived(Request request, Response response) {
 					FreenetJs.log("AJAX response:success:" + (response.getText().startsWith(UpdaterConstants.SUCCESS) ? "true" : "false"));

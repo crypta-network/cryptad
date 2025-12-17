@@ -2,12 +2,12 @@ package network.crypta.clients.http;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import network.crypta.clients.http.updateableelements.BaseUpdateableElement;
+import network.crypta.clients.http.updateableelements.BaseUpdatableElement;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.support.Ticker;
 
 /**
- * Coordinates periodic push updates for registered HTTP updateable elements.
+ * Coordinates periodic push updates for registered HTTP updatable elements.
  *
  * <p>This manager acts as a lightweight scheduler that relies on a shared {@link Ticker} to run a
  * refresher job every fixed interval (10 seconds). Clients create a single instance per HTTP
@@ -26,7 +26,7 @@ import network.crypta.support.Ticker;
  *
  * @see Ticker
  * @see PushDataManager
- * @see BaseUpdateableElement
+ * @see BaseUpdatableElement
  */
 public class IntervalPusherManager {
 
@@ -46,7 +46,7 @@ public class IntervalPusherManager {
         @Override
         public void run() {
           // Updating
-          for (BaseUpdateableElement element : elements) {
+          for (BaseUpdatableElement element : elements) {
             pushDataManager.updateElement(element.getUpdaterId(null));
           }
 
@@ -58,7 +58,7 @@ public class IntervalPusherManager {
       };
 
   /** The elements that are pushed at a fixed interval */
-  private final List<BaseUpdateableElement> elements = new CopyOnWriteArrayList<>();
+  private final List<BaseUpdatableElement> elements = new CopyOnWriteArrayList<>();
 
   /**
    * Creates a manager that schedules update pushes with the supplied ticker.
@@ -91,7 +91,7 @@ public class IntervalPusherManager {
    * @param element element to track; must not be null
    */
   @SuppressWarnings("unused")
-  public void registerUpdateableElement(BaseUpdateableElement element) {
+  public void registerUpdateableElement(BaseUpdatableElement element) {
     boolean needsStart = elements.isEmpty();
     elements.add(element);
     // If this is the first element, then it starts the ticker
@@ -112,7 +112,7 @@ public class IntervalPusherManager {
    * @param element element to remove from recurring update schedule
    */
   @SuppressWarnings("unused")
-  public void deregisterUpdateableElement(BaseUpdateableElement element) {
+  public void deregisterUpdateableElement(BaseUpdatableElement element) {
     elements.remove(element);
   }
 }

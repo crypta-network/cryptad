@@ -49,7 +49,7 @@ class PushKeepaliveToadletTest {
     String path = toadlet.path();
 
     // Assert
-    assertEquals(UpdaterConstants.keepalivePath, path);
+    assertEquals(UpdaterConstants.KEEPALIVE_PATH, path);
   }
 
   @ParameterizedTest(name = "success={0}")
@@ -156,12 +156,12 @@ class PushKeepaliveToadletTest {
   }
 
   private static URI keepaliveUri() {
-    return URI.create(BASE_URL + UpdaterConstants.keepalivePath);
+    return URI.create(BASE_URL + UpdaterConstants.KEEPALIVE_PATH);
   }
 
   private static URI keepaliveUriWithRequestId() {
     return URI.create(
-        BASE_URL + UpdaterConstants.keepalivePath + "?" + PARAM_REQUEST_ID + "=" + REQUEST_ID);
+        BASE_URL + UpdaterConstants.KEEPALIVE_PATH + "?" + PARAM_REQUEST_ID + "=" + REQUEST_ID);
   }
 
   private static final class CapturingPushKeepaliveToadlet extends PushKeepaliveToadlet {

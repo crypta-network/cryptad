@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * synchronization and ordering.
  *
  * @see PushDataManager#getNextNotification(String)
- * @see UpdaterConstants#notificationPath
+ * @see UpdaterConstants#NOTIFICATION_PATH
  */
 public class PushNotificationToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(PushNotificationToadlet.class);
@@ -118,6 +118,6 @@ public class PushNotificationToadlet extends Toadlet {
    */
   @Override
   public String path() {
-    return UpdaterConstants.notificationPath;
+    return UpdaterConstants.NOTIFICATION_PATH;
   }
 }

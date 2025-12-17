@@ -41,7 +41,7 @@ public class FreenetJs implements EntryPoint {
 			@Override
 			public void onWindowClosing(ClosingEvent event) {
 				isPushingCancelledExpected = true;
-				FreenetRequest.sendRequest(UpdaterConstants.leavingPath, new QueryParameter("requestId", requestId));
+				FreenetRequest.sendRequest(UpdaterConstants.LEAVING_PATH, new QueryParameter("requestId", requestId));
 				cm.closeConnection();
 			}
 		});
@@ -67,7 +67,7 @@ public class FreenetJs implements EntryPoint {
 			// Only log id debug is enabled
 			if (isDebug) {
 				// Write the log back to the server
-				 try{ FreenetRequest.sendRequest(UpdaterConstants.logWritebackPath, new QueryParameter("msg",requestId+":"+(logCounter++)+":"+urlEncode(msg))); }catch(Exception e){
+				 try{ FreenetRequest.sendRequest(UpdaterConstants.LOG_WRITEBACK_PATH, new QueryParameter("msg",requestId+":"+(logCounter++)+":"+urlEncode(msg))); }catch(Exception e){
 				 
 				 }
 				// Write the log to the console

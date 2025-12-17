@@ -106,12 +106,12 @@ public class PushFailoverToadlet extends Toadlet {
    *
    * <p>The returned value is used by the toadlet container for routing and by clients to locate the
    * endpoint that triggers a {@code PushDataManager} failover. The path is stable and defined by
-   * {@link network.crypta.clients.http.updateableelements.UpdaterConstants#failoverPath}.
+   * {@link network.crypta.clients.http.updateableelements.UpdaterConstants#FAILOVER_PATH}.
    *
    * @return The absolute path prefix under which this toadlet is reachable.
    */
   @Override
   public String path() {
-    return UpdaterConstants.failoverPath;
+    return UpdaterConstants.FAILOVER_PATH;
   }
 }
