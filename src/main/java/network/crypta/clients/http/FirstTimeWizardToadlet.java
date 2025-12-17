@@ -13,7 +13,7 @@ import network.crypta.clients.http.wizardsteps.BandwidthMonthly;
 import network.crypta.clients.http.wizardsteps.BandwidthRate;
 import network.crypta.clients.http.wizardsteps.BrowserWarning;
 import network.crypta.clients.http.wizardsteps.DatastoreSize;
-import network.crypta.clients.http.wizardsteps.MISC;
+import network.crypta.clients.http.wizardsteps.Misc;
 import network.crypta.clients.http.wizardsteps.NAME_SELECTION;
 import network.crypta.clients.http.wizardsteps.OPENNET;
 import network.crypta.clients.http.wizardsteps.PageHelper;
@@ -57,7 +57,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardToadlet.class);
   private final NodeClientCore core;
   private final EnumMap<WIZARD_STEP, Step> steps;
-  private final MISC stepMISC;
+  private final Misc stepMISC;
   private final SECURITY_NETWORK stepSecurityNetwork;
   private final SECURITY_PHYSICAL stepSecurityPhysical;
 
@@ -175,7 +175,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
 
     // Add step handlers that are set by presets
-    stepMISC = new MISC(core, config);
+    stepMISC = new Misc(core, config);
     steps.put(WIZARD_STEP.MISC, stepMISC);
 
     stepSecurityNetwork = new SECURITY_NETWORK(core);

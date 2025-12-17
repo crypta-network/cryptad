@@ -19,7 +19,7 @@ import java.util.EnumMap;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_PRESET;
 import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_STEP;
-import network.crypta.clients.http.wizardsteps.MISC;
+import network.crypta.clients.http.wizardsteps.Misc;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
 import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
@@ -130,7 +130,7 @@ class FirstTimeWizardToadletTest {
     when(request.isPartSet("singlestep")).thenReturn(false);
 
     // Replace side-effecting steps with mocks to verify interactions.
-    MISC misc = mock(MISC.class);
+    Misc misc = mock(Misc.class);
     SECURITY_NETWORK securityNetwork = mock(SECURITY_NETWORK.class);
     SECURITY_PHYSICAL securityPhysical = mock(SECURITY_PHYSICAL.class);
     when(securityPhysical.getCurrentLevel())
