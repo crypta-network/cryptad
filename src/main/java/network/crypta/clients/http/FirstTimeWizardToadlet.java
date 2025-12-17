@@ -8,10 +8,10 @@ import java.net.URISyntaxException;
 import java.util.EnumMap;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.wizardsteps.BANDWIDTH_RATE;
 import network.crypta.clients.http.wizardsteps.BROWSER_WARNING;
 import network.crypta.clients.http.wizardsteps.Bandwidth;
 import network.crypta.clients.http.wizardsteps.BandwidthMonthly;
+import network.crypta.clients.http.wizardsteps.BandwidthRate;
 import network.crypta.clients.http.wizardsteps.DATASTORE_SIZE;
 import network.crypta.clients.http.wizardsteps.MISC;
 import network.crypta.clients.http.wizardsteps.NAME_SELECTION;
@@ -172,7 +172,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.OPENNET, new OPENNET());
     steps.put(WIZARD_STEP.BANDWIDTH, new Bandwidth());
     steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(core, config));
-    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BANDWIDTH_RATE(core, config));
+    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
 
     // Add step handlers that are set by presets
     stepMISC = new MISC(core, config);
