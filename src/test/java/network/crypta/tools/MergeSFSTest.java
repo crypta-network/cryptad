@@ -1,10 +1,13 @@
 package network.crypta.tools;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,5 +61,45 @@ class MergeSFSTest {
     MergeSFS.main(new String[] {sourceFile.toString(), overrideFile.toString()});
 
     assertEquals("a=1\nb=2\nEnd\n", Files.readString(sourceFile, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void main_whenUsingStdout_expectNotToCloseSystemOut(@TempDir Path tempDir) throws IOException {
+    Path sourceFile = tempDir.resolve("source.sfs");
+    Path overrideFile = tempDir.resolve("override.sfs");
+
+    Files.writeString(sourceFile, "b=2\nEnd\n", StandardCharsets.UTF_8);
+    Files.writeString(overrideFile, "a=1\nEnd\n", StandardCharsets.UTF_8);
+
+    PrintStream originalOut = System.out;
+    CloseDetectingOutputStream capturingOut = new CloseDetectingOutputStream();
+    try (PrintStream redirectedOut = new PrintStream(capturingOut, true, StandardCharsets.UTF_8)) {
+      System.setOut(redirectedOut);
+      MergeSFS.main(new String[] {sourceFile.toString(), overrideFile.toString(), "--stdout"});
+      assertFalse(capturingOut.isClosed);
+      System.out.print("still-open");
+      System.out.flush();
+      //noinspection ConstantValue
+      assertFalse(capturingOut.isClosed);
+    } finally {
+      System.setOut(originalOut);
+    }
+  }
+
+  private static final class CloseDetectingOutputStream extends OutputStream {
+
+    private boolean isClosed;
+
+    @Override
+    public void write(int b) throws IOException {
+      if (isClosed) {
+        throw new IOException("OutputStream is closed");
+      }
+    }
+
+    @Override
+    public void close() {
+      isClosed = true;
+    }
   }
 }

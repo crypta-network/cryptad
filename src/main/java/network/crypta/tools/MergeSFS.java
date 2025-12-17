@@ -2,7 +2,6 @@ package network.crypta.tools;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FilterOutputStream;
@@ -156,8 +155,12 @@ public class MergeSFS {
     w.flush();
   }
 
+  @SuppressWarnings("java:S106")
   private static OutputStream stdoutOutputStream() {
-    return new FilterOutputStream(new FileOutputStream(FileDescriptor.out)) {
+    // Wrap System.out so try-with-resources callers can "close" it without closing stdout (FD 1).
+    // Do not create a new FileOutputStream(FileDescriptor.out) here: if the stream is not closed,
+    // its cleaner/finalizer may eventually close the shared stdout file descriptor during GC.
+    return new FilterOutputStream(System.out) {
       @Override
       public void close() throws IOException {
         flush();
