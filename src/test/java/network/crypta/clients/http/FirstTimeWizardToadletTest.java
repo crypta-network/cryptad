@@ -21,8 +21,8 @@ import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_PRESET;
 import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_STEP;
 import network.crypta.clients.http.wizardsteps.Misc;
 import network.crypta.clients.http.wizardsteps.PageHelper;
-import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
 import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
+import network.crypta.clients.http.wizardsteps.SecurityNetwork;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
@@ -131,7 +131,7 @@ class FirstTimeWizardToadletTest {
 
     // Replace side-effecting steps with mocks to verify interactions.
     Misc misc = mock(Misc.class);
-    SECURITY_NETWORK securityNetwork = mock(SECURITY_NETWORK.class);
+    SecurityNetwork securityNetwork = mock(SecurityNetwork.class);
     SECURITY_PHYSICAL securityPhysical = mock(SECURITY_PHYSICAL.class);
     when(securityPhysical.getCurrentLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);

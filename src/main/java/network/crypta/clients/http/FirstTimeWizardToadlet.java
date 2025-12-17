@@ -18,8 +18,8 @@ import network.crypta.clients.http.wizardsteps.NameSelection;
 import network.crypta.clients.http.wizardsteps.Opennet;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.PersistFields;
-import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
 import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
+import network.crypta.clients.http.wizardsteps.SecurityNetwork;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.clients.http.wizardsteps.WELCOME;
 import network.crypta.config.Config;
@@ -58,7 +58,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
   private final NodeClientCore core;
   private final EnumMap<WIZARD_STEP, Step> steps;
   private final Misc stepMISC;
-  private final SECURITY_NETWORK stepSecurityNetwork;
+  private final SecurityNetwork stepSecurityNetwork;
   private final SECURITY_PHYSICAL stepSecurityPhysical;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
@@ -178,7 +178,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     stepMISC = new Misc(core, config);
     steps.put(WIZARD_STEP.MISC, stepMISC);
 
-    stepSecurityNetwork = new SECURITY_NETWORK(core);
+    stepSecurityNetwork = new SecurityNetwork(core);
     steps.put(WIZARD_STEP.SECURITY_NETWORK, stepSecurityNetwork);
 
     stepSecurityPhysical = new SECURITY_PHYSICAL(core);
