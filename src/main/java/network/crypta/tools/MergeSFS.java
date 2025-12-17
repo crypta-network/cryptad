@@ -72,10 +72,19 @@ public class MergeSFS {
       return;
     }
 
+    // Important: Do not open the output stream to f1 until after the source has been parsed.
+    // Constructing FileOutputStream(f1) truncates f1 immediately, which would otherwise zero the
+    // source file before we read it, resulting in a merge that only contains the override.
+    SimpleFieldSet source;
+    SimpleFieldSet override;
     try (InputStream sourceIn = new FileInputStream(f1);
-        InputStream overrideIn = new FileInputStream(f2);
-        OutputStream out = new FileOutputStream(f1)) {
-      merge(sourceIn, overrideIn, out);
+        InputStream overrideIn = new FileInputStream(f2)) {
+      source = SimpleFieldSet.readFrom(sourceIn, false, true);
+      override = SimpleFieldSet.readFrom(overrideIn, false, true);
+    }
+    mergeInPlace(source, override);
+    try (OutputStream out = new FileOutputStream(f1)) {
+      writeToOrderedUtf8(source, out);
     }
   }
 
@@ -108,11 +117,7 @@ public class MergeSFS {
     SimpleFieldSet source = SimpleFieldSet.readFrom(sourceIn, false, true);
     SimpleFieldSet override = SimpleFieldSet.readFrom(overrideIn, false, true);
     mergeInPlace(source, override);
-
-    // Force output to UTF-8.
-    Writer w = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
-    source.writeToOrdered(w);
-    w.flush();
+    writeToOrderedUtf8(source, out);
   }
 
   /**
@@ -140,6 +145,14 @@ public class MergeSFS {
     w.write("Usage: source-file override-file [--stdout]\n");
     w.write("    By default the merged file is written to source-file.\n");
     w.write("    --stdout writes to standard output instead.\n");
+    w.flush();
+  }
+
+  private static void writeToOrderedUtf8(SimpleFieldSet fieldSet, OutputStream out)
+      throws IOException {
+    // Force output to UTF-8.
+    Writer w = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
+    fieldSet.writeToOrdered(w);
     w.flush();
   }
 
