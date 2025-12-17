@@ -34,9 +34,6 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
   private final boolean isPortForwardPlugin;
   private final boolean isMultiplePlugin;
 
-  /** Use {@link #isFCPServerPlugin} instead. */
-  @Deprecated private final boolean isFCPPlugin;
-
   private final boolean isFCPServerPlugin;
   private final boolean isVersionedPlugin;
   private final boolean isLongVersionedPlugin;
@@ -69,8 +66,6 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
     isIPDetectorPlugin = (plug instanceof FredPluginIPDetector);
     isPortForwardPlugin = (plug instanceof FredPluginPortForward);
     isMultiplePlugin = (plug instanceof FredPluginMultiple);
-    boolean legacyFcpPlugin = plug instanceof FredPluginFCP;
-    isFCPPlugin = legacyFcpPlugin;
     isFCPServerPlugin = (plug instanceof FredPluginFCPMessageHandler.ServerSideFCPMessageHandler);
     isVersionedPlugin = (plug instanceof FredPluginVersioned);
     isLongVersionedPlugin = (plug instanceof FredPluginRealVersioned);
@@ -262,14 +257,6 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
 
   public boolean isMultiplePlugin() {
     return isMultiplePlugin;
-  }
-
-  /**
-   * @deprecated Use {@link #isFCPServerPlugin()}
-   */
-  @Deprecated
-  public boolean isFCPPlugin() {
-    return isFCPPlugin;
   }
 
   public boolean isFCPServerPlugin() {

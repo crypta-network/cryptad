@@ -1,6 +1,5 @@
 package network.crypta.pluginmanager;
 
-import java.io.IOException;
 import java.util.UUID;
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
@@ -8,98 +7,97 @@ import network.crypta.clients.fcp.FCPPluginMessage;
 import network.crypta.support.io.NativeThread;
 
 /**
- * <i>NOTICE: This API is a rewrite of the whole code for plugin communication. It was added
- * 2015-03, and for some time after that may change in ways which break backward compatibility. Thus
- * any suggestions or pull requests for improvement of all involved interfaces and classes are
- * welcome!<br>
- * If you would not like to deal with adapting your plugins to possible changes, use the legacy
- * {@link FredPluginFCP} API meanwhile.</i><br>
- * <br>
- * FCP server or client plugins which transfer FCP messages to each other using a {@link
- * FCPPluginConnection} must implement this interface by implementing one of it's child interfaces,
- * to provide a function which handles the received messages.<br>
- * <br>
- * For symmetry, the child interfaces {@link ClientSideFCPMessageHandler} and {@link
- * ServerSideFCPMessageHandler} do not provide any different functions.<br>
- * They exist nevertheless to allow JavaDoc to explain differences in what the server and client are
- * allowed to do.<br>
- * You <b>must</b> follow the restrictions which are explained there.<br>
- * For clarity, you <b>must</b> implement the child interfaces instead of this interface.<br>
- * <br>
- * If you want to specify the thread priority of the message handling functions, you can
- * additionally implement the member interface {@link PrioritizedMessageHandler}.<br>
- * <br>
- * As opposed to the old {@link FredPluginFCP} and {@link FredPluginTalker} message handler
- * interfaces, and their {@link PluginReplySender} and {@link PluginTalker} message sending
- * counterparts, this new API is as symmetric as possible:<br>
- * Both the message handler and message sender is now one interface / class shared by both server
- * and client, instead of different ones for each - {@link FredPluginFCPMessageHandler} and {@link
- * FCPPluginConnection}.<br>
- * With the old interface, the server could only <i>reply</i> to messages of the client, it could
- * not send a message without a previous client message.<br>
- * With this implementation, server and client are free to send messages to each others whenever
- * they like to.<br>
- * The only restriction upon this is that the opening and closing of connections is dictated by the
- * client. The server cannot connect to a client on its own. <br>
- * <br>
+ * Handles messages exchanged between plugins over an {@link FCPPluginConnection}.
  *
- * <h1>Implementing a server</h1>
+ * <p>This interface is the shared super-type for both sides of a plugin-to-plugin FCP channel. A
+ * plugin implements one of its child interfaces, {@link ServerSideFCPMessageHandler} or {@link
+ * ClientSideFCPMessageHandler}, and provides a {@link #handlePluginFCPMessage(FCPPluginConnection,
+ * FCPPluginMessage)} implementation to process received {@link FCPPluginMessage} instances and,
+ * when appropriate, return a reply. This API is a rewrite of the plugin communication layer; it was
+ * added 2015-03 and may change in ways which break backward compatibility.
  *
- * <br>
- * All you have to do to allow clients to connect to your plugin by FCP is implement the child
- * interface {@link ServerSideFCPMessageHandler} at your plugin's main class.<br>
- * Freenet will then automatically detect that the main class implements it, and allow clients to
- * connect by FCP. <br>
- * <br>
+ * <p>The API is intentionally symmetric once a connection exists: both sides may send messages at
+ * any time. Connection creation and teardown are controlled by the client side; the server does not
+ * initiate a connection to a client on its own. The main reply to a message is expressed by this
+ * method's return value. In particular, {@link FCPPluginConnection#sendSynchronous(SendDirection,
+ * FCPPluginMessage, long)} delivers the reply to the waiting caller rather than dispatching it to
+ * the handler.
  *
- * <h1>Implementing a client</h1>
+ * <p>Message handlers are expected to be lightweight and should avoid long blocking work on the
+ * dispatch thread. For long-running operations, move work to another thread and use the connection
+ * to send follow-up ("out of band") messages. To influence dispatch priority, additionally
+ * implement {@link PrioritizedMessageHandler}. Calls can arrive on internal dispatch threads, so
+ * implementations should consider thread-safety when sharing mutable state.
  *
- * <br>
- * Use {@link PluginRespirator#connectToOtherPlugin(String,
- * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)} to connect to a FCP server plugin. <br>
- * <br>
+ * <ul>
+ *   <li>Return a correlated reply created via {@link FCPPluginMessage#constructReplyMessage}.
+ *   <li>Use out-of-band sends for asynchronous events and progress updates.
+ *   <li>Avoid long blocking work in the message dispatch thread.
+ * </ul>
  *
- * <h1>Debugging</h1>
+ * <h2>Implementing a server</h2>
  *
- * <br>
- * You can enable detailed logging for FCP plugin connections by setting the detailed priority
- * threshold for "network.crypta.clients.fcp.FCPPluginConnection" to DEBUG in the Logs
- * configuration. This will log all sent and received messages.<br>
- * This is usually done on the Freenet web interface at Configuration / Logs / Detailed priority
- * thresholds.<br>
- * ATTENTION: The log entries will appear at the time when the messages were queued for sending, not
- * when they were delivered. Delivery usually happens in a separate thread. Thus, the relative order
- * of arrival of messages can be different to the order of their appearance in the log file.<br>
- * If you need to know the order of arrival, add logging to your message handler. Also don't forget
- * that {@link FCPPluginConnection#sendSynchronous(SendDirection, FCPPluginMessage, long)} will not
- * deliver replies to the message handler but only return them instead.<br>
- * <br>
+ * <p>Implement {@link ServerSideFCPMessageHandler} on your plugin's main class to accept client
+ * connections and messages.
+ *
+ * <h2>Implementing a client</h2>
+ *
+ * <p>Use {@link PluginRespirator#connectToOtherPlugin(String,
+ * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)} to connect to a server plugin and keep
+ * a strong reference to the {@link FCPPluginConnection} while you want the connection open.
+ *
+ * <h2>Debugging</h2>
+ *
+ * <p>Enable DEBUG logging for {@code network.crypta.clients.fcp.FCPPluginConnection} to record all
+ * queued sent and received messages. Log entries are emitted when a message is queued, not when it
+ * is delivered, so log order can differ from delivery order. To record delivery order, log inside
+ * your {@code handlePluginFCPMessage(...)} implementation.
  *
  * @author xor (xor@freenetproject.org)
- * @see FCPPluginConnection A connection will be represented as class FCPPluginConnection to the
- *     client and server plugin. It's JavaDoc provides an overview of the lifecycle of connections.
+ * @see FCPPluginConnection Connection lifecycle and transport behavior.
  */
 public interface FredPluginFCPMessageHandler {
 
   /**
-   * Message handling function for messages received from a plugin FCP server or client.<br>
-   * <br>
-   * <b>ATTENTION</b>: Please read the different constraints for server and client side message
-   * handlers at the child interfaces:<br>
-   * - {@link ServerSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection,
-   * FCPPluginMessage)}<br>
-   * - {@link ClientSideFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection,
-   * FCPPluginMessage)}<br>
-   * To stress those different constraints, you should also not implement this interface but one of
-   * the child interfaces {@link ServerSideFCPMessageHandler} and {@link
-   * ClientSideFCPMessageHandler}.
+   * Handles an incoming message and optionally returns the main reply.
+   *
+   * <p>This is the shared entry point used by both the client and server side handlers. Implement
+   * {@link ServerSideFCPMessageHandler} or {@link ClientSideFCPMessageHandler} rather than
+   * implementing this base interface directly so you can follow the side-specific constraints.
+   *
+   * <p>The returned message, when non-{@code null}, is treated as the primary reply to {@code
+   * message}. Construct replies using {@link FCPPluginMessage#constructReplyMessage} to preserve
+   * correlation fields (such as {@link FCPPluginMessage#identifier}). For long-running work, do the
+   * work asynchronously and send follow-up messages via {@code connection}. Replies to reply
+   * messages are typically undesired; if {@code message} is already a reply (see {@link
+   * FCPPluginMessage#isReplyMessage()}), return {@code null} to avoid reply loops.
+   *
+   * @param connection the connection that delivered the message; never {@code null}
+   * @param message the received message to process; protocol-defined content
+   * @return a correlated reply message, or {@code null} to not reply
    */
   FCPPluginMessage handlePluginFCPMessage(FCPPluginConnection connection, FCPPluginMessage message);
 
   /**
-   * Plugins which provide FCP services to clients must implement this interface.<br>
-   * The purpose of this interface is to provide a message handling function for processing messages
-   * received from the clients.
+   * Server-side handler for messages received from connecting client plugins.
+   *
+   * <p>A plugin that offers an FCP service to other plugins implements this interface (typically on
+   * the plugin's main class). Incoming messages from each connected client are dispatched to {@link
+   * #handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.
+   *
+   * <p>Connections are opened and closed by the client side. If you keep {@link
+   * FCPPluginConnection} instances beyond a single call (for example to send asynchronous event
+   * notifications), implement a strategy to detect and discard stale connections because there is
+   * no explicit disconnect callback.
+   *
+   * <pre>{@code
+   * public final class MyPlugin implements FredPluginFCPMessageHandler.ServerSideFCPMessageHandler {
+   *   @Override
+   *   public FCPPluginMessage handlePluginFCPMessage(FCPPluginConnection c, FCPPluginMessage m) {
+   *     return null;
+   *   }
+   * }
+   * }</pre>
    *
    * @see FredPluginFCPMessageHandler The parent interface FredPluginFCPMessageHandler provides an
    *     overview.
@@ -107,75 +105,31 @@ public interface FredPluginFCPMessageHandler {
    */
   interface ServerSideFCPMessageHandler extends FredPluginFCPMessageHandler {
     /**
-     * Is called to handle messages from your clients.<br>
-     * <b>Must not</b> block for very long and thus must only do small amounts of processing.
+     * Handles a message received from a client plugin and optionally returns the main reply.
      *
-     * <p>If you ...<br>
-     * - Need a long time to compute a reply.<br>
-     * - Need to keep a reference to the client connection because you want to send messages to the
-     * client after having exited this function; maybe even triggered by events at your plugin, not
-     * by client messages.<br>
-     * Then you should:<br>
-     * - Store the passed {@link FCPPluginConnection}. If you cannot store objects in memory, for
-     * example because you are using a database, you can get the {@link UUID} of the connection via
-     * {@link FCPPluginConnection#getID()}, store only that, and then in the future get back the
-     * connection using {@link PluginRespirator#getPluginConnectionByID(UUID)}.<br>
-     * - Compute your reply in another thread.</br> - Once you're ready to send the reply, send the
-     * message using the send functions of the {@link FCPPluginConnection}.<br>
-     * - Notice that there is no explicit disconnection mechanism. Clients can come and go as they
-     * please. The only way to be sure that a connection is alive is by checking whether the client
-     * replies to messages.<br>
-     * Thus, if you store client connections for longer than sending a single reply, make sure to
-     * prevent excessive growth of your connection database upon client disconnection by
-     * implementing a garbage collection mechanism as follows:<br>
-     * Periodically send a message at each connection and check if you get a reply within a
-     * reasonable timeout to check whether the connection is still alive. Drop the connection if
-     * not. You may make a "Ping" message with a "Pong" response a requirement for your server's
-     * protocol.<br>
+     * <p>This method is invoked on the server side of the connection and should return quickly. If
+     * you need long-running work to compute a reply, or you want to send future messages that are
+     * not triggered by an inbound message, keep the {@link FCPPluginConnection} (or its {@link
+     * FCPPluginConnection#getID()} via {@link UUID}) and send follow-up ("out of band") messages
+     * using the connection's send methods.
      *
-     * @param connection The connection of the client which sent the message.<br>
-     *     <br>
-     *     You <b>must not</b> use its send functions for sending back the main reply. Instead, use
-     *     the return value for shipping the reply. (You are free to send "out of band" secondary
-     *     replies using the connection.)<br>
-     *     The requirement of returning the reply is to ensure that the reply can be clearly
-     *     identified as such, and shipped to the remote side with a clear specification to which
-     *     message it is a reply.<br>
-     *     This is useful for example if the sender of the original message used the
-     *     <i>synchronous</i> send function {@link FCPPluginConnection#sendSynchronous(
-     *     SendDirection, FCPPluginMessage, long)}: The function shall wait for the reply to the
-     *     original message, and return it to the caller. This only works if replies are properly
-     *     identified, otherwise it would have to throw an {@link IOException} to signal a timeout
-     *     while waiting for the reply.<br>
-     *     <br>
-     * @param message The actual message. See the JavaDoc of its member variables for an explanation
-     *     of their meaning.
-     * @return Your reply message, or null if you don't want to reply.<br>
-     *     <br>
-     *     You <b>must</b> construct this by using the constructor {@link FCPPluginMessage#
-     *     constructReplyMessage(FCPPluginMessage, SimpleFieldSet, Bucket, boolean, String, String)}
-     *     (or one of its shortcuts) to ensure that the {@link FCPPluginMessage#identifier} gets
-     *     preserved.<br>
-     *     <br>
-     *     Replies to replies are not allowed: You <b>must</b> return null if the original message
-     *     was a reply message already as indicated by {@link FCPPluginMessage#isReplyMessage()}.
-     *     <br>
-     *     Replies often shall only indicate success / failure instead of triggering actual
-     *     operations, so it could cause infinite bouncing if you reply to them again.<br>
-     *     If you still have to send a message to do further operations, you should create a new
-     *     "dialog" by sending an "out of band" message using the passed {@link
-     *     FCPPluginConnection}, as explained in the description of this function.<br>
-     *     Consider the whole of this as a remote procedure call process: A non-reply message is the
-     *     procedure call, a reply message is the procedure result. When receiving the result, the
-     *     procedure call is finished, and shouldn't contain further replies. <br>
-     *     <br>
-     *     You <b>should</b> always return a reply instead of null if you're allowed to, even if you
-     *     have got nothing to say:<br>
-     *     This allows the remote side to detect whether its requested operation succeeded or failed
-     *     because reply messages always have to specify success/failure.<br>
-     *     Notice: Even upon failure, a reply is better than saying nothing because it allows {@link
-     *     FCPPluginConnection#sendSynchronous(SendDirection, FCPPluginMessage, long)} to fail fast
-     *     instead of having to wait for timeout.
+     * <p>There is no explicit disconnection notification. If you store client connections for
+     * longer than a single reply, implement an application-level liveness/garbage-collection
+     * mechanism (for example ping/pong with a timeout) to prevent unbounded growth.
+     *
+     * <p>When sending the main reply to {@code message}, do not call a send method on {@code
+     * connection}; return the reply instead. This allows the transport to associate the reply with
+     * the original request and also supports synchronous senders via {@link
+     * FCPPluginConnection#sendSynchronous(SendDirection, FCPPluginMessage, long)}.
+     *
+     * <p>If you return a reply, construct it via {@link FCPPluginMessage#constructReplyMessage} so
+     * correlation fields (such as {@link FCPPluginMessage#identifier}) are preserved. If {@code
+     * message} is already a reply (see {@link FCPPluginMessage#isReplyMessage()}), return {@code
+     * null} to avoid reply loops.
+     *
+     * @param connection connection that delivered the inbound client message
+     * @param message message to process; may be a reply message already
+     * @return correlated reply message, or {@code null} to not reply
      */
     @Override
     FCPPluginMessage handlePluginFCPMessage(
@@ -183,69 +137,54 @@ public interface FredPluginFCPMessageHandler {
   }
 
   /**
-   * Client plugins which connect to a FCP server plugin must implement this interface.<br>
-   * The purpose of this interface is to provide a message handling function for processing messages
-   * received from the server.
+   * Client-side handler for messages received from a server plugin.
    *
-   * @see FredPluginFCPMessageHandler The parent interface FredPluginFCPMessageHandler provides an
-   *     overview.
-   * @see ServerSideFCPMessageHandler The opposite version of this interface for server plugins
+   * <p>A client plugin implements this interface to connect to a server plugin and process inbound
+   * messages. After connecting via {@link PluginRespirator#connectToOtherPlugin(String,
+   * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)}, messages are dispatched to {@link
+   * #handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.
+   *
+   * <p>The server may send messages at any time, including unsolicited event notifications that are
+   * not a direct response to a message you sent. Keep a strong reference to the {@link
+   * FCPPluginConnection} while you want the connection to remain open.
+   *
+   * <pre>{@code
+   * var connection = respirator.connectToOtherPlugin("OtherPlugin", handler);
+   * // Keep a strong reference to connection while the connection should stay open.
+   * }</pre>
+   *
+   * @see FredPluginFCPMessageHandler Shared lifecycle and reply semantics.
+   * @see ServerSideFCPMessageHandler Server-side counterpart implemented by service providers.
    */
   interface ClientSideFCPMessageHandler extends FredPluginFCPMessageHandler {
     /**
-     * Is called to handle messages from the server after you sent a message to it using a {@link
-     * FCPPluginConnection}.<br>
-     * <br>
-     * <b>ATTENTION:</b> The server is free to send messages to you on its own, that is not
-     * triggered by any message which you sent.<br>
-     * This can happen for as long as you keep the connection open by having a hard reference to the
-     * original {@link FCPPluginConnection} in memory.<br>
-     * The purpose of this mechanism is for example to allow the server to tell you about events
-     * which happened at its side.<br>
+     * Handles a message received from the server plugin and optionally returns the main reply.
      *
-     * @param connection The connection which you had originally established to the server.<br>
-     *     <br>
-     *     You <b>must not</b> use its send functions for sending back the main reply. Instead, use
-     *     the return value for shipping the reply. (You are free to send "out of band" secondary
-     *     replies using the connection.)<br>
-     *     The requirement of returning the reply is to ensure that the reply can be clearly
-     *     identified as such, and shipped to the remote side with a clear specification to which
-     *     message it is a reply.<br>
-     *     This is useful for example if the sender of the original message used the
-     *     <i>synchronous</i> send function {@link FCPPluginConnection#sendSynchronous(
-     *     SendDirection, FCPPluginMessage, long)}: The function shall wait for the reply to the
-     *     original message, and return it to the caller. This only works if replies are properly
-     *     identified, otherwise it would have to throw an {@link IOException} to signal a timeout
-     *     while waiting for the reply.<br>
-     *     <br>
-     * @param message The actual message. See the JavaDoc of its member variables for an explanation
-     *     of their meaning.
-     * @return Your reply message, or null if you don't want to reply.<br>
-     *     <br>
-     *     You <b>must</b> construct this by using the constructor {@link FCPPluginMessage#
-     *     constructReplyMessage(FCPPluginMessage, SimpleFieldSet, Bucket, boolean, String, String)}
-     *     (or one of its shortcuts) to ensure that the {@link FCPPluginMessage#identifier} gets
-     *     preserved.<br>
-     *     <br>
-     *     Replies to replies are not allowed: You <b>must</b> return null if the original message
-     *     was a reply message already as indicated by {@link FCPPluginMessage#isReplyMessage()}.
-     *     <br>
-     *     Replies often shall only indicate success / failure instead of triggering actual
-     *     operations, so it could cause infinite bouncing if you reply to them again.<br>
-     *     If you still have to send a message to do further operations, you should create a new
-     *     "dialog" by sending an "out of band" message using the passed {@link
-     *     FCPPluginConnection}, as explained in the description of this function.<br>
-     *     Consider the whole of this as a remote procedure call process: A non-reply message is the
-     *     procedure call, a reply message is the procedure result. When receiving the result, the
-     *     procedure call is finished, and shouldn't contain further replies. <br>
-     *     <br>
-     *     You <b>should</b> always return a reply instead of null if you're allowed to, even if you
-     *     have got nothing to say:<br>
-     *     This allows the remote side to detect whether its requested operation succeeded or failed
-     *     because reply messages always have to specify success/failure.<br>
-     *     Notice: Even upon failure, a reply is better than saying nothing because it allows {@link
-     *     FCPPluginConnection#sendSynchronous(SendDirection, FCPPluginMessage, long)} to fail fast
-     *     instead of having to wait for timeout.
+     * <p>After you connect using {@link PluginRespirator#connectToOtherPlugin(String,
+     * FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)}, this method is invoked for each
+     * message delivered from the server side. The server may also send unsolicited messages that
+     * are not a direct response to a message you sent.
+     *
+     * <p>Keep this method lightweight and avoid long blocking work. For asynchronous operations or
+     * later events, keep the {@link FCPPluginConnection} (or its {@link
+     * FCPPluginConnection#getID()} via {@link UUID}) and send follow-up ("out of band") messages
+     * using the connection's send methods.
+     *
+     * <p>When sending the main reply to {@code message}, do not call a send method on {@code
+     * connection}; return the reply instead. This allows the transport to associate the reply with
+     * the original request and also supports synchronous senders via {@link
+     * FCPPluginConnection#sendSynchronous(SendDirection, FCPPluginMessage, long)}.
+     *
+     * <p>Replies to reply messages are not allowed: return {@code null} if {@code message} is
+     * already a reply (see {@link FCPPluginMessage#isReplyMessage()}) to avoid infinite reply
+     * loops. Prefer returning a reply when allowed so the remote side can observe success or
+     * failure without waiting for a timeout. If you return a reply, construct it via {@link
+     * FCPPluginMessage#constructReplyMessage} so correlation fields (such as {@link
+     * FCPPluginMessage#identifier}) are preserved.
+     *
+     * @param connection connection that delivered the inbound server message
+     * @param message message to process; may be a reply message already
+     * @return correlated reply message, or {@code null} to not reply
      */
     @Override
     FCPPluginMessage handlePluginFCPMessage(
@@ -253,17 +192,24 @@ public interface FredPluginFCPMessageHandler {
   }
 
   /**
-   * Implement this to specify a thread priority of threads which are used to execute the message
-   * handling function {@link
-   * FredPluginFCPMessageHandler#handlePluginFCPMessage(FCPPluginConnection, FCPPluginMessage)}.<br>
-   * <br>
-   * Notice that the priority could even be specified depending on the type of individual messages
-   * as the individual messages are passed to the implementation of this handler. (Of course you are
-   * free to ignore this parameter and return the same priority for all messages.)
+   * Optional interface for selecting the priority of message dispatch threads.
+   *
+   * <p>Implement this in addition to {@link FredPluginFCPMessageHandler} when you want the FCP
+   * subsystem to choose a {@link NativeThread.PriorityLevel} for the thread that will invoke {@code
+   * handlePluginFCPMessage(...)}. Implementations may return a constant priority for all messages
+   * or vary it based on protocol-defined characteristics of the incoming {@link FCPPluginMessage}.
    */
   interface PrioritizedMessageHandler {
     /**
-     * @see PrioritizedMessageHandler
+     * Returns the desired thread priority for dispatching a specific message.
+     *
+     * <p>The FCP subsystem may call this before invoking {@code handlePluginFCPMessage(...)} to
+     * choose an appropriate {@link NativeThread.PriorityLevel} for the message dispatch thread.
+     * Implementations may return a constant priority for all messages or vary the priority based on
+     * message type, size, or other protocol-defined characteristics.
+     *
+     * @param message message about to be dispatched; examine to choose priority
+     * @return the priority level to use for handling this message
      */
     NativeThread.PriorityLevel getPriority(FCPPluginMessage message);
   }

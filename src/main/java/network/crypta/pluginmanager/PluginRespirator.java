@@ -1,7 +1,6 @@
 package network.crypta.pluginmanager;
 
 import java.io.IOException;
-import java.lang.ref.ReferenceQueue;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -113,24 +112,11 @@ public class PluginRespirator {
   }
 
   /**
-   * Get a PluginTalker so you can talk with other plugins.
-   *
-   * @deprecated Use {@link #connectToOtherPlugin(String,
-   *     FredPluginFCPMessageHandler.ClientSideFCPMessageHandler)} instead.
-   */
-  @Deprecated
-  public PluginTalker getPluginTalker(FredPluginTalker fpt, String pluginname, String identifier)
-      throws PluginNotFoundException {
-    return new PluginTalker(fpt, node, pluginname, identifier);
-  }
-
-  /**
    * <i>NOTICE: This API is a rewrite of the whole code for plugin communication. It was added
    * 2015-03, and for some time after that may change in ways which break backward compatibility.
    * Thus any suggestions or pull requests for improvement of all involved interfaces and classes
    * are welcome!<br>
-   * If you would not like to deal with adapting your plugins to possible changes, use the legacy
-   * {@link #getPluginTalker(FredPluginTalker, String, String)} API meanwhile.</i><br>
+   * </i><br>
    *
    * <p>Creates a FCP client connection with another plugin which is a FCP server (= which
    * implements interface {@link FredPluginFCPMessageHandler.ServerSideFCPMessageHandler}).<br>
@@ -141,9 +127,9 @@ public class PluginRespirator {
    * <h1>Disconnecting properly</h1>
    *
    * <p>The formally correct mechanism of disconnecting the returned {@link FCPPluginConnection} is
-   * to null out the strong reference to it. The node internally keeps a {@link ReferenceQueue}
-   * which allows it to detect the strong reference being nulled, which in turn makes the node clean
-   * up its internal structures.<br>
+   * to null out the strong reference to it. The node internally keeps a {@link
+   * java.lang.ref.ReferenceQueue} which allows it to detect the strong reference being nulled,
+   * which in turn makes the node clean up its internal structures.<br>
    * Thus, you are encouraged to keep the returned {@link FCPPluginConnection} in memory and use it
    * for as long as you need it. Notice that keeping it in memory won't block unloading of the
    * server plugin. If the server plugin is unloaded, the send-functions will fail. To get
