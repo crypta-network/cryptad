@@ -79,7 +79,7 @@ public class DetectedIP {
 
   /**
    * Full cone NAT. Once we have sent a packet out on a port, any node anywhere can send us a packet
-   * on that port. The nicest option, but very rare unfortunately.
+   * on that port. The nicest option, but very rare, unfortunately.
    *
    * <p>This classification is typically used to decide whether simple outbound traffic is
    * sufficient to enable inbound peer communication without additional coordination.
