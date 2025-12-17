@@ -15,7 +15,7 @@ import network.crypta.clients.http.wizardsteps.BrowserWarning;
 import network.crypta.clients.http.wizardsteps.DatastoreSize;
 import network.crypta.clients.http.wizardsteps.Misc;
 import network.crypta.clients.http.wizardsteps.NameSelection;
-import network.crypta.clients.http.wizardsteps.OPENNET;
+import network.crypta.clients.http.wizardsteps.Opennet;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.PersistFields;
 import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
@@ -169,7 +169,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
     steps.put(WIZARD_STEP.NAME_SELECTION, new NameSelection(config));
     steps.put(WIZARD_STEP.DATASTORE_SIZE, new DatastoreSize(core, config));
-    steps.put(WIZARD_STEP.OPENNET, new OPENNET());
+    steps.put(WIZARD_STEP.OPENNET, new Opennet());
     steps.put(WIZARD_STEP.BANDWIDTH, new Bandwidth());
     steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(core, config));
     steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
