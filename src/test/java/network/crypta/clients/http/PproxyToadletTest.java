@@ -102,7 +102,10 @@ class PproxyToadletTest {
 
     verify(ctx)
         .sendReplyHeaders(
-            eq((int) DownloadPluginHTTPException.CODE),
+            eq(
+                (int)
+                    new DownloadPluginHTTPException(payload, "file.bin", "application/octet-stream")
+                        .code()),
             eq("Found"),
             headersCaptor.capture(),
             eq("application/octet-stream"),
