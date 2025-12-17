@@ -71,13 +71,21 @@ public class PluginTalker {
 
   protected WeakReference<FredPluginFCP> findPlugin(String pluginname2)
       throws PluginNotFoundException {
-    LOG.info("Searching fcp plugin: " + pluginname2);
-    FredPluginFCP plug = node.getPluginManager().getFCPPlugin(pluginname2);
+    LOG.info("Searching fcp plugin: {}", pluginname2);
+    FredPluginFCP plug = null;
+    for (PluginInfoWrapper pluginInfoWrapper : node.getPluginManager().getPlugins()) {
+      if (pluginInfoWrapper.getPluginClassName().equals(pluginname2)
+          && !pluginInfoWrapper.isStopping()
+          && pluginInfoWrapper.getPlugin() instanceof FredPluginFCP fcpPlugin) {
+        plug = fcpPlugin;
+        break;
+      }
+    }
     if (plug == null) {
-      LOG.error("Could not find fcp plugin: " + pluginname2);
+      LOG.error("Could not find fcp plugin: {}", pluginname2);
       throw new PluginNotFoundException();
     }
-    LOG.info("Found fcp plugin: " + pluginname2);
+    LOG.info("Found fcp plugin: {}", pluginname2);
     return new WeakReference<>(plug);
   }
 

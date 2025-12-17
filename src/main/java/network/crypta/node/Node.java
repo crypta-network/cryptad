@@ -3328,7 +3328,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // Initialize the plugin manager
     LOG.info("Initializing Plugin Manager");
-    pluginManager = new PluginManager(this, lastVersion);
+    pluginManager = PluginManager.create(this, lastVersion);
 
     shutdownHook.addEarlyJob(
         new NativeThread("Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
