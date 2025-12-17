@@ -10,7 +10,7 @@ import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
-import network.crypta.clients.http.wizardsteps.DATASTORE_SIZE;
+import network.crypta.clients.http.wizardsteps.DatastoreSize;
 import network.crypta.config.Config;
 import network.crypta.config.ConfigException;
 import network.crypta.config.Option;
@@ -487,7 +487,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
         LOG.error(UNEXPECTED_ERROR_MESSAGE, e, e);
       }
 
-      DATASTORE_SIZE.setDatastoreSize(storageLimit + "GiB", config, this);
+      DatastoreSize.setDatastoreSize(storageLimit + "GiB", config);
 
       if (!isPasswordAlreadySet) {
         try {
