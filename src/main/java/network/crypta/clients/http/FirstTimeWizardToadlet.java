@@ -18,8 +18,8 @@ import network.crypta.clients.http.wizardsteps.NameSelection;
 import network.crypta.clients.http.wizardsteps.Opennet;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.PersistFields;
-import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
 import network.crypta.clients.http.wizardsteps.SecurityNetwork;
+import network.crypta.clients.http.wizardsteps.SecurityPhysical;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.clients.http.wizardsteps.Welcome;
 import network.crypta.config.Config;
@@ -59,7 +59,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
   private final EnumMap<WIZARD_STEP, Step> steps;
   private final Misc stepMISC;
   private final SecurityNetwork stepSecurityNetwork;
-  private final SECURITY_PHYSICAL stepSecurityPhysical;
+  private final SecurityPhysical stepSecurityPhysical;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
@@ -181,7 +181,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     stepSecurityNetwork = new SecurityNetwork(core);
     steps.put(WIZARD_STEP.SECURITY_NETWORK, stepSecurityNetwork);
 
-    stepSecurityPhysical = new SECURITY_PHYSICAL(core);
+    stepSecurityPhysical = new SecurityPhysical(core);
     steps.put(WIZARD_STEP.SECURITY_PHYSICAL, stepSecurityPhysical);
   }
 
@@ -406,8 +406,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
       stepMISC.setUPnP(loadUPnPPlugin);
       stepMISC.setAutoUpdate(enableAutoUpdater);
       stepSecurityNetwork.setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
-      stepSecurityPhysical.setThreatLevel(
-          SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL, stepSecurityPhysical.getCurrentLevel());
+      stepSecurityPhysical.setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
       redirectTo.append("&preset=LOW&opennet=true");
     } else if (presetHigh) {
       stepMISC.setUPnP(loadUPnPPlugin);
