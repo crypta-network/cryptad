@@ -7,27 +7,52 @@ import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.CHKBlock;
+import network.crypta.keys.CHKDecodeException;
+import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHK;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
+import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.*;
-import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import network.crypta.support.Fields;
+import network.crypta.support.HexUtil;
+import network.crypta.support.PooledExecutor;
+import network.crypta.support.PriorityAwareExecutor;
+import network.crypta.support.compress.Compressor;
 import network.crypta.support.io.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
 /**
- * Test a busy, bandwidth limited network. Hopefully this should reveal any serious problems with
- * load limiting and block transfer.
+ * Simulation harness that stresses a busy, bandwidth-limited network of real nodes.
+ *
+ * <p>This test configures a fixed-size node mesh, links it into a Kleinberg-style topology, and
+ * then exercises bulk insert and prefetch behavior under constrained bandwidth settings. It
+ * performs a single end-to-end run: it deletes any existing working directory, creates test nodes
+ * with in-memory stores, starts the nodes, waits for connectivity and a high ping success rate,
+ * inserts a fixed number of keys into random nodes, and finally queues prefetch requests for every
+ * node. The process exits once all queued requests drain, so it is intended as a one-shot stress
+ * run rather than a reusable fixture.
+ *
+ * <p>The harness itself executes on the main thread, while node activity happens inside each node's
+ * executor. Completion is detected by polling queued request counts with a timed wait, which favors
+ * test stability over strict real-time scheduling.
+ *
+ * <ul>
+ *   <li>Builds a deterministic network using {@link DummyRandomSource} and fixed constants.
+ *   <li>Applies bandwidth limits and optional feature toggles for repeatability.
+ *   <li>Logs progress and exits with explicit codes for setup or insert failures.
+ * </ul>
  *
  * @author toad
+ * @see RealNodeRoutingTest
  */
 public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static final Logger LOG = LoggerFactory.getLogger(RealNodeBusyNetworkTest.class);
+  private static final Object COMPLETION_MONITOR = new Object();
 
   static final int NUMBER_OF_NODES = 25;
   static final int DEGREE = 5;
@@ -44,32 +69,97 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   static final boolean FORK_ON_CACHEABLE = false;
   static final boolean REAL_TIME_FLAG = false;
 
-  // static final int NUMBER_OF_NODES = 50;
-  // static final short MAX_HTL = 10;
-
   static final int DARKNET_PORT_BASE = 5008;
   static final int DARKNET_PORT_END = DARKNET_PORT_BASE + NUMBER_OF_NODES;
 
+  /**
+   * Creates an instance of the test harness with no instance state.
+   *
+   * <p>This class is designed to be used through its static entry point, but the default
+   * constructor remains public for tools that require reflective instantiation. The constructor
+   * performs no initialization and does not allocate resources; all state used by the test is
+   * created within {@link #main(String[])} and released when the process exits.
+   */
+  public RealNodeBusyNetworkTest() {
+    // Intentionally empty: this harness is driven by static entry points.
+  }
+
+  /**
+   * Runs the busy-network simulation from setup through completion and then terminates the process.
+   *
+   * <p>The method creates or recreates the working directory, initializes test nodes with fixed
+   * topology and bandwidth settings, and waits for a healthy ping average before inserting keys. It
+   * then queues prefetch requests for every inserted key across every node and blocks until all
+   * queued requests finish. The method is not idempotent: it deletes prior data, consumes ports,
+   * and calls {@link System#exit(int)} on failure or normal completion.
+   *
+   * @param args command-line arguments that are currently ignored by this test harness
+   * @throws Exception if node initialization, startup, or waiting is interrupted or fails
+   */
   public static void main(String[] args) throws Exception {
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
-    if (!FileUtil.removeAll(wd)) {
-      System.err.println("Mass delete failed, test may not be accurate.");
+    prepareWorkingDirectory(wd);
+    NodeStarter.globalTestInit(new File(name), false, Level.ERROR, "", true, null);
+    LOG.info("Busy network test (inserts/retrieves in quantity/stress test)");
+    DummyRandomSource random = new DummyRandomSource();
+    Node[] nodes = createNodes(wd, random);
+
+    // Now link them up
+    makeKleinbergNetwork(
+        nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
+
+    LOG.info("Added random links");
+
+    startNodes(nodes);
+
+    waitForAllConnected(nodes);
+
+    waitForPingAverage(0.95, nodes, random, MAX_PINGS, 1000);
+
+    LOG.info("Ping average > 95%, lets do some inserts/requests");
+
+    HighLevelSimpleClient[] clients = createClients(nodes);
+
+    // Insert 100 keys into random nodes
+
+    ClientCHK[] keys = insertKeys(nodes, random);
+
+    // Now queue requests for each key on every node.
+    queueRequests(clients, nodes, keys);
+
+    // Now wait until finished. How???
+
+    waitForCompletion(nodes);
+    System.exit(0);
+  }
+
+  /**
+   * Removes any existing working directory and recreates it for a fresh test run.
+   *
+   * @param workingDirectory location that is deleted and recreated for this test run
+   */
+  private static void prepareWorkingDirectory(File workingDirectory) {
+    if (!FileUtil.removeAll(workingDirectory)) {
+      LOG.warn("Mass delete failed, test may not be accurate.");
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
-    wd.mkdir();
-    // NOTE: globalTestInit returns in ignored random source
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.Location:normal,freenet.node.simulator.RealNode:minor,freenet.node.Insert:MINOR,freenet.node.Request:MINOR,freenet.node.Node:MINOR");
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
-    NodeStarter.globalTestInit(new File(name), false, Level.ERROR, "", true, null);
-    System.out.println("Busy network test (inserts/retrieves in quantity/stress test)");
-    System.out.println();
-    DummyRandomSource random = new DummyRandomSource();
-    // DiffieHellman.init(random);
+    if (!workingDirectory.mkdir() && !workingDirectory.isDirectory()) {
+      LOG.warn("Failed to create working directory: {}", workingDirectory.getAbsolutePath());
+      System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
+    }
+  }
+
+  /**
+   * Builds the configured test nodes backed by the shared working directory.
+   *
+   * @param workingDirectory base directory shared by all nodes for test storage
+   * @param random deterministic random source used for node configuration choices
+   * @return the initialized nodes, in creation order, with configured test parameters
+   * @throws NodeInitException if a node fails to initialize with the provided parameters
+   */
+  private static Node[] createNodes(File workingDirectory, DummyRandomSource random)
+      throws NodeInitException {
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
     PriorityAwareExecutor executor = new PooledExecutor();
@@ -77,7 +167,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
       params.setPort(DARKNET_PORT_BASE + i);
       params.setOpennetPort(0);
-      params.setBaseDirectory(wd);
+      params.setBaseDirectory(workingDirectory);
       params.setDisableProbabilisticHTLs(false);
       params.setMaxHTL(MAX_HTL);
       params.setDropProb(20);
@@ -95,28 +185,31 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       params.setEnableFOAF(ENABLE_FOAF);
       params.setLongPingTimes(true);
       nodes[i] = NodeStarter.createTestNode(params);
-      LOG.info("Created node " + i);
+      LOG.info("Created node {}", i);
     }
+    return nodes;
+  }
 
-    // Now link them up
-    makeKleinbergNetwork(
-        nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
-
-    LOG.info("Added random links");
-
-    for (int i = 0; i < NUMBER_OF_NODES; i++) {
+  /**
+   * Starts all nodes in order and logs progress.
+   *
+   * @param nodes nodes to start in index order for deterministic startup logging
+   * @throws NodeInitException if any node fails to start successfully
+   */
+  private static void startNodes(Node[] nodes) throws NodeInitException {
+    for (int i = 0; i < nodes.length; i++) {
       nodes[i].start(false);
-      System.err.println("Started node " + i + "/" + nodes.length);
+      LOG.info("Started node {}/{}", i, nodes.length);
     }
+  }
 
-    waitForAllConnected(nodes);
-
-    waitForPingAverage(0.95, nodes, random, MAX_PINGS, 1000);
-
-    System.out.println();
-    System.out.println("Ping average > 95%, lets do some inserts/requests");
-    System.out.println();
-
+  /**
+   * Creates a client per node using the immediate splitfile priority class.
+   *
+   * @param nodes nodes that provide the client cores used to create clients
+   * @return one client per node, aligned by index with the {@code nodes} array
+   */
+  private static HighLevelSimpleClient[] createClients(Node[] nodes) {
     HighLevelSimpleClient[] clients = new HighLevelSimpleClient[nodes.length];
     for (int i = 0; i < clients.length; i++) {
       clients[i] =
@@ -124,71 +217,139 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
               .getClientCore()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, false, false);
     }
+    return clients;
+  }
 
-    // Insert 100 keys into random nodes
-
+  /**
+   * Inserts the configured number of keys into random nodes.
+   *
+   * @param nodes nodes that receive randomly selected inserts during the run
+   * @param random random source used to pick which node receives each insert
+   * @return client keys corresponding to each inserted block, in insert order
+   * @throws CHKEncodeException if encoding a client block fails for the input data
+   * @throws CHKDecodeException if decoding a client block fails for logging output
+   */
+  private static ClientCHK[] insertKeys(Node[] nodes, DummyRandomSource random)
+      throws CHKEncodeException, CHKDecodeException {
     ClientCHK[] keys = new ClientCHK[INSERT_KEYS];
-
     String baseString = System.currentTimeMillis() + " ";
     for (int i = 0; i < INSERT_KEYS; i++) {
-      System.err.println("Inserting " + i + " of " + INSERT_KEYS);
-      int node1 = random.nextInt(NUMBER_OF_NODES);
-      Node randomNode = nodes[node1];
-      String dataString = baseString + i;
-      byte[] data = dataString.getBytes(StandardCharsets.UTF_8);
-      ClientCHKBlock b;
-      b =
-          ClientCHKBlock.encode(
-              data, false, false, (short) -1, 0, COMPRESSOR_TYPE.DEFAULT_COMPRESSORDESCRIPTOR);
-      CHKBlock block = b.getBlock();
-      ClientCHK chk = b.getClientKey();
-      byte[] encData = block.getData();
-      byte[] encHeaders = block.getHeaders();
-      ClientCHKBlock newBlock = new ClientCHKBlock(encData, encHeaders, chk, true);
+      LOG.info("Inserting {} of {}", i, INSERT_KEYS);
+      int nodeIndex = random.nextInt(NUMBER_OF_NODES);
+      Node randomNode = nodes[nodeIndex];
+      ClientCHKBlock block = createBlock(baseString, i);
+      ClientCHK chk = block.getClientKey();
+      CHKBlock chkBlock = block.getBlock();
       keys[i] = chk;
-      LOG.debug("Decoded: " + new String(newBlock.memoryDecode(), StandardCharsets.UTF_8));
-      LOG.info("CHK: " + chk.getURI());
-      LOG.debug("Headers: " + HexUtil.bytesToHex(block.getHeaders()));
-      // Insert it.
+      logBlockDetails(block, chkBlock);
       try {
         randomNode
             .getClientCore()
-            .realPut(block, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
-        LOG.error("Inserted to " + node1);
-        LOG.debug(
-            "Data: " + Fields.hashCode(encData) + ", Headers: " + Fields.hashCode(encHeaders));
+            .realPut(chkBlock, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
+        LOG.error("Inserted to {}", nodeIndex);
+        logBlockPayloadDetails(chkBlock);
       } catch (LowLevelPutException putEx) {
-        LOG.error("Insert failed: " + putEx);
-        System.err.println("Insert failed: " + putEx);
+        LOG.error("Insert failed: {}", String.valueOf(putEx));
         System.exit(EXIT_INSERT_FAILED);
       }
     }
+    return keys;
+  }
 
-    // Now queue requests for each key on every node.
-    for (int i = 0; i < INSERT_KEYS; i++) {
+  /**
+   * Encodes a single block from the base string and index.
+   *
+   * @param baseString prefix for the content that is combined with the index
+   * @param index numeric suffix appended to the base string before encoding
+   * @return encoded client block containing the UTF-8 bytes of the composed string
+   * @throws CHKEncodeException if the block cannot be encoded with the chosen parameters
+   */
+  private static ClientCHKBlock createBlock(String baseString, int index)
+      throws CHKEncodeException {
+    String dataString = baseString + index;
+    byte[] data = dataString.getBytes(StandardCharsets.UTF_8);
+    return ClientCHKBlock.encode(
+        data, false, false, (short) -1, 0, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+  }
+
+  /**
+   * Logs decoded and header details for a block when debug logging is enabled.
+   *
+   * @param block client block providing the decoded payload and client key
+   * @param chkBlock encoded block containing the headers that are logged
+   * @throws CHKDecodeException if the block payload cannot be decoded for logging
+   */
+  private static void logBlockDetails(ClientCHKBlock block, CHKBlock chkBlock)
+      throws CHKDecodeException {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Decoded: {}", new String(block.memoryDecode(), StandardCharsets.UTF_8));
+      LOG.debug("Headers: {}", HexUtil.bytesToHex(chkBlock.getHeaders()));
+    }
+    LOG.info("CHK: {}", block.getClientKey().getURI());
+  }
+
+  /**
+   * Logs hashed payload details for a block when debug logging is enabled.
+   *
+   * @param chkBlock encoded block containing the payload and headers to hash
+   */
+  private static void logBlockPayloadDetails(CHKBlock chkBlock) {
+    if (LOG.isDebugEnabled()) {
+      byte[] encData = chkBlock.getData();
+      byte[] encHeaders = chkBlock.getHeaders();
+      LOG.debug("Data: {}, Headers: {}", Fields.hashCode(encData), Fields.hashCode(encHeaders));
+    }
+  }
+
+  /**
+   * Queues prefetch requests for all keys from all clients and logs queue depth.
+   *
+   * @param clients clients that issue prefetch requests for every key
+   * @param nodes nodes used only to count running requests for progress logging
+   * @param keys keys to prefetch, queued across every client in index order
+   */
+  private static void queueRequests(
+      HighLevelSimpleClient[] clients, Node[] nodes, ClientCHK[] keys) {
+    for (int i = 0; i < keys.length; i++) {
       ClientCHK key = keys[i];
-      System.err.println("Queueing requests for " + i + " of " + INSERT_KEYS);
-      for (int j = 0; j < nodes.length; j++) {
-        clients[j].prefetch(key.getURI(), DAYS.toMillis(1), 32768, null);
+      LOG.info("Queueing requests for {} of {}", i, keys.length);
+      for (HighLevelSimpleClient client : clients) {
+        client.prefetch(key.getURI(), DAYS.toMillis(1), 32768, null);
       }
-      long totalRunningRequests = 0;
-      for (int j = 0; j < nodes.length; j++) {
-        totalRunningRequests += nodes[j].getClientCore().countQueuedRequests();
-      }
-      System.err.println("Running requests: " + totalRunningRequests);
+      LOG.info("Running requests: {}", countRunningRequests(nodes));
     }
+  }
 
-    // Now wait until finished. How???
-
+  /**
+   * Waits until all queued requests are complete.
+   *
+   * @param nodes nodes whose queued requests are polled for completion
+   * @throws InterruptedException if the waiting thread is interrupted
+   */
+  private static void waitForCompletion(Node[] nodes) throws InterruptedException {
     while (true) {
-      long totalRunningRequests = 0;
-      for (int i = 0; i < nodes.length; i++) {
-        totalRunningRequests += nodes[i].getClientCore().countQueuedRequests();
+      long totalRunningRequests = countRunningRequests(nodes);
+      LOG.info("Running requests: {}", totalRunningRequests);
+      if (totalRunningRequests == 0) {
+        break;
       }
-      System.err.println("Running requests: " + totalRunningRequests);
-      if (totalRunningRequests == 0) break;
-      Thread.sleep(1000);
+      synchronized (COMPLETION_MONITOR) {
+        COMPLETION_MONITOR.wait(1000);
+      }
     }
-    System.exit(0);
+  }
+
+  /**
+   * Totals the number of queued requests across all nodes.
+   *
+   * @param nodes nodes whose queued requests are summed for reporting
+   * @return total number of queued requests observed across all nodes
+   */
+  private static long countRunningRequests(Node[] nodes) {
+    long totalRunningRequests = 0;
+    for (Node node : nodes) {
+      totalRunningRequests += node.getClientCore().countQueuedRequests();
+    }
+    return totalRunningRequests;
   }
 }
