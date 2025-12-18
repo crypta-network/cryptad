@@ -668,7 +668,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   }
 
   private static GregorianCalendar[] computeTargets() {
-    GregorianCalendar target = (GregorianCalendar) today.clone();
+    GregorianCalendar target = today.copyCalendar();
     target.set(Calendar.HOUR_OF_DAY, 0);
     target.set(Calendar.MINUTE, 0);
     target.set(Calendar.MILLISECOND, 0);

@@ -239,7 +239,7 @@ public class LongTermMHKTest extends LongTermTest {
           GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("GMT"));
           calendar.setTime(date);
           System.out.println("Date: " + dateFormat.format(calendar.getTime()));
-          GregorianCalendar target = (GregorianCalendar) today.clone();
+          GregorianCalendar target = today.copyCalendar();
           target.set(Calendar.HOUR_OF_DAY, 0);
           target.set(Calendar.MINUTE, 0);
           target.set(Calendar.MILLISECOND, 0);
